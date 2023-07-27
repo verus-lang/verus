@@ -187,7 +187,7 @@ pub proof fn axiom_multiset_empty<V>(v: V)
     ensures Multiset::empty().count(v) == 0,
 { }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// A multiset is equivalent to the empty multiset if and only if it has length 0.
 /// If the multiset has length greater than 0, then there exists some element in the 
 /// multiset that has a count greater than 0.
@@ -387,7 +387,7 @@ pub proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: nat, v2: V)
 
 // Lemmas about `insert`
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If you insert element x into multiset m, then element y maps
 /// to a count greater than 0 if and only if x==y or y already
 /// mapped to a count greater than 0 before the insertion of x.
@@ -396,14 +396,14 @@ pub proof fn lemma_insert_containment<V>(m: Multiset<V>, x: V, y: V)
         0 < #[trigger] m.insert(x).count(y) <==> x == y || 0 < m.count(y)
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Inserting an element `x` into multiset `m` will increase the count of `x` in `m` by 1.
 pub proof fn lemma_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
     ensures 
         #[trigger] m.insert(x).count(x) == m.count(x) + 1
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If multiset `m` maps element `y` to a multiplicity greater than 0, then inserting any element `x`
 /// into `m` will not cause `y` to map to a multiplicity of 0. This is a way of saying that inserting `x` 
 /// will not cause any counts to decrease, because it accounts both for when x == y and when x != y.
@@ -412,14 +412,14 @@ pub proof fn lemma_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
         0 < m.count(y) ==> 0 < #[trigger] m.insert(x).count(y),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Inserting an element `x` into a multiset `m` will not change the count of any other element `y` in `m`.
 pub proof fn lemma_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V)
     ensures
         x != y ==> #[trigger] m.count(y) == #[trigger] m.insert(x).count(y),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Inserting an element `x` into a multiset `m` will increase the length of `m` by 1.
 pub proof fn lemma_insert_len<V>(m: Multiset<V>, x: V)
     ensures
@@ -428,7 +428,7 @@ pub proof fn lemma_insert_len<V>(m: Multiset<V>, x: V)
 
 // Lemmas about `intersection_with`
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The multiplicity of an element `x` in the intersection of multisets `a` and `b` will be the minimum
 /// count of `x` in either `a` or `b`.
 pub proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
@@ -439,7 +439,7 @@ pub proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     assert(m.dom() =~= a.dom());
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the intersection of multisets `a` and `b` and then taking the resulting multiset's intersection
 /// with `b` again is the same as just taking the intersection of `a` and `b` once.
 pub proof fn lemma_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
@@ -455,7 +455,7 @@ pub proof fn lemma_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the intersection of multiset `a` with the result of taking the intersection of `a` and `b`
 /// is the same as just taking the intersection of `a` and `b` once.
 pub proof fn lemma_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
@@ -473,7 +473,7 @@ pub proof fn lemma_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
 
 // Lemmas about `difference_with`
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The multiplicity of an element `x` in the difference of multisets `a` and `b` will be 
 /// equal to the difference of the counts of `x` in `a` and `b`, or 0 if this difference is negative.
 pub proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
@@ -484,7 +484,7 @@ pub proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     assert(m.dom() =~= a.dom());
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If the multiplicity of element `x` is less in multiset `a` than in multiset `b`, then the multiplicity
 /// of `x` in the difference of `a` and `b` will be 0.
 pub proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: V)
@@ -521,7 +521,7 @@ macro_rules! assert_multisets_equal {
     }
 }
 
-// magic auto style bundle of lemmas that Dafny considers when proving properties of multisets
+/// Properties of multisets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 pub proof fn lemma_multiset_properties<V>()
     ensures
         forall |m: Multiset<V>, v: V, mult: nat| #[trigger] m.update(v, mult).count(v) == mult, //lemma_update_same 

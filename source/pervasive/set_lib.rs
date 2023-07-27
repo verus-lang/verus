@@ -630,7 +630,7 @@ pub proof fn find_unique_maximal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the set union of sets `a` and `b` and then taking the set union of the result with `b` 
 /// is the same as taking the set union of `a` and `b` once.
 pub proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
@@ -638,7 +638,7 @@ pub proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
         #[trigger] a.union(b).union(b) =~= a.union(b),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the set union of sets `a` and `b` and then taking the set union of the result with `a` 
 /// is the same as taking the set union of `a` and `b` once.
 pub proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
@@ -646,7 +646,7 @@ pub proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
         #[trigger] a.union(b).union(a) =~= a.union(b),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the set intersection of sets `a` and `b` and then taking the set intersection of the result with `b`
 /// is the same as taking the set intersection of `a` and `b` once.
 pub proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
@@ -654,7 +654,7 @@ pub proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
         #[trigger] (a.intersect(b)).intersect(b) =~= a.intersect(b),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the set intersection of sets `a` and `b` and then taking the set intersection of the result with `a`
 /// is the same as taking the set intersection of `a` and `b` once.
 pub proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
@@ -662,14 +662,14 @@ pub proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
         #[trigger] (a.intersect(b)).intersect(a) =~= a.intersect(b),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s2` contains element `a`, then the set difference of `s1` and `s2` does not contain `a`.
 pub proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
         s2.contains(a) ==> !s1.difference(s2).contains(a),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they have no elements in common, then the set difference
 /// of `a + b` and `b` is equal to `a` and the set difference of `a + b` and `a` is equal to `b`.
 pub proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
@@ -679,7 +679,7 @@ pub proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
 
 // Dafny encodes the second clause with a single directional, although
 // it should be fine with both directions?
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Set `s` has length 0 if and only if it is equal to the empty set. If `s` has length greater than 0,
 /// Then there must exist an element `x` such that `s` contains `x`.
 pub proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
@@ -706,7 +706,7 @@ pub proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
     assert(s.len() == 0 <== s =~= Set::empty());
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s` already contains element `a`, the inserting `a` into `s` does not change the length of `s`.
 pub proof fn lemma_set_insert_same_len<A>(s: Set<A>, a: A)
     requires
@@ -716,7 +716,7 @@ pub proof fn lemma_set_insert_same_len<A>(s: Set<A>, a: A)
 {}
 
 // magic lemma from spec function
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s` does not contain element `a`, then inserting `a` into `s` increases the length of `s` by 1.
 pub proof fn lemma_set_insert_diff_len<A>(s: Set<A>, a: A)
     requires
@@ -725,7 +725,7 @@ pub proof fn lemma_set_insert_diff_len<A>(s: Set<A>, a: A)
         !s.contains(a) ==> #[trigger] s.insert(a).len() == s.len() + 1,
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s` contains element `a`, then removing `a` from `s` decreases the length of `s` by 1.
 /// If set `s` does not contain element `a`, then removing `a` from `s` does not change the length of `s`.
 pub proof fn lemma_set_remove_len_contains<A>(s: Set<A>, a: A)
@@ -736,7 +736,7 @@ pub proof fn lemma_set_remove_len_contains<A>(s: Set<A>, a: A)
             && (!s.contains(a) ==> s.len() == s.remove(a).len()),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
 /// of the set union `a + b` is equal to the sum of the lengths of `a` and `b`.
 pub proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
@@ -764,7 +764,7 @@ pub proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
 
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets. 
 pub proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
@@ -798,7 +798,7 @@ pub proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
     }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the set difference `A \ B` added to the length of the set difference `B \ A` added to
 /// the length of the intersection `A ∩ B` is equal to the length of the union `A + B`.
 /// 
@@ -872,7 +872,7 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
     }
 }
 
-// magic auto style bundle of lemmas that Dafny considers when proving properties of sets
+/// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 pub proof fn lemma_set_properties<A>()
     ensures
         forall |a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b), //lemma_set_union_again1

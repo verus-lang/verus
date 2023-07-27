@@ -323,7 +323,7 @@ pub proof fn lemma_invert_is_injective<K,V>(m: Map<K,V>)
     }   
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
 pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
@@ -332,7 +332,7 @@ pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
     assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to 
 /// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
@@ -349,7 +349,7 @@ pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
     assert(values =~= Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)));
 }
 
-// magic auto style bundle of lemmas that Dafny considers when proving properties of maps
+/// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 pub proof fn lemma_map_properties<K,V>()
     ensures
     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()

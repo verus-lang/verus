@@ -952,7 +952,7 @@ pub proof fn lemma_subseq_min(s: Seq<int>, from: int, to: int)
 
 /************************* Sequence to Multiset Conversion **************************/
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// push(a) o to_multiset = to_multiset o insert(a)
 pub proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     ensures
@@ -972,7 +972,7 @@ pub proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// to_multiset() preserves length
 pub proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
@@ -1522,20 +1522,20 @@ else {
 }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 pub proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
     ensures
         s.contains(x) <==> exists |i: int| 0<= i < s.len() && #[trigger] s[i]==x,
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The empty sequence contains nothing
 pub proof fn lemma_seq_empty_contains_nothing<A>(x: A)
     ensures
         !(#[trigger] Seq::<A>::empty().contains(x)),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 // Note: Dafny only does one way implication, but theoretically it could go both ways
 /// A sequence with length 0 is equivalent to the empty sequence
 pub proof fn lemma_seq_empty_equality<A>(s: Seq<A>)
@@ -1543,7 +1543,7 @@ pub proof fn lemma_seq_empty_equality<A>(s: Seq<A>)
         #[trigger] s.len() == 0 ==> s=~= Seq::<A>::empty(),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The concatenation of two sequences contains only the elements
 /// of the two sequences
 pub proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt: A)
@@ -1568,7 +1568,7 @@ pub proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt
     }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// After pushing an element onto a sequence, the sequence contains that element
 pub proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     ensures 
@@ -1583,7 +1583,7 @@ pub proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     assert(s.push(v)[s.len() as int] == v);
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The subrange of a sequence contains only the elements within the indices `start` and `stop`
 /// of the original sequence. 
 pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x: A)
@@ -1605,14 +1605,14 @@ pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
 
 /************************** Lemmas about singletons **************************/
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The length of a singleton sequence is 1
 pub proof fn lemma_seq_singleton_length<A>(elt: A)
     ensures
         #[trigger] Seq::<A>::singleton(elt).len() == 1
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// A singleton created from element `elt` contains only `elt` at index 0
 pub proof fn lemma_seq_singleton_index<A>(elt: A)
     ensures
@@ -1621,7 +1621,7 @@ pub proof fn lemma_seq_singleton_index<A>(elt: A)
 
 /************************** Lemmas about Take/Drop ***************************/
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the first `n` elements of a sequence results in a sequence of length `n`,
 /// as long as `n` is within the bounds of the original sequence.
 pub proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
@@ -1629,7 +1629,7 @@ pub proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
         0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The resulting sequence after taking the first `n` elements from sequence `s` contains
 /// element `x` if and only if `x` is contained in the first `n` elements of `s`.
 pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
@@ -1646,7 +1646,7 @@ pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
     }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `j` is a valid index less than `n`, then the `j`th element of the sequence `s`
 /// is the same as `j`th element of the sequence after taking the first `n` elements of `s`.
 pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
@@ -1654,7 +1654,7 @@ pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
         0<= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Dropping the first `n` elements of a sequence gives a sequence of length `n` less than
 /// the original sequence's length.
 pub proof fn lemma_seq_drop_len<A>(s: Seq<A>, n: int)
@@ -1662,7 +1662,7 @@ pub proof fn lemma_seq_drop_len<A>(s: Seq<A>, n: int)
         0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n,
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// The resulting sequence after dropping the first `n` elements from sequence `s` contains
 /// element `x` if and only if `x` is contained in `s` before index `n`.
 pub proof fn lemma_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
@@ -1677,7 +1677,7 @@ pub proof fn lemma_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
     }
 }
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `j` is a valid index less than `s.len() - n`, then the `j`th element of the sequence
 /// `s.drop(n)` is the same as the `j+n`th element of the sequence `s`.
 pub proof fn lemma_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
@@ -1685,7 +1685,7 @@ pub proof fn lemma_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
         0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `k` is a valid index between `n` (inclusive) and the length of sequence `s` (exclusive),
 /// then the `k-n`th element of the sequence `s.drop(n)` is the same as the `k`th element of the
 /// original sequence `s`.
@@ -1694,7 +1694,7 @@ pub proof fn lemma_seq_drop_index2<A>(s: Seq<A>, n: int, k: int)
         0 <= n <= k < s.len() ==> (#[trigger] s.drop(n))[k-n] == #[trigger] s[k]
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `n` is the length of sequence `a`, then taking the first `n` elements of the concatenation
 /// `a + b` is equivalent to the sequence `a` and dropping the first `n` elements of the concatenation
 /// `a + b` is equivalent to the sequence `b`.
@@ -1705,7 +1705,7 @@ pub proof fn lemma_seq_append_take_drop<A>(a: Seq<A>, b: Seq<A>, n: int)
 
 /************* Lemmas about the Commutability of Take and Drop with Update ************/
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `i` is in the first `n` indices of sequence `s`, updating sequence `s` at index `i` with 
 /// value `v` and then taking the first `n` elements is equivalent to first taking the first `n` 
 /// elements of `s` and then updating index `i` to value `v`. 
@@ -1714,7 +1714,7 @@ pub proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
         0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n).update(i,v),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `i` is a valid index after the first `n` indices of sequence `s`, updating sequence `s` at 
 /// index `i` with value `v` and then taking the first `n` elements is equivalent to just taking the first `n` 
 /// elements of `s` without the update.
@@ -1723,7 +1723,7 @@ pub proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
         0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).take(n) =~= s.take(n),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `i` is a valid index after the first `n` indices of sequence `s`, updating sequence `s` at
 /// index `i` with value `v` and then dropping the first `n` elements is equivalent to dropping the first `n`
 /// elements of `s` and then updating index `i-n` to value `v`.
@@ -1732,7 +1732,7 @@ pub proof fn lemma_seq_drop_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
         0 <= n <= i < s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n).update(i-n,v),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `i` is a valid index in the first `n` indices of sequence `s`, updating sequence `s` at
 /// index `i` with value `v` and then dropping the first `n` elements is equivalent to just dropping
 /// the first `n` elements without the update.
@@ -1741,7 +1741,7 @@ pub proof fn lemma_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
         0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// Pushing element `v` onto the end of sequence `s` and then dropping the first `n` elements is
 /// equivalent to dropping the first `n` elements of `s` and then pushing `v` onto the end.
 pub proof fn lemma_seq_drop_build_commut<A>(s: Seq<A>, v: A, n: int)
@@ -1749,21 +1749,21 @@ pub proof fn lemma_seq_drop_build_commut<A>(s: Seq<A>, v: A, n: int)
         0<= n <= s.len() ==> #[trigger] s.push(v).drop(n) =~= s.drop(n).push(v), 
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// `s.drop(0)` is equivalent to `s`.
 pub proof fn lemma_seq_drop_nothing<A>(s: Seq<A>, n: int)
     ensures
         n==0 ==> #[trigger] s.drop(n) =~= s,
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// `s.take(0)` is equivalent to the empty sequence.
 pub proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
     ensures
         n==0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
 {}
 
-// Ported from Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude
 /// If `m + n` is less than or equal to the length of sequence `s`, then dropping the first `m` elements
 /// and then dropping the first `n` elements of the resulting sequence is equivalent to just dropping
 /// the first `m + n` elements.
@@ -1772,7 +1772,7 @@ pub proof fn lemma_seq_drop_of_drop<A>(s: Seq<A>, m: int, n: int)
         (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) =~= s.drop(m+n),
 {}
 
-// magic auto style bundle of lemmas that Dafny considers when proving properties of sequences
+/// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 pub proof fn lemma_seq_properties<A>() 
     ensures
         forall |s: Seq<A>, x: A| s.contains(x) <==> exists |i: int| 0<= i < s.len() && #[trigger] s[i]==x, //lemma_seq_contains(s, x),
