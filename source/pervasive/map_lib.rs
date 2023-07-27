@@ -47,6 +47,21 @@ impl<K, V> Map<K, V> {
             #[trigger] m2.dom().contains(k) && self[k] == m2[k]
     }
 
+    ///
+    /// Returns the set of values in the map.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// assert(
+    ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
+    /// );
+    /// ```
+
+    pub open spec fn values(self) -> Set<V> {
+        Set::new(|v| exists |k| #[trigger](self.contains_key(k)) && self[k]==v)
+    }
+
     /// Gives the union of two maps, defined as:
     ///  * The domain is the union of the two input maps.
     ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).

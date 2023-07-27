@@ -54,6 +54,12 @@ impl<V> Multiset<V> {
     /// Returns the _count_, or _multiplicity_ of a single value within the multiset.
     pub spec fn count(self, value: V) -> nat;
 
+    #[verifier(inline)]
+    pub open spec fn spec_index(self, key: V) -> nat
+    {
+        self.count(key)
+    }
+
     /// The total size of the multiset, i.e., the sum of all multiplicities over all values.
     pub spec fn len(self) -> nat;
 
@@ -128,8 +134,18 @@ impl<V> Multiset<V> {
         self =~= m2
     }
 
-    // TODO define this in terms of a more general constructor?
-    pub spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
+    pub spec fn new<F: Fn(V) -> nat>(f: F) -> Self;
+
+    pub open spec fn from_set(s: Set<V>) -> Self {
+        Self::new(|v| if s.contains(v) { 1 } else { 0 })
+    }
+
+    pub open spec fn from_map(m: Map<V, nat>) -> Self {
+        Self::new(|v| if m.contains_key(v) { m[v] } else { 0 })
+    }
+
+    // TODO build this from new, but how to turn f into a spec fn?
+    pub open spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
 
     /// Chooses an arbitrary value of the multiset.
     ///
@@ -323,6 +339,15 @@ pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
 
 /// For a given value `v` and boolean predicate `f`, if `f(v)` is true, then the count of `v` in
 /// `m.filter(f)` is the same as the count of `v` in `m`. Otherwise, the count of `v` in `m.filter(f)` is 0.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_new<V>(f: FnSpec(V) -> nat, v: V)
+    ensures
+        Multiset::new(f).count(v) == f(v),
+{
+}
+
+// TODO doesn't need to be an axiom, except broadcast_forall demands it
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_filter_count<V>(m: Multiset<V>, f: FnSpec(V) -> bool, v: V)
