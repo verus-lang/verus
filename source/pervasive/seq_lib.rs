@@ -235,26 +235,26 @@ impl<A> Seq<A> {
     }
 
     /// Returns the maximum value in a non-empty sequence, given sorting function leq
-    pub open spec fn max_general(self, leq: FnSpec(A,A) -> bool) -> A
+    pub open spec fn max_via(self, leq: FnSpec(A,A) -> bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
         if self.len() > 1 {
-            if leq(self[0],self.subrange(1,self.len() as int).max_general(leq)) {
-                self.subrange(1,self.len() as int).max_general(leq)
+            if leq(self[0],self.subrange(1,self.len() as int).max_via(leq)) {
+                self.subrange(1,self.len() as int).max_via(leq)
             }
             else {self[0]}
         } else {self[0]}
     }
 
     /// Returns the minimum value in a non-empty sequence, given sorting function leq
-    pub open spec fn min_general(self, leq: FnSpec(A,A) -> bool) -> A
+    pub open spec fn min_via(self, leq: FnSpec(A,A) -> bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
         if self.len() > 1 {
             let subseq = self.subrange(1,self.len() as int);
-            let elt = subseq.min_general(leq);
+            let elt = subseq.min_via(leq);
             if leq(elt,self[0]) {elt}
             else {self[0]}
         } else {self[0]}

@@ -203,7 +203,7 @@ pub proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
 /// value `v` to multiplicity `m[v]` if `v` is in the domain of `m`.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_multiset_new1<V>(m: Map<V, nat>, v: V)
+pub proof fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
     requires
         m.dom().finite(),
         m.dom().contains(v),
@@ -215,7 +215,7 @@ pub proof fn axiom_multiset_new1<V>(m: Map<V, nat>, v: V)
 /// value `v` to multiplicity 0 if `v` is not in the domain of `m`.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_multiset_new2<V>(m: Map<V, nat>, v: V)
+pub proof fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
     requires
         m.dom().finite(),
         !m.dom().contains(v),
@@ -245,20 +245,19 @@ pub proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
 /// `v` into the empty multiset.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_multiset_singleton_equivalency<V>(v: V)
+pub proof fn axiom_multiset_singleton_is_insertion<V>(v: V)
     ensures 
         #[trigger] Multiset::singleton(v) == Multiset::empty().insert(v),
 {}
 
 // Specification of `add`
 
-// Added trigger to match Dafny prelude version
 /// The count of value `v` in the multiset `m1.add(m2)` is equal to the sum of the
 /// counts of `v` in `m1` and `m2` individually.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
-    ensures #[trigger] m1.add(m2).count(v) == m1.count(v) + m2.count(v),
+    ensures m1.add(m2).count(v) == m1.count(v) + m2.count(v),
 { }
 
 // Specification of `sub`

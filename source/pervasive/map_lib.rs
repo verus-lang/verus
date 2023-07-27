@@ -111,7 +111,7 @@ impl<K, V> Map<K, V> {
 
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
     
-    pub open spec fn equal_on_key(self, m2: Self, key: K) -> bool
+    pub open spec fn is_equal_on_key(self, m2: Self, key: K) -> bool
     {
         ||| (!self.dom().contains(key) && !m2.dom().contains(key))
         ||| (self.dom().contains(key) && m2.dom().contains(key) && self[key] == m2[key])
@@ -240,7 +240,7 @@ impl Map<int,int> {
 
     /// Returns `true` if and only if a map is monotonic, only considering keys greater than
     /// or equal to start
-    pub open spec fn monotonic_from(self, start: int) -> bool {
+    pub open spec fn is_monotonic_from(self, start: int) -> bool {
         forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && start <= x <= y 
             ==> #[trigger] self[x] <= #[trigger] self[y]
     }
