@@ -64,8 +64,8 @@ impl<A> Set<A> {
 
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A> 
-        // recommends
-        //     self.finite()
+        recommends
+            self.finite()
         decreases
             self.len()
         when

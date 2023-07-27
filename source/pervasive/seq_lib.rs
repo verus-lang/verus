@@ -91,6 +91,41 @@ impl<A> Seq<A> {
         }
     }
 
+    pub proof fn lemma_sort_by_ensures(self, leq: FnSpec(A,A) -> bool)
+        requires
+            total_ordering(leq),
+        ensures
+            self.to_multiset() =~= self.sort_by(leq).to_multiset(),
+            sorted_by(self.sort_by(leq), leq),
+            forall |x: A| !self.contains(x) ==> !(#[trigger] self.sort_by(leq).contains(x)),
+        decreases
+            self.len(),
+    {
+        if self.len() <=1 {}
+        else{
+            let split_index = self.len() /2;
+            let left = self.subrange(0,split_index as int);
+            let right = self.subrange(split_index as int, self.len() as int);
+            
+            assert(self =~= left + right);
+
+            let left_sorted = left.sort_by(leq);
+            left.lemma_sort_by_ensures(leq);
+            let right_sorted = right.sort_by(leq);
+            right.lemma_sort_by_ensures(leq);
+
+            lemma_merge_sorted_with_ensures(left_sorted, right_sorted, leq);
+            lemma_multiset_commutative(left,right);
+            lemma_multiset_commutative(left_sorted,right_sorted);
+
+            assert forall |x: A| !self.contains(x) implies !(#[trigger] self.sort_by(leq).contains(x)) by {
+                self.to_multiset_properties();
+                self.sort_by(leq).to_multiset_properties();
+                assert(!self.contains(x) ==> self.to_multiset().count(x) == 0);
+            }
+        }
+    }
+
 
     /// Returns the sequence containing only the elements of the original sequence
     /// such that pred(element) is true.
@@ -372,6 +407,22 @@ impl<A> Seq<A> {
         }
     }
 
+    /// Proof of function to_multiset() correctness
+    pub proof fn to_multiset_properties(self)
+        ensures
+            forall |a: A| #[trigger](self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
+            self.len() == self.to_multiset().len(),
+            forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
+    {
+        assert forall |a: A| #[trigger](self.push(a).to_multiset()) =~= self.to_multiset().insert(a) by {
+            to_multiset_build(self, a);
+        }
+        to_multiset_len(self);
+        assert forall |a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0 by {
+            to_multiset_contains(self,a);
+        }
+    }
+
     /// Returns the number of times an element occurs in a sequence
     pub open spec fn multiplicity(self, x: A) -> nat {
         self.to_multiset().count(x)
@@ -383,6 +434,17 @@ impl<A> Seq<A> {
     {
         self.subrange(0, i).push(a) + self.subrange(i, self.len() as int)
     }
+
+    /// Proof of correctness and expected properties of insert function
+    pub proof fn lemma_insert_properties(self, pos: int, elt:A)
+        requires 
+            0 <= pos <= self.len(),
+        ensures
+            self.insert(pos, elt).len() == self.len() +1,
+            forall |i: int| 0<= i < pos ==> #[trigger] self.insert(pos, elt)[i] == #[trigger] self[i],
+            forall |i: int| pos <= i < self.len() ==> self.insert(pos, elt)[i+1] == self[i],
+            self.insert(pos, elt)[pos] == elt,
+    {}
 
     /// Remove item at index i, shifting remaining elements to the left
     pub open spec fn remove(self, i: int) -> Seq<A>
@@ -584,6 +646,174 @@ impl<A> Seq<A> {
             self.aux_lemma_fold_right_alt(f, b, 1);
         }
     }
+
+    // Proven lemmas
+
+    /// Given a sequence with no duplicates, each element occurs only 
+    /// once in its conversion to a multiset
+    pub proof fn lemma_multiset_has_no_duplicates(self)
+        requires
+            self.no_duplicates(),
+        ensures
+            forall |x: A| self.to_multiset().contains(x) ==> self.to_multiset().count(x) == 1,
+        decreases
+            self.len()
+    {
+        if self.len() == 0 {
+            assert(forall |x: A| self.to_multiset().contains(x) ==> self.to_multiset().count(x) == 1);
+        } else {
+            lemma_seq_properties::<A>();
+            assert(self.drop_last().push(self.last()) =~= self);
+            self.drop_last().lemma_multiset_has_no_duplicates();
+        }
+    }
+
+    /// The concatenation of two subsequences of a non-empty sequence, the first obtained 
+    /// from dropping the last element, the second consisting only of the last 
+    /// element, is the original sequence.
+    pub proof fn lemma_add_last_back(self)
+        requires 
+            0 < self.len(),
+        ensures
+            #[trigger] self.drop_last().push(self.last()) =~= self,
+    {}
+
+    /// If a predicate is true at every index of a sequence,
+    /// it is true for every member of the sequence as a collection.
+    /// Useful for converting quantifiers between the two forms
+    /// to satisfy a precondition in the latter form.
+    pub proof fn lemma_indexing_implies_membership(self, f: FnSpec(A) -> bool)
+        requires
+            forall |i: int| 0<= i < self.len() ==> #[trigger] f(#[trigger] self[i]),
+        ensures
+            forall |x: A| #[trigger] self.contains(x) ==> #[trigger] f(x),
+    {
+        assert(forall |i: int| 0<= i < self.len() ==> #[trigger] self.contains(self[i]));
+    }
+
+    /// If a predicate is true for every member of a sequence as a collection,
+    /// it is true at every index of the sequence.
+    /// Useful for converting quantifiers between the two forms
+    /// to satisfy a precondition in the latter form.
+    pub proof fn lemma_membership_implies_indexing(self, f: FnSpec(A) -> bool)
+        requires
+            forall |x: A| #[trigger] self.contains(x) ==> #[trigger] f(x),
+        ensures
+            forall |i: int| 0<= i < self.len() ==> #[trigger] f(self[i]),   
+    {
+        assert forall |i: int| 0<= i < self.len() implies #[trigger] f(self[i]) by {
+            assert(#[trigger] self.contains(self[i]));
+        }
+    }
+
+    /// A sequence that is sliced at the pos-th element, concatenated 
+    /// with that same sequence sliced from the pos-th element, is equal to the 
+    /// original unsliced sequence.
+    pub proof fn lemma_split_at(self, pos: int)
+        requires 
+            0 <= pos <= self.len(),
+        ensures 
+            #[trigger] self.subrange(0,pos) + #[trigger] self.subrange(pos,self.len() as int) =~= self
+    {}
+
+    /// Any element in a slice is included in the original sequence.
+    pub proof fn lemma_element_from_slice(self, new: Seq<A>, a: int, b:int, pos: int)
+        requires
+            0 <= a <= b <= #[trigger] self.len(),
+            new == #[trigger] self.subrange(a,b),
+            a <= pos < b
+        ensures
+            pos - a < #[trigger] new.len(),
+            new[pos-a] == #[trigger] self[pos],
+    {}
+
+    /// A slice (from s2..e2) of a slice (from s1..e1) of a sequence is equal to just a 
+    /// slice (s1+s2..s1+e2) of the original sequence.
+    pub proof fn lemma_slice_of_slice(self, s1: int, e1: int, s2: int, e2: int)
+        requires 
+            0 <= s1 <= e1 <= self.len(),
+            0 <= s2 <= e2 <= e1 - s1,
+        ensures
+            self.subrange(s1,e1).subrange(s2,e2) =~= self.subrange(s1+s2,s1+e2),
+    {}
+    
+    /// A sequence of unique items, when converted to a set, produces a set with matching length
+    pub proof fn unique_seq_to_set(self)
+        requires self.no_duplicates(),
+        ensures self.len() == self.to_set().len()
+        decreases self.len(),
+    {
+        seq_to_set_equal_rec::<A>(self);
+        if self.len() == 0 {
+        } else {
+            let rest = self.drop_last();
+            rest.unique_seq_to_set();
+            seq_to_set_equal_rec::<A>(rest);
+            seq_to_set_rec_is_finite::<A>(rest);
+            assert(!seq_to_set_rec(rest).contains(self.last()));
+            assert(seq_to_set_rec(rest).insert(self.last()).len() == seq_to_set_rec(rest).len() + 1);
+        }
+    }
+
+    /// The cardinality of a set of elements is always less than or 
+    /// equal to that of the full sequence of elements.
+    pub proof fn lemma_cardinality_of_set(self)
+        ensures self.to_set().len() <= self.len(),
+        decreases self.len(),
+    {
+        lemma_seq_properties::<A>();
+        lemma_set_properties::<A>();
+        if self.len() == 0 {}
+        else {
+            assert(self.drop_last().to_set().insert(self.last()) =~= self.to_set());
+            self.drop_last().lemma_cardinality_of_set();
+        }
+    }
+
+    /// A sequence is of length 0 if and only if its conversion to
+    /// a set results in the empty set.
+    pub proof fn lemma_cardinality_of_empty_set_is_0(self)
+        ensures
+            self.to_set().len() == 0 <==> self.len() == 0,
+    {
+        assert(self.len() == 0 ==> self.to_set().len() == 0) by {
+            self.lemma_cardinality_of_set()
+        }
+        assert(!(self.len() == 0) ==> !(self.to_set().len() == 0)) by {
+            if self.len() > 0 {
+                assert(self.to_set().contains(self[0]));
+                assert(self.to_set().remove(self[0]).len() <= self.to_set().len());
+            }
+        }
+    }
+
+    /// A sequence with cardinality equal to its set has no duplicates.
+    /// Inverse property of that shown in lemma unique_seq_to_set
+    pub proof fn lemma_no_dup_set_cardinality(self)
+        requires 
+            self.to_set().len() == self.len(),
+        ensures
+            self.no_duplicates(),
+        decreases self.len(),
+    {
+        lemma_seq_properties::<A>();
+        if self.len() == 0 {}
+        else {
+            assert(self =~= Seq::empty().push(self.first()).add(self.drop_first()));
+            if self.drop_first().contains(self.first()){
+                // If there is a duplicate, then we show that |s.to_set()| == |s| cannot hold.
+                assert(self.to_set() =~= self.drop_first().to_set());
+                assert(self.to_set().len() <= self.drop_first().len()) by {
+                    self.drop_first().lemma_cardinality_of_set()
+                }
+            } else {
+                assert(self.to_set().len() == 1 + self.drop_first().to_set().len()) by {
+                    assert(self.drop_first().to_set().insert(self.first()) =~= self.to_set());
+                }
+                self.drop_first().lemma_no_dup_set_cardinality();
+            }
+        }
+    }
 }
 
 impl<A,B> Seq<(A,B)>{
@@ -593,6 +823,28 @@ impl<A,B> Seq<(A,B)>{
     {
         (Seq::new(self.len(), |i: int| self[i].0), Seq::new(self.len(), |i: int| self[i].1))
     }
+
+    /// Proof of correctness and expected properties of unzip function
+    pub proof fn lemma_unzip_properties(self)
+        ensures
+            self.unzip().0.len() == self.unzip().1.len(),
+            self.unzip().0.len() == self.len(),
+            self.unzip().1.len() == self.len(),
+            forall |i: int| 0<= i < self.len() 
+                    ==> (#[trigger] self.unzip().0[i], #[trigger] self.unzip().1[i]) == self[i],
+        decreases
+            self.len(),
+    {
+        if self.len() > 0 {
+            self.drop_last().lemma_unzip_properties();
+        }
+    }
+
+    /// Unzipping a sequence of sequences and then zipping the resulting two sequences
+    /// back together results in the original sequence of sequences.
+    pub proof fn lemma_zip_of_unzip(self)
+        ensures self.unzip().0.zip_with(self.unzip().1) =~= self,
+    {}
 
 }
 
@@ -632,6 +884,77 @@ impl<A> Seq<Seq<A>>{
             self.drop_last().flatten_alt().add(self.last())
         }
     }
+
+    /// Flattening a sequence of a sequence x, where x has length 1, 
+    /// results in a sequence equivalent to the single element of x
+    pub proof fn lemma_flatten_one_element(self)
+        ensures
+            self.len() == 1 ==> self.flatten() == self.first(),
+    {
+        if self.len() == 1
+        {
+            assert(self.flatten() =~= self.first().add(self.drop_first().flatten()));
+        }
+    }
+
+    /// The length of a flattened sequence of sequences x is greater than or 
+        /// equal to any of the lengths of the elements of x.
+    pub proof fn lemma_flatten_length_ge_single_element_length(self, i: int)
+        requires
+            0<= i < self.len(),
+        ensures
+            self.flatten_alt().len() >= self[i].len()
+        decreases
+            self.len()
+    {
+        if self.len() == 1 {
+            self.lemma_flatten_one_element();
+            self.lemma_flatten_and_flatten_alt_are_equivalent();
+        }
+        else if i < self.len() -1 {
+            self.drop_last().lemma_flatten_length_ge_single_element_length(i);
+        } else {
+            assert(self.flatten_alt() == self.drop_last().flatten_alt().add(self.last()));
+        }
+    }
+
+    /// The length of a flattened sequence of sequences x is less than or equal 
+    /// to the length of x multiplied by a number greater than or equal to the
+    /// length of the longest sequence in x.
+    pub proof fn lemma_flatten_length_le_mul(self, j: int)
+        requires
+            forall |i: int| 0 <= i < self.len() ==> (#[trigger] self[i]).len() <= j,
+        ensures
+            self.flatten_alt().len() <= self.len() * j,
+        decreases
+            self.len(),
+    {
+        lemma_seq_properties::<A>();
+        lemma_seq_properties::<Seq<A>>();
+
+        if self.len() == 0 {}
+        else {
+            self.drop_last().lemma_flatten_length_le_mul(j);
+            assert((self.len() - 1) * j == (self.len() * j) - (1*j)) by (nonlinear_arith); //TODO: use math library after imported
+        }
+    }
+
+    /// Flattening sequences of sequences in order (starting from the beginning)
+    /// and in reverse order (starting from the end) results in the same sequence.
+    pub proof fn lemma_flatten_and_flatten_alt_are_equivalent(self)
+        ensures
+            self.flatten() == self.flatten_alt(),
+        decreases
+            self.len(),
+    {
+        if self.len() == 0 {}
+        else {
+            self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
+            seq![self.last()].lemma_flatten_one_element();
+            lemma_flatten_concat(self.drop_last(), seq![self.last()]);
+            assert(self =~= self.drop_last().push(self.last()));
+        }
+    }
 }
 
 /********************************* Extrema in Sequences *********************************/
@@ -653,6 +976,31 @@ impl Seq<int> {
         }
     }
 
+    /// Proof of correctness and expected properties for max function
+    pub proof fn lemma_max_properties(self)
+        ensures
+            forall |x: int| self.contains(x) ==> x <= self.max(),
+            forall |i: int| 0<= i < self.len() ==> self[i] <= self.max(),
+            self.len() == 0 || self.contains(self.max()),
+        decreases 
+            self.len(),
+    {
+        if self.len() <=1 {}
+        else {
+            let elt = self.drop_first().max();
+            assert(self.drop_first().contains(elt)) by {
+                self.drop_first().lemma_max_properties()
+            }
+            assert forall |i: int| 0<= i <self.len() implies self[i] <= self.max() by {
+                assert(i==0 || self[i] == self.drop_first()[i-1]);
+                assert(forall |j: int| 0<= j < self.drop_first().len() 
+                        ==> self.drop_first()[j] <= self.drop_first().max()) by {
+                    self.drop_first().lemma_max_properties()
+                }
+            }
+        }
+    }
+
     /// Returns the maximum integer value in a non-empty sequence of integers.
     pub open spec fn min(self) -> int
         recommends 
@@ -668,6 +1016,31 @@ impl Seq<int> {
         }
     }
 
+    /// Proof of correctness and expected properties for min function
+    pub proof fn lemma_min_properties(self)
+        ensures
+            forall |x: int| self.contains(x) ==> self.min() <= x,
+            forall |i: int| 0<= i < self.len() ==> self.min() <= self[i],
+            self.len() == 0 || self.contains(self.min()),
+        decreases 
+            self.len(),
+    {
+        if self.len() <=1 {}
+        else {
+            let elt = self.drop_first().min();
+            assert(self.subrange(1,self.len() as int).contains(elt)) by {
+                self.drop_first().lemma_min_properties()
+            }
+            assert forall |i: int| 0<= i <self.len() implies self.min() <= self[i] by {
+                assert(i==0 || self[i] == self.drop_first()[i-1]);
+                assert(forall |j: int| 0<= j < self.drop_first().len() 
+                        ==> self.drop_first().min() <= self.drop_first()[j]) by {
+                    self.drop_first().lemma_min_properties()
+                }
+            }
+        }
+    }
+
     pub open spec fn sort(self) -> Self
     {
         self.sort_by(|x: int,y: int| x <= y)
@@ -678,42 +1051,31 @@ impl Seq<int> {
             self.to_multiset() =~= self.sort().to_multiset(),
             sorted_by(self.sort(), |x: int,y: int| x <= y),
     {
-        lemma_sort_by_ensures(self,|x: int,y: int| x <= y);
+        self.lemma_sort_by_ensures(|x: int,y: int| x <= y);
     }
-}
 
-pub proof fn lemma_sort_by_ensures<A>(s: Seq<A>, leq: FnSpec(A,A) -> bool)
-    requires
-        total_ordering(leq),
-    ensures
-        s.to_multiset() =~= s.sort_by(leq).to_multiset(),
-        sorted_by(s.sort_by(leq), leq),
-        forall |x: A| !s.contains(x) ==> !(#[trigger] s.sort_by(leq).contains(x)),
-    decreases
-        s.len(),
-{
-    if s.len() <=1 {}
-    else{
-        let split_index = s.len() /2;
-        let left = s.subrange(0,split_index as int);
-        let right = s.subrange(split_index as int, s.len() as int);
-        
-        assert(s =~= left + right);
-
-        let left_sorted = left.sort_by(leq);
-        lemma_sort_by_ensures(left, leq);
-        let right_sorted = right.sort_by(leq);
-        lemma_sort_by_ensures(right, leq);
-
-        lemma_merge_sorted_with_ensures(left_sorted, right_sorted, leq);
-        lemma_multiset_commutative(left,right);
-        lemma_multiset_commutative(left_sorted,right_sorted);
-
-        assert forall |x: A| !s.contains(x) implies !(#[trigger] s.sort_by(leq).contains(x)) by {
-            to_multiset_properties(s);
-            to_multiset_properties(s.sort_by(leq));
-            assert(!s.contains(x) ==> s.to_multiset().count(x) == 0);
-        }
+    /// The maximum element in a non-empty sequence is greater than or equal to
+    /// the maxima of its non-empty subsequences.
+    pub proof fn lemma_subseq_max(self, from: int, to: int)
+        requires
+            0 <= from < to <= self.len(),
+        ensures
+            self.subrange(from, to).max() <= self.max(),
+    {
+        self.lemma_max_properties();
+        self.subrange(from, to).lemma_max_properties();
+    }
+    
+    /// The minimum element in a non-empty sequence is less than or equal to
+    /// the minima of its non-empty subsequences.
+    pub proof fn lemma_subseq_min(self, from: int, to: int)
+        requires
+            0 <= from < to <= self.len(),
+        ensures
+            self.subrange(from, to).min() >= self.min(),
+    {
+        self.lemma_min_properties();
+        self.subrange(from, to).lemma_min_properties();
     }
 }
 
@@ -792,32 +1154,6 @@ proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: Fn
     }
 }
 
-/// Proof of correctness and expected properties for max function
-pub proof fn lemma_max_properties(s: Seq<int>)
-    ensures
-        forall |x: int| s.contains(x) ==> x <= s.max(),
-        forall |i: int| 0<= i < s.len() ==> s[i] <= s.max(),
-        s.len() == 0 || s.contains(s.max()),
-    decreases 
-        s.len(),
-{
-    if s.len() <=1 {}
-    else {
-        let elt = s.drop_first().max();
-        //assert(!(s[0] <= elt) ==> elt <= s[0]);
-        assert(s.drop_first().contains(elt)) by {
-            lemma_max_properties(s.drop_first())
-        }
-        assert forall |i: int| 0<= i <s.len() implies s[i] <= s.max() by {
-            assert(i==0 || s[i] == s.drop_first()[i-1]);
-            assert(forall |j: int| 0<= j < s.drop_first().len() 
-                    ==> s.drop_first()[j] <= s.drop_first().max()) by {
-                lemma_max_properties(s.drop_first())
-            }
-        }
-    }
-}
-
 /// The maximum of the concatenation of two non-empty sequences is greater than or 
 /// equal to the maxima of its two non-empty subsequences.
 pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
@@ -831,9 +1167,9 @@ pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
         x.len(),
 {
     lemma_seq_properties::<int>();
-    lemma_max_properties(x);
-    lemma_max_properties(y);
-    lemma_max_properties(x+y);
+    x.lemma_max_properties();
+    y.lemma_max_properties();
+    (x+y).lemma_max_properties();
     assert(x.drop_first().len() == x.len() -1);
     if x.len() == 1 {
         assert(y.max() <= (x + y).max()) by {
@@ -849,31 +1185,6 @@ pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
     }
 }
 
-/// Proof of correctness and expected properties for min function
-pub proof fn lemma_min_properties(s: Seq<int>)
-    ensures
-        forall |x: int| s.contains(x) ==> s.min() <= x,
-        forall |i: int| 0<= i < s.len() ==> s.min() <= s[i],
-        s.len() == 0 || s.contains(s.min()),
-    decreases 
-        s.len(),
-{
-    if s.len() <=1 {}
-    else {
-        let elt = s.drop_first().min();
-        assert(s.subrange(1,s.len() as int).contains(elt)) by {
-            lemma_min_properties(s.drop_first())
-        }
-        assert forall |i: int| 0<= i <s.len() implies s.min() <= s[i] by {
-            assert(i==0 || s[i] == s.drop_first()[i-1]);
-            assert(forall |j: int| 0<= j < s.drop_first().len() 
-                    ==> s.drop_first().min() <= s.drop_first()[j]) by {
-                lemma_min_properties(s.drop_first())
-            }
-        }
-    }
-}
-
 /// The minimum of the concatenation of two non-empty sequences is less than or 
 /// equal to the minimum of its two non-empty subsequences.
 pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
@@ -886,9 +1197,9 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
     decreases
         x.len(),
 {
-    lemma_min_properties(x);
-    lemma_min_properties(y);
-    lemma_min_properties(x+y);
+    x.lemma_min_properties();
+    y.lemma_min_properties();
+    (x+y).lemma_min_properties();
     lemma_seq_properties::<int>();
     if x.len() == 1 {
         assert((x + y).min() <= y.min()) by {
@@ -906,35 +1217,10 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
     }
 }
 
-/// The maximum element in a non-empty sequence is greater than or equal to
-/// the maxima of its non-empty subsequences.
-pub proof fn lemma_subseq_max(s: Seq<int>, from: int, to: int)
-    requires
-        0 <= from < to <= s.len(),
-    ensures
-        s.subrange(from, to).max() <= s.max(),
-{
-    lemma_max_properties(s);
-    lemma_max_properties(s.subrange(from, to));
-}
-
-/// The minimum element in a non-empty sequence is less than or equal to
-/// the minima of its non-empty subsequences.
-pub proof fn lemma_subseq_min(s: Seq<int>, from: int, to: int)
-    requires
-        0 <= from < to <= s.len(),
-    ensures
-        s.subrange(from, to).min() >= s.min(),
-{
-    lemma_min_properties(s);
-    lemma_min_properties(s.subrange(from, to));
-}
-
 /************************* Sequence to Multiset Conversion **************************/
 
-// This verified lemma used to be an axiom in the Dafny prelude
 /// push(a) o to_multiset = to_multiset o insert(a)
-pub proof fn to_multiset_build<A>(s: Seq<A>, a: A)
+proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     ensures
         s.push(a).to_multiset() =~= s.to_multiset().insert(a)
     decreases 
@@ -952,9 +1238,8 @@ pub proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     }
 }
 
-// This verified lemma used to be an axiom in the Dafny prelude
 /// to_multiset() preserves length
-pub proof fn to_multiset_len<A>(s: Seq<A>)
+proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
         s.len() == s.to_multiset().len()
     decreases
@@ -970,7 +1255,8 @@ pub proof fn to_multiset_len<A>(s: Seq<A>)
     }
 }
 
-pub proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
+/// to_multiset() contains only all elements of the sequence
+proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
     ensures
         s.contains(a) <==> s.to_multiset().count(a) > 0
     decreases
@@ -1002,52 +1288,6 @@ pub proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
     }
 }
 
-/// Proof of function to_multiset() correctness
-pub proof fn to_multiset_properties<A>(s: Seq<A>)
-    ensures
-        forall |a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a),
-        s.len() == s.to_multiset().len(),
-        forall |a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0,
-{
-    assert forall |a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a) by {
-        to_multiset_build(s, a);
-    }
-    to_multiset_len(s);
-    assert forall |a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0 by {
-        to_multiset_contains(s,a);
-    }
-}
-
-/// Given a sequence with no duplicates, each element occurs only 
-/// once in its conversion to a multiset
-pub proof fn lemma_multiset_has_no_duplicates<A>(s: Seq<A>)
-    requires
-        s.no_duplicates(),
-    ensures
-        forall |x: A| s.to_multiset().contains(x) ==> s.to_multiset().count(x) == 1,
-    decreases
-        s.len()
-{
-    if s.len() == 0 {
-        assert(forall |x: A| s.to_multiset().contains(x) ==> s.to_multiset().count(x) == 1);
-    } else {
-        lemma_seq_properties::<A>();
-        assert(s.drop_last().push(s.last()) =~= s);
-        lemma_multiset_has_no_duplicates(s.drop_last());
-    }
-}
-
-
-/// The concatenation of two subsequences of a non-empty sequence, the first obtained 
-/// from dropping the last element, the second consisting only of the last 
-/// element, is the original sequence.
-pub proof fn lemma_add_last_back<A>(s: Seq<A>)
-    requires 
-        0 < s.len(),
-    ensures
-        #[trigger] s.drop_last().push(s.last()) =~= s,
-{}
-
 /// The last element of two concatenated sequences, the second one being non-empty, will be the 
 /// last element of the latter sequence.
 pub proof fn lemma_append_last<A>(s1 :Seq<A>, s2 :Seq<A>)
@@ -1061,66 +1301,6 @@ pub proof fn lemma_append_last<A>(s1 :Seq<A>, s2 :Seq<A>)
 pub proof fn lemma_concat_associative<A>(s1 : Seq<A>, s2 :Seq<A>, s3 :Seq<A>)
     ensures
         #[trigger] s1.add(s2.add(s3)) =~= #[trigger] s1.add(s2).add(s3),
-{}
-
-
-/// If a predicate is true at every index of a sequence,
-/// it is true for every member of the sequence as a collection.
-/// Useful for converting quantifiers between the two forms
-/// to satisfy a precondition in the latter form.
-pub proof fn lemma_indexing_implies_membership<A>(f: FnSpec(A) -> bool, s: Seq<A>)
-    requires
-        forall |i: int| 0<= i < s.len() ==> #[trigger] f(#[trigger] s[i]),
-    ensures
-        forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
-{
-    assert(forall |i: int| 0<= i < s.len() ==> #[trigger] s.contains(s[i]));
-}
-
-/// If a predicate is true for every member of a sequence as a collection,
-/// it is true at every index of the sequence.
-/// Useful for converting quantifiers between the two forms
-/// to satisfy a precondition in the latter form.
-pub proof fn lemma_membership_implies_indexing<A>(f: FnSpec(A) -> bool, s: Seq<A>)
-    requires
-        forall |x: A| #[trigger] s.contains(x) ==> #[trigger] f(x),
-    ensures
-        forall |i: int| 0<= i < s.len() ==> #[trigger] f(s[i]),   
-{
-    assert forall |i: int| 0<= i < s.len() implies #[trigger] f(s[i]) by {
-        assert(#[trigger] s.contains(s[i]));
-    }
-}
-
-/// A sequence that is sliced at the pos-th element, concatenated 
-/// with that same sequence sliced from the pos-th element, is equal to the 
-/// original unsliced sequence.
-pub proof fn lemma_split_at<A>(s: Seq<A>, pos: int)
-    requires 
-        0 <= pos <= s.len(),
-    ensures 
-        #[trigger] s.subrange(0,pos) + #[trigger] s.subrange(pos,s.len() as int) =~= s
-{}
-
-/// Any element in a slice is included in the original sequence.
-pub proof fn lemma_element_from_slice<A>(old: Seq<A>, new: Seq<A>, a: int, b:int, pos: int)
-    requires
-        0 <= a <= b <= #[trigger] old.len(),
-        new == #[trigger] old.subrange(a,b),
-        a <= pos < b
-    ensures
-        pos - a < #[trigger] new.len(),
-        new[pos-a] == #[trigger] old[pos],
-{}
-
-/// A slice (from s2..e2) of a slice (from s1..e1) of a sequence is equal to just a 
-/// slice (s1+s2..s1+e2) of the original sequence.
-pub proof fn lemma_slice_of_slice<A>(original: Seq<A>, s1 :int, e1: int, s2: int, e2: int)
-    requires 
-        0 <= s1 <= e1 <= original.len(),
-        0 <= s2 <= e2 <= e1 - s1,
-    ensures
-        original.subrange(s1,e1).subrange(s2,e2) =~= original.subrange(s1+s2,s1+e2),
 {}
 
 /// Recursive definition of seq to set conversion
@@ -1182,7 +1362,6 @@ proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     assert(seq.to_set() =~= seq_to_set_rec(seq));
 }
 
-
 /// The set obtained from a sequence is finite
 pub proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
     ensures seq.to_set().finite()
@@ -1201,118 +1380,6 @@ pub proof fn seq_to_set_is_finite_broadcast<A>(seq: Seq<A>)
     // TODO: merge this with seq_to_set_is_finite when broadcast_forall is better supported
 }
 
-/// A sequence of unique items, when converted to a set, produces a set with matching length
-pub proof fn unique_seq_to_set<A>(seq:Seq<A>)
-    requires seq.no_duplicates(),
-    ensures seq.len() == seq.to_set().len()
-    decreases seq.len(),
-{
-    seq_to_set_equal_rec::<A>(seq);
-    if seq.len() == 0 {
-    } else {
-        let rest = seq.drop_last();
-        unique_seq_to_set::<A>(rest);
-        seq_to_set_equal_rec::<A>(rest);
-        seq_to_set_rec_is_finite::<A>(rest);
-        assert(!seq_to_set_rec(rest).contains(seq.last()));
-        assert(seq_to_set_rec(rest).insert(seq.last()).len() == seq_to_set_rec(rest).len() + 1);
-    }
-}
-
-/// The cardinality of a set of elements is always less than or 
-/// equal to that of the full sequence of elements.
-pub proof fn lemma_cardinality_of_set<A>(s: Seq<A>)
-    ensures s.to_set().len() <= s.len(),
-    decreases s.len(),
-{
-    lemma_seq_properties::<A>();
-    lemma_set_properties::<A>();
-    if s.len() == 0 {}
-    else {
-        assert(s.drop_last().to_set().insert(s.last()) =~= s.to_set());
-        lemma_cardinality_of_set(s.drop_last());
-    }
-}
-
-/// A sequence is of length 0 if and only if its conversion to
-/// a set results in the empty set.
-pub proof fn lemma_cardinality_of_empty_set_is_0<A>(s: Seq<A>)
-    ensures
-        s.to_set().len() == 0 <==> s.len() == 0,
-{
-    assert(s.len() == 0 ==> s.to_set().len() == 0) by {
-        lemma_cardinality_of_set(s)
-    }
-    assert(!(s.len() == 0) ==> !(s.to_set().len() == 0)) by {
-        if s.len() > 0 {
-            assert(s.to_set().contains(s[0]));
-            assert(s.to_set().remove(s[0]).len() <= s.to_set().len());
-        }
-    }
-}
-
-/// Proof of correctness and expected properties of insert function
-pub proof fn lemma_insert_properties<A>(s: Seq<A>, pos: int, elt:A)
-    requires 
-        0 <= pos <= s.len(),
-    ensures
-        s.insert(pos, elt).len() == s.len() +1,
-        forall |i: int| 0<= i < pos ==> #[trigger] s.insert(pos, elt)[i] == #[trigger] s[i],
-        forall |i: int| pos <= i < s.len() ==> s.insert(pos, elt)[i+1] == s[i],
-        s.insert(pos, elt)[pos] == elt,
-{}
-
-/// Proof of correctness and expected properties of unzip function
-pub proof fn lemma_unzip_properties<A,B>(s: Seq<(A,B)>)
-    ensures
-        s.unzip().0.len() == s.unzip().1.len(),
-        s.unzip().0.len() == s.len(),
-        s.unzip().1.len() == s.len(),
-        forall |i: int| 0<= i < s.len() 
-                ==> (#[trigger] s.unzip().0[i], #[trigger] s.unzip().1[i]) == s[i],
-    decreases
-        s.len(),
-{
-    if s.len() > 0 {
-        lemma_unzip_properties(s.drop_last());
-    }
-}
-
-/// Unzipping a sequence of sequences and then zipping the resulting two sequences
-/// back together results in the original sequence of sequences.
-pub proof fn lemma_zip_of_unzip<A,B>(s: Seq<(A,B)>)
-    ensures s.unzip().0.zip_with(s.unzip().1) =~= s,
-    decreases s.len(),
-{}
-
-/// A sequence with cardinality equal to its set has no duplicates.
-/// Inverse property of that shown in lemma unique_seq_to_set
-pub proof fn lemma_no_dup_set_cardinality<A>(s: Seq<A>)
-    requires 
-        s.to_set().len() == s.len(),
-    ensures
-        s.no_duplicates(),
-    decreases s.len(),
-{
-    lemma_seq_properties::<A>();
-    if s.len() == 0 {}
-    else {
-        assert(s =~= Seq::empty().push(s.first()).add(s.drop_first()));
-        if s.drop_first().contains(s.first()){
-            // If there is a duplicate, then we show that |s.to_set()| == |s| cannot hold.
-            assert(s.to_set() =~= s.drop_first().to_set());
-            assert(s.to_set().len() <= s.drop_first().len()) by {
-                lemma_cardinality_of_set(s.drop_first())
-            }
-        } else {
-            assert(s.to_set().len() == 1 + s.drop_first().to_set().len()) by {
-                assert(s.drop_first().to_set().insert(s.first()) =~= s.to_set());
-            }
-            lemma_no_dup_set_cardinality(s.drop_first());
-        }
-    }
-}
-
 /// If sequences a and b don't have duplicates and there are no 
 /// elements in common between them, then the concatenated sequence 
 /// a + b will not contain duplicates either.
@@ -1325,10 +1392,6 @@ pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
     ensures
         #[trigger] (a+b).no_duplicates(),
 {}
-
-
-/************************ Lemmas about Flattening ************************/
-
 
 /// Flattening sequences of sequences is distributive over concatenation. That is, concatenating
 /// the flattening of two sequences of sequences is the same as flattening the 
@@ -1369,41 +1432,6 @@ pub proof fn lemma_flatten_alt_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
     }
 }
 
-/// Flattening a sequence of a sequence x, where x has length 1, 
-/// results in a sequence equivalent to the single element of x
-pub proof fn lemma_flatten_one_element<A>(x: Seq<Seq<A>>)
-    ensures
-        x.len() == 1 ==> x.flatten() == x.first(),
-{
-    if x.len() == 1
-    {
-        assert(x.flatten() =~= x.first().add(x.drop_first().flatten()));
-    }
-}
-
-/// The length of a flattened sequence of sequences x is greater than or 
-/// equal to any of the lengths of the elements of x.
-pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i: int)
-    requires
-        0<= i < x.len(),
-    ensures
-        x.flatten_alt().len() >= x[i].len()
-    decreases
-        x.len()
-{
-    if x.len() == 1 {
-        lemma_flatten_one_element(x);
-        lemma_flatten_and_flatten_alt_are_equivalent(x);
-    }
-    else if i < x.len() -1 {
-        lemma_flatten_length_ge_single_element_length(x.drop_last(), i);
-    } else {
-        assert(x.flatten_alt() == x.drop_last().flatten_alt().add(x.last()));
-    }
-}
-
-/************************ End of Lemmas about Flattening ************************/
-
 /// The multiset of a concatenated sequence `a + b` is equivalent to the multiset of the
 /// concatenated sequence `b + a`.
 pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
@@ -1430,44 +1458,6 @@ pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
         assert(a.drop_first() + b =~= (a+b).drop_first());
     }
 }
-
-/// The length of a flattened sequence of sequences x is less than or equal 
-/// to the length of x multiplied by a number greater than or equal to the
-/// length of the longest sequence in x.
-pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
-    requires
-        forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
-    ensures
-        x.flatten_alt().len() <= x.len() * j,
-    decreases
-        x.len(),
-{
-    lemma_seq_properties::<A>();
-    lemma_seq_properties::<Seq<A>>();
-    
-    if x.len() == 0 {}
-    else {
-        lemma_flatten_length_le_mul(x.drop_last(), j);
-        assert((x.len() - 1) * j == (x.len() * j) - (1*j)) by (nonlinear_arith); //TODO: use math library after imported
-    }
-}
-
-/// Flattening sequences of sequences in order (starting from the beginning)
-/// and in reverse order (starting from the end) results in the same sequence.
-pub proof fn lemma_flatten_and_flatten_alt_are_equivalent<A>(x: Seq<Seq<A>>)
-    ensures
-        x.flatten() == x.flatten_alt(),
-    decreases
-        x.len(),
-{
-    if x.len() == 0 {}
-    else {
-        lemma_flatten_and_flatten_alt_are_equivalent(x.drop_last());
-        lemma_flatten_one_element(seq![x.last()]);
-        lemma_flatten_concat(x.drop_last(), seq![x.last()]);
-        assert(x =~= x.drop_last().push(x.last()));
-    }
-}
  
 /// Proves that any two sequences that are sorted by a total order and that have the same elements are equal.
 pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) -> bool)
@@ -1481,25 +1471,25 @@ ensures
 decreases
     x.len(), y.len()
 {
-to_multiset_properties(x);
-to_multiset_properties(y);
-if x.len() == 0 || y.len() == 0 {}
-else {
-    assert(x.to_multiset().contains(x[0]));
-    assert(x.to_multiset().contains(y[0]));
-    
-    let i = choose |i: int| #![trigger x.spec_index(i) ] 0<= i < x.len() && x[i] == y[0];
-    assert(leq(x[i],x[0]));
-    assert(leq(x[0],x[i]));
-    assert(x.drop_first().to_multiset() =~= x.to_multiset().remove(x[0]));  
-    assert(y.drop_first().to_multiset() =~= y.to_multiset().remove(y[0]));  
+    x.to_multiset_properties();
+    y.to_multiset_properties();
+    if x.len() == 0 || y.len() == 0 {}
+    else {
+        assert(x.to_multiset().contains(x[0]));
+        assert(x.to_multiset().contains(y[0]));
+        
+        let i = choose |i: int| #![trigger x.spec_index(i) ] 0<= i < x.len() && x[i] == y[0];
+        assert(leq(x[i],x[0]));
+        assert(leq(x[0],x[i]));
+        assert(x.drop_first().to_multiset() =~= x.to_multiset().remove(x[0]));  
+        assert(y.drop_first().to_multiset() =~= y.to_multiset().remove(y[0]));  
 
-    lemma_sorted_unique(x.drop_first(), y.drop_first(), leq);
-    assert(x.drop_first() =~= y.drop_first());
-    assert(x.first() == y.first());
-    assert(x =~= Seq::<A>::empty().push(x.first()).add(x.drop_first()));
-    assert(x =~= y);
-}
+        lemma_sorted_unique(x.drop_first(), y.drop_first(), leq);
+        assert(x.drop_first() =~= y.drop_first());
+        assert(x.first() == y.first());
+        assert(x =~= Seq::<A>::empty().push(x.first()).add(x.drop_first()));
+        assert(x =~= y);
+    }
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1578,9 +1568,7 @@ pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
             let index = choose |i: int| 0 <= start <= i < stop <= s.len() && s[i] == x;
             assert(s.subrange(start,stop)[index - start] == s[index]);
         }
-        
     }
-    
 }
 
 /************************** Lemmas about Take/Drop ***************************/
@@ -1839,16 +1827,16 @@ pub proof fn lemma_seq_properties<A>()
         lemma_seq_drop_of_drop(s, m, n);
     }
     assert forall |s: Seq<A>, a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a) by {
-        to_multiset_properties(s);
+        s.to_multiset_properties();
     } 
     assert forall |s: Seq<A>| s.len() == #[trigger] s.to_multiset().len() by {
-        to_multiset_properties(s);
+        s.to_multiset_properties();
     } 
     assert forall |s: Seq<A>, a: A| s.contains(a) implies #[trigger] s.to_multiset().count(a) > 0 by {
-        to_multiset_properties(s);
+        s.to_multiset_properties();
     } 
     assert forall |s: Seq<A>, a: A| #[trigger] s.to_multiset().count(a) > 0 implies s.contains(a) by {
-        to_multiset_properties(s);
+        s.to_multiset_properties();
     }
 }
 

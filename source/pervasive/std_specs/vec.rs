@@ -238,13 +238,4 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
     vec.truncate(len)
 }
 
-// #[verifier::external_fn_specification]
-// pub fn ex_vec_to_vec<T: std::clone::Clone, A: Allocator>(vec: &mut Vec<T, A>) -> (return_value: Vec<T, ExGlobal>)
-//     ensures
-//         vec@ == old(vec)@,
-//         return_value@ =~= old(vec)@,
-// {
-//     vec.to_vec()
-// }
-
 }
