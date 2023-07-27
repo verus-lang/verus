@@ -28,6 +28,7 @@ pub mod modes;
 pub mod multiset;
 pub mod function;
 pub mod state_machine_internal;
+pub mod nonlinear_arith;
 #[cfg(not(feature = "non_std"))]
 pub mod thread;
 #[cfg(not(feature = "no_global_allocator"))] 
