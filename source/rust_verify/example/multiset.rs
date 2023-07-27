@@ -33,7 +33,7 @@ proof fn sorted_by_eg() {
     let sorted = unsorted.sort_by(leq);
 
     //Tells the verifier what the sort_by function ensures to be true
-    unsorted.lemma_sort_by_ensures::<int>(leq); 
+    unsorted.lemma_sort_by_ensures(leq); 
 
     let expected_result: Seq<int> = seq![1, 2, 3, 4, 5];
     assert(sorted_by(expected_result,leq));
