@@ -50,7 +50,9 @@ fn def_path_to_vir_path<'tcx>(
                 segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));
             }
             DefPathData::Impl => {
-                if let Some(x) = type_ctxt.impl_names.get_impl_id(tcx, def_path.clone(), i + 1) {
+                if let Some(x) =
+                    type_ctxt.impl_names.get_stable_impl_name(tcx, def_path.clone(), i + 1)
+                {
                     segments.push(x.clone());
                 } else {
                     segments.push(vir::def::impl_ident(d.disambiguator));

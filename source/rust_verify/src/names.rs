@@ -45,11 +45,18 @@ struct ImplFingerprint {
     self_typ: TypTree,
 }
 
-pub(crate) type ImplNameId = (TypPath, Vec<u32>);
+// rustc's internal name in a particular run of rustc.
+// It consists of TypPath data, which is stable across runs of rustc,
+// and numeric disambiguators, which can vary between runs of rustc.
+// Our goal is to remap RustcLocalImplId to completely stable names.
+pub(crate) type RustcLocalImplId = (TypPath, Vec<u32>);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ImplNameCtxt {
-    pub(crate) impl_names: HashMap<ImplNameId, Ident>,
+    // For any (unstable) RustcLocalImplId, compute a stable name.
+    // (this stable name is just the single segment representing "impl%id";
+    // it needs to be combined with the rest of the path to form a complete path)
+    pub(crate) map_to_stable_name: HashMap<RustcLocalImplId, Ident>,
 }
 
 #[derive(Debug)]
@@ -57,11 +64,11 @@ pub(crate) struct ImplNameState {
     impl_table: HashMap<ImplFingerprint, Ident>,
 }
 
-fn def_path_to_impl_name_id<'tcx>(
+fn def_path_to_rustc_id<'tcx>(
     tcx: TyCtxt<'tcx>,
     def_path: DefPath,
     num_segments: usize,
-) -> ImplNameId {
+) -> RustcLocalImplId {
     let mut path = vec![tcx.crate_name(def_path.krate).to_string()];
     let mut disambiguators: Vec<u32> = Vec::new();
     let mut i: usize = 0;
@@ -90,28 +97,28 @@ fn def_path_to_impl_name_id<'tcx>(
 }
 
 fn def_path_to_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> TypPath {
-    def_path_to_impl_name_id(tcx, def_path, usize::MAX).0
+    def_path_to_rustc_id(tcx, def_path, usize::MAX).0
 }
 
 impl ImplNameCtxt {
     pub(crate) fn extend(&mut self, other: ImplNameCtxt) {
-        for (id, x) in other.impl_names.into_iter() {
-            if let Some(y) = self.impl_names.get(&id) {
+        for (id, x) in other.map_to_stable_name.into_iter() {
+            if let Some(y) = self.map_to_stable_name.get(&id) {
                 assert!(&x == y);
             } else {
-                self.impl_names.insert(id, x);
+                self.map_to_stable_name.insert(id, x);
             }
         }
     }
 
-    pub(crate) fn get_impl_id<'tcx>(
+    pub(crate) fn get_stable_impl_name<'tcx>(
         &self,
         tcx: TyCtxt<'tcx>,
         def_path: DefPath,
         num_segments: usize,
     ) -> Option<Ident> {
-        let id = def_path_to_impl_name_id(tcx, def_path, num_segments);
-        self.impl_names.get(&id).cloned()
+        let id = def_path_to_rustc_id(tcx, def_path, num_segments);
+        self.map_to_stable_name.get(&id).cloned()
     }
 }
 
@@ -192,7 +199,7 @@ fn traverse_impls<'tcx>(
 ) -> Result<ImplNameCtxt, VirErr> {
     let hir = tcx.hir();
     let krate = hir.krate();
-    let mut impl_names = HashMap::new();
+    let mut map_to_stable_name = HashMap::new();
     let mut make_name_table: HashMap<(TypPath, String, Option<String>), u64> = HashMap::new();
     let mut make_name =
         |parent: &TypPath, self_name: String, trait_name: Option<String>| -> Ident {
@@ -209,7 +216,7 @@ fn traverse_impls<'tcx>(
                         use crate::rustc_middle::ty::DefIdTree;
                         let impl_def_id = item.owner_id.to_def_id();
                         let impl_name_id =
-                            def_path_to_impl_name_id(tcx, tcx.def_path(impl_def_id), usize::MAX);
+                            def_path_to_rustc_id(tcx, tcx.def_path(impl_def_id), usize::MAX);
                         let parent_id = tcx.parent(impl_def_id);
                         // compute ImplFingerprint fingerprint for impll
                         let parent_def_path = tcx.def_path(parent_id);
@@ -250,8 +257,8 @@ fn traverse_impls<'tcx>(
                             state.impl_table.insert(fingerprint, name.clone());
                             name
                         };
-                        assert!(!impl_names.contains_key(&impl_name_id));
-                        impl_names.insert(impl_name_id, name);
+                        assert!(!map_to_stable_name.contains_key(&impl_name_id));
+                        map_to_stable_name.insert(impl_name_id, name);
                     }
                     _ => {}
                 },
@@ -259,7 +266,7 @@ fn traverse_impls<'tcx>(
             }
         }
     }
-    Ok(ImplNameCtxt { impl_names })
+    Ok(ImplNameCtxt { map_to_stable_name })
 }
 
 pub(crate) fn collect_impls<'tcx>(

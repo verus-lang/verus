@@ -31,7 +31,7 @@ pub(crate) fn import_crates(args: &Args) -> Result<ImportOutput, VirErr> {
     let mut metadatas = Vec::new();
     let mut crate_names = Vec::new();
     let mut vir_crates = Vec::new();
-    let mut all_impl_names = ImplNameCtxt { impl_names: HashMap::new() };
+    let mut all_impl_names = ImplNameCtxt { map_to_stable_name: HashMap::new() };
     for (crate_name, file_path) in args.import.iter() {
         crate_names.push(crate_name.clone());
         let file = std::io::BufReader::new(match std::fs::File::open(file_path) {
