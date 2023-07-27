@@ -782,49 +782,16 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
         lemma_set_difference_len(a.remove(x), b);
         if b.contains(x) {
             assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
-            assert(a.intersect(b).contains(x));
-            assert(!a.difference(b).contains(x));
             assert(a.remove(x).difference(b) =~= a.difference(b));
-            assert(a.remove(x).difference(b).len() == a.difference(b).len());
-
-            assert(!b.difference(a).contains(x));
-            assert(b.difference(a.remove(x)).contains(x));
             assert(b.difference(a.remove(x)).remove(x) =~= b.difference(a));
-            lemma_set_remove_len_contains(b.difference(a.remove(x)),x);
-            assert(b.difference(a.remove(x)).len() == b.difference(a).len() + 1);
-
-            assert(a.intersect(b).contains(x));
-            assert(!a.remove(x).intersect(b).contains(x));
-            assert(a.remove(x).intersect(b) =~= a.intersect(b).remove(x));
-            lemma_set_remove_len_contains(a.intersect(b),x);
-
             assert(a.remove(x) + b =~= a+b);
-            assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len());
         }
         else {
-            assert(!b.contains(x));
-            assert(!a.remove(x).difference(b).contains(x));
-            assert(a.remove(x).len() == a.len() - 1);
-            assert(!a.remove(x).contains(x));
-            assert(!(a.remove(x)+b).contains(x));
             assert(a.remove(x) + b =~= (a+b).remove(x));
-            assert((a.remove(x)+b).len() == (a+b).len() -1);
             assert(a.remove(x).difference(b) =~= a.difference(b).remove(x));
-            assert(a.remove(x).difference(b).len() == a.difference(b).len() -1);
-            assert(!b.difference(a).contains(x));
-            assert(!b.difference(a.remove(x)).contains(x));
-
             assert(b.difference(a.remove(x)) =~= b.difference(a));
-            assert(b.difference(a).len() == b.difference(a.remove(x)).len());
-
-            assert(b.remove(x) =~= b);
-            assert(!a.remove(x).intersect(b).contains(x));
-            assert(!a.intersect(b).contains(x));
             assert(a.remove(x).intersect(b) =~= a.intersect(b));
-            assert(a.remove(x).intersect(b).len() == a.intersect(b).len()); //key
-            assert(a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len());
         }
-        //assert(a.difference(b).len() == a.len() - a.intersect(b).len());
     }
 }
 
