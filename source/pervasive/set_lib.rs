@@ -498,33 +498,33 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
     lemma_set_properties::<A>();
     if s.len() == 1 {
         let x = choose |x: A| s.contains(x);
-        assert(s.finite());
-        assert(s.remove(x) =~= Set::<A>::empty());
+        //assert(s.finite());
+        //assert(s.remove(x) =~= Set::<A>::empty());
         assert(s.remove(x).insert(x) =~= s);
-        assert(s.contains(s.find_unique_minimal(r)));
-        assert(r(x,x));
+        // assert(s.contains(s.find_unique_minimal(r)));
+        // assert(r(x,x));
         assert(is_minimal(r, s.find_unique_minimal(r),s));
         
-        assert((forall |min_poss: A| is_minimal(r, min_poss, s) ==> s.find_unique_minimal(r) == min_poss));
+       // assert((forall |min_poss: A| is_minimal(r, min_poss, s) ==> s.find_unique_minimal(r) == min_poss));
     }
     else {
         let x = choose |x: A| s.contains(x);
         find_unique_minimal_ensures(s.remove(x),r);
         assert(is_minimal(r, s.remove(x).find_unique_minimal(r),s.remove(x)));
-        assert(s.remove(x).insert(x) =~= s);
+        //assert(s.remove(x).insert(x) =~= s);
         let y = s.remove(x).find_unique_minimal(r);
         let min_updated = s.find_unique_minimal(r); 
-        assert(min_updated == x || min_updated == y);
-        assert(r(y,x) ==> min_updated == y);
+        //assert(min_updated == x || min_updated == y);
+        //assert(r(y,x) ==> min_updated == y);
         assert(!r(y,x) ==> min_updated == x);
-        assert(!r(y,x) ==> r(x,y));
+        //assert(!r(y,x) ==> r(x,y));
         assert(forall |elt: A| s.remove(x).contains(elt) && #[trigger] r(elt,y) ==> #[trigger] r(y,elt));
-        assert(s.contains(min_updated));
+        //assert(s.contains(min_updated));
         assert forall |elt: A| s.contains(elt) && #[trigger] r(elt,min_updated) implies #[trigger] r(min_updated,elt) by {
             assert(r(min_updated,x) || r(min_updated,y));
             if min_updated == y { // Case where the new min is the old min
-                assert(r(min_updated,elt));
-                assert(r(min_updated,x));
+                //assert(r(min_updated,elt));
+               // assert(r(min_updated,x));
                 assert(is_minimal(r, s.find_unique_minimal(r),s));
             } else { //Case where the new min is the newest element
                 assert(s.remove(x).contains(elt) || elt ==x);
@@ -534,24 +534,23 @@ pub proof fn find_unique_minimal_ensures<A>(s: Set<A>, r: FnSpec(A,A) -> bool)
                 assert(!(min_updated == y) ==> !r(y,x));
                 assert(r(x,y));
                 if (s.remove(x).contains(elt)) {
-                    assert(r(elt,y) ==> r(y,elt));
+                    //assert(r(elt,y) ==> r(y,elt));
                     assert(r(elt,y) && r(y,elt) ==> elt == y); 
-                    assert(r(x,elt));
-                    assert(r(min_updated,elt))
+                    //assert(r(x,elt));
+                   // assert(r(min_updated,elt))
                 } else {
-                    assert(elt == x);
-                    assert(r(x,y));
-                    assert(r(elt,y));
-                    assert(r(min_updated,y));
-                    assert(r(min_updated,elt));
+                    // assert(elt == x);
+                    // assert(r(x,y));
+                    // assert(r(elt,y));
+                    // assert(r(min_updated,y));
+                    // assert(r(min_updated,elt));
                 }
             }
         }
-        assert(is_minimal(r, s.find_unique_minimal(r),s));
-        assert(antisymmetric(r));
+        //assert(is_minimal(r, s.find_unique_minimal(r),s));
+        //assert(antisymmetric(r));
         assert forall |min_poss: A| is_minimal(r, min_poss, s) implies s.find_unique_minimal(r) == min_poss by {
             assert(is_minimal(r, min_poss, s.remove(x)) || x == min_poss);                
-            assert(r(s.find_unique_minimal(r), min_poss));
             assert(r(min_poss, s.find_unique_minimal(r)));
         }
     }
