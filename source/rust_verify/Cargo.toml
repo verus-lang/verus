@@ -16,6 +16,7 @@ num-bigint = "0.4.3"
 num-format = "0.4.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 regex = "1"
+rand = "0.8"
 
 verus_rustc_driver = { path = "../../dependencies/rustc_driver" }
 verus_rustc_interface = { path = "../../dependencies/rustc_interface" }

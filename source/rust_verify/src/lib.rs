@@ -26,6 +26,7 @@ extern crate rustc_span;
 extern crate rustc_trait_selection;
 extern crate smallvec;
 
+mod air_context;
 mod attributes;
 pub mod config;
 pub mod consts;

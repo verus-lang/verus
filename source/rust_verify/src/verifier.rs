@@ -1,3 +1,4 @@
+use crate::air_context::AirContext;
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
@@ -8,6 +9,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::{message, note, note_bare, Diagnostics, Message, MessageLabel, MessageLevel};
 use air::profiler::Profiler;
+use rand::thread_rng;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use verus_rustc_interface::interface::Compiler;
@@ -157,6 +159,12 @@ pub struct ModuleStats {
     pub time_verify: Duration,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReportingMode {
+    Report(MessageLevel),
+    DoNotReport,
+}
+
 pub struct Verifier {
     /// this is the actual number of threads used for verification. This will be set to the
     /// minimum of the requested threads and the number of modules to verify
@@ -212,6 +220,32 @@ pub(crate) fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
 
 pub fn module_name(module: &vir::ast::Path) -> String {
     module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InvalidityOrSkipped {
+    InvalidityResult(bool),
+    Skipped,
+}
+
+impl InvalidityOrSkipped {
+    fn combine(self, other: Self) -> Self {
+        match (self, other) {
+            (
+                InvalidityOrSkipped::InvalidityResult(l),
+                InvalidityOrSkipped::InvalidityResult(r),
+            ) => InvalidityOrSkipped::InvalidityResult(l || r),
+            (InvalidityOrSkipped::InvalidityResult(l), InvalidityOrSkipped::Skipped) => {
+                InvalidityOrSkipped::InvalidityResult(l)
+            }
+            (InvalidityOrSkipped::Skipped, InvalidityOrSkipped::InvalidityResult(r)) => {
+                InvalidityOrSkipped::InvalidityResult(r)
+            }
+            (InvalidityOrSkipped::Skipped, InvalidityOrSkipped::Skipped) => {
+                InvalidityOrSkipped::Skipped
+            }
+        }
+    }
 }
 
 impl Verifier {
@@ -388,8 +422,8 @@ impl Verifier {
         module_path: &vir::ast::Path,
         reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
-        level: MessageLevel,
-        air_context: &mut air::context::Context,
+        level: ReportingMode,
+        air_context: &mut AirContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
@@ -444,7 +478,9 @@ impl Verifier {
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if (is_check_valid && is_first_check && level == MessageLevel::Error)
+                    if (is_check_valid
+                        && is_first_check
+                        && level == ReportingMode::Report(MessageLevel::Error))
                         || is_singular
                     {
                         self.count_verified += 1;
@@ -455,15 +491,22 @@ impl Verifier {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
-                    if is_first_check && level == MessageLevel::Error {
-                        self.count_errors += 1;
-                        invalidity = true;
+                    if is_first_check {
+                        if level == ReportingMode::Report(MessageLevel::Error) {
+                            self.count_errors += 1;
+                            invalidity = true;
+                        }
+                        if level == ReportingMode::DoNotReport {
+                            invalidity = true;
+                        }
                     }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    reporter.report(&message(level, msg, &context.0));
+                    if let ReportingMode::Report(level) = level {
+                        reporter.report(&message(level, msg, &context.0));
+                    }
                     if self.args.profile {
                         let profiler = Profiler::new(reporter);
                         self.print_profile_stats(reporter, profiler, qid_map);
@@ -472,22 +515,31 @@ impl Verifier {
                 }
                 ValidityResult::Invalid(air_model, error) => {
                     if air_model.is_none() {
-                        // singular_invalid case
-                        self.count_errors += 1;
-                        reporter.report_as(&error, level);
+                        if let ReportingMode::Report(level) = level {
+                            // singular_invalid case
+                            self.count_errors += 1;
+                            reporter.report_as(&error, level);
+                        }
                         break;
                     }
                     let air_model = air_model.unwrap();
 
-                    if is_first_check && level == MessageLevel::Error {
-                        self.count_errors += 1;
-                        invalidity = true;
+                    if is_first_check {
+                        if level == ReportingMode::Report(MessageLevel::Error) {
+                            self.count_errors += 1;
+                            invalidity = true;
+                        }
+                        if level == ReportingMode::DoNotReport {
+                            invalidity = true;
+                        }
                     }
                     if !self.expand_flag || vir::split_expression::is_split_error(&error) {
-                        reporter.report_as(&error, level);
+                        if let ReportingMode::Report(level) = level {
+                            reporter.report_as(&error, level);
+                        }
                     }
 
-                    if level == MessageLevel::Error {
+                    if level == ReportingMode::Report(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
                             self.expand_targets.push(error.clone());
@@ -497,7 +549,7 @@ impl Verifier {
                             if let Some(source_map) = source_map {
                                 let mut debugger =
                                     Debugger::new(air_model, assign_map, snap_map, source_map);
-                                debugger.start_shell(air_context);
+                                debugger.start_shell(air_context.borrow_mut_context());
                             } else {
                                 reporter.report(&message(
                                     MessageLevel::Warning,
@@ -536,7 +588,7 @@ impl Verifier {
                 }
             }
         }
-        if level == MessageLevel::Error && checks_remaining == 0 {
+        if level == ReportingMode::Report(MessageLevel::Error) && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
@@ -555,7 +607,7 @@ impl Verifier {
         &mut self,
         module_path: &vir::ast::Path,
         diagnostics: &impl Diagnostics,
-        air_context: &mut air::context::Context,
+        air_context: &mut AirContext,
         commands: &Vec<Command>,
         comment: &str,
     ) {
@@ -583,8 +635,8 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
-        level: MessageLevel,
-        air_context: &mut air::context::Context,
+        level: ReportingMode,
+        air_context: &mut AirContext,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
@@ -593,15 +645,15 @@ impl Verifier {
         function_name: Option<&Fun>,
         comment: &str,
         desc_prefix: Option<&str>,
-    ) -> bool {
+    ) -> InvalidityOrSkipped {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
                 let name = friendly_fun_name_crate_relative(&module, function_name);
                 if &name != verify_function {
-                    return false;
+                    return InvalidityOrSkipped::Skipped;
                 }
             } else {
-                return false;
+                return InvalidityOrSkipped::Skipped;
             }
         }
         let mut invalidity = false;
@@ -630,7 +682,7 @@ impl Verifier {
             invalidity = invalidity || result_invalidity;
         }
 
-        invalidity
+        InvalidityOrSkipped::InvalidityResult(invalidity)
     }
 
     fn new_air_context_with_prelude(
@@ -640,7 +692,8 @@ impl Verifier {
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
-    ) -> Result<air::context::Context, VirErr> {
+        shufflable: bool,
+    ) -> Result<AirContext, VirErr> {
         let mut air_context = air::context::Context::new();
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
@@ -722,7 +775,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
 
-        Ok(air_context)
+        Ok(AirContext::new(air_context, shufflable))
     }
 
     fn new_air_context_with_module_context(
@@ -740,13 +793,14 @@ impl Verifier {
         is_rerun: bool,
         context_counter: usize,
         span: &air::ast::Span,
-    ) -> Result<air::context::Context, VirErr> {
+    ) -> Result<AirContext, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             diagnostics,
             module_path,
             Some((function_path, context_counter)),
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            false,
         )?;
 
         // Write the span of spun-off query
@@ -810,6 +864,7 @@ impl Verifier {
             None,
             false,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            self.args.shuffle,
         )?;
         if self.args.solver_version_check {
             air_context
@@ -934,6 +989,10 @@ impl Verifier {
                 .join("\n");
                 return Err(error(msg));
             }
+        } else {
+            if self.args.shuffle {
+                return Err(error("--shuffle is only supported with --verify-function"));
+            }
         }
 
         // For spec functions, check termination and declare consequence axioms.
@@ -994,7 +1053,7 @@ impl Verifier {
                 let invalidity = self.run_commands_queries(
                     reporter,
                     source_map,
-                    MessageLevel::Error,
+                    ReportingMode::Report(MessageLevel::Error),
                     &mut air_context,
                     Arc::new(CommandsWithContextX {
                         span: function.span.clone(),
@@ -1012,7 +1071,10 @@ impl Verifier {
                     Some("function termination: "),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
-                if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {
+                if (invalidity == InvalidityOrSkipped::InvalidityResult(true)
+                    && !self.args.no_auto_recommends_check)
+                    || check_recommends
+                {
                     // Rerun failed query to report possible recommends violations
                     // or (optionally) check recommends for spec function bodies
                     ctx.fun = mk_fun_ctx(&function, true);
@@ -1026,13 +1088,17 @@ impl Verifier {
                     )?;
                     ctx.fun = None;
                     fun_ssts = new_fun_ssts;
-                    let level = if invalidity { MessageLevel::Note } else { MessageLevel::Warning };
+                    let level = if invalidity == InvalidityOrSkipped::InvalidityResult(true) {
+                        MessageLevel::Note
+                    } else {
+                        MessageLevel::Warning
+                    };
                     let s = "Function-Decl-Check-Recommends ";
                     for command in commands.iter().map(|x| &*x) {
                         self.run_commands_queries(
                             reporter,
                             source_map,
-                            level,
+                            ReportingMode::Report(level),
                             &mut air_context,
                             command.clone(),
                             &HashMap::new(),
@@ -1068,126 +1134,174 @@ impl Verifier {
         let no_auto_recommends_check = self.args.no_auto_recommends_check;
         let expand_errors_check = self.args.expand_errors;
         self.expand_targets = vec![];
+        let shuffle_commands =
+            self.args.shuffle.then(|| air_context.take_commands().expect("shufflable commands"));
         for function in &krate.functions {
             if Some(module.clone()) != function.x.owning_module {
                 continue;
             }
-            let check_validity = &mut |recommends_rerun: bool,
-                                       expands_rerun: bool,
-                                       mut fun_ssts: SstMap|
-             -> Result<(bool, SstMap), VirErr> {
-                let mut spinoff_context_counter = 1;
-                ctx.fun = mk_fun_ctx(&function, recommends_rerun);
-                ctx.expand_flag = expands_rerun;
-                self.expand_flag = expands_rerun;
-                if expands_rerun {
-                    ctx.debug_expand_targets = self.expand_targets.to_vec();
-                }
-                let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
-                    ctx,
-                    reporter,
-                    fun_ssts,
-                    &function,
-                    vir::func_to_air::FuncDefPhase::CheckingProofExec,
-                    recommends_rerun,
-                )?;
-                fun_ssts = new_fun_ssts;
-                let level = if recommends_rerun || expands_rerun {
-                    MessageLevel::Note
-                } else {
-                    MessageLevel::Error
-                };
-                let s =
-                    if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
-
-                let mut function_invalidity = false;
-                for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX {
-                        span,
-                        desc: _,
-                        commands: _,
-                        prover_choice,
-                        skip_recommends,
-                    } = &**command;
-                    if recommends_rerun && *skip_recommends {
-                        continue;
+            let check_validity =
+                &mut |recommends_rerun: bool,
+                      expands_rerun: bool,
+                      mut fun_ssts: SstMap,
+                      shuffle_run_seed: Option<()>|
+                 -> Result<(InvalidityOrSkipped, SstMap), VirErr> {
+                    let mut spinoff_context_counter = 1;
+                    ctx.fun = mk_fun_ctx(&function, recommends_rerun);
+                    ctx.expand_flag = expands_rerun;
+                    self.expand_flag = expands_rerun;
+                    if expands_rerun {
+                        ctx.debug_expand_targets = self.expand_targets.to_vec();
                     }
-                    if *prover_choice == vir::def::ProverChoice::Singular {
-                        #[cfg(not(feature = "singular"))]
-                        panic!(
-                            "Found singular command when Verus is compiled without Singular feature"
-                        );
-
-                        #[cfg(feature = "singular")]
-                        if air_context.singular_log.is_none() {
-                            let file = self.create_log_file(
-                                Some(module),
-                                None,
-                                crate::config::SINGULAR_FILE_SUFFIX,
-                            )?;
-                            air_context.singular_log = Some(file);
-                        }
-                    }
-                    let mut spinoff_z3_context;
-                    let do_spinoff = (*prover_choice == vir::def::ProverChoice::Spinoff)
-                        || (*prover_choice == vir::def::ProverChoice::BitVector);
-                    let query_air_context = if do_spinoff {
-                        spinoff_z3_context = self.new_air_context_with_module_context(
-                            ctx,
-                            reporter,
-                            module,
-                            &(function.x.name).path,
-                            datatype_commands.clone(),
-                            assoc_type_decl_commands.clone(),
-                            assoc_type_impl_commands.clone(),
-                            function_decl_commands.clone(),
-                            function_spec_commands.clone(),
-                            function_axiom_commands.clone(),
-                            recommends_rerun,
-                            spinoff_context_counter,
-                            &span,
-                        )?;
-                        // for bitvector, only one query, no push/pop
-                        if *prover_choice == vir::def::ProverChoice::BitVector {
-                            spinoff_z3_context.disable_incremental_solving();
-                        }
-                        spinoff_context_counter += 1;
-                        &mut spinoff_z3_context
-                    } else {
-                        &mut air_context
-                    };
-                    let desc_prefix = recommends_rerun.then(|| "recommends check: ");
-                    let command_invalidity = self.run_commands_queries(
+                    let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
+                        ctx,
                         reporter,
-                        source_map,
-                        level,
-                        query_air_context,
-                        command.clone(),
-                        &HashMap::new(),
-                        &snap_map,
-                        &ctx.global.qid_map.borrow(),
-                        module,
-                        Some(&function.x.name),
-                        &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
-                        desc_prefix,
-                    );
-                    if do_spinoff {
-                        let (time_smt_init, time_smt_run) = query_air_context.get_time();
-                        spunoff_time_smt_init += time_smt_init;
-                        spunoff_time_smt_run += time_smt_run;
-                    }
+                        fun_ssts,
+                        &function,
+                        vir::func_to_air::FuncDefPhase::CheckingProofExec,
+                        recommends_rerun,
+                    )?;
+                    fun_ssts = new_fun_ssts;
+                    let level = if recommends_rerun || expands_rerun {
+                        ReportingMode::Report(MessageLevel::Note)
+                    } else if shuffle_run_seed.is_some() {
+                        ReportingMode::DoNotReport
+                    } else {
+                        ReportingMode::Report(MessageLevel::Error)
+                    };
+                    let s = if recommends_rerun {
+                        "Function-Check-Recommends "
+                    } else {
+                        "Function-Def "
+                    };
 
-                    function_invalidity = function_invalidity || command_invalidity;
-                }
-                Ok((function_invalidity, fun_ssts))
-            };
-            let (function_invalidity, new_fun_ssts) = check_validity(false, false, fun_ssts)?;
+                    let mut function_invalidity = InvalidityOrSkipped::Skipped;
+                    for command in commands.iter().map(|x| &*x) {
+                        let CommandsWithContextX {
+                            span,
+                            desc: _,
+                            commands: _,
+                            prover_choice,
+                            skip_recommends,
+                        } = &**command;
+                        if recommends_rerun && *skip_recommends {
+                            continue;
+                        }
+                        if *prover_choice == vir::def::ProverChoice::Singular {
+                            #[cfg(not(feature = "singular"))]
+                            panic!(
+                                "Found singular command when Verus is compiled without Singular feature"
+                            );
+
+                            #[cfg(feature = "singular")]
+                            if air_context.singular_log.is_none() {
+                                let file = self.create_log_file(
+                                    Some(module),
+                                    None,
+                                    crate::config::SINGULAR_FILE_SUFFIX,
+                                )?;
+                                air_context.singular_log = Some(file);
+                            }
+                        }
+                        let mut spinoff_z3_context;
+                        let mut shuffled_z3_context;
+                        let do_spinoff = (*prover_choice == vir::def::ProverChoice::Spinoff)
+                            || (*prover_choice == vir::def::ProverChoice::BitVector);
+                        if do_spinoff && shuffle_run_seed.is_some() {
+                            return Err(error(
+                                "--shuffle is not yet supported for spunoff queries",
+                            ));
+                        }
+                        let query_air_context = if do_spinoff {
+                            spinoff_z3_context = self.new_air_context_with_module_context(
+                                ctx,
+                                reporter,
+                                module,
+                                &(function.x.name).path,
+                                datatype_commands.clone(),
+                                assoc_type_decl_commands.clone(),
+                                assoc_type_impl_commands.clone(),
+                                function_decl_commands.clone(),
+                                function_spec_commands.clone(),
+                                function_axiom_commands.clone(),
+                                recommends_rerun,
+                                spinoff_context_counter,
+                                &span,
+                            )?;
+                            // for bitvector, only one query, no push/pop
+                            if *prover_choice == vir::def::ProverChoice::BitVector {
+                                spinoff_z3_context.disable_incremental_solving();
+                            }
+                            spinoff_context_counter += 1;
+                            &mut spinoff_z3_context
+                        } else if let Some(shuffle_commands) = &shuffle_commands {
+                            let mut commands = shuffle_commands.clone();
+                            shuffled_z3_context = self.new_air_context_with_prelude(
+                                reporter,
+                                module,
+                                None,
+                                false,
+                                PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+                                false,
+                            )?;
+                            crate::air_context::shuffle_commands(&mut commands, &mut thread_rng());
+                            shuffled_z3_context.commands_expect_valid(reporter, commands.clone());
+                            &mut shuffled_z3_context
+                        } else {
+                            &mut air_context
+                        };
+                        let desc_prefix = recommends_rerun.then(|| "recommends check: ");
+                        let command_invalidity = self.run_commands_queries(
+                            reporter,
+                            source_map,
+                            level,
+                            query_air_context,
+                            command.clone(),
+                            &HashMap::new(),
+                            &snap_map,
+                            &ctx.global.qid_map.borrow(),
+                            module,
+                            Some(&function.x.name),
+                            &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
+                            desc_prefix,
+                        );
+                        if do_spinoff {
+                            let (time_smt_init, time_smt_run) = query_air_context.get_time();
+                            spunoff_time_smt_init += time_smt_init;
+                            spunoff_time_smt_run += time_smt_run;
+                        }
+
+                        function_invalidity = function_invalidity.combine(command_invalidity);
+                    }
+                    Ok((function_invalidity, fun_ssts))
+                };
+            let (function_invalidity, new_fun_ssts) = check_validity(false, false, fun_ssts, None)?;
             fun_ssts = new_fun_ssts;
-            if function_invalidity && expand_errors_check {
-                fun_ssts = check_validity(false, true, fun_ssts)?.1;
+            if function_invalidity == InvalidityOrSkipped::InvalidityResult(true)
+                && expand_errors_check
+            {
+                fun_ssts = check_validity(false, true, fun_ssts, None)?.1;
             }
-            if function_invalidity && !no_auto_recommends_check {
-                fun_ssts = check_validity(true, false, fun_ssts)?.1;
+            if function_invalidity == InvalidityOrSkipped::InvalidityResult(true)
+                && !no_auto_recommends_check
+            {
+                fun_ssts = check_validity(true, false, fun_ssts, None)?.1;
+            }
+            if shuffle_commands.is_some() && function_invalidity != InvalidityOrSkipped::Skipped {
+                const SAMPLES: u64 = 30;
+                let mut valid_count = 0;
+                for _ in 0..SAMPLES {
+                    let fun_ssts = UpdateCell::new(HashMap::new());
+                    let (function_invalidity, _) =
+                        check_validity(false, false, fun_ssts, Some(()))?;
+                    if function_invalidity == InvalidityOrSkipped::InvalidityResult(false) {
+                        valid_count += 1;
+                    }
+                }
+                reporter.report(&note(
+                    format!("shuffle outcome: valid {valid_count} out of {SAMPLES}"),
+                    &function.span,
+                ));
             }
         }
         ctx.fun = None;

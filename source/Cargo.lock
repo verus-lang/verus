@@ -1256,6 +1256,7 @@ dependencies = [
  "getopts",
  "num-bigint 0.4.3",
  "num-format",
+ "rand 0.8.5",
  "regex",
  "rust_verify_test_macros",
  "serde",
