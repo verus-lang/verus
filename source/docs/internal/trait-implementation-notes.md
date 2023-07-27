@@ -87,7 +87,7 @@ for the function type_. This is so we can seemlessly handle both `FnOnce::call_o
 
 Right now we're considering spec/proof only, not exec-termination.
 
-Conceptually, we think of traits as "like typeclasses in Coq". Specifically:
+Conceptually, we think of traits as "like typeclasses in Coq and F*". Specifically:
 
  * A trait is like the declaration of a record type.
  * A trait impl is a concrete instance of that record type.
@@ -117,8 +117,11 @@ Special cases:
 
 ### `broadcast_forall`
 
-Currently no plan for handling trait bounds. Trait bounds are disallowed except for `Sized`
+Currently trait bounds on `broadcast_forall` are disallowed except for `Sized`
 bounds which are implicit everywhere.
+
+The expectation is that handling trait bounds in `broadcast_forall` will require an SMT `trait` sort,
+an SMT predicate that types satisfy a trait bound, and SMT axioms for establishing that various types satisfy various trait bounds.
 
 ### `Sized`
 
