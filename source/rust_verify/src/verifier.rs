@@ -597,7 +597,21 @@ impl Verifier {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
                 let name = friendly_fun_name_crate_relative(&module, function_name);
-                if &name != verify_function {
+                let clean_verify_function = verify_function.trim_matches('*');
+
+                let left_wildcard = verify_function.starts_with("*");
+                let right_wildcard = verify_function.ends_with("*");
+
+                if left_wildcard && !right_wildcard {
+                    if !name.ends_with(clean_verify_function) {
+                        return false;
+                    }
+                } else if !left_wildcard && right_wildcard {
+                    if !name.starts_with(clean_verify_function) {
+                        return false;
+                    }
+                }
+                if !name.contains(clean_verify_function) {
                     return false;
                 }
             } else {
@@ -920,7 +934,13 @@ impl Verifier {
                 .filter(|f| Some(module.clone()) == f.x.owning_module);
             let mut module_fun_names: Vec<String> =
                 module_funs.map(|f| friendly_fun_name_crate_relative(&module, &f.x.name)).collect();
-            if !module_fun_names.iter().any(|f| f == verify_function) {
+
+            let clean_verify_function = verify_function.trim_matches('*');
+            let mut filtered_functions: Vec<&String> =
+                module_fun_names.iter().filter(|f| f.contains(clean_verify_function)).collect();
+
+            // no match
+            if filtered_functions.len() == 0 {
                 module_fun_names.sort();
                 let msg = vec![
                     format!(
@@ -932,6 +952,52 @@ impl Verifier {
                 .chain(module_fun_names.iter().map(|f| format!("  - {f}")))
                 .collect::<Vec<String>>()
                 .join("\n");
+                return Err(error(msg));
+            }
+
+            // non unique substring
+            if verify_function == clean_verify_function && filtered_functions.len() > 1 {
+                filtered_functions.sort();
+                let msg = vec![
+                    format!(
+                        "more than one match found for --verify-function {verify_function}, consider using wildcard *{verify_function}* to verify all matched results,"
+                    ),
+                    format!(
+                        "or specify a unique substring for the desired function, matched results are:"
+                    ),
+                ].into_iter()
+                .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
+                .collect::<Vec<String>>()
+                .join("\n");
+                return Err(error(msg));
+            }
+
+            // mismatch wildcarc
+            let left_wildcard = verify_function.starts_with("*");
+            let right_wildcard = verify_function.ends_with("*");
+            let mut wildcard_mismatch = false;
+
+            if left_wildcard && !right_wildcard {
+                wildcard_mismatch =
+                    !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function));
+            } else if !left_wildcard && right_wildcard {
+                wildcard_mismatch =
+                    !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function));
+            }
+
+            if wildcard_mismatch {
+                filtered_functions.sort();
+                let msg = vec![
+                        format!(
+                            "could not find function {verify_function} specified by --verify-function,"
+                        ),
+                        format!(
+                            "consider *{clean_verify_function}* if you want to verify similar functions:"
+                        ),
+                    ].into_iter()
+                    .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
+                    .collect::<Vec<String>>()
+                    .join("\n");
                 return Err(error(msg));
             }
         }
