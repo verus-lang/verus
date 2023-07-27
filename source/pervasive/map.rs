@@ -338,7 +338,7 @@ impl<K, V> Map<K, V> {
 impl Map<int,int> {
 
     /// Returns `true` if a map is monotonic -- that is, if the mapping between ordered sets 
-    /// preserves the given order 
+    /// preserves the regular `<=` ordering on integers.
     pub open spec fn monotonic(self) -> bool {
         forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && x <= y 
             ==> #[trigger] self[x] <= #[trigger] self[y]
