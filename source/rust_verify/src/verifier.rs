@@ -1,4 +1,5 @@
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
+use crate::air_context::AirContext;
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
@@ -10,6 +11,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
+use rand::thread_rng;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -238,6 +240,12 @@ pub struct BucketStats {
     pub time_smt_run: Duration,
     /// total time to verify the bucket
     pub time_verify: Duration,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReportingMode {
+    Report(MessageLevel),
+    DoNotReport,
 }
 
 pub struct Verifier {
@@ -606,8 +614,8 @@ impl Verifier {
         reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
         diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
-        level: Option<MessageLevel>,
-        air_context: &mut air::context::Context,
+        level: ReportingMode,
+        air_context: &mut AirContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
@@ -704,7 +712,9 @@ impl Verifier {
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
+                    if (is_check_valid
+                        && is_first_check
+                        && level == ReportingMode::Report(MessageLevel::Error))
                         || is_singular
                     {
                         self.count_verified += 1;
@@ -715,15 +725,20 @@ impl Verifier {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
-                    if is_first_check && level == Some(MessageLevel::Error) {
-                        self.count_errors += 1;
-                        invalidity = true;
+                    if is_first_check {
+                        if level == ReportingMode::Report(MessageLevel::Error) {
+                            self.count_errors += 1;
+                            invalidity = true;
+                        }
+                        if level == ReportingMode::DoNotReport {
+                            invalidity = true;
+                        }
                     }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    if let Some(level) = level {
+                    if let ReportingMode::Report(level) = level {
                         reporter.report(&message(level, msg, &context.span).to_any());
                     }
                     // need to report that we need to rerun from this function (into spinoff)
@@ -732,22 +747,27 @@ impl Verifier {
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
-                    if let Some(level) = level {
-                        if air_model.is_none() {
-                            // singular_invalid case
-                            self.count_errors += 1;
-                            reporter.report_as(&error, level);
-                            break;
+                    if air_model.is_none() {
+                        if let ReportingMode::Report(level) = level {
+                                // singular_invalid case
+                                self.count_errors += 1;
+                                reporter.report_as(&error, level);
                         }
+                        break;
                     }
                     let air_model = air_model.unwrap();
 
-                    if is_first_check && level == Some(MessageLevel::Error) {
-                        self.count_errors += 1;
-                        invalidity = true;
+                    if is_first_check {
+                        if level == ReportingMode::Report(MessageLevel::Error) {
+                            self.count_errors += 1;
+                            invalidity = true;
+                        }
+                        if level == ReportingMode::DoNotReport {
+                            invalidity = true;
+                        }
                     }
                     let error: Message = error.downcast().unwrap();
-                    if let Some(level) = level {
+                    if let ReportingMode::Report(level) = level {
                         if !self.expand_flag || vir::split_expression::is_split_error(&error) {
                             if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
                                 collected.as_mut().push((error.clone(), level));
@@ -757,7 +777,7 @@ impl Verifier {
                         }
                     }
 
-                    if level == Some(MessageLevel::Error) {
+                    if level == ReportingMode::Report(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
                             self.expand_targets.push(error.clone());
@@ -767,7 +787,7 @@ impl Verifier {
                             if let Some(source_map) = source_map {
                                 let mut debugger =
                                     Debugger::new(air_model, assign_map, snap_map, source_map);
-                                debugger.start_shell(air_context);
+                                debugger.start_shell(air_context.borrow_mut_context());
                             } else {
                                 reporter.report(&message(
                                     MessageLevel::Warning,
@@ -806,8 +826,7 @@ impl Verifier {
                 }
             }
         }
-
-        if level == Some(MessageLevel::Error) && checks_remaining == 0 {
+        if level == ReportingMode::Report(MessageLevel::Error) && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.desc
@@ -830,7 +849,7 @@ impl Verifier {
         &mut self,
         bucket_id: &BucketId,
         diagnostics: &impl air::messages::Diagnostics,
-        air_context: &mut air::context::Context,
+        air_context: &mut AirContext,
         commands: &Vec<Command>,
         comment: &str,
     ) {
@@ -861,9 +880,9 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
-        level: Option<MessageLevel>,
-        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
-        air_context: &mut air::context::Context,
+        level: ReportingMode,
+        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, ReportingMode)>>>,
+        air_context: &mut AirContext,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
@@ -936,7 +955,8 @@ impl Verifier {
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
-    ) -> Result<air::context::Context, VirErr> {
+        shufflable: bool,
+    ) -> Result<AirContext, VirErr> {
         let mut air_context = air::context::Context::new(message_interface.clone());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
@@ -1007,7 +1027,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &bucket_id.friendly_name() + "'"));
 
-        Ok(air_context)
+        Ok(AirContext::new(air_context, shufflable))
     }
 
     fn new_air_context_with_bucket_context<'m>(
@@ -1027,7 +1047,7 @@ impl Verifier {
         context_counter: usize,
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
-    ) -> Result<air::context::Context, VirErr> {
+    ) -> Result<AirContext, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
             diagnostics,
@@ -1036,6 +1056,7 @@ impl Verifier {
             is_rerun,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_file_name,
+            false,
         )?;
 
         // Write the span of spun-off query
@@ -1136,6 +1157,7 @@ impl Verifier {
             false,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_all_file_name.as_ref(),
+            self.args.shuffle,
         )?;
         if self.args.solver_version_check {
             air_context

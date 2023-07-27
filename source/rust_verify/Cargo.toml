@@ -16,9 +16,12 @@ num-bigint = "0.4.4"
 num-format = "0.4.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 regex = "1"
+
 internals_interface = { path = "../tools/internals_interface" }
 indicatif = "0.17.7"
 console = { version = "0.15", default-features = false, features = ["ansi-parsing"] }
+
+rand = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"

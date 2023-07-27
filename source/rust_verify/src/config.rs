@@ -82,6 +82,7 @@ pub struct ArgsX {
     pub num_threads: usize,
     pub trace: bool,
     pub report_long_running: bool,
+    pub shuffle: bool,
 }
 
 pub type Args = Arc<ArgsX>;
@@ -213,6 +214,7 @@ pub fn parse_args_with_imports(
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
     ];
+    const OPT_SHUFFLE: &str = "shuffle";
 
     let default_num_threads: usize = std::thread::available_parallelism()
         .map(|x| std::cmp::max(usize::from(x) - 1, 1))
@@ -330,6 +332,11 @@ pub fn parse_args_with_imports(
         }
         .as_str(),
         "OPTION[=VALUE]",
+    );
+    opts.optflag(
+        "",
+        OPT_SHUFFLE,
+        "Run a stability test by shuffling axioms (requires --verify-function)",
     );
 
     let print_usage = || {
@@ -507,6 +514,7 @@ pub fn parse_args_with_imports(
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
+        shuffle: matches.opt_present(OPT_SHUFFLE),
     };
 
     (Arc::new(args), unmatched)

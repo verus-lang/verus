@@ -1443,6 +1443,7 @@ dependencies = [
  "internals_interface",
  "num-bigint 0.4.4",
  "num-format",
+ "rand 0.8.5",
  "regex",
  "rust_verify_test_macros",
  "serde",
