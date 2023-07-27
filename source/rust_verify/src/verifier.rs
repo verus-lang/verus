@@ -610,6 +610,7 @@ impl Verifier {
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
+            air_context.comment(&span.as_string);
         }
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
@@ -750,7 +751,6 @@ impl Verifier {
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
-
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
