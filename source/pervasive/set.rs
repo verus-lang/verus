@@ -189,15 +189,6 @@ pub proof fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
 {
 }
 
-/// The result of inserting element `a2` into set `s` must contain `a1` if and only if
-/// the set contained `a1` before the insertion of `a2` or if `a1` is equal to `a2`
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_set_insert_contains<A>(s: Set<A>, a1: A, a2: A)
-    ensures
-        #[trigger] s.insert(a1).contains(a2) <==> a1 == a2 || s.contains(a2),
-{}
-
 /// The result of removing element `a` from set `s` must not contain `a`.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]

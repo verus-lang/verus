@@ -590,14 +590,8 @@ impl<A,B> Seq<(A,B)>{
 
     /// Unzips a sequence that contains pairs into two separate sequences.
     pub open spec fn unzip(self) -> (Seq<A>, Seq<B>)
-        decreases self.len()
     {
-        if self.len() == 0 {(Seq::empty(), Seq::empty())}
-        else{
-            let s0 = Seq::new(self.len(), |i: int| self[i].0);
-            let s1 = Seq::new(self.len(), |i: int| self[i].1);
-            (s0,s1)
-        }
+        (Seq::new(self.len(), |i: int| self[i].0), Seq::new(self.len(), |i: int| self[i].1))
     }
 
 }
@@ -628,13 +622,14 @@ impl<A> Seq<Seq<A>>{
 
     /// Flattens a sequence of sequences into a single sequence by concatenating 
     /// subsequences in reverse order, i.e. starting from the last element.
-    /// This results in the same sequence as a call to flatten
-    pub open spec fn flatten_reverse(self) -> Seq<A>
+    /// This is equivalent to a call to `flatten`, but with concatenation operation
+    /// applied along the oppositive associativity for the sake of proof reasoning in that direction.
+    pub open spec fn flatten_alt(self) -> Seq<A>
         decreases self.len()
     {
         if self.len() == 0 {Seq::empty()}
         else {
-            self.drop_last().flatten_reverse().add(self.last())
+            self.drop_last().flatten_alt().add(self.last())
         }
     }
 }
@@ -1358,9 +1353,9 @@ pub proof fn lemma_flatten_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
 /// That is, concatenating the flattening of two sequences of sequences in reverse 
 /// order is the same as flattening the concatenation of two sequences of sequences
 /// in reverse order.
-pub proof fn lemma_flatten_reverse_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
+pub proof fn lemma_flatten_alt_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
     ensures 
-        (x+y).flatten_reverse() =~= x.flatten_reverse() + y.flatten_reverse()
+        (x+y).flatten_alt() =~= x.flatten_alt() + y.flatten_alt()
     decreases 
         y.len()
 {
@@ -1368,8 +1363,8 @@ pub proof fn lemma_flatten_reverse_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
         assert(x+y =~= x);
     } else {
         assert((x+y).drop_last() =~= x + y.drop_last());
-        assert((x + y.drop_last()).flatten_reverse() + y.last() =~= x.flatten_reverse() + y.drop_last().flatten_reverse() + y.last()) by {
-            lemma_flatten_reverse_concat(x, y.drop_last());
+        assert((x + y.drop_last()).flatten_alt() + y.last() =~= x.flatten_alt() + y.drop_last().flatten_alt() + y.last()) by {
+            lemma_flatten_alt_concat(x, y.drop_last());
         } 
     }
 }
@@ -1392,18 +1387,18 @@ pub proof fn lemma_flatten_length_ge_single_element_length<A>(x: Seq<Seq<A>>, i:
     requires
         0<= i < x.len(),
     ensures
-        x.flatten_reverse().len() >= x[i].len()
+        x.flatten_alt().len() >= x[i].len()
     decreases
         x.len()
 {
     if x.len() == 1 {
         lemma_flatten_one_element(x);
-        lemma_flatten_and_flatten_reverse_are_equivalent(x);
+        lemma_flatten_and_flatten_alt_are_equivalent(x);
     }
     else if i < x.len() -1 {
         lemma_flatten_length_ge_single_element_length(x.drop_last(), i);
     } else {
-        assert(x.flatten_reverse() == x.drop_last().flatten_reverse().add(x.last()));
+        assert(x.flatten_alt() == x.drop_last().flatten_alt().add(x.last()));
     }
 }
 
@@ -1443,7 +1438,7 @@ pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
     requires
         forall |i: int| 0 <= i < x.len() ==> (#[trigger] x[i]).len() <= j,
     ensures
-        x.flatten_reverse().len() <= x.len() * j,
+        x.flatten_alt().len() <= x.len() * j,
     decreases
         x.len(),
 {
@@ -1459,15 +1454,15 @@ pub proof fn lemma_flatten_length_le_mul<A>(x: Seq<Seq<A>>, j: int)
 
 /// Flattening sequences of sequences in order (starting from the beginning)
 /// and in reverse order (starting from the end) results in the same sequence.
-pub proof fn lemma_flatten_and_flatten_reverse_are_equivalent<A>(x: Seq<Seq<A>>)
+pub proof fn lemma_flatten_and_flatten_alt_are_equivalent<A>(x: Seq<Seq<A>>)
     ensures
-        x.flatten() == x.flatten_reverse(),
+        x.flatten() == x.flatten_alt(),
     decreases
         x.len(),
 {
     if x.len() == 0 {}
     else {
-        lemma_flatten_and_flatten_reverse_are_equivalent(x.drop_last());
+        lemma_flatten_and_flatten_alt_are_equivalent(x.drop_last());
         lemma_flatten_one_element(seq![x.last()]);
         lemma_flatten_concat(x.drop_last(), seq![x.last()]);
         assert(x =~= x.drop_last().push(x.last()));
