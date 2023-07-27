@@ -231,10 +231,15 @@ fn run() -> Result<(), String> {
         std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
-    let z3_path = std::path::Path::new(Z3_FILE_NAME);
+    let z3_file_name = if vargo_nest == 0 && std::env::var("VERUS_Z3_PATH").is_ok() {
+        std::env::var("VERUS_Z3_PATH").unwrap()
+    } else {
+        Z3_FILE_NAME.to_string()
+    };
+    let z3_path = std::path::Path::new(&z3_file_name);
 
     if !z3_path.is_file() && vargo_nest == 0 {
-        warn(format!("{Z3_FILE_NAME} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str());
+        warn(format!("{z3_file_name} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str());
     }
     if std::env::var("VERUS_Z3_PATH").is_err() && z3_path.is_file() {
         std::env::set_var("VERUS_Z3_PATH", z3_path);
