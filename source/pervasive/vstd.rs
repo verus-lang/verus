@@ -13,6 +13,7 @@ pub mod array;
 pub mod bytes;
 pub mod calc_macro;
 pub mod map;
+pub mod map_lib;
 pub mod option;
 pub mod result;
 pub mod seq;
