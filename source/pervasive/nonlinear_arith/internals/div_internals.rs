@@ -68,7 +68,6 @@ pub proof fn lemma_div_basics(n: int)
 /// Automates the division operator process. Contains the identity property, a
 /// fact about when quotients are zero, and facts about adding and subtracting
 /// integers over a common denominator.
-// #[verifier::spinoff_prover]
 pub open spec fn div_auto(n: int) -> bool
     recommends n > 0
 {
@@ -86,7 +85,7 @@ pub open spec fn div_auto(n: int) -> bool
 }
 
 /// Ensures that div_auto is true 
-// #[verifier::spinoff_prover]
+#[verifier::spinoff_prover]
 pub proof fn lemma_div_auto(n: int)
     requires n > 0
     ensures
