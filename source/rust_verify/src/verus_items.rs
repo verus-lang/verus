@@ -296,6 +296,11 @@ pub(crate) enum BuiltinFunctionItem {
     FnWithSpecificationEnsures,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinTraitItem {
+    FnWithSpecification,
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VerusItem {
     Spec(SpecItem),
@@ -313,6 +318,7 @@ pub(crate) enum VerusItem {
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
     BuiltinFunction(BuiltinFunctionItem),
+    BuiltinTrait(BuiltinTraitItem),
 }
 
 #[rustfmt::skip]
@@ -462,6 +468,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::builtin::FnWithSpecification::requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationRequires)),
         ("verus::builtin::FnWithSpecification::ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationEnsures)),
+
+        ("verus::builtin::FnWithSpecification", VerusItem::BuiltinTrait(BuiltinTraitItem::FnWithSpecification)),
     ]
 }
 
@@ -524,6 +532,8 @@ pub(crate) enum RustItem {
     Panic,
     Box,
     Fn,
+    FnOnce,
+    FnMut,
     StructuralEq,
     StructuralPartialEq,
     Eq,
@@ -549,6 +559,12 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().fn_trait() == Some(def_id) {
         return Some(RustItem::Fn);
+    }
+    if tcx.lang_items().fn_mut_trait() == Some(def_id) {
+        return Some(RustItem::FnMut);
+    }
+    if tcx.lang_items().fn_once_trait() == Some(def_id) {
+        return Some(RustItem::FnOnce);
     }
     if tcx.lang_items().structural_teq_trait() == Some(def_id) {
         return Some(RustItem::StructuralEq);

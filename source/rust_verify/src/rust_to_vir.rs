@@ -15,7 +15,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::util::{err_span, unsupported_err_span};
-use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
+use crate::verus_items::{self, BuiltinTraitItem, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
 use rustc_ast::IsAuto;
@@ -170,7 +170,27 @@ fn check_item<'tcx>(
             }
 
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
-                let verus_item = ctxt.verus_items.id_to_name.get(&path.res.def_id());
+                let trait_def_id = path.res.def_id();
+
+                let rust_item = verus_items::get_rust_item(ctxt.tcx, trait_def_id);
+                if matches!(rust_item, Some(RustItem::Fn | RustItem::FnOnce | RustItem::FnMut)) {
+                    return err_span(
+                        item.span,
+                        "Verus does not support implementing this trait via an `impl` block",
+                    );
+                }
+
+                let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
+                if matches!(
+                    verus_item,
+                    Some(VerusItem::BuiltinTrait(BuiltinTraitItem::FnWithSpecification))
+                ) {
+                    return err_span(
+                        item.span,
+                        "Verus does not support implementing this trait without implementing FnOnce",
+                    );
+                }
+
                 let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {
                     let ty = {
                         // TODO extract to rust_to_vir_base, or use
@@ -216,7 +236,7 @@ fn check_item<'tcx>(
                     | RustItem::StructuralPartialEq
                     | RustItem::PartialEq
                     | RustItem::Eq,
-                ) = verus_items::get_rust_item(ctxt.tcx, path.res.def_id())
+                ) = rust_item
                 {
                     // TODO SOUNDNESS additional checks of the implementation
                     true
