@@ -1211,7 +1211,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 mk_expr(ExprX::Const(c))
             }
             _ => {
-                panic!("unexpected constant: {:?}", lit)
+                panic!("unexpected constant: {:?}", expr)
             }
         },
         ExprKind::Cast(source, _) => {

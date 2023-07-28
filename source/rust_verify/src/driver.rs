@@ -124,6 +124,7 @@ pub(crate) fn run_with_erase_macro_compile(
     build_test_mode: bool,
 ) -> Result<(), ErrorGuaranteed> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
+    rustc_args.extend(["--cfg", "verus_macro_keep_ghost_stubs"].map(|s| s.to_string()));
     let allow = &[
         "unused_imports",
         "unused_variables",
