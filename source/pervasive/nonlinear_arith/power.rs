@@ -220,6 +220,8 @@ pub proof fn lemma_pow_adds_auto()
     }
 }
 
+/// Subtracting a natural number `e2` from an exponent `e1` and then multiplying
+/// by the same base `b` to the exponent `e2` is the same as just `b` to the exponent `e2`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
     requires e1 >= e2

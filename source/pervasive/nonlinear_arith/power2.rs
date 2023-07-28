@@ -29,6 +29,7 @@ pub open spec fn pow2(e: nat) -> nat
     pow(2, e) as nat
 }
 
+/// 2 to the power of any natural number will always be positive
 // #[verifier::spinoff_prover]
 pub proof fn lemma_pow2_pos(e: nat)
     ensures pow2(e) > 0
@@ -96,6 +97,7 @@ pub proof fn lemma_pow2_mask_div2_auto()
     }
 }
 
+/// Lays out the powers of 2 from 0 to 32 and also 2^64
 // #[verifier::spinoff_prover]
 pub proof fn lemma2_to64()
     ensures 

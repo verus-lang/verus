@@ -372,6 +372,8 @@ pub proof fn lemma_mod_adds_auto()
 }
 
 // {:vcs_split_on_every_assert}
+/// The remainder of an integer `x` by a positive integer `d` is equivalent to
+/// the remainder of `x * (1 - d)` by `d`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_neg_neg(x: int, d: int)
     requires 0 < d
@@ -455,6 +457,8 @@ pub proof fn lemma_mod_pos_bound_auto()
     }
 }
 
+/// For any integers `x` and `y` and positive integer `m`, the remainder of `x * y` divided by `m`
+/// is equivalent to the remainder of `x` divided by `m` times the remainder of `y` divided by `m`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_mod_noop_left(x: int, y: int, m: int)
     requires 0 < m
@@ -474,6 +478,8 @@ pub proof fn lemma_mul_mod_noop_left_auto()
     }
 }
 
+/// For any integers `x` and `y` and positive integer `m`, the remainder of `x * y` divided by `m`
+/// is equivalent to the remainder of `x * (y % m)` divided by `m`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_mod_noop_right(x: int, y: int, m: int)
     requires 0 < m
@@ -518,6 +524,9 @@ pub proof fn lemma_mul_mod_noop_general_auto()
     }
 }
 
+/// For any integers `x` and `y` and positive integer `m`, the product of 
+/// `x` modulus `m` and `y` modulus `m`, all modulus `m`, is the same as just
+/// the product of `x` and `y` modulus `m`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_mod_noop(x: int, y: int, m: int)
     requires 0 < m
@@ -648,6 +657,8 @@ pub proof fn lemma_mod_ordering_auto()
     }
 }
 
+/// For any integer `x` and positive integers `a` and `b`, the remainder of `x` divided by `a * b`
+/// modulus `a` is equivalent to the remainder of `x` divided by `a`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_mod(x: int, a: int, b: int)
     requires 
@@ -707,6 +718,9 @@ pub proof fn lemma_part_bound2(x: int, y: int, z: int)
     assert((x % y) % (y * z) == x % y);
 }
 
+/// The product of positive integers `y` and `z` is always positive
+/// The remainder of nonnegative integer `x` modulus `y` divided by `y * z` is
+/// strictly less than `y`
 // #[verifier::spinoff_prover]
 pub proof fn lemma_part_bound2_auto()
     ensures 

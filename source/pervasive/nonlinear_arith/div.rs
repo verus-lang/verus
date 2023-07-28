@@ -115,6 +115,7 @@ pub proof fn lemma_small_div_converse_auto()
     }
 }
 
+/// Division of a positive integer by a positive integer less than or equal to it is nonzero
 // #[verifier::spinoff_prover]
 pub proof fn lemma_div_non_zero(x: int, d: int)
     requires x >= d > 0
@@ -427,6 +428,11 @@ pub proof fn lemma_small_mod(x: nat, m: nat)
     ModINL::lemma_small_mod(x, m);
 }
 
+/// The product of two positive integers is positive
+/// 
+/// The remainder of a nonnegative integer `x` divided by the product of two positive integers
+/// `y` and `z` is equivalent to dividing `x` by `y`, dividing the quotient by `z`, multiplying
+/// the remainder by `y`, and then adding the product to the remainder of `x` divided by `y`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_breakdown(x: int, y: int, z: int)
     requires 
@@ -498,6 +504,8 @@ pub proof fn lemma_breakdown_auto()
     }
 }
 
+/// The difference between a nonnegative integer `x` and a positive integer `d` must
+/// be strictly less than the quotient of `x` divided by `d` and then multiplied by `d`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_remainder_upper(x: int, d: int)
     requires 
@@ -520,6 +528,8 @@ pub proof fn lemma_remainder_upper_auto()
     }
 }
 
+/// The division of a nonnegative integer `x` by a positive integer `d` multiplied by `d`
+/// is less than or equal to the value of `x`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_remainder_lower(x: int, d: int)
     requires 
@@ -543,7 +553,8 @@ pub proof fn lemma_remainder_lower_auto()
     }
 }
 
-
+/// The difference between a nonnegative integer `x` and the division of `x` by a positive integer `d` multiplied by `d`
+/// is lower bounded (inclusively) by 0 and upper bounded (exclusively) by `d`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_remainder(x: int, d: int)
     requires 
@@ -730,6 +741,12 @@ pub proof fn lemma_mul_hoist_inequality_auto()
     }
 }
 
+/// For a positive integer `d`, if `a - a % d` is less than or equal to `b` 
+/// and `b` is less than `a + d - a % d`, then the quotient of `a` divided by `d`
+/// is equivalent to the quotient of `b` divided by `d`.
+/// 
+/// In other words, if `a` and `b` occur in between the same two multiples of `d`, then
+/// their quotient with `d` is equivalent.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_indistinguishable_quotients(a: int, b: int, d: int)
     requires
@@ -1027,6 +1044,11 @@ pub proof fn lemma_hoist_over_denominator_auto()
     }
 }
 
+/// The product of positive integers `b` and `c` is positive.
+/// 
+/// For nonnegative integer `a` and positive integers `b` and `c`, 
+/// the remainder of `b * (a / b)` divided by `b * c` is less than or equal to `b * (c - 1)`.
+/// This accounts for the rounding down that occurs in int division.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_part_bound1(a: int, b: int, c: int)
     requires 

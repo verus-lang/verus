@@ -165,6 +165,8 @@ proof fn lemma_mul_ordering_auto()
     };
 }
 
+/// If two integers `x` and `y` are equal, then their products with
+/// any integer `z` are also equal.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_equality(x: int, y: int, z: int)
     requires x == y
@@ -474,7 +476,7 @@ pub proof fn lemma_mul_is_distributive_auto()
     lemma_mul_is_commutative_auto();
 }
 
-/* multiplying two positive integers will result in a positive integer */
+/// multiplying two positive integers will result in a positive integer
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_strictly_positive(x: int, y: int)
     ensures (0 < x && 0 < y) ==> (0 < x * y)
