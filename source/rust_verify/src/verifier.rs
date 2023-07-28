@@ -591,16 +591,20 @@ impl Verifier {
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
+        exact_match: bool,  // for --verify-function flag
         comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
                 let name = friendly_fun_name_crate_relative(&module, function_name);
-                let clean_verify_function = verify_function.trim_matches('*');
+                if exact_match && &name != verify_function {
+                    return false;
+                }
 
-                let left_wildcard = verify_function.starts_with("*");
-                let right_wildcard = verify_function.ends_with("*");
+                let clean_verify_function = verify_function.trim_matches('*');
+                let left_wildcard = verify_function.starts_with('*');
+                let right_wildcard = verify_function.ends_with('*');
 
                 if left_wildcard && !right_wildcard {
                     if !name.ends_with(clean_verify_function) {
@@ -610,8 +614,7 @@ impl Verifier {
                     if !name.starts_with(clean_verify_function) {
                         return false;
                     }
-                }
-                if !name.contains(clean_verify_function) {
+                } else if !name.contains(clean_verify_function) {
                     return false;
                 }
             } else {
@@ -927,6 +930,7 @@ impl Verifier {
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
+        let mut exact_match = false;
         if let Some(verify_function) = &self.args.verify_function {
             let module_funs = funs
                 .iter()
@@ -955,50 +959,52 @@ impl Verifier {
                 return Err(error(msg));
             }
 
-            // non unique substring
-            if verify_function == clean_verify_function && filtered_functions.len() > 1 {
-                filtered_functions.sort();
-                let msg = vec![
-                    format!(
-                        "more than one match found for --verify-function {verify_function}, consider using wildcard *{verify_function}* to verify all matched results,"
-                    ),
-                    format!(
-                        "or specify a unique substring for the desired function, matched results are:"
-                    ),
-                ].into_iter()
-                .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
-                .collect::<Vec<String>>()
-                .join("\n");
-                return Err(error(msg));
-            }
-
-            // mismatch wildcarc
-            let left_wildcard = verify_function.starts_with("*");
-            let right_wildcard = verify_function.ends_with("*");
-            let mut wildcard_mismatch = false;
-
-            if left_wildcard && !right_wildcard {
-                wildcard_mismatch =
-                    !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function));
-            } else if !left_wildcard && right_wildcard {
-                wildcard_mismatch =
-                    !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function));
-            }
-
-            if wildcard_mismatch {
-                filtered_functions.sort();
-                let msg = vec![
+            // substring match
+            if verify_function == clean_verify_function {
+                exact_match = filtered_functions.iter().any(|f| f == &verify_function);
+                if filtered_functions.len() > 1 && !exact_match {
+                    filtered_functions.sort();
+                    let msg = vec![
                         format!(
-                            "could not find function {verify_function} specified by --verify-function,"
+                            "more than one match found for --verify-function {verify_function}, consider using wildcard *{verify_function}* to verify all matched results,"
                         ),
                         format!(
-                            "consider *{clean_verify_function}* if you want to verify similar functions:"
+                            "or specify a unique substring for the desired function, matched results are:"
                         ),
                     ].into_iter()
                     .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
                     .collect::<Vec<String>>()
                     .join("\n");
-                return Err(error(msg));
+                    return Err(error(msg));
+                }
+            } else { // wildcard match
+                let left_wildcard = verify_function.starts_with("*");
+                let right_wildcard = verify_function.ends_with("*");
+                let mut wildcard_mismatch = false;
+
+                if left_wildcard && !right_wildcard {
+                    wildcard_mismatch =
+                        !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function));
+                } else if !left_wildcard && right_wildcard {
+                    wildcard_mismatch =
+                        !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function));
+                }
+
+                if wildcard_mismatch {
+                    filtered_functions.sort();
+                    let msg = vec![
+                            format!(
+                                "could not find function {verify_function} specified by --verify-function,"
+                            ),
+                            format!(
+                                "consider *{clean_verify_function}* if you want to verify similar functions:"
+                            ),
+                        ].into_iter()
+                        .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
+                        .collect::<Vec<String>>()
+                        .join("\n");
+                    return Err(error(msg));
+                }
             }
         }
 
@@ -1074,6 +1080,7 @@ impl Verifier {
                     &ctx.global.qid_map.borrow(),
                     module,
                     Some(&function.x.name),
+                    exact_match,
                     &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
                 );
@@ -1106,6 +1113,7 @@ impl Verifier {
                             &ctx.global.qid_map.borrow(),
                             module,
                             Some(&function.x.name),
+                            exact_match,
                             &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                             Some("recommends check: "),
                         );
@@ -1234,6 +1242,7 @@ impl Verifier {
                         &ctx.global.qid_map.borrow(),
                         module,
                         Some(&function.x.name),
+                        exact_match,
                         &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                         desc_prefix,
                     );
