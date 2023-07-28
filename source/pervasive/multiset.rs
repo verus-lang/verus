@@ -538,7 +538,7 @@ pub proof fn lemma_multiset_properties<V>()
         forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(a.intersection_with(b)) == a.intersection_with(b), //lemma_right_pseudo_idempotence
         forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)), //lemma_difference_count
         forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.count(x) <= #[trigger] b.count(x) 
-                ==> (#[trigger] a.difference_with(b)).count(x) == 0, //lemmadifference_bottoms_out
+                ==> (#[trigger] a.difference_with(b)).count(x) == 0, //lemma_difference_bottoms_out
 {
     assert forall |m: Multiset<V>, v: V, mult: nat| #[trigger] m.update(v, mult).count(v) == mult by {
         lemma_update_same(m, v, mult);

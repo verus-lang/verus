@@ -227,6 +227,67 @@ impl<K, V> Map<K, V> {
     {
         unimplemented!();
     }
+
+    // Proven lemmas
+
+    /// Removing a key from a map that previously contained that key results
+    /// in a length that is one less than the original length.
+    pub proof fn lemma_remove_key_len(self, key: K)
+        requires
+            self.dom().contains(key),
+            self.dom().finite(),
+        ensures
+            self.dom().len() == 1 + self.remove(key).dom().len(),
+    {}
+
+    /// The domain of a map after removing a key is equivalent to removing the key from 
+    /// the domain of the original map.
+    pub proof fn lemma_remove_equivalency(self, key: K)
+        ensures
+            self.remove(key).dom() == self.dom().remove(key),
+    {}    
+
+/// Removing a set of n keys from a map that previously contained all n keys
+/// results in a domain of size n less than the original domain.
+    pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
+        requires
+            forall |k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
+            keys.finite(),
+            self.dom().finite(),
+        ensures 
+            self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
+        decreases
+            keys.len(),
+    {
+        lemma_set_properties::<K>();
+        if keys.len() > 0 {
+            let key = keys.choose();
+            let val = self[key];
+            self.remove(key).lemma_remove_keys_len(keys.remove(key));
+            assert(self.remove(key).remove_keys(keys.remove(key)) =~= self.remove_keys(keys));
+        }
+        else {
+            assert(self.remove_keys(keys) =~= self);
+        }
+    }
+
+    /// The function `invert` results in an injective map
+    pub proof fn lemma_invert_is_injective(self)
+        ensures
+            self.invert().is_injective(),
+    {
+        assert forall |x: V, y: V| x != y && self.invert().dom().contains(x) && self.invert().dom().contains(y) 
+                    implies #[trigger] self.invert()[x] != #[trigger] self.invert()[y] by {
+            let i = choose |i: K| #[trigger] self.dom().contains(i) && self[i] == x;
+            assert(self.contains_pair(i,x));
+            let j = choose |j: K| self.contains_pair(j,x) && self.invert()[x] == j;
+
+            let k = choose |k: K| #[trigger] self.dom().contains(k) && self[k] == y;
+            assert(self.contains_pair(k,y));
+            let l = choose |l: K| self.contains_pair(l,y) && self.invert()[y] == l && l != j;
+        }   
+    }
+
 }
 
 impl Map<int,int> {
@@ -248,47 +309,6 @@ impl Map<int,int> {
 
 // Proven lemmas
 
-/// Removing a key from a map that previously contained that key results
-/// in a length that is one less than the original length.
-pub proof fn lemma_remove_key_len<K,V>(m: Map<K,V>, key: K)
-    requires
-        m.dom().contains(key),
-        m.dom().finite(),
-    ensures
-        m.dom().len() == 1 + m.remove(key).dom().len(),
-{}
-
-/// The domain of a map after removing a key is equivalent to removing the key from 
-/// the domain of the original map.
-pub proof fn lemma_remove_equivalency<K,V>(m: Map<K,V>, key: K)
-    ensures
-        m.remove(key).dom() == m.dom().remove(key),
-{}
-
-/// Removing a set of n keys from a map that previously contained all n keys
-/// results in a domain of size n less than the original domain.
-pub proof fn lemma_remove_keys_len<K,V>(m: Map<K,V>, keys: Set<K>)
-    requires
-        forall |k: K| #[trigger] keys.contains(k) ==> m.contains_key(k),
-        keys.finite(),
-        m.dom().finite(),
-    ensures 
-        m.remove_keys(keys).dom().len() == m.dom().len() - keys.len(),
-    decreases
-        keys.len(),
-{
-    lemma_set_properties::<K>();
-    if keys.len() > 0 {
-        let key = keys.choose();
-        let val = m[key];
-        lemma_remove_keys_len(m.remove(key),keys.remove(key));
-        assert(m.remove(key).remove_keys(keys.remove(key)) =~= m.remove_keys(keys));
-    }
-    else {
-        assert(m.remove_keys(keys) =~= m);
-    }
-}
-
 /// The size of the union of two maps is equal to the sum of the sizes of the individual maps
 pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
     requires
@@ -302,25 +322,8 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
     assert(u.dom() =~= m1.dom() + m2.dom()); //proves u.dom() is finite
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
-        lemma_remove_keys_len(u, m1.dom());
+        u.lemma_remove_keys_len(m1.dom());
     }
-}
-
-/// The function `invert` results in an injective map
-pub proof fn lemma_invert_is_injective<K,V>(m: Map<K,V>)
-    ensures
-        m.invert().is_injective(),
-{
-    assert forall |x: V, y: V| x != y && m.invert().dom().contains(x) && m.invert().dom().contains(y) 
-                implies #[trigger] m.invert()[x] != #[trigger] m.invert()[y] by {
-        let i = choose |i: K| #[trigger] m.dom().contains(i) && m[i] == x;
-        assert(m.contains_pair(i,x));
-        let j = choose |j: K| m.contains_pair(j,x) && m.invert()[x] == j;
-
-        let k = choose |k: K| #[trigger] m.dom().contains(k) && m[k] == y;
-        assert(m.contains_pair(k,y));
-        let l = choose |l: K| m.contains_pair(l,y) && m.invert()[y] == l && l != j;
-    }   
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
