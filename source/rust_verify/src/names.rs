@@ -55,7 +55,52 @@ pub(crate) type RustcLocalImplId = (TypPath, Vec<u32>);
 pub(crate) struct ImplNameCtxt {
     // For any (unstable) RustcLocalImplId, compute a stable name.
     // (this stable name is just the single segment representing "impl%id";
-    // it needs to be combined with the rest of the path to form a complete path)
+    // it needs to be combined with the rest of the path to form a complete path).
+    // Example:
+    // - when compiling vstd (both with erase_ghost and !erase_ghost):
+    //   - rustc creates its own internal names for impls in vstd
+    //     - these names may be different in erase_ghost and !erase_ghost
+    //     - example:
+    //       - in erase_ghost: impl%2
+    //       - in !erase_ghost: impl%3
+    //   - we represent these rustc internal names with RustcLocalImplId
+    //     - example:
+    //       - in erase_ghost: ("impl", [2])
+    //       - in !erase_ghost: ("impl", [3])
+    //   - we map the RustcLocalImplId to our own Ident in map_to_stable_name
+    //     - we create a mapping for erase_ghost and another mapping for !erase_ghost
+    //     - the Ident values are the same in erase_ghost and !erase_ghost
+    //     - example:
+    //       - in erase_ghost: ("impl", [2]) -> impl_Vec7
+    //       - in !erase_ghost: ("impl", [3]) -> impl_Vec7
+    //   - in our own VIR AST for the vstd library (created with !erase_ghost),
+    //     we use the stable Ident values
+    //     - impl_Vec7
+    //   - rustc emits a library file on disk using its erase_ghost internal names
+    //       - in erase_ghost: impl%2
+    //   - we serialize and emit our VIR AST in CrateWithMetadata
+    //     - the serialized VIR AST contains impl_Vec7
+    //   - we also serialize the erase_ghost mapping in CrateWithMetadata
+    //     - ("impl", [2]) -> impl_Vec7
+    //     - see the export_impls function below and see import_export.rs
+    // - when a client application imports vstd:
+    //   - rustc reads in the erase_ghost-compiled vstd library from disk
+    //     - this file contains the *same* erase_ghost rustc internal names
+    //       created while compiling vstd
+    //       - in erase_ghost: impl%2
+    //     - we again represent these internal names with the same RustcLocalImplId
+    //       as we did while compiling vstd
+    //       - in erase_ghost: ("impl", [2])
+    //   - we read in the serialized mapping from CrateWithMetadata created when compiling vstd
+    //     - in erase_ghost: ("impl", [2]) -> impl_Vec7
+    //   - we use the RustcLocalImplId and deserialized map_to_stable_name to recover the same
+    //     Ident values that were used while compiling vstd
+    //     - impl_Vec7
+    //   - the key result is that these Ident values will match the !erase_ghost Ident values
+    //     that are present in the rest of the deserialized VIR AST for the vstd library
+    //     (whereas if we hadn't done the remapping, we would have seen inconsistent names,
+    //     impl%2 from the !erase_ghost rustc-emitted library, and impl%3 in our deserialized
+    //     VIR AST)
     pub(crate) map_to_stable_name: HashMap<RustcLocalImplId, Ident>,
 }
 
