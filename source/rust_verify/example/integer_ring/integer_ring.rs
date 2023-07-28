@@ -105,6 +105,7 @@ pub proof fn multiple_offsed_mod_gt_0_int(a: int, b: int, c: int, ac:int, bc:int
         abc == (a-b) % c,
     ensures (ac - bc - abc) % c == 0
 {}
+
 pub proof fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) by(nonlinear_arith) 
     requires
         a > b,
@@ -115,6 +116,15 @@ pub proof fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) by(nonlinear_arith
 {
     multiple_offsed_mod_gt_0_int(a as int,b as int,c as int, (a%c) as int, (b%c) as int, ((a-b)%(c as int)) as int);
 }
+
+pub proof fn LemmaModMultiplesBasic(x: int, m: int) by(integer_ring)
+    ensures (x * m) % m == 0
+{}
+
+pub proof fn LemmaModMultipleVanish(b: int, m: int) by(integer_ring)
+    ensures
+        (b + m) % m == b % m,
+{}
 
 fn main() {}
 
