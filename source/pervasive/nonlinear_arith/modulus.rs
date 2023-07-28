@@ -686,7 +686,7 @@ pub proof fn lemma_mod_mod(x: int, a: int, b: int)
     lemma_fundamental_div_mod_converse(x, a, b * (x / (a * b)) + x % (a * b) / a, (x % (a * b)) % a);
 }
 
-// #[verifier::spinoff_prover]
+#[verifier::spinoff_prover]
 pub proof fn lemma_mod_mod_auto()
     ensures forall |x: int, a: int, b: int| #![trigger (a * b), (x % a)](0 < a && 0 < b) ==> ((0 < a * b) && ((x % (a * b)) % a == (x % a))),
 {
