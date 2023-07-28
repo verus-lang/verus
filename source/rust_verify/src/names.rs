@@ -36,7 +36,7 @@ pub(crate) enum TypTree {
 // Otherwise, we would lose precision by merging the blocks together,
 // which would be sound but could cause our nontermination checking (recursion.rs)
 // to report spurious errors.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ImplFingerprint {
     parent: TypPath,
     generics: Vec<String>,
