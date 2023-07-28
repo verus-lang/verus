@@ -534,6 +534,7 @@ pub(crate) enum RustItem {
     Fn,
     FnOnce,
     FnMut,
+    Drop,
     StructuralEq,
     StructuralPartialEq,
     Eq,
@@ -565,6 +566,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().fn_once_trait() == Some(def_id) {
         return Some(RustItem::FnOnce);
+    }
+    if tcx.lang_items().drop_trait() == Some(def_id) {
+        return Some(RustItem::Drop);
     }
     if tcx.lang_items().structural_teq_trait() == Some(def_id) {
         return Some(RustItem::StructuralEq);

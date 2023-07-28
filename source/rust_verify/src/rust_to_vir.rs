@@ -27,8 +27,7 @@ use rustc_hir::{
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::Typ;
-use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Path, VirErr};
+use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Path, Typ, VirErr};
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -700,5 +699,6 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let erasure_info = ctxt.erasure_info.borrow();
     vir.external_fns = erasure_info.external_functions.clone();
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
+
     Ok(Arc::new(vir))
 }

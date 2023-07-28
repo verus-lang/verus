@@ -34,8 +34,6 @@ There are also a number of special cases:
    - [ ] TODO: fix panic
  - Implement a marker trait - allowed (if unsafe, must be marked external)
  - Implement `FnWithSpecification` - disallowed
- - impl Drop - should be disallowed until we have support
-   - [ ] is currently unsound: https://github.com/verus-lang/verus/issues/723
  - impl FnOnce / Fn / FnMut - could be supported in principle, but probably not useful unless we also allow them to specify 'requires' and 'ensures' somehow. Currently an error.
 
 # Overall architecture
@@ -147,4 +145,6 @@ There are a few places where we need to check that two functions have the same f
 
 ### Drop
 
-No plans regarding Drop support
+No plans regarding Drop support.
+
+Implementing Drop is disallowed if it has any requires or if it is not marked `opens_invariants none` (https://github.com/verus-lang/verus/issues/723).
