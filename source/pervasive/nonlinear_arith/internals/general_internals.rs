@@ -85,24 +85,5 @@ ensures
     }
 }
 
-// // #[verifier::spinoff_prover]
-// pub proof fn lemma_induction_helper1(n: int, f: FnSpec(int) -> bool, x: int)
-//     requires 
-//         n > 0,
-//         forall |i : int| 0 <= i < n ==> #[trigger] f(i),
-//         forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add(i, n)),
-//         forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub(i, n))
-//     ensures
-//         f(x)
-//     decreases (if x >= n { x } else { -x }) when n > 0
-// {
-//     if (x >= 0) {
-//         lemma_induction_helper_pos(n, f, x);
-//     }
-//     else {
-//         lemma_induction_helper_neg(n, f, x);
-//     }
-// }
-
 }
 

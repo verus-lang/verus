@@ -43,7 +43,7 @@ pub proof fn lemma_small_mod(x:nat, m:nat)
 {}
 
 /* the range of the modulus of any integer will be [0, m) where m is the divisor */
-// Euclid's division lemma?
+// Euclid's division lemma
 #[verifier(nonlinear)]
 pub proof fn lemma_mod_range(x:int, m:int)
     requires m > 0
