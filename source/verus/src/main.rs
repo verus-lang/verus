@@ -112,7 +112,7 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     let reports = match reports {
         Some(reports) => {
             // proj path is only created after the project has --local-store flag
-            if !reports.proj_path.is_dir() {
+            if !reports.project_directory.is_dir() {
                 cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
                 return Ok(());
             }
@@ -124,16 +124,16 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         }
     };
 
-    let proj_path = reports.proj_path;
+    let project_directory = reports.project_directory;
 
-    cmd.arg(format!("--emit=dep-info={}", reports.dep_path.display()));
+    cmd.arg(format!("--emit=dep-info={}", reports.dependencies_listing_file.display()));
 
-    // clean all files in proj_path
-    remove_dir_all(&proj_path).expect("failed to remove repo_path");
+    // clean all files in project_directory
+    remove_dir_all(&project_directory).expect("failed to remove repo_path");
 
-    let toml_path = proj_path.join("reports.toml");
+    let toml_path = project_directory.join("reports.toml");
 
-    create_dir_all(&proj_path).expect("creating reports.toml");
+    create_dir_all(&project_directory).expect("creating reports.toml");
     let mut file = File::create(toml_path).expect("creating reports.toml");
 
     let mut child = cmd
@@ -177,9 +177,9 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     writeln!(file, "{}", out_string)
         .map_err(|x| format!("failed to write to reports.toml: {}", x))?;
 
-    let dep_file_path = reports.dep_path;
+    let dependencies_listing_file = reports.dependencies_listing_file;
 
-    let deps = get_dependencies(&dep_file_path)?;
+    let deps = get_dependencies(&dependencies_listing_file)?;
 
     let deps_path = deps.iter().map(|x| Path::new(x)).collect::<Vec<_>>();
 
@@ -193,8 +193,8 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         // copy files to repo_path
         for dep in deps.iter() {
             let rel_dest = dep.clone().strip_prefix(&common).unwrap().to_path_buf();
-            create_dir_all(proj_path.join(&rel_dest.parent().unwrap())).unwrap();
-            std::fs::copy(dep, proj_path.join(&rel_dest)).map_err(|err| {
+            create_dir_all(project_directory.join(&rel_dest.parent().unwrap())).unwrap();
+            std::fs::copy(dep, project_directory.join(&rel_dest)).map_err(|err| {
                 format!(
                     "failed to copy file {} to repo_path with error message: {}",
                     dep.display(),
@@ -205,8 +205,8 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     } else {
         // copy files to repo_path, none of dep should be absolute path at thsi point
         for dep in deps.iter() {
-            create_dir_all(proj_path.join(dep.parent().unwrap())).unwrap();
-            std::fs::copy(dep, proj_path.join(dep)).map_err(|err| {
+            create_dir_all(project_directory.join(dep.parent().unwrap())).unwrap();
+            std::fs::copy(dep, project_directory.join(dep)).map_err(|err| {
                 format!(
                     "failed to copy file {} to repo_path with error message: {}",
                     dep.display(),
@@ -216,23 +216,24 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         }
     }
 
-    std::fs::remove_file(&dep_file_path).map_err(|err| {
-        format!(
-            "failed to remove dependency file {} in local data cache with error message: {}",
-            dep_file_path.display(),
-            err
-        )
-    })?;
+    match std::fs::remove_dir_all(dependencies_listing_file.parent().unwrap()) {
+        Ok(_) => {}
+        Err(err) => {
+            eprintln!(
+                "{} failed to remove directory {} with error message: {}",
+                yansi::Paint::yellow("warning:").bold(),
+                dependencies_listing_file.parent().unwrap().display(),
+                err
+            );
+        }
+    }
 
-    Command::new("git").current_dir(&proj_path).arg("add").arg(".").output().map_err(|x| {
-        format!("localstorage: failed to stage current project with error message: {}", x)
-    })?;
-
-    std::process::Command::new("git")
-        .current_dir(&proj_path)
+    Command::new("git")
+        .current_dir(&project_directory)
         .arg("commit")
-        .arg("-m")
-        .arg("\"verus\"")
+        .arg("--all")
+        .arg("--message")
+        .arg("verus command invocation")
         .env("GIT_AUTHOR_NAME", "nobody")
         .env("GIT_AUTHOR_EMAIL", "nobody@nobody.nobody")
         .env("GIT_COMMITTER_NAME", "nobody")
@@ -245,18 +246,17 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
 
 #[derive(Debug)]
 pub struct Reports {
-    proj_path: PathBuf,
-    dep_path: PathBuf,
+    project_directory: PathBuf,
+    dependencies_listing_file: PathBuf,
 }
 
 fn repo_path(store: bool) -> Option<Reports> {
     // check if user has git as executable
     if Command::new("git").arg("--version").output().is_err() {
-        return None;
-    }
-
-    // check if user has local storage enabled during vargo build
-    if option_env!("VERUS_LOCAL_STORE").is_none() {
+        eprintln!(
+            "{} Opted into Verus analytics, but git unavailable on system. Please make sure git is installed to be able to use analytics",
+            yansi::Paint::yellow("NOTE:").bold()
+        );
         return None;
     }
 
@@ -274,13 +274,13 @@ fn repo_path(store: bool) -> Option<Reports> {
             .expect("Initializing git in local data dir");
     }
 
-    let uuid_file = reports_dir.join("userid");
-    if !uuid_file.is_file() {
-        let uuid = uuid::Uuid::new_v4();
-        write(&uuid_file, uuid.to_string()).expect("Writing user id file");
+    let userid_file = reports_dir.join("userid");
+    if !userid_file.is_file() {
+        let userid = uuid::Uuid::new_v4();
+        write(&userid_file, userid.to_string()).expect("Writing user id file");
     }
 
-    let uuid = read_to_string(&uuid_file).expect("Reading user id file");
+    let userid = read_to_string(&userid_file).expect("Reading user id file");
 
     // Project dir check/create (project = SHA256((normalized/absolute)path to root.rs)
     let new_args = std::env::args().into_iter();
@@ -298,11 +298,11 @@ fn repo_path(store: bool) -> Option<Reports> {
 
     let project_name = input_file_path
         .as_ref()
-        .map(|path| format!("{:x}", sha2::Sha256::digest(path.to_str().unwrap().as_bytes())));
+        .map(|path| format!("{:x}", sha2::Sha256::digest(path.to_string_lossy().as_bytes())));
     // not sure how to write a ? to replace unwrap
 
     let proj_dir = project_name.map(|name| {
-        let project_dir = reports_dir.join(uuid).join(name);
+        let project_dir = reports_dir.join(userid).join(name);
         if !project_dir.is_dir() && store {
             create_dir_all(&project_dir).expect("failed to create project directory");
         }
@@ -312,15 +312,12 @@ fn repo_path(store: bool) -> Option<Reports> {
     let dir = std::env::temp_dir();
     let temp_file = dir.join("verus-dep-info");
 
-    match (input_file_path, proj_dir) {
-        (Some(_), Some(proj_dir)) => Some(Reports { proj_path: proj_dir, dep_path: temp_file }),
-        _ => None,
-    }
+    Some(Reports { project_directory: proj_dir?, dependencies_listing_file: temp_file })
 }
 
-fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<PathBuf>, String> {
-    let file = File::open(dep_file_path)
-        .map_err(|x| format!("{}, dependency file name: {:?}", x, dep_file_path))?;
+fn get_dependencies(dependencies_listing_file: &std::path::Path) -> Result<Vec<PathBuf>, String> {
+    let file = File::open(dependencies_listing_file)
+        .map_err(|x| format!("{}, dependency file name: {:?}", x, dependencies_listing_file))?;
     let mut reader = std::io::BufReader::new(file);
     let mut dependencies = String::new();
     reader.read_line(&mut dependencies).map_err(|x| {

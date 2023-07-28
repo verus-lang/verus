@@ -296,16 +296,6 @@ fn run() -> Result<(), String> {
             });
     }
 
-    let local_store = args_bucket
-        .iter()
-        .position(|x| x.as_str() == "--local-store")
-        .map(|p| args_bucket.remove(p))
-        .is_some();
-
-    if local_store {
-        std::env::set_var("VERUS_LOCAL_STORE", "1");
-    }
-
     let release = args_bucket
         .iter()
         .position(|x| x.as_str() == "--release" || x.as_str() == "-r")
