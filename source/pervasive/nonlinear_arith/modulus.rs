@@ -659,7 +659,7 @@ pub proof fn lemma_mod_ordering_auto()
 
 /// For any integer `x` and positive integers `a` and `b`, the remainder of `x` divided by `a * b`
 /// modulus `a` is equivalent to the remainder of `x` divided by `a`.
-// #[verifier::spinoff_prover]
+#[verifier::spinoff_prover]
 pub proof fn lemma_mod_mod(x: int, a: int, b: int)
     requires 
         0 < a,
