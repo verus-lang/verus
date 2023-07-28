@@ -1756,7 +1756,9 @@ impl Verifier {
         }
         let mut check_crate_diags = vec![];
 
-        let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
+        let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
+
+        let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)?;
         let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
         for diag in check_crate_diags {
             match diag {
