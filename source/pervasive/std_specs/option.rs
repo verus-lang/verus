@@ -103,12 +103,29 @@ pub fn unwrap<T>(option: Option<T>) -> (t: T)
     requires
         option.is_Some(),
     ensures
-        t == option.get_Some_0(),
+        t == spec_unwrap(option),
 {
     option.unwrap()
 }
 
+// unwrap_or
 
+#[verifier(inline)]
+pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T
+{
+    match option {
+        Some(t) => t,
+        None => default
+    }
+}
 
+#[verifier(when_used_as_spec(spec_unwrap_or))]
+#[verifier::external_fn_specification]
+pub fn unwrap_or<T>(option: Option<T>, default: T) -> (t: T)
+    ensures
+        t == spec_unwrap_or(option, default)
+{
+    option.unwrap_or(default)
+}
 
 }

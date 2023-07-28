@@ -419,7 +419,7 @@ pub(crate) fn check_item_external<'tcx>(
     }
     let preds1 = external_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
     let preds2 = proxy_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
-    let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, preds1, preds2);
+    let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2);
     if !preds_match {
         println!("external_predicates: {:#?}", external_predicates.predicates);
         println!("proxy_predicates: {:#?}", proxy_predicates.predicates);

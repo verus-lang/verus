@@ -272,17 +272,18 @@ pub(crate) fn handle_external_fn<'tcx>(
             ),
         );
     }
+
     // trait bounds aren't part of the type signature - we have to check those separately
-    if !predicates_match_by_id(ctxt.tcx, id, external_id, substs1) {
-        println!("Proxy function trait bounds: {:#?}", &all_predicates(ctxt.tcx, id, substs1));
-        println!(
-            "External function trait bounds: {:#?}",
-            &all_predicates(ctxt.tcx, external_id, substs1)
-        );
+    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1);
+    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs1);
+    remove_tilde_const_trait_bounds_from_predicates(&mut proxy_preds);
+    remove_tilde_const_trait_bounds_from_predicates(&mut external_preds);
+    if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signature to match exactly (trait bound mismatch)"
+                "external_fn_specification requires function type signatures to match exactly, ignoring any &const trait bounds, but the proxy function's trait bounds are {:#?} and the external function's trait bounds are {:#?} (trait bound mismatch)",
+                &proxy_preds, &external_preds
             ),
         );
     }
@@ -729,22 +730,22 @@ fn is_mut_ty<'tcx>(
     }
 }
 
-fn predicates_match_by_id<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    id1: rustc_span::def_id::DefId,
-    id2: rustc_span::def_id::DefId,
-    substs: SubstsRef<'tcx>,
-) -> bool {
-    let preds1 = all_predicates(tcx, id1, substs);
-    let preds2 = all_predicates(tcx, id2, substs);
-
-    predicates_match(tcx, preds1, preds2)
+fn remove_tilde_const_trait_bounds_from_predicates<'tcx>(preds: &mut Vec<Predicate<'tcx>>) {
+    preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
+        rustc_middle::ty::PredicateKind::<'tcx>::Clause(
+            rustc_middle::ty::Clause::<'tcx>::Trait(tp),
+        ) => match tp.constness {
+            rustc_middle::ty::BoundConstness::NotConst => true,
+            rustc_middle::ty::BoundConstness::ConstIfConst => false,
+        },
+        _ => true,
+    });
 }
 
 pub(crate) fn predicates_match<'tcx>(
     tcx: TyCtxt<'tcx>,
-    preds1: Vec<Predicate<'tcx>>,
-    preds2: Vec<Predicate<'tcx>>,
+    preds1: &Vec<Predicate<'tcx>>,
+    preds2: &Vec<Predicate<'tcx>>,
 ) -> bool {
     if preds1.len() != preds2.len() {
         return false;

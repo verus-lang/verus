@@ -37,4 +37,11 @@ fn unwrap_test() {
     runtime_assert(a.unwrap() != b.unwrap());
 }
 
+fn unwrap_or_test() {
+    let a = Option::Some(2);
+    let b = Option::None;
+    runtime_assert(a.unwrap_or(3) == 2);
+    runtime_assert(b.unwrap_or(3) == 3);
+}
+
 } // verus!
