@@ -92,22 +92,26 @@ struct SingularEncoder {
     tmp_idx: u32,
     node_map: HashMap<Node, Ident>,
     pp: Printer,
+    user_vars: Vec<String>,
     polys: Vec<String>,
+    mod_poly: Option<String>,
 }
 
 impl SingularEncoder {
-    fn new() -> Self {
+    fn new(user_vars: Vec<String>) -> Self {
         SingularEncoder {
             tmp_idx: 0,
             node_map: HashMap::new(),
             pp: Printer::new(false),
+            user_vars,
             polys: vec!["0".to_string()],
+            mod_poly: None,
         }
     }
 
     fn allocate_temp_var(&mut self) -> String {
-        let res = self.tmp_idx;
         self.tmp_idx += 1;
+        let res = self.tmp_idx;
         format!("{}{}", TMP_PREFIX, res)
     }
 
@@ -238,29 +242,30 @@ impl SingularEncoder {
         return Err(format!("Integer_ring requires/ensures not in equational form: {:?}", expr));
     }
 
-    fn encode_ensures_poly(&mut self, expr: &Expr) -> Result<String, String> {
+    fn encode_ensures_poly_inner(&mut self, expr: &Expr) -> Result<String, String> {
         if let ExprX::Binary(BinaryOp::Eq, lhs, rhs) = &**expr {
             let dlhs = self.decompose_modulus(lhs)?;
             let drhs = self.decompose_modulus(rhs)?;
 
             if is_zero(lhs) && drhs.is_some() {
                 let (a, m) = drhs.unwrap();
-                self.polys.push(m);
+                self.mod_poly = Some(m);
                 return Ok(format!("({})", a));
             }
 
             if is_zero(rhs) && dlhs.is_some() {
                 let (a, m) = dlhs.unwrap();
-                self.polys.push(m);
+                self.mod_poly = Some(m);
                 return Ok(format!("({})", a));
             }
-            
+
             if let (Some((a1, m1)), Some((a2, m2))) = (dlhs, drhs) {
                 if m1 == m2 {
-                    self.polys.push(m1);
+                    self.mod_poly = Some(m1);
                     return Ok(format!("({}) - ({})", a1, a2));
                 }
-                return Err(format!("integer_ring requires not sharing divisor: {:?}", expr));
+                // potentially, we can support this case by not adding the mod_poly, unclear how helpful it would be
+                return Err(format!("integer_ring ensures not sharing divisor: {:?}", expr));
             }
 
             let lhs = self.expr_to_singular(lhs)?;
@@ -270,67 +275,42 @@ impl SingularEncoder {
 
         return Err(format!("Integer_ring requires/ensures not in equational form: {:?}", expr));
     }
-}
 
-pub fn singular_printer(
-    vars: &Vec<Ident>,
-    req_exprs: &Vec<(Expr, Message)>,
-    ens_expr: &(Expr, Message),
-) -> Result<String, Message> {
-    let mut encoder = SingularEncoder::new();
-
-    // // Using @ is safe. For example, `poly g1 = x2+y3` is translated as poly `g1 = x^2 + y^3`
-    let mut vars2: Vec<String> = vec![];
-    for v in vars {
-        let mut v2 = v.to_string();
-        v2.push('@');
-        vars2.push(sanitize_var_name(v2));
-    }
-
-    for (req, err) in req_exprs {
-        match encoder.encode_requires_poly(req) {
-            Ok(_) => {}
-            Err(error_info) => {
-                return Err(err.clone().secondary_label(&err.spans[0].clone(), error_info));
-            }
+    fn encode_ensures_poly(&mut self, ens: &Expr) -> Result<String, String> {
+        let goal = self.encode_ensures_poly_inner(ens)?;
+        let ring_string;
+        // create tmp variable for uninterpreted functions and mod operator.
+        let mut tmp_vars: Vec<String> = vec![];
+        for i in 0..(self.tmp_idx+1) {
+            tmp_vars.push(format!("{}{}", TMP_PREFIX, i.to_string()));
         }
-    }
 
-    let (ens, err) = ens_expr;
+        ring_string = format!(
+            "{} {}={},({},{}),{}",
+            RING_DECL,
+            RING_R,
+            TO_INTEGER_RING,
+            self.user_vars.join(","),
+            tmp_vars.join(","),
+            DP_ORDERING
+        );
+        let mut ideal_string =
+            format!("{} {} = {}", IDEAL_DECL, IDEAL_I, self.polys.join(",\n"));
 
-    match encoder.encode_ensures_poly(ens) {
-        Ok(goal) => {
-            let ring_string;
-            // create tmp variable for uninterpreted functions and mod operator.
-            let mut tmp_vars: Vec<String> = vec![];
-            for i in 0..(encoder.tmp_idx + 1) {
-                tmp_vars.push(format!("{}{}", TMP_PREFIX, i.to_string()));
-            }
-
-            ring_string = format!(
-                "{} {}={},({},{}),{}",
-                RING_DECL,
-                RING_R,
-                TO_INTEGER_RING,
-                vars2.join(","),
-                tmp_vars.join(","),
-                DP_ORDERING
-            );
-            let ideal_string =
-                format!("{} {} = {}", IDEAL_DECL, IDEAL_I, encoder.polys.join(",\n"));
-            let ideal_to_groebner =
-                format!("{} {} = {}({})", IDEAL_DECL, IDEAL_G, GROEBNER_APPLY, IDEAL_I);
-            let reduce_string = format!("{}({}, {})", REDUCE_APPLY, goal, IDEAL_G);
-
-            let res = format!(
-                "{};\n{};\n{};\n{};",
-                ring_string, ideal_string, ideal_to_groebner, reduce_string
-            );
-            Ok(res)
+        // clear the mod poly, since this does not necessarily apply to the next goal.
+        if let Some(mp) = self.mod_poly.take() {
+            ideal_string.push_str(&format!(",\n{}", mp));
         }
-        Err(error_info) => {
-            return Err(err.clone().secondary_label(&err.spans[0].clone(), error_info));
-        }
+
+        let ideal_to_groebner =
+            format!("{} {} = {}({})", IDEAL_DECL, IDEAL_G, GROEBNER_APPLY, IDEAL_I);
+        let reduce_string = format!("{}({}, {})", REDUCE_APPLY, goal, IDEAL_G);
+
+        let res = format!(
+            "{};\n{};\n{};\n{};",
+            ring_string, ideal_string, ideal_to_groebner, reduce_string
+        );
+        Ok(res)
     }
 }
 
@@ -354,67 +334,73 @@ pub fn check_singular_valid(
         panic!("internal error: integer_ring")
     };
 
-    let arc_ens: &air::ast::Stmt = stmts.last().unwrap();
-    let ens = match &**arc_ens {
-        air::ast::StmtX::Assert(error, exp) => (exp.clone(), error.clone()),
-        _ => {
-            panic!("internal error");
-        }
-    };
-
-    let mut vars: Vec<Ident> = vec![];
+    let mut vars: Vec<String> = vec![];
     for d in &**decl {
         if let air::ast::DeclX::Var(name, _typ) = &**d {
-            vars.push(name.clone());
+            let mut v2: String = name.to_string();
+            v2.push('@');
+            vars.push(sanitize_var_name(v2));
         }
     }
 
-    let mut reqs = vec![];
-    for idx in 0..(stmts.len() - 1) {
-        // last element is ensures clause
-        let stm = &stmts[idx];
-        match &**stm {
-            air::ast::StmtX::Assert(error, exp) => {
-                reqs.push((exp.clone(), error.clone()));
-            }
-            _ => {
-                panic!("internal error");
-            }
-        };
-    }
-
-    let query = match singular_printer(&vars, &reqs, &ens) {
-        Ok(query_string) => query_string,
-        Err(err) => return ValidityResult::Invalid(None, err),
-    };
-
-    air::singular_manager::log_singular(context, &query, func_span);
-
-    let quit_string = format!("{};", QUIT_SINGULAR);
-    let query = format!("{} {}", query, quit_string);
-
+    let mut encoder = SingularEncoder::new(vars);
     let singular_manager = SingularManager::new();
     let mut singular_process = singular_manager.launch();
-    let res = singular_process.send_commands(query.as_bytes().to_vec());
-    if (res.len() == 1) && (res[0] == "0") {
-        ValidityResult::Valid
-    } else if res[0].contains("?") {
-        ValidityResult::UnexpectedOutput(String::from(format!(
-            "{} \ngenerated singular query: {}",
-            res[0].as_str(),
-            query
-        )))
-    } else {
-        ValidityResult::Invalid(
-            None,
-            air::messages::error(
-                format!(
-                    "postcondition not satisfied: Ensures polynomial failed to be reduced to zero, reduced polynomial is {}\n generated singular query: {} ",
-                    res[0].as_str(),
-                    query
-                ),
-                &ens.1.spans[0],
-            ),
-        )
+
+    for stmt in &*stmts {
+        if let air::ast::StmtX::Assert(err, expr) = &**stmt {
+            assert_eq!(err.labels.len(), 1);
+            let span = &err.spans[0];
+            let label = &err.labels[0].note;
+            if label.contains("require") {
+                if let Err(info) = encoder.encode_requires_poly(expr) {
+                    return ValidityResult::Invalid(
+                        None,
+                        err.clone().secondary_label(span, info)
+                    );
+                }
+            } else if label.contains("ensure") {
+                match encoder.encode_ensures_poly(expr) {
+                    Err(info) => {
+                        return ValidityResult::Invalid(
+                            None,
+                            err.clone().secondary_label(span, info)
+                        );
+                    }
+                    Ok(query) => {
+                        air::singular_manager::log_singular(context, &query, func_span);
+                        let res = singular_process.send_commands(query.as_bytes().to_vec());
+                        if (res.len() == 1) && (res[0] == "0") {
+                            continue;
+                        } else if (res.len() == 2) && (res[1] == "0") {
+                            assert!(res[0].contains("// ** redefining"));
+                            continue;
+                        }
+                        else if res[0].contains("?") {
+                            return ValidityResult::UnexpectedOutput(String::from(format!(
+                                "{} \ngenerated singular query: {}",
+                                res[0].as_str(),
+                                query
+                            )));
+                        } else {
+                            return ValidityResult::Invalid(
+                                None,
+                                err.clone().secondary_label(
+                                    span,
+                                    format!("Singular returned:\n {}", res.join("\n"))
+                                )
+                            );
+                        }
+                    }
+                }
+            } else {
+                panic!("internal error: integer_ring")
+            }
+        }
     }
+
+    let quit = format!("{};", QUIT_SINGULAR).as_bytes().to_vec();
+    let _res = singular_process.send_commands(quit);
+
+    return ValidityResult::Valid;
 }

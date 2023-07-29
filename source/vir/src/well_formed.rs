@@ -613,9 +613,6 @@ fn check_function(
                 }
             }
         }
-        if function.x.ensure.len() != 1 {
-            return error(&function.span, "only a single ensures is allowed in integer_ring mode");
-        }
         if function.x.has_return() {
             return error(&function.span, "integer_ring mode function cannot have a return value");
         }
