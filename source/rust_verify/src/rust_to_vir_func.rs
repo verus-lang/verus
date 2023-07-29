@@ -276,13 +276,13 @@ pub(crate) fn handle_external_fn<'tcx>(
     // trait bounds aren't part of the type signature - we have to check those separately
     let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1);
     let mut external_preds = all_predicates(ctxt.tcx, external_id, substs1);
-    remove_tilde_const_trait_bounds_from_predicates(&mut proxy_preds);
-    remove_tilde_const_trait_bounds_from_predicates(&mut external_preds);
+    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
+    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
     if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signatures to match exactly, ignoring any &const trait bounds, but the proxy function's trait bounds are {:#?} and the external function's trait bounds are {:#?} (trait bound mismatch)",
+                "external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds, but the proxy function's trait bounds are {:#?} and the external function's trait bounds are {:#?} (trait bound mismatch)",
                 &proxy_preds, &external_preds
             ),
         );
@@ -730,13 +730,16 @@ fn is_mut_ty<'tcx>(
     }
 }
 
-fn remove_tilde_const_trait_bounds_from_predicates<'tcx>(preds: &mut Vec<Predicate<'tcx>>) {
+fn remove_destruct_trait_bounds_from_predicates<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    preds: &mut Vec<Predicate<'tcx>>,
+) {
     preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::PredicateKind::<'tcx>::Clause(
             rustc_middle::ty::Clause::<'tcx>::Trait(tp),
-        ) => match tp.constness {
-            rustc_middle::ty::BoundConstness::NotConst => true,
-            rustc_middle::ty::BoundConstness::ConstIfConst => false,
+        ) => match crate::verus_items::def_id_to_stable_rust_path(tcx, tp.trait_ref.def_id) {
+            Some(s) => s != "core::marker::Destruct",
+            None => true,
         },
         _ => true,
     });
