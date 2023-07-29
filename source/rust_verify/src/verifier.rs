@@ -591,7 +591,7 @@ impl Verifier {
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
-        exact_match: bool,  // for --verify-function flag
+        exact_match: bool, // for --verify-function flag
         comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
@@ -977,7 +977,8 @@ impl Verifier {
                     .join("\n");
                     return Err(error(msg));
                 }
-            } else { // wildcard match
+            } else {
+                // wildcard match
                 let left_wildcard = verify_function.starts_with("*");
                 let right_wildcard = verify_function.ends_with("*");
                 let mut wildcard_mismatch = false;
@@ -1412,7 +1413,7 @@ impl Verifier {
                     (!self.args.verify_root
                         && self.args.verify_module.is_empty()
                         && (!is_pervasive ^ self.args.verify_pervasive))
-                        || (self.args.verify_root && m.segments.len() == 0)
+                        || (self.args.verify_root && m.segments.len() == 0 && !is_pervasive)
                         || remaining_verify_module.take(&name).is_some()
                 })
                 .cloned()
