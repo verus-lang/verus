@@ -148,7 +148,7 @@ impl SingularEncoder {
                     MultiOp::Sub => " - ",
                     MultiOp::Mul => " * ", // still reachable with constant multiplication
                     _ => {
-                        return Err(format!("unsupported integer_ring operator: {:?}", op.clone()))
+                        return Err(format!("unsupported integer_ring operator: {:?}", op.clone()));
                     }
                 };
                 for e in &**exprs {
