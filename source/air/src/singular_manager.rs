@@ -38,20 +38,17 @@ impl SingularManager {
     }
 }
 
-const DONE: &str = "<<DONE>>";
-
 fn singular_writer_thread(requests: Receiver<Vec<u8>>, mut singular_pipe_stdin: ChildStdin) {
     while let Ok(req) = requests.recv() {
         singular_pipe_stdin
             .write_all(&req)
             .and_then(|_| writeln!(&singular_pipe_stdin))
-            // ask for acknowledgement
-            .and_then(|_| writeln!(&singular_pipe_stdin, "print(\"{}\");", DONE))
             .and_then(|_| singular_pipe_stdin.flush())
             // The Singular process could die unexpectedly. In that case, we die too:
             .expect("IO error: failure when sending data to Singular process across pipe");
     }
     // Exit when the other side closes the channel
+    singular_pipe_stdin.write_all(b"quit;\n").expect("IO error: failure quitting Singular process");
 }
 
 impl SingularProcess {
@@ -65,7 +62,7 @@ impl SingularProcess {
                 .read_line(&mut line)
                 .expect("IO error: failure when receiving data to singular process across pipe");
             line = line.replace("\n", "").replace("\r", "");
-            if line == DONE || line == "" {
+            if line == "<<DONE>>" || line == "" {
                 break;
             }
             lines.push(line);

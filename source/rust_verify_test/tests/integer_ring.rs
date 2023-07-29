@@ -236,7 +236,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     test_multiple_ensures verus_code! {
         pub proof fn LemmaMulModNoopGeneral(x: int, y: int, m: int) by(integer_ring)
-            ensures 
+            ensures
                 ((x % m) * y) % m == (x * y) % m,
                 (x * (y % m)) % m == (x * y) % m,
                 ((x % m) * (y % m)) % m == (x * y) % m
@@ -249,7 +249,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     test_multiple_ensures_with_error verus_code! {
         pub proof fn LemmaMulModNoopGeneral(x: int, y: int, m: int) by(integer_ring)
-            ensures 
+            ensures
                 ((x % m) * y) % m == (x * y) % m,
                 ((x % m) * (y % m)) % m == (x) % m, // this is wrong
                 (x * (y % m)) % m == (x * y) % m

@@ -15,6 +15,9 @@ const REDUCE_APPLY: &str = "reduce";
 const TO_INTEGER_RING: &str = "integer";
 const QUIT_SINGULAR: &str = "quit";
 
+// this is only used in print command
+pub const DONE: &str = "<<DONE>>";
+
 // Verus-side reserved variable names for encoding purposes
 const RING_R: &str = "ring_R";
 const IDEAL_I: &str = "ideal_I";
@@ -304,9 +307,10 @@ impl SingularEncoder {
             format!("{} {} = {}({})", IDEAL_DECL, IDEAL_G, GROEBNER_APPLY, IDEAL_I);
         let reduce_string = format!("{}({}, {})", REDUCE_APPLY, goal, IDEAL_G);
 
+        // ask for acknowledgement
         let res = format!(
-            "{};\n{};\n{};\n{};",
-            ring_string, ideal_string, ideal_to_groebner, reduce_string
+            "{};\n{};\n{};\n{};\nprint(\"{}\");\n",
+            ring_string, ideal_string, ideal_to_groebner, reduce_string, DONE
         );
         Ok(res)
     }
@@ -392,9 +396,6 @@ pub fn check_singular_valid(
             }
         }
     }
-
-    let quit = format!("{};", QUIT_SINGULAR).as_bytes().to_vec();
-    let _res = singular_process.send_commands(quit);
 
     return ValidityResult::Valid;
 }
