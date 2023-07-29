@@ -1,6 +1,5 @@
 use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::Message;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
@@ -281,7 +280,7 @@ impl SingularEncoder {
         let ring_string;
         // create tmp variable for uninterpreted functions and mod operator.
         let mut tmp_vars: Vec<String> = vec![];
-        for i in 0..(self.tmp_idx+1) {
+        for i in 0..(self.tmp_idx + 1) {
             tmp_vars.push(format!("{}{}", TMP_PREFIX, i.to_string()));
         }
 
@@ -294,8 +293,7 @@ impl SingularEncoder {
             tmp_vars.join(","),
             DP_ORDERING
         );
-        let mut ideal_string =
-            format!("{} {} = {}", IDEAL_DECL, IDEAL_I, self.polys.join(",\n"));
+        let mut ideal_string = format!("{} {} = {}", IDEAL_DECL, IDEAL_I, self.polys.join(",\n"));
 
         // clear the mod poly, since this does not necessarily apply to the next goal.
         if let Some(mp) = self.mod_poly.take() {
@@ -354,17 +352,14 @@ pub fn check_singular_valid(
             let label = &err.labels[0].note;
             if label.contains("require") {
                 if let Err(info) = encoder.encode_requires_poly(expr) {
-                    return ValidityResult::Invalid(
-                        None,
-                        err.clone().secondary_label(span, info)
-                    );
+                    return ValidityResult::Invalid(None, err.clone().secondary_label(span, info));
                 }
             } else if label.contains("ensure") {
                 match encoder.encode_ensures_poly(expr) {
                     Err(info) => {
                         return ValidityResult::Invalid(
                             None,
-                            err.clone().secondary_label(span, info)
+                            err.clone().secondary_label(span, info),
                         );
                     }
                     Ok(query) => {
@@ -375,8 +370,7 @@ pub fn check_singular_valid(
                         } else if (res.len() == 2) && (res[1] == "0") {
                             assert!(res[0].contains("// ** redefining"));
                             continue;
-                        }
-                        else if res[0].contains("?") {
+                        } else if res[0].contains("?") {
                             return ValidityResult::UnexpectedOutput(String::from(format!(
                                 "{} \ngenerated singular query: {}",
                                 res[0].as_str(),
@@ -387,8 +381,8 @@ pub fn check_singular_valid(
                                 None,
                                 err.clone().secondary_label(
                                     span,
-                                    format!("Singular returned:\n {}", res.join("\n"))
-                                )
+                                    format!("Singular returned:\n {}", res.join("\n")),
+                                ),
                             );
                         }
                     }

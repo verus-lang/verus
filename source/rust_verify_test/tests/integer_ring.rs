@@ -230,3 +230,29 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test_multiple_ensures verus_code! {
+        pub proof fn LemmaMulModNoopGeneral(x: int, y: int, m: int) by(integer_ring)
+            ensures 
+                ((x % m) * y) % m == (x * y) % m,
+                (x * (y % m)) % m == (x * y) % m,
+                ((x % m) * (y % m)) % m == (x * y) % m
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test_multiple_ensures_with_error verus_code! {
+        pub proof fn LemmaMulModNoopGeneral(x: int, y: int, m: int) by(integer_ring)
+            ensures 
+                ((x % m) * y) % m == (x * y) % m,
+                ((x % m) * (y % m)) % m == (x) % m, // this is wrong
+                (x * (y % m)) % m == (x * y) % m
+        {}
+    } => Err(_)
+}

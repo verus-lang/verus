@@ -174,20 +174,21 @@ pub proof fn LemmaModMultiplesBasic(x: int, m: int) by(integer_ring)
 
 pub proof fn LemmaModMultipleVanish(b: int, m: int) by(integer_ring)
     ensures
-        (b + m) % m == b % m
+        (b + m) % m == b % m,
+        (b - m) % m == b % m
 {}
 
 pub proof fn LemmaModMultiplesVanish(a: int, b: int, m: int) by(integer_ring)
     ensures
-        (b + a * m) % m == b % m
-        // currently can't use Singular for multiple ensures
-        // should be easy to extend
-        // (b - m * a) % m == b % m,
+        (b + a * m) % m == b % m,
+        (b + m * a) % m == b % m,
+        (b - a * m) % m == b % m,
+        (b - m * a) % m == b % m
 {}
 
 pub proof fn LemmaAddModNoopLeft(x: int, y: int, m: int) by(integer_ring)
     ensures
-        ((x % m) + y) % m == (x + y) % m
+        ((x % m) + y) % m == (x + y) % m,
 {}
 
 pub proof fn LemmaSubModNoopRight(x: int, y: int, m: int) by(integer_ring)
@@ -203,6 +204,25 @@ pub proof fn LemmaModNegNeg(x: int, d: int) by(integer_ring)
 pub proof fn LemmaMulModNoopRight(x: int, y: int, m: int) by(integer_ring)
     ensures
         x * (y % m) % m == (x * y) % m
+{}
+
+pub proof fn LemmaMulModNoopGeneral(x: int, y: int, m: int) by(integer_ring)
+    ensures 
+        ((x % m) * y) % m == (x * y) % m,
+        (x * (y % m)) % m == (x * y) % m,
+        ((x % m) * (y % m)) % m == (x * y) % m
+{}
+
+pub proof fn LemmaMulIsDistributive(x: int, y: int, z: int) by(integer_ring)
+    ensures
+        x * (y + z) == x * y + x * z,
+        x * (y - z) == x * y - x * z,
+        (y + z) * x == y * x + z * x,
+        (y - z) * x == y * x - z * x,
+        x * (y + z) == (y + z) * x,
+        x * (y - z) == (y - z) * x,
+        x * y == y * x,
+        x * z == z * x
 {}
 
 fn main() {}
