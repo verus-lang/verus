@@ -695,6 +695,7 @@ impl Visitor {
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
         if self.erase_ghost.erase_all() {
+            // Erase ghost functions and constants
             items.retain(|item| match item {
                 Item::Fn(fun) => match fun.sig.mode {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
@@ -704,16 +705,10 @@ impl Visitor {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
-                Item::Struct(s) => match s.mode {
-                    DataMode::Ghost(_) | DataMode::Tracked(_) => false,
-                    DataMode::Exec(_) | DataMode::Default => true,
-                },
-                Item::Enum(e) => match e.mode {
-                    DataMode::Ghost(_) | DataMode::Tracked(_) => false,
-                    DataMode::Exec(_) | DataMode::Default => true,
-                },
                 _ => true,
             });
+            // We can't erase ghost datatypes D, because they can be used
+            // as Ghost<D> or Tracked<D>.
         }
         let erase_ghost = self.erase_ghost.erase();
         // We'd like to erase ghost items, but there may be dangling references to the ghost items:
