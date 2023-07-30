@@ -7,7 +7,7 @@ use crate::rust_to_vir_base::{
     check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::{err_span, err_span_bare, unsupported_err_span};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
@@ -279,13 +279,14 @@ pub(crate) fn handle_external_fn<'tcx>(
     remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
     remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
     if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
-        return err_span(
+        let err = err_span_bare(
             sig.span,
-            format!(
-                "external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds, but the proxy function's trait bounds are {:#?} and the external function's trait bounds are {:#?} (trait bound mismatch)",
-                &proxy_preds, &external_preds
-            ),
-        );
+            "external_fn_specification trait bound mismatch")
+            .help(format!("external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
+          but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
+          proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
+          external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
+        return Err(err);
     }
 
     let external_item_visibility = mk_visibility(ctxt, external_id);
