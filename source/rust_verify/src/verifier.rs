@@ -1565,7 +1565,13 @@ impl Verifier {
         if self.args.profile_all {
             let profiler = Profiler::new(&reporter);
             self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
+        } else if self.args.profile && self.count_errors == 0 {
+            let msg = note_bare(
+                "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
+            );
+            reporter.report(&msg);
         }
+
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
             let mut file = self.create_log_file(None, None, crate::config::TRIGGERS_FILE_SUFFIX)?;
