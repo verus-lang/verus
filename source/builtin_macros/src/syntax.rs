@@ -181,10 +181,11 @@ impl Visitor {
 
             // Check for Ghost(x) or Tracked(x) argument
             use syn_verus::PatType;
-            if let FnArgKind::Typed(PatType { pat: box pat, .. }) = &mut arg.kind {
+            if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
+                let pat = &mut **pat;
                 let mut tracked_wrapper = false;
                 let mut wrapped_pat_id = None;
-                if let Pat::TupleStruct(tup) = &pat {
+                if let Pat::TupleStruct(tup) = &*pat {
                     let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
                     tracked_wrapper = path_is_ident(&tup.path, "Tracked");
                     if ghost_wrapper || tracked_wrapper || tup.pat.elems.len() == 1 {
@@ -232,7 +233,7 @@ impl Visitor {
                 }
                 match std::mem::take(ret_opt) {
                     None => None,
-                    Some(box (_, p, _)) => Some((p.clone(), ty.clone())),
+                    Some(ret) => Some((ret.1.clone(), ty.clone())),
                 }
             }
         };
@@ -1210,17 +1211,18 @@ impl VisitMut for Visitor {
 
         let mode_block = match expr {
             Expr::Unary(ExprUnary { op: UnOp::Proof(..), .. }) => Some((false, false)),
-            Expr::Call(ExprCall { func: box Expr::Path(path), args, .. })
-                if path.qself.is_none() && args.len() == 1 =>
-            {
-                if path_is_ident(&path.path, "Ghost") {
-                    Some((true, false))
-                } else if path_is_ident(&path.path, "Tracked") {
-                    Some((true, true))
-                } else {
-                    None
+            Expr::Call(ExprCall { func, args, .. }) => match &**func {
+                Expr::Path(path) if path.qself.is_none() && args.len() == 1 => {
+                    if path_is_ident(&path.path, "Ghost") {
+                        Some((true, false))
+                    } else if path_is_ident(&path.path, "Tracked") {
+                        Some((true, true))
+                    } else {
+                        None
+                    }
                 }
-            }
+                _ => None,
+            },
             _ => None,
         };
 
@@ -1674,8 +1676,8 @@ impl VisitMut for Visitor {
                                 }
                             }
                             "bit_vector" | "nonlinear_arith" => {
-                                let mut block = if let Some(box block) = assert.body {
-                                    block
+                                let mut block = if let Some(block) = assert.body {
+                                    *block
                                 } else {
                                     Block { brace_token: token::Brace { span }, stmts: vec![] }
                                 };
@@ -1706,7 +1708,7 @@ impl VisitMut for Visitor {
                                 *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
                             }
                         }
-                    } else if let Some(box block) = assert.body {
+                    } else if let Some(block) = assert.body {
                         // assert-by
                         if assert.requires.is_some() {
                             *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
@@ -1775,7 +1777,7 @@ impl VisitMut for Visitor {
                                 }
                                 match std::mem::take(ret_opt) {
                                     None => None,
-                                    Some(box (_, p, _)) => Some((p.clone(), ty.clone())),
+                                    Some(ret) => Some((ret.1.clone(), ty.clone())),
                                 }
                             }
                         };
@@ -2465,6 +2467,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
 
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
 // Try to put the original tokens back together here.
+#[cfg(verus_keep_ghost)]
 fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use proc_macro::{Group, Punct, Spacing::*, Span, TokenTree};
     let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
@@ -2516,6 +2519,12 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     }
     proc_macro::TokenStream::from_iter(tokens.into_iter())
+}
+
+#[cfg(not(verus_keep_ghost))]
+// REVIEW: how much do we actually rely on rejoin_tokens?
+fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    stream
 }
 
 pub(crate) fn proof_macro_exprs(

@@ -1,8 +1,10 @@
-#![feature(box_patterns)]
-#![feature(proc_macro_span)]
-#![feature(proc_macro_tracked_env)]
-#![feature(proc_macro_quote)]
-#![feature(proc_macro_expand)]
+#![cfg_attr(
+    verus_keep_ghost,
+    feature(proc_macro_span),
+    feature(proc_macro_tracked_env),
+    feature(proc_macro_quote),
+    feature(proc_macro_expand)
+)]
 
 use synstructure::{decl_attribute, decl_derive};
 mod atomic_ghost;
@@ -92,6 +94,7 @@ pub fn verus_exec_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     syntax::rewrite_expr(cfg_erase(), false, input)
 }
 
+#[cfg(verus_keep_ghost)]
 pub(crate) fn cfg_erase() -> EraseGhost {
     let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_keep_ghost_code) }.into();
     let ts_stubs: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_keep_ghost) }.into();
@@ -109,6 +112,11 @@ pub(crate) fn cfg_erase() -> EraseGhost {
             panic!("cfg_erase call failed")
         }
     }
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn cfg_erase() -> EraseGhost {
+    EraseGhost::EraseAll
 }
 
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
