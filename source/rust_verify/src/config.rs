@@ -192,7 +192,7 @@ pub fn parse_args_with_imports(
     opts.optopt(
         "",
         OPT_VERIFY_FUNCTION,
-        "Verify just one function (e.g. 'foo' or 'foo::bar') within the one module specified by verify-module or verify-root",
+        "Verify just one function within the one module specified by verify-module or verify-root, \nmatches on unique substring (foo) or wildcards at ends of the argument (*foo, foo*, *foo*)",
         "MODULE",
     );
     opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules (and nothing else)");

@@ -591,14 +591,14 @@ impl Verifier {
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
-        exact_match: bool, // for --verify-function flag
+        verify_function_exact_match: bool,
         comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
                 let name = friendly_fun_name_crate_relative(&module, function_name);
-                if exact_match && &name != verify_function {
+                if verify_function_exact_match && &name != verify_function {
                     return false;
                 }
 
@@ -930,7 +930,7 @@ impl Verifier {
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
-        let mut exact_match = false;
+        let mut verify_function_exact_match = false;
         if let Some(verify_function) = &self.args.verify_function {
             let module_funs = funs
                 .iter()
@@ -961,8 +961,9 @@ impl Verifier {
 
             // substring match
             if verify_function == clean_verify_function {
-                exact_match = filtered_functions.iter().any(|f| f == &verify_function);
-                if filtered_functions.len() > 1 && !exact_match {
+                verify_function_exact_match =
+                    filtered_functions.iter().any(|f| f == &verify_function);
+                if filtered_functions.len() > 1 && !verify_function_exact_match {
                     filtered_functions.sort();
                     let msg = vec![
                         format!(
@@ -979,11 +980,16 @@ impl Verifier {
                 }
             } else {
                 // wildcard match
-                let wildcard_mismatch = match (verify_function.starts_with("*"), verify_function.ends_with("*")) {
-                  (true, false) => !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function)),
-                  (false, true) => !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function)),
-                  _ => false,
-                };
+                let wildcard_mismatch =
+                    match (verify_function.starts_with("*"), verify_function.ends_with("*")) {
+                        (true, false) => {
+                            !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function))
+                        }
+                        (false, true) => {
+                            !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function))
+                        }
+                        _ => false,
+                    };
 
                 if wildcard_mismatch {
                     filtered_functions.sort();
@@ -1075,7 +1081,7 @@ impl Verifier {
                     &ctx.global.qid_map.borrow(),
                     module,
                     Some(&function.x.name),
-                    exact_match,
+                    verify_function_exact_match,
                     &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
                 );
@@ -1108,7 +1114,7 @@ impl Verifier {
                             &ctx.global.qid_map.borrow(),
                             module,
                             Some(&function.x.name),
-                            exact_match,
+                            verify_function_exact_match,
                             &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                             Some("recommends check: "),
                         );
@@ -1237,7 +1243,7 @@ impl Verifier {
                         &ctx.global.qid_map.borrow(),
                         module,
                         Some(&function.x.name),
-                        exact_match,
+                        verify_function_exact_match,
                         &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                         desc_prefix,
                     );
