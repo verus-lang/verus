@@ -256,7 +256,7 @@ fn get_storage_type_tuple(sm: &SM) -> Type {
 /// currently runs into Verus limitations with deriving instances.
 fn trusted_clone() -> TokenStream {
     return quote! {
-        #[cfg(verus_macro_keep_ghost)]
+        #[cfg(verus_keep_ghost_code)]
         #[verus::internal(verus_macro)]
         #[verifier::proof]
         #[verifier::external_body] /* vattr */
@@ -347,7 +347,7 @@ fn token_struct_stream(
         }
 
         #impldecl {
-            #[cfg(verus_macro_keep_ghost)]
+            #[cfg(verus_keep_ghost_code)]
             #[verus::internal(verus_macro)]
             #[verifier::publish] /* vattr */
             #[verifier::external_body] /* vattr */
@@ -1090,7 +1090,7 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #[cfg(verus_macro_keep_ghost)]
+        #[cfg(verus_keep_ghost_code)]
         #[verus::internal(verus_macro)]
         #ret_value_mode
         #[verifier::external_body] /* vattr */
@@ -1290,7 +1290,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // Some(x)        Some(Token { instance: instance, value: x })
 
             quote! {
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::inline] /* vattr */
                 #[verifier::publish] /* vattr */
@@ -1300,7 +1300,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     && ::builtin::imply(opt.is_None(), token_opt.is_None())
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::publish] /* vattr */
                 #[verifier::spec]
@@ -1333,7 +1333,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // {x, y}         { x => { instance, x }, y => { instance, y } }
 
             quote! {
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::publish] /* vattr */
                 #[verifier::spec]
@@ -1358,7 +1358,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     })
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::inline] /* vattr */
                 #[verifier::publish] /* vattr */
@@ -1385,7 +1385,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // true           Some(Token { instance: instance })
 
             quote! {
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::publish] /* vattr */
                 #[verifier::spec]
@@ -1396,7 +1396,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::inline] /* vattr */
                 #[verifier::publish] /* vattr */
@@ -1430,7 +1430,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    [k1 := Token { instance: instance, value: v2 }]...
 
             quote! {
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::publish] /* vattr */
                 #[verifier::spec]
@@ -1451,7 +1451,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::publish] /* vattr */
                 #[verifier::spec]
@@ -1485,7 +1485,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // }
 
             quote! {
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::publish] /* vattr */
                 #[verifier::spec]
@@ -1501,7 +1501,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::publish] /* vattr */
                 #[verifier::spec]
@@ -1520,7 +1520,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     })
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 #[verifier::returns(proof)] /* vattr */
@@ -1535,7 +1535,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     ::std::unimplemented!();
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
@@ -1561,7 +1561,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         }
         ShardableType::Count => {
             quote! {
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 #[verifier::returns(proof)] /* vattr */
@@ -1575,7 +1575,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     ::std::unimplemented!();
                 }
 
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
@@ -1599,7 +1599,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
         }
         ShardableType::PersistentCount => {
             quote! {
-                #[cfg(verus_macro_keep_ghost)]
+                #[cfg(verus_keep_ghost_code)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */

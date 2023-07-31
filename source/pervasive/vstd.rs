@@ -6,7 +6,7 @@
 #![allow(unused_parens)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
-#![feature(core_intrinsics)]
+#![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 
 pub mod pervasive;
 pub mod bytes;
@@ -36,6 +36,8 @@ pub mod string;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod vec;
 pub mod view;
+
+#[cfg(verus_keep_ghost)]
 pub mod std_specs;
 
 // Re-exports all pervasive types, traits, and functions that are commonly used or replace

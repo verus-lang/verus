@@ -493,6 +493,7 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
                     .env("RUSTFLAGS", "--cfg proc_macro_span")
+                    .env("RUSTFLAGS", "--cfg verus_keep_ghost")
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -531,6 +532,7 @@ fn run() -> Result<(), String> {
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
                     .env("RUSTFLAGS", "--cfg proc_macro_span")
+                    .env("RUSTFLAGS", "--cfg verus_keep_ghost")
                     .env("CARGO", current_exe)
                     .args(&args);
                 log_command(&cargo, verbose);
@@ -544,6 +546,7 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
                     .env("RUSTFLAGS", "--cfg proc_macro_span")
+                    .env("RUSTFLAGS", "--cfg verus_keep_ghost")
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -558,6 +561,7 @@ fn run() -> Result<(), String> {
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
                 .env("RUSTFLAGS", "--cfg proc_macro_span")
+                .env("RUSTFLAGS", "--cfg verus_keep_ghost")
                 .args(&args);
             log_command(&cargo, verbose);
             cargo
@@ -577,6 +581,7 @@ fn run() -> Result<(), String> {
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
                 .env("RUSTFLAGS", "--cfg proc_macro_span")
+                .env("RUSTFLAGS", "--cfg verus_keep_ghost")
                 .args(args);
             log_command(&cargo, verbose);
             let status = cargo
@@ -610,6 +615,7 @@ fn run() -> Result<(), String> {
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
                         .env("RUSTFLAGS", "--cfg proc_macro_span")
+                        .env("RUSTFLAGS", "--cfg verus_keep_ghost")
                         .arg("build")
                         .arg("-p")
                         .arg(target);
@@ -781,6 +787,7 @@ fn run() -> Result<(), String> {
                             .env("RUSTC_BOOTSTRAP", "1")
                             .env("VERUS_IN_VARGO", "1")
                             .env("RUSTFLAGS", "--cfg proc_macro_span")
+                            .env("RUSTFLAGS", "--cfg verus_keep_ghost")
                             .arg("run")
                             .arg("-p")
                             .arg("vstd_build")

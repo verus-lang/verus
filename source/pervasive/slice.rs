@@ -4,6 +4,7 @@ use builtin_macros::*;
 use crate::view::*;
 use crate::seq::*;
 
+#[cfg(verus_keep_ghost)]
 pub use super::std_specs::vec::VecAdditionalSpecFns;
 
 verus!{
