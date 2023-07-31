@@ -20,8 +20,8 @@ impl SingularManager {
     }
     pub fn launch(&self) -> SingularProcess {
         let mut child = std::process::Command::new(&self.singular_executable_name)
-            // .arg("--no-tty")
             .arg("--quiet")
+            // .arg("--no-tty") // these options are potentially useful for debugging purposes
             // .arg("--no-shell")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
