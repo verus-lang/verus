@@ -979,17 +979,11 @@ impl Verifier {
                 }
             } else {
                 // wildcard match
-                let left_wildcard = verify_function.starts_with("*");
-                let right_wildcard = verify_function.ends_with("*");
-                let mut wildcard_mismatch = false;
-
-                if left_wildcard && !right_wildcard {
-                    wildcard_mismatch =
-                        !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function));
-                } else if !left_wildcard && right_wildcard {
-                    wildcard_mismatch =
-                        !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function));
-                }
+                let wildcard_mismatch = match (verify_function.starts_with("*"), verify_function.ends_with("*")) {
+                  (true, false) => !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function)),
+                  (false, true) => !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function)),
+                  _ => false,
+                };
 
                 if wildcard_mismatch {
                     filtered_functions.sort();
