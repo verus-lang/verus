@@ -7,7 +7,7 @@ use crate::rust_to_vir_base::{
     check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::{err_span, err_span_bare, unsupported_err_span};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
@@ -272,19 +272,21 @@ pub(crate) fn handle_external_fn<'tcx>(
             ),
         );
     }
+
     // trait bounds aren't part of the type signature - we have to check those separately
-    if !predicates_match_by_id(ctxt.tcx, id, external_id, substs1) {
-        println!("Proxy function trait bounds: {:#?}", &all_predicates(ctxt.tcx, id, substs1));
-        println!(
-            "External function trait bounds: {:#?}",
-            &all_predicates(ctxt.tcx, external_id, substs1)
-        );
-        return err_span(
+    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1);
+    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs1);
+    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
+    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
+    if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
+        let err = err_span_bare(
             sig.span,
-            format!(
-                "external_fn_specification requires function type signature to match exactly (trait bound mismatch)"
-            ),
-        );
+            "external_fn_specification trait bound mismatch")
+            .help(format!("external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
+          but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
+          proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
+          external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
+        return Err(err);
     }
 
     let external_item_visibility = mk_visibility(ctxt, external_id);
@@ -729,22 +731,25 @@ fn is_mut_ty<'tcx>(
     }
 }
 
-fn predicates_match_by_id<'tcx>(
+fn remove_destruct_trait_bounds_from_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
-    id1: rustc_span::def_id::DefId,
-    id2: rustc_span::def_id::DefId,
-    substs: SubstsRef<'tcx>,
-) -> bool {
-    let preds1 = all_predicates(tcx, id1, substs);
-    let preds2 = all_predicates(tcx, id2, substs);
-
-    predicates_match(tcx, preds1, preds2)
+    preds: &mut Vec<Predicate<'tcx>>,
+) {
+    preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
+        rustc_middle::ty::PredicateKind::<'tcx>::Clause(
+            rustc_middle::ty::Clause::<'tcx>::Trait(tp),
+        ) => match crate::verus_items::def_id_to_stable_rust_path(tcx, tp.trait_ref.def_id) {
+            Some(s) => s != "core::marker::Destruct",
+            None => true,
+        },
+        _ => true,
+    });
 }
 
 pub(crate) fn predicates_match<'tcx>(
     tcx: TyCtxt<'tcx>,
-    preds1: Vec<Predicate<'tcx>>,
-    preds2: Vec<Predicate<'tcx>>,
+    preds1: &Vec<Predicate<'tcx>>,
+    preds2: &Vec<Predicate<'tcx>>,
 ) -> bool {
     if preds1.len() != preds2.len() {
         return false;
