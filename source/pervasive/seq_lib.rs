@@ -73,7 +73,7 @@ impl<A> Seq<A> {
     /// ```rust
     /// {{#include ../../../rust_verify/example/multiset.rs:sorted_by_eg}}
     /// ```
-    pub open spec fn sort_by(self, leq: FnSpec(A,A) -> bool) -> Seq<A>
+    pub closed spec fn sort_by(self, leq: FnSpec(A,A) -> bool) -> Seq<A>
         recommends
             total_ordering(leq),
         decreases
@@ -317,43 +317,62 @@ impl<A> Seq<A> {
 
     /// For an element that occurs at least once in a sequence, if its first occurence
     /// is at index i, Some(i) is returned. Otherwise, None is returned
-    pub open spec fn find_first(self, needle: A) -> (result: Option<int>)
+    pub closed spec fn find_first(self, needle: A) -> (result: Option<int>)
     {
         if self.contains(needle) {
-            Some(self.first_index_helper(needle, 0))
+            Some(self.first_index_helper(needle))
         } else {
             None
         }
     }
 
-    /// Recursive helper function for first_index_of
-    pub closed spec fn first_index_helper(self, needle: A, index: int) -> int
+    // Recursive helper function for find_first
+    spec fn first_index_helper(self, needle: A) -> int
         recommends self.contains(needle),
         decreases self.len(),
     {   
         if self.len() <= 0 {
             -1 //arbitrary, will never get to this case
+        } else if self[0] == needle {
+            0
+        } else {
+            1 + self.subrange(1,self.len() as int).first_index_helper(needle)
         }
-        else if self[0] == needle {
-            index
-        }
-        else {
-            self.subrange(1,self.len() as int).first_index_helper(needle, index+1)
+    }
+
+    pub proof fn find_first_ensures(self, needle: A)
+        ensures
+            self.find_first(needle).is_some() <==> self.contains(needle),
+            self.find_first(needle).is_some() ==> self[self.find_first(needle).unwrap()] == needle,
+            self.find_first(needle).is_none() <==> !self.contains(needle),
+            self.contains(needle) ==> 0 <= self.find_first(needle).unwrap() < self.len(),
+            self.contains(needle) ==> (forall |j: int| 0 <= j < self.find_first(needle).unwrap() < self.len() ==> self[j] != needle),
+        decreases
+            self.len(),
+    {
+        if self.contains(needle) {
+            let index = self.find_first(needle).unwrap();
+            if self.len() <= 0 {} 
+            else if self[0] == needle {} 
+            else {
+                assert(Seq::empty().push(self.first()).add(self.drop_first()) =~= self);
+                self.drop_first().find_first_ensures(needle);
+            }
         }
     }
 
     /// For an element that occurs at least once in a sequence, if its last occurence
     /// is at index i, Some(i) is returned. Otherwise, None is returned
-    pub open spec fn find_last(self, needle:A) -> Option<int> {
+    pub closed spec fn find_last(self, needle:A) -> Option<int> {
         if self.contains(needle) {
-            Some(self.last_index_helper(needle,0))
+            Some(self.last_index_helper(needle))
         } else {
             None
         }
     }
 
     /// Recursive helper function for last_index_of
-    pub open spec fn last_index_helper(self, needle: A, index: int) -> int
+    spec fn last_index_helper(self, needle: A) -> int
         recommends self.contains(needle),
         decreases self.len(),
     {  
@@ -361,12 +380,33 @@ impl<A> Seq<A> {
             -1 //arbitrary, will never get to this case
         }
         else if self.last() == needle {
-            index
+            self.len() - 1
         }
         else {
-            self.subrange(0,self.len()-1 as int).last_index_helper(needle, index-1)
+            self.drop_last().last_index_helper(needle)
         }
     }
+
+    pub proof fn find_last_ensures(self, needle: A)
+        ensures
+            self.find_last(needle).is_some() <==> self.contains(needle),
+            self.find_last(needle).is_some() ==> self[self.find_last(needle).unwrap()] == needle,
+            self.find_last(needle).is_none() <==> !self.contains(needle),
+            self.contains(needle) ==> 0 <= self.find_last(needle).unwrap() < self.len(),
+            self.contains(needle) ==> (forall |j: int| 0 <= self.find_last(needle).unwrap() < j < self.len() ==> self[j] != needle),
+        decreases
+            self.len(),
+        {
+            if self.contains(needle) {
+                let index = self.find_last(needle).unwrap();
+                if self.len() <= 0 {} 
+                else if self.last() == needle {} 
+                else {
+                    assert(self.drop_last().push(self.last()) =~= self);
+                    self.drop_last().find_last_ensures(needle);
+                }
+            }
+        }
 
     /// Drops the last element of a sequence and returns a sequence whose length is
     /// thereby 1 smaller.
@@ -1104,7 +1144,7 @@ impl Seq<int> {
 }
 
 /// Helper function to aid with merge sort
-pub closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
+closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
     recommends
         sorted_by(left, leq),
         sorted_by(right, leq),
