@@ -954,9 +954,14 @@ pub struct TraitImplX {
     pub trait_path: Path,
 }
 
+#[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
+pub enum WellKnownItem {
+    DropTrait,
+}
+
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,

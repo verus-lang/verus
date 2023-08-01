@@ -1200,3 +1200,75 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] no_impl_fn_with_specification verus_code! {
+        struct X { }
+
+        impl FnWithSpecification<u8> for X {
+            type Output = u8;
+            fn requires(self, args: u8) -> bool { true }
+            fn ensures(self, args: u8, output: Self::Output) -> bool { true }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+}
+
+test_verify_one_file! {
+    #[test] no_impl_fn_once verus_code! {
+        struct X { }
+
+        impl FnOnce<(u8, u8)> for X {
+            type Output = u8;
+            extern "rust-call" fn call_once(self, y: (u8, u8)) -> u8 {
+                0
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+}
+
+test_verify_one_file! {
+    #[test] no_impl_fn_mut verus_code! {
+        struct X { }
+
+        #[verifier::external]
+        impl FnOnce<(u8, u8)> for X {
+            type Output = u8;
+            extern "rust-call" fn call_once(self, y: (u8, u8)) -> u8 {
+                0
+            }
+        }
+
+        impl FnMut<(u8, u8)> for X {
+            extern "rust-call" fn call_mut(&mut self, y: (u8, u8)) -> u8 {
+                0
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+}
+
+test_verify_one_file! {
+    #[test] no_impl_fn verus_code! {
+        struct X { }
+
+        #[verifier::external]
+        impl FnOnce<(u8, u8)> for X {
+            type Output = u8;
+            extern "rust-call" fn call_once(self, y: (u8, u8)) -> u8 {
+                0
+            }
+        }
+
+        #[verifier::external]
+        impl FnMut<(u8, u8)> for X {
+            extern "rust-call" fn call_mut(&mut self, y: (u8, u8)) -> u8 {
+                0
+            }
+        }
+
+        impl Fn<(u8, u8)> for X {
+            extern "rust-call" fn call(&self, y: (u8, u8)) -> u8 {
+                0
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
+}

@@ -1328,6 +1328,9 @@ pub fn visit_ensures<'ast, V>(v: &mut V, node: &'ast Ensures)
 where
     V: Visit<'ast> + ?Sized,
 {
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
     tokens_helper(v, &node.token.span);
     v.visit_specification(&node.exprs);
 }

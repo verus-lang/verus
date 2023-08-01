@@ -1329,6 +1329,9 @@ pub fn visit_ensures_mut<V>(v: &mut V, node: &mut Ensures)
 where
     V: VisitMut + ?Sized,
 {
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
     tokens_helper(v, &mut node.token.span);
     v.visit_specification_mut(&mut node.exprs);
 }
