@@ -27,7 +27,7 @@ verus!{
 ///  * TODO: `multiset!` constructor macro, multiset from set, from map, etc.
 ///
 /// To prove that two multisets are equal, it is usually easiest to use the 
-/// [`assert_multisets_equal!`] macro.
+/// extensionality operator `=~=`.
 
 // We could in principle implement the Multiset via an inductive datatype
 // and so we can mark its type argument as accept_recursive_types.

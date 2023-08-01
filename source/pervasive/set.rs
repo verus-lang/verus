@@ -28,7 +28,8 @@ verus! {
 ///    [`Set::difference`], [`Set::complement`], [`Set::filter`], [`Set::insert`],
 ///    or [`Set::remove`].
 ///
-/// To prove that two sequences are equal, it is usually easiest to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro.
+/// To prove that two sequences are equal, it is usually easiest to use the extensionality
+/// operator `=~=`.
 
 #[verifier(external_body)]
 #[verifier::ext_equal]

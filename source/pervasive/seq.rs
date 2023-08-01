@@ -26,7 +26,7 @@ verus! {
 ///    or [`Seq::add`].
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the
-/// [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro.
+/// extensional equality operator `=~=`.
 
 #[verifier::external_body]
 #[verifier::ext_equal]
@@ -87,10 +87,7 @@ impl<A> Seq<A> {
     ///
     /// ```rust
     /// proof fn push_test() {
-    ///     assert_seqs_equal!(
-    ///           seq![10, 11, 12].push(13),
-    ///           seq![10, 11, 12, 13],
-    ///     );
+    ///     assert(seq![10, 11, 12].push(13) =~= seq![10, 11, 12, 13]);
     /// }
     /// ```
 
@@ -106,7 +103,7 @@ impl<A> Seq<A> {
     /// proof fn update_test() {
     ///     let s = seq![10, 11, 12, 13, 14];
     ///     let t = s.update(2, -5);
-    ///     assert_seqs_equal!(t, seq![10, 11, -5, 13, 14]);
+    ///     assert(t =~= seq![10, 11, -5, 13, 14]);
     /// }
     /// ```
 
@@ -141,7 +138,7 @@ impl<A> Seq<A> {
     ///     //                  ^-------^
     ///     //          0   1   2   3   4   5
     ///     let sub = s.subrange(2, 4);
-    ///     assert_seqs_equal!(sub, seq![12, 13]);
+    ///     assert(sub =~= seq![12, 13]);
     /// }
     /// ```
 
@@ -169,10 +166,8 @@ impl<A> Seq<A> {
     ///
     /// ```rust
     /// proof fn add_test() {
-    ///     assert_seqs_equal!(
-    ///         seq![10int, 11].add(seq![12, 13, 14]),
-    ///         seq![10, 11, 12, 13, 14],
-    ///     );
+    ///     assert(seq![10int, 11].add(seq![12, 13, 14])
+    ///             =~= seq![10, 11, 12, 13, 14]);
     /// }
     /// ```
 
