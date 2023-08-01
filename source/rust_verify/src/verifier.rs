@@ -598,24 +598,28 @@ impl Verifier {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
                 let name = friendly_fun_name_crate_relative(&module, function_name);
-                if verify_function_exact_match && &name != verify_function {
-                    return false;
-                }
-
-                let clean_verify_function = verify_function.trim_matches('*');
-                let left_wildcard = verify_function.starts_with('*');
-                let right_wildcard = verify_function.ends_with('*');
-
-                if left_wildcard && !right_wildcard {
-                    if !name.ends_with(clean_verify_function) {
+                if verify_function_exact_match {
+                    if &name != verify_function
+                        && !name.ends_with(&format!("::{}", verify_function))
+                    {
                         return false;
                     }
-                } else if !left_wildcard && right_wildcard {
-                    if !name.starts_with(clean_verify_function) {
+                } else {
+                    let clean_verify_function = verify_function.trim_matches('*');
+                    let left_wildcard = verify_function.starts_with('*');
+                    let right_wildcard = verify_function.ends_with('*');
+
+                    if left_wildcard && !right_wildcard {
+                        if !name.ends_with(clean_verify_function) {
+                            return false;
+                        }
+                    } else if !left_wildcard && right_wildcard {
+                        if !name.starts_with(clean_verify_function) {
+                            return false;
+                        }
+                    } else if !name.contains(clean_verify_function) {
                         return false;
                     }
-                } else if !name.contains(clean_verify_function) {
-                    return false;
                 }
             } else {
                 return false;
@@ -961,8 +965,15 @@ impl Verifier {
 
             // substring match
             if verify_function == clean_verify_function {
-                verify_function_exact_match =
-                    filtered_functions.iter().any(|f| f == &verify_function);
+                verify_function_exact_match = filtered_functions
+                    .iter()
+                    .filter(|f| {
+                        // filter for exact match and impl func match
+                        *f == &verify_function || f.ends_with(&format!("::{}", verify_function))
+                    })
+                    .count()
+                    == 1;
+
                 if filtered_functions.len() > 1 && !verify_function_exact_match {
                     filtered_functions.sort();
                     let msg = vec![
