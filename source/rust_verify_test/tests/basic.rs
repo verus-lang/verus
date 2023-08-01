@@ -573,6 +573,18 @@ test_verify_one_file! {
         proof fn test3(mut x: int) {
             x += 1;
         }
+
+        struct T {
+            x: i32,
+            y: u64,
+        }
+
+        fn test4(mut t: T) {
+            let y = t.y;
+            t.x = 100;
+            assert(t.x == 100);
+            assert(t.y == y);
+        }
     } => Err(err) => assert_fails(err, 1)
 }
 

@@ -419,7 +419,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
                 let (is_mut_var, name) = pat_to_mut_var(pat)?;
-                // is_mut_var: means a parameter is like `mut x: X` (unsupported)
+                // is_mut_var: means a parameter is like `mut x: X`
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
                 ps.push((name, *span, Some(*hir_id), is_mut_var));
             }

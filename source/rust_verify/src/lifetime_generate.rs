@@ -1631,7 +1631,7 @@ fn erase_fn_common<'tcx>(
             &mut typ_params,
             &mut generic_bounds,
         );
-        let mut params: Vec<(Option<Span>, Id, Typ, bool)> = Vec::new();
+        let mut params: Vec<Param> = Vec::new();
         for ((input, param), param_info) in
             inputs.iter().zip(f_vir.x.params.iter()).zip(params_info.iter())
         {
@@ -1642,13 +1642,14 @@ fn erase_fn_common<'tcx>(
             };
             let is_mut_var = param_info.1;
             let span = param_info.0;
-            let x = state.local(name);
+            let name = state.local(name);
             let typ = if param.x.mode == Mode::Spec {
                 TypX::mk_unit()
             } else {
                 erase_ty(ctxt, state, input)
             };
-            params.push((span, x, typ, is_mut_var));
+            let new_param = Param { name, span, typ, is_mut_var };
+            params.push(new_param);
         }
         let ret = if let Some(sig) = sig {
             match sig.decl.output {
