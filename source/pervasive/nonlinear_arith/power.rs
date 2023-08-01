@@ -2,21 +2,15 @@
 
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
 use crate::calc_macro::*;
 
 verus! {
-#[allow(unused_imports)]
-use crate::nonlinear_arith::div::*;
-#[allow(unused_imports)]
+
+    use crate::nonlinear_arith::div::*;
 use crate::nonlinear_arith::modulus::*;
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::general_internals::{is_le};
-#[allow(unused_imports)]
-use crate::nonlinear_arith::mul::{lemma_mul_inequality, lemma_mul_nonnegative_auto, lemma_mul_strictly_increases, lemma_mul_left_inequality, lemma_mul_basics, lemma_mul_basics_auto, lemma_mul_increases_auto, lemma_mul_strictly_increases_auto, lemma_mul_is_commutative_auto, lemma_mul_is_distributive_auto, lemma_mul_is_associative_auto, lemma_mul_nonnegative};
-#[allow(unused_imports)]
+use crate::nonlinear_arith::mul::{lemma_mul_inequality, lemma_mul_nonnegative_auto, lemma_mul_strictly_increases, lemma_mul_left_inequality, lemma_mul_basics_auto, lemma_mul_increases_auto, lemma_mul_strictly_increases_auto, lemma_mul_is_commutative_auto, lemma_mul_is_distributive_auto, lemma_mul_is_associative_auto, lemma_mul_nonnegative};
 use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction_auto};
 
 #[verifier(opaque)]
@@ -50,15 +44,14 @@ pub proof fn lemma_pow0_auto()
 pub proof fn lemma_pow1(b: int)
     ensures pow(b, 1) == b
 {
-    calc! {
-    (==)
-    pow(b, 1);
-    { reveal(pow); }
-    b * pow(b, 0);
-    { lemma_pow0(b); }
-    b * 1;
-    { lemma_mul_basics_auto(); }
-    b;
+    calc! { (==)
+        pow(b, 1);
+        { reveal(pow); }
+        b * pow(b, 0);
+        { lemma_pow0(b); }
+        b * 1;
+        { lemma_mul_basics_auto(); }
+        b;
     }
 }
 
@@ -70,7 +63,7 @@ pub proof fn lemma_pow1_auto()
     reveal(pow);
     assert forall |b: int| #[trigger]pow(b, 1) == b by
     {
-    lemma_pow1(b);
+        lemma_pow1(b);
     };
 }
 
@@ -84,7 +77,7 @@ pub proof fn lemma0_pow(e: nat)
     reveal(pow);
     lemma_mul_basics_auto();
     if e != 1 {
-    lemma0_pow((e - 1) as nat);
+        lemma0_pow((e - 1) as nat);
     }
 }
 
@@ -93,8 +86,7 @@ pub proof fn lemma0_pow_auto()
     ensures forall |e: nat| e > 0 ==> #[trigger]pow(0, e) == 0
 {
     reveal(pow);
-    assert forall |e: nat| e > 0 implies
-        #[trigger]pow(0, e) == 0 by
+    assert forall |e: nat| e > 0 implies #[trigger]pow(0, e) == 0 by
     {
         lemma0_pow(e);
     }
@@ -109,7 +101,7 @@ pub proof fn lemma1_pow(e: nat)
     reveal(pow);
     lemma_mul_basics_auto();
     if e != 0 {
-    lemma1_pow((e - 1) as nat);
+        lemma1_pow((e - 1) as nat);
     }
 }
 
@@ -185,8 +177,7 @@ pub proof fn lemma_pow_adds(b: int, e1: nat, e2: nat)
     decreases e1
 {
     if e1 == 0 {
-    calc! {
-        (==)
+    calc! { (==)
         pow(b, e1) * pow(b, e2);
         { lemma_pow0(b); }
         1 * pow(b, e2);
@@ -195,8 +186,7 @@ pub proof fn lemma_pow_adds(b: int, e1: nat, e2: nat)
     }
     }
     else {
-    calc! {
-        (==)
+    calc! { (==)
         pow(b, e1) * pow(b, e2);
         { reveal(pow); }
         (b * pow(b, (e1 - 1) as nat)) * pow(b, e2);
@@ -286,42 +276,40 @@ pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
 {
     lemma_mul_nonnegative(b as int, c as int);
     if c == 0 {
-    lemma_mul_basics_auto();
-    calc! {
-        (==)
-        pow(a, (b * c) as nat);
-        { lemma_pow0(a); }
-        1;
-        { lemma_pow0(pow(a, b)); }
-        pow(pow(a, b), c);
-    }
+        lemma_mul_basics_auto();
+        calc! {
+            (==)
+            pow(a, (b * c) as nat);
+            { lemma_pow0(a); }
+            1;
+            { lemma_pow0(pow(a, b)); }
+            pow(pow(a, b), c);
+        }
     }
     else {
-    calc! {
-        (==)
-        b * c - b;
-        { lemma_mul_basics_auto(); }
-        b * c - b * 1;
-        { lemma_mul_is_distributive_auto(); }
-        b * (c - 1);
-    }
-    lemma_mul_nonnegative(b as int, c - 1);
-    assert(0 <= b * c - b);
+        calc! { (==)
+            b * c - b;
+            { lemma_mul_basics_auto(); }
+            b * c - b * 1;
+            { lemma_mul_is_distributive_auto(); }
+            b * (c - 1);
+        }
+        lemma_mul_nonnegative(b as int, c - 1);
+        assert(0 <= b * c - b);
 
-    calc! {
-        (==)
-        pow(a, b * c);
-        { }
-        pow(a, (b + b * c - b) as nat);
-        { lemma_pow_adds(a, b, (b * c - b) as nat); }
-        pow(a, b) * pow(a, (b * c - b) as nat);
-        { }
-        pow(a, b) * pow(a, (b * (c - 1)) as nat);
-        { lemma_pow_multiplies(a, b, (c - 1) as nat); }
-        pow(a, b) * pow(pow(a, b), (c - 1) as nat);
-        { reveal(pow); }
-        pow(pow(a, b), c);
-    }
+        calc! { (==)
+            pow(a, b * c);
+            { }
+            pow(a, (b + b * c - b) as nat);
+            { lemma_pow_adds(a, b, (b * c - b) as nat); }
+            pow(a, b) * pow(a, (b * c - b) as nat);
+            { }
+            pow(a, b) * pow(a, (b * (c - 1)) as nat);
+            { lemma_pow_multiplies(a, b, (c - 1) as nat); }
+            pow(a, b) * pow(pow(a, b), (c - 1) as nat);
+            { reveal(pow); }
+            pow(pow(a, b), c);
+        }
     }
 }
 
@@ -346,21 +334,19 @@ pub proof fn lemma_pow_distributes(a: int, b: int, e: nat)
     reveal(pow);
     lemma_mul_basics_auto();
     if e >= 1 {
-
-    calc! {
-        (==)
-        pow(a * b, e); { reveal(pow); }
-        (a * b) * pow(a * b, (e - 1) as nat);
-        { lemma_pow_distributes(a, b, (e - 1) as nat); }
-        (a * b) * (pow(a, (e - 1) as nat) * pow(b, (e - 1) as nat));
-        { lemma_mul_is_associative_auto(); 
-          lemma_mul_is_commutative_auto(); 
-          assert ((a * b * pow(a, (e - 1) as nat)) * pow(b, (e - 1) as nat) 
-               == (a * pow(a, (e - 1) as nat) * b) * pow(b, (e - 1) as nat)); 
+        calc! { (==)
+            pow(a * b, e); { reveal(pow); }
+            (a * b) * pow(a * b, (e - 1) as nat);
+            { lemma_pow_distributes(a, b, (e - 1) as nat); }
+            (a * b) * (pow(a, (e - 1) as nat) * pow(b, (e - 1) as nat));
+            { lemma_mul_is_associative_auto(); 
+            lemma_mul_is_commutative_auto(); 
+            assert ((a * b * pow(a, (e - 1) as nat)) * pow(b, (e - 1) as nat) 
+                == (a * pow(a, (e - 1) as nat) * b) * pow(b, (e - 1) as nat)); 
+            }
+            (a * pow(a, (e - 1) as nat)) * (b * pow(b, (e - 1) as nat)); { reveal(pow);}
+            pow(a, e) * pow(b, e);
         }
-        (a * pow(a, (e - 1) as nat)) * (b * pow(b, (e - 1) as nat)); { reveal(pow);}
-        pow(a, e) * pow(b, e);
-    }
     }
 }
 
@@ -376,6 +362,7 @@ pub proof fn lemma_pow_distributes_auto()
 }
 
 /// Group properties of powers
+/// A convenience function to introduce basic properties about powers.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_pow_auto()
     ensures 
@@ -417,15 +404,17 @@ pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
     let f = |e: int| 0 < e ==> pow(b as int, e1) < pow(b as int, (e1 + e) as nat);
     assert forall |i: int| (#[trigger]is_le(0, i) && f(i)) implies f(i + 1) by
     {
-    calc! {
-    (<=)    pow(b as int, (e1 + i) as nat);
-       { lemma_pow_positive(b as int, (e1 + i) as nat);
-        lemma_mul_left_inequality(pow(b as int, (e1 + i) as nat), 1, b as int); }
+    calc! {(<=)    
+        pow(b as int, (e1 + i) as nat);
+        (<=) { 
+            lemma_pow_positive(b as int, (e1 + i) as nat);
+            lemma_mul_left_inequality(pow(b as int, (e1 + i) as nat), 1, b as int); 
+        }
         pow(b as int, (e1 + i) as nat) * b;
         (<=) { lemma_pow1(b as int); }
         pow(b as int, (e1 + i) as nat) * pow(b as int, 1);
         (<=)   { lemma_pow_adds(b as int, (e1 + i) as nat, 1nat); }
-       pow(b as int, (e1 + i + 1) as nat);
+        pow(b as int, (e1 + i + 1) as nat);
     }
     assert(0 < i ==> pow(b as int, e1) < pow(b as int, (e1 + i) as nat));
     if (i == 0) {
@@ -469,15 +458,16 @@ pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
     let f = |e: int| 0 <= e ==> pow(b as int, e1) <= pow(b as int, (e1 + e) as nat);
     assert forall |i: int| #[trigger]is_le(0, i) && f(i) implies f(i + 1) by
     {
-    calc! {
-    (<=)
+    calc! { (<=)
         pow(b as int, (e1 + i) as nat);
-    (<=) { lemma_pow_positive(b as int, (e1 + i) as nat);
-            lemma_mul_left_inequality(pow(b as int, (e1 + i) as nat), 1, b as int); }
+        (<=) { 
+            lemma_pow_positive(b as int, (e1 + i) as nat);
+            lemma_mul_left_inequality(pow(b as int, (e1 + i) as nat), 1, b as int);
+        }
         pow(b as int, (e1 + i) as nat) * b;
-    (<=) { lemma_pow1(b as int); }
+        (<=) { lemma_pow1(b as int); }
         pow(b as int, (e1 + i) as nat) * pow(b as int, 1nat);
-    (<=) { lemma_pow_adds(b as int, (e1 + i) as nat, 1); }
+        (<=) { lemma_pow_adds(b as int, (e1 + i) as nat, 1); }
         pow(b as int, (e1 + i + 1) as nat);
     }
     }
@@ -507,8 +497,8 @@ pub proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2: nat)
 {
     if e1 >= e2 
     {
-    lemma_pow_increases(b, e2, e1);
-    assert(false);
+        lemma_pow_increases(b, e2, e1);
+        assert(false);
     }
 }
 
@@ -541,7 +531,7 @@ pub proof fn lemma_pow_increases_converse(b: nat, e1: nat, e2: nat)
 }
 
 // #[verifier::spinoff_prover]
-proof fn lemma_pow_increases_converse_auto()
+pub proof fn lemma_pow_increases_converse_auto()
     ensures forall |b: nat, e1: nat, e2: nat| 1 < b && pow(b as int, e1) <= pow(b as int, e2) ==> e1 <= e2,
 {
     assert forall |b: nat, e1: nat, e2: nat| 1 < b && pow(b as int, e1) <= pow(b as int, e2) implies e1 <= e2 by
@@ -550,9 +540,9 @@ proof fn lemma_pow_increases_converse_auto()
     }
 }
 
-/// (b^xy)^z = (b^x)^yz
+/// `(b^xy)^z = (b^x)^yz`
 // #[verifier::spinoff_prover]
-proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
+pub proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
     requires 
         b > 0,
     ensures 
@@ -563,13 +553,12 @@ proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
     lemma_mul_nonnegative(x as int, y as int);
     lemma_mul_nonnegative(y as int, z as int);
     lemma_pow_positive(b as int, x);
-    calc! {
-    (==)
-    pow(pow(b as int, x * y), z);
-    { lemma_pow_multiplies(b as int, x, y); }
-    pow(pow(pow(b as int, x), y), z);
-    { lemma_pow_multiplies(pow(b as int, x), y, z); }
-    pow(pow(b as int, x), y * z);
+    calc! { (==)
+        pow(pow(b as int, x * y), z);
+        { lemma_pow_multiplies(b as int, x, y); }
+        pow(pow(pow(b as int, x), y), z);
+        { lemma_pow_multiplies(pow(b as int, x), y, z); }
+        pow(pow(b as int, x), y * z);
     }
 }
 
@@ -631,7 +620,7 @@ proof fn lemma_pow_division_inequality_auto()
     };
 }
 
-/// b^e % b = 0
+/// `b^e % b = 0`
 // #[verifier::spinoff_prover]
 proof fn lemma_pow_mod(b: nat, e: nat)
     requires 
@@ -676,8 +665,8 @@ proof fn lemma_pow_mod_auto()
     }
 }
 
-/// ((b % e)^e) % m = b^e % m
-proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
+/// `((b % e)^e) % m = b^e % m`
+pub proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     requires m > 0
     ensures pow(b % m, e) % m == pow(b, e) % m
     decreases e
@@ -685,8 +674,7 @@ proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     reveal(pow);
     lemma_mod_properties_auto();
     if e > 0 {
-    calc! {
-        (==)
+    calc! { (==)
         pow(b % m, e) % m; {}
         ((b % m) * pow(b % m, (e - 1) as nat)) % m;
         { lemma_mul_mod_noop_general(b, pow(b % m, (e - 1) as nat), m); }
@@ -701,7 +689,7 @@ proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     }
 }
 
-proof fn lemma_pow_mod_noop_auto()
+pub proof fn lemma_pow_mod_noop_auto()
     ensures forall |b: int, e: nat, m: int| m > 0 ==> #[trigger]pow(b % m, e) % m == pow(b, e) % m,
 {
     assert forall |b: int, e: nat, m: int| m > 0 implies #[trigger]pow(b % m, e) % m == pow(b, e) % m by

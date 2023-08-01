@@ -2,18 +2,12 @@
 
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
-use crate::calc_macro::*;
 
 verus! {
 
-#[allow(unused_imports)]
 use crate::nonlinear_arith::power::{pow, lemma_pow_positive, lemma_pow_auto}; 
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::mul_internals::lemma_mul_induction_auto; 
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::general_internals::is_le; 
 
 #[verifier(opaque)]
@@ -48,7 +42,7 @@ pub proof fn lemma_pow2_pos_auto()
     }
 }
 
-/// pow2() is equivalent to Pow() with base 2.
+/// pow2() is equivalent to pow() with base 2.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_pow2(e: nat)
     ensures pow2(e) == pow(2, e) as int
@@ -71,7 +65,7 @@ pub proof fn lemma_pow2_auto()
     }
 }
 
-/// (2^e - 1) / 2 = 2^(e - 1) - 1
+/// `(2^e - 1) / 2 = 2^(e - 1) - 1`
 // #[verifier::spinoff_prover]
 pub proof fn lemma_pow2_mask_div2(e: nat)
     requires 0 < e

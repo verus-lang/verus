@@ -1,9 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
-use crate::calc_macro::*;
 
 use crate::nonlinear_arith::internals::general_internals::{is_le, lemma_induction_helper};
 use crate::nonlinear_arith::internals::mul_internals_nonlinear as MulINL;

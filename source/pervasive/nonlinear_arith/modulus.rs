@@ -2,39 +2,18 @@
 
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
 use crate::calc_macro::*;
 
 
 verus! {
-
-#[allow(unused_imports)]
-use crate::nonlinear_arith::internals::div_internals::{div_recursive, lemma_div_induction_auto, div_auto, div_pos, lemma_div_auto};
-#[allow(unused_imports)]
-use crate::nonlinear_arith::internals::div_internals_nonlinear as DivINL;
-#[allow(unused_imports)]
-use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_auto, mod_recursive};
-#[allow(unused_imports)]
-use crate::nonlinear_arith::internals::mod_internals_nonlinear as ModINL;
-#[allow(unused_imports)]
-use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_induction_auto, lemma_mul_auto, mul_auto, lemma_mul_induction};
-#[allow(unused_imports)]
 use crate::nonlinear_arith::mul::*;
-// use crate::nonlinear_arith::Mul::{lemma_mul_strictly_positive_auto, lemma_mul_is_associative_auto, lemma_mul_is_distributive_auto, lemma_mul_is_commutative_auto, lemma_mul_strict_inequality_converse_auto, lemma_mul_inequality_auto, lemma_mul_increases_auto};
-#[allow(unused_imports)]
-use crate::nonlinear_arith::internals::general_internals::{is_le};
-#[allow(unused_imports)]
 use crate::nonlinear_arith::div::*;
+use crate::nonlinear_arith::internals::div_internals::lemma_div_auto;
+use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_auto, mod_recursive};
+use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_induction_auto, lemma_mul_auto, lemma_mul_induction};
 
-
-// /*******************************************************************************
-//  * Modulus:
-//  *******************************************************************************/
-
-/// the common syntax of the modulus operation results in the same remainder as recursively
-/// calculating the modulus
+/// Modulus using `%` is equivalent to the modulus through [`mod_recursive`].
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_is_mod_recursive(x: int, m: int)
     requires m > 0
@@ -86,7 +65,7 @@ pub proof fn lemma_mod_is_mod_recursive_auto()
     };
 }
 
-/// proves basic properties of the modulus operation: any integer divided by itself does not have a
+/// Proves basic properties of the modulus operation: any integer divided by itself does not have a
 /// remainder; performing (x % m) % m gives the same result as simply perfoming x % m 
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_basics_auto()
@@ -102,7 +81,7 @@ pub proof fn lemma_mod_basics_auto()
     };
 }
 
-/// describes the properties of the modulus operation including those described in lemma_mod_basics_auto. 
+/// Describes the properties of the modulus operation including those described in lemma_mod_basics_auto. 
 /// This lemma also states that the remainder of any division will be less than the divisor's value
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_properties_auto()
@@ -115,11 +94,11 @@ pub proof fn lemma_mod_properties_auto()
 
     assert forall |x: int, m: int| m > 0 implies 0 <= #[trigger](x % m) < m by
     {
-    lemma_mod_auto(m);
+        lemma_mod_auto(m);
     }
 }
 
-/// the remainder of a natural number x divided by a natural number d will be less
+/// The remainder of a natural number x divided by a natural number d will be less
 /// than or equal to x
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_decreases(x: nat, m: nat)
@@ -139,7 +118,7 @@ pub proof fn lemma_mod_decreases_auto()
     }
 }
 
-/// if x % y is zero and x is greater than zero, x is greater than y.
+/// If x % y is zero and x is greater than zero, x is greater than y.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_is_zero(x: nat, m: nat)
     requires
@@ -163,7 +142,7 @@ pub proof fn lemma_mod_is_zero_auto()
     }
 }
 
-/// a dividend that is any multiple of the divisor will result in a remainder of 0
+/// A dividend that is any multiple of the divisor will result in a remainder of 0
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_multiples_basic(x: int, m: int)
     requires m > 0
@@ -186,7 +165,7 @@ pub proof fn lemma_mod_multiples_basic_auto()
     }
 }
 
-/// the remainder of adding the divisor m to the dividend b will be the same
+/// The remainder of adding the divisor m to the dividend b will be the same
 /// as simply performing b % m
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_add_multiples_vanish(b: int, m: int)
@@ -206,7 +185,7 @@ pub proof fn lemma_mod_add_multiples_vanish_auto()
     }
 }
 
-/// the remainder of subtracting the divisor m from the dividend b will be the same
+/// The remainder of subtracting the divisor m from the dividend b will be the same
 /// as simply performing b % m
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_sub_multiples_vanish(b: int, m: int)
@@ -226,7 +205,7 @@ pub proof fn lemma_mod_sub_multiples_vanish_auto()
     }
 }
 
-/// the remainder of adding any multiple of the divisor m to the dividend b will be the same
+/// The remainder of adding any multiple of the divisor m to the dividend b will be the same
 /// as simply performing b % m
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
@@ -251,7 +230,7 @@ pub proof fn lemma_mod_multiples_vanish_auto()
     }
 }
 
-/// proves equivalent forms of modulus subtraction
+/// Proves equivalent forms of modulus subtraction
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_subtraction(x: nat, s: nat, d: nat)
     requires 
@@ -273,7 +252,7 @@ pub proof fn lemma_mod_subtraction_auto()
     }
 }
 
-/// describes expanded and succinct version of modulus operator in relation to addition (read "ensures")
+/// Describes expanded and succinct version of modulus operator in relation to addition (read "ensures")
 // #[verifier::spinoff_prover]
 pub proof fn lemma_add_mod_noop(x: int, y: int, m: int)
     requires 0 < m
@@ -292,7 +271,7 @@ pub proof fn lemma_add_mod_noop_auto()
     }
 }
 
-/// describes expanded and succinct version of modulus operator in relation to addition (read "ensures")
+/// Describes expanded and succinct version of modulus operator in relation to addition (read "ensures")
 // #[verifier::spinoff_prover]
 pub proof fn lemma_add_mod_noop_right(x: int, y: int, m: int)
     requires 0 < m
@@ -311,7 +290,7 @@ pub proof fn lemma_add_mod_noop_right_auto()
     }
 }
 
-/// describes expanded and succinct version of modulus operator in relation to subtraction (read "ensures")
+/// Describes expanded and succinct version of modulus operator in relation to subtraction (read "ensures")
 // #[verifier::spinoff_prover]
 pub proof fn lemma_sub_mod_noop(x: int, y: int, m: int)
     requires 0 < m
@@ -330,7 +309,7 @@ pub proof fn lemma_sub_mod_noop_auto()
     }
 }
 
-/// describes expanded and succinct version of modulus operator in relation to subtraction (read "ensures")
+/// Describes expanded and succinct version of modulus operator in relation to subtraction (read "ensures")
 // #[verifier::spinoff_prover]
 pub proof fn lemma_sub_mod_noop_right(x: int, y: int, m: int)
     requires 0 < m
@@ -349,7 +328,7 @@ pub proof fn lemma_sub_mod_noop_right_auto()
     }
 }
 
-/// proves equivalent forms of modulus addition
+/// Proves equivalent forms of modulus addition
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_adds(a: int, b: int, d: int)
     requires 0 < d
@@ -394,7 +373,7 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
     lemma_mul_auto();
 }
 
-/// proves the validity of the quotient and remainder
+/// Proves the validity of the quotient and remainder
 #[verifier::spinoff_prover]
 pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
     requires 
@@ -412,7 +391,7 @@ pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
 }
 
 // {:timeLimitMultiplier 5}
-// TO DO, but when conjuncting
+// TO DO, fails when conjuncting
 // #[verifier::spinoff_prover]
 pub proof fn lemma_fundamental_div_mod_converse_auto()
     ensures 
@@ -435,7 +414,7 @@ pub proof fn lemma_fundamental_div_mod_converse_auto()
 }
 
 
-/// the remainder of any natural number x divided by a positive integer m is always less than m
+/// The remainder of any natural number x divided by a positive integer m is always less than m
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_pos_bound(x: int, m: int)
     requires 
@@ -499,7 +478,7 @@ pub proof fn lemma_mul_mod_noop_right_auto()
     }
 }
 
-/// combines previous no-op mod lemmas into a general, overarching lemma
+/// Combines previous no-op mod lemmas into a general, overarching lemma
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_mod_noop_general(x: int, y: int, m: int)
     requires 0 < m
@@ -545,7 +524,7 @@ pub proof fn lemma_mul_mod_noop_auto()
     }
 }
 
-/// proves modulus equivalence in two forms
+/// Proves modulus equivalence in two forms
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_equivalence(x: int, y: int, m: int)
     requires 0 < m
@@ -574,14 +553,14 @@ pub proof fn lemma_mod_equivalence_auto()
 //     x % m == y % m <==> (x - y) % m == 0 // same as x % n == y % n, but easier to do induction on x - y than x and y separately
 // }
 
-///  true if x%n and y%n are equal
+/// True if x%n and y%n are equal
 #[verifier::opaque]
 pub closed spec fn is_mod_equivalent(x: int, y: int, m: int) -> bool
 {
     x % m == y % m <==> (x - y) % m == 0
 }
 
-/// if x % m == y % m, then (x * z) % m == (y * z) % m.
+/// If x % m == y % m, then (x * z) % m == (y * z) % m.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_mul_equivalent(x: int, y: int, z: int, m: int)
     requires
@@ -608,7 +587,7 @@ pub proof fn lemma_mod_mul_equivalent_auto()
     }
 }
 
-/// the remainder can increase with a larger divisor
+/// The remainder can increase with a larger divisor
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_ordering(x: int, k: int, d: int)
     requires 
@@ -620,25 +599,25 @@ pub proof fn lemma_mod_ordering(x: int, k: int, d: int)
 {
     lemma_mul_strictly_increases(d,k);
     calc! {
-    (==)
-    x % d + d * (x / d);
-    { lemma_fundamental_div_mod(x, d); }
-    x;
-    { lemma_fundamental_div_mod(x, d * k); }
-    x % (d * k) + (d * k) * (x / (d * k));
-    { lemma_mul_is_associative_auto(); }
-    x % (d * k) + d * (k * (x / (d * k)));
-    }
-    calc! {
-    (==)
-    x % d;
-    { lemma_mod_properties_auto(); }
-    (x % d) % d;
-    { lemma_mod_multiples_vanish(x / d  - k * (x / (d * k)), x % d, d); }
-    (x % d + d * (x / d  - k * (x / (d * k)))) % d;
-    { lemma_mul_is_distributive_sub_auto(); }
-    (x % d + d * (x / d) - d * (k * (x / (d * k)))) % d; {}
-    (x % (d * k)) % d;
+        (==)
+        x % d + d * (x / d);
+        { lemma_fundamental_div_mod(x, d); }
+        x;
+        { lemma_fundamental_div_mod(x, d * k); }
+        x % (d * k) + (d * k) * (x / (d * k));
+        { lemma_mul_is_associative_auto(); }
+        x % (d * k) + d * (k * (x / (d * k)));
+        }
+        calc! {
+        (==)
+        x % d;
+        { lemma_mod_properties_auto(); }
+        (x % d) % d;
+        { lemma_mod_multiples_vanish(x / d  - k * (x / (d * k)), x % d, d); }
+        (x % d + d * (x / d  - k * (x / (d * k)))) % d;
+        { lemma_mul_is_distributive_sub_auto(); }
+        (x % d + d * (x / d) - d * (k * (x / (d * k)))) % d; {}
+        (x % (d * k)) % d;
     }
 
     assert( (x % (d * k)) % d <= x % (d * k)) by {
@@ -669,17 +648,16 @@ pub proof fn lemma_mod_mod(x: int, a: int, b: int)
         (x % (a * b)) % a == x % a,
 {
     lemma_mul_strictly_positive_auto();
-    calc! {
-    (==)
-    x;
-    { lemma_fundamental_div_mod(x, a * b); }
-    (a * b) * (x / (a * b)) + x % (a * b);
-    { lemma_mul_is_associative_auto(); }
-    a * (b * (x / (a * b))) + x % (a * b);
-    { lemma_fundamental_div_mod(x % (a * b), a); }
-    a * (b * (x / (a * b))) + a * (x % (a * b) / a) + (x % (a * b)) % a;
-    { lemma_mul_is_distributive_auto(); }
-    a * (b * (x / (a * b)) + x % (a * b) / a) + (x % (a * b)) % a;
+    calc! { (==)
+        x;
+        { lemma_fundamental_div_mod(x, a * b); }
+        (a * b) * (x / (a * b)) + x % (a * b);
+        { lemma_mul_is_associative_auto(); }
+        a * (b * (x / (a * b))) + x % (a * b);
+        { lemma_fundamental_div_mod(x % (a * b), a); }
+        a * (b * (x / (a * b))) + a * (x % (a * b) / a) + (x % (a * b)) % a;
+        { lemma_mul_is_distributive_auto(); }
+        a * (b * (x / (a * b)) + x % (a * b) / a) + (x % (a * b)) % a;
     }
     lemma_mod_properties_auto();
     lemma_mul_is_commutative_auto();
@@ -737,7 +715,7 @@ pub proof fn lemma_part_bound2_auto()
     };
 }
 
-/// ensures the validity of an expanded form of the modulus operation,
+/// Ensures the validity of an expanded form of the modulus operation,
 /// as expressed in the pre and post conditions
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_breakdown(x: int, y: int, z: int)
@@ -760,30 +738,29 @@ pub proof fn lemma_mod_breakdown(x: int, y: int, z: int)
         lemma_mul_is_distributive_auto();
     };
 
-    calc! {
-    (==)
-    x % (y * z);
-    { lemma_fundamental_div_mod(x, y); }
-    (y * (x / y) + x%  y) % (y * z);
-    {
-        lemma_mod_properties_auto();
-        assert(0 <= x % y);
-        lemma_mul_nonnegative(y, x / y);
-        assert((y * (x / y)) % (y * z) + (x % y) % (y * z) < y * z);
-        lemma_mod_adds(y * (x / y), x % y, y * z);
-    }
-    (y * (x / y)) % (y * z) + (x % y) % (y * z);
-    {
-        lemma_mod_properties_auto();
-        lemma_mul_increases(z, y);
-        lemma_mul_is_commutative_auto();
-        assert(x % y < y && y <= y * z);
-        lemma_small_mod((x % y) as nat, (y * z) as nat);
-        assert((x % y) % (y * z) == x % y);
-    }
-    (y * (x / y)) % (y * z) + x % y;
-    { lemma_truncate_middle(x / y, y, z); }
-    y * ((x / y) % z) + x % y;
+    calc! { (==)
+        x % (y * z);
+        { lemma_fundamental_div_mod(x, y); }
+        (y * (x / y) + x%  y) % (y * z);
+        {
+            lemma_mod_properties_auto();
+            assert(0 <= x % y);
+            lemma_mul_nonnegative(y, x / y);
+            assert((y * (x / y)) % (y * z) + (x % y) % (y * z) < y * z);
+            lemma_mod_adds(y * (x / y), x % y, y * z);
+        }
+        (y * (x / y)) % (y * z) + (x % y) % (y * z);
+        {
+            lemma_mod_properties_auto();
+            lemma_mul_increases(z, y);
+            lemma_mul_is_commutative_auto();
+            assert(x % y < y && y <= y * z);
+            lemma_small_mod((x % y) as nat, (y * z) as nat);
+            assert((x % y) % (y * z) == x % y);
+        }
+        (y * (x / y)) % (y * z) + x % y;
+        { lemma_truncate_middle(x / y, y, z); }
+        y * ((x / y) % z) + x % y;
     }
 }
 

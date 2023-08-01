@@ -1,19 +1,12 @@
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
 
 verus! {
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::general_internals::{is_le};
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_induction_forall, lemma_mod_induction_forall2, mod_auto, lemma_mod_auto, lemma_mod_basics_auto};
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::mod_internals_nonlinear;
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::div_internals_nonlinear;
-#[allow(unused_imports)]
-use crate::nonlinear_arith::internals::mul_internals;
 
 /// Performs division recursively with positive denominator.
 #[verifier(opaque)]

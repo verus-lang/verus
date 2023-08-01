@@ -1,7 +1,6 @@
 //! Declares helper lemmas and predicates for non-linear arithmetic
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
 
 verus! {

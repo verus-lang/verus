@@ -1,21 +1,14 @@
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
 
 verus! {
 
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::general_internals::*;
-#[allow(unused_imports)]
 use crate::nonlinear_arith::mul::*;
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto};
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::mul_internals_nonlinear;
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::mod_internals_nonlinear::{lemma_fundamental_div_mod, lemma_mod_range, lemma_small_mod};
-#[allow(unused_imports)]
 use crate::nonlinear_arith::internals::div_internals_nonlinear;
 
 /// Performs modulus recursively

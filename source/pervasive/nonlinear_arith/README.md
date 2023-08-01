@@ -9,7 +9,4 @@ verify without Non-Linear arithmetic reasoning, which should keep the library it
 
 In general, it shouldn't be necessary to directly reference anything in `internals`.
 
-(edited from the dafny ver)
-
-
-This library is ported from the [dafny standard library](https://github.com/dafny-lang/libraries).
+This library was originally ported from the [Dafny standard library](https://github.com/dafny-lang/libraries).

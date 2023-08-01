@@ -6,10 +6,7 @@ verification is highly unstable! */
 // may be try to use singular?
 #[allow(unused_imports)]
 use builtin::*;
-#[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
-use crate::calc_macro::*;
 
 verus! {
 
