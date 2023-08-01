@@ -306,7 +306,7 @@ impl Eq for Ensures {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Ensures {
     fn eq(&self, other: &Self) -> bool {
-        self.exprs == other.exprs
+        self.attrs == other.attrs && self.exprs == other.exprs
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

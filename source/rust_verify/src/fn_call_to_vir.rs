@@ -98,6 +98,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             VerusItem::Pervasive(_, _)
             | VerusItem::Marker(_)
             | VerusItem::BuiltinType(_)
+            | VerusItem::BuiltinTrait(_)
             | VerusItem::BuiltinFunction(_) => (),
             _ => {
                 return verus_item_to_vir(
@@ -1146,6 +1147,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Pervasive(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
+        | VerusItem::BuiltinTrait(_)
         | VerusItem::BuiltinFunction(_) => unreachable!(),
     }
 }

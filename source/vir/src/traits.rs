@@ -1,6 +1,6 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, Mode, Path,
-    Typ, VirErr,
+    Typ, VirErr, WellKnownItem,
 };
 use crate::ast_util::error;
 use crate::def::Spanned;
@@ -11,7 +11,10 @@ use std::sync::Arc;
 
 // We currently do not support trait bounds for traits from other crates
 // and we consider methods for traits from other crates to be static.
-pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
+pub fn demote_foreign_traits(
+    path_to_well_known_item: &std::collections::HashMap<Path, WellKnownItem>,
+    krate: &Krate,
+) -> Result<Krate, VirErr> {
     let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
     let func_map: HashMap<Fun, Function> =
         krate.functions.iter().map(|f| (f.x.name.clone(), f.clone())).collect();
@@ -47,6 +50,21 @@ pub fn demote_foreign_traits(krate: &Krate) -> Result<Krate, VirErr> {
                 retx.name = decl.x.ret.x.name.clone();
                 functionx.ret = Spanned::new(functionx.ret.span.clone(), retx);
             } else {
+                if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
+                    if !function.x.require.is_empty() {
+                        return error(
+                            &function.span,
+                            "requires are not allowed on the implementation for Drop",
+                        );
+                    }
+                    if !matches!(&function.x.mask_spec, crate::ast::MaskSpec::InvariantOpens(es) if es.len() == 0)
+                    {
+                        return error(
+                            &function.span,
+                            "the implementation for Drop must be marked opens_invariants none",
+                        );
+                    }
+                }
                 check_modes(function, &function.span)?;
                 functionx.kind = FunctionKind::Static;
             }

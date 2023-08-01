@@ -1777,3 +1777,68 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "opaque has no effect on a function without a body")
 }
+
+test_verify_one_file! {
+    #[test] disallow_drop_with_requires verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            fn drop(&mut self)
+                requires false
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "requires are not allowed on the implementation for Drop")
+}
+
+test_verify_one_file! {
+    #[test] allow_drop_without_requires_and_opens_invariants_none verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            fn drop(&mut self)
+                opens_invariants none
+            { }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] allow_external_drop_with_requires verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            #[verifier::external]
+            fn drop(&mut self)
+                requires false
+            {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] diallow_external_body_drop_with_requires verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            #[verifier::external_body]
+            fn drop(&mut self)
+                requires false
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "requires are not allowed on the implementation for Drop")
+}
+
+test_verify_one_file! {
+    #[test] diallow_open_invariants_on_drop verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            fn drop(&mut self)
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked opens_invariants none")
+}
