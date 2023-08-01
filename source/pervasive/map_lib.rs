@@ -19,7 +19,7 @@ impl<K, V> Map<K, V> {
         self.dom().contains(k)
     }
 
-    /// Returns true if the value `v` is in the map of `self`.
+    /// Returns true if the value `v` is in the range of `self`.
 
     pub open spec fn contains_value(self, v: V) -> bool {
         exists|i: K| #[trigger] self.dom().contains(i) && self[i] == v
@@ -56,10 +56,9 @@ impl<K, V> Map<K, V> {
     /// ## Example
     ///
     /// ```rust
-    /// assert_maps_equal!(
-    ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13]),
-    ///    map![1 => 20, 2 => 11, 3 => 13],
-    /// );
+    /// assert(
+    ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13])
+    ///    =~= map![1 => 20, 2 => 11, 3 => 13]);
     /// ```
 
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
@@ -76,10 +75,9 @@ impl<K, V> Map<K, V> {
     /// ## Example
     ///
     /// ```rust
-    /// assert_maps_equal!(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4}),
-    ///    map![1 => 10],
-    /// );
+    /// assert(
+    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
+    ///    =~= map![1 => 10]);
     /// ```
 
     pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
@@ -96,10 +94,9 @@ impl<K, V> Map<K, V> {
     /// ## Example
     ///
     /// ```rust
-    /// assert_maps_equal!(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4}),
-    ///    map![2 => 11, 3 => 12],
-    /// );
+    /// assert(
+    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
+    ///    =~= map![2 => 11, 3 => 12]);
     /// ```
 
     pub open spec fn restrict(self, keys: Set<K>) -> Self {
@@ -117,8 +114,7 @@ impl<K, V> Map<K, V> {
         ||| (self.dom().contains(key) && m2.dom().contains(key) && self[key] == m2[key])
     }
 
-    /// Returns `true` if the two given maps agree on all keys that their domains
-    /// share in common.
+    /// Returns `true` if the two given maps agree on all keys that their domains share
 
     pub open spec fn agrees(self, m2: Self) -> bool {
         forall|k| #![auto] self.dom().contains(k) && m2.dom().contains(k) ==>
@@ -152,8 +148,8 @@ impl<K, V> Map<K, V> {
 
     // Proven lemmas
 
-    /// Removing a key from a map that previously contained that key results
-    /// in a length that is one less than the original length.
+    /// Removing a key from a map that previously contained that key decreases 
+    /// the map's length by one
     pub proof fn lemma_remove_key_len(self, key: K)
         requires
             self.dom().contains(key),
@@ -169,8 +165,8 @@ impl<K, V> Map<K, V> {
             self.remove(key).dom() == self.dom().remove(key),
     {}    
 
-/// Removing a set of n keys from a map that previously contained all n keys
-/// results in a domain of size n less than the original domain.
+    /// Removing a set of n keys from a map that previously contained all n keys
+    /// results in a domain of size n less than the original domain.
     pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
         requires
             forall |k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
@@ -187,8 +183,7 @@ impl<K, V> Map<K, V> {
             let val = self[key];
             self.remove(key).lemma_remove_keys_len(keys.remove(key));
             assert(self.remove(key).remove_keys(keys.remove(key)) =~= self.remove_keys(keys));
-        }
-        else {
+        } else {
             assert(self.remove_keys(keys) =~= self);
         }
     }
@@ -231,7 +226,7 @@ impl Map<int,int> {
 
 // Proven lemmas
 
-/// The size of the union of two maps is equal to the sum of the sizes of the individual maps
+/// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
 pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
     requires
         m1.dom().disjoint(m2.dom()),
@@ -252,7 +247,7 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
 pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
-        #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
+        Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
 {
     assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
 }
@@ -263,7 +258,7 @@ pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 /// the set of all values fv(k) where fk(k) is true.
 pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
     ensures
-        #[trigger] Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)),
+        Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)),
 {
     let keys = Set::<K>::new(fk);
     let values = Map::<K,V>::new(fk,fv).values();
@@ -278,9 +273,9 @@ pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 pub proof fn lemma_map_properties<K,V>()
     ensures
     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
-            == Set::<K>::new(|k: K| fk(k)), //lemma_map_new_domain
+            == Set::<K>::new(|k: K| fk(k)), //from lemma_map_new_domain
     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
-            == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //lemma_map_new_values
+            == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //from lemma_map_new_values
 {
     assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| 
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k)) by {

@@ -46,14 +46,14 @@ impl<A> Seq<A> {
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::new"]
     pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
-    /// Constructs a sequence of length `length` where every element in the sequence
+    /// Constructs a sequence of length `len` where every element in the sequence
     /// is equivalent to `val`.
     
-    spec fn fill(val: A, length: nat) -> Seq<A>
+    spec fn fill(len: nat, val: A) -> Seq<A>
     {
-        if length <= 0 {Self::empty()}
+        if len <= 0 {Self::empty()}
         else {
-           Self::new(length, |i: int| val)
+           Self::new(len, |i: int| val)
         }
     }
 

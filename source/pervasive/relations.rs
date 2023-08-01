@@ -1,5 +1,4 @@
-// use vstd::prelude::*;
-
+//! Provides specifications for spec closures as relations.
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -56,7 +55,7 @@ verus! {
     }
 
     pub open spec fn transitive<T>(r: FnSpec(T,T) -> bool) -> bool{
-        forall|x: T, y: T, z: T| #[trigger] r(x,y) && #[trigger] r(y,z) ==>  #[trigger] r(x,z)
+        forall|x: T, y: T, z: T| #[trigger] r(x,y) && #[trigger] r(y,z) ==> r(x,z)
     }
 
     pub open spec fn total_ordering<T>(r: FnSpec(T,T) ->bool) ->bool{

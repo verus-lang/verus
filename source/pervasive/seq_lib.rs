@@ -46,7 +46,7 @@ impl<A> Seq<A> {
     /// ```
     pub open spec fn is_prefix_of(self, other: Self) -> bool
     {
-        self.len() <= other.len() && self =~= other.subrange(0,self.len() as int)
+        self.len() <= other.len() && self =~= other.subrange(0, self.len() as int)
     }
 
     /// Is true if the calling sequence is a suffix of the given sequence 'other'.
@@ -79,8 +79,9 @@ impl<A> Seq<A> {
         decreases
             self.len(),
     {
-        if self.len() <=1 {self}
-        else{
+        if self.len() <=1 {
+            self
+        } else {
             let split_index = self.len() /2;
             let left = self.subrange(0,split_index as int);
             let right = self.subrange(split_index as int, self.len() as int);
@@ -102,7 +103,7 @@ impl<A> Seq<A> {
             self.len(),
     {
         if self.len() <=1 {}
-        else{
+        else {
             let split_index = self.len() /2;
             let left = self.subrange(0,split_index as int);
             let right = self.subrange(split_index as int, self.len() as int);
@@ -277,9 +278,12 @@ impl<A> Seq<A> {
         if self.len() > 1 {
             if leq(self[0],self.subrange(1,self.len() as int).max_via(leq)) {
                 self.subrange(1,self.len() as int).max_via(leq)
+            } else {
+                self[0]
             }
-            else {self[0]}
-        } else {self[0]}
+        } else {
+            self[0]
+        }
     }
 
     /// Returns the minimum value in a non-empty sequence, given sorting function leq
@@ -290,9 +294,14 @@ impl<A> Seq<A> {
         if self.len() > 1 {
             let subseq = self.subrange(1,self.len() as int);
             let elt = subseq.min_via(leq);
-            if leq(elt,self[0]) {elt}
-            else {self[0]}
-        } else {self[0]}
+            if leq(elt,self[0]) {
+                elt
+            } else {
+                self[0]
+            }
+        } else {
+            self[0]
+        }
     }
 
     // TODO is_sorted -- extract from summer_school e22
@@ -300,8 +309,8 @@ impl<A> Seq<A> {
         exists|i: int| 0 <= i < self.len() && self[i] == needle
     }
 
-    /// Returns some index if an element occurs at least once in a sequence
-    /// and occurs at index i. Otherwise returns an arbitrary value.
+    /// Returns an index where `needle` appears in the sequence. 
+    /// Returns an arbitrary value if the sequence does not contain the `needle`.
     pub open spec fn index_of(self, needle: A) -> int {
         choose|i: int| 0 <= i < self.len() && self[i] == needle
     }
@@ -310,8 +319,11 @@ impl<A> Seq<A> {
     /// is at index i, Some(i) is returned. Otherwise, None is returned
     pub open spec fn find_first(self, needle: A) -> (result: Option<int>)
     {
-        if (self.contains(needle)) {Some(self.first_index_helper(needle, 0))}
-        else {None}
+        if self.contains(needle) {
+            Some(self.first_index_helper(needle, 0))
+        } else {
+            None
+        }
     }
 
     /// Recursive helper function for first_index_of
@@ -333,8 +345,11 @@ impl<A> Seq<A> {
     /// For an element that occurs at least once in a sequence, if its last occurence
     /// is at index i, Some(i) is returned. Otherwise, None is returned
     pub open spec fn find_last(self, needle:A) -> Option<int> {
-        if self.contains(needle) {Some(self.last_index_helper(needle,0))}
-        else {None}
+        if self.contains(needle) {
+            Some(self.last_index_helper(needle,0))
+        } else {
+            None
+        }
     }
 
     /// Recursive helper function for last_index_of
@@ -440,8 +455,8 @@ impl<A> Seq<A> {
         requires 
             0 <= pos <= self.len(),
         ensures
-            self.insert(pos, elt).len() == self.len() +1,
-            forall |i: int| 0<= i < pos ==> #[trigger] self.insert(pos, elt)[i] == #[trigger] self[i],
+            self.insert(pos, elt).len() == self.len() + 1,
+            forall |i: int| 0 <= i < pos ==> #[trigger] self.insert(pos, elt)[i] == self[i],
             forall |i: int| pos <= i < self.len() ==> self.insert(pos, elt)[i+1] == self[i],
             self.insert(pos, elt)[pos] == elt,
     {}
@@ -456,11 +471,11 @@ impl<A> Seq<A> {
     /// Proof of function remove() correctness
     pub proof fn remove_ensures(self, i: int)
         requires 
-            0<= i < self.len(),
+            0 <= i < self.len(),
         ensures
             self.remove(i).len() == self.len()-1,
-            forall |index: int| 0<= index < i ==> #[trigger] self.remove(i)[index] == #[trigger] self[index],
-            forall |index: int| i <= index < self.len() -1 ==> #[trigger] self.remove(i)[index] == self[index+1],
+            forall |index: int| 0 <= index < i ==> #[trigger] self.remove(i)[index] == self[index],
+            forall |index: int| i <= index < self.len() - 1 ==> #[trigger] self.remove(i)[index] == self[index+1],
     {}
 
     /// If a given element occurs at least once in a sequence, the sequence without
@@ -478,8 +493,9 @@ impl<A> Seq<A> {
     pub open spec fn reverse(self) -> Seq<A>
         decreases self.len()
     {
-        if self.len() == 0 {Seq::empty()}
-        else {
+        if self.len() == 0 {
+            Seq::empty()
+        } else {
             Seq::new(self.len(), |i: int| self[self.len()-1-i])
         }
     }
@@ -490,9 +506,11 @@ impl<A> Seq<A> {
         recommends self.len() == other.len()
         decreases self.len()
     {
-        if self.len() != other.len() {Seq::empty()}
-        else if self.len() == 0 {Seq::empty()}
-        else{
+        if self.len() != other.len() {
+            Seq::empty()
+        } else if self.len() == 0 {
+            Seq::empty()
+        } else {
             Seq::new(self.len(), |i: int| (self[i],other[i]))
         }
     }
@@ -668,9 +686,9 @@ impl<A> Seq<A> {
         }
     }
 
-    /// The concatenation of two subsequences of a non-empty sequence, the first obtained 
-    /// from dropping the last element, the second consisting only of the last 
-    /// element, is the original sequence.
+    /// The concatenation of two subsequences derived from a non-empty sequence, 
+    /// the first obtained from dropping the last element, the second consisting only 
+    /// of the last element, is the original sequence.
     pub proof fn lemma_add_last_back(self)
         requires 
             0 < self.len(),
@@ -684,11 +702,11 @@ impl<A> Seq<A> {
     /// to satisfy a precondition in the latter form.
     pub proof fn lemma_indexing_implies_membership(self, f: FnSpec(A) -> bool)
         requires
-            forall |i: int| 0<= i < self.len() ==> #[trigger] f(#[trigger] self[i]),
+            forall |i: int| 0 <= i < self.len() ==> #[trigger] f(#[trigger] self[i]),
         ensures
             forall |x: A| #[trigger] self.contains(x) ==> #[trigger] f(x),
     {
-        assert(forall |i: int| 0<= i < self.len() ==> #[trigger] self.contains(self[i]));
+        assert(forall |i: int| 0 <= i < self.len() ==> #[trigger] self.contains(self[i]));
     }
 
     /// If a predicate is true for every member of a sequence as a collection,
@@ -702,7 +720,7 @@ impl<A> Seq<A> {
             forall |i: int| 0<= i < self.len() ==> #[trigger] f(self[i]),   
     {
         assert forall |i: int| 0<= i < self.len() implies #[trigger] f(self[i]) by {
-            assert(#[trigger] self.contains(self[i]));
+            assert(self.contains(self[i]));
         }
     }
 
@@ -713,18 +731,18 @@ impl<A> Seq<A> {
         requires 
             0 <= pos <= self.len(),
         ensures 
-            #[trigger] self.subrange(0,pos) + #[trigger] self.subrange(pos,self.len() as int) =~= self
+            self.subrange(0,pos) + self.subrange(pos,self.len() as int) =~= self
     {}
 
     /// Any element in a slice is included in the original sequence.
     pub proof fn lemma_element_from_slice(self, new: Seq<A>, a: int, b:int, pos: int)
         requires
-            0 <= a <= b <= #[trigger] self.len(),
-            new == #[trigger] self.subrange(a,b),
+            0 <= a <= b <= self.len(),
+            new == self.subrange(a,b),
             a <= pos < b
         ensures
-            pos - a < #[trigger] new.len(),
-            new[pos-a] == #[trigger] self[pos],
+            pos - a < new.len(),
+            new[pos-a] == self[pos],
     {}
 
     /// A slice (from s2..e2) of a slice (from s1..e1) of a sequence is equal to just a 
@@ -830,7 +848,7 @@ impl<A,B> Seq<(A,B)>{
             self.unzip().0.len() == self.unzip().1.len(),
             self.unzip().0.len() == self.len(),
             self.unzip().1.len() == self.len(),
-            forall |i: int| 0<= i < self.len() 
+            forall |i: int| 0 <= i < self.len() 
                     ==> (#[trigger] self.unzip().0[i], #[trigger] self.unzip().1[i]) == self[i],
         decreases
             self.len(),
@@ -866,8 +884,9 @@ impl<A> Seq<Seq<A>>{
     pub open spec fn flatten(self) -> Seq<A>
         decreases self.len()
     {
-        if self.len() == 0 {Seq::empty()}
-        else {
+        if self.len() == 0 {
+            Seq::empty()
+        } else {
             self.first().add(self.drop_first().flatten())
         }
     }
@@ -879,8 +898,9 @@ impl<A> Seq<Seq<A>>{
     pub open spec fn flatten_alt(self) -> Seq<A>
         decreases self.len()
     {
-        if self.len() == 0 {Seq::empty()}
-        else {
+        if self.len() == 0 {
+            Seq::empty()
+        } else {
             self.drop_last().flatten_alt().add(self.last())
         }
     }
@@ -898,7 +918,7 @@ impl<A> Seq<Seq<A>>{
     }
 
     /// The length of a flattened sequence of sequences x is greater than or 
-        /// equal to any of the lengths of the elements of x.
+    /// equal to any of the lengths of the elements of x.
     pub proof fn lemma_flatten_length_ge_single_element_length(self, i: int)
         requires
             0<= i < self.len(),
@@ -967,9 +987,11 @@ impl Seq<int> {
             0 < self.len(),
         decreases self.len()
     {
-        if self.len() == 1 {self[0]} 
-        else if self.len() == 0 {0}
-        else {
+        if self.len() == 1 {
+            self[0]
+        } else if self.len() == 0 {
+            0
+        } else {
             let later_max = self.drop_first().max();
             if self[0] >= later_max {self[0]}
             else {later_max}
@@ -980,7 +1002,7 @@ impl Seq<int> {
     pub proof fn lemma_max_properties(self)
         ensures
             forall |x: int| self.contains(x) ==> x <= self.max(),
-            forall |i: int| 0<= i < self.len() ==> self[i] <= self.max(),
+            forall |i: int| 0 <= i < self.len() ==> self[i] <= self.max(),
             self.len() == 0 || self.contains(self.max()),
         decreases 
             self.len(),
@@ -1001,15 +1023,17 @@ impl Seq<int> {
         }
     }
 
-    /// Returns the maximum integer value in a non-empty sequence of integers.
+    /// Returns the minimum integer value in a non-empty sequence of integers.
     pub open spec fn min(self) -> int
         recommends 
             0 < self.len(),
         decreases self.len()
     {
-        if self.len() == 1 {self[0]} 
-        else if self.len() == 0 {0}
-        else {
+        if self.len() == 1 {
+            self[0]
+        } else if self.len() == 0 {
+            0
+        } else {
             let later_min = self.drop_first().min();
             if self[0] <= later_min {self[0]}
             else {later_min}
@@ -1088,9 +1112,11 @@ pub closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec
     decreases
         left.len(), right.len()
 {
-    if left.len() == 0 {right}
-    else if right.len() == 0 {left}
-    else if leq(left.first(), right.first()){
+    if left.len() == 0 {
+        right
+    } else if right.len() == 0 {
+        left
+    } else if leq(left.first(), right.first()){
         Seq::<A>::empty().push(left.first()) + merge_sorted_with(left.drop_first(), right, leq)
     } else {
         Seq::<A>::empty().push(right.first()) + merge_sorted_with(left, right.drop_first(), leq)
@@ -1255,7 +1281,7 @@ proof fn to_multiset_len<A>(s: Seq<A>)
     }
 }
 
-/// to_multiset() contains only all elements of the sequence
+/// to_multiset() contains only the elements of the sequence
 proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
     ensures
         s.contains(a) <==> s.to_multiset().count(a) > 0
@@ -1294,13 +1320,13 @@ pub proof fn lemma_append_last<A>(s1 :Seq<A>, s2 :Seq<A>)
     requires
         0 < s2.len(),
     ensures
-        #[trigger] (s1 + s2).last() == s2.last(),
+        (s1 + s2).last() == s2.last(),
 {}
 
 /// The concatenation of sequences is associative
 pub proof fn lemma_concat_associative<A>(s1 : Seq<A>, s2 :Seq<A>, s3 :Seq<A>)
     ensures
-        #[trigger] s1.add(s2.add(s3)) =~= #[trigger] s1.add(s2).add(s3),
+        s1.add(s2.add(s3)) =~= s1.add(s2).add(s3),
 {}
 
 /// Recursive definition of seq to set conversion
@@ -1380,7 +1406,7 @@ pub proof fn seq_to_set_is_finite_broadcast<A>(seq: Seq<A>)
     // TODO: merge this with seq_to_set_is_finite when broadcast_forall is better supported
 }
 
-/// If sequences a and b don't have duplicates and there are no 
+/// If sequences a and b don't have duplicates, and there are no 
 /// elements in common between them, then the concatenated sequence 
 /// a + b will not contain duplicates either.
 pub proof fn lemma_no_dup_in_concat<A>(a: Seq<A>, b: Seq<A>)
@@ -1459,7 +1485,7 @@ pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     }
 }
  
-/// Proves that any two sequences that are sorted by a total order and that have the same elements are equal.
+/// Any two sequences that are sorted by a total order and that have the same elements are equal.
 pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) -> bool)
 requires
     sorted_by(x,leq),
@@ -1495,14 +1521,14 @@ decreases
 // This verified lemma used to be an axiom in the Dafny prelude
 pub proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
     ensures
-        s.contains(x) <==> exists |i: int| 0<= i < s.len() && #[trigger] s[i]==x,
+        s.contains(x) <==> exists |i: int| 0<= i < s.len() && s[i]==x,
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The empty sequence contains nothing
 pub proof fn lemma_seq_empty_contains_nothing<A>(x: A)
     ensures
-        !(#[trigger] Seq::<A>::empty().contains(x)),
+        !Seq::<A>::empty().contains(x),
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1510,7 +1536,7 @@ pub proof fn lemma_seq_empty_contains_nothing<A>(x: A)
 /// A sequence with length 0 is equivalent to the empty sequence
 pub proof fn lemma_seq_empty_equality<A>(s: Seq<A>)
     ensures
-        #[trigger] s.len() == 0 ==> s=~= Seq::<A>::empty(),
+        s.len() == 0 ==> s=~= Seq::<A>::empty(),
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1518,7 +1544,7 @@ pub proof fn lemma_seq_empty_equality<A>(s: Seq<A>)
 /// of the two sequences
 pub proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt: A)
     ensures
-        #[trigger] (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),
+        (x+y).contains(elt) <==> x.contains(elt) ||  y.contains(elt),
     decreases
         x.len(),
 {
@@ -1542,8 +1568,8 @@ pub proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt
 /// After pushing an element onto a sequence, the sequence contains that element
 pub proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     ensures 
-        (#[trigger] s.push(v).contains(x) <==> v==x || s.contains(x))
-            && #[trigger] s.push(v).contains(v),
+        (s.push(v).contains(x) <==> v==x || s.contains(x))
+            && s.push(v).contains(v),
 {
     assert forall |elt: A| #[trigger] s.contains(elt) implies #[trigger] s.push(v).contains(elt)
     by {
@@ -1578,7 +1604,7 @@ pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
 /// as long as `n` is within the bounds of the original sequence.
 pub proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
     ensures
-        0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
+        0 <= n <= s.len() ==> s.take(n).len() == n,
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1588,10 +1614,10 @@ pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        #[trigger] s.take(n).contains(x) <==> (exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x),
+        s.take(n).contains(x) <==> (exists |i: int| 0<= i < n <= s.len() && s[i] == x),
 {
     assert ((exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x) ==> s.take(n).contains(x)) by {
-        if exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x  {
+        if exists |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x {
             let index = choose |i: int| 0<= i < n <= s.len() && #[trigger] s[i] == x;
             assert(s.take(n)[index] == s[index]);
         }
@@ -1603,7 +1629,7 @@ pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
 /// is the same as `j`th element of the sequence after taking the first `n` elements of `s`.
 pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
     ensures
-        0<= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],
+        0 <= j < n <= s.len() ==> s.take(n)[j] == s[j],
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1611,7 +1637,7 @@ pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
 /// the original sequence's length.
 pub proof fn lemma_seq_drop_len<A>(s: Seq<A>, n: int)
     ensures
-        0 <= n <= s.len() ==> #[trigger] s.drop(n).len() == s.len() - n,
+        0 <= n <= s.len() ==> s.drop(n).len() == s.len() - n,
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1621,7 +1647,7 @@ pub proof fn lemma_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        #[trigger] s.drop(n).contains(x) <==> (exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x),
+        s.drop(n).contains(x) <==> (exists |i: int| 0<= n <= i < s.len() && s[i] == x),
 {
     assert((exists |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x) ==> s.drop(n).contains(x)) by {
         let index = choose |i: int| 0<= n <= i < s.len() && #[trigger] s[i] == x;
@@ -1634,7 +1660,7 @@ pub proof fn lemma_seq_drop_contains<A>(s: Seq<A>, n: int, x: A)
 /// `s.drop(n)` is the same as the `j+n`th element of the sequence `s`.
 pub proof fn lemma_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
     ensures
-        0 <=n && 0<= j < (s.len() - n) ==> #[trigger] s.drop(n)[j] == s[j+n],
+        0 <=n && 0<= j < (s.len() - n) ==> s.drop(n)[j] == s[j+n],
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1643,7 +1669,7 @@ pub proof fn lemma_seq_drop_index<A>(s: Seq<A>, n: int, j: int)
 /// original sequence `s`.
 pub proof fn lemma_seq_drop_index2<A>(s: Seq<A>, n: int, k: int)
     ensures 
-        0 <= n <= k < s.len() ==> (#[trigger] s.drop(n))[k-n] == #[trigger] s[k]
+        0 <= n <= k < s.len() ==> (s.drop(n))[k-n] == s[k]
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1690,7 +1716,7 @@ pub proof fn lemma_seq_drop_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
 /// the first `n` elements without the update.
 pub proof fn lemma_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= i < n <= s.len() ==> #[trigger] s.update(i,v).drop(n) =~= s.drop(n),
+        0 <= i < n <= s.len() ==> s.update(i,v).drop(n) =~= s.drop(n),
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1698,21 +1724,21 @@ pub proof fn lemma_seq_drop_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
 /// equivalent to dropping the first `n` elements of `s` and then pushing `v` onto the end.
 pub proof fn lemma_seq_drop_build_commut<A>(s: Seq<A>, v: A, n: int)
     ensures
-        0<= n <= s.len() ==> #[trigger] s.push(v).drop(n) =~= s.drop(n).push(v), 
+        0<= n <= s.len() ==> s.push(v).drop(n) =~= s.drop(n).push(v), 
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// `s.drop(0)` is equivalent to `s`.
 pub proof fn lemma_seq_drop_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n==0 ==> #[trigger] s.drop(n) =~= s,
+        n==0 ==> s.drop(n) =~= s,
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// `s.take(0)` is equivalent to the empty sequence.
 pub proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n==0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
+        n==0 ==> s.take(n) =~= Seq::<A>::empty(),
 {}
 
 // This verified lemma used to be an axiom in the Dafny prelude

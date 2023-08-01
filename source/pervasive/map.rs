@@ -28,7 +28,7 @@ verus! {
 ///  * The [`map!`] macro, to construct small maps of a fixed size.
 ///  * By manipulating an existing map with [`Map::insert`] or [`Map::remove`].
 ///
-/// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
+/// To prove that two maps are equal, it is usually easiest to use the extensionality operator `=~=`.
 
 #[verifier(external_body)]
 #[verifier::ext_equal]
@@ -95,7 +95,7 @@ impl<K, V> Map<K, V> {
 
     pub spec fn remove(self, key: K) -> Map<K, V>;
 
-    // Returns the number of key-value pairs in the map
+    /// Returns the number of key-value pairs in the map
 
     pub open spec fn len(self) -> nat {
         self.dom().len()
@@ -272,7 +272,7 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
 {
 }
 
-/// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
+/// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
@@ -282,8 +282,8 @@ pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 {
 }
 
-/// The domain of a map after removing a key-value pair is equivalent to removing the key from
-/// the original map's domain set.
+/// Removing a key-value pair from a map does not change the value mapped to by
+/// any other keys in the map.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
