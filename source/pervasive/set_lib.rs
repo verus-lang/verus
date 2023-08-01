@@ -806,22 +806,22 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
 /// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 pub proof fn lemma_set_properties<A>()
     ensures
-        forall |a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b), //lemma_set_union_again1
-        forall |a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(a) == a.union(b), //lemma_set_union_again2
-        forall |a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b), //lemma_set_intersect_again1
-        forall |a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b), //lemma_set_intersect_again2
-        forall |s1: Set<A>, s2: Set<A>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a), //lemma_set_difference2
-        forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a), //lemma_set_disjoint
+        forall |a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b), //from lemma_set_union_again1
+        forall |a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(a) == a.union(b), //from lemma_set_union_again2
+        forall |a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b), //from lemma_set_intersect_again1
+        forall |a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b), //from lemma_set_intersect_again2
+        forall |s1: Set<A>, s2: Set<A>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a), //from lemma_set_difference2
+        forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a), //from lemma_set_disjoint
         forall |s: Set<A>| ((#[trigger] s.len() == 0 && s.finite()) <==> s =~= Set::empty())
-                && (s.len() != 0 ==> exists |x: A| s.contains(x)), //lemma_set_empty_equivalency_len
-        forall |s: Set<A>, a: A| (s.contains(a) && s.finite()) ==> #[trigger] s.insert(a).len() == s.len(), //lemma_set_insert_same_len
-        forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //lemma_set_insert_diff_len 
+                && (s.len() != 0 ==> exists |x: A| s.contains(x)), //from lemma_set_empty_equivalency_len
+        forall |s: Set<A>, a: A| (s.contains(a) && s.finite()) ==> #[trigger] s.insert(a).len() == s.len(), //from lemma_set_insert_same_len
+        forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //from lemma_set_insert_diff_len 
         forall |s: Set<A>, a: A| ((s.finite() && s.contains(a)) ==> (#[trigger] (s.remove(a).len()) == s.len() -1))
-                && ((s.finite() && !s.contains(a)) ==> s.len() == s.remove(a).len()), //lemma_set_remove_len_contains
-        forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a+b).len() == a.len() + b.len(), //lemma_set_disjoint_lens
-        forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite()) ==> #[trigger] (a+b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(), //lemma_set_intersect_union_lens
+                && ((s.finite() && !s.contains(a)) ==> s.len() == s.remove(a).len()), //from lemma_set_remove_len_contains
+        forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a+b).len() == a.len() + b.len(), //from lemma_set_disjoint_lens
+        forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite()) ==> #[trigger] (a+b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(), //from lemma_set_intersect_union_lens
         forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()) 
-                && (a.difference(b).len() == a.len() - a.intersect(b).len())), //lemma_set_difference_len
+                && (a.difference(b).len() == a.len() - a.intersect(b).len())), //from lemma_set_difference_len
 {
     assert forall |a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b) by {
         lemma_set_union_again1(a, b);
