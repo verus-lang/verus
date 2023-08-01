@@ -371,7 +371,7 @@ impl<A> Seq<A> {
         }
     }
 
-    /// Recursive helper function for last_index_of
+    // Recursive helper function for last_index_of
     spec fn last_index_helper(self, needle: A) -> int
         recommends self.contains(needle),
         decreases self.len(),
@@ -1143,8 +1143,8 @@ impl Seq<int> {
     }
 }
 
-/// Helper function to aid with merge sort
-closed spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
+// Helper function to aid with merge sort
+spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
     recommends
         sorted_by(left, leq),
         sorted_by(right, leq),
@@ -1380,7 +1380,7 @@ spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
     }
 }
 
-/// Helper function showing that the recursive definition of set_to_seq produces a finite set
+// Helper function showing that the recursive definition of set_to_seq produces a finite set
 proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
     ensures seq_to_set_rec(seq).finite()
     decreases seq.len()
@@ -1393,7 +1393,7 @@ proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
     }
 }
 
-/// Helper function showing that the resulting set contains all elements of the sequence
+// Helper function showing that the resulting set contains all elements of the sequence
 proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
     ensures forall |a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a)
     decreases seq.len()
@@ -1417,7 +1417,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
     }
 }
 
-/// Helper function showing that the recursive definition matches the set comprehension one
+// Helper function showing that the recursive definition matches the set comprehension one
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures seq.to_set() == seq_to_set_rec(seq)
 {

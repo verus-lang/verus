@@ -81,9 +81,9 @@ impl<A> Set<A> {
         }
     }
 
-    /// Helper function to prove termination of function to_seq
+    // Helper function to prove termination of function to_seq
     #[via_fn]
-    pub proof fn decreases_proof(self) {
+    proof fn decreases_proof(self) {
         lemma_set_properties::<A>();
         if self.len() > 0 {
             let x = self.choose();
