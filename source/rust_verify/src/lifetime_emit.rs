@@ -702,15 +702,18 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     emit_generic_params(state, &f.generic_params);
     state.write("(");
     state.push_indent();
-    for (span, x, typ) in f.params.iter() {
+    for param in f.params.iter() {
         state.newline();
-        if let Some(span) = span {
-            state.write_spanned(x.to_string(), *span);
+        if param.is_mut_var {
+            state.write("mut ");
+        }
+        if let Some(span) = param.span {
+            state.write_spanned(param.name.to_string(), span);
         } else {
-            state.write(x.to_string());
+            state.write(param.name.to_string());
         }
         state.write(": ");
-        state.write(typ.to_string());
+        state.write(param.typ.to_string());
         state.write(",");
     }
     state.newline_unindent();

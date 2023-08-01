@@ -543,3 +543,65 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(i32) -> i32")
 }
+
+test_verify_one_file! {
+    #[test] test_mut_param verus_code! {
+        fn test1(mut x: u32)
+            requires
+                x < 10,
+            ensures
+                // mut params are always evaluated to their original
+                // value in postconditions
+                x < 10,
+        {
+            assert(x < 20);
+            x = 100;
+            assert(x == 100);
+        }
+
+        fn test2(mut x: u32)
+            requires
+                x < 10;
+            ensures
+                x == 100, // FAILS
+        {
+            assert(x < 20);
+            x = 100;
+            assert(x == 100);
+        }
+
+        proof fn test3(mut x: int) {
+            x += 1;
+        }
+
+        struct T {
+            x: i32,
+            y: u64,
+        }
+
+        fn test4(mut t: T) {
+            let y = t.y;
+            t.x = 100;
+            assert(t.x == 100);
+            assert(t.y == y);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_param_spec_fail verus_code! {
+        spec fn f(mut x: i32) -> i32;
+    } => Err(err) => assert_vir_error_msg(err, "mut argument not allowed for spec functions")
+}
+
+test_verify_one_file! {
+    #[test] test_mut_self_disallowed verus_code! {
+        struct T{}
+
+        impl T {
+            fn test(mut self) {
+                self = T{};
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: mut self")
+}

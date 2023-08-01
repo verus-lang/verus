@@ -1591,11 +1591,22 @@ fn erase_fn_common<'tcx>(
         let name = state.fun_name(&fun_name);
         let inputs = &fn_sig.inputs();
         assert!(inputs.len() == f_vir.x.params.len());
-        let p_spans: Vec<Option<Span>> = if let Some(body) = body {
+        let params_info: Vec<(Option<Span>, bool)> = if let Some(body) = body {
             assert!(inputs.len() == body.params.len());
-            body.params.iter().map(|p| Some(p.pat.span)).collect()
+            body.params
+                .iter()
+                .map(|p| {
+                    let is_mut_var = match p.pat.kind {
+                        PatKind::Binding(rustc_hir::BindingAnnotation(_, mutability), _, _, _) => {
+                            mutability == rustc_hir::Mutability::Mut
+                        }
+                        _ => panic!("expected binding pattern"),
+                    };
+                    (Some(p.pat.span), is_mut_var)
+                })
+                .collect()
         } else {
-            inputs.iter().map(|_| None).collect()
+            inputs.iter().map(|_| (None, false)).collect()
         };
         let mut lifetimes: Vec<GenericParam> = Vec::new();
         let mut typ_params: Vec<GenericParam> = Vec::new();
@@ -1620,20 +1631,25 @@ fn erase_fn_common<'tcx>(
             &mut typ_params,
             &mut generic_bounds,
         );
-        let mut params: Vec<(Option<Span>, Id, Typ)> = Vec::new();
-        for ((input, param), sp) in inputs.iter().zip(f_vir.x.params.iter()).zip(p_spans.iter()) {
+        let mut params: Vec<Param> = Vec::new();
+        for ((input, param), param_info) in
+            inputs.iter().zip(f_vir.x.params.iter()).zip(params_info.iter())
+        {
             let name = if let Some((_, name)) = &param.x.unwrapped_info {
                 name.to_string()
             } else {
                 param.x.name.to_string()
             };
-            let x = state.local(name);
+            let is_mut_var = param_info.1;
+            let span = param_info.0;
+            let name = state.local(name);
             let typ = if param.x.mode == Mode::Spec {
                 TypX::mk_unit()
             } else {
                 erase_ty(ctxt, state, input)
             };
-            params.push((*sp, x, typ));
+            let new_param = Param { name, span, typ, is_mut_var };
+            params.push(new_param);
         }
         let ret = if let Some(sig) = sig {
             match sig.decl.output {

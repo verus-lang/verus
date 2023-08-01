@@ -181,13 +181,22 @@ pub(crate) struct DatatypeDecl {
 }
 
 #[derive(Debug)]
+pub(crate) struct Param {
+    pub(crate) name: Id,
+    pub(crate) typ: Typ,
+    pub(crate) span: Option<Span>,
+    // is_mut_var: parameter is declared as a mut var like `mut x: X`
+    pub(crate) is_mut_var: bool,
+}
+
+#[derive(Debug)]
 pub(crate) struct FunDecl {
     pub(crate) sig_span: Span,
     pub(crate) name_span: Span,
     pub(crate) name: Id,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
-    pub(crate) params: Vec<(Option<Span>, Id, Typ)>,
+    pub(crate) params: Vec<Param>,
     pub(crate) ret: Option<(Option<Span>, Typ)>,
     pub(crate) body: Exp,
 }
