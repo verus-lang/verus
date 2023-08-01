@@ -11,6 +11,7 @@ anstream = "0.3.2"
 is-terminal = "0.4.9"
 uuid = { version = "1.4.0", features = [ "v4" ] }
 common-path = "1.0.0"
+toml = "0.7.4"
 
 [target."cfg(windows)".dependencies]
 win32job = "1"

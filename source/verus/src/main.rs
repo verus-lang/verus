@@ -1,9 +1,9 @@
 use sha2::Digest;
 use std::fs::{create_dir_all, read_to_string, remove_dir_all, write, File};
-use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use toml::{map::Map, value::Value};
 
 const TOOLCHAIN: &str = env!("VERUS_TOOLCHAIN");
 
@@ -11,6 +11,8 @@ const RUST_VERIFY_FILE_NAME: &str =
     if cfg!(target_os = "windows") { "rust_verify.exe" } else { "rust_verify" };
 
 const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
+
+const OPT_IN_FILE_NAME: &str = ".verus_opt_in";
 
 fn main() {
     if cfg!(windows) && !yansi::Paint::enable_windows_ascii() {
@@ -42,13 +44,7 @@ fn main() {
 
     let mut args_bucket = args.collect::<Vec<_>>();
 
-    let local_store = args_bucket
-        .iter()
-        .position(|x| x.as_str() == "--local-store")
-        .map(|p| args_bucket.remove(p))
-        .is_some();
-
-    let report_path = repo_path(local_store);
+    let report_path = repo_path();
 
     let mut cmd = Command::new("rustup");
     if std::env::var("VERUS_Z3_PATH").ok().is_none() {
@@ -64,6 +60,42 @@ fn main() {
         }
     }
 
+    // check for --color=auto
+    if let Some(x) = args_bucket.iter().position(|x| x.as_str() == "--color=auto") {
+        if is_terminal::is_terminal(&std::io::stderr())
+            || is_terminal::is_terminal(&std::io::stdout())
+        {
+            args_bucket[x] = "--color=always".into();
+        } else {
+            args_bucket[x] = "--color=never".into();
+        }
+    }
+
+    // check if --color auto is in args
+    if let Some(x) = args_bucket.iter().position(|x| x.as_str() == "--color") {
+        if x + 1 < args_bucket.len() && args_bucket[x + 1] == "auto" {
+            args_bucket.remove(x + 1);
+            if is_terminal::is_terminal(&std::io::stderr())
+                || is_terminal::is_terminal(&std::io::stdout())
+            {
+                args_bucket[x] = "--color=always".into();
+            } else {
+                args_bucket[x] = "--color=never".into();
+            }
+        }
+    }
+
+    // if not supplied, same as --color auto
+    if !std::env::args().any(|arg| arg.starts_with("--color")) {
+        if is_terminal::is_terminal(&std::io::stderr())
+            || is_terminal::is_terminal(&std::io::stdout())
+        {
+            args_bucket.push("--color=always".into());
+        } else {
+            args_bucket.push("--color=never".into());
+        }
+    }
+
     cmd.arg("run")
         .arg(TOOLCHAIN)
         .arg("--")
@@ -71,30 +103,20 @@ fn main() {
         .args(args_bucket)
         .stdin(std::process::Stdio::inherit());
 
-    if !std::env::args().any(|arg| arg.starts_with("--color")) {
-        if is_terminal::is_terminal(&std::io::stderr())
-            || is_terminal::is_terminal(&std::io::stdout())
-        {
-            cmd.arg("--color=always");
-        } else {
-            cmd.arg("--color=never");
-        }
-    }
-
     match exec(&mut cmd, report_path) {
         Err(e) => {
             eprintln!("{}: failed to execute rust_verify: {}", yansi::Paint::red("error"), e);
             std::process::exit(128);
         }
-        Ok(_) => {
-            std::process::exit(0);
+        Ok(code) => {
+            std::process::exit(code);
         }
     }
 }
 
-pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
+pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<i32, String> {
     #[cfg(windows)]
-    if cfg!(windows) {
+    {
         // Configure Windows to kill the child SMT process if the parent is killed
         let job = win32job::Job::create()
             .map_err(|_| format!("last os error: {}", std::io::Error::last_os_error()))?;
@@ -114,13 +136,13 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
             // proj path is only created after the project has --local-store flag
             if !reports.project_directory.is_dir() {
                 cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
-                return Ok(());
+                return Ok(0);
             }
             reports
         }
         None => {
             cmd.status().map_err(|x| format!("verus failed to run with error: {}", x))?;
-            return Ok(());
+            return Ok(0);
         }
     };
 
@@ -134,7 +156,6 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     let toml_path = project_directory.join("reports.toml");
 
     create_dir_all(&project_directory).expect("creating reports.toml");
-    let mut file = File::create(toml_path).expect("creating reports.toml");
 
     let mut child = cmd
         .stdout(std::process::Stdio::piped())
@@ -170,68 +191,55 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
     let err_string = thread_err.join().unwrap();
     let out_string = thread_out.join().unwrap();
 
-    child.wait().map_err(|x| format!("verus failed to run with error: {}", x))?;
+    let ecode = child.wait().map_err(|x| format!("verus failed to run with error: {}", x))?;
 
-    writeln!(file, "{}", err_string)
-        .map_err(|x| format!("failed to write to reports.toml: {}", x))?;
-    writeln!(file, "{}", out_string)
+    let mut map = Map::new();
+    map.insert("title".to_string(), Value::String("Verus Snapshot".to_string()));
+    map.insert("verus-stdout".into(), Value::String(out_string));
+    map.insert("verus-stderr".into(), Value::String(err_string));
+    let toml_content = Value::Table(map);
+
+    write(toml_path, toml::to_string_pretty(&toml_content).unwrap())
         .map_err(|x| format!("failed to write to reports.toml: {}", x))?;
 
     let dependencies_listing_file = reports.dependencies_listing_file;
 
     let deps = get_dependencies(&dependencies_listing_file)?;
 
+    let curr_dir = std::env::current_dir().unwrap();
+    // append current working dir to all deps
+    let deps = deps.iter().map(|x| curr_dir.join(x)).collect::<Vec<_>>();
     let deps_path = deps.iter().map(|x| Path::new(x)).collect::<Vec<_>>();
 
     // compute common ancester
-    let common = match common_path::common_path_all(deps_path) {
-        Some(common) => common,
-        None => PathBuf::from(""),
-    };
+    let common = common_path::common_path_all(deps_path).expect(&format!(
+        "{} Getting common ancestor for dependencies",
+        yansi::Paint::red("error").bold()
+    ));
 
-    if deps.clone().into_iter().any(|dep| dep.is_absolute()) {
-        // copy files to repo_path
-        for dep in deps.iter() {
-            let rel_dest = dep.clone().strip_prefix(&common).unwrap().to_path_buf();
-            create_dir_all(project_directory.join(&rel_dest.parent().unwrap())).unwrap();
-            std::fs::copy(dep, project_directory.join(&rel_dest)).map_err(|err| {
-                format!(
-                    "failed to copy file {} to repo_path with error message: {}",
-                    dep.display(),
-                    err
-                )
-            })?;
-        }
-    } else {
-        // copy files to repo_path, none of dep should be absolute path at thsi point
-        for dep in deps.iter() {
-            create_dir_all(project_directory.join(dep.parent().unwrap())).unwrap();
-            std::fs::copy(dep, project_directory.join(dep)).map_err(|err| {
-                format!(
-                    "failed to copy file {} to repo_path with error message: {}",
-                    dep.display(),
-                    err
-                )
-            })?;
-        }
-    }
+    // strip common ancesters
+    let deps =
+        deps.iter().map(|x| x.strip_prefix(&common).unwrap().to_path_buf()).collect::<Vec<_>>();
 
-    match std::fs::remove_dir_all(dependencies_listing_file.parent().unwrap()) {
-        Ok(_) => {}
-        Err(err) => {
-            eprintln!(
-                "{} failed to remove directory {} with error message: {}",
-                yansi::Paint::yellow("warning:").bold(),
-                dependencies_listing_file.parent().unwrap().display(),
+    // copy files to repo_path, none of dep should be absolute path at thsi point
+    for dep in deps.iter() {
+        create_dir_all(project_directory.join(dep.parent().unwrap())).unwrap();
+        std::fs::copy(dep, project_directory.join(dep)).map_err(|err| {
+            format!(
+                "failed to copy file {} to repo_path with error message: {}",
+                dep.display(),
                 err
-            );
-        }
+            )
+        })?;
     }
+
+    Command::new("git").current_dir(&project_directory).arg("add").arg(".").output().map_err(
+        |x| format!("localstorage: failed to stage current project with error message: {}", x),
+    )?;
 
     Command::new("git")
         .current_dir(&project_directory)
         .arg("commit")
-        .arg("--all")
         .arg("--message")
         .arg("verus command invocation")
         .env("GIT_AUTHOR_NAME", "nobody")
@@ -241,7 +249,10 @@ pub fn exec(cmd: &mut Command, reports: Option<Reports>) -> Result<(), String> {
         .output()
         .map_err(|x| format!("localstorage: failed to git commit with error message: {}", x))?;
 
-    Ok(())
+    match ecode.code() {
+        Some(code) => Ok(code),
+        None => Err(format!("verus failed to generate exit code"))?,
+    }
 }
 
 #[derive(Debug)]
@@ -250,7 +261,7 @@ pub struct Reports {
     dependencies_listing_file: PathBuf,
 }
 
-fn repo_path(store: bool) -> Option<Reports> {
+fn repo_path() -> Option<Reports> {
     // check if user has git as executable
     if Command::new("git").arg("--version").output().is_err() {
         eprintln!(
@@ -296,6 +307,14 @@ fn repo_path(store: bool) -> Option<Reports> {
 
     let input_file_path = input_file.and_then(|f| std::fs::canonicalize(f).ok());
 
+    // take snapshot when there's a .verus_opt_in file in the current directory
+    // or any ancestor directory
+    if let Some(path) = input_file_path.as_ref() {
+        if !path.ancestors().any(|p| p.join(OPT_IN_FILE_NAME).is_file()) {
+            return None;
+        }
+    }
+
     let project_name = input_file_path
         .as_ref()
         .map(|path| format!("{:x}", sha2::Sha256::digest(path.to_string_lossy().as_bytes())));
@@ -303,7 +322,7 @@ fn repo_path(store: bool) -> Option<Reports> {
 
     let proj_dir = project_name.map(|name| {
         let project_dir = reports_dir.join(userid).join(name);
-        if !project_dir.is_dir() && store {
+        if !project_dir.is_dir() {
             create_dir_all(&project_dir).expect("failed to create project directory");
         }
         project_dir
