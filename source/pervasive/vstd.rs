@@ -4,6 +4,9 @@
 //! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
 
 #![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
