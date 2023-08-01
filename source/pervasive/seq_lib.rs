@@ -342,11 +342,17 @@ impl<A> Seq<A> {
 
     pub proof fn find_first_ensures(self, needle: A)
         ensures
-            self.find_first(needle).is_some() <==> self.contains(needle),
-            self.find_first(needle).is_some() ==> self[self.find_first(needle).unwrap()] == needle,
-            self.find_first(needle).is_none() <==> !self.contains(needle),
-            self.contains(needle) ==> 0 <= self.find_first(needle).unwrap() < self.len(),
-            self.contains(needle) ==> (forall |j: int| 0 <= j < self.find_first(needle).unwrap() < self.len() ==> self[j] != needle),
+            match self.find_first(needle) {
+                Some(index) => {
+                    &&& self.contains(needle)
+                    &&& 0 <= index < self.len()
+                    &&& self[index] == needle
+                    &&& forall |j: int| 0 <= j < index < self.len() ==> self[j] != needle
+                }
+                None => {
+                    !self.contains(needle)
+                }
+            }
         decreases
             self.len(),
     {
@@ -389,11 +395,17 @@ impl<A> Seq<A> {
 
     pub proof fn find_last_ensures(self, needle: A)
         ensures
-            self.find_last(needle).is_some() <==> self.contains(needle),
-            self.find_last(needle).is_some() ==> self[self.find_last(needle).unwrap()] == needle,
-            self.find_last(needle).is_none() <==> !self.contains(needle),
-            self.contains(needle) ==> 0 <= self.find_last(needle).unwrap() < self.len(),
-            self.contains(needle) ==> (forall |j: int| 0 <= self.find_last(needle).unwrap() < j < self.len() ==> self[j] != needle),
+            match self.find_last(needle) {
+                Some(index) => {
+                    &&& self.contains(needle)
+                    &&& 0 <= index < self.len()
+                    &&& self[index] == needle
+                    &&& forall |j: int| 0 <= index < j < self.len() ==> self[j] != needle
+                }
+                None => {
+                    !self.contains(needle)
+                }
+            }
         decreases
             self.len(),
         {
