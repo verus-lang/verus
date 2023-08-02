@@ -4,6 +4,7 @@ use builtin_macros::*;
 
 use crate::nonlinear_arith::internals::general_internals::{is_le, lemma_induction_helper};
 use crate::nonlinear_arith::internals::mul_internals_nonlinear as MulINL;
+use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
 verus! {
 
@@ -33,42 +34,19 @@ pub open spec fn mul_recursive(x: int, y: int) -> int
     else { -1 * mul_pos(-1 * x, y) }
 }
 
-
-/* you need these add, sub because by importing the general_internals add,
-    it will still complain it is an arithmetic expression */
-pub open spec fn add (a: int, b: int) -> int
-{
-    // or a + b
-    crate::nonlinear_arith::internals::general_internals::add(a, b)
-} 
-
-pub open spec fn sub (a: int, b: int) -> int
-{
-    // or a + b
-    crate::nonlinear_arith::internals::general_internals::sub(a, b)
-}
-
-pub open spec fn mul (a: int, b: int) -> int
-{
-    a * b
-}
-
 /// performs induction on multiplication
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_induction(f: FnSpec(int) -> bool)
     requires 
         f(0),
-        forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add(i, 1)),
-        forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub(i, 1)),
+        forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1)),
+        forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)),
         // TODO how about this proof style? seems to distablize one or two proofs
         // forall |i: int, j:int| i >= 0 && j == i + 1 && #[trigger] f(i) ==> #[trigger] f(j),
         // forall |i: int, j:int| i <= 0 && j == i - 1 && #[trigger] f(i) ==> #[trigger] f(j),
     ensures
         forall |i: int| #[trigger] f(i)
 {
-    assert (forall |i: int| f(add(i, 1)) ==> #[trigger] f(crate::nonlinear_arith::internals::general_internals::add(i, 1)));  // OBSERVE
-    assert (forall |i: int| f(sub(i, 1)) ==> #[trigger] f(crate::nonlinear_arith::internals::general_internals::sub(i, 1)));   // OBSERVE
-
     assert forall |i: int| #[trigger] f(i) by { lemma_induction_helper(1, f, i) };
 }
 
@@ -76,7 +54,7 @@ pub proof fn lemma_mul_induction(f: FnSpec(int) -> bool)
 // #[verifier::spinoff_prover]
 proof fn lemma_mul_commutes()
     ensures 
-        forall |x: int, y: int| #[trigger] mul(x, y) == mul(y, x)
+        forall |x: int, y: int| #[trigger](x * y) == y * x
 {}
 
 /// proves the distributive property of multiplication when multiplying an interger
@@ -114,11 +92,11 @@ proof fn lemma_mul_distributes()
     {
         let f1 = |i: int| ((x + i) * z) == (x * z + i * z);
         assert(f1(0));
-        assert forall |i: int| i >= 0 && #[trigger] f1(i) implies #[trigger]f1(add(i, 1)) by {
+        assert forall |i: int| i >= 0 && #[trigger] f1(i) implies #[trigger]f1(add1(i, 1)) by {
             assert(  (x + (i + 1)) * z == ((x + i) + 1) * z == (x + i) * z + z);
 
         };
-        assert forall |i: int| i <= 0 && #[trigger] f1(i) implies #[trigger]f1(sub(i, 1)) by {
+        assert forall |i: int| i <= 0 && #[trigger] f1(i) implies #[trigger]f1(sub1(i, 1)) by {
             assert((x + (i - 1)) * z == ((x + i) - 1) * z == (x + i) * z - z);
         };
         lemma_mul_induction(f1);
@@ -130,11 +108,11 @@ proof fn lemma_mul_distributes()
     assert forall |x:int, y:int, z:int| #[trigger]((x - y) * z) == (x * z - y * z) by {
         let f2 = |i: int| ((x - i) * z) == (x * z - i * z);
         assert(f2(0));
-        assert forall |i: int| i >= 0 && #[trigger] f2(i) implies #[trigger]f2(add(i, 1)) by {
+        assert forall |i: int| i >= 0 && #[trigger] f2(i) implies #[trigger]f2(add1(i, 1)) by {
             assert(  (x - (i + 1)) * z == ((x - i) - 1) * z == (x - i) * z - z);
 
         };
-        assert forall |i: int| i <= 0 && #[trigger] f2(i) implies #[trigger]f2(sub(i, 1)) by {
+        assert forall |i: int| i <= 0 && #[trigger] f2(i) implies #[trigger]f2(sub1(i, 1)) by {
             assert((x - (i - 1)) * z == ((x - i) + 1) * z == (x - i) * z + z);
         };
 

@@ -10,6 +10,7 @@ use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto};
 use crate::nonlinear_arith::internals::mul_internals_nonlinear;
 use crate::nonlinear_arith::internals::mod_internals_nonlinear::{lemma_fundamental_div_mod, lemma_mod_range, lemma_small_mod};
 use crate::nonlinear_arith::internals::div_internals_nonlinear;
+use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
 /// Performs modulus recursively
 #[verifier(opaque)]
@@ -26,38 +27,21 @@ pub open spec fn mod_recursive(x: int, d: int) -> int
     }
 }
 
-pub open spec fn add (x: int, y: int) -> int
-{
-    x + y
-}
-
-pub open spec fn sub (x: int, y: int) -> int
-{
-    x - y
-}
-
 /// performs induction on modulus
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mod_induction_forall(n: int, f: FnSpec(int) -> bool)
     requires 
         n > 0,
         forall |i: int| 0 <= i < n ==> #[trigger]f(i),
-        forall |i: int| i >= 0 && #[trigger]f(i) ==> #[trigger]f(add(i, n)),
-        forall |i: int| i < n  && #[trigger]f(i) ==> #[trigger]f(sub(i, n)),
+        forall |i: int| i >= 0 && #[trigger]f(i) ==> #[trigger]f(add1(i, n)),
+        forall |i: int| i < n  && #[trigger]f(i) ==> #[trigger]f(sub1(i, n)),
         // TODO: this definition breaks lemma_mod_induction_forall2
         // forall |i: int, j:int| (i >= 0 && j == i + n && #[trigger] f(i)) ==> #[trigger] f(j),
         // forall |i: int, j:int| (i < n  && j == i - n && #[trigger] f(i)) ==> #[trigger] f(j),
-        
     ensures  
         forall |i| #[trigger]f(i)
 {
     assert forall |i: int| #[trigger]f(i) by {
-        assert forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (crate::nonlinear_arith::internals::general_internals::add(i, n)) by {
-            assert(crate::nonlinear_arith::internals::general_internals::add(i, n) == add(i, n));
-        };
-        assert forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (crate::nonlinear_arith::internals::general_internals::sub(i, n)) by {
-            assert(crate::nonlinear_arith::internals::general_internals::sub(i, n) == sub(i, n));
-        };
         lemma_induction_helper(n, f, i);
     };
 }
@@ -70,10 +54,10 @@ pub proof fn lemma_mod_induction_forall2(n: int, f:FnSpec(int, int)->bool)
     requires
         n > 0,
         forall |i: int, j: int| 0 <= i < n && 0 <= j < n ==> #[trigger]f(i, j),
-        forall |i: int, j: int| i >= 0 && #[trigger]f(i, j) ==> #[trigger]f(add(i, n), j),
-        forall |i: int, j: int| j >= 0 && #[trigger]f(i, j) ==> #[trigger]f(i, add(j, n)),
-        forall |i: int, j: int| i < n  && #[trigger]f(i, j) ==> #[trigger]f(sub(i, n), j),
-        forall |i: int, j: int| j < n  && #[trigger]f(i, j) ==> #[trigger]f(i, sub(j, n)),
+        forall |i: int, j: int| i >= 0 && #[trigger]f(i, j) ==> #[trigger]f(add1(i, n), j),
+        forall |i: int, j: int| j >= 0 && #[trigger]f(i, j) ==> #[trigger]f(i, add1(j, n)),
+        forall |i: int, j: int| i < n  && #[trigger]f(i, j) ==> #[trigger]f(sub1(i, n), j),
+        forall |i: int, j: int| j < n  && #[trigger]f(i, j) ==> #[trigger]f(i, sub1(j, n)),
     ensures
         forall |i: int, j: int| #[trigger]f(i, j)
 {
@@ -327,8 +311,8 @@ pub proof fn lemma_mod_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
         f(x)
 {
     lemma_mod_auto(n);
-    assert(forall |i: int| is_le(0, i) && #[trigger]f(i) ==> #[trigger]f(add(i, n)));
-    assert(forall |i: int| is_le(i + 1, n) && #[trigger]f(i) ==> #[trigger]f(sub(i, n)));
+    assert(forall |i: int| is_le(0, i) && #[trigger]f(i) ==> #[trigger]f(add1(i, n)));
+    assert(forall |i: int| is_le(i + 1, n) && #[trigger]f(i) ==> #[trigger]f(sub1(i, n)));
     assert forall |i: int| 0 <= i < n implies #[trigger]f(i) by {
         assert(forall |i: int| is_le(0, i) && i < n ==> f(i));
         assert(is_le(0, i) && i < n);

@@ -4,7 +4,7 @@
 use builtin::*;
 use builtin_macros::*;
 use crate::calc_macro::*;
-
+use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
 verus! {
 use crate::nonlinear_arith::mul::*;
@@ -353,7 +353,7 @@ pub proof fn lemma_mod_adds_auto()
 // {:vcs_split_on_every_assert}
 /// The remainder of an integer `x` by a positive integer `d` is equivalent to
 /// the remainder of `x * (1 - d)` by `d`.
-// #[verifier::spinoff_prover]
+#[verifier::spinoff_prover]
 pub proof fn lemma_mod_neg_neg(x: int, d: int)
     requires 0 < d
     ensures x % d == (x * (1 - d)) % d
@@ -362,8 +362,9 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
         let f = |i: int| (x - i * d) % d == x % d;
         lemma_mul_auto();
         assert (  f(0)
-                && (forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger]f(crate::nonlinear_arith::internals::mul_internals::add(i, 1)))
-                && (forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger]f(crate::nonlinear_arith::internals::mul_internals::sub(i, 1))))
+                && (forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger]f(add1(i, 1)))
+                && (forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger]f(sub1(i, 1)))
+            )
         by {
             lemma_mod_auto(d);
         };

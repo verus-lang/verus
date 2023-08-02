@@ -15,6 +15,7 @@ use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto, lemma_mul
 use crate::nonlinear_arith::mul::*;
 use crate::nonlinear_arith::internals::general_internals::{is_le};
 use crate::nonlinear_arith::modulus::*;
+use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
 /// Division using `/` is equivalent to division through [`div_recursive`]
 // #[verifier::spinoff_prover]
@@ -487,7 +488,9 @@ pub proof fn lemma_breakdown_auto()
 {
     assert forall |x: int, y: int, z: int|(0 <= x && 0 < y && 0 < z) implies 0 < #[trigger](y * z) && #[trigger](x % (y * z)) == #[trigger](y * ((x / y) % z) + x % y) by
     {
-        lemma_breakdown(x, y, z);
+        if (0 <= x && 0 < y && 0 < z) {
+            lemma_breakdown(x, y, z);
+        }
     }
 }
 
@@ -808,8 +811,7 @@ pub proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
         a / d == (x * a) / (x * d),
 {
     lemma_mul_strictly_positive(x,d);
-    calc! {
-        (==)
+    calc! { (==)
         (x * a) / (x * d);
         {
             lemma_mul_nonnegative(x, a);
@@ -825,13 +827,21 @@ pub proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
 pub proof fn lemma_div_multiples_vanish_quotient_auto()
     ensures forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> 0 < x * d && a / d == (x * a) / (x * d)
 {
-    assert forall |x: int, a: int, d: int| 0 < x && 0 <= a && 0 < d implies 0 < #[trigger](x * d) && #[trigger](a / d) == (#[trigger](x * a) / #[trigger](x * d)) by
+    // OBSERVE: need to manually split this
+    assert forall |x: int, a: int, d: int| 0 < x && 0 <= a && 0 < d implies 
+        0 < #[trigger](x * d) && #[trigger](a * 1) == a by
     {
-        if (0 < x && 0 <= a && 0 < d) {
-            lemma_div_multiples_vanish_quotient(x, a, d);
-            assert(0 < (x * d) && (a / d) == ((x * a) / (x * d)));
-        }
+        lemma_div_multiples_vanish_quotient(x, a, d);
     }
+
+    assert forall |x: int, a: int, d: int| 0 < x && 0 <= a && 0 < d implies #[trigger](a / d) == #[trigger](x * a) / #[trigger](x * d) by
+    {
+        lemma_div_multiples_vanish_quotient(x, a, d);
+    }
+    
+    assert(forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> 0 < x * d && a * 1 == a);
+    assert(forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> a / d == (x * a) / (x * d));
+
 }
 
 /// Rounds down when adding an integer r to the dividend a that is smaller than the divisor d, and then
@@ -964,7 +974,8 @@ pub proof fn lemma_multiply_divide_le(a: int, b: int, c: int)
         a / b <= c
 {
     lemma_mod_multiples_basic(c, b);
-    lemma_div_induction_auto(b, b * c - a, |i: int| 0 <= i && (i + a) % b == 0 ==> a / b <= (i + a) / b);
+    let f = |i: int| 0 <= i && (i + a) % b == 0 ==> a / b <= (i + a) / b;
+    lemma_div_induction_auto(b, b * c - a, f);
     lemma_div_multiples_vanish(c, b);
 }
 
@@ -1013,8 +1024,8 @@ pub proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
     let f = |u: int| x / d as int + u == (x + u * d) / d as int;
     // OBSERVE: push precondition on its on scope
     assert (  f(0)
-        && (forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger]f(crate::nonlinear_arith::internals::mul_internals::add(i, 1)))
-        && (forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger]f(crate::nonlinear_arith::internals::mul_internals::sub(i, 1)))) by {
+        && (forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger]f(add1(i, 1)))
+        && (forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger]f(sub1(i, 1)))) by {
             lemma_mul_auto();
     }
     lemma_mul_induction(f);
@@ -1066,7 +1077,10 @@ pub proof fn lemma_part_bound1_auto()
 {
     assert forall |a: int, b: int, c: int| 0 <= a && 0 < b && 0 < c implies 0 < #[trigger](b * c) && #[trigger](b * (a / b) % (b * c)) <= b * (c - 1) by
     {
-        lemma_part_bound1(a, b, c);
+        // OBSERVE: the verifiers forgets the antecedent
+        if  0 <= a && 0 < b && 0 < c {
+            lemma_part_bound1(a, b, c);
+        }
     }
 }
 

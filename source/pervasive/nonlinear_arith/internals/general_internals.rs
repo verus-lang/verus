@@ -2,18 +2,9 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
+use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
 verus! {
-
-pub open spec fn add (a: int, b: int) -> int
-{
-    a + b
-}
-
-pub open spec fn sub (a: int, b: int) -> int
-{
-    a - b
-}
 
 pub open spec fn is_le(x: int, y: int) -> bool
 {
@@ -27,8 +18,8 @@ proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
         x >= 0,
         n > 0,
         forall |i : int| 0 <= i < n ==> #[trigger] f(i),
-        forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add(i, n)),
-        forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub(i, n))
+        forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add1(i, n)),
+        forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub1(i, n))
     ensures
         f(x)
     decreases x
@@ -37,7 +28,7 @@ proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
     {
         assert(x - n < x);
         lemma_induction_helper_pos(n, f, x - n);
-        assert (f (add(x - n, n)));
+        assert (f (add1(x - n, n)));
         assert(f((x - n) + n));
     }
 }
@@ -48,20 +39,20 @@ proof fn lemma_induction_helper_neg(n: int, f: FnSpec(int) -> bool, x: int)
         x < 0,
         n > 0,
         forall |i : int| 0 <= i < n ==> #[trigger] f(i),
-        forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add(i, n)),
-        forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub(i, n))
+        forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add1(i, n)),
+        forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub1(i, n))
     ensures
         f(x)
     decreases -x
 {
     if (-x <= n) {
         lemma_induction_helper_pos(n, f, x + n);
-        assert (f (sub(x + n, n)));
+        assert (f (sub1(x + n, n)));
         assert(f((x + n) - n));
     }
     else {
         lemma_induction_helper_neg(n, f, x + n);
-        assert (f (sub(x + n, n)));
+        assert (f (sub1(x + n, n)));
         assert(f((x + n) - n));
     }
 }
@@ -71,8 +62,8 @@ pub proof fn lemma_induction_helper(n: int, f: FnSpec(int) -> bool, x: int)
 requires 
     n > 0,
     forall |i : int| 0 <= i < n ==> #[trigger] f(i),
-    forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add(i, n)),
-    forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub(i, n))
+    forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add1(i, n)),
+    forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub1(i, n))
 ensures
     f(x)
 {

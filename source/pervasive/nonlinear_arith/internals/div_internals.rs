@@ -7,6 +7,7 @@ use crate::nonlinear_arith::internals::general_internals::{is_le};
 use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_induction_forall, lemma_mod_induction_forall2, mod_auto, lemma_mod_auto, lemma_mod_basics_auto};
 use crate::nonlinear_arith::internals::mod_internals_nonlinear;
 use crate::nonlinear_arith::internals::div_internals_nonlinear;
+use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
 /// Performs division recursively with positive denominator.
 #[verifier(opaque)]
@@ -107,7 +108,7 @@ pub proof fn lemma_div_auto(n: int)
         // changing this from j + n to mod's addition speeds up the verification
         // otherwise you need higher rlimit
         // might be a good case for profilers
-        &&& ( j >= 0 && #[trigger]f(i, j) ==> f(i, crate::nonlinear_arith::internals::mod_internals::add(j, n)))
+        &&& ( j >= 0 && #[trigger]f(i, j) ==> f(i, add1(j, n)))
         &&& ( i < n  && f(i, j) ==> f(i - n, j))
         &&& ( j < n  && f(i, j) ==> f(i, j - n))
         &&& ( i >= 0 && f(i, j) ==> f(i + n, j))
@@ -164,16 +165,6 @@ pub proof fn lemma_div_auto(n: int)
     }
 }
 
-spec fn add(x: int, y: int) -> int
-{
-    x + y
-}
-
-spec fn sub(x: int, y: int) -> int
-{
-    x - y
-}
-
 /// Performs auto induction for division 
 // #[verifier::spinoff_prover]
 pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
@@ -188,20 +179,14 @@ pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
 {
     lemma_div_auto(n);
     assert(forall |i: int| is_le(0, i) && i < n ==> f(i));
-    assert(forall |i: int| is_le(0, i) && #[trigger]f(i) ==> #[trigger]f(add(i, n)));
-    assert(forall |i: int| is_le(i + 1, n) && #[trigger]f(i) ==> #[trigger]f(sub(i, n)));
+    assert(forall |i: int| is_le(0, i) && #[trigger]f(i) ==> #[trigger]f(add1(i, n)));
+    assert(forall |i: int| is_le(i + 1, n) && #[trigger]f(i) ==> #[trigger]f(sub1(i, n)));
     assert forall |i: int| 0 <= i < n implies #[trigger]f(i) by {
         assert(f(i)) by {
             assert(forall |i: int| is_le(0, i) && i < n ==> f(i));
             assert(is_le(0, i) && i < n);
         };
     };
-    assert forall |i: int| i >= 0 && #[trigger]f(i) ==> #[trigger]f(crate::nonlinear_arith::internals::mod_internals::add(i, n)) by {
-        assert(crate::nonlinear_arith::internals::mod_internals::add(i, n) == add(i, n));
-    }; // OBSERVE COMMUNICATION
-    assert forall |i: int| i < n && #[trigger]f(i) ==> #[trigger]f(crate::nonlinear_arith::internals::mod_internals::sub(i, n)) by {
-        assert(crate::nonlinear_arith::internals::mod_internals::sub(i, n) == sub(i, n));
-    }; // OBSERVE COMMUNICATION
     lemma_mod_induction_forall(n, f);
     assert(f(x));
 }
