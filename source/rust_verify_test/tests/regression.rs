@@ -524,3 +524,37 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_387_discussioncomment_6611094_1 verus_code! {
+        #[verifier:ext_equal]
+        pub struct Y {
+            y: int
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected one of")
+}
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_387_discussioncomment_6611094_2 verus_code! {
+        #[verifier(wat, wat)]
+        pub struct Y {
+            y: int
+        }
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
+}
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_regression_684 verus_code! {
+        #[verifier(external),verifier(external_body)]
+        proof fn bar() {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected `]`, found `,`")
+}
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_387_discussioncomment_6611094_3 verus_code! {
+        #[verifier("something")]
+        proof fn bar() {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
+}

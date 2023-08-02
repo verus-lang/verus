@@ -8,6 +8,7 @@ use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
+use syn_verus::token::Colon2;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
@@ -1840,10 +1841,34 @@ impl VisitMut for Visitor {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
                 }
                 [attr_name] if attr_name.to_string() == "verifier" => {
-                    let parsed = attr.parse_meta().expect("failed to parse attribute");
+                    let Ok(parsed) = attr.parse_meta() else {
+                        return;
+                    };
+                    let span = attr.span();
+                    fn path_verifier(span: Span) -> Punctuated<PathSegment, Colon2> {
+                        let mut path_segments = Punctuated::new();
+                        path_segments.push(PathSegment {
+                            ident: Ident::new("verifier", span),
+                            arguments: PathArguments::None,
+                        });
+                        path_segments
+                    }
+                    fn invalid_attribute(span: Span) -> Attribute {
+                        let mut path_segments = path_verifier(span);
+                        path_segments.push(PathSegment {
+                            ident: Ident::new("invalid_attribute", span),
+                            arguments: PathArguments::None,
+                        });
+                        Attribute {
+                            pound_token: token::Pound { spans: [span] },
+                            style: AttrStyle::Outer,
+                            bracket_token: token::Bracket { span },
+                            path: Path { leading_colon: None, segments: path_segments },
+                            tokens: quote!(),
+                        }
+                    }
                     match parsed {
                         syn_verus::Meta::List(meta_list) if meta_list.nested.len() == 1 => {
-                            let span = attr.span();
                             let (second_segment, nested) = match &meta_list.nested[0] {
                                 syn_verus::NestedMeta::Meta(syn_verus::Meta::List(meta_list)) => {
                                     let rest = &meta_list.nested[0];
@@ -1853,14 +1878,11 @@ impl VisitMut for Visitor {
                                     (&meta_path.segments[0], None)
                                 }
                                 _ => {
-                                    panic!("invalid verifier attribute (1)"); // TODO(main_new) use compile_error! if possible
+                                    *attr = invalid_attribute(span);
+                                    return;
                                 }
                             };
-                            let mut path_segments = Punctuated::new();
-                            path_segments.push(PathSegment {
-                                ident: Ident::new("verifier", span),
-                                arguments: PathArguments::None,
-                            });
+                            let mut path_segments = path_verifier(span);
                             path_segments.push(second_segment.clone());
                             *attr = Attribute {
                                 pound_token: token::Pound { spans: [span] },
@@ -1874,7 +1896,10 @@ impl VisitMut for Visitor {
                                 },
                             };
                         }
-                        _ => panic!("invalid verifier attribute (2)"), // TODO(main_new) use compile_error! if possible
+                        _ => {
+                            *attr = invalid_attribute(span);
+                            return;
+                        }
                     }
                 }
                 _ => (),
