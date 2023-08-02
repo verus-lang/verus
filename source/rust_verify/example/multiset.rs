@@ -23,7 +23,7 @@ proof fn multiset_ext_eq2() {
     assert(a.to_multiset() =~= b.to_multiset());
 }
 
-proof fn sorted_by_eg() {
+proof fn sorted_by_leq() {
     //Provides the verifier with important lemmas about sequences
     lemma_seq_properties::<int>();
 

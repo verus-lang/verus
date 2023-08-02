@@ -71,7 +71,7 @@ impl<A> Seq<A> {
     /// ## Example
     /// 
     /// ```rust
-    /// {{#include ../../../rust_verify/example/multiset.rs:sorted_by_eg}}
+    /// {{#include ../../../rust_verify/example/multiset.rs:sorted_by_leq}}
     /// ```
     pub closed spec fn sort_by(self, leq: FnSpec(A,A) -> bool) -> Seq<A>
         recommends
