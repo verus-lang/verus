@@ -10,6 +10,8 @@ use crate::pervasive::*;
 use crate::set::*;
 #[allow(unused_imports)]
 use crate::map::*;
+use crate::math::min;
+use crate::math::clip;
 
 verus!{
 
@@ -151,7 +153,7 @@ impl<V> Multiset<V> {
     /// the elements that "overlap".
 
     pub open spec fn intersection_with(self, other: Self) -> Self {
-        let m = Map::<V, nat>::new(|v: V| self.contains(v), |v: V| min(self.count(v), other.count(v)));
+        let m = Map::<V, nat>::new(|v: V| self.contains(v), |v: V| min(self.count(v) as int, other.count(v) as int) as nat);
         Self::new(m)
     }
 
@@ -433,9 +435,9 @@ pub proof fn lemma_insert_len<V>(m: Multiset<V>, x: V)
 /// count of `x` in either `a` or `b`.
 pub proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
-        a.intersection_with(b).count(x) == min(a.count(x),b.count(x))
+        a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int)
 {
-    let m = Map::<V, nat>::new(|v: V| a.contains(v), |v: V| min(a.count(v), b.count(v)));  
+    let m = Map::<V, nat>::new(|v: V| a.contains(v), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);  
     assert(m.dom() =~= a.dom());
 }
 
@@ -446,12 +448,12 @@ pub proof fn lemma_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
         a.intersection_with(b).intersection_with(b) =~= a.intersection_with(b),
 {
-    assert forall |x: V| #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
+    assert forall |x: V| #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int) by {
         lemma_intersection_count(a, b, x);
     }
-    assert forall |x: V| #[trigger] a.intersection_with(b).intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
+    assert forall |x: V| #[trigger] a.intersection_with(b).intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int) by {
         lemma_intersection_count(a.intersection_with(b), b, x);
-        assert(min(min(a.count(x),b.count(x)), b.count(x)) == min(a.count(x),b.count(x)));
+        assert(min(min(a.count(x) as int, b.count(x) as int) as int, b.count(x) as int) == min(a.count(x) as int, b.count(x) as int));
     }
 }
 
@@ -462,12 +464,12 @@ pub proof fn lemma_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
         a.intersection_with(a.intersection_with(b)) =~= a.intersection_with(b),
 {
-    assert forall |x: V| #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
+    assert forall |x: V| #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int) by {
         lemma_intersection_count(a, b, x);
     }
-    assert forall |x: V| #[trigger] a.intersection_with(a.intersection_with(b)).count(x) == min(a.count(x),b.count(x)) by {
+    assert forall |x: V| #[trigger] a.intersection_with(a.intersection_with(b)).count(x) == min(a.count(x) as int, b.count(x) as int) by {
         lemma_intersection_count(a, a.intersection_with(b), x);
-        assert(min(a.count(x), min(a.count(x),b.count(x))) == min(a.count(x),b.count(x)));
+        assert(min(a.count(x) as int, min(a.count(x) as int, b.count(x) as int) as int) == min(a.count(x) as int, b.count(x) as int));
     }
 }
 
@@ -534,7 +536,7 @@ pub proof fn lemma_multiset_properties<V>()
         forall |m: Multiset<V>, x: V, y: V| x != y ==> #[trigger] m.count(y) == #[trigger] m.insert(x).count(y), //from lemma_insert_other_elements_unchanged
         forall |m: Multiset<V>, x: V| #[trigger] m.insert(x).len() == m.len() +1, //from lemma_insert_len
         forall |a: Multiset<V>, b: Multiset<V>, x: V| 
-                #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)), //from lemma_intersection_count
+                #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int), //from lemma_intersection_count
         forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(b).intersection_with(b) == a.intersection_with(b), //from lemma_left_pseudo_idempotence
         forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(a.intersection_with(b)) == a.intersection_with(b), //from lemma_right_pseudo_idempotence
         forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)), //from lemma_difference_count
@@ -548,7 +550,7 @@ pub proof fn lemma_multiset_properties<V>()
         lemma_update_different(m, v1, mult, v2);
     }   
     assert forall |a: Multiset<V>, b: Multiset<V>, x: V| 
-        #[trigger] a.intersection_with(b).count(x) == min(a.count(x),b.count(x)) by {
+        #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int) by {
             lemma_intersection_count(a, b, x);
     } 
     assert forall |a: Multiset<V>, b: Multiset<V>| #[trigger] a.intersection_with(b).intersection_with(b) == a.intersection_with(b) by {
@@ -560,16 +562,6 @@ pub proof fn lemma_multiset_properties<V>()
     assert forall |a: Multiset<V>, b: Multiset<V>, x: V| #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)) by {
         lemma_difference_count(a, b, x);
     }
-}
-
-pub open spec fn min(x: nat, y: nat) -> nat {
-    if x <= y {x}
-    else {y}
-}
-
-pub open spec fn clip(x: int) -> nat {
-    if x < 0 {0}
-    else {x as nat}
 }
 
 pub use assert_multisets_equal;

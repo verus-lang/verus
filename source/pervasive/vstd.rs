@@ -25,6 +25,7 @@ pub mod cell;
 pub mod invariant;
 pub mod atomic;
 pub mod atomic_ghost;
+pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod function;
