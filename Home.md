@@ -8,4 +8,4 @@
 
 [[Status: currently supported Rust features]]
 
-[[Status: completed abandoned feature requests]]
+[[Status: completed or abandoned feature requests]]
