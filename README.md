@@ -16,7 +16,7 @@ that, for example, manipulates raw pointers.
 
 Verus is under *active development*. Features may be broken and/or missing, and
 the documentation is still incomplete. If you want to try Verus, please be
-prepared to ask for help by filing GitHub issues.
+prepared to ask for help in the [💬 Zulip](https://verus-lang.zulipchat.com/).
 
 ## Try Verus
 
@@ -34,9 +34,9 @@ Our (work-in-progress) documentation resources include:
  * [Contributing to Verus](CONTRIBUTING.md)
  * [License](LICENSE)
 
-## Reporting issues, and starting discussions
+## Getting in touch, reporting issues, and starting discussions
 
-Thanks for contributing to Verus! Please report issues or start discussions here on GitHub.
+Please report issues or start discussions here on GitHub, or join us on [💬 Zulip](https://verus-lang.zulipchat.com/) for more realtime discussions and if you need help. Thank you for using and contributing to Verus!
 
 We use GitHub discussions for feature requests and more open-ended conversations about
 upcoming features, and we reserve GitHub issues for actionable issues (bugs) with
