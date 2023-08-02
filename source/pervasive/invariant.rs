@@ -333,10 +333,10 @@ macro_rules! open_atomic_invariant {
 macro_rules! open_atomic_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier::invariant_block] /* vattr */ {
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             $crate::invariant::open_invariant_end(guard, $iident);
         }
     }
@@ -450,10 +450,10 @@ macro_rules! open_local_invariant {
 macro_rules! open_local_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             $crate::invariant::open_invariant_end(guard, $iident);
         }
     }

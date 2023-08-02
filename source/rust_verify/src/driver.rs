@@ -276,7 +276,7 @@ where
     let time0 = Instant::now();
     let mut rustc_args_verify = rustc_args.clone();
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
-    rustc_args_verify.extend(["--cfg", "verus_keep_ghost_code"].map(|s| s.to_string()));
+    rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,

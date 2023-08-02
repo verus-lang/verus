@@ -274,7 +274,7 @@ pub fn output_primary_stuff(
             if trans.kind == TransitionKind::Init {
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
-                    #[cfg(verus_keep_ghost_code)]
+                    #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verifier::publish] /* vattr */
@@ -285,7 +285,7 @@ pub fn output_primary_stuff(
             } else {
                 let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
-                    #[cfg(verus_keep_ghost_code)]
+                    #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verifier::publish] /* vattr */
@@ -308,7 +308,7 @@ pub fn output_primary_stuff(
             let f = to_relation(&simplified_body, false /* weak */);
 
             let rel_fn = quote! {
-                #[cfg(verus_keep_ghost_code)]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verifier::publish] /* vattr */
@@ -328,7 +328,7 @@ pub fn output_primary_stuff(
             let f = crate::to_relation::to_is_enabled_condition_weak(&simplified_body);
 
             let rel_fn = quote! {
-                #[cfg(verus_keep_ghost_code)]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verifier::publish] /* vattr */
@@ -354,7 +354,7 @@ pub fn output_primary_stuff(
                 None => TokenStream::new(),
             };
             impl_stream.extend(quote! {
-                #[cfg(verus_keep_ghost_code)]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 pub fn #name(#params) {
@@ -424,7 +424,7 @@ fn output_take_step_fns(
 
             //let step_args = just_args(&trans.params);
             stream.extend(quote! {
-                #[cfg(verus_keep_ghost_code)]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::proof]
@@ -528,7 +528,7 @@ fn output_step_datatype(
 
     if is_init {
         impl_stream.extend(quote! {
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
@@ -541,7 +541,7 @@ fn output_step_datatype(
                 }
             }
 
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
@@ -572,7 +572,7 @@ fn output_step_datatype(
             .collect();
 
         impl_stream.extend(quote!{
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
@@ -584,7 +584,7 @@ fn output_step_datatype(
                 }
             }
 
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
@@ -593,7 +593,7 @@ fn output_step_datatype(
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
@@ -605,7 +605,7 @@ fn output_step_datatype(
                 }
             }
 
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verifier::publish] /* vattr */
             #[verus::internal(verus_macro)]
@@ -636,7 +636,7 @@ fn output_step_datatype(
 
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
-                    #[cfg(verus_keep_ghost_code)]
+                    #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::external_body] /* vattr */
                     #[verifier::proof]
@@ -658,7 +658,7 @@ fn output_step_datatype(
                 let args = pre_post_args(&trans.params);
                 //let step_args = just_args(&trans.params);
                 show_stream.extend(quote! {
-                    #[cfg(verus_keep_ghost_code)]
+                    #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::external_body] /* vattr */
                     #[verifier::proof]
@@ -944,7 +944,7 @@ fn output_other_fns(
         quote! { #(self.#inv_names())&&* }
     };
     impl_stream.extend(quote! {
-        #[cfg(verus_keep_ghost_code)]
+        #[cfg(verus_keep_ghost_body)]
         #[verifier::spec]
         #[verus::internal(verus_macro)]
         #[verifier::publish] /* vattr */
@@ -959,7 +959,7 @@ fn output_other_fns(
         // TODO allow spec(checked) or something
         f.sig.mode = FnMode::Spec(ModeSpec { spec_token: token::Spec { span: inv.func.span() } });
         f.sig.publish = Publish::Open(Open { token: token::Open { span: inv.func.span() } });
-        impl_stream.extend(quote! { #[cfg(verus_keep_ghost_code)] ::builtin_macros::verus!{ #f } });
+        impl_stream.extend(quote! { #[cfg(verus_keep_ghost_body)] ::builtin_macros::verus!{ #f } });
     }
 
     for inv in invariants {
@@ -969,7 +969,7 @@ fn output_other_fns(
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote! {
-            #[cfg(verus_keep_ghost_code)]
+            #[cfg(verus_keep_ghost_body)]
             #[verifier::custom_req_err(#error_msg)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verus::internal(verus_macro)]
@@ -988,7 +988,7 @@ fn output_other_fns(
         set_mode_proof(&mut f.sig, span);
         fix_attrs(&mut f.attrs);
         impl_stream.extend(quote! {
-          #[cfg(verus_keep_ghost_code)]
+          #[cfg(verus_keep_ghost_body)]
           ::builtin_macros::verus!{ #f }
         })
     }

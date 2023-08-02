@@ -30,7 +30,7 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
   --extern state_machines_macros=target-verus/debug/libstate_machines_macros.$DYN_LIB_EXT \
   --edition=2018 \
   --cfg verus_keep_ghost \
-  --cfg verus_keep_ghost_code \
+  --cfg verus_keep_ghost_body \
   -Zcrate-attr=feature\\\(stmt_expr_attributes\\\) \
   -Zcrate-attr=feature\\\(negative_impls\\\) \
   -Zcrate-attr=feature\\\(register_tool\\\) \

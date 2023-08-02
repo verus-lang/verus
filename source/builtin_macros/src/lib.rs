@@ -96,7 +96,7 @@ pub fn verus_exec_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 
 #[cfg(verus_keep_ghost)]
 pub(crate) fn cfg_erase() -> EraseGhost {
-    let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_keep_ghost_code) }.into();
+    let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_keep_ghost_body) }.into();
     let ts_stubs: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_keep_ghost) }.into();
     let (bool_ts, bool_ts_stubs) = match (ts.expand_expr(), ts_stubs.expand_expr()) {
         (Ok(name), Ok(name_stubs)) => (name.to_string(), name_stubs.to_string()),
