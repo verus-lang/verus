@@ -1,3 +1,8 @@
+# This toml file is not part of the standard Verus workspace,
+# and is not required to build and use Verus.
+# Instead, it may optionally be used for compiling an erased vstd library
+# for linking with non-Verus Rust code.
+
 [package]
 name = "vstd"
 version = "0.1.0"

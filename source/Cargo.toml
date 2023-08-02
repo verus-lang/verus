@@ -13,6 +13,9 @@ members = [
   "verusdoc",
   "vstd_build",
 ]
+exclude = [
+  "pervasive",
+]
 
 # do not modify the following two lines
 [workspace.metadata.vargo]

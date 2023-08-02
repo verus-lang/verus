@@ -58,6 +58,9 @@ jobs:
             vargo build
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
+            cd pervasive
+            cargo build
+            cd ..
           fi
       - name: build docs
         if: matrix.features == ''
