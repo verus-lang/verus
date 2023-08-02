@@ -10,7 +10,10 @@ use crate::rust_to_vir_base::{
     is_smt_arith, is_smt_equality, is_type_std_rc_or_arc_or_ref, local_to_var, mid_ty_simplify,
     mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
-use crate::util::{err_span, slice_vec_map_result, unsupported_err_span, vec_map_result};
+use crate::spans::err_air_span;
+use crate::util::{
+    err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
+};
 use crate::verus_items::{
     self, BuiltinFunctionItem, CompilableOprItem, OpenInvariantBlockItem, RustItem,
     SpecGhostTrackedItem, UnaryOpItem, VerusItem,
@@ -39,7 +42,7 @@ use vir::ast::{
     FieldOpr, FunX, HeaderExprX, InequalityOp, IntRange, InvAtomicity, Mode, PatternX,
     SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
-use vir::ast_util::{ident_binder, types_equal, undecorate_typ};
+use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::positional_field_ident;
 
 pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, String), VirErr> {
@@ -1816,10 +1819,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             };
             if !matches!(&*idx_vir.typ, TypX::Int(IntRange::USize)) {
-                return err_span(
+                return Err(err_span_bare(
                     expr.span,
-                    "in exec code, Verus only supports the index operator for usize index",
-                );
+                    "in exec code, the index operator is only supported for usize index",
+                )
+                .secondary_label(
+                    &err_air_span(idx_expr.span),
+                    format!("expected usize, found {}", typ_to_diagnostic_str(&idx_vir.typ)),
+                ));
             }
 
             let call_target = CallTarget::Fun(
