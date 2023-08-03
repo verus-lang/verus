@@ -176,7 +176,7 @@ pub proof fn lemma_div_is_ordered_by_denominator_auto()
 /// Given two fractions with the same numerator, the order of numbers is strictly determined by 
 /// the denominators.
 // #[verifier::spinoff_prover]
-pub proof fn lemma_div_is_strictly_ordered_by_denominator(x: int, d: int)
+pub proof fn lemma_div_is_strictly_smaller(x: int, d: int)
     requires 
         0 < x, 
         1 < d
@@ -188,12 +188,12 @@ pub proof fn lemma_div_is_strictly_ordered_by_denominator(x: int, d: int)
 }
 
 // #[verifier::spinoff_prover]
-pub proof fn lemma_div_is_strictly_ordered_by_denominator_auto()
+pub proof fn lemma_div_is_strictly_smaller_auto()
     ensures forall |x: int, d: int|  0 < x && 1 < d ==> #[trigger](x / d) < x,
 {
     assert forall |x: int, d: int|  0 < x && 1 < d implies #[trigger](x / d) < x by
     {
-        lemma_div_is_strictly_ordered_by_denominator(x, d);
+        lemma_div_is_strictly_smaller(x, d);
     }
 }
 

@@ -28,6 +28,8 @@ pub mod modes;
 pub mod multiset;
 pub mod function;
 pub mod state_machine_internal;
+/// Lemmas about nonlinear arithmetic. All lemmas have an “_auto” form, where the
+/// formal parameters are universally quantified.
 pub mod nonlinear_arith;
 #[cfg(not(feature = "non_std"))]
 pub mod thread;
