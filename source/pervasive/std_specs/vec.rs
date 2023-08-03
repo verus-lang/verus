@@ -23,13 +23,15 @@ pub struct ExGlobal(alloc::alloc::Global);
 ////// Declare 'view' function
 
 pub trait VecAdditionalSpecFns<T> {
-    spec fn view(&self) -> Seq<T>;
     spec fn spec_index(&self, i: int) -> T;
 }
 
-impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
+impl<T, A: Allocator> View for Vec<T, A> {
+    type V = Seq<T>;
     spec fn view(&self) -> Seq<T>;
+}
 
+impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
