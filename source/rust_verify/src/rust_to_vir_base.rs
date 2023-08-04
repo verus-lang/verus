@@ -27,7 +27,11 @@ thread_local! {
         std::sync::atomic::AtomicBool::new(false);
 }
 
-fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
+fn def_path_to_vir_path<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    type_ctxt: &crate::verus_items::VerusItems,
+    def_path: DefPath,
+) -> Option<Path> {
     let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
     let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
         None
@@ -35,6 +39,7 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
         Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
     };
     let mut segments: Vec<vir::ast::Ident> = Vec::new();
+    let mut i: usize = 0;
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
         match &d.data {
@@ -45,13 +50,20 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
                 segments.push(Arc::new(vir::def::RUST_DEF_CTOR.to_string()));
             }
             DefPathData::Impl => {
-                segments.push(vir::def::impl_ident(d.disambiguator));
+                if let Some(x) =
+                    type_ctxt.impl_names.get_stable_impl_name(tcx, def_path.clone(), i + 1)
+                {
+                    segments.push(x.clone());
+                } else {
+                    segments.push(vir::def::impl_ident(d.disambiguator));
+                }
             }
             DefPathData::ForeignMod => {
                 // this segment can be ignored
             }
             _ => return None,
         }
+        i += 1;
     }
     Some(Arc::new(PathX { krate, segments: Arc::new(segments) }))
 }
@@ -91,7 +103,7 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
             rustc_hir::TyKind::Path(QPath::Resolved(
                 None,
                 rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
-            )) => def_path_to_vir_path(tcx, tcx.def_path(*self_def_id)),
+            )) => def_path_to_vir_path(tcx, verus_items, tcx.def_path(*self_def_id)),
             _ => {
                 // To handle cases like [T] which are not syntactically datatypes
                 // but converted into VIR datatypes.
@@ -132,7 +144,7 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
         let krate = Some(Arc::new("vstd".to_string()));
         return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
     }
-    let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
+    let path = def_path_to_vir_path(tcx, verus_items, tcx.def_path(def_id));
     if let Some(path) = &path {
         register_friendly_path_as_rust_name(tcx, def_id, path);
     }
@@ -676,6 +688,7 @@ pub(crate) fn implements_structural<'tcx>(
 ) -> bool {
     let structural_def_id = ctxt
         .verus_items
+        .verus_items_impl
         .name_to_id
         .get(&VerusItem::Marker(crate::verus_items::MarkerItem::Structural))
         .expect("structural trait is not defined");

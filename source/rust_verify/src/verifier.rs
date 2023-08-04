@@ -188,6 +188,7 @@ pub struct Verifier {
     vstd_crate_name: Option<Ident>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
+    pub(crate) export: Option<(crate::import_export::CrateMetadata, Krate)>,
 
     // proof debugging purposes
     expand_flag: bool,
@@ -237,6 +238,7 @@ impl Verifier {
             vstd_crate_name: None,
             air_no_span: None,
             inferred_modes: None,
+            export: None,
 
             expand_flag: false,
             expand_targets: vec![],
@@ -264,6 +266,7 @@ impl Verifier {
             vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
             inferred_modes: self.inferred_modes.clone(),
+            export: None,
             expand_flag: self.expand_flag,
             expand_targets: self.expand_targets.clone(),
         }
@@ -1745,7 +1748,7 @@ impl Verifier {
             crate_id: spans.local_crate.to_u64(),
             original_files: spans.local_files.clone(),
         };
-        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())?;
+        self.export = Some((crate_metadata, vir_crate.clone()));
 
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
@@ -1826,6 +1829,7 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) rustc_args: Vec<String>,
     pub(crate) file_loader:
         Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
+    pub(crate) impl_name_state: Option<crate::names::ImplNameState>,
     pub(crate) build_test_mode: bool,
 }
 
@@ -1854,8 +1858,6 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
             };
-            let verus_items =
-                Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
             let spans = SpanContextX::new(
                 tcx,
                 compiler.session().local_stable_crate_id(),
@@ -1867,6 +1869,23 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 if self.verifier.args.trace {
                     reporter.report_now(&note_bare("preparing crate for verification"));
                 }
+                let (impl_name_state, local_impl_names) = match crate::names::collect_impls(tcx) {
+                    Ok(imp) => imp,
+                    Err(err) => {
+                        reporter.report_as(&err, MessageLevel::Error);
+                        self.verifier.encountered_vir_error = true;
+                        return;
+                    }
+                };
+                let mut impl_names = imported.impl_names;
+                impl_names.extend(local_impl_names);
+                self.impl_name_state = Some(impl_name_state);
+                let verus_items_impl = Arc::new(crate::verus_items::from_diagnostic_items(
+                    &tcx.all_diagnostic_items(()),
+                ));
+                let id_to_name = verus_items_impl.id_to_name.clone();
+                let verus_items =
+                    Arc::new(crate::context::TypeCtxt { verus_items_impl, id_to_name, impl_names });
                 if let Err(err) = self.verifier.construct_vir_crate(
                     tcx,
                     verus_items.clone(),
@@ -1928,6 +1947,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                             let compile_status = crate::driver::run_with_erase_macro_compile(
                                 self.rustc_args.clone(),
                                 file_loader,
+                                None,
                                 false,
                                 self.build_test_mode,
                             );

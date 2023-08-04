@@ -87,6 +87,8 @@ for all functions (it would only be needed for functions with tracked data in pr
 */
 pub struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
+    impl_name_state: Option<crate::names::ImplNameState>,
+    impl_name_export: Option<crate::names::ImplNameCtxt>,
 }
 
 impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
@@ -101,6 +103,17 @@ impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         } else {
             verus_rustc_driver::Compilation::Continue
         }
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &verus_rustc_interface::interface::Compiler,
+        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
+    ) -> verus_rustc_driver::Compilation {
+        if let Some(impl_name_state) = &mut self.impl_name_state {
+            self.impl_name_export = Some(crate::names::export_impls(queries, impl_name_state));
+        }
+        verus_rustc_driver::Compilation::Continue
     }
 }
 
@@ -120,10 +133,15 @@ pub struct Stats {
 pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
+    impl_name_state: Option<crate::names::ImplNameState>,
     compile: bool,
     build_test_mode: bool,
-) -> Result<(), ErrorGuaranteed> {
-    let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
+) -> Result<Option<crate::names::ImplNameCtxt>, ErrorGuaranteed> {
+    let mut callbacks = CompilerCallbacksEraseMacro {
+        do_compile: compile,
+        impl_name_state,
+        impl_name_export: None,
+    };
     rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
     let allow = &[
         "unused_imports",
@@ -140,7 +158,10 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks, file_loader, build_test_mode)
+    match run_compiler(rustc_args, true, true, &mut callbacks, file_loader, build_test_mode) {
+        Ok(()) => Ok(callbacks.impl_name_export),
+        Err(err) => Err(err),
+    }
 }
 
 pub struct VerusRoot {
@@ -284,6 +305,7 @@ where
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
+        impl_name_state: None,
         build_test_mode,
     };
     let status = run_compiler(
@@ -295,11 +317,12 @@ where
         build_test_mode,
     );
     let VerifierCallbacksEraseMacro {
-        verifier,
+        mut verifier,
         rust_start_time,
         rust_end_time,
         lifetime_start_time,
         lifetime_end_time,
+        impl_name_state,
         ..
     } = verifier_callbacks;
     if !verifier.args.output_json && !verifier.encountered_vir_error {
@@ -341,12 +364,37 @@ where
     let compile_status = if !verifier.args.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
-        run_with_erase_macro_compile(
+        let status = run_with_erase_macro_compile(
             rustc_args,
             Box::new(file_loader),
+            impl_name_state,
             verifier.args.compile,
             build_test_mode,
-        )
+        );
+        match status {
+            Ok(impl_name_export) => {
+                if let Some((crate_metadata, export_crate)) = verifier.export.take() {
+                    match crate::import_export::export_crate(
+                        &verifier.args,
+                        export_crate,
+                        crate_metadata,
+                        impl_name_export,
+                    ) {
+                        Ok(()) => Ok(()),
+                        Err(msg) => {
+                            println!("{msg}");
+                            Err(())
+                        }
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+            Err(err) => {
+                println!("unexpected compiler error: {:?}", err);
+                Err(())
+            }
+        }
     };
 
     let time2 = Instant::now();

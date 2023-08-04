@@ -24,6 +24,14 @@ pub struct ArchContextX {
     pub(crate) word_bits: vir::prelude::ArchWordBits,
 }
 
+pub(crate) struct TypeCtxt {
+    // TODO: rename to verus_items
+    pub(crate) verus_items_impl: Arc<crate::verus_items::VerusItemsImpl>,
+    // TODO: replace this with a method that wraps verus_items_impl.id_to_name.get(...):
+    pub(crate) id_to_name: std::collections::HashMap<DefId, crate::verus_items::VerusItem>,
+    pub(crate) impl_names: crate::names::ImplNameCtxt,
+}
+
 pub type Context<'tcx> = Arc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
