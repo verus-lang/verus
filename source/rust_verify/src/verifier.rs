@@ -188,6 +188,7 @@ pub struct Verifier {
     vstd_crate_name: Option<Ident>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
+    current_crate_module_ids: Option<Vec<vir::ast::Path>>,
 
     // proof debugging purposes
     expand_flag: bool,
@@ -237,6 +238,7 @@ impl Verifier {
             vstd_crate_name: None,
             air_no_span: None,
             inferred_modes: None,
+            current_crate_module_ids: None,
 
             expand_flag: false,
             expand_targets: vec![],
@@ -264,6 +266,7 @@ impl Verifier {
             vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
             inferred_modes: self.inferred_modes.clone(),
+            current_crate_module_ids: self.current_crate_module_ids.clone(),
             expand_flag: self.expand_flag,
             expand_targets: self.expand_targets.clone(),
         }
@@ -1298,11 +1301,14 @@ impl Verifier {
 
         let module_name = module_name(module);
         if self.args.trace || (self.args.verify_module.len() > 0 || self.args.verify_root) {
-            if module.segments.len() == 0 {
-                reporter.report_now(&note_bare("verifying root module"));
+            let module_msg = if module.segments.len() == 0 {
+                "root module".into()
             } else {
-                reporter.report_now(&note_bare(&format!("verifying module {}", &module_name)));
-            }
+                format!("module {}", &module_name)
+            };
+            let functions_msg =
+                if self.args.verify_function.is_some() { " (selected functions)" } else { "" };
+            reporter.report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")));
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
@@ -1404,7 +1410,7 @@ impl Verifier {
                 ));
             }
 
-            if self.args.verify_module.len() > 1 {
+            if self.args.verify_module.len() + (if self.args.verify_root { 1 } else { 0 }) > 1 {
                 return Err(error(
                     "--verify-function only allowed with a single --verify-module (or --verify-root)",
                 ));
@@ -1412,9 +1418,12 @@ impl Verifier {
         }
 
         let module_ids_to_verify: Vec<vir::ast::Path> = {
+            let current_crate_module_ids = self
+                .current_crate_module_ids
+                .as_ref()
+                .expect("current_crate_module_ids should be initialized");
             let mut remaining_verify_module: HashSet<_> = self.args.verify_module.iter().collect();
-            let module_ids_to_verify = krate
-                .module_ids
+            let module_ids_to_verify = current_crate_module_ids
                 .iter()
                 .filter(|m| {
                     let name = module_name(m);
@@ -1436,7 +1445,7 @@ impl Verifier {
                     format!("available modules are:"),
                 ]
                 .into_iter()
-                .chain(krate.module_ids.iter().filter_map(|m| {
+                .chain(current_crate_module_ids.iter().filter_map(|m| {
                     let name = module_name(m);
                     (!(name.starts_with("pervasive::") || name == "pervasive")
                         && m.segments.len() > 0)
@@ -1817,6 +1826,7 @@ impl Verifier {
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
+        self.current_crate_module_ids = Some(vir_crate.module_ids.clone());
 
         // Export crate if requested.
         if self.args.export.is_some() {
