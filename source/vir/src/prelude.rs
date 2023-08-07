@@ -540,7 +540,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_has_type_char
         )))
         (axiom (forall ((x Int)) (!
-            (= ([to_unicode] ([from_unicode] x)) x)
+            (=>
+                (and
+                    (<= 0 x)
+                    (< x ([u_hi] 32))
+                )
+                (= x ([to_unicode] ([from_unicode] x)))
+            )
             :pattern (([from_unicode] x))
             :qid prelude_char_injective
             :skolemid skolem_prelude_char_injective
