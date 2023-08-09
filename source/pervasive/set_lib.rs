@@ -99,16 +99,16 @@ impl<A> Set<A> {
 
     /// A singleton set has at least one element and any two elements are equal.
     pub open spec fn is_singleton(self) -> bool{
-        &&& self.len()>0
+        &&& self.len() > 0
         &&& (forall |x: A, y: A| self.contains(x) && self.contains(y) ==> x==y)
     }
 
     /// Any totally-ordered set contains a unique minimal (equivalently, least) element.
     /// Returns an arbitrary value if r is not a total ordering
-    pub open spec fn find_unique_minimal(self, r: FnSpec(A,A) -> bool) -> A 
+    pub closed spec fn find_unique_minimal(self, r: FnSpec(A,A) -> bool) -> A 
         recommends 
             total_ordering(r),
-            self.len() >0,
+            self.len() > 0,
             self.finite(),
         decreases
             self.len()
@@ -134,7 +134,7 @@ impl<A> Set<A> {
     proof fn prove_decrease_min_unique(self, r: FnSpec(A,A) -> bool)
     {
         lemma_set_properties::<A>();
-        if self.len() >0 {
+        if self.len() > 0 {
             let x = self.choose();
             assert(self.contains(x));
             assert(self.remove(x).len() < self.len());
@@ -145,7 +145,7 @@ impl<A> Set<A> {
     pub proof fn find_unique_minimal_ensures(self, r: FnSpec(A,A) -> bool)
         requires
             self.finite(),
-            self.len() >0,
+            self.len() > 0,
             total_ordering(r),
         ensures
             is_minimal(r, self.find_unique_minimal(r),self) && (forall |min: A| is_minimal(r, min, self) ==> self.find_unique_minimal(r) == min),
@@ -191,10 +191,10 @@ impl<A> Set<A> {
 
     /// Any totally-ordered set contains a unique maximal (equivalently, greatest) element.
     /// Returns an arbitrary value if r is not a total ordering
-    pub open spec fn find_unique_maximal(self, r: FnSpec(A,A) -> bool) -> A 
+    pub closed spec fn find_unique_maximal(self, r: FnSpec(A,A) -> bool) -> A 
         recommends 
             total_ordering(r),
-            self.len() >0,
+            self.len() > 0,
         decreases
             self.len() 
         when
@@ -225,7 +225,7 @@ impl<A> Set<A> {
     pub proof fn find_unique_maximal_ensures(self, r: FnSpec(A,A) -> bool)
         requires
             self.finite(),
-            self.len() >0,
+            self.len() > 0,
             total_ordering(r),
         ensures
             is_maximal(r, self.find_unique_maximal(r),self) && (forall |max: A| is_maximal(r, max, self) ==> self.find_unique_maximal(r) == max),

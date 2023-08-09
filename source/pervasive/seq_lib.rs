@@ -120,8 +120,8 @@ impl<A> Seq<A> {
             lemma_multiset_commutative(left_sorted,right_sorted);
 
             assert forall |x: A| !self.contains(x) implies !(#[trigger] self.sort_by(leq).contains(x)) by {
-                self.to_multiset_properties();
-                self.sort_by(leq).to_multiset_properties();
+                self.to_multiset_ensures();
+                self.sort_by(leq).to_multiset_ensures();
                 assert(!self.contains(x) ==> self.to_multiset().count(x) == 0);
             }
         }
@@ -464,7 +464,7 @@ impl<A> Seq<A> {
     }
 
     /// Converts a sequence into a multiset
-    pub open spec fn to_multiset(self) -> Multiset<A> 
+    pub closed spec fn to_multiset(self) -> Multiset<A> 
         decreases self.len()
     {
         if self.len() == 0 {
@@ -475,7 +475,7 @@ impl<A> Seq<A> {
     }
 
     /// Proof of function to_multiset() correctness
-    pub proof fn to_multiset_properties(self)
+    pub proof fn to_multiset_ensures(self)
         ensures
             forall |a: A| #[trigger](self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
             self.len() == self.to_multiset().len(),
@@ -496,14 +496,14 @@ impl<A> Seq<A> {
     }
             
     /// Insert item a at index i, shifting remaining elements (if any) to the right
-    pub open spec fn insert(self, i: int, a:A) -> Seq<A>
+    pub closed spec fn insert(self, i: int, a:A) -> Seq<A>
         recommends 0 <= i <= self.len()
     {
         self.subrange(0, i).push(a) + self.subrange(i, self.len() as int)
     }
 
     /// Proof of correctness and expected properties of insert function
-    pub proof fn lemma_insert_properties(self, pos: int, elt:A)
+    pub proof fn insert_ensures(self, pos: int, elt:A)
         requires 
             0 <= pos <= self.len(),
         ensures
@@ -514,7 +514,7 @@ impl<A> Seq<A> {
     {}
 
     /// Remove item at index i, shifting remaining elements to the left
-    pub open spec fn remove(self, i: int) -> Seq<A>
+    pub closed spec fn remove(self, i: int) -> Seq<A>
         recommends 0 <= i < self.len()
     {
         self.subrange(0, i) + self.subrange(i + 1, self.len() as int)
@@ -889,13 +889,13 @@ impl<A> Seq<A> {
 impl<A,B> Seq<(A,B)>{
 
     /// Unzips a sequence that contains pairs into two separate sequences.
-    pub open spec fn unzip(self) -> (Seq<A>, Seq<B>)
+    pub closed spec fn unzip(self) -> (Seq<A>, Seq<B>)
     {
         (Seq::new(self.len(), |i: int| self[i].0), Seq::new(self.len(), |i: int| self[i].1))
     }
 
     /// Proof of correctness and expected properties of unzip function
-    pub proof fn lemma_unzip_properties(self)
+    pub proof fn unzip_ensures(self)
         ensures
             self.unzip().0.len() == self.unzip().1.len(),
             self.unzip().0.len() == self.len(),
@@ -906,7 +906,7 @@ impl<A,B> Seq<(A,B)>{
             self.len(),
     {
         if self.len() > 0 {
-            self.drop_last().lemma_unzip_properties();
+            self.drop_last().unzip_ensures();
         }
     }
 
@@ -1051,7 +1051,7 @@ impl Seq<int> {
     }
 
     /// Proof of correctness and expected properties for max function
-    pub proof fn lemma_max_properties(self)
+    pub proof fn max_ensures(self)
         ensures
             forall |x: int| self.contains(x) ==> x <= self.max(),
             forall |i: int| 0 <= i < self.len() ==> self[i] <= self.max(),
@@ -1063,13 +1063,13 @@ impl Seq<int> {
         else {
             let elt = self.drop_first().max();
             assert(self.drop_first().contains(elt)) by {
-                self.drop_first().lemma_max_properties()
+                self.drop_first().max_ensures()
             }
             assert forall |i: int| 0<= i <self.len() implies self[i] <= self.max() by {
                 assert(i==0 || self[i] == self.drop_first()[i-1]);
                 assert(forall |j: int| 0<= j < self.drop_first().len() 
                         ==> self.drop_first()[j] <= self.drop_first().max()) by {
-                    self.drop_first().lemma_max_properties()
+                    self.drop_first().max_ensures()
                 }
             }
         }
@@ -1093,7 +1093,7 @@ impl Seq<int> {
     }
 
     /// Proof of correctness and expected properties for min function
-    pub proof fn lemma_min_properties(self)
+    pub proof fn min_ensures(self)
         ensures
             forall |x: int| self.contains(x) ==> self.min() <= x,
             forall |i: int| 0<= i < self.len() ==> self.min() <= self[i],
@@ -1105,19 +1105,19 @@ impl Seq<int> {
         else {
             let elt = self.drop_first().min();
             assert(self.subrange(1,self.len() as int).contains(elt)) by {
-                self.drop_first().lemma_min_properties()
+                self.drop_first().min_ensures()
             }
             assert forall |i: int| 0<= i <self.len() implies self.min() <= self[i] by {
                 assert(i==0 || self[i] == self.drop_first()[i-1]);
                 assert(forall |j: int| 0<= j < self.drop_first().len() 
                         ==> self.drop_first().min() <= self.drop_first()[j]) by {
-                    self.drop_first().lemma_min_properties()
+                    self.drop_first().min_ensures()
                 }
             }
         }
     }
 
-    pub open spec fn sort(self) -> Self
+    pub closed spec fn sort(self) -> Self
     {
         self.sort_by(|x: int,y: int| x <= y)
     }
@@ -1138,8 +1138,8 @@ impl Seq<int> {
         ensures
             self.subrange(from, to).max() <= self.max(),
     {
-        self.lemma_max_properties();
-        self.subrange(from, to).lemma_max_properties();
+        self.max_ensures();
+        self.subrange(from, to).max_ensures();
     }
     
     /// The minimum element in a non-empty sequence is less than or equal to
@@ -1150,8 +1150,8 @@ impl Seq<int> {
         ensures
             self.subrange(from, to).min() >= self.min(),
     {
-        self.lemma_min_properties();
-        self.subrange(from, to).lemma_min_properties();
+        self.min_ensures();
+        self.subrange(from, to).min_ensures();
     }
 }
 
@@ -1245,9 +1245,9 @@ pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
         x.len(),
 {
     lemma_seq_properties::<int>();
-    x.lemma_max_properties();
-    y.lemma_max_properties();
-    (x+y).lemma_max_properties();
+    x.max_ensures();
+    y.max_ensures();
+    (x+y).max_ensures();
     assert(x.drop_first().len() == x.len() -1);
     if x.len() == 1 {
         assert(y.max() <= (x + y).max()) by {
@@ -1275,9 +1275,9 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
     decreases
         x.len(),
 {
-    x.lemma_min_properties();
-    y.lemma_min_properties();
-    (x+y).lemma_min_properties();
+    x.min_ensures();
+    y.min_ensures();
+    (x+y).min_ensures();
     lemma_seq_properties::<int>();
     if x.len() == 1 {
         assert((x + y).min() <= y.min()) by {
@@ -1549,8 +1549,8 @@ ensures
 decreases
     x.len(), y.len()
 {
-    x.to_multiset_properties();
-    y.to_multiset_properties();
+    x.to_multiset_ensures();
+    y.to_multiset_ensures();
     if x.len() == 0 || y.len() == 0 {}
     else {
         assert(x.to_multiset().contains(x[0]));
@@ -1834,8 +1834,8 @@ pub proof fn lemma_seq_properties<A>()
         forall |s: Seq<A>, n: int| n==0 ==> #[trigger] s.take(n) == Seq::<A>::empty(), //from lemma_seq_take_nothing(s, n),
         forall |s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m+n <= s.len()) ==> s.drop(m).drop(n) == s.drop(m+n),//from lemma_seq_drop_of_drop(s, m, n),
         forall |s: Seq<A>, a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a), //from o_multiset_properties
-        forall |s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_properties
-        forall |s: Seq<A>, a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0, //from to_multiset_properties
+        forall |s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_ensures
+        forall |s: Seq<A>, a: A| s.contains(a) <==> #[trigger] s.to_multiset().count(a) > 0, //from to_multiset_ensures
 {
     assert forall |x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x+y).contains(elt) implies x.contains(elt) ||  y.contains(elt) by {
         lemma_seq_concat_contains_all_elements(x, y, elt);
@@ -1905,16 +1905,16 @@ pub proof fn lemma_seq_properties<A>()
         lemma_seq_drop_of_drop(s, m, n);
     }
     assert forall |s: Seq<A>, a: A| #[trigger](s.push(a).to_multiset()) =~= s.to_multiset().insert(a) by {
-        s.to_multiset_properties();
+        s.to_multiset_ensures();
     } 
     assert forall |s: Seq<A>| s.len() == #[trigger] s.to_multiset().len() by {
-        s.to_multiset_properties();
+        s.to_multiset_ensures();
     } 
     assert forall |s: Seq<A>, a: A| s.contains(a) implies #[trigger] s.to_multiset().count(a) > 0 by {
-        s.to_multiset_properties();
+        s.to_multiset_ensures();
     } 
     assert forall |s: Seq<A>, a: A| #[trigger] s.to_multiset().count(a) > 0 implies s.contains(a) by {
-        s.to_multiset_properties();
+        s.to_multiset_ensures();
     }
 }
 
