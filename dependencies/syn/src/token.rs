@@ -720,6 +720,9 @@ define_keywords! {
     "invariant_ensures"   pub struct InvariantEnsures    /// `invariant_ensures`
     "assert"      pub struct Assert       /// `assert`
     "assume"      pub struct Assume       /// `assume`
+    "reveal"      pub struct Reveal       /// `assume`
+    "reveal_with_fuel" pub struct RevealWithFuel /// `reveal_with_fuel`
+    "hide"        pub struct Hide         /// `hide`
     "implies"     pub struct Implies      /// `implies`
     "by"          pub struct By           /// `by`
     "forall"      pub struct Forall       /// `forall`
@@ -931,6 +934,9 @@ macro_rules! export_token_macro {
             [invariant_ensures]   => { $crate::token::InvariantEnsures };
             [assert]      => { $crate::token::Assert };
             [assume]      => { $crate::token::Assume };
+            [reveal]      => { $crate::token::Reveal };
+            [reveal_with_fuel] => { $crate::token::RevealWithFuel };
+            [hide]        => { $crate::token::Hide };
             [implies]     => { $crate::token::Implies };
             [by]          => { $crate::token::By };
             [via]         => { $crate::token::Via };

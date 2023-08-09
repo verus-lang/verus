@@ -648,18 +648,23 @@ impl Hash for Expr {
                 v0.hash(state);
             }
             #[cfg(feature = "full")]
-            Expr::View(v0) => {
+            Expr::RevealHide(v0) => {
                 state.write_u8(43u8);
                 v0.hash(state);
             }
             #[cfg(feature = "full")]
-            Expr::BigAnd(v0) => {
+            Expr::View(v0) => {
                 state.write_u8(44u8);
                 v0.hash(state);
             }
             #[cfg(feature = "full")]
-            Expr::BigOr(v0) => {
+            Expr::BigAnd(v0) => {
                 state.write_u8(45u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::BigOr(v0) => {
+                state.write_u8(46u8);
                 v0.hash(state);
             }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
@@ -2647,6 +2652,20 @@ impl Hash for ReturnType {
                 v3.hash(state);
             }
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for RevealHide {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.reveal_token.hash(state);
+        self.reveal_with_fuel_token.hash(state);
+        self.hide_token.hash(state);
+        self.path.hash(state);
+        self.fuel.hash(state);
     }
 }
 #[cfg(feature = "full")]

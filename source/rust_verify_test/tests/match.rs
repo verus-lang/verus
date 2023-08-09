@@ -107,7 +107,7 @@ test_verify_one_file! {
                     List::Cons(_, tl) => {
                         iter = tl;
                         proof {
-                            reveal_with_fuel(len::<A>, 2);
+                            reveal_with_fuel(len, 2);
                         }
                         n = n + 1;
                     }
@@ -156,7 +156,7 @@ test_verify_one_file! {
                     List::Cons { hd: _, tl } => {
                         iter = tl;
                         proof {
-                            reveal_with_fuel(len::<A>, 2);
+                            reveal_with_fuel(len, 2);
                         }
                         n = n + 1;
                     }
@@ -204,7 +204,7 @@ test_verify_one_file! {
                     List::Cons(_, tl) => {
                         iter = tl;
                         proof {
-                            reveal_with_fuel(len::<A>, 2);
+                            reveal_with_fuel(len, 2);
                         }
                         n = n + 1; // FAILS
                         assume(n + len(iter) == len(list));

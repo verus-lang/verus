@@ -7,6 +7,7 @@
 // available to cargo
 extern crate rustc_driver;
 
+extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_error_messages;
@@ -36,6 +37,7 @@ pub mod driver;
 pub mod erase;
 pub mod file_loader;
 mod fn_call_to_vir;
+mod hir_hide_reveal_rewrite;
 mod import_export;
 pub mod lifetime;
 mod lifetime_ast;

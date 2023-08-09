@@ -699,6 +699,9 @@ pub trait Fold {
     fn fold_return_type(&mut self, i: ReturnType) -> ReturnType {
         fold_return_type(self, i)
     }
+    fn fold_reveal_hide(&mut self, i: RevealHide) -> RevealHide {
+        fold_reveal_hide(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_signature(&mut self, i: Signature) -> Signature {
         fold_signature(self, i)
@@ -1388,6 +1391,7 @@ where
         Expr::AssertForall(_binding_0) => {
             Expr::AssertForall(f.fold_assert_forall(_binding_0))
         }
+        Expr::RevealHide(_binding_0) => Expr::RevealHide(f.fold_reveal_hide(_binding_0)),
         Expr::View(_binding_0) => Expr::View(f.fold_view(_binding_0)),
         Expr::BigAnd(_binding_0) => Expr::BigAnd(f.fold_big_and(_binding_0)),
         Expr::BigOr(_binding_0) => Expr::BigOr(f.fold_big_or(_binding_0)),
@@ -3290,6 +3294,26 @@ where
                 Box::new(f.fold_type(*_binding_3)),
             )
         }
+    }
+}
+pub fn fold_reveal_hide<F>(f: &mut F, node: RevealHide) -> RevealHide
+where
+    F: Fold + ?Sized,
+{
+    RevealHide {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        reveal_token: (node.reveal_token)
+            .map(|it| Token![reveal](tokens_helper(f, &it.span))),
+        reveal_with_fuel_token: (node.reveal_with_fuel_token)
+            .map(|it| Token![reveal_with_fuel](tokens_helper(f, &it.span))),
+        hide_token: (node.hide_token).map(|it| Token![hide](tokens_helper(f, &it.span))),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        path: Box::new(f.fold_expr_path(*node.path)),
+        fuel: (node.fuel)
+            .map(|it| (
+                Token![,](tokens_helper(f, &(it).0.spans)),
+                Box::new(f.fold_expr(*(it).1)),
+            )),
     }
 }
 #[cfg(feature = "full")]

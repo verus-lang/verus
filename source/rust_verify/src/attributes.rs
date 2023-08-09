@@ -260,6 +260,8 @@ pub(crate) enum Attr {
     ExternalTypeSpecification,
     // Marks a variable that's spec or ghost mode in exec code
     UnwrappedBinding,
+    // Marks the auxiliary function constructed by reveal/hide
+    InternalRevealFn,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -494,6 +496,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "header_unwrap_parameter" => {
                         v.push(Attr::UnwrapParameter)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "reveal_fn" => {
+                        v.push(Attr::InternalRevealFn)
+                    }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>
                     {
@@ -637,6 +642,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) unwrapped_binding: bool,
+    pub(crate) internal_reveal_fn: bool,
 }
 
 pub(crate) fn get_verifier_attrs(
@@ -672,6 +678,7 @@ pub(crate) fn get_verifier_attrs(
         external_fn_specification: false,
         external_type_specification: false,
         unwrapped_binding: false,
+        internal_reveal_fn: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -713,6 +720,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::Memoize => vs.memoize = true,
             Attr::Truncate => vs.truncate = true,
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
+            Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             _ => {}
         }
     }

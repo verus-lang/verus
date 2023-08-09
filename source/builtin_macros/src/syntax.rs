@@ -1205,6 +1205,12 @@ impl VisitMut for Visitor {
                 Expr::Assume(a) => Some(a.assume_token.span),
                 Expr::Assert(a) => Some(a.assert_token.span),
                 Expr::AssertForall(a) => Some(a.assert_token.span),
+                Expr::RevealHide(a) if a.hide_token.is_none() => Some(
+                    a.reveal_token
+                        .map(|x| x.span)
+                        .or(a.reveal_with_fuel_token.map(|x| x.span))
+                        .expect("missing span for Reveal"),
+                ),
                 _ => None,
             }
         } else {
@@ -1475,7 +1481,9 @@ impl VisitMut for Visitor {
                     | BinOp::Shr(..),
                 ..
             }) if use_spec_traits => true,
-            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => true,
+            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) | Expr::RevealHide(..) => {
+                true
+            }
             Expr::View(..) => true,
             Expr::Closure(..) => true,
             _ => false,
@@ -1757,6 +1765,49 @@ impl VisitMut for Visitor {
                     *expr = Expr::Verbatim(
                         quote_spanned!(span => {::builtin::assert_forall_by(|#inputs| #block);}),
                     );
+                }
+                Expr::RevealHide(reveal) => {
+                    let span = reveal
+                        .reveal_token
+                        .map(|x| x.span)
+                        .or(reveal.reveal_with_fuel_token.map(|x| x.span))
+                        .or(reveal.hide_token.map(|x| x.span))
+                        .expect("span for Reveal");
+                    let reveal_fuel = if let Some((_, fuel)) = reveal.fuel {
+                        quote_spanned!(span => #fuel)
+                    } else if reveal.hide_token.is_some() {
+                        quote_spanned!(span => 0)
+                    } else {
+                        quote_spanned!(span => 1)
+                    };
+                    let is_hide = reveal.hide_token.is_some();
+                    let path = reveal.path;
+                    let expr_replacement = if path
+                        .path
+                        .segments
+                        .first()
+                        .map(|x| x.ident.to_string())
+                        == Some("Self".to_owned())
+                        || path.qself.as_ref().and_then(|qself| match &*qself.ty {
+                            Type::Path(qself_ty_path) => {
+                                qself_ty_path.path.segments.first().map(|x| x.ident.to_string())
+                            }
+                            _ => None,
+                        }) == Some("Self".to_owned())
+                    {
+                        Expr::Verbatim(
+                            quote_spanned!(span => { compile_error!("Self is not supported in reveal/hide, use the type name instead, or <T as X> for functions in trait impls") }),
+                        )
+                    } else {
+                        Expr::Verbatim(
+                            quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, #reveal_fuel) ),
+                        )
+                    };
+                    if is_hide {
+                        *expr = self.maybe_erase_expr(span, expr_replacement);
+                    } else {
+                        *expr = expr_replacement;
+                    }
                 }
                 Expr::Closure(mut clos) => {
                     if is_inside_ghost {

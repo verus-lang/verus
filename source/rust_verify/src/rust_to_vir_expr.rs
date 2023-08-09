@@ -500,11 +500,11 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             }
             pat_or
         }
-        PatKind::Binding(_, _, _, Some(_)) => return unsupported_err!(pat.span, "@ patterns", pat),
-        PatKind::Ref(..) => return unsupported_err!(pat.span, "ref patterns", pat),
-        PatKind::Lit(..) => return unsupported_err!(pat.span, "literal patterns", pat),
-        PatKind::Range(..) => return unsupported_err!(pat.span, "range patterns", pat),
-        PatKind::Slice(..) => return unsupported_err!(pat.span, "slice patterns", pat),
+        PatKind::Binding(_, _, _, Some(_)) => unsupported_err!(pat.span, "@ patterns", pat),
+        PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
+        PatKind::Lit(..) => unsupported_err!(pat.span, "literal patterns", pat),
+        PatKind::Range(..) => unsupported_err!(pat.span, "range patterns", pat),
+        PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
     };
     let pattern = bctx.spanned_typed_new(pat.span, &pat_typ, pattern);
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -1394,7 +1394,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ));
                         return Ok(vir_expr);
                     } else {
-                        return unsupported_err!(expr.span, "associated constants");
+                        unsupported_err!(expr.span, "associated constants");
                     }
                 }
                 Res::Def(DefKind::Const, id) => {
@@ -1403,7 +1403,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     mk_expr(ExprX::ConstVar(Arc::new(fun)))
                 }
                 Res::Def(DefKind::Fn | DefKind::AssocFn, _) => {
-                    return unsupported_err!(expr.span, "using functions as values");
+                    unsupported_err!(expr.span, "using functions as values");
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let gparam = if let Some(local_id) = id.as_local() {
@@ -1857,7 +1857,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let range = mk_range(&bctx.ctxt.verus_items, &tc.expr_ty_adjusted(lhs));
                 if matches!(range, IntRange::I(_) | IntRange::ISize) {
                     // Non-Euclidean division, which will need more encoding
-                    return unsupported_err!(expr.span, "div/mod on signed finite-width integers");
+                    unsupported_err!(expr.span, "div/mod on signed finite-width integers");
                 }
             }
             expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(op))
@@ -2165,7 +2165,16 @@ pub(crate) fn stmt_to_vir<'tcx>(
         StmtKind::Local(Local { pat, init, .. }) => {
             let_stmt_to_vir(bctx, pat, init, bctx.ctxt.tcx.hir().attrs(stmt.hir_id))
         }
-        StmtKind::Item(..) => unsupported_err!(stmt.span, "internal item statements", stmt),
+        StmtKind::Item(item_id) => {
+            let attrs = bctx.ctxt.tcx.hir().attrs(item_id.hir_id());
+            let vattrs = get_verifier_attrs(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
+            if vattrs.internal_reveal_fn {
+                dbg!(&item_id.hir_id());
+                unreachable!();
+            } else {
+                unsupported_err!(stmt.span, "internal item statements", stmt)
+            }
+        }
     }
 }
 

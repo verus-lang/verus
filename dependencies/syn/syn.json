@@ -1083,6 +1083,11 @@
             "syn": "AssertForall"
           }
         ],
+        "RevealHide": [
+          {
+            "syn": "RevealHide"
+          }
+        ],
         "View": [
           {
             "syn": "View"
@@ -5131,6 +5136,56 @@
       }
     },
     {
+      "ident": "RevealHide",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "reveal_token": {
+          "option": {
+            "token": "Reveal"
+          }
+        },
+        "reveal_with_fuel_token": {
+          "option": {
+            "token": "RevealWithFuel"
+          }
+        },
+        "hide_token": {
+          "option": {
+            "token": "Hide"
+          }
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "path": {
+          "box": {
+            "syn": "ExprPath"
+          }
+        },
+        "fuel": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Comma"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "ident": "Signature",
       "features": {
         "any": [
@@ -6495,6 +6550,7 @@
     "Ge": ">=",
     "Ghost": "ghost",
     "Gt": ">",
+    "Hide": "hide",
     "If": "if",
     "Impl": "impl",
     "Implies": "implies",
@@ -6536,6 +6592,8 @@
     "RemEq": "%=",
     "Requires": "requires",
     "Return": "return",
+    "Reveal": "reveal",
+    "RevealWithFuel": "reveal_with_fuel",
     "SelfType": "Self",
     "SelfValue": "self",
     "Semi": ";",

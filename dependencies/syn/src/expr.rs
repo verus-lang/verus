@@ -229,6 +229,7 @@ ast_enum_of_structs! {
         Assume(Assume),
         Assert(Assert),
         AssertForall(AssertForall),
+        RevealHide(RevealHide),
         View(View),
         BigAnd(BigAnd),
         BigOr(BigOr),
@@ -854,6 +855,7 @@ impl Expr {
             | Expr::Assume(Assume { attrs, .. })
             | Expr::Assert(Assert { attrs, .. })
             | Expr::AssertForall(AssertForall { attrs, .. })
+            | Expr::RevealHide(RevealHide { attrs, .. })
             | Expr::View(View { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
@@ -1882,6 +1884,8 @@ pub(crate) mod parsing {
             input.parse().map(Expr::AssertForall)
         } else if input.peek(Token![assert]) {
             input.parse().map(Expr::Assert)
+        } else if input.peek(Token![reveal]) || input.peek(Token![reveal_with_fuel]) || input.peek(Token![hide]) {
+            input.parse().map(Expr::RevealHide)
         } else if input.peek(Token![match]) {
             input.parse().map(Expr::Match)
         } else if input.peek(Token![yield]) {
@@ -2206,6 +2210,8 @@ pub(crate) mod parsing {
             Expr::AssertForall(input.parse()?)
         } else if input.peek(Token![assert]) {
             Expr::Assert(input.parse()?)
+        } else if input.peek(Token![reveal]) || input.peek(Token![reveal_with_fuel]) || input.peek(Token![hide]) {
+            Expr::RevealHide(input.parse()?)
         } else if input.peek(Token![match]) {
             Expr::Match(input.parse()?)
         } else if input.peek(Token![try]) && input.peek2(token::Brace) {

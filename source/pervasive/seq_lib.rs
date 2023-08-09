@@ -167,7 +167,7 @@ impl<A> Seq<A> {
             self.filter(pred).len() <= self.len(),
         decreases self.len()
     {
-        reveal(Self::filter);
+        reveal(Seq::filter);
         let out = self.filter(pred);
         if 0 < self.len() {
             self.drop_last().filter_lemma(pred);
@@ -205,7 +205,7 @@ impl<A> Seq<A> {
         (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
     decreases b.len()
     {
-        reveal(Self::filter);
+        reveal(Seq::filter);
         if 0 < b.len()
         {
             Self::drop_last_distributes_over_add(a, b);
@@ -602,7 +602,7 @@ impl<A> Seq<A> {
           self.fold_left_alt(b, f),
         decreases k,
     {
-        reveal_with_fuel(Self::fold_left_alt::<B>, 2);
+        reveal_with_fuel(Seq::fold_left_alt, 2);
         if k == 1 {
             // trivial base case
         } else {
@@ -628,8 +628,8 @@ impl<A> Seq<A> {
         ensures self.fold_left(b, f) == self.fold_left_alt(b, f),
         decreases self.len(),
     {
-        reveal_with_fuel(Self::fold_left::<B>, 2);
-        reveal_with_fuel(Self::fold_left_alt::<B>, 2);
+        reveal_with_fuel(Seq::fold_left, 2);
+        reveal_with_fuel(Seq::fold_left_alt, 2);
         if self.len() <= 1 {
             // trivial base cases
         } else {
@@ -677,7 +677,7 @@ impl<A> Seq<A> {
           self.fold_right(f, b),
         decreases self.len(),
     {
-        reveal_with_fuel(Self::fold_right::<B>, 2);
+        reveal_with_fuel(Seq::fold_right, 2);
         if k == self.len() - 1 {
             // trivial base case
         } else {
@@ -702,8 +702,8 @@ impl<A> Seq<A> {
         ensures self.fold_right(f, b) == self.fold_right_alt(f, b),
         decreases self.len(),
     {
-        reveal_with_fuel(Self::fold_right::<B>, 2);
-        reveal_with_fuel(Self::fold_right_alt::<B>, 2);
+        reveal_with_fuel(Seq::fold_right, 2);
+        reveal_with_fuel(Seq::fold_right_alt, 2);
         if self.len() <= 1 {
             // trivial base cases
         } else {
