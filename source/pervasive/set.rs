@@ -223,14 +223,13 @@ pub proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
 {
 }
 
-// Changed to match Dafny prelude
 /// The union of sets `s1` and `s2` contains element `a` if and only if 
 /// `s1` contains `a` and/or `s2` contains `a`.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
-        #[trigger] s1.union(s2).contains(a) <==> (s1.contains(a) || s2.contains(a)),
+        s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
 }
 

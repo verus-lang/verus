@@ -243,15 +243,6 @@ pub proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
     ensures v != w ==> Multiset::singleton(v).count(w) == 0,
 {}
 
-/// A call to Multiset::singleton with input value `v` is equivalent to inserting
-/// `v` into the empty multiset.
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_multiset_singleton_is_insertion<V>(v: V)
-    ensures 
-        #[trigger] Multiset::singleton(v) == Multiset::empty().insert(v),
-{}
-
 // Specification of `add`
 
 /// The count of value `v` in the multiset `m1.add(m2)` is equal to the sum of the

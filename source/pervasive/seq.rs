@@ -156,7 +156,7 @@ impl<A> Seq<A> {
     /// Returns a sequence without the first n elements of the original sequence
     
     #[verifier(inline)]
-    pub open spec fn drop(self, n: int) -> Seq<A>{
+    pub open spec fn skip(self, n: int) -> Seq<A>{
         self.subrange(n,self.len() as int)
     }
 
