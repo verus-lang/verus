@@ -195,6 +195,13 @@ impl MessageX {
         Arc::new(e)
     }
 
+    /// Add a label: if no primary label exists, this will be the primary label; otherwise it will
+    /// be a secondary label.
+    pub fn append_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
+        if self.spans.len() == 0 { self.primary_label(span, label) }
+        else { self.secondary_label(span, label) }
+    }
+
     /// Append secondary labels
     pub fn append_labels(&self, labels: &Vec<MessageLabel>) -> Message {
         let mut l = self.labels.clone();

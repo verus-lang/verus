@@ -547,8 +547,8 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
     }
-    if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
-        return err_span(sig.span, "spec functions cannot have requires/ensures");
+    if mode == Mode::Spec && header.require.len() > 0 {
+        return err_span(sig.span, "spec functions cannot have requires");
     }
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");

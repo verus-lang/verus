@@ -1818,7 +1818,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         // to the 'ensures' clause that fails.
                         let error = match state.post_condition_info.kind {
                             PostConditionKind::Ensures => base_error
-                                .secondary_label(&span, crate::def::THIS_POST_FAILED.to_string()),
+                                .append_label(&span, crate::def::THIS_POST_FAILED.to_string()),
                             PostConditionKind::DecreasesImplicitLemma => base_error.clone(),
                             PostConditionKind::DecreasesBy => {
                                 let mut e = (**base_error).clone();
