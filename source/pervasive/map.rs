@@ -28,7 +28,7 @@ verus! {
 ///  * The [`map!`] macro, to construct small maps of a fixed size.
 ///  * By manipulating an existing map with [`Map::insert`] or [`Map::remove`].
 ///
-/// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
+/// To prove that two maps are equal, it is usually easiest to use the extensionality operator `=~=`.
 
 #[verifier(external_body)]
 #[verifier::ext_equal]
@@ -61,6 +61,12 @@ impl<K, V> Map<K, V> {
 
     pub spec fn dom(self) -> Set<K>;
 
+    /// The set of keys mapped to by the domain of the map
+ 
+    pub open spec fn values(self) -> Set<V> {
+        Set::<V>::new(|v: V| self.contains_value(v))
+    }
+
     /// Gets the value that the given key `key` maps to.
     /// For keys not in the domain, the result is meaningless and arbitrary.
 
@@ -89,6 +95,12 @@ impl<K, V> Map<K, V> {
 
     pub spec fn remove(self, key: K) -> Map<K, V>;
 
+    /// Returns the number of key-value pairs in the map
+
+    pub open spec fn len(self) -> nat {
+        self.dom().len()
+    }
+
     /// DEPRECATED: use =~= or =~~= instead.
     /// Returns true if the two maps are pointwise equal, i.e.,
     /// they have the same domains and the corresponding values are equal
@@ -102,111 +114,6 @@ impl<K, V> Map<K, V> {
     #[deprecated = "use =~= or =~~= instead"]
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
         self =~= m2
-    }
-
-    /// Returns true if the key `k` is in the domain of `self`.
-
-    #[verifier(inline)]
-    pub open spec fn contains_key(self, k: K) -> bool {
-        self.dom().contains(k)
-    }
-
-    /// Returns true if the value `v` is in the map of `self`.
-
-    pub open spec fn contains_value(self, v: V) -> bool {
-        exists|i: K| #[trigger] self.dom().contains(i) && self[i] == v
-    }
-
-    /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
-
-    pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && self[k] == v
-    }
-
-    /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
-    /// of the domain of `m2`, and they agree on all values in `m1`.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11].le(map![1 => 10, 2 => 11, 3 => 12])
-    /// );
-    /// ```
-
-    pub open spec fn le(self, m2: Self) -> bool {
-        forall|k: K| #[trigger] self.dom().contains(k) ==>
-            #[trigger] m2.dom().contains(k) && self[k] == m2[k]
-    }
-
-    /// Gives the union of two maps, defined as:
-    ///  * The domain is the union of the two input maps.
-    ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).
-    ///  * For any other key in either input map (but not both), it maps to the same value
-    ///    as it does in that map.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert_maps_equal!(
-    ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13]),
-    ///    map![1 => 20, 2 => 11, 3 => 13],
-    /// );
-    /// ```
-
-    pub open spec fn union_prefer_right(self, m2: Self) -> Self {
-        Self::new(
-            |k: K| self.dom().contains(k) || m2.dom().contains(k),
-            |k: K| if m2.dom().contains(k) { m2[k] } else { self[k] }
-        )
-    }
-
-    /// Removes the given keys and their associated values from the map.
-    ///
-    /// Ignores any key in `keys` which is not in the domain of `self`.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert_maps_equal!(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4}),
-    ///    map![1 => 10],
-    /// );
-    /// ```
-
-    pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
-        Self::new(
-            |k: K| self.dom().contains(k) && !keys.contains(k),
-            |k: K| self[k]
-        )
-    }
-
-    /// Complement to `remove_keys`. Restricts the map to (key, value) pairs
-    /// for keys that are _in_ the given set; that is, it removes any keys
-    /// _not_ in the set.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert_maps_equal!(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4}),
-    ///    map![2 => 11, 3 => 12],
-    /// );
-    /// ```
-
-    pub open spec fn restrict(self, keys: Set<K>) -> Self {
-        Self::new(
-            |k: K| self.dom().contains(k) && keys.contains(k),
-            |k: K| self[k]
-        )
-    }
-
-    /// Returns `true` if the two given maps agree on all keys that their domains
-    /// share in common.
-
-    pub open spec fn agrees(self, m2: Self) -> bool {
-        forall|k| #![auto] self.dom().contains(k) && m2.dom().contains(k) ==>
-            self[k] == m2[k]
     }
 
     #[verifier(external_body)]
@@ -286,16 +193,6 @@ impl<K, V> Map<K, V> {
     {
         unimplemented!();
     }
-
-    /// Map a function `f` over all (k, v) pairs in `self`.
-    pub open spec fn map_entries<W>(self, f: FnSpec(K, V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
-    }
-
-    /// Map a function `f` over the values in `self`.
-    pub open spec fn map_values<W>(self, f: FnSpec(V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
-    }
 }
 
 // Trusted axioms
@@ -335,6 +232,7 @@ pub proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
 {
 }
 
+/// The domain of the empty map is the empty set
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_empty<K, V>()
@@ -343,6 +241,8 @@ pub proof fn axiom_map_empty<K, V>()
 {
 }
 
+/// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
+/// the original map's domain set.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
@@ -351,6 +251,7 @@ pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
 {
 }
 
+/// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
@@ -359,6 +260,7 @@ pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
 {
 }
 
+/// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
@@ -370,6 +272,8 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
 {
 }
 
+/// The domain of a map after removing a key-value pair is equivalent to removing the key from
+/// the original map's domain set.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
@@ -378,6 +282,8 @@ pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 {
 }
 
+/// Removing a key-value pair from a map does not change the value mapped to by
+/// any other keys in the map.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
@@ -389,6 +295,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 {
 }
 
+/// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)

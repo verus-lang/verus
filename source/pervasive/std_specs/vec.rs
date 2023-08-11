@@ -81,6 +81,7 @@ impl<T, A: Allocator> VecAdditionalExecFns<T> for Vec<T, A> {
 // It's not ideal, but I think it's better than the alternative, which would
 // be to have users call some function with a nonstandard name to perform indexing.
 
+/// This is a specification for the indexing operator `vec[i]`
 #[verifier::external_body]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
     requires i < vec.view().len(),
@@ -161,10 +162,9 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
+pub fn ex_vec_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
     ensures
         vec@ == old(vec)@ + old(other)@,
-        other@ == Seq::<T>::empty()
 {
     vec.append(other)
 }
@@ -222,5 +222,22 @@ pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
     vec.as_slice()
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_vec_split_off<T, A: Allocator+ std::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
+    ensures
+        vec@ == old(vec)@.subrange(0,at as int),
+        return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
+{
+    vec.split_off(at)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
+    ensures
+        len <= vec.len() ==> vec@ == old(vec)@.subrange(0,len as int),
+        len > vec.len() ==> vec@ == old(vec)@,
+{
+    vec.truncate(len)
+}
 
 }
