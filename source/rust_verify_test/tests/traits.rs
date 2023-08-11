@@ -1842,3 +1842,25 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked opens_invariants none")
 }
+
+test_verify_one_file! {
+    #[test] allow_unwrapping_syntax_for_trait_exec_decls verus_code! {
+        tracked struct AType {
+            v: nat,
+        }
+
+        trait ATrait {
+            exec fn afun(Tracked(aparam): Tracked<&mut AType>)
+                requires old(aparam) == (AType { v: 41 }),
+                ensures aparam == (AType { v: 41 });
+        }
+
+        struct AnotherType {}
+
+        impl ATrait for AnotherType {
+            exec fn afun(Tracked(aparam): Tracked<&mut AType>) {
+                assert(aparam.v == 41);
+            }
+        }
+    } => Ok(())
+}
