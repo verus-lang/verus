@@ -1,6 +1,6 @@
 use crate::ast::{
     Fun, Function, FunctionKind, Ident, Idents, Mode, Param, ParamX, Params, SpannedTyped, Typ,
-    TypX, Typs, VirErr, MaskSpec,
+    TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
@@ -22,17 +22,18 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
-    str_apply, str_ident, str_typ, str_var, string_apply,
+    mk_let, str_apply, str_ident, str_typ, str_var, string_apply,
 };
-use air::messages::{error_with_label, error_bare, Diagnostics, MessageLabel};
+use air::messages::{Diagnostics, MessageLabel};
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::{ast_to_sst, sst};
+use crate::sst_to_air::PostConditionKind;
 
 pub struct SstInline {
     pub(crate) typ_params: Idents,
     pub do_inline: bool,
 }
-use crate::sst_to_air::PostConditionKind;
 
 pub struct SstInfo {
     pub(crate) inline: SstInline,
@@ -124,65 +125,60 @@ fn func_def_quant(
     Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
-fn check_spec_ensures_exp(
-    ctx: &Ctx,
-    state: &mut crate::ast_to_sst::State,
-    diagnostics: &impl Diagnostics,
-    function: &Function,
-    ens_pars: &Pars,
-    body_stm: &Stm,
-    ensures_check_commands: &mut Vec<Command>,
-) -> Result<(), VirErr> {
-
-    // becomes an assumption (axiom)
-    let mut reqs_exprs: Vec<Expr> = Vec::new();
-    exprs_to_air(ctx, diagnostics, &state.fun_ssts, ens_pars, &function.x.require, &None, /*is_singular*/ false, &mut reqs_exprs)?;
-
-    // this is the VC
-    let mut enss: Vec<Exp> = Vec::new();
-    for e in function.x.ensure.iter() {
-        enss.push(crate::ast_to_sst::expr_to_exp(
-            ctx,
-            diagnostics,
-            &state.fun_ssts,
-            ens_pars, // XXX andrea says this needs a good honest refactorin'
-            e,
-        )?);
-    }
-
-    let (commands_with_context, _snap_map) = crate::sst_to_air::body_stm_to_air(
-        ctx,
-        &function.span,
-        &HashMap::new(),
-        &function.x.typ_params,
-        &function.x.params,
-        &state.local_decls,
-        &vec![],  // hidden
-        &vec![],  // reqs
-        &enss, // ens
-        &vec![],  // ens_recommend_stms
-        &MaskSpec::NoSpec,
-        function.x.mode,
-        &body_stm,
-        false,  // is_integer_ring
-        false,  // is_bit_vector_mode
-        false,  // is_nonlinear
-        false,  // is_spinoff_prover
-        None,
-        PostConditionKind::Ensures,
-//         if uses_decreases_by {
-//             PostConditionKind::DecreasesBy
-//         } else {
-//             PostConditionKind::DecreasesImplicitLemma
-//         },
-    )?;
-
-    assert_eq!(commands_with_context.len(), 1);
-    let commands = commands_with_context.into_iter().next().unwrap().commands.clone();
-    ensures_check_commands.extend(commands.iter().cloned());
-
-    Ok(())
-}
+// fn check_spec_ensures_exp(
+//     ctx: &Ctx,
+//     state: &mut crate::ast_to_sst::State,
+//     diagnostics: &impl Diagnostics,
+//     function: &Function,
+//     ens_pars: &Pars,
+//     body_stm: &Stm,
+//     ensures_check_commands: &mut Vec<Command>,
+// ) -> Result<(), VirErr> {
+// 
+//     // becomes an assumption (axiom)
+//     let mut reqs_exprs: Vec<Expr> = Vec::new();
+//     exprs_to_air(ctx, diagnostics, &state.fun_ssts, ens_pars, &function.x.require, &None, /*is_singular*/ false, &mut reqs_exprs)?;
+// 
+//     // this is the VC
+//     let mut enss: Vec<Exp> = Vec::new();
+//     for e in function.x.ensure.iter() {
+//         enss.push(crate::ast_to_sst::expr_to_exp(
+//             ctx,
+//             diagnostics,
+//             &state.fun_ssts,
+//             ens_pars, // XXX andrea says this needs a good honest refactorin'
+//             e,
+//         )?);
+//     }
+// 
+//     let (commands_with_context, _snap_map) = crate::sst_to_air::body_stm_to_air(
+//         ctx,
+//         &function.span,
+//         &HashMap::new(),
+//         &function.x.typ_params,
+//         &function.x.params,
+//         &state.local_decls,
+//         &vec![],  // hidden
+//         &vec![],  // reqs
+//         &enss, // ens
+//         &vec![],  // ens_recommend_stms
+//         &MaskSpec::NoSpec,
+//         function.x.mode,
+//         &body_stm,
+//         false,  // is_integer_ring
+//         false,  // is_bit_vector_mode
+//         false,  // is_nonlinear
+//         false,  // is_spinoff_prover
+//         None,
+//         PostConditionKind::Ensures,
+//     )?;
+// 
+//     assert_eq!(commands_with_context.len(), 1);
+//     let commands = commands_with_context.into_iter().next().unwrap().commands.clone();
+//     ensures_check_commands.extend(commands.iter().cloned());
+// 
+//     Ok(())
+// }
     
 
 fn spec_func_body_to_air(
@@ -190,8 +186,7 @@ fn spec_func_body_to_air(
     diagnostics: &impl Diagnostics,
     fun_ssts: SstMap,
     decl_commands: &mut Vec<Command>,
-    termination_check_commands: &mut Vec<Command>,
-    ensures_check_commands: &mut Vec<Command>,
+    check_commands: &mut Vec<Command>,
     function: &Function,
     body: &crate::ast::Expr,
     not_verifying_owning_module: bool,
@@ -206,6 +201,7 @@ fn spec_func_body_to_air(
     state.view_as_spec = true;
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
+    let unfinalized_body_exp = body_exp.clone();
     let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
     let inline =
         SstInline { typ_params: function.x.typ_params.clone(), do_inline: function.x.attrs.inline };
@@ -230,73 +226,67 @@ fn spec_func_body_to_air(
     } else {
         vec![]
     };
-    let mut decrease_by_stms = generic_check_stms.clone();
-    let mut ensures_stms = generic_check_stms;
+    let mut decrease_by_stms = generic_check_stms;
+    let body_stm;
     if let Some(fun) = &function.x.decrease_by {
         state.view_as_spec = false;
         if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
-            let body_stm = crate::ast_to_sst::expr_to_one_stm_with_post(
-                &ctx,
-                &mut state,
-                decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
-            )?;
-            let body_stm = state.finalize_stm(
-                ctx,
-                diagnostics,
-                &state.fun_ssts,
-                &body_stm,
-                // note: these arguments are just for splitting, and (unless we support
-                // special splitting for decrease_by lemmas) they shouldn't matter.
-                // passing in an empty vec![] will cause splitting to just skip over this
-                &Arc::new(vec![]),
-                &Arc::new(vec![]),
-                None,
-            )?;
+            let decreases_by_body = decrease_by_fun.x.body.as_ref().expect("decreases_by has body");
+            let (stms, _exp) = ast_to_sst::expr_to_stm_opt(&ctx, &mut state, decreases_by_body)?;
+            // _exp in decreases_by is just unit
 
-            // TODO(andrea): Why is there no error message on this branch?
-            decrease_by_stms.push(body_stm.clone());
-            ensures_stms.push(body_stm);
+            // Persuade the decreases_by that it wants to return body_exp as its value.
+            body_stm = ast_to_sst::add_return_for_postcondition_check(&decreases_by_body.span, stms, ast_to_sst::ReturnValue::Some(unfinalized_body_exp))?;
         } else {
             assert!(not_verifying_owning_module);
-        }
-    } else {
-        let base_error = error_with_label(
-            "could not prove termination".to_string(),
-            &body_exp.span,
-            "of this function body".to_string(),
-        );
 
-        // In this case, the user hasn't provided a proof body, so we just need to make
-        // our own trivial proof body. A trivial proof body is just a single
-        // Return statement.
+            // NB -- subtle: We're not verifying, but we need a bunch of great return stuff from
+            // check_termination_exp(), so we're going to supply an empty block as the body.
+            body_stm = Spanned::new(body_exp.span.clone(), StmX::Block(Arc::new(vec![])));
+                
+        }
+        // TODO(...chris?) If the user-supplied decreases-by contains a Return
+        // statement, we'll crash because we haven't annotated it with dest+expr.
+    } else {
+        // In this case, the user hasn't provided a proof body, so the Return
+        // statement we add here serves as a trivial proof body.
         // check_termination_exp will set the "ensures clause" to be the
         // termination conditions.
-        decrease_by_stms.push(Spanned::new(
-            body_exp.span.clone(),
-            StmX::Return { base_error, ret_exp: None, inside_body: false },
-        ));
-
-        // Same idea, but this time for the ensures check
-        let base_error = error_bare("could not prove postcondition".to_string());
-        ensures_stms.push(Spanned::new(
-            body_exp.span.clone(),
-            StmX::Return { base_error, ret_exp: None, inside_body: false },
-        ));
+        body_stm = ast_to_sst::add_return_for_postcondition_check(&body_exp.span, vec![], ast_to_sst::ReturnValue::Some(unfinalized_body_exp))?;
     }
-    state.finalize();
 
-    // Check termination
+    let body_stm = state.finalize_stm(
+        ctx,
+        diagnostics,
+        &state.fun_ssts,
+        &body_stm,
+        // note: these arguments are just for splitting, and (unless we support
+        // special splitting for decrease_by lemmas) they shouldn't matter.
+        // passing in an empty vec![] will cause splitting to just skip over this
+        &Arc::new(vec![]),
+        &Arc::new(vec![]),
+        None,
+    )?;
+    decrease_by_stms.push(body_stm);
+
+    // Check termination & ensures
+    let (ens_sst_pars, dest) = get_ens_sst_pars(&mut state, &function);
+
     let (is_recursive, termination_commands, body_exp) = crate::recursion::check_termination_exp(
         ctx,
         diagnostics,
         &state.fun_ssts,
         function,
+        &ens_sst_pars,
         state.local_decls.clone(),
         &body_exp,
         decrease_by_stms.clone(),
         function.x.decrease_by.is_some(),
+        dest,
     )?;
-    termination_check_commands.extend(termination_commands.iter().cloned());
+    check_commands.extend(termination_commands.iter().cloned());
+
+    state.finalize();
 
     //////////////////////////////////////////////////////////////////////////////
     // Generate the fuel defaults
@@ -391,16 +381,16 @@ fn spec_func_body_to_air(
 
     //////////////////////////////////////////////////////////////////////////////
     // Generate the ensures check
-    let reqs_stm = crate::ast_to_sst::stms_to_one_stm(&function.x.body.as_ref().expect("TODO(andrea)").span, ensures_stms);
-    check_spec_ensures_exp(
-        ctx,
-        &mut state,
-        diagnostics,
-        function,
-        &pars,
-        &reqs_stm,
-        ensures_check_commands,
-    )?;
+//     let reqs_stm = crate::ast_to_sst::stms_to_one_stm(&function.x.body.as_ref().expect("TODO(andrea)").span, ensures_stms);
+//     check_spec_ensures_exp(
+//         ctx,
+//         &mut state,
+//         diagnostics,
+//         function,
+//         &pars,
+//         &reqs_stm,
+//         check_commands,
+//     )?;
 
     Ok(state.fun_ssts)
 }
@@ -410,40 +400,43 @@ fn spec_func_body_to_air(
 pub fn req_implies_ens_as_air(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
+    function: &Function,
     fun_ssts: &SstMap,
     commands: &mut Vec<Command>,
     params: &Pars,
-    reqs: &Vec<crate::ast::Expr>,
     out_params: &Pars,    // TODO(jonh): quantify over both params+out_params.
-    ens: &Vec<crate::ast::Expr>,
-    typ_params: &Idents,
     _typs: &air::ast::Typs,
     name: &Ident,
     msg: &Option<String>,
     is_singular: bool,
 ) -> Result<bool, VirErr> {
-    println!("jonh req_implies_ens_as_air(name={:?})", name);
-    if ens.len() > 0 {
+    if function.x.ensure.len() > 0 {
         // TODO a bunch of copy-pasta fram req_ens_to_air; would be nice to factor out.
 
         let mut reqs_exprs: Vec<Expr> = Vec::new();
-        exprs_to_air(ctx, diagnostics, fun_ssts, params, reqs, msg, is_singular, &mut reqs_exprs)?;
+        exprs_to_air(ctx, diagnostics, fun_ssts, params, &function.x.require, msg, is_singular, &mut reqs_exprs)?;
         let reqs_conj = mk_and(&reqs_exprs);
         let mut ens_exprs: Vec<Expr> = Vec::new();
-        exprs_to_air(ctx, diagnostics, fun_ssts, out_params, ens, msg, is_singular, &mut ens_exprs)?;
+        exprs_to_air(ctx, diagnostics, fun_ssts, out_params, &function.x.ensure, msg, is_singular, &mut ens_exprs)?;
         let ens_conj = mk_and(&ens_exprs);
         let implies_body = mk_implies(&reqs_conj, &ens_conj);
-        println!("jonh: implies_body = {:?}", implies_body);
-        let typ_args = Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone()))));
+        let typ_args = Arc::new(vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone()))));
 
         let f_args = func_def_typs_args(&typ_args, params);
-        let f_app_trigger = string_apply(name, &Arc::new(f_args));
+        let f_app = string_apply(name, &Arc::new(f_args));
+
+        // introduce the function's named return value name
+        let bound_expr =
+            if let Some(return_param) = function.x.get_return_param() {
+                mk_let(&vec![ident_binder(&suffix_local_stmt_id(&return_param.x.name), &f_app)], &implies_body)
+            } else {
+                implies_body
+            };
+        
         let e_forall = mk_bind_expr(
-                &func_bind(ctx, name.to_string(), &typ_params, params, &f_app_trigger, false),
-                &implies_body);
-        println!("jonh: e_forall = {:?}", e_forall);
+                &func_bind(ctx, name.to_string(), &function.x.typ_params, params, &f_app, false),
+                &bound_expr);
         let req_implies_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
-        println!("jonh: req_implies_ens_axiom = {:?}", req_implies_ens_axiom);
         commands.push(Arc::new(CommandX::Global(req_implies_ens_axiom)));
         Ok(true)
     } else {
@@ -668,8 +661,7 @@ pub fn func_decl_to_air(
 
 pub struct FuncAxiomResults{
     pub decl_commands: Commands,    // Declarations
-    pub termination_check_commands: Commands,   // VC checks
-    pub ensures_check_commands: Commands,   // VC checks
+    pub check_commands: Commands,   // VC checks: termination & ensures
     pub extended_fun_ssts: SstMap,  // An extended SST map that adds additional <whatever SSTs do>
 }
 
@@ -691,18 +683,17 @@ pub fn func_axioms_to_air(
         })
         .collect();
     let mut decl_commands: Vec<Command> = Vec::new();
-    let mut termination_check_commands: Vec<Command> = Vec::new();
-    let mut ensures_check_commands: Vec<Command> = Vec::new();
+    let mut check_commands: Vec<Command> = Vec::new();
     let mut new_fun_ssts = fun_ssts;
     let is_singular = function.x.attrs.integer_ring;
 
-    let params = params_to_pre_post_pars(&function.x.params, false);
-    let mut ens_params = (*params).clone();
+    let sst_pars = params_to_pre_post_pars(&function.x.params, false);
+    let mut ens_sst_pars = (*sst_pars).clone();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if function.x.has_return() {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_typs.push(typ_to_air(ctx, &typ));
-        ens_params.push(param_to_par(&function.x.ret, false));
+        ens_sst_pars.push(param_to_par(&function.x.ret, false));
         if let Some(expr) =
             typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name)))
         {
@@ -720,8 +711,7 @@ pub fn func_axioms_to_air(
                         diagnostics,
                         new_fun_ssts,
                         &mut decl_commands,
-                        &mut termination_check_commands,
-                        &mut ensures_check_commands,
+                        &mut check_commands,
                         function,
                         body,
                         not_verifying_owning_module,
@@ -736,8 +726,7 @@ pub fn func_axioms_to_air(
                 // on trait method impls.
                 return Ok(FuncAxiomResults{
                     decl_commands: Arc::new(decl_commands),
-                    termination_check_commands: Arc::new(termination_check_commands),
-                    ensures_check_commands: Arc::new(ensures_check_commands),
+                    check_commands: Arc::new(check_commands),
                     extended_fun_ssts: new_fun_ssts});
             }
 
@@ -781,13 +770,11 @@ pub fn func_axioms_to_air(
             req_implies_ens_as_air(
                 ctx,
                 diagnostics,
+                &function,
                 &new_fun_ssts,
                 &mut decl_commands,
                 &req_params,
-                &function.x.require,
-                &Arc::new(ens_params),  // out_params
-                &function.x.ensure, //ens
-                &function.x.typ_params,
+                &Arc::new(ens_sst_pars),  // out_params
                 &Arc::new(ens_typs),
                 &suffix_global_id(&fun_to_air_ident(&function.x.name)),
                 &None,
@@ -803,17 +790,16 @@ pub fn func_axioms_to_air(
                 // so we can just return here.
                 return Ok(FuncAxiomResults{
                     decl_commands: Arc::new(decl_commands),
-                    termination_check_commands: Arc::new(termination_check_commands),
-                    ensures_check_commands: Arc::new(ensures_check_commands),
+                    check_commands: Arc::new(check_commands),
                     extended_fun_ssts: new_fun_ssts});
             }
 
             // typing invariants for synthetic out-params for &mut params
-            for param in params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
+            for sst_par in sst_pars.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
                 if let Some(expr) = typ_invariant(
                     ctx,
-                    &param.x.typ,
-                    &ident_var(&suffix_local_stmt_id(&param.x.name)),
+                    &sst_par.x.typ,
+                    &ident_var(&suffix_local_stmt_id(&sst_par.x.name)),
                 ) {
                     ens_typing_invs.push(expr);
                 }
@@ -827,7 +813,7 @@ pub fn func_axioms_to_air(
                 diagnostics,
                 &new_fun_ssts,
                 &mut decl_commands,
-                &Arc::new(ens_params),
+                &Arc::new(ens_sst_pars),
                 &ens_typing_invs,
                 &function.x.ensure,
                 &function.x.typ_params,
@@ -884,14 +870,31 @@ pub fn func_axioms_to_air(
     }
     Ok(FuncAxiomResults{
         decl_commands: Arc::new(decl_commands),
-        termination_check_commands: Arc::new(termination_check_commands),
-        ensures_check_commands: Arc::new(ensures_check_commands),
+        check_commands: Arc::new(check_commands),
         extended_fun_ssts: new_fun_ssts})
 }
 
 pub enum FuncDefPhase {
     CheckingSpecs,
     CheckingProofExec,
+}
+
+fn get_ens_sst_pars(
+    state: &mut ast_to_sst::State,
+    function: &Function,
+) -> (Pars, Option<sst::UniqueIdent>) {
+    let mut ens_params = (*function.x.params).clone();
+    let dest = if function.x.has_return() {
+        let ParamX { name, typ, .. } = &function.x.ret.x;
+        ens_params.push(function.x.ret.clone());
+        state.declare_new_var(name, typ, false, false);
+        Some(unique_local(name))
+    } else {
+        None
+    };
+
+    let ens_params = Arc::new(ens_params);
+    (params_to_pars(&ens_params, true), dest)
 }
 
 pub fn func_def_to_air(
@@ -944,19 +947,8 @@ pub fn func_def_to_air(
             let mut state = crate::ast_to_sst::State::new(diagnostics);
             state.fun_ssts = fun_ssts;
 
-            let mut ens_params = (*function.x.params).clone();
-            let dest = if function.x.has_return() {
-                let ParamX { name, typ, .. } = &function.x.ret.x;
-                ens_params.push(function.x.ret.clone());
-                state.declare_new_var(name, typ, false, false);
-                Some(unique_local(name))
-            } else {
-                None
-            };
-
-            let ens_params = Arc::new(ens_params);
+            let (ens_sst_pars, dest) = get_ens_sst_pars(&mut state, &function);
             let req_pars = params_to_pars(&function.x.params, true);
-            let ens_pars = params_to_pars(&ens_params, true);
 
             for param in function.x.params.iter() {
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
@@ -981,19 +973,19 @@ pub fn func_def_to_air(
                 }
             }
             let mut ens_recommend_stms: Vec<Stm> = Vec::new();
-            let mut enss: Vec<Exp> = Vec::new();
+            let mut enss: Vec<(Exp, PostConditionKind)> = Vec::new();
             for e in req_ens_function.x.ensure.iter() {
                 if ctx.checking_recommends() {
                     ens_recommend_stms
                         .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
-                    enss.push(crate::ast_to_sst::expr_to_exp(
+                    enss.push((crate::ast_to_sst::expr_to_exp(
                         ctx,
                         diagnostics,
                         &state.fun_ssts,
-                        &ens_pars,
+                        &ens_sst_pars,
                         e,
-                    )?);
+                    )?, PostConditionKind::Ensures));
                 }
             }
             let enss = Arc::new(enss);
@@ -1020,7 +1012,7 @@ pub fn func_def_to_air(
                 &state.fun_ssts,
                 &stm,
                 &req_ens_function.x.ensure,
-                &ens_pars,
+                &ens_sst_pars,
                 dest.clone(),
             )?;
             let ens_recommend_stms: Result<Vec<_>, _> = ens_recommend_stms
@@ -1032,7 +1024,7 @@ pub fn func_def_to_air(
                         &state.fun_ssts,
                         &s,
                         &req_ens_function.x.ensure,
-                        &ens_pars,
+                        &ens_sst_pars,
                         dest.clone(),
                     )
                 })
@@ -1080,7 +1072,6 @@ pub fn func_def_to_air(
                 function.x.attrs.nonlinear,
                 function.x.attrs.spinoff_prover,
                 dest,
-                PostConditionKind::Ensures,
             )?;
 
             state.finalize();

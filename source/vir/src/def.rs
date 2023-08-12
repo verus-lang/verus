@@ -565,6 +565,7 @@ pub enum ProverChoice {
     Singular,
 }
 
+#[derive(Debug)]
 pub struct CommandsWithContextX {
     pub span: air::ast::Span,
     pub desc: String,

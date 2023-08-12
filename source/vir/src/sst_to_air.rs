@@ -1375,10 +1375,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     Ok(result)
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum PostConditionKind {
     Ensures,
     DecreasesImplicitLemma,
     DecreasesBy,
+}
+
+#[derive(Clone)]
+struct EnsuresExpression {
+    span: Span,
+    expr: Expr,
+    kind: PostConditionKind,
 }
 
 struct PostConditionInfo {
@@ -1386,11 +1394,9 @@ struct PostConditionInfo {
     /// May be referenced by `ens_exprs` or `ens_recommend_stms`.
     dest: Option<UniqueIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
-    ens_exprs: Vec<(Span, Expr)>,
+    ens_exprs: Vec<EnsuresExpression>,
     /// Recommends checks (only used in recommends-checking mode)
     ens_recommend_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    kind: PostConditionKind,
 }
 
 #[derive(Debug)]
@@ -1812,26 +1818,30 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stmts.append(&mut new_stmts);
                     }
                 } else {
-                    for (span, ens) in state.post_condition_info.ens_exprs.clone().iter() {
+                    for ens_expr in state.post_condition_info.ens_exprs.clone().iter() {
                         // The base_error should point to the return-statement or
                         // return-expression. Augment with an additional label pointing
                         // to the 'ensures' clause that fails.
-                        let error = match state.post_condition_info.kind {
+                        let error = match ens_expr.kind {
                             PostConditionKind::Ensures => base_error
-                                .append_label(&span, crate::def::THIS_POST_FAILED.to_string()),
-                            PostConditionKind::DecreasesImplicitLemma => base_error.clone(),
+                                .append_label(&ens_expr.span, crate::def::THIS_POST_FAILED.to_string()),
+                            PostConditionKind::DecreasesImplicitLemma => {
+                                let mut e = (**base_error).clone();
+                                e.note = "unable to show termination".to_string();
+                                Arc::new(e)
+                            }
                             PostConditionKind::DecreasesBy => {
                                 let mut e = (**base_error).clone();
                                 e.note = "unable to show termination via `decreases_by` lemma"
                                     .to_string();
                                 e.secondary_label(
-                                    &span,
+                                    &ens_expr.span,
                                     "need to show decreases conditions for this body",
                                 )
                             }
                         };
 
-                        let ens_stmt = StmtX::Assert(error, ens.clone());
+                        let ens_stmt = StmtX::Assert(error, ens_expr.expr.clone());
                         stmts.push(Arc::new(ens_stmt));
                     }
                 }
@@ -2407,7 +2417,7 @@ pub(crate) fn body_stm_to_air(
     local_decls: &Vec<LocalDecl>,
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
-    enss: &Vec<Exp>,
+    enss: &Vec<(Exp, PostConditionKind)>,
     ens_recommend_stms: &Vec<Stm>,
     mask_spec: &MaskSpec,
     mode: Mode,
@@ -2417,7 +2427,6 @@ pub(crate) fn body_stm_to_air(
     is_nonlinear: bool,
     is_spinoff_prover: bool,
     dest: Option<UniqueIdent>,
-    post_condition_kind: PostConditionKind,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -2469,12 +2478,16 @@ pub(crate) fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
-    let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
-    for ens in enss {
+    let mut ens_exprs: Vec<EnsuresExpression> = Vec::new();
+    for (ens, post_condition_kind) in enss {
         let ens = subst_exp(&trait_typ_substs, &HashMap::new(), ens);
         let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, is_bit_vector_mode);
         let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
-        ens_exprs.push((ens.span.clone(), e));
+        ens_exprs.push(EnsuresExpression{
+            span: ens.span.clone(),
+            expr: e,
+            kind: *post_condition_kind,
+        });
     }
 
     let ens_recommend_stms: Vec<_> = ens_recommend_stms
@@ -2505,7 +2518,6 @@ pub(crate) fn body_stm_to_air(
             dest,
             ens_exprs,
             ens_recommend_stms: ens_recommend_stms.clone(),
-            kind: post_condition_kind,
         },
         loop_infos: Vec::new(),
     };
@@ -2580,13 +2592,13 @@ pub(crate) fn body_stm_to_air(
             let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
             singular_stmts.push(assert_stm);
         }
-        for ens in enss {
+        for (ens_exp, _) in enss {
             let error = error_with_label(
                 "Failed to translate this expression into a singular query".to_string(),
-                &ens.span,
+                &ens_exp.span,
                 "at the ensure clause".to_string(),
             );
-            let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+            let air_expr = exp_to_expr(ctx, ens_exp, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
             let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
             singular_stmts.push(assert_stm);
         }

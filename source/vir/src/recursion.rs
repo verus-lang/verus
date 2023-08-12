@@ -21,6 +21,7 @@ use crate::sst_visitor::{
     stm_visitor_dfs, VisitorControlFlow,
 };
 use crate::util::vec_map_result;
+use crate::{sst};
 use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::messages::Diagnostics;
@@ -397,21 +398,28 @@ fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     })
 }
 
+// This thing takes a little bit o' sst (for bodies), and a bit o' ast (function.x.decrease,
+// function.x.ensures). Smells funny.
 pub(crate) fn check_termination_exp(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     function: &Function,
+    pars: &sst::Pars,
     mut local_decls: Vec<LocalDecl>,
     body: &Exp,
     proof_body: Vec<Stm>,
     uses_decreases_by: bool,
-) -> Result<(bool, Commands, Exp), VirErr> {
-    if !is_recursive_exp(ctx, &function.x.name, body) {
+    return_name: Option<sst::UniqueIdent>,
+) -> Result<(bool /* is_recursive */, Commands, Exp), VirErr> {
+    let is_recursive = is_recursive_exp(ctx, &function.x.name, body);
+    let has_ensures = function.x.ensure.len() > 0;
+
+    if !is_recursive && !has_ensures {
         return Ok((false, Arc::new(vec![]), body.clone()));
     }
     let num_decreases = function.x.decrease.len();
-    if num_decreases == 0 {
+    if is_recursive && num_decreases == 0 {
         return error(&function.span, "recursive function must have a decreases clause");
     }
 
@@ -421,10 +429,33 @@ pub(crate) fn check_termination_exp(
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
-    let check = terminates(&ctxt, diagnostics, fun_ssts, &body)?;
-    let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
+
+    let mut ensureses: Vec<(Exp, PostConditionKind)> = Vec::new();
+    let mut decls = Vec::new();
+    let mut stm_assigns = Vec::new();
+    if is_recursive {
+        let termination_check = terminates(&ctxt, diagnostics, fun_ssts, &body)?;
+        let kind = if uses_decreases_by { PostConditionKind::DecreasesBy }
+            else { PostConditionKind::DecreasesImplicitLemma };
+        ensureses.push((termination_check, kind));
+        let (recursive_decls, recursive_stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
+        decls.extend(recursive_decls);
+        stm_assigns.extend(recursive_stm_assigns);
+    }
     stm_assigns.extend(proof_body.clone());
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
+
+    // TODO(jonh): This no longer makes sense in recursion.rs. Where DOES it go?
+    // Transform the ensures obligations
+    for e in function.x.ensure.iter() {
+        ensureses.push((crate::ast_to_sst::expr_to_exp(
+            ctx,
+            diagnostics,
+            &fun_ssts,
+            &pars,
+            e,
+        )?, PostConditionKind::Ensures));
+    }
 
     // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
     // up to the VIR model
@@ -438,21 +469,16 @@ pub(crate) fn check_termination_exp(
         &Arc::new(local_decls),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &Arc::new(vec![check]),
+        &Arc::new(ensureses),
         &Arc::new(vec![]),
         &MaskSpec::NoSpec,
         function.x.mode,
-        &stm_block,
+        &stm_block, // body of decreases_by
         false,
         false,
         false,
         false,
-        None,
-        if uses_decreases_by {
-            PostConditionKind::DecreasesBy
-        } else {
-            PostConditionKind::DecreasesImplicitLemma
-        },
+        return_name,
     )?;
 
     assert_eq!(commands.len(), 1);
@@ -474,7 +500,7 @@ pub(crate) fn check_termination_exp(
         _ => exp.clone(),
     });
 
-    Ok((true, commands, body))
+    Ok((is_recursive, commands, body))
 }
 
 pub(crate) fn check_termination_stm(

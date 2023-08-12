@@ -1062,7 +1062,7 @@ impl Verifier {
 
                 ctx.fun = mk_fun_ctx(&function, false);
                 let not_verifying_owning_module = Some(module) != function.x.owning_module.as_ref();
-                let FuncAxiomResults{decl_commands, termination_check_commands, ensures_check_commands, extended_fun_ssts} =
+                let FuncAxiomResults{decl_commands, check_commands, extended_fun_ssts} =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
                         reporter,
@@ -1086,8 +1086,8 @@ impl Verifier {
                     &mut air_context,
                     Arc::new(CommandsWithContextX {
                         span: function.span.clone(),
-                        desc: "termination proof".to_string(),
-                        commands: termination_check_commands,
+                        desc: "termination proof and postcondition check".to_string(),
+                        commands: check_commands,
                         prover_choice: vir::def::ProverChoice::DefaultProver,
                         skip_recommends: false,
                     }),
@@ -1097,30 +1097,8 @@ impl Verifier {
                     module,
                     Some(&function.x.name),
                     verify_function_exact_match,
-                    &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
+                    &("Function-Termination-and-Postcondition-Check ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
-                );
-                // Emit ensures check
-                let invalidity = invalidity || self.run_commands_queries(
-                    reporter,
-                    source_map,
-                    MessageLevel::Error,
-                    &mut air_context,
-                    Arc::new(CommandsWithContextX {
-                        span: function.span.clone(),
-                        desc: "postcondition proof".to_string(),
-                        commands: ensures_check_commands,
-                        prover_choice: vir::def::ProverChoice::DefaultProver,
-                        skip_recommends: false,
-                    }),
-                    &HashMap::new(),
-                    &vec![],
-                    &ctx.global.qid_map.borrow(),
-                    module,
-                    Some(&function.x.name),
-                    verify_function_exact_match,
-                    &("Function-Postcondition ".to_string() + &fun_as_friendly_rust_name(f)),
-                    Some("function postcondition: "),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
                 if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {

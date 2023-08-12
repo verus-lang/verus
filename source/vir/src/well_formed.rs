@@ -449,6 +449,7 @@ fn check_function(
                 "decreases_by/recommends_by function cannot have a return value",
             );
         }
+        // TODO(jonh): run ast_visitor on the body and reject any internal return statements
     }
 
     if function.x.decrease_by.is_some() {
