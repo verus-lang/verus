@@ -163,14 +163,16 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] publish_proof_fail verus_code! {
-        pub open proof fn bar() {
+        #[verifier(publish)]
+        pub proof fn bar() {
         }
     } => Err(err) => assert_vir_error_msg(err, "function is marked `open` but it is not a `spec` function")
 }
 
 test_verify_one_file! {
     #[test] publish_exec_fail verus_code! {
-        pub open fn bar() {
+        #[verifier(publish)]
+        pub fn bar() {
         }
     } => Err(err) => assert_vir_error_msg(err, "function is marked `open` but it is not a `spec` function")
 }

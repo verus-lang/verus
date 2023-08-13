@@ -238,6 +238,16 @@ impl Visitor {
             _ => {}
         }
 
+        if matches!(sig.mode, FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_))
+            && !matches!(sig.publish, Publish::Default)
+        {
+            let publish_span = sig.publish.span();
+            stmts.push(stmt_with_semi!(
+                publish_span =>
+                compile_error!("only `spec` functions can be marked `open` or `closed`")
+            ));
+        }
+
         let publish_attrs = match &sig.publish {
             Publish::Default => vec![],
             Publish::Closed(_) => vec![],

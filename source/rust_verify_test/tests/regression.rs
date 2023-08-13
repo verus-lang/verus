@@ -569,7 +569,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_for_loop_387_discussioncomment_6179829 verus_code! {
+    #[test] test_associated_type_with_bound_387_discussioncomment_6179829 verus_code! {
         pub trait T { }
 
         pub trait U {
@@ -579,7 +579,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_for_loop_387_discussioncomment_5670055 verus_code! {
+    #[test] test_empty_recommends_387_discussioncomment_5670055 verus_code! {
         pub open spec fn foo() -> bool
           recommends
           {
@@ -590,4 +590,12 @@ test_verify_one_file! {
             assert(foo());
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_empty_recommends_387_discussioncomment_6117310_1 verus_code! {
+        pub open fn test() -> bool {
+            1int > 0int
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open` or `closed`")
 }
