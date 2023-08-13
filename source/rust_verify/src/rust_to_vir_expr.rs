@@ -545,7 +545,7 @@ pub(crate) fn block_to_vir<'tcx>(
 
 /// Check for the #[verifier(invariant_block)] attribute
 pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
-    let attrs_vec = parse_attrs(attrs)?;
+    let attrs_vec = parse_attrs(attrs, None)?;
     for attr in &attrs_vec {
         match attr {
             Attr::InvariantBlock => {
@@ -1021,7 +1021,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+    let expr_vattrs =
+        get_verifier_attrs(expr_attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
     if expr_vattrs.truncate {
         if !match &expr.kind {
             ExprKind::Cast(_, _) => true,
@@ -2146,7 +2147,8 @@ pub(crate) fn stmts_to_vir<'tcx>(
     stmts: &mut impl Iterator<Item = &'tcx Stmt<'tcx>>,
 ) -> Result<Option<Vec<vir::ast::Stmt>>, VirErr> {
     if let Some(stmt) = stmts.next() {
-        let attrs = crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir().attrs(stmt.hir_id));
+        let attrs =
+            crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir().attrs(stmt.hir_id), None);
         if let [Attr::UnwrapParameter] = attrs[..] {
             if let Some(stmt2) = stmts.next() {
                 return Ok(Some(unwrap_parameter_to_vir(bctx, stmt, stmt2)?));

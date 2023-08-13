@@ -123,7 +123,7 @@ pub fn check_item_struct<'tcx>(
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     let is_strslice_struct = matches!(
         ctxt.verus_items.id_to_name.get(&id.owner_id.to_def_id()),
@@ -161,6 +161,7 @@ pub fn check_item_struct<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
     let name = path.segments.last().expect("unexpected struct path");
@@ -230,7 +231,7 @@ pub fn check_item_enum<'tcx>(
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
 
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");
@@ -244,6 +245,7 @@ pub fn check_item_enum<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
     let mut total_vis = visibility.clone();
@@ -448,6 +450,7 @@ pub(crate) fn check_item_external<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let mode = Mode::Exec;
 

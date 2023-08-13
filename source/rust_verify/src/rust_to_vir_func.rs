@@ -327,7 +327,7 @@ pub(crate) fn check_item_fn<'tcx>(
             crate::verus_items::CompilableOprItem::NewStrLit,
         ));
 
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let mode = get_mode(Mode::Exec, attrs);
 
     let (path, proxy, visibility, kind) = if vattrs.external_fn_specification {
@@ -365,7 +365,13 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
-        Some(check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, cg, impl_def_id)?)
+        Some(check_generics_bounds_fun(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            cg,
+            impl_def_id,
+            Some(&mut *ctxt.diagnostics.borrow_mut()),
+        )?)
     } else {
         None
     };
@@ -403,8 +409,13 @@ pub(crate) fn check_item_fn<'tcx>(
         return Ok(None);
     }
 
-    let (sig_typ_params, sig_typ_bounds) =
-        check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
+    let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_fun(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        generics,
+        id,
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
+    )?;
     let fuel = get_fuel(&vattrs);
 
     let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>, bool)>) = match body_id
@@ -940,7 +951,7 @@ pub(crate) fn check_item_const<'tcx>(
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = Arc::new(FunX { path });
     let mode = get_mode(Mode::Exec, attrs);
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not yet supported for const");
@@ -1009,9 +1020,14 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let inputs = fn_sig.inputs();
 
     let ret_typ_mode = check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output())?;
-    let (typ_params, typ_bounds) =
-        check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
-    let vattrs = get_verifier_attrs(attrs)?;
+    let (typ_params, typ_bounds) = check_generics_bounds_fun(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        generics,
+        id,
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
+    )?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 

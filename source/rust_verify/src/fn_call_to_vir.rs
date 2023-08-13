@@ -732,7 +732,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let proof = vir_expr;
 
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                    let expr_vattrs = get_verifier_attrs(
+                        expr_attrs,
+                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+                    )?;
                     if expr_vattrs.spinoff_prover {
                         return err_span(
                             expr.span,
@@ -817,12 +820,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 (TypX::Int(_), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                    let expr_vattrs = get_verifier_attrs(
+                        expr_attrs,
+                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+                    )?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
                 (TypX::Char, TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                    let expr_vattrs = get_verifier_attrs(
+                        expr_attrs,
+                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+                    )?;
                     let source_unicode =
                         mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()))?;
                     Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))

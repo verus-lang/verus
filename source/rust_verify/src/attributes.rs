@@ -4,7 +4,7 @@ use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute};
 use rustc_span::Span;
-use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr};
+use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 
 #[derive(Debug)]
 pub(crate) enum AttrTree {
@@ -274,9 +274,21 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     }
 }
 
-pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
+pub(crate) fn parse_attrs(
+    attrs: &[Attribute],
+    mut diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<Vec<Attr>, VirErr> {
+    let diagnostics = &mut diagnostics;
     let mut v: Vec<Attr> = Vec::new();
     for (prefix, span, attr) in attrs_to_trees(attrs)? {
+        let mut report_deprecated = |attr_name: &str| {
+            if let Some(diagnostics) = diagnostics {
+                diagnostics.push(VirErrAs::Warning(
+                    crate::util::err_span_bare(span, format!("#[verifier({attr_name})] is deprecated, use `open spec fn` and `closed spec fn` instead"))
+                ));
+            }
+        };
+
         match prefix {
             AttrPrefix::Verifier => match &attr {
                 AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
@@ -307,7 +319,10 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
-                AttrTree::Fun(_, arg, None) if arg == "publish" => v.push(Attr::Publish),
+                AttrTree::Fun(_, arg, None) if arg == "publish" => {
+                    report_deprecated("publish");
+                    v.push(Attr::Publish)
+                }
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
@@ -498,15 +513,18 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
     Ok(v)
 }
 
-pub(crate) fn parse_attrs_opt(attrs: &[Attribute]) -> Vec<Attr> {
-    match parse_attrs(attrs) {
+pub(crate) fn parse_attrs_opt(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Vec<Attr> {
+    match parse_attrs(attrs, diagnostics) {
         Ok(attrs) => attrs,
         Err(_) => vec![],
     }
 }
 
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
-    for attr in parse_attrs_opt(attrs) {
+    for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::GhostBlock(g) => return Some(g),
             _ => {}
@@ -516,7 +534,7 @@ pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr>
 }
 
 pub(crate) fn get_mode_opt(attrs: &[Attribute]) -> Option<Mode> {
-    for attr in parse_attrs_opt(attrs) {
+    for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::Mode(m) => return Some(m),
             _ => {}
@@ -536,7 +554,7 @@ pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
 
 pub(crate) fn get_ret_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
     let mut mode = get_var_mode(function_mode, &[]);
-    for attr in parse_attrs_opt(attrs) {
+    for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::ReturnMode(m) => mode = m,
             _ => {}
@@ -547,7 +565,7 @@ pub(crate) fn get_ret_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
 
 pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>, VirErr> {
     let mut groups: Vec<TriggerAnnotation> = Vec::new();
-    for attr in parse_attrs(attrs)? {
+    for attr in parse_attrs(attrs, None)? {
         match attr {
             Attr::AutoTrigger => groups.push(TriggerAnnotation::AutoTrigger),
             Attr::Trigger(None) => groups.push(TriggerAnnotation::Trigger(None)),
@@ -562,7 +580,7 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>,
 
 pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<String>, VirErr> {
     let mut v = Vec::new();
-    for attr in parse_attrs(attrs)? {
+    for attr in parse_attrs(attrs, None)? {
         match attr {
             Attr::CustomErr(s) => v.push(s),
             _ => {}
@@ -615,7 +633,10 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_type_specification: bool,
 }
 
-pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
+pub(crate) fn get_verifier_attrs(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
         verus_macro: false,
         external_body: false,
@@ -645,7 +666,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         external_fn_specification: false,
         external_type_specification: false,
     };
-    for attr in parse_attrs(attrs)? {
+    for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,

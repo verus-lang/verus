@@ -1816,6 +1816,7 @@ impl Verifier {
             vstd_crate_name: vstd_crate_name.clone(),
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
             verus_items,
+            diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
@@ -1857,13 +1858,12 @@ impl Verifier {
             let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
         }
-        let mut check_crate_diags = vec![];
-
         let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
         let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)?;
-        let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
-        for diag in check_crate_diags {
+        let check_crate_result =
+            vir::well_formed::check_crate(&vir_crate, &mut ctxt.diagnostics.borrow_mut());
+        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err, MessageLevel::Warning)

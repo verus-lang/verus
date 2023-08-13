@@ -51,7 +51,7 @@ fn check_item<'tcx>(
     };
 
     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
         return err_span(item.span, "`external_fn_specification` attribute not supported here");
     }
@@ -371,6 +371,7 @@ fn check_item<'tcx>(
                                         &ctxt.verus_items,
                                         impll.generics,
                                         impl_def_id,
+                                        Some(&mut *ctxt.diagnostics.borrow_mut()),
                                     )?;
                                 let assocx = vir::ast::AssocTypeImplX {
                                     name,
@@ -402,7 +403,11 @@ fn check_item<'tcx>(
             }
         }
         ItemKind::Static(..)
-            if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+            if get_verifier_attrs(
+                ctxt.tcx.hir().attrs(item.hir_id()),
+                Some(&mut *ctxt.diagnostics.borrow_mut()),
+            )?
+            .external =>
         {
             return Ok(());
         }
@@ -472,6 +477,7 @@ fn check_item<'tcx>(
                 false,
                 trait_def_id,
                 None,
+                Some(&mut *ctxt.diagnostics.borrow_mut()),
             )?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def_id);
             let mut assoc_typs: Vec<vir::ast::Ident> = Vec::new();
@@ -494,6 +500,7 @@ fn check_item<'tcx>(
                     false,
                     owner_id.to_def_id(),
                     None,
+                    Some(&mut *ctxt.diagnostics.borrow_mut()),
                 )?;
                 unsupported_err_unless!(generics_params.len() == 0, *span, "trait generics");
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
@@ -602,7 +609,11 @@ fn check_foreign_item<'tcx>(
             )?;
         }
         ForeignItemKind::Static(..)
-            if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+            if get_verifier_attrs(
+                ctxt.tcx.hir().attrs(item.hir_id()),
+                Some(&mut *ctxt.diagnostics.borrow_mut()),
+            )?
+            .external =>
         {
             return Ok(());
         }
@@ -637,7 +648,8 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
             match owner.node() {
                 OwnerNode::Item(item @ Item { kind: ItemKind::Mod(mod_), owner_id, .. }) => {
                     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-                    let vattrs = get_verifier_attrs(attrs)?;
+                    let vattrs =
+                        get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
                     if vattrs.external {
                         // Recursively mark every item in the module external,
                         // even in nested modules

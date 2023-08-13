@@ -804,6 +804,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
     check_that_external_body_datatype_declares_positivity: bool,
     def_id: DefId,
     vattrs: Option<&crate::attributes::VerifierAttrs>,
+    mut diagnostics: Option<&mut Vec<vir::ast::VirErrAs>>,
 ) -> Result<(vir::ast::TypPositives, vir::ast::GenericBounds), VirErr> {
     // TODO the 'predicates' object contains the parent def_id; we can use that
     // to handle all the params and bounds from the impl at once,
@@ -951,7 +952,10 @@ pub(crate) fn check_generics_bounds<'tcx>(
         // We still need to look at the HIR param because we need to check the attributes.
         let hir_param = &hir_params[idx];
 
-        let vattrs = get_verifier_attrs(tcx.hir().attrs(hir_param.hir_id))?;
+        let vattrs = get_verifier_attrs(
+            tcx.hir().attrs(hir_param.hir_id),
+            if let Some(diagnostics) = &mut diagnostics { Some(diagnostics) } else { None },
+        )?;
         let mut neg = vattrs.reject_recursive_types;
         let mut pos_some = vattrs.reject_recursive_types_in_ground_variants;
         let mut pos_all = vattrs.accept_recursive_types;
@@ -1027,9 +1031,10 @@ pub(crate) fn check_generics_bounds_fun<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     generics: &'tcx Generics<'tcx>,
     def_id: DefId,
+    diagnostics: Option<&mut Vec<vir::ast::VirErrAs>>,
 ) -> Result<(vir::ast::Idents, vir::ast::GenericBounds), VirErr> {
     let (typ_params, typ_bounds) =
-        check_generics_bounds(tcx, verus_items, generics, false, def_id, None)?;
+        check_generics_bounds(tcx, verus_items, generics, false, def_id, None, diagnostics)?;
     let typ_params = typ_params.iter().map(|(x, _)| x.clone()).collect();
     Ok((Arc::new(typ_params), typ_bounds))
 }
