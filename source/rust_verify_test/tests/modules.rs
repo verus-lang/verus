@@ -155,27 +155,24 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_publish_but_not_marked_pub verus_code! {
-        #[verifier(publish)]
-        spec fn bar() -> u64 {
+        open spec fn bar() -> u64 {
             7
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked `pub`")
+    } => Err(err) => assert_vir_error_msg(err, "function is marked `open` but not marked `pub`")
 }
 
 test_verify_one_file! {
     #[test] publish_proof_fail verus_code! {
-        #[verifier(publish)] /* vattr */
-        pub proof fn bar() {
+        pub open proof fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[verifier::spec]")
+    } => Err(err) => assert_vir_error_msg(err, "function is marked `open` but it is not a `spec` function")
 }
 
 test_verify_one_file! {
     #[test] publish_exec_fail verus_code! {
-        #[verifier(publish)] /* vattr */
-        pub fn bar() {
+        pub open fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked #[verifier(publish)] but not marked #[verifier::spec]")
+    } => Err(err) => assert_vir_error_msg(err, "function is marked `open` but it is not a `spec` function")
 }
 
 test_verify_one_file! {

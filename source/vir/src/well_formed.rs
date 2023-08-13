@@ -709,10 +709,7 @@ fn check_function(
     }
 
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
-        return error(
-            &function.span,
-            "function is marked #[verifier(publish)] but not marked #[verifier::spec]",
-        );
+        return error(&function.span, "function is marked `open` but it is not a `spec` function");
     }
 
     if function.x.is_main() && function.x.mode != Mode::Exec {
@@ -724,7 +721,7 @@ fn check_function(
     {
         return error(
             &function.span,
-            "function is marked #[verifier(publish)] but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
+            "function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
         );
     }
 
