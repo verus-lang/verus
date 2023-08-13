@@ -1339,7 +1339,7 @@ test_verify_one_file! {
                 return; // FAILS
             }
         }
-    } => Err(e) => assert_one_fails(e)
+    } => Err(e) => assert_vir_error_msg(e, "decreases_by/recommends_by function may not include explicit return statement")
 }
 
 test_verify_one_file! {

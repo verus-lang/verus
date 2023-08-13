@@ -449,7 +449,21 @@ fn check_function(
                 "decreases_by/recommends_by function cannot have a return value",
             );
         }
-        // TODO(jonh): run ast_visitor on the body and reject any internal return statements
+
+        if let Some(body) = &function.x.body {
+            let _return_check = crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
+                match &expr.x {
+                    ExprX::Return(_) => {
+                        return error(
+                            &function.span,
+                            "decreases_by/recommends_by function may not include explicit return statement",
+                        );
+                    },
+                    _ => {},
+                }
+                Ok(())
+            })?;
+        }
     }
 
     if function.x.decrease_by.is_some() {
