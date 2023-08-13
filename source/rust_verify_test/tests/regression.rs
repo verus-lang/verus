@@ -558,3 +558,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
 }
+
+test_verify_one_file! {
+    #[test] test_for_loop_387_discussioncomment_5683342 verus_code! {
+        struct T{}
+        fn f(v: Vec<T>) {
+            for t in v {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support IntoIterator::into_iter")
+}

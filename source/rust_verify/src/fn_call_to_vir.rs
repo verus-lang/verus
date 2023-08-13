@@ -90,6 +90,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(RustItem::TryTraitBranch) => {
             return err_span(expr.span, "Verus does not yet support the ? operator");
         }
+        Some(RustItem::IntoIterFn) => {
+            return err_span(
+                expr.span,
+                "Verus does not yet support IntoIterator::into_iter and for loops, use a while loop instead",
+            );
+        }
         _ => {}
     }
 

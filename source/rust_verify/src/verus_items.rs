@@ -548,6 +548,7 @@ pub(crate) enum RustItem {
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
     TryTraitBranch,
+    IntoIterFn,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -581,6 +582,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().branch_fn() == Some(def_id) {
         return Some(RustItem::TryTraitBranch);
+    }
+    if tcx.lang_items().into_iter_fn() == Some(def_id) {
+        return Some(RustItem::IntoIterFn);
     }
 
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
