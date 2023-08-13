@@ -398,8 +398,8 @@ fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     })
 }
 
-// This thing takes a little bit o' sst (for bodies), and a bit o' ast (function.x.decrease,
-// function.x.ensures). Smells funny.
+// TODO(chris): Suggest a refactoring? This thing takes a little bit o' sst (for bodies), and a
+// bit o' ast (function.x.decrease, function.x.ensures). It smells funny.
 pub(crate) fn check_termination_exp(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
@@ -445,8 +445,8 @@ pub(crate) fn check_termination_exp(
     stm_assigns.extend(proof_body.clone());
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
 
-    // TODO(jonh): This no longer makes sense in recursion.rs. Where DOES it go?
-    // Transform the ensures obligations
+    // Transform the ensures obligations.
+    // TODO(chris): This block in particular doesn't make much sense in recursion.rs. Where DOES it go?
     for e in function.x.ensure.iter() {
         ensureses.push((crate::ast_to_sst::expr_to_exp(
             ctx,

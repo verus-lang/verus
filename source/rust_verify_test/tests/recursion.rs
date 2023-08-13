@@ -1336,7 +1336,7 @@ test_verify_one_file! {
         {
             if i > 0 {
             } else {
-                return; // FAILS
+                return;
             }
         }
     } => Err(e) => assert_vir_error_msg(e, "decreases_by/recommends_by function may not include explicit return statement")

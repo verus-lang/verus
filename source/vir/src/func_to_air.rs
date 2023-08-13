@@ -125,62 +125,6 @@ fn func_def_quant(
     Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
-// fn check_spec_ensures_exp(
-//     ctx: &Ctx,
-//     state: &mut crate::ast_to_sst::State,
-//     diagnostics: &impl Diagnostics,
-//     function: &Function,
-//     ens_pars: &Pars,
-//     body_stm: &Stm,
-//     ensures_check_commands: &mut Vec<Command>,
-// ) -> Result<(), VirErr> {
-// 
-//     // becomes an assumption (axiom)
-//     let mut reqs_exprs: Vec<Expr> = Vec::new();
-//     exprs_to_air(ctx, diagnostics, &state.fun_ssts, ens_pars, &function.x.require, &None, /*is_singular*/ false, &mut reqs_exprs)?;
-// 
-//     // this is the VC
-//     let mut enss: Vec<Exp> = Vec::new();
-//     for e in function.x.ensure.iter() {
-//         enss.push(crate::ast_to_sst::expr_to_exp(
-//             ctx,
-//             diagnostics,
-//             &state.fun_ssts,
-//             ens_pars, // XXX andrea says this needs a good honest refactorin'
-//             e,
-//         )?);
-//     }
-// 
-//     let (commands_with_context, _snap_map) = crate::sst_to_air::body_stm_to_air(
-//         ctx,
-//         &function.span,
-//         &HashMap::new(),
-//         &function.x.typ_params,
-//         &function.x.params,
-//         &state.local_decls,
-//         &vec![],  // hidden
-//         &vec![],  // reqs
-//         &enss, // ens
-//         &vec![],  // ens_recommend_stms
-//         &MaskSpec::NoSpec,
-//         function.x.mode,
-//         &body_stm,
-//         false,  // is_integer_ring
-//         false,  // is_bit_vector_mode
-//         false,  // is_nonlinear
-//         false,  // is_spinoff_prover
-//         None,
-//         PostConditionKind::Ensures,
-//     )?;
-// 
-//     assert_eq!(commands_with_context.len(), 1);
-//     let commands = commands_with_context.into_iter().next().unwrap().commands.clone();
-//     ensures_check_commands.extend(commands.iter().cloned());
-// 
-//     Ok(())
-// }
-    
-
 fn spec_func_body_to_air(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
@@ -378,19 +322,6 @@ fn spec_func_body_to_air(
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
     let def_axiom = Arc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
-
-    //////////////////////////////////////////////////////////////////////////////
-    // Generate the ensures check
-//     let reqs_stm = crate::ast_to_sst::stms_to_one_stm(&function.x.body.as_ref().expect("TODO(andrea)").span, ensures_stms);
-//     check_spec_ensures_exp(
-//         ctx,
-//         &mut state,
-//         diagnostics,
-//         function,
-//         &pars,
-//         &reqs_stm,
-//         check_commands,
-//     )?;
 
     Ok(state.fun_ssts)
 }
