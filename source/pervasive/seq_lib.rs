@@ -491,7 +491,7 @@ impl<A> Seq<A> {
     }
             
     /// Insert item a at index i, shifting remaining elements (if any) to the right
-    pub closed spec fn insert(self, i: int, a:A) -> Seq<A>
+    pub open spec fn insert(self, i: int, a:A) -> Seq<A>
         recommends 0 <= i <= self.len()
     {
         self.subrange(0, i).push(a) + self.subrange(i, self.len() as int)
@@ -509,7 +509,7 @@ impl<A> Seq<A> {
     {}
 
     /// Remove item at index i, shifting remaining elements to the left
-    pub closed spec fn remove(self, i: int) -> Seq<A>
+    pub open spec fn remove(self, i: int) -> Seq<A>
         recommends 0 <= i < self.len()
     {
         self.subrange(0, i) + self.subrange(i + 1, self.len() as int)
