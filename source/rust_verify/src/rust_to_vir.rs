@@ -526,8 +526,23 @@ fn check_item<'tcx>(
                     TraitItemKind::Type([], None) => {
                         assoc_typs.push(Arc::new(ident.to_string()));
                     }
-                    _ => {
-                        unsupported_err!(item.span, "unsupported item", item);
+                    TraitItemKind::Type(_, Some(_)) => {
+                        return err_span(
+                            item.span,
+                            "Verus does not yet support associated types with a concrete type",
+                        );
+                    }
+                    TraitItemKind::Type(_, None) => {
+                        return err_span(
+                            item.span,
+                            "Verus does not yet support associated types with trait bounds",
+                        );
+                    }
+                    TraitItemKind::Const(_, _) => {
+                        return err_span(
+                            item.span,
+                            "Verus does not yet support associated constants",
+                        );
                     }
                 }
             }

@@ -567,3 +567,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support IntoIterator::into_iter")
 }
+
+test_verify_one_file! {
+    #[test] test_for_loop_387_discussioncomment_6179829 verus_code! {
+        pub trait T { }
+
+        pub trait U {
+            type S: T;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support associated types with trait bounds")
+}
