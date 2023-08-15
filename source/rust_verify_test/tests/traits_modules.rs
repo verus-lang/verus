@@ -69,38 +69,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_10 verus_code! {
-        mod M1 {
-            pub trait T {
-                spec fn f(&self) -> bool;
-
-                proof fn p(&self)
-                    ensures exists|x: &Self| self.f() != x.f();
-            }
-        }
-
-        mod M2 {
-            #[verifier::external_body] /* vattr */
-            #[verifier::broadcast_forall] /* vattr */
-            proof fn f_not_g<A: crate::M1::T>()
-                ensures exists|x: &A, y: &A| x.f() != y.f()
-            {
-            }
-        }
-
-        mod M3 {
-            struct S {}
-        }
-
-        mod M4 {
-            fn test() {
-                assert(false);
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, ": bounds on broadcast_forall function type parameters")
-}
-
-test_verify_one_file! {
     #[test] test_ill_formed_7 code! {
         mod M1 {
             pub trait T1 {

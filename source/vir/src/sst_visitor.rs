@@ -506,6 +506,10 @@ where
             let t = ft(env, t)?;
             ok_exp(ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t)))
         }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
+            let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
+            ok_exp(ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p.clone(), Arc::new(ts?))))
+        }
         ExpX::Unary(op, e1) => ok_exp(ExpX::Unary(*op, fe(env, e1)?)),
         ExpX::UnaryOpr(op, e1) => {
             let op = match op {

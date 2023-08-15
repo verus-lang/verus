@@ -224,6 +224,8 @@ pub enum ModeCoercion {
 pub enum NullaryOpr {
     /// convert a const generic into an expression, as in fn f<const N: usize>() -> usize { N }
     ConstGeneric(Typ),
+    /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
+    TraitBound(Path, Typs),
 }
 
 /// Primitive unary operations
@@ -925,6 +927,7 @@ pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
     pub name: Path,
+    pub visibility: Visibility,
     // REVIEW: typ_params does not yet explicitly include Self (right now, Self is implicit)
     pub typ_params: TypPositives,
     pub typ_bounds: GenericBounds,
@@ -942,7 +945,7 @@ pub struct AssocTypeImplX {
     pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
-    pub trait_typ_args: Arc<Vec<Typ>>,
+    pub trait_typ_args: Typs,
     pub typ: Typ,
 }
 
@@ -951,7 +954,11 @@ pub type TraitImpl = Arc<Spanned<TraitImplX>>;
 pub struct TraitImplX {
     /// Path of the impl (e.g. "impl2")
     pub impl_path: Path,
+    // typ_params of impl (unrelated to typ_params of trait)
+    pub typ_params: Idents,
+    pub typ_bounds: GenericBounds,
     pub trait_path: Path,
+    pub trait_typ_args: Typs,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]

@@ -157,11 +157,15 @@ fn func_body_to_air(
     state.fun_ssts.borrow_mut().insert(function.x.name.clone(), info);
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
-    let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
+    let def_reqs = if let Some(req) = &function.x.decrease_when {
+        // "when" means the function is only defined if the requirements hold,
+        // including trait bound requirements
+        let mut def_reqs = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
         let exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &pars, req)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
-        vec![expr]
+        def_reqs.push(expr);
+        def_reqs
     } else {
         vec![]
     };
@@ -282,7 +286,7 @@ fn func_body_to_air(
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
         let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true);
         let bind_body = func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true);
-        let implies_body = mk_implies(&mk_and(&decrease_by_reqs), &eq_body);
+        let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
         let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
@@ -300,7 +304,7 @@ fn func_body_to_air(
         &function.x.typ_params,
         &typ_args,
         &pars,
-        &decrease_by_reqs,
+        &def_reqs,
         def_body,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
@@ -646,9 +650,6 @@ pub fn func_axioms_to_air(
                 use crate::triggers::{typ_boxing, TriggerBoxing};
                 let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
                 let mut binders: Vec<Binder<Typ>> = Vec::new();
-                if function.x.typ_bounds.len() != 0 {
-                    todo!()
-                }
                 for name in function.x.typ_params.iter() {
                     vars.push((suffix_typ_param_id(&name), TriggerBoxing::TypeId));
                     let typ = Arc::new(TypX::TypeId);
@@ -753,6 +754,11 @@ pub fn func_def_to_air(
 
             let mut req_stms: Vec<Stm> = Vec::new();
             let mut reqs: Vec<Exp> = Vec::new();
+            reqs.extend(crate::traits::trait_bounds_to_sst(
+                ctx,
+                &function.span,
+                &function.x.typ_bounds,
+            ));
             for e in req_ens_function.x.require.iter() {
                 if ctx.checking_recommends() {
                     let (stms, exp) =

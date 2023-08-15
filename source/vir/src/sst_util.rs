@@ -289,6 +289,7 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
                 ("const_generic".to_string(), 99)
             }
+            NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("trait_bound".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => (format!("!{}", exp.x.to_string_prec(99)), 90),
                 UnaryOp::Clip { .. } => (format!("clip({})", exp), 99),

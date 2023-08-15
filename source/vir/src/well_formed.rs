@@ -953,7 +953,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
             };
             if !proof_function.x.attrs.is_decrease_by {
                 return Err(air::messages::error(
-                    "proof function must be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] to be used as decreases_by/recommends_by",
+                    "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by",
                     &proof_function.span,
                 )
                 .secondary_span(&function.span));
@@ -1027,7 +1027,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
         {
             return error(
                 &function.span,
-                "function cannot be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] unless it is used in some decreases_by/recommends_by",
+                "function cannot be marked #[verifier::decreases_by] or #[verifier::recommends_by] unless it is used in some decreases_by/recommends_by",
             );
         }
     }
