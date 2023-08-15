@@ -1,6 +1,6 @@
 use crate::ast::{
     CallTarget, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind,
-    Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
+    Krate, MaskSpec, Mode, MultiOp, Path, TypDecoration, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{
     error, is_visible_to_opt, msg_error, path_as_friendly_rust_name, referenced_vars_expr,
@@ -457,8 +457,71 @@ fn check_function(
         }
     }
 
+    pub(crate) fn typ_min_mode(
+        dts: &std::collections::HashMap<Path, crate::ast::Datatype>,
+        typ: &crate::ast::Typ,
+    ) -> Mode {
+        let reduce_join_or_exec = |ts: &[crate::ast::Typ]| -> Mode {
+            ts.iter()
+                .map(|t| typ_min_mode(dts, t))
+                .reduce(crate::modes::mode_join)
+                .unwrap_or(Mode::Exec)
+        };
+        use crate::ast::IntRange;
+        match &**typ {
+            TypX::Bool => Mode::Exec,
+            TypX::Int(IntRange::Int | IntRange::Nat) => Mode::Proof,
+            TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => {
+                Mode::Exec
+            }
+            TypX::ConstInt(_) => Mode::Exec,
+            TypX::Tuple(ts) => reduce_join_or_exec(ts),
+            TypX::Lambda(_, _) => Mode::Spec,
+            TypX::AnonymousClosure(_, _, _) => Mode::Exec,
+            TypX::Datatype(path, _args, _impl_paths) =>
+            /* TODO args */
+            {
+                dts.get(path).expect("datatype for path").x.mode
+            }
+            TypX::Boxed(t) => typ_min_mode(dts, t),
+            TypX::TypParam(_) => Mode::Exec,
+            TypX::StrSlice => Mode::Exec,
+            TypX::Char => Mode::Exec,
+            TypX::Decorate(_, inner) => typ_min_mode(dts, inner),
+            TypX::Projection { trait_typ_args: _, trait_path: _, name: _ } =>
+            /* TODO */
+            {
+                Mode::Exec
+            }
+            TypX::Primitive(_, args) => reduce_join_or_exec(args),
+
+            TypX::TypeId => panic!("invalid type here"),
+            TypX::Air(_) => panic!("invalid type here"),
+        }
+    }
+
     let ret_name = user_local_name(&*function.x.ret.x.name);
     for p in function.x.params.iter() {
+        let tmm = typ_min_mode(&ctxt.dts, &p.x.typ);
+        let decoration_mode = match &*p.x.typ {
+            TypX::Decorate(TypDecoration::Tracked, _) => Mode::Proof,
+            TypX::Decorate(TypDecoration::Ghost, _) => Mode::Spec,
+            _ => Mode::Exec,
+        };
+        let usage_mode = crate::modes::mode_join(p.x.mode, decoration_mode);
+        if !crate::modes::mode_le(tmm, usage_mode) {
+            diags.push(VirErrAs::Warning(msg_error(
+                format!(
+                    "parameter {} (of type {}) does not have a mode compatible with its type ({})",
+                    user_local_name(p.x.name.as_str()),
+                    crate::ast_util::typ_to_diagnostic_str(&p.x.typ),
+                    tmm
+                )
+                .as_str(),
+                &p.span,
+            )));
+        }
+
         check_typ(ctxt, &p.x.typ, &p.span)?;
         if user_local_name(&*p.x.name) == ret_name {
             return error(&p.span, "parameter name cannot be the same as the return value name");
