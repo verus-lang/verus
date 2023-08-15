@@ -644,3 +644,25 @@ test_verify_one_file_with_options! {
         assert_expand_fails(err, 2);
     }
 }
+
+test_verify_one_file! {
+    #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_1 verus_code! {
+        fn test_bug1(Tracked(s): Tracked<&mut i32>)
+        {
+            let tracked x: &mut i32 = s;
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].rendered.contains("let tracked x: &mut i32 = s;"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_2 verus_code! {
+        fn test_bug2(Tracked(s): Tracked<&mut i32>)
+        {
+            let tracked x: i32 = s;
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].rendered.contains("let tracked x: i32 = s;"));
+    }
+}
