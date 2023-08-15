@@ -187,7 +187,10 @@ impl Visitor {
                     //       #[verifier::proof_block] { t = verus_tmp_x.get() };
                     let span = pat.span();
                     let x = wrapped_pat_id.ident;
-                    let tmp_id = Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site());
+                    let tmp_id = Ident::new(
+                        &format!("verus_tmp_{x}"),
+                        Span::mixed_site().located_at(pat.span()),
+                    );
                     wrapped_pat_id.ident = tmp_id.clone();
                     *pat = Pat::Ident(wrapped_pat_id);
                     if !self.erase_ghost {
@@ -516,8 +519,12 @@ impl VisitMut for ExecGhostPatVisitor {
         //   x_decls: let tracked x; let ghost mut y; let [mode] mut z;
         //   x_assigns: x = tmp_x.get(); y = tmp_y.view(); z = tmp_z;
         use syn_verus::parse_quote_spanned;
+        let pat_span = pat.span();
         let mk_ident_tmp = |x: &Ident| {
-            Ident::new(&("verus_tmp_".to_string() + &x.to_string()), Span::mixed_site())
+            Ident::new(
+                &("verus_tmp_".to_string() + &x.to_string()),
+                Span::mixed_site().located_at(pat_span),
+            )
         };
         match pat {
             Pat::TupleStruct(pts)
@@ -681,7 +688,7 @@ impl Visitor {
             (false, stmts)
         } else {
             use syn_verus::parse_quote_spanned;
-            let tmp = Ident::new("verus_tmp", Span::mixed_site());
+            let tmp = Ident::new("verus_tmp", Span::mixed_site().located_at(local.span()));
             let tmp_decl = if local.tracked.is_some() {
                 parse_quote_spanned!(span => #[verus::internal(proof)] let #tmp;)
             } else {
