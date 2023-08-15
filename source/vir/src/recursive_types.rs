@@ -295,13 +295,6 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
             assert!(&function.x.typ_params[0] == &crate::def::trait_self_type_param());
         }
-        if function.x.typ_bounds.len() != 0 && function.x.attrs.broadcast_forall {
-            // See the todo!() in func_to_air.rs
-            return error(
-                &function.span,
-                "not yet supported: bounds on broadcast_forall function type parameters",
-            );
-        }
     }
 
     for tr in &krate.traits {

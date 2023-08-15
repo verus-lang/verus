@@ -841,6 +841,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)), false) => {
             str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
         }
+        (ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)), false) => {
+            if let Some(e) = crate::traits::trait_bound_to_air(ctx, p, ts) {
+                e
+            } else {
+                air::ast_util::mk_true()
+            }
+        }
         (ExpX::Unary(op, arg), true) => {
             if !allowed_bitvector_type(&arg.typ) {
                 return error(

@@ -280,11 +280,23 @@ fn check_item<'tcx>(
                         false,
                     )?);
                 }
+                let types = Arc::new(types);
                 let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
-                let trait_impl =
-                    vir::ast::TraitImplX { impl_path: impl_path.clone(), trait_path: path.clone() };
+                let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_fun(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    impll.generics,
+                    impl_def_id,
+                )?;
+                let trait_impl = vir::ast::TraitImplX {
+                    impl_path: impl_path.clone(),
+                    typ_params,
+                    typ_bounds,
+                    trait_path: path.clone(),
+                    trait_typ_args: types.clone(),
+                };
                 vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
-                Some((path, Arc::new(types)))
+                Some((path, types))
             } else {
                 None
             };
@@ -557,6 +569,7 @@ fn check_item<'tcx>(
             vir.functions.append(&mut methods);
             let traitx = vir::ast::TraitX {
                 name: trait_path,
+                visibility: visibility(),
                 methods: Arc::new(method_names),
                 assoc_typs: Arc::new(assoc_typs),
                 typ_params: generics_params,
