@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX,
-    SpannedTyped, Typ, TypX, VirErr,
+    SpannedTyped, Typ, TypDecoration, TypX, VirErr,
 };
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 
@@ -470,14 +470,21 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let typ = mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            id,
-            span,
-            is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-        )?;
+        let typ = {
+            let typ = mid_ty_to_vir(
+                ctxt.tcx,
+                &ctxt.verus_items,
+                id,
+                span,
+                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
+                false,
+            )?;
+            if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
+                Arc::new(TypX::Decorate(decoration, typ))
+            } else {
+                typ
+            }
+        };
 
         // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
         let is_mut = is_ref_mut.is_some();
@@ -504,7 +511,10 @@ pub(crate) fn check_item_fn<'tcx>(
                 // declaring and assigning to a variable of type `&mut T` is not implemented yet.
                 unsupported_err!(span, "mut parameters of &mut types")
             }
-            vir_mut_params.push((vir_param.clone(), is_ref_mut.map(|(_, m)| m).flatten()));
+            vir_mut_params.push((
+                vir_param.clone(),
+                is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode),
+            ));
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
@@ -526,7 +536,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
             mut_params_redecl.push(redecl);
         }
-        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten()));
+        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode)));
     }
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
@@ -770,7 +780,7 @@ pub(crate) fn check_item_fn<'tcx>(
 fn is_mut_ty<'tcx>(
     ctxt: &Context<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
-) -> Option<(&'tcx rustc_middle::ty::Ty<'tcx>, Option<Mode>)> {
+) -> Option<(&'tcx rustc_middle::ty::Ty<'tcx>, Option<(Mode, TypDecoration)>)> {
     use rustc_middle::ty::*;
     match ty.kind() {
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some((tys, None)),
@@ -784,12 +794,12 @@ fn is_mut_ty<'tcx>(
                 assert_eq!(args.len(), 1);
                 if let subst::GenericArgKind::Type(t) = args[0].unpack() {
                     if let Some((inner, None)) = is_mut_ty(ctxt, t) {
-                        let mode = match bt {
-                            BuiltinTypeItem::Ghost => Mode::Spec,
-                            BuiltinTypeItem::Tracked => Mode::Proof,
+                        let mode_and_decoration = match bt {
+                            BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
+                            BuiltinTypeItem::Tracked => (Mode::Proof, TypDecoration::Tracked),
                             _ => unreachable!(),
                         };
-                        return Some((inner, Some(mode)));
+                        return Some((inner, Some(mode_and_decoration)));
                     }
                 }
             }
