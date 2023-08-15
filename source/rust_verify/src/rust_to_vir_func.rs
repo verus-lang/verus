@@ -618,7 +618,15 @@ pub(crate) fn check_item_fn<'tcx>(
             paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
         } else if vir_body.is_some() && unwrap_mut.is_some() {
-            return err_span(sig.span, format!("parameter {} must be unwrapped", &param.x.name));
+            let param_user_name = vir::def::user_local_name(&param.x.name);
+            return Err(air::messages::error(
+                format!("parameter {} must be unwrapped", param_user_name),
+                &param.span,
+            )
+            .help(format!(
+                "use Tracked({}): Tracked<&mut T> to unwrap the tracked argument",
+                param_user_name
+            )));
         }
     }
     for name in all_param_names.iter() {
