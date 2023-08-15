@@ -187,7 +187,7 @@ impl Visitor {
                     //       #[verifier::proof_block] { t = verus_tmp_x.get() };
                     let span = pat.span();
                     let x = wrapped_pat_id.ident;
-                    let tmp_id = Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site());
+                    let tmp_id = Ident::new(&format!("verus_tmp_{x}"), pat.span());
                     wrapped_pat_id.ident = tmp_id.clone();
                     *pat = Pat::Ident(wrapped_pat_id);
                     if !self.erase_ghost {
