@@ -7,7 +7,7 @@ on:
 
   workflow_dispatch:
 
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
@@ -15,7 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request && github.event.pull_request.head.sha || github.sha }}
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
@@ -36,7 +38,9 @@ jobs:
         features: ['', 'singular']
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request && github.event.pull_request.head.sha || github.sha }}
       - name: get z3
         working-directory: ./source
         run: |
@@ -80,7 +84,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request && github.event.pull_request.head.sha || github.sha }}
       - name: get z3
         shell: pwsh
         working-directory: .\source
