@@ -159,29 +159,33 @@ fn tr_inline_function(
     } else {
         if fun_to_inline.x.owning_module.is_none() {
             return foreign_module_err;
-        } else {
-            use crate::ast_util::is_visible_to_of_owner;
-            if !is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module) {
-                // if the target inline function is outside this module, track `open` `closed` at module boundaries
-                match fun_to_inline.x.publish {
-                    Some(b) => {
-                        if !b {
-                            return opaque_err;
-                        }
-                    }
-                    None => {
-                        return closed_err;
-                    }
-                };
-            }
         }
 
+        // REVIEW: support trait fn impls?
         let body = match fun_to_inline.x.body.as_ref() {
             Some(body) => body,
             None => {
-                return closed_err;
+                return Err((
+                    fun_to_inline.span.clone(),
+                    format!(
+                        "Note: this function is uninterpreted, or is a trait function declaration"
+                    ),
+                ));
             }
         };
+        if !crate::ast_util::is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module) {
+            // if the target inline function is outside this module, track `open` `closed` at module boundaries
+            match fun_to_inline.x.publish {
+                Some(b) => {
+                    if !b {
+                        return opaque_err;
+                    }
+                }
+                None => {
+                    return closed_err;
+                }
+            };
+        }
 
         if !is_bool_type(&body.typ) {
             return type_err;
