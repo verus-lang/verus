@@ -516,9 +516,9 @@ impl VisitMut for ExecGhostPatVisitor {
         //   x_decls: let tracked x; let ghost mut y; let [mode] mut z;
         //   x_assigns: x = tmp_x.get(); y = tmp_y.view(); z = tmp_z;
         use syn_verus::parse_quote_spanned;
-        let mk_ident_tmp = |x: &Ident| {
-            Ident::new(&("verus_tmp_".to_string() + &x.to_string()), Span::mixed_site())
-        };
+        let pat_span = pat.span();
+        let mk_ident_tmp =
+            |x: &Ident| Ident::new(&("verus_tmp_".to_string() + &x.to_string()), pat_span);
         match pat {
             Pat::TupleStruct(pts)
                 if pts.pat.elems.len() == 1
@@ -681,7 +681,7 @@ impl Visitor {
             (false, stmts)
         } else {
             use syn_verus::parse_quote_spanned;
-            let tmp = Ident::new("verus_tmp", Span::mixed_site());
+            let tmp = Ident::new("verus_tmp", local.span());
             let tmp_decl = if local.tracked.is_some() {
                 parse_quote_spanned!(span => #[verus::internal(proof)] let #tmp;)
             } else {
