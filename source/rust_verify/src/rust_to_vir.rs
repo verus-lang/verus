@@ -287,6 +287,7 @@ fn check_item<'tcx>(
                     &ctxt.verus_items,
                     impll.generics,
                     impl_def_id,
+                    Some(&mut *ctxt.diagnostics.borrow_mut()),
                 )?;
                 let trait_impl = vir::ast::TraitImplX {
                     impl_path: impl_path.clone(),
