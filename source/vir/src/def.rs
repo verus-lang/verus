@@ -58,6 +58,7 @@ const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -175,6 +176,7 @@ pub const QID_HEIGHT_APPLY: &str = "height_apply";
 pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
+pub const QID_TRAIT_IMPL: &str = "trait_impl";
 pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -364,6 +366,10 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
         PROJECT_SEPARATOR,
         name.to_string()
     ))
+}
+
+pub fn trait_bound(trait_path: &Path) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {

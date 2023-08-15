@@ -386,6 +386,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::Ctor(path.clone(), variant.clone(), Arc::new(bs), None))
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => expr.clone(),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => expr.clone(),
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
@@ -870,7 +871,14 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         let broadcast_params = Arc::new(new_params);
 
         let span = &function.span;
-        let req = crate::ast_util::conjoin(span, &*function.x.require);
+        let mut reqs: Vec<Expr> = Vec::new();
+        reqs.extend(crate::traits::trait_bounds_to_ast(
+            ctx,
+            &function.span,
+            &function.x.typ_bounds,
+        ));
+        reqs.extend((*function.x.require).clone());
+        let req = crate::ast_util::conjoin(span, &reqs);
         let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
         let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
         let req_ens = coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, &req_ens));

@@ -75,30 +75,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_10 verus_code! {
-        trait T {
-            spec fn f(&self) -> bool;
-
-            proof fn p(&self)
-                ensures exists|x: &Self| self.f() != x.f();
-        }
-
-        #[verifier::external_body] /* vattr */
-        #[verifier::broadcast_forall] /* vattr */
-        proof fn f_not_g<A: T>()
-            ensures exists|x: &A, y: &A| x.f() != y.f()
-        {
-        }
-
-        struct S {}
-
-        fn test() {
-            assert(false);
-        }
-    } => Err(err) => assert_vir_error_msg(err, ": bounds on broadcast_forall function type parameters")
-}
-
-test_verify_one_file! {
     #[test] test_not_yet_supported_11 verus_code! {
         trait T {
             spec fn f(&self) -> bool;
@@ -1190,6 +1166,138 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_broadcast_forall1 verus_code! {
+        trait T {
+            spec fn f(&self) -> bool;
+
+            proof fn p(&self)
+                ensures exists|x: &Self| self.f() != x.f();
+        }
+
+        spec fn g<A: T>() -> bool {
+            exists|x: &A, y: &A| x.f() != y.f()
+        }
+        spec fn t<A>() -> bool { true }
+
+        #[verifier::external_body] /* vattr */
+        #[verifier::broadcast_forall] /* vattr */
+        proof fn f_not_g<A: T>()
+            ensures
+                #[trigger] t::<A>(),
+                g::<A>(),
+        {
+        }
+
+        struct S1 {}
+        impl T for S1 {
+            spec fn f(&self) -> bool {
+                true
+            }
+
+            proof fn p(&self) {
+                assert(exists|x: &Self| self.f() != x.f()); // FAILS
+            }
+        }
+
+        struct S2 {}
+
+        struct S3(bool);
+        impl T for S3 {
+            spec fn f(&self) -> bool {
+                self.0
+            }
+
+            proof fn p(&self) {
+                assert(self.f() != S3(!self.0).f())
+            }
+        }
+
+        fn test1() {
+            assert(t::<S1>());
+            assert(false);
+        }
+
+        fn test2() {
+            assert(t::<S2>());
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            assert(t::<S3>());
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_broadcast_forall2 verus_code! {
+        trait T1<A, B> {}
+        trait T2<C, D> {}
+
+        struct S<E>(E);
+
+        impl<X> T1<X, bool> for S<X> {}
+        impl<Y, Z: T1<int, Y>> T2<Z, u16> for S<(Y, u8)> {}
+
+        spec fn f<A>(i: int) -> bool;
+
+        #[verifier::external_body]
+        #[verifier::broadcast_forall]
+        proof fn p<A: T2<S<int>, u16>>(i: int)
+            ensures f::<A>(i)
+        {
+        }
+
+        proof fn test1() {
+            assert(f::<S<(bool, u8)>>(3));
+        }
+
+        proof fn test2() {
+            assert(f::<S<(u32, u8)>>(3)); // FAILS
+        }
+
+        proof fn test3() {
+            assert(f::<S<(bool, u32)>>(3)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_decreases_trait_bound verus_code! {
+        trait T {
+            proof fn impossible()
+                ensures false;
+        }
+
+        spec fn f<A: T>(i: int) -> bool
+            decreases 0int when true via f_decreases::<A>
+        {
+            !f::<A>(i - 0)
+        }
+
+        #[verifier::decreases_by]
+        proof fn f_decreases<A: T>(i: int) {
+            A::impossible();
+        }
+
+        proof fn test1<A: T>(i: int) {
+            assert(f::<A>(i) == !f::<A>(i - 0));
+            assert(false);
+        }
+
+        proof fn test2() {
+            // We'd like to test that f's definition axiom only applies to A that implement T.
+            // Ideally, we'd test this by applying f to an A that doesn't implement T
+            // and seeing that the definition axiom doesn't apply.
+            // Unfortunately, it's hard to test this because Rust's type checker already (correctly)
+            // stops us from saying f::<ty>(x) for ty that doesn't implement T.
+            // So we have to manually check the AIR code for the axiom off line.
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
