@@ -61,12 +61,6 @@ impl<K, V> Map<K, V> {
 
     pub spec fn dom(self) -> Set<K>;
 
-    /// The set of keys mapped to by the domain of the map
- 
-    pub open spec fn values(self) -> Set<V> {
-        Set::<V>::new(|v: V| self.contains_value(v))
-    }
-
     /// Gets the value that the given key `key` maps to.
     /// For keys not in the domain, the result is meaningless and arbitrary.
 

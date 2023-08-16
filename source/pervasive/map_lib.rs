@@ -25,6 +25,21 @@ impl<K, V> Map<K, V> {
         exists|i: K| #[trigger] self.dom().contains(i) && self[i] == v
     }
 
+    ///
+    /// Returns the set of values in the map.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// assert(
+    ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
+    /// );
+    /// ```
+
+    pub open spec fn values(self) -> Set<V> {
+        Set::<V>::new(|v: V| self.contains_value(v))
+    }
+
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
 
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
@@ -107,7 +122,7 @@ impl<K, V> Map<K, V> {
     }
 
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
-    
+
     pub open spec fn is_equal_on_key(self, m2: Self, key: K) -> bool
     {
         ||| (!self.dom().contains(key) && !m2.dom().contains(key))
@@ -138,7 +153,7 @@ impl<K, V> Map<K, V> {
 
     /// Swaps map keys and values. Values are not required to be unique; no
     /// promises on which key is chosen on the intersection.
-    pub open spec fn invert(self) -> Map<V,K> 
+    pub open spec fn invert(self) -> Map<V,K>
     {
         Map::<V,K>::new(
             |v: V| self.contains_value(v),
@@ -148,7 +163,7 @@ impl<K, V> Map<K, V> {
 
     // Proven lemmas
 
-    /// Removing a key from a map that previously contained that key decreases 
+    /// Removing a key from a map that previously contained that key decreases
     /// the map's length by one
     pub proof fn lemma_remove_key_len(self, key: K)
         requires
@@ -158,12 +173,12 @@ impl<K, V> Map<K, V> {
             self.dom().len() == 1 + self.remove(key).dom().len(),
     {}
 
-    /// The domain of a map after removing a key is equivalent to removing the key from 
+    /// The domain of a map after removing a key is equivalent to removing the key from
     /// the domain of the original map.
     pub proof fn lemma_remove_equivalency(self, key: K)
         ensures
             self.remove(key).dom() == self.dom().remove(key),
-    {}    
+    {}
 
     /// Removing a set of n keys from a map that previously contained all n keys
     /// results in a domain of size n less than the original domain.
@@ -172,7 +187,7 @@ impl<K, V> Map<K, V> {
             forall |k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
             keys.finite(),
             self.dom().finite(),
-        ensures 
+        ensures
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases
             keys.len(),
@@ -193,7 +208,7 @@ impl<K, V> Map<K, V> {
         ensures
             self.invert().is_injective(),
     {
-        assert forall |x: V, y: V| x != y && self.invert().dom().contains(x) && self.invert().dom().contains(y) 
+        assert forall |x: V, y: V| x != y && self.invert().dom().contains(x) && self.invert().dom().contains(y)
                     implies #[trigger] self.invert()[x] != #[trigger] self.invert()[y] by {
             let i = choose |i: K| #[trigger] self.dom().contains(i) && self[i] == x;
             assert(self.contains_pair(i,x));
@@ -202,24 +217,24 @@ impl<K, V> Map<K, V> {
             let k = choose |k: K| #[trigger] self.dom().contains(k) && self[k] == y;
             assert(self.contains_pair(k,y));
             let l = choose |l: K| self.contains_pair(l,y) && self.invert()[y] == l && l != j;
-        }   
+        }
     }
 
 }
 
 impl Map<int,int> {
 
-    /// Returns `true` if a map is monotonic -- that is, if the mapping between ordered sets 
+    /// Returns `true` if a map is monotonic -- that is, if the mapping between ordered sets
     /// preserves the regular `<=` ordering on integers.
     pub open spec fn is_monotonic(self) -> bool {
-        forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && x <= y 
+        forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && x <= y
             ==> #[trigger] self[x] <= #[trigger] self[y]
     }
 
     /// Returns `true` if and only if a map is monotonic, only considering keys greater than
     /// or equal to start
     pub open spec fn is_monotonic_from(self, start: int) -> bool {
-        forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && start <= x <= y 
+        forall |x: int, y: int| self.dom().contains(x) && self.dom().contains(y) && start <= x <= y
             ==> #[trigger] self[x] <= #[trigger] self[y]
     }
 }
@@ -253,7 +268,7 @@ pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-/// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to 
+/// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
 /// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
 pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
@@ -274,14 +289,14 @@ pub proof fn lemma_map_properties<K,V>()
     ensures
     forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
             == Set::<K>::new(|k: K| fk(k)), //from lemma_map_new_domain
-    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
+    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values()
             == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //from lemma_map_new_values
 {
-    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| 
+    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V|
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
             lemma_map_new_domain(fk, fv);
         }
-    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values() 
+    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values()
         == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v) by {
             lemma_map_new_values(fk, fv);
         }
