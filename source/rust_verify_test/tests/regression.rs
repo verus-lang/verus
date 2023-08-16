@@ -666,3 +666,11 @@ test_verify_one_file! {
         assert!(err.errors[0].rendered.contains("let tracked x: i32 = s;"));
     }
 }
+
+test_verify_one_file! {
+    #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6680621 verus_code! {
+        exec fn f(foo: &mut usize) {
+            let tracked tracked_foo = Tracked(foo);
+        }
+    } => Err(err) => { err.errors[0].rendered.contains("let tracked tracked_foo = Tracked(foo);"); }
+}
