@@ -1440,22 +1440,23 @@ impl Verifier {
                 .collect();
 
             if let Some(mod_name) = remaining_verify_module.into_iter().next() {
-                let msg = vec![
+                let mut lines = current_crate_module_ids
+                    .iter()
+                    .filter_map(|m| {
+                        let name = module_name(m);
+                        (!(name.starts_with("pervasive::") || name == "pervasive")
+                            && m.segments.len() > 0)
+                            .then(|| format!("- {name}"))
+                    })
+                    .collect::<Vec<_>>();
+                lines.sort(); // Present the available modules in sorted order
+                let mut msg = vec![
                     format!("could not find module {mod_name} specified by --verify-module"),
                     format!("available modules are:"),
-                ]
-                .into_iter()
-                .chain(current_crate_module_ids.iter().filter_map(|m| {
-                    let name = module_name(m);
-                    (!(name.starts_with("pervasive::") || name == "pervasive")
-                        && m.segments.len() > 0)
-                        .then(|| format!("- {name}"))
-                }))
-                .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
-                .collect::<Vec<_>>()
-                .join("\n");
-
-                return Err(error(msg));
+                ];
+                msg.extend(lines);
+                msg.push(format!("or use --verify-root, --verify-pervasive"));
+                return Err(error(msg.join("\n")));
             }
 
             module_ids_to_verify
