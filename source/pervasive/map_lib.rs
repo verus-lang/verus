@@ -25,6 +25,21 @@ impl<K, V> Map<K, V> {
         exists|i: K| #[trigger] self.dom().contains(i) && self[i] == v
     }
 
+    ///
+    /// Returns the set of values in the map.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// assert(
+    ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
+    /// );
+    /// ```
+ 
+    pub open spec fn values(self) -> Set<V> {
+        Set::<V>::new(|v: V| self.contains_value(v))
+    }
+
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
 
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
@@ -45,21 +60,6 @@ impl<K, V> Map<K, V> {
     pub open spec fn le(self, m2: Self) -> bool {
         forall|k: K| #[trigger] self.dom().contains(k) ==>
             #[trigger] m2.dom().contains(k) && self[k] == m2[k]
-    }
-
-    ///
-    /// Returns the set of values in the map.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
-    /// );
-    /// ```
-
-    pub open spec fn values(self) -> Set<V> {
-        Set::new(|v| exists |k| #[trigger](self.contains_key(k)) && self[k]==v)
     }
 
     /// Gives the union of two maps, defined as:
