@@ -1440,7 +1440,7 @@ impl Verifier {
                 .collect();
 
             if let Some(mod_name) = remaining_verify_module.into_iter().next() {
-                let msg = vec![
+                let mut lines = vec![
                     format!("could not find module {mod_name} specified by --verify-module"),
                     format!("available modules are:"),
                 ]
@@ -1452,8 +1452,9 @@ impl Verifier {
                         .then(|| format!("- {name}"))
                 }))
                 .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
-                .collect::<Vec<_>>()
-                .join("\n");
+                .collect::<Vec<_>>();
+                lines.sort();   // Present the available modules in sorted order
+                let msg = lines.join("\n");
 
                 return Err(error(msg));
             }
