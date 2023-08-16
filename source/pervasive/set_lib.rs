@@ -62,14 +62,6 @@ impl<A> Set<A> {
         }
     }
 
-    ///
-    /// Return a set containing the single value `e`.
-    ///
-
-    pub open spec fn singleton<>(e: A) -> Set<A> {
-        Set::empty().insert(e)
-    }
-
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A> 
         recommends
