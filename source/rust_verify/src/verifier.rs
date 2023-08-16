@@ -27,7 +27,7 @@ use vir::context::GlobalCtx;
 use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{friendly_fun_name_crate_relative, fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
-use vir::func_to_air::SstMap;
+use vir::func_to_air::{SstMap, FuncAxiomResults};
 use vir::prelude::PreludeConfig;
 use vir::recursion::Node;
 use vir::update_cell::UpdateCell;
@@ -1062,7 +1062,7 @@ impl Verifier {
 
                 ctx.fun = mk_fun_ctx(&function, false);
                 let not_verifying_owning_module = Some(module) != function.x.owning_module.as_ref();
-                let (decl_commands, check_commands, new_fun_ssts) =
+                let FuncAxiomResults{decl_commands, check_commands, extended_fun_ssts} =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
                         reporter,
@@ -1071,13 +1071,14 @@ impl Verifier {
                         is_visible_to(&vis_abs, module),
                         not_verifying_owning_module,
                     )?;
-                fun_ssts = new_fun_ssts;
+                fun_ssts = extended_fun_ssts;
                 fun_axioms.insert(f.clone(), decl_commands);
                 ctx.fun = None;
 
                 if not_verifying_owning_module {
                     continue;
                 }
+                // Emit termination check
                 let invalidity = self.run_commands_queries(
                     reporter,
                     source_map,
@@ -1085,7 +1086,7 @@ impl Verifier {
                     &mut air_context,
                     Arc::new(CommandsWithContextX {
                         span: function.span.clone(),
-                        desc: "termination proof".to_string(),
+                        desc: "termination proof and postcondition check".to_string(),
                         commands: check_commands,
                         prover_choice: vir::def::ProverChoice::DefaultProver,
                         skip_recommends: false,
@@ -1096,7 +1097,7 @@ impl Verifier {
                     module,
                     Some(&function.x.name),
                     verify_function_exact_match,
-                    &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
+                    &("Function-Termination-and-Postcondition-Check ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
                 );
                 let check_recommends = function.x.attrs.check_recommends;

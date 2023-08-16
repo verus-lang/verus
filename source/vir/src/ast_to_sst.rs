@@ -63,7 +63,7 @@ pub(crate) struct State<'a> {
 }
 
 #[derive(Clone)]
-enum ReturnValue {
+pub(crate) enum ReturnValue {
     Some(Exp),
     ImplicitUnit(Span),
     Never,
@@ -694,25 +694,33 @@ pub(crate) fn expr_to_one_stm_with_post(
     state: &mut State,
     expr: &Expr,
 ) -> Result<Stm, VirErr> {
-    let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+    let (stms, return_value) = expr_to_stm_opt(ctx, state, expr)?;
+    add_return_for_postcondition_check(&expr.span, stms, return_value)
+}
 
+pub(crate) fn add_return_for_postcondition_check(
+    body_span: &Span,   // span of the original body expr that included both stms &
+                        // return_value.exp
+    mut stms: Vec<Stm>,
+    return_value: ReturnValue,
+) -> Result<Stm, VirErr> {
     // secondary label (indicating which post-condition failed) is added later
     // in ast_to_sst when the post condition is expanded
     let base_error = error_with_label(
         crate::def::POSTCONDITION_FAILURE.to_string(),
-        &expr.span,
+        body_span,
         "at the end of the function body".to_string(),
     );
 
-    match exp.to_value() {
-        Some(exp) => {
+    match return_value.to_value() {
+        Some(return_value) => {
             // Emit the postcondition for the common case where the function body
             // terminates with an expression to be returned (or an implicit
             // return value of 'unit').
 
             stms.push(Spanned::new(
-                expr.span.clone(),
-                StmX::Return { base_error, ret_exp: Some(exp), inside_body: false },
+                body_span.clone(),
+                StmX::Return { base_error, ret_exp: Some(return_value), inside_body: false },
             ));
         }
         None => {
@@ -733,7 +741,7 @@ pub(crate) fn expr_to_one_stm_with_post(
             // function.
         }
     };
-    Ok(stms_to_one_stm(&expr.span, stms))
+    Ok(stms_to_one_stm(body_span, stms))
 }
 
 fn is_small_exp(exp: &Exp) -> bool {
@@ -893,7 +901,7 @@ fn if_to_stm(
 ///  * Unit - for the implicit unit case
 ///  * Never - the expression can never return (e.g., after a return value or break)
 
-fn expr_to_stm_opt(
+pub(crate) fn expr_to_stm_opt(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,

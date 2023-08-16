@@ -480,6 +480,12 @@ impl FunctionX {
         }
     }
 
+    // Returns the name of the return param of a spec fn, if one has been specified.
+    pub fn get_return_param(&self) -> Option<Param>
+    {
+        if self.has_return() { Some(self.ret.clone()) } else { None }
+    }
+
     pub fn is_main(&self) -> bool {
         **self.name.path.segments.last().expect("last segment") == "main"
     }
