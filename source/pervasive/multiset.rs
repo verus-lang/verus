@@ -17,7 +17,8 @@ verus!{
 
 /// `Multiset<V>` is an abstract multiset type for specifications.
 ///
-/// `Multiset<V>` can be encoded as a (total) map from elements to natural numbers.
+/// `Multiset<V>` can be encoded as a (total) map from elements to natural numbers,
+/// where the number of nonzero entries is finite.
 ///
 /// Multisets can be constructed in a few different ways:
 ///  * [`Multiset::empty()`] constructs an empty multiset.
@@ -33,12 +34,14 @@ verus!{
 // We could in principle implement the Multiset via an inductive datatype
 // and so we can mark its type argument as accept_recursive_types.
 
-// Note: A Multiset may have infinite support, but of course the range is `nat`,
-// so no single key may have infinite multiplicity. The cardinality of a
-// multiset may be infinite if the support is infinite.
-// One consequence of this model is that there is no general '.map' function,
-// since it may map an infinite number of elements to a single element,
-// creating a infinite multiplicity unrepresentable in this type.
+// Note: Multiset is finite (in contrast to Set, Map, which are infinite) because it
+// isn't entirely obvious how to represent an infinite multiset in the case where
+// a single value (v: V) has an infinite multiplicity. It seems to require either:
+//   (1) representing multiplicity by an ordinal or cardinal or something
+//   (2) limiting each multiplicity to be finite
+// (1) would be complicated and it's not clear what the use would be; (2) has some
+// weird properties (e.g., you can't in general define a multiset `map` function
+// since it might map an infinite number of elements to the same one).
 
 #[verifier(external_body)]
 #[verifier::ext_equal]
@@ -51,30 +54,16 @@ impl<V> Multiset<V> {
     /// Returns the _count_, or _multiplicity_ of a single value within the multiset.
     pub spec fn count(self, value: V) -> nat;
 
-    #[verifier(inline)]
-    pub open spec fn spec_index(self, key: V) -> nat
-    {
-        self.count(key)
-    }
-
     /// The total size of the multiset, i.e., the sum of all multiplicities over all values.
     pub spec fn len(self) -> nat;
 
     /// An empty multiset.
     pub spec fn empty() -> Self;
 
-    /// Creates a multiset whose elements have multiplicities specified by function `f`.
-    pub spec fn new<F: Fn(V) -> nat>(f: F) -> Self;
-
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose 
     /// multiplicities are given by the corresponding values of `m[element]`. The map `m` 
     /// must be finite, or else this multiset is arbitrary.
-
-    // TODO(jonh): Separate non-axioms into multiset_lib
-    pub open spec fn from_map(m: Map<V, nat>) -> Self
-    {
-        Self::new(|k| if m.contains_key(k) { m[k] } else { 0 })
-    }
+    pub spec fn new(m: Map<V, nat>) -> Self;
 
     /// A singleton multiset, i.e., a multiset with a single element of multiplicity 1.
     pub spec fn singleton(v: V) -> Self;
@@ -112,7 +101,8 @@ impl<V> Multiset<V> {
     /// Updates the multiplicity of the value `v` in the multiset to `mult`.
     
     pub open spec fn update(self, v: V, mult: nat) -> Self {
-        Self::new(|key| if key == v { mult } else { self.count(key) })
+        let map = Map::new(|key: V| (self.contains(key) || key == v), |key: V| if key == v { mult } else { self.count(key) });
+        Self::new(map)
     }
 
     /// Returns `true` is the left argument is contained in the right argument,
@@ -138,14 +128,8 @@ impl<V> Multiset<V> {
         self =~= m2
     }
 
-    /// Construct a multiset from a set, giving each element of the set
-    /// multiplicity 1.
-    pub open spec fn from_set(s: Set<V>) -> Self {
-        Self::new(|v| if s.contains(v) { 1 } else { 0 })
-    }
-
-    // TODO build this from new, but how to turn f into a spec fn?
-    pub open spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
+    // TODO define this in terms of a more general constructor?
+    pub spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
 
     /// Chooses an arbitrary value of the multiset.
     ///
@@ -169,14 +153,16 @@ impl<V> Multiset<V> {
     /// the elements that "overlap".
 
     pub open spec fn intersection_with(self, other: Self) -> Self {
-        Self::new(|key| min(self.count(key) as int, other.count(key) as int) as nat)
+        let m = Map::<V, nat>::new(|v: V| self.contains(v), |v: V| min(self.count(v) as int, other.count(v) as int) as nat);
+        Self::new(m)
     }
 
     /// Returns a multiset containing the difference between the count of a
     /// given element of the two sets.
 
     pub open spec fn difference_with(self, other: Self) -> Self {
-        Self::new(|key| clip(self.count(key) - other.count(key)))
+        let m = Map::<V, nat>:: new(|v: V| self.contains(v), |v: V| clip(self.count(v) - other.count(v)));
+        Self::new(m)
     }
 
     /// Returns true if there exist no elements that have a count greater 
@@ -212,6 +198,32 @@ pub proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
         (m.len() == 0 <==> m =~= Multiset::empty())
         && (m.len() > 0 ==> exists |v: V| 0 < m.count(v)),
 {}      
+
+// Specifications of `new`
+
+/// A call to Multiset::new with input map `m` will return a multiset that maps
+/// value `v` to multiplicity `m[v]` if `v` is in the domain of `m`.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
+    requires
+        m.dom().finite(),
+        m.dom().contains(v),
+    ensures 
+        #[trigger] Multiset::new(m).count(v) == m[v],
+{}
+
+/// A call to Multiset::new with input map `m` will return a multiset that maps
+/// value `v` to multiplicity 0 if `v` is not in the domain of `m`.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
+    requires
+        m.dom().finite(),
+        !m.dom().contains(v),
+    ensures 
+        Multiset::new(m).count(v) == 0,
+{}
 
 // Specification of `singleton`
 
@@ -313,15 +325,6 @@ pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
 /// `m.filter(f)` is the same as the count of `v` in `m`. Otherwise, the count of `v` in `m.filter(f)` is 0.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_multiset_new<V>(f: FnSpec(V) -> nat, v: V)
-    ensures
-        Multiset::new(f).count(v) == f(v),
-{
-}
-
-// TODO doesn't need to be an axiom, except broadcast_forall demands it
-#[verifier(external_body)]
-#[verifier(broadcast_forall)]
 pub proof fn axiom_filter_count<V>(m: Multiset<V>, f: FnSpec(V) -> bool, v: V)
     ensures (#[trigger] m.filter(f).count(v)) ==
         if f(v) { m.count(v) } else { 0 }
@@ -338,6 +341,16 @@ pub proof fn axiom_choose_count<V>(m: Multiset<V>)
         #[trigger] m.len() != 0,
     ensures
         #[trigger] m.count(m.choose()) > 0,
+{}
+
+// Axiom about finiteness
+
+/// The domain of a multiset (the set of all values that map to a multiplicity greater than 0) is always finite.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)
+    ensures
+        #[trigger] m.dom().finite()
 {}
 
 // Lemmas about `update`
