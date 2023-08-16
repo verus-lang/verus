@@ -690,9 +690,9 @@ impl Visitor {
             use syn_verus::parse_quote_spanned;
             let tmp = Ident::new("verus_tmp", Span::mixed_site().located_at(local.span()));
             let tmp_decl = if local.tracked.is_some() {
-                parse_quote_spanned!(span => #[verus::internal(proof)] let #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(proof)] #[verus::internal(unwrapped_binding)] let #tmp;)
             } else {
-                parse_quote_spanned!(span => #[verus::internal(spec)] let mut #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(unwrapped_binding)] let mut #tmp;)
             };
             stmts.push(tmp_decl);
             let pat = take_pat(&mut local.pat);
