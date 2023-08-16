@@ -202,7 +202,7 @@ test_verify_one_file! {
         proof fn test() {
             reveal(X::foo);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow deprecated warning */ }
 }
 
 test_verify_one_file! {
@@ -450,7 +450,7 @@ test_verify_one_file! {
                 self.field0 = val;
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow deprecated warning */ }
 }
 
 test_verify_one_file_with_options! {
@@ -465,7 +465,7 @@ test_verify_one_file_with_options! {
         }
 
         } // verus!
-    } => Ok(())
+    } => Ok(_err) => { /* allow unused warning */ }
 }
 
 test_verify_one_file! {

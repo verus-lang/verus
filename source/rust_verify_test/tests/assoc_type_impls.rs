@@ -27,7 +27,7 @@ test_verify_one_file! {
                 assert(y.1[0]);
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* TODO: fix warning */ }
 }
 
 test_verify_one_file! {

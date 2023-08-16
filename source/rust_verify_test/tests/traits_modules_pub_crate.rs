@@ -396,7 +396,9 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Ok(())
+    } => Ok(err) => {
+        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -645,8 +647,7 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                #[verifier::publish] /* vattr */
-                spec fn req(&self) -> bool { true }
+                open spec fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
         }
@@ -831,8 +832,7 @@ test_verify_one_file! {
         mod M3 {
             use builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                #[verifier::publish] /* vattr */
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                open spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -865,8 +865,7 @@ test_verify_one_file! {
             pub(crate) struct S<A: Sized, B: Sized>(pub(crate) A, pub(crate) B);
 
             impl<C: Sized> crate::M1::T<(C, u16)> for S<bool, C> {
-                #[verifier::publish] /* vattr */
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                open spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -937,8 +936,7 @@ test_verify_one_file! {
             pub(crate) struct S<A, B>(pub(crate) A, pub(crate) B);
 
             impl crate::M1::T<u8> for S<u16, u32> {
-                #[verifier::publish]
-                spec fn apple(&self, b: u8) -> bool {
+                open spec fn apple(&self, b: u8) -> bool {
                     b > 10
                 }
                 fn banana(&self, b: u8) -> u8 {
@@ -986,8 +984,7 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T for crate::M2::S<bool, bool> {
-                #[verifier::publish] /* vattr */
-                spec fn apple(&self, b: bool) -> bool {
+                open spec fn apple(&self, b: bool) -> bool {
                     self.0 && self.1 && b
                 }
 

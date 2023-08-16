@@ -378,9 +378,13 @@ macro_rules! test_verify_one_file_with_options {
     ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_one_file(::std::stringify!($name), $body, &$options).map(|_| ());
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            let result_unit = result.as_ref().map(|_| ());
             #[allow(irrefutable_let_patterns)]
-            if let $result = result {
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
             } else {
                 assert!(false, "Err(_) does not match $result");
             }
