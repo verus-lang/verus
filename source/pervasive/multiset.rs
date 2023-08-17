@@ -63,8 +63,6 @@ impl<V> Multiset<V> {
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose 
     /// multiplicities are given by the corresponding values of `m[element]`. The map `m` 
     /// must be finite, or else this multiset is arbitrary.
-    /// TODO(travis): no, that can't be right. If m is infinite, an
-    /// axiom below says it's finite, and now we get false?
     pub open spec fn from_map(m: Map<V, nat>) -> Self;
 
     #[deprecated = "use from_map instead"]
@@ -359,6 +357,8 @@ pub proof fn axiom_choose_count<V>(m: Multiset<V>)
 // Axiom about finiteness
 
 /// The domain of a multiset (the set of all values that map to a multiplicity greater than 0) is always finite.
+// NB this axiom's soundness depends on the inability to learn anything about the entirety of
+// Multiset::from_map.dom().
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)
