@@ -3,6 +3,7 @@ use crate::ast::{
     TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
+use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
@@ -751,12 +752,24 @@ pub fn func_def_to_air(
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
             }
 
+            let req_ens_e_rename: HashMap<_, _> = req_ens_function
+                .x
+                .params
+                .iter()
+                .zip(function.x.params.iter())
+                .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
+                .collect();
+
             let mut req_stms: Vec<Stm> = Vec::new();
             let mut reqs: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.require.iter() {
+                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
                 if ctx.checking_recommends() {
-                    let (stms, exp) =
-                        crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, e)?;
+                    let (stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(
+                        ctx,
+                        &mut state,
+                        &e_with_req_ens_params,
+                    )?;
                     req_stms.extend(stms);
                     req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
@@ -765,23 +778,27 @@ pub fn func_def_to_air(
                         diagnostics,
                         &state.fun_ssts,
                         &req_pars,
-                        e,
+                        &e_with_req_ens_params,
                     )?);
                 }
             }
             let mut ens_recommend_stms: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.ensure.iter() {
+                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
                 if ctx.checking_recommends() {
-                    ens_recommend_stms
-                        .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
+                    ens_recommend_stms.extend(crate::ast_to_sst::check_pure_expr(
+                        ctx,
+                        &mut state,
+                        &e_with_req_ens_params,
+                    )?);
                 } else {
                     enss.push(crate::ast_to_sst::expr_to_exp(
                         ctx,
                         diagnostics,
                         &state.fun_ssts,
                         &ens_pars,
-                        e,
+                        &e_with_req_ens_params,
                     )?);
                 }
             }
@@ -876,4 +893,32 @@ pub fn func_def_to_air(
             Ok((Arc::new(commands), snap_map, state.fun_ssts))
         }
     }
+}
+
+fn map_expr_rename_vars(
+    e: &Arc<SpannedTyped<crate::ast::ExprX>>,
+    req_ens_e_rename: &HashMap<Arc<String>, Arc<String>>,
+) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Arc<air::messages::MessageX>> {
+    ast_visitor::map_expr_visitor_env(
+        e,
+        &mut air::scope_map::ScopeMap::new(),
+        &mut (),
+        &|_state, _, expr| {
+            use crate::ast::ExprX;
+            Ok(match &expr.x {
+                ExprX::Var(i) => {
+                    expr.new_x(ExprX::Var(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarLoc(i) => {
+                    expr.new_x(ExprX::VarLoc(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarAt(i, at) => {
+                    expr.new_x(ExprX::VarAt(req_ens_e_rename.get(i).unwrap_or(i).clone(), *at))
+                }
+                _ => expr.clone(),
+            })
+        },
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+    )
 }
