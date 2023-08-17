@@ -691,3 +691,34 @@ test_verify_one_file! {
         assert!(err.warnings.iter().find(|x| x.message.contains("the right-hand side is already wrapped with `Ghost`")).is_some());
     }
 }
+
+test_verify_one_file! {
+    #[test] test_multiset_finite_false_1 verus_code! {
+        use vstd::{map::*, multiset::*};
+        proof fn test(mymap: Map<nat, nat>)
+            requires !mymap.dom().finite() {
+
+            let m = Multiset::new(mymap);
+            assert(m.dom().finite());
+
+            assert(!m.dom().finite()); // FAILS
+            // assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_multiset_finite_false_2 verus_code! {
+        use vstd::{map::*, multiset::*};
+        proof fn test(mymap: Map<nat, nat>)
+            requires !mymap.dom().finite() {
+
+            let m = Multiset::new(mymap);
+            assert(m.dom().finite());
+
+            assert(m.dom() =~= mymap.dom()); // FAILS
+            // assert(!m.dom().finite());
+            // assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
