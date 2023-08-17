@@ -282,23 +282,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] trait_argument_names_issue278 verus_code! {
-        trait T {
-            fn f(&self, a: usize) -> (res: usize)
-                ensures res == a;
-        }
-
-        struct S { }
-
-        impl T for S {
-            fn f(&self, b: usize) -> usize {
-                b
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] reveal_non_opaque_issue236_1 verus_code! {
         spec fn is_true(a: bool) -> bool { a }
 

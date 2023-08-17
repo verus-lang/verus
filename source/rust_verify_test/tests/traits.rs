@@ -1866,3 +1866,54 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] trait_argument_names_issue278_1 verus_code! {
+        trait T {
+            fn f(&self, a: usize) -> (res: usize)
+                ensures res == a;
+        }
+
+        struct S { }
+
+        impl T for S {
+            fn f(&self, b: usize) -> usize {
+                b
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_argument_names_issue278_2 verus_code! {
+        trait T {
+            fn f(&self, a: usize) -> (res: usize)
+                ensures res == a;
+        }
+
+        struct S { }
+
+        impl T for S {
+            fn f(&self, b: usize) -> (result: usize) {
+                b
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_argument_names_issue278_3 verus_code! {
+        trait T {
+            fn f(&self, a: usize) -> (res: usize)
+                ensures res == a; // FAILS
+        }
+
+        struct S { }
+
+        impl T for S {
+            fn f(&self, b: usize) -> (result: usize) {
+                0
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
