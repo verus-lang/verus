@@ -210,7 +210,7 @@ pub proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
         && (m.len() > 0 ==> exists |v: V| 0 < m.count(v)),
 {}      
 
-// Specifications of `new`
+// Specifications of `from_map`
 
 /// A call to Multiset::new with input map `m` will return a multiset that maps
 /// value `v` to multiplicity `m[v]` if `v` is in the domain of `m`.
