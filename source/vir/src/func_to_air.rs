@@ -474,9 +474,17 @@ pub fn func_decl_to_air(
     fun_ssts: &SstMap,
     function: &Function,
 ) -> Result<Commands, VirErr> {
+    if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
+        // For a trait method implementation, we inherit the trait requires/ensures,
+        // so we can just return here.
+        return Ok(Arc::new(vec![]));
+    }
+
     let req_typs: Arc<Vec<_>> =
         Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
     let mut decl_commands: Vec<Command> = Vec::new();
+
+    // Requires
     if function.x.require.len() > 0 {
         let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
             // We don't highlight the failed precondition if the programmer supplied their own msg
@@ -501,6 +509,58 @@ pub fn func_decl_to_air(
             function.x.attrs.integer_ring,
         )?;
     }
+
+    // Ensures
+    let mut ens_typs: Vec<_> = function
+        .x
+        .params
+        .iter()
+        .flat_map(|param| {
+            let air_typ = typ_to_air(ctx, &param.x.typ);
+            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
+        })
+        .collect();
+    let post_params = params_to_pre_post_pars(&function.x.params, false);
+    let mut ens_params = (*post_params).clone();
+    let mut ens_typing_invs: Vec<Expr> = Vec::new();
+    if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
+        if function.x.has_return() {
+            let ParamX { name, typ, .. } = &function.x.ret.x;
+            ens_typs.push(typ_to_air(ctx, &typ));
+            ens_params.push(param_to_par(&function.x.ret, false));
+            if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name))) {
+                ens_typing_invs.push(expr);
+            }
+        }
+        // typing invariants for synthetic out-params for &mut params
+        for param in post_params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
+            if let Some(expr) =
+                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)))
+            {
+                ens_typing_invs.push(expr);
+            }
+        }
+    } else {
+        assert!(function.x.ensure.len() == 0); // no ensures allowed on spec functions yet
+    }
+    let has_ens_pred = req_ens_to_air(
+        ctx,
+        diagnostics,
+        fun_ssts,
+        &mut decl_commands,
+        &Arc::new(ens_params),
+        &ens_typing_invs,
+        &function.x.ensure,
+        &function.x.typ_params,
+        &Arc::new(ens_typs),
+        &prefix_ensures(&fun_to_air_ident(&function.x.name)),
+        &None,
+        function.x.attrs.integer_ring,
+    )?;
+    if has_ens_pred {
+        ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
+    }
+
     Ok(Arc::new(decl_commands))
 }
 
@@ -512,15 +572,6 @@ pub fn func_axioms_to_air(
     public_body: bool,
     not_verifying_owning_module: bool,
 ) -> Result<(Commands, Commands, SstMap), VirErr> {
-    let mut ens_typs: Vec<_> = function
-        .x
-        .params
-        .iter()
-        .flat_map(|param| {
-            let air_typ = typ_to_air(ctx, &param.x.typ);
-            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
-        })
-        .collect();
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
     let mut new_fun_ssts = fun_ssts;
@@ -591,47 +642,6 @@ pub fn func_axioms_to_air(
                 // For a trait method implementation, we inherit the trait requires/ensures,
                 // so we can just return here.
                 return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
-            }
-
-            let params = params_to_pre_post_pars(&function.x.params, false);
-            let mut ens_params = (*params).clone();
-            let mut ens_typing_invs: Vec<Expr> = Vec::new();
-            if function.x.has_return() {
-                let ParamX { name, typ, .. } = &function.x.ret.x;
-                ens_typs.push(typ_to_air(ctx, &typ));
-                ens_params.push(param_to_par(&function.x.ret, false));
-                if let Some(expr) =
-                    typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name)))
-                {
-                    ens_typing_invs.push(expr);
-                }
-            }
-            // typing invariants for synthetic out-params for &mut params
-            for param in params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
-                if let Some(expr) = typ_invariant(
-                    ctx,
-                    &param.x.typ,
-                    &ident_var(&suffix_local_stmt_id(&param.x.name)),
-                ) {
-                    ens_typing_invs.push(expr);
-                }
-            }
-            let has_ens_pred = req_ens_to_air(
-                ctx,
-                diagnostics,
-                &new_fun_ssts,
-                &mut decl_commands,
-                &Arc::new(ens_params),
-                &ens_typing_invs,
-                &function.x.ensure,
-                &function.x.typ_params,
-                &Arc::new(ens_typs),
-                &prefix_ensures(&fun_to_air_ident(&function.x.name)),
-                &None,
-                is_singular,
-            )?;
-            if has_ens_pred {
-                ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
             }
             if let Some((params, req_ens)) = &function.x.broadcast_forall {
                 let span = &function.span;
