@@ -1883,7 +1883,7 @@ test_verify_one_file! {
     #[test] trait_fn_opaqueness verus_code! {
         trait Foo {
             #[verifier::opaque]
-            open spec fn foo(&self) -> bool;
+            spec fn foo(&self) -> bool;
         }
     } => Err(err) => assert_vir_error_msg(err, "opaque has no effect on a function without a body")
 }
@@ -2060,4 +2060,12 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
+}
+
+test_verify_one_file! {
+    #[test] disallow_open_on_trait_fn_decl verus_code! {
+        pub trait SomeTrait {
+            open spec fn foo(&self) -> bool;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait function declarations cannot be open or closed, as they don't have a body")
 }
