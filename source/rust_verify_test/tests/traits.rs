@@ -1579,7 +1579,7 @@ test_verify_one_file! {
         }
 
         impl Key for KeyInt {
-            spec fn lt(self) -> bool { true }
+            closed spec fn lt(self) -> bool { true }
             proof fn zero_properties() {}
         }
     } => Ok(())
@@ -2024,4 +2024,40 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] impl_of_non_private_trait_fn_must_be_open_or_closed_1_regression_382 verus_code! {
+        mod m1 {
+            pub trait SomeTrait {
+                spec fn foo(&self) -> bool;
+            }
+
+            struct SomeType { b: bool }
+
+            impl SomeTrait for SomeType {
+                spec fn foo(&self) -> bool {
+                    self.b
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
+}
+
+test_verify_one_file! {
+    #[test] impl_of_non_private_trait_fn_must_be_open_or_closed_2_regression_382 verus_code! {
+        mod m1 {
+            pub(super) trait SomeTrait {
+                spec fn foo(&self) -> bool;
+            }
+
+            struct SomeType { b: bool }
+
+            impl SomeTrait for SomeType {
+                spec fn foo(&self) -> bool {
+                    self.b
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
 }

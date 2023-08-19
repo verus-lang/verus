@@ -52,7 +52,7 @@ fn take<T>(lock: &Lock<T>) -> (t: Tracked<T>)
 
 struct VEqualG { }
 impl AtomicInvariantPredicate<(), u64, u64> for VEqualG {
-    spec fn atomic_inv(k: (), v: u64, g: u64) -> bool {
+    closed spec fn atomic_inv(k: (), v: u64, g: u64) -> bool {
         v == g
     }
 }

@@ -201,8 +201,8 @@ pub(crate) enum Attr {
     External,
     // hide body (from all modules) until revealed
     Opaque,
-    // publish body
-    Publish,
+    // publish body?
+    Publish(bool),
     // publish body with zero fuel
     OpaqueOutsideModule,
     // inline spec function in SMT query
@@ -325,7 +325,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "publish" => {
                     report_deprecated("publish");
-                    v.push(Attr::Publish)
+                    v.push(Attr::Publish(true))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
@@ -477,7 +477,8 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
                     }
-                    AttrTree::Fun(_, arg, None) if arg == "publish" => v.push(Attr::Publish),
+                    AttrTree::Fun(_, arg, None) if arg == "open" => v.push(Attr::Publish(true)),
+                    AttrTree::Fun(_, arg, None) if arg == "closed" => v.push(Attr::Publish(false)),
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
                         if arg == "returns" && name == "spec" =>
                     {
@@ -603,11 +604,14 @@ pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
     if vattrs.opaque { 0 } else { 1 }
 }
 
-pub(crate) fn get_publish(vattrs: &VerifierAttrs) -> Option<bool> {
+pub(crate) fn get_publish(
+    vattrs: &VerifierAttrs,
+) -> (Option<bool>, /* open/closed present: */ bool) {
     match (vattrs.publish, vattrs.opaque_outside_module) {
-        (false, _) => None,
-        (true, false) => Some(true),
-        (true, true) => Some(false),
+        (None, _) => (None, false),
+        (Some(false), _) => (None, true),
+        (Some(true), false) => (Some(true), true),
+        (Some(true), true) => (Some(false), true),
     }
 }
 
@@ -617,7 +621,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_body: bool,
     pub(crate) external: bool,
     pub(crate) opaque: bool,
-    pub(crate) publish: bool,
+    pub(crate) publish: Option<bool>,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
     pub(crate) ext_equal: bool,
@@ -654,7 +658,7 @@ pub(crate) fn get_verifier_attrs(
         external_body: false,
         external: false,
         opaque: false,
-        publish: false,
+        publish: None,
         opaque_outside_module: false,
         inline: false,
         ext_equal: false,
@@ -688,7 +692,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::ExternalTypeSpecification => vs.external_type_specification = true,
             Attr::Opaque => vs.opaque = true,
-            Attr::Publish => vs.publish = true,
+            Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
             Attr::ExtEqual => vs.ext_equal = true,

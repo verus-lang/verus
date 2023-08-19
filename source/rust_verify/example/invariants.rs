@@ -6,7 +6,7 @@ use vstd::{*, pervasive::*, invariant::*};
 verus!{
 struct ModPredicate { }
 impl InvariantPredicate<int, u32> for ModPredicate {
-    spec fn inv(k: int, v: u32) -> bool {
+    closed spec fn inv(k: int, v: u32) -> bool {
         v as int % 2 == k
     }
 }
