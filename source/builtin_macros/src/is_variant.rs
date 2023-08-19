@@ -15,7 +15,7 @@ pub fn attribute_is_variant(
         quote! {}
     } else {
         quote! {
-            #[verus::internal(publish)]
+            #[verus::internal(open)]
         }
     };
     let is_impls = s

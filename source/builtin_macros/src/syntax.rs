@@ -272,8 +272,8 @@ impl Visitor {
 
         let publish_attrs = match &sig.publish {
             Publish::Default => vec![],
-            Publish::Closed(_) => vec![],
-            Publish::Open(o) => vec![mk_verus_attr(o.token.span, quote! { publish })],
+            Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
+            Publish::Open(o) => vec![mk_verus_attr(o.token.span, quote! { open })],
             Publish::OpenRestricted(_) => {
                 unimplemented!("TODO: support open(...)")
             }
@@ -492,9 +492,9 @@ impl Visitor {
 
         let publish_attrs = match (vis, &publish) {
             (Some(Visibility::Inherited), _) => vec![],
-            (_, Publish::Default) => vec![mk_verus_attr(span, quote! { publish })],
-            (_, Publish::Closed(_)) => vec![],
-            (_, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { publish })],
+            (_, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
+            (_, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
+            (_, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { open })],
             (_, Publish::OpenRestricted(_)) => {
                 unimplemented!("TODO: support open(...)")
             }

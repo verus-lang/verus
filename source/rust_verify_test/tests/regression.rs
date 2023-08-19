@@ -483,7 +483,7 @@ test_verify_one_file! {
         pub type MyType<T> = FnSpec(T) -> bool;
 
         impl<T> Foo for MyType<T> {
-            spec fn foo(&self) -> bool {
+            open spec fn foo(&self) -> bool {
                 true
             }
         }
