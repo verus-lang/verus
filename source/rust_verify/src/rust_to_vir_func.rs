@@ -689,17 +689,28 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let publish = {
         let (publish, open_closed_present) = get_publish(&vattrs);
-        if let FunctionKind::TraitMethodImpl { .. } = kind {
-            if mode == Mode::Spec
-                && visibility.restricted_to.as_ref() != Some(module_path)
-                && body.is_some()
-                && !open_closed_present
-            {
-                return err_span(
-                    sig.span,
-                    "open/closed is required for implementations of non-private traits",
-                );
+        match kind {
+            FunctionKind::TraitMethodImpl { .. } => {
+                if mode == Mode::Spec
+                    && visibility.restricted_to.as_ref() != Some(module_path)
+                    && body.is_some()
+                    && !open_closed_present
+                {
+                    return err_span(
+                        sig.span,
+                        "open/closed is required for implementations of non-private traits",
+                    );
+                }
             }
+            FunctionKind::TraitMethodDecl { .. } => {
+                if mode == Mode::Spec && open_closed_present && body.is_none() {
+                    return err_span(
+                        sig.span,
+                        "trait function declarations cannot be open or closed, as they don't have a body",
+                    );
+                }
+            }
+            _ => (),
         }
         publish
     };

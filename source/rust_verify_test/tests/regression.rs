@@ -609,7 +609,7 @@ test_verify_one_file_with_options! {
 
         mod X {
             pub trait T {
-                open spec fn foo(&self) -> bool; // EXPAND-ERRORS
+                spec fn foo(&self) -> bool; // EXPAND-ERRORS
             }
 
             impl T for super::Z {
