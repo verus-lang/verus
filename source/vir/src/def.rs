@@ -606,22 +606,6 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     }
 }
 
-// TODO unused?
-// TODO pub fn datatype_invariant_path(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Path {
-// TODO     Arc::new(PathX {
-// TODO         krate: vstd_crate_name.clone(),
-// TODO         segments: Arc::new(if vstd_crate_name.is_some() {
-// TODO             vec![Arc::new("invariant".to_string()), atomicity_type_name(atomicity)]
-// TODO         } else {
-// TODO             vec![
-// TODO                 Arc::new("pervasive".to_string()),
-// TODO                 Arc::new("invariant".to_string()),
-// TODO                 atomicity_type_name(atomicity),
-// TODO             ]
-// TODO         }),
-// TODO     })
-// TODO }
-
 pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {

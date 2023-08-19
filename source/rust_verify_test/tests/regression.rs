@@ -818,3 +818,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments_1 ["vstd"] => verus_code! {
+        struct X { v: u64 }
+
+        fn test<F: Fn(&X) -> bool>(f: F, x: X) -> bool
+            requires f.requires((&x,))
+        {
+            f(&x)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments ["vstd"] => verus_code! {
+        struct X { v: u64 }
+        struct Y { w: u64 }
+
+        fn test<F: Fn(&X, &Y) -> bool>(f: F, x: X, y: Y) -> bool
+            requires f.requires((&x, &y,))
+        {
+            f(&x, &y)
+        }
+    } => Ok(())
+}
