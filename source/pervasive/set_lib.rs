@@ -23,17 +23,8 @@ impl<A> Set<A> {
     }
 
     /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
-    pub proof fn is_empty(self) -> (b: bool)
-        requires
-            self.finite(),
-        ensures
-            b <==> self.finite() && self.len() == 0,
-            b <==> self =~= Set::empty(),
-    {
-        if self.finite() && self.len() == 0 {
-            self.lemma_len0_is_empty();
-        }
-        self =~= Set::empty()
+    pub open spec fn is_empty(self) -> (b: bool) {
+        self.len() == 0
     }
 
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
@@ -314,10 +305,7 @@ impl<A> Set<A> {
             self.len() == 1
     {
         lemma_set_properties::<A>();
-        let elt = choose |elt: A| self.contains(elt);
-        assert(self.remove(elt).insert(elt) =~= self);
-        assert(self.remove(elt) =~= Set::empty());
-        
+        assert(self.remove(self.choose()) =~= Set::empty());
     }
 
     /// A set has exactly one element, if and only if, it has at least one element and any two elements are equal.
@@ -677,35 +665,6 @@ pub proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-/// If set `s` already contains element `a`, the inserting `a` into `s` does not change the length of `s`.
-pub proof fn lemma_set_insert_same_len<A>(s: Set<A>, a: A)
-    requires
-        s.finite(),
-    ensures
-        s.contains(a) ==> s.insert(a).len() =~= s.len(),
-{}
-
-// This verified lemma used to be an axiom in the Dafny prelude
-/// If set `s` does not contain element `a`, then inserting `a` into `s` increases the length of `s` by 1.
-pub proof fn lemma_set_insert_diff_len<A>(s: Set<A>, a: A)
-    requires
-        s.finite(),
-    ensures
-        !s.contains(a) ==> s.insert(a).len() == s.len() + 1,
-{}
-
-// This verified lemma used to be an axiom in the Dafny prelude
-/// If set `s` contains element `a`, then removing `a` from `s` decreases the length of `s` by 1.
-/// If set `s` does not contain element `a`, then removing `a` from `s` does not change the length of `s`.
-pub proof fn lemma_set_remove_len_contains<A>(s: Set<A>, a: A)
-    requires
-        s.finite(),
-    ensures
-        (s.contains(a) ==> (s.remove(a).len() == s.len() -1))
-            && (!s.contains(a) ==> s.len() == s.remove(a).len()),
-{}
-
-// This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
 /// of the union `a + b` is equal to the sum of the lengths of `a` and `b`.
 pub proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
@@ -724,8 +683,6 @@ pub proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
         if a.disjoint(b) {
             let x = a.choose();
             assert(a.remove(x) + b =~= (a+b).remove(x));
-            lemma_set_remove_len_contains(a, x);
-            lemma_set_remove_len_contains(a+b, x);
             lemma_set_disjoint_lens(a.remove(x), b);
         }
     }
@@ -751,12 +708,10 @@ pub proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
         assert(a.intersect(b).len() == 0);
     } else {
         let x = a.choose();
-        lemma_set_remove_len_contains(a, x);
         lemma_set_intersect_union_lens(a.remove(x), b);
         if (b.contains(x)) {
             assert(a.remove(x) + b =~= (a+b));
             assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
-            lemma_set_remove_len_contains(a.intersect(b), x);
         } else {
             assert(a.remove(x) + b =~= (a+b).remove(x));
             assert(a.remove(x).intersect(b) =~= a.intersect(b));
@@ -812,12 +767,7 @@ pub proof fn lemma_set_properties<A>()
         forall |a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b), //from lemma_set_intersect_again2
         forall |s1: Set<A>, s2: Set<A>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a), //from lemma_set_difference2
         forall |a: Set<A>, b: Set<A>| a.disjoint(b) ==> ((#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a), //from lemma_set_disjoint
-        forall |s: Set<A>| ((#[trigger] s.len() == 0 && s.finite()) <==> s =~= Set::empty())
-                && (s.len() != 0 ==> exists |x: A| s.contains(x)), //from lemma_set_empty_equivalency_len
-        forall |s: Set<A>, a: A| (s.contains(a) && s.finite()) ==> #[trigger] s.insert(a).len() == s.len(), //from lemma_set_insert_same_len
-        forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) ==> #[trigger] s.insert(a).len() == s.len() + 1, //from lemma_set_insert_diff_len 
-        forall |s: Set<A>, a: A| ((s.finite() && s.contains(a)) ==> (#[trigger] (s.remove(a).len()) == s.len() -1))
-                && ((s.finite() && !s.contains(a)) ==> s.len() == s.remove(a).len()), //from lemma_set_remove_len_contains
+        forall |s: Set<A>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),
         forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a+b).len() == a.len() + b.len(), //from lemma_set_disjoint_lens
         forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite()) ==> #[trigger] (a+b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(), //from lemma_set_intersect_union_lens
         forall |a: Set<A>, b: Set<A>| (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a+b).len()) 
@@ -838,20 +788,8 @@ pub proof fn lemma_set_properties<A>()
     assert forall |a: Set<A>, b: Set<A>| a.disjoint(b) implies ((#[trigger](a+b)).difference(a) == b && (a+b).difference(b) == a) by {
         lemma_set_disjoint(a, b);
     }
-    assert forall |s: Set<A>| #[trigger] s.len() == 0 && s.finite() implies s =~= Set::empty() by {
-        lemma_set_empty_equivalency_len(s);
-    }
-    assert forall |s: Set<A>, a: A| (s.contains(a) && s.finite()) implies #[trigger] s.insert(a).len() == s.len() by {
-        lemma_set_insert_same_len(s, a);
-    }
-    assert forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) implies #[trigger] s.insert(a).len() == s.len() + 1 by {
-        lemma_set_insert_diff_len(s,a);
-    }
-    assert forall |s: Set<A>, a: A| (s.finite() && !s.contains(a)) implies s.len() == #[trigger] s.remove(a).len() by {
-        lemma_set_remove_len_contains(s, a);
-    }
-    assert forall |s: Set<A>, a: A| s.contains(a) && s.finite() implies (#[trigger] (s.remove(a).len()) == s.len() -1) by {
-        lemma_set_remove_len_contains(s, a);
+    assert forall |s: Set<A>| #[trigger] s.len() != 0 && s.finite() implies exists|a: A| s.contains(a) by {
+        assert(s.contains(s.choose()));
     }
     assert forall |a: Set<A>, b: Set<A>| a.disjoint(b) && b.finite() && a.finite() implies #[trigger] (a+b).len() == a.len() + b.len() by {
         lemma_set_disjoint_lens(a, b);
@@ -869,6 +807,17 @@ pub proof fn lemma_set_properties<A>()
             lemma_set_difference_len(a, b);
         }
     }
+}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_is_empty<A>(s: Set<A>)
+    requires
+        s.finite(),
+        s.len() == 0,
+    ensures
+        exists|a: A| s.contains(a)
+{
 }
 
 #[doc(hidden)]

@@ -413,6 +413,18 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
 {
 }
 
+/// If a finite set `s` contains any element, it has length greater than 0.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_contains_len<A>(s: Set<A>, a: A)
+    requires
+        s.finite(),
+        #[trigger] s.contains(a),
+    ensures
+        #[trigger] s.len() != 0,
+{
+}
+
 /// A finite set `s` contains the element `s.choose()` if it has length greater than 0.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
