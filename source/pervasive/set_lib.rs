@@ -814,7 +814,7 @@ pub proof fn lemma_set_properties<A>()
 pub proof fn axiom_is_empty<A>(s: Set<A>)
     requires
         s.finite(),
-        s.len() != 0,
+        !(#[trigger] s.is_empty()),
     ensures
         exists|a: A| s.contains(a)
 {
