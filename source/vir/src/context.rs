@@ -69,6 +69,7 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) lambda_types: Vec<usize>,
+    pub(crate) bound_traits: HashSet<Path>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
     // Ensure a unique identifier for each quantifier in a given function
@@ -283,6 +284,7 @@ impl Ctx {
         module: Path,
         mono_types: Vec<MonoTyp>,
         lambda_types: Vec<usize>,
+        bound_traits: HashSet<Path>,
         debug: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
@@ -315,6 +317,7 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             lambda_types,
+            bound_traits,
             functions,
             func_map,
             quantifier_count,

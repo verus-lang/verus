@@ -35,10 +35,29 @@ enum ReachedType {
 // Group all AssocTypeImpls with the same (ReachedType(self_typ), (trait_path, name)):
 type AssocTypeGroup = (ReachedType, (Path, Ident));
 
+type TraitName = Path;
+type ImplName = Path;
+
+#[derive(Debug)]
+struct TraitImpl {
+    // For an impl "...T'(...t'...)... ==> trait T(...t...)",
+    // list all traits T' and types t' in the bounds:
+    bound_traits: Vec<TraitName>,
+    bound_types: Vec<ReachedType>,
+    // list T and all t:
+    trait_name: TraitName,
+    trait_typ_args: Vec<ReachedType>,
+}
+
 struct Ctxt {
     module: Path,
     function_map: HashMap<Fun, Function>,
     datatype_map: HashMap<Path, Datatype>,
+    // For an impl "bounds ==> trait T(...t...)", point T to impl:
+    trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>>,
+    // For an impl "bounds ==> trait T(...t...)", point t to impl:
+    typ_to_trait_impls: HashMap<ReachedType, Vec<ImplName>>,
+    trait_impl_map: HashMap<ImplName, TraitImpl>,
     assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>>,
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
@@ -50,11 +69,15 @@ struct Ctxt {
 struct State {
     reached_functions: HashSet<Fun>,
     reached_types: HashSet<ReachedType>,
+    reached_bound_traits: HashSet<TraitName>,
+    reached_trait_impls: HashSet<ImplName>,
     reached_assoc_type_decls: HashSet<(Path, Ident)>,
     reached_assoc_type_impls: HashSet<AssocTypeGroup>,
     reached_modules: HashSet<Path>,
     worklist_functions: Vec<Fun>,
     worklist_types: Vec<ReachedType>,
+    worklist_bound_traits: Vec<TraitName>,
+    worklist_trait_impls: Vec<ImplName>,
     worklist_assoc_type_decls: Vec<(Path, Ident)>,
     worklist_assoc_type_impls: Vec<AssocTypeGroup>,
     worklist_modules: Vec<Path>,
@@ -109,6 +132,25 @@ fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
 fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     if ctxt.function_map.contains_key(name) {
         reach(&mut state.reached_functions, &mut state.worklist_functions, name);
+    }
+}
+
+fn reach_bound_trait(_ctxt: &Ctxt, state: &mut State, name: &TraitName) {
+    reach(&mut state.reached_bound_traits, &mut state.worklist_bound_traits, name);
+}
+
+fn reach_trait_impl(ctxt: &Ctxt, state: &mut State, imp: &ImplName) {
+    if let Some(trait_impl) = ctxt.trait_impl_map.get(imp) {
+        // We only reach the impl "bounds ==> trait T(...t...)" when all of T and t have been reached.
+        // Otherwise, we consider the impl irrelevant.
+        for t in &trait_impl.trait_typ_args {
+            if *t != ReachedType::None && !state.reached_types.contains(t) {
+                return;
+            }
+        }
+        if state.reached_bound_traits.contains(&trait_impl.trait_name) {
+            reach(&mut state.reached_trait_impls, &mut state.worklist_trait_impls, imp);
+        }
     }
 }
 
@@ -207,6 +249,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
                 reach_function(ctxt, state, method);
             }
+            if function.x.mode == crate::ast::Mode::Spec || function.x.attrs.broadcast_forall {
+                for bound in function.x.typ_bounds.iter() {
+                    let crate::ast::GenericBoundX::Trait(path, _) = &**bound;
+                    reach_bound_trait(ctxt, state, path);
+                }
+            }
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
                 // note: the visitor automatically reaches e.typ
                 match &e.x {
@@ -263,6 +311,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 _ => {}
             }
+            if let Some(imps) = ctxt.typ_to_trait_impls.get(&t) {
+                for imp in imps {
+                    reach_trait_impl(ctxt, state, imp);
+                }
+            }
             let methods = reached_methods(ctxt, state.reached_functions.iter().map(|f| (&t, f)));
             reach_methods(ctxt, state, methods);
             let assoc_decls: Vec<(Path, Ident)> =
@@ -271,6 +324,23 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
             }
             continue;
+        }
+        if let Some(b) = state.worklist_bound_traits.pop() {
+            if let Some(impls) = ctxt.trait_to_trait_impls.get(&b) {
+                for imp in impls {
+                    reach_trait_impl(ctxt, state, imp);
+                }
+            }
+        }
+        if let Some(i) = state.worklist_trait_impls.pop() {
+            if let Some(trait_impl) = ctxt.trait_impl_map.get(&i) {
+                for bound_trait in &trait_impl.bound_traits {
+                    reach_bound_trait(ctxt, state, bound_trait);
+                }
+                for bound_type in &trait_impl.bound_types {
+                    reach_type(ctxt, state, bound_type);
+                }
+            }
         }
         if let Some(a) = state.worklist_assoc_type_decls.pop() {
             let typs: Vec<ReachedType> = state.reached_types.iter().cloned().collect();
@@ -321,7 +391,7 @@ pub fn prune_krate_for_module(
     krate: &Krate,
     module: &Path,
     vstd_crate_name: &Option<Ident>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>) {
+) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>) {
     let mut state: State = Default::default();
     state.reached_modules.insert(module.clone());
     state.worklist_modules.push(module.clone());
@@ -419,6 +489,9 @@ pub fn prune_krate_for_module(
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
     let mut assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>> = HashMap::new();
+    let mut trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>> = HashMap::new();
+    let mut typ_to_trait_impls: HashMap<ReachedType, Vec<ImplName>> = HashMap::new();
+    let mut trait_impl_map: HashMap<ImplName, TraitImpl> = HashMap::new();
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
@@ -441,6 +514,36 @@ pub fn prune_krate_for_module(
         datatype_map.insert(d.x.path.clone(), d.clone());
     }
 
+    for imp in krate.trait_impls.iter() {
+        let mut bound_traits: Vec<TraitName> = Vec::new();
+        let mut bound_types: Vec<ReachedType> = Vec::new();
+        for bound in imp.x.typ_bounds.iter() {
+            let crate::ast::GenericBoundX::Trait(path, typ_args) = &**bound;
+            bound_traits.push(path.clone());
+            for t in typ_args.iter() {
+                bound_types.push(typ_to_reached_type(t));
+            }
+        }
+        let trait_impl = TraitImpl {
+            bound_traits,
+            bound_types,
+            trait_name: imp.x.trait_path.clone(),
+            trait_typ_args: imp.x.trait_typ_args.iter().map(typ_to_reached_type).collect(),
+        };
+        if !trait_to_trait_impls.contains_key(&imp.x.trait_path) {
+            trait_to_trait_impls.insert(imp.x.trait_path.clone(), Vec::new());
+        }
+        trait_to_trait_impls.get_mut(&imp.x.trait_path).unwrap().push(imp.x.impl_path.clone());
+        for t in &trait_impl.trait_typ_args {
+            if !typ_to_trait_impls.contains_key(t) {
+                typ_to_trait_impls.insert(t.clone(), Vec::new());
+            }
+            typ_to_trait_impls.get_mut(&t).unwrap().push(imp.x.impl_path.clone());
+        }
+        assert!(!trait_impl_map.contains_key(&imp.x.impl_path));
+        trait_impl_map.insert(imp.x.impl_path.clone(), trait_impl);
+    }
+
     for a in &krate.assoc_type_impls {
         let key = a.x.prune_name();
         if !assoc_type_impl_map.contains_key(&key) {
@@ -452,6 +555,9 @@ pub fn prune_krate_for_module(
         module: module.clone(),
         function_map,
         datatype_map,
+        trait_to_trait_impls,
+        typ_to_trait_impls,
+        trait_impl_map,
         assoc_type_impl_map,
         method_map,
         all_functions_in_each_module,
@@ -487,7 +593,12 @@ pub fn prune_krate_for_module(
             .cloned()
             .collect(),
         traits,
-        trait_impls: krate.trait_impls.clone(),
+        trait_impls: krate
+            .trait_impls
+            .iter()
+            .filter(|i| state.reached_trait_impls.contains(&i.x.impl_path))
+            .cloned()
+            .collect(),
         module_ids: krate.module_ids.clone(),
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
@@ -498,5 +609,6 @@ pub fn prune_krate_for_module(
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
-    (Arc::new(kratex), mono_abstract_datatypes, lambda_types)
+    let State { reached_bound_traits, .. } = state;
+    (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits)
 }

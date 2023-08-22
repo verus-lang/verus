@@ -636,6 +636,7 @@ fn check_expr_handle_mut_arg(
             Ok(mode)
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(Mode::Exec),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => Ok(Mode::Spec),
         ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind }, e1) => {
             // same as a call to an op_mode function with parameter from_mode and return to_mode
             if typing.check_ghost_blocks {

@@ -6,7 +6,7 @@ use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr,
     Function, FunctionKind, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
@@ -790,6 +790,16 @@ fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype,
     })
 }
 
+fn simplify_trait_impl(state: &mut State, imp: &TraitImpl) -> Result<TraitImpl, VirErr> {
+    let mut local = LocalCtxt { span: imp.span.clone(), typ_params: Vec::new() };
+    for x in imp.x.typ_params.iter() {
+        local.typ_params.push(x.clone());
+    }
+    crate::ast_visitor::map_trait_impl_visitor_env(imp, state, &|state, typ| {
+        simplify_one_typ(&local, state, typ)
+    })
+}
+
 fn simplify_assoc_type_impl(
     state: &mut State,
     assoc: &AssocTypeImpl,
@@ -855,6 +865,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
+    let trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
     let assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
@@ -950,7 +961,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         functions,
         datatypes,
         traits,
-        trait_impls: trait_impls.clone(),
+        trait_impls,
         assoc_type_impls,
         module_ids,
         external_fns,

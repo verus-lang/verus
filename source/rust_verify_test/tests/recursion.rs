@@ -797,7 +797,7 @@ test_verify_one_file! {
         //#[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
         }
-    } => Err(err) => assert_vir_error_msg(err, "proof function must be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] to be used as decreases_by/recommends_by")
+    } => Err(err) => assert_vir_error_msg(err, "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by")
 }
 
 test_verify_one_file! {
