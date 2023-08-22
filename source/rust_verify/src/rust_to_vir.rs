@@ -306,18 +306,14 @@ fn check_item<'tcx>(
                 match impl_item_ref.kind {
                     AssocItemKind::Fn { has_self: true | false } => {
                         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                        let mut impl_item_visibility =
-                            mk_visibility(&ctxt, impl_item.owner_id.to_def_id()); // TODO(main_new) correct?
+                        let impl_item_visibility =
+                            mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
                                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
                                 let kind = if let Some((trait_path, trait_typ_args)) =
                                     trait_path_typ_args.clone()
                                 {
-                                    impl_item_visibility = mk_visibility(
-                                        &ctxt,
-                                        impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
-                                    );
                                     let ident = impl_item_ref.ident.to_string();
                                     let ident = Arc::new(ident);
                                     let path = typ_path_and_ident_to_vir_path(&trait_path, ident);

@@ -3,6 +3,7 @@ use crate::ast::{
     TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
+use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
@@ -478,9 +479,17 @@ pub fn func_decl_to_air(
     fun_ssts: &SstMap,
     function: &Function,
 ) -> Result<Commands, VirErr> {
+    if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
+        // For a trait method implementation, we inherit the trait requires/ensures,
+        // so we can just return here.
+        return Ok(Arc::new(vec![]));
+    }
+
     let req_typs: Arc<Vec<_>> =
         Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
     let mut decl_commands: Vec<Command> = Vec::new();
+
+    // Requires
     if function.x.require.len() > 0 {
         let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
             // We don't highlight the failed precondition if the programmer supplied their own msg
@@ -505,6 +514,58 @@ pub fn func_decl_to_air(
             function.x.attrs.integer_ring,
         )?;
     }
+
+    // Ensures
+    let mut ens_typs: Vec<_> = function
+        .x
+        .params
+        .iter()
+        .flat_map(|param| {
+            let air_typ = typ_to_air(ctx, &param.x.typ);
+            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
+        })
+        .collect();
+    let post_params = params_to_pre_post_pars(&function.x.params, false);
+    let mut ens_params = (*post_params).clone();
+    let mut ens_typing_invs: Vec<Expr> = Vec::new();
+    if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
+        if function.x.has_return() {
+            let ParamX { name, typ, .. } = &function.x.ret.x;
+            ens_typs.push(typ_to_air(ctx, &typ));
+            ens_params.push(param_to_par(&function.x.ret, false));
+            if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name))) {
+                ens_typing_invs.push(expr);
+            }
+        }
+        // typing invariants for synthetic out-params for &mut params
+        for param in post_params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
+            if let Some(expr) =
+                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)))
+            {
+                ens_typing_invs.push(expr);
+            }
+        }
+    } else {
+        assert!(function.x.ensure.len() == 0); // no ensures allowed on spec functions yet
+    }
+    let has_ens_pred = req_ens_to_air(
+        ctx,
+        diagnostics,
+        fun_ssts,
+        &mut decl_commands,
+        &Arc::new(ens_params),
+        &ens_typing_invs,
+        &function.x.ensure,
+        &function.x.typ_params,
+        &Arc::new(ens_typs),
+        &prefix_ensures(&fun_to_air_ident(&function.x.name)),
+        &None,
+        function.x.attrs.integer_ring,
+    )?;
+    if has_ens_pred {
+        ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
+    }
+
     Ok(Arc::new(decl_commands))
 }
 
@@ -516,15 +577,6 @@ pub fn func_axioms_to_air(
     public_body: bool,
     not_verifying_owning_module: bool,
 ) -> Result<(Commands, Commands, SstMap), VirErr> {
-    let mut ens_typs: Vec<_> = function
-        .x
-        .params
-        .iter()
-        .flat_map(|param| {
-            let air_typ = typ_to_air(ctx, &param.x.typ);
-            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
-        })
-        .collect();
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
     let mut new_fun_ssts = fun_ssts;
@@ -595,47 +647,6 @@ pub fn func_axioms_to_air(
                 // For a trait method implementation, we inherit the trait requires/ensures,
                 // so we can just return here.
                 return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
-            }
-
-            let params = params_to_pre_post_pars(&function.x.params, false);
-            let mut ens_params = (*params).clone();
-            let mut ens_typing_invs: Vec<Expr> = Vec::new();
-            if function.x.has_return() {
-                let ParamX { name, typ, .. } = &function.x.ret.x;
-                ens_typs.push(typ_to_air(ctx, &typ));
-                ens_params.push(param_to_par(&function.x.ret, false));
-                if let Some(expr) =
-                    typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name)))
-                {
-                    ens_typing_invs.push(expr);
-                }
-            }
-            // typing invariants for synthetic out-params for &mut params
-            for param in params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
-                if let Some(expr) = typ_invariant(
-                    ctx,
-                    &param.x.typ,
-                    &ident_var(&suffix_local_stmt_id(&param.x.name)),
-                ) {
-                    ens_typing_invs.push(expr);
-                }
-            }
-            let has_ens_pred = req_ens_to_air(
-                ctx,
-                diagnostics,
-                &new_fun_ssts,
-                &mut decl_commands,
-                &Arc::new(ens_params),
-                &ens_typing_invs,
-                &function.x.ensure,
-                &function.x.typ_params,
-                &Arc::new(ens_typs),
-                &prefix_ensures(&fun_to_air_ident(&function.x.name)),
-                &None,
-                is_singular,
-            )?;
-            if has_ens_pred {
-                ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
             }
             if let Some((params, req_ens)) = &function.x.broadcast_forall {
                 let span = &function.span;
@@ -752,6 +763,14 @@ pub fn func_def_to_air(
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
             }
 
+            let req_ens_e_rename: HashMap<_, _> = req_ens_function
+                .x
+                .params
+                .iter()
+                .zip(function.x.params.iter())
+                .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
+                .collect();
+
             let mut req_stms: Vec<Stm> = Vec::new();
             let mut reqs: Vec<Exp> = Vec::new();
             reqs.extend(crate::traits::trait_bounds_to_sst(
@@ -760,9 +779,13 @@ pub fn func_def_to_air(
                 &function.x.typ_bounds,
             ));
             for e in req_ens_function.x.require.iter() {
+                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
                 if ctx.checking_recommends() {
-                    let (stms, exp) =
-                        crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, e)?;
+                    let (stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(
+                        ctx,
+                        &mut state,
+                        &e_with_req_ens_params,
+                    )?;
                     req_stms.extend(stms);
                     req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
@@ -771,23 +794,27 @@ pub fn func_def_to_air(
                         diagnostics,
                         &state.fun_ssts,
                         &req_pars,
-                        e,
+                        &e_with_req_ens_params,
                     )?);
                 }
             }
             let mut ens_recommend_stms: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.ensure.iter() {
+                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
                 if ctx.checking_recommends() {
-                    ens_recommend_stms
-                        .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
+                    ens_recommend_stms.extend(crate::ast_to_sst::check_pure_expr(
+                        ctx,
+                        &mut state,
+                        &e_with_req_ens_params,
+                    )?);
                 } else {
                     enss.push(crate::ast_to_sst::expr_to_exp(
                         ctx,
                         diagnostics,
                         &state.fun_ssts,
                         &ens_pars,
-                        e,
+                        &e_with_req_ens_params,
                     )?);
                 }
             }
@@ -882,4 +909,32 @@ pub fn func_def_to_air(
             Ok((Arc::new(commands), snap_map, state.fun_ssts))
         }
     }
+}
+
+fn map_expr_rename_vars(
+    e: &Arc<SpannedTyped<crate::ast::ExprX>>,
+    req_ens_e_rename: &HashMap<Arc<String>, Arc<String>>,
+) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Arc<air::messages::MessageX>> {
+    ast_visitor::map_expr_visitor_env(
+        e,
+        &mut air::scope_map::ScopeMap::new(),
+        &mut (),
+        &|_state, _, expr| {
+            use crate::ast::ExprX;
+            Ok(match &expr.x {
+                ExprX::Var(i) => {
+                    expr.new_x(ExprX::Var(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarLoc(i) => {
+                    expr.new_x(ExprX::VarLoc(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarAt(i, at) => {
+                    expr.new_x(ExprX::VarAt(req_ens_e_rename.get(i).unwrap_or(i).clone(), *at))
+                }
+                _ => expr.clone(),
+            })
+        },
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+    )
 }

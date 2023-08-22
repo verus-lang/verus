@@ -202,7 +202,7 @@ test_verify_one_file! {
         proof fn test() {
             reveal(X::foo);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow deprecated warning */ }
 }
 
 test_verify_one_file! {
@@ -279,23 +279,6 @@ test_verify_one_file! {
             true
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
-}
-
-test_verify_one_file! {
-    #[ignore] #[test] trait_argument_names_issue278 verus_code! {
-        trait T {
-            fn f(&self, a: usize) -> (res: usize)
-                ensures res == a;
-        }
-
-        struct S { }
-
-        impl T for S {
-            fn f(&self, b: usize) -> usize {
-                b
-            }
-        }
-    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -450,7 +433,7 @@ test_verify_one_file! {
                 self.field0 = val;
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow deprecated warning */ }
 }
 
 test_verify_one_file_with_options! {
@@ -465,7 +448,7 @@ test_verify_one_file_with_options! {
         }
 
         } // verus!
-    } => Ok(())
+    } => Ok(_err) => { /* allow unused warning */ }
 }
 
 test_verify_one_file! {
@@ -665,4 +648,60 @@ test_verify_one_file! {
     } => Err(err) => {
         assert!(err.errors[0].rendered.contains("let tracked x: i32 = s;"));
     }
+}
+
+test_verify_one_file! {
+    #[test] test_unwrapped_tracked_unintended_387_discussioncomment_6680621 verus_code! {
+        exec fn f(foo: &mut usize) {
+            let tracked tracked_foo = Tracked(foo);
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert_eq!(err.warnings.len(), 1);
+        assert!(err.errors[0].rendered.contains("let tracked tracked_foo = Tracked(foo);"));
+        assert!(err.warnings.iter().find(|x| x.message.contains("the right-hand side is already wrapped with `Tracked`")).is_some());
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_unwrapped_ghost_unintended_387_discussioncomment_6680621 verus_code! {
+        exec fn f(foo: usize) {
+            let ghost ghost_foo = Ghost(foo);
+        }
+    } => Ok(err) => {
+        dbg!(&err);
+        assert_eq!(err.errors.len(), 0);
+        assert!(err.warnings.iter().find(|x| x.message.contains("the right-hand side is already wrapped with `Ghost`")).is_some());
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_multiset_finite_false_1 verus_code! {
+        use vstd::{map::*, multiset::*};
+        proof fn test(mymap: Map<nat, nat>)
+            requires !mymap.dom().finite() {
+
+            let m = Multiset::new(mymap);
+            assert(m.dom().finite());
+
+            assert(!m.dom().finite()); // FAILS
+            // assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_multiset_finite_false_2 verus_code! {
+        use vstd::{map::*, multiset::*};
+        proof fn test(mymap: Map<nat, nat>)
+            requires !mymap.dom().finite() {
+
+            let m = Multiset::new(mymap);
+            assert(m.dom().finite());
+
+            assert(m.dom() =~= mymap.dom()); // FAILS
+            // assert(!m.dom().finite());
+            // assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
 }

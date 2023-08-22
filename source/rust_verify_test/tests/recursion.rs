@@ -1215,7 +1215,9 @@ test_verify_one_file! {
                 i
             }
         }
-    } => Ok(())
+    } => Ok(err) => {
+        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -1230,7 +1232,9 @@ test_verify_one_file! {
                 *s
             }
         }
-    } => Ok(())
+    } => Ok(err) => {
+        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+    }
 }
 
 test_verify_one_file! {

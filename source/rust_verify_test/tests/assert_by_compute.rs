@@ -421,10 +421,9 @@ test_verify_one_file! {
                 g(&z, x).len() == 6
             }) by (compute);
             assert({
-                let z = seq![4, 5, 6];
-                // TODO: see https://github.com/verus-lang/verus/issues/294
-                y.ext_equal(z) &&
-                z.ext_equal(y)
+                let z: Seq<int> = seq![4, 5, 6];
+                y == z &&
+                z == y
             }) by (compute);
             assert({
                 let z = seq![4int, 5int, 6int];

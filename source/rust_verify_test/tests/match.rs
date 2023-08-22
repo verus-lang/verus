@@ -526,6 +526,7 @@ test_verify_one_file! {
         enum E { X(u64) }
 
         proof fn test_ep(e: &E) {
+            #[allow(irrefutable_let_patterns)]
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {
@@ -534,6 +535,7 @@ test_verify_one_file! {
         }
 
         fn test_ee(e: &E) {
+            #[allow(irrefutable_let_patterns)]
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {

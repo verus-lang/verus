@@ -1277,6 +1277,7 @@ dependencies = [
  "serde",
  "serde_json",
  "vir",
+ "yansi",
 ]
 
 [[package]]

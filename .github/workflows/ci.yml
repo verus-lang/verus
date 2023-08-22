@@ -16,8 +16,6 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request && github.event.pull_request.head.sha || github.sha }}
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
@@ -39,8 +37,6 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request && github.event.pull_request.head.sha || github.sha }}
       - name: get z3
         working-directory: ./source
         run: |
@@ -85,8 +81,6 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request && github.event.pull_request.head.sha || github.sha }}
       - name: get z3
         shell: pwsh
         working-directory: .\source

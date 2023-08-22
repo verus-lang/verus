@@ -136,8 +136,8 @@ const M1_OPAQUE: &str = verus_code_str! {
         }
 
         impl A {
-            #[verifier(publish)] /* vattr */ #[verifier(opaque_outside_module)] /* vattr */
-            pub closed spec fn always(&self) -> bool {
+            #[verifier(opaque_outside_module)] /* vattr */
+            pub open spec fn always(&self) -> bool {
                 true
             }
         }

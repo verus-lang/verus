@@ -1450,22 +1450,23 @@ impl Verifier {
                 .collect();
 
             if let Some(mod_name) = remaining_verify_module.into_iter().next() {
-                let msg = vec![
+                let mut lines = current_crate_module_ids
+                    .iter()
+                    .filter_map(|m| {
+                        let name = module_name(m);
+                        (!(name.starts_with("pervasive::") || name == "pervasive")
+                            && m.segments.len() > 0)
+                            .then(|| format!("- {name}"))
+                    })
+                    .collect::<Vec<_>>();
+                lines.sort(); // Present the available modules in sorted order
+                let mut msg = vec![
                     format!("could not find module {mod_name} specified by --verify-module"),
                     format!("available modules are:"),
-                ]
-                .into_iter()
-                .chain(current_crate_module_ids.iter().filter_map(|m| {
-                    let name = module_name(m);
-                    (!(name.starts_with("pervasive::") || name == "pervasive")
-                        && m.segments.len() > 0)
-                        .then(|| format!("- {name}"))
-                }))
-                .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
-                .collect::<Vec<_>>()
-                .join("\n");
-
-                return Err(error(msg));
+                ];
+                msg.extend(lines);
+                msg.push(format!("or use --verify-root, --verify-pervasive"));
+                return Err(error(msg.join("\n")));
             }
 
             module_ids_to_verify
@@ -1750,7 +1751,7 @@ impl Verifier {
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl Diagnostics,
         crate_name: String,
-    ) -> Result<bool, VirErr> {
+    ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
         let time0 = Instant::now();
 
         match rustc_hir_analysis::check_crate(tcx) {
@@ -1832,9 +1833,12 @@ impl Verifier {
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
+        let map_err_diagnostics =
+            |err: VirErr| (err, ctxt.diagnostics.borrow_mut().drain(..).collect());
+
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt).map_err(map_err_diagnostics)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_module_ids = Some(vir_crate.module_ids.clone());
@@ -1853,7 +1857,8 @@ impl Verifier {
             crate_id: spans.local_crate.to_u64(),
             original_files: spans.local_files.clone(),
         };
-        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())?;
+        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
+            .map_err(map_err_diagnostics)?;
 
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
@@ -1862,15 +1867,18 @@ impl Verifier {
         // the new crate.  (We do need to have all the crate definitions available in some form,
         // because well_formed and modes checking look up definitions from libraries.)
         vir_crates.push(vir_crate);
-        let vir_crate = vir::ast_simplify::merge_krates(vir_crates)?;
+        let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_vir {
-            let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
+            let mut file = self
+                .create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)
+                .map_err(map_err_diagnostics)?;
             vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
         }
         let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
-        let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)?;
+        let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)
+            .map_err(map_err_diagnostics)?;
         let check_crate_result =
             vir::well_formed::check_crate(&vir_crate, &mut ctxt.diagnostics.borrow_mut());
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
@@ -1881,9 +1889,10 @@ impl Verifier {
                 vir::ast::VirErrAs::Note(err) => diagnostics.report_as(&err, MessageLevel::Note),
             }
         }
-        check_crate_result?;
-        let vir_crate = vir::autospec::resolve_autospec(&vir_crate)?;
-        let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate, true)?;
+        check_crate_result.map_err(|e| (e, Vec::new()))?;
+        let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let (erasure_modes, inferred_modes) =
+            vir::modes::check_crate(&vir_crate, true).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);
@@ -1974,7 +1983,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 if self.verifier.args.trace {
                     reporter.report_now(&note_bare("preparing crate for verification"));
                 }
-                if let Err(err) = self.verifier.construct_vir_crate(
+                if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
                     tcx,
                     verus_items.clone(),
                     &spans,
@@ -1985,6 +1994,17 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 ) {
                     reporter.report_as(&err, MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
+
+                    for diag in diagnostics.drain(..) {
+                        match diag {
+                            vir::ast::VirErrAs::Warning(err) => {
+                                reporter.report_as(&err, MessageLevel::Warning)
+                            }
+                            vir::ast::VirErrAs::Note(err) => {
+                                reporter.report_as(&err, MessageLevel::Note)
+                            }
+                        }
+                    }
                     return;
                 }
                 if !compiler.session().compile_status().is_ok() {

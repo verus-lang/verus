@@ -187,7 +187,7 @@ pub(crate) enum GhostBlockAttr {
     Wrapper,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -258,6 +258,8 @@ pub(crate) enum Attr {
     ExternalFnSpecification,
     // In order to apply a specification to a datatype externally
     ExternalTypeSpecification,
+    // Marks a variable that's spec or ghost mode in exec code
+    UnwrappedBinding,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -503,6 +505,9 @@ pub(crate) fn parse_attrs(
                         }
                     }
                     AttrTree::Fun(_, arg, None) if arg == "via" => v.push(Attr::DecreasesBy),
+                    AttrTree::Fun(_, arg, None) if arg == "unwrapped_binding" => {
+                        v.push(Attr::UnwrappedBinding)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -631,6 +636,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
+    pub(crate) unwrapped_binding: bool,
 }
 
 pub(crate) fn get_verifier_attrs(
@@ -665,6 +671,7 @@ pub(crate) fn get_verifier_attrs(
         truncate: false,
         external_fn_specification: false,
         external_type_specification: false,
+        unwrapped_binding: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -705,6 +712,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::Memoize => vs.memoize = true,
             Attr::Truncate => vs.truncate = true,
+            Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             _ => {}
         }
     }

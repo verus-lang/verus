@@ -1,6 +1,6 @@
 use crate::attributes::{
     get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs,
-    parse_attrs, Attr, GhostBlockAttr,
+    parse_attrs, parse_attrs_opt, Attr, GhostBlockAttr,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -2011,9 +2011,36 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     initializer: &Option<&Expr<'tcx>>,
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
-    let vir_pattern = pattern_to_vir(bctx, pattern)?;
     let mode = get_var_mode(bctx.mode, attrs);
     let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::REGULAR)).transpose()?;
+
+    if parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
+        .contains(&Attr::UnwrappedBinding)
+    {
+        let pat_typ = &bctx.types.node_type(pattern.hir_id);
+        if let TyKind::Adt(AdtDef(adt_def_data), _args) = pat_typ.kind() {
+            let pat_typ_verus_item = bctx.ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            if pat_typ_verus_item
+                == Some(&VerusItem::BuiltinType(verus_items::BuiltinTypeItem::Tracked))
+                && mode == Mode::Proof
+            {
+                bctx.ctxt.diagnostics.borrow_mut().push(
+                    vir::ast::VirErrAs::Warning(
+                        crate::util::err_span_bare(pattern.span, format!("the right-hand side is already wrapped with `Tracked`, you likely don't need a `tracked` variable"))
+                        .help("consider `.get()` on the right-hand side, or removing `tracked` on the left-hand side")));
+            } else if pat_typ_verus_item
+                == Some(&VerusItem::BuiltinType(verus_items::BuiltinTypeItem::Ghost))
+                && mode == Mode::Spec
+            {
+                bctx.ctxt.diagnostics.borrow_mut().push(
+                    vir::ast::VirErrAs::Warning(
+                        crate::util::err_span_bare(pattern.span, format!("the right-hand side is already wrapped with `Ghost`, you likely don't need a `ghost` variable"))
+                        .help("consider `@` on the right-hand side, or removing `ghost` on the left-hand side")));
+            }
+        }
+    }
+
+    let vir_pattern = pattern_to_vir(bctx, pattern)?;
     Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init })])
 }
 
