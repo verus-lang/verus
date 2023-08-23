@@ -17,9 +17,9 @@ use air::ast::{Binder, BinderX, Binders, Span};
 use air::messages::{warning, Diagnostics, Message};
 use air::scope_map::ScopeMap;
 use im::Vector;
-use num_bigint::{BigInt, Sign};
+use num_bigint::BigInt;
 use num_traits::identities::Zero;
-use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
+use num_traits::{Euclid, FromPrimitive, One, ToPrimitive};
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -510,37 +510,6 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
 /**********************
  * Utility functions  *
  **********************/
-
-// Based on Dafny's C# implementation:
-// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
-/// Proper Euclidean division on BigInt
-fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
-    // Note: Can be replaced with an inbuilt method on BigInts once
-    // https://github.com/rust-num/num-bigint/pull/245 is merged.
-    use Sign::*;
-    match (i1.sign(), i2.sign()) {
-        (Plus | NoSign, Plus | NoSign) => i1 / i2,
-        (Plus | NoSign, Minus) => -(i1 / (-i2)),
-        (Minus, Plus | NoSign) => -(((-i1) - BigInt::one()) / i2) - BigInt::one(),
-        (Minus, Minus) => (((-i1) - BigInt::one()) / (-i2)) + 1,
-    }
-}
-
-// Based on Dafny's C# implementation:
-// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
-/// Proper Euclidean mod on BigInt
-fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
-    // Note: Can be replaced with an inbuilt method on BigInts once
-    // https://github.com/rust-num/num-bigint/pull/245 is merged.
-    use Sign::*;
-    match i1.sign() {
-        Plus | NoSign => i1 % i2.abs(),
-        Minus => {
-            let c = (-i1) % i2.abs();
-            if c.is_zero() { BigInt::zero() } else { i2.abs() - c }
-        }
-    }
-}
 
 /// Truncate a u128 to a fixed width BigInt
 fn u128_to_fixed_width(u: u128, width: u32) -> BigInt {
@@ -1221,14 +1190,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
-                                        int_new(euclidean_div(i1, i2))
+                                        int_new(i1.div_euclid(i2))
                                     }
                                 }
                                 EuclideanMod => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
-                                        int_new(euclidean_mod(i1, i2))
+                                        int_new(i1.rem_euclid(i2))
                                     }
                                 }
                             }
