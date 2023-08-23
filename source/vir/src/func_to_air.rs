@@ -375,7 +375,7 @@ pub fn req_ens_to_air(
 /// if the function is a spec function.
 pub fn func_name_to_air(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    _diagnostics: &impl Diagnostics,
     function: &Function,
 ) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
@@ -400,15 +400,8 @@ pub fn func_name_to_air(
         commands.push(Arc::new(CommandX::Global(decl)));
 
         // Check whether we need to declare the recursive version too
-        if let Some(body) = &function.x.body {
-            let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
-                &ctx,
-                diagnostics,
-                &UpdateCell::new(HashMap::new()),
-                &params_to_pars(&function.x.params, false),
-                &body,
-            )?;
-            if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
+        if function.x.body.is_some() {
+            if crate::recursion::fun_is_recursive(ctx, &function.x.name) {
                 let rec_f =
                     suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
                 let mut rec_typs =

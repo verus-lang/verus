@@ -180,12 +180,28 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         sorted
     }
 
+    pub fn node_has_direct_edge_to_itself(&self, t: &T) -> bool {
+        assert!(self.has_run);
+        assert!(self.h.contains_key(&t));
+        let v: NodeIndex = self.h[t];
+        for edge in self.nodes[v].edges.iter() {
+            if *edge == v {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn get_scc_size(&self, t: &T) -> usize {
         assert!(self.has_run);
         match self.mapping.get(&t) {
             Some(i) => self.sccs[*i].size(),
             None => 1,
         }
+    }
+
+    pub fn node_is_in_cycle(&self, t: &T) -> bool {
+        self.node_has_direct_edge_to_itself(t) || self.get_scc_size(t) > 1
     }
 
     pub fn get_scc_rep(&self, t: &T) -> T {
