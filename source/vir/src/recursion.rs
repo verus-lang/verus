@@ -16,10 +16,7 @@ use crate::sst::{
     UniqueIdent,
 };
 use crate::sst_to_air::PostConditionKind;
-use crate::sst_visitor::{
-    exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
-    stm_visitor_dfs, VisitorControlFlow,
-};
+use crate::sst_visitor::{exp_rename_vars, exp_visitor_check, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
@@ -51,15 +48,6 @@ fn get_callee(ctx: &Ctx, target: &Fun, resolved_method: &Option<(Fun, Typs)>) ->
     } else {
         Some(target.clone())
     }
-}
-
-fn is_self_call(
-    ctx: &Ctx,
-    target: &Fun,
-    resolved_method: &Option<(Fun, Typs)>,
-    name: &Fun,
-) -> bool {
-    get_callee(ctx, target, resolved_method) == Some(name.clone())
 }
 
 fn is_recursive_call(ctxt: &Ctxt, target: &Fun, resolved_method: &Option<(Fun, Typs)>) -> bool {
@@ -315,45 +303,8 @@ fn terminates(
     }
 }
 
-pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
-    if ctx.global.func_call_graph.get_scc_size(&Node::Fun(name.clone())) > 1 {
-        // This function is part of a mutually recursive component
-        true
-    } else {
-        let mut scope_map = ScopeMap::new();
-        // Check for self-recursion, which SCC computation does not account for
-        match exp_visitor_dfs(body, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-            ExpX::Call(CallFun::Fun(x, resolved_method), _, _)
-                if is_self_call(ctx, x, resolved_method, name) =>
-            {
-                VisitorControlFlow::Stop(())
-            }
-            _ => VisitorControlFlow::Recurse,
-        }) {
-            VisitorControlFlow::Stop(()) => true,
-            _ => false,
-        }
-    }
-}
-
-pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
-    if ctx.global.func_call_graph.get_scc_size(&Node::Fun(name.clone())) > 1 {
-        // This function is part of a mutually recursive component
-        true
-    } else {
-        // Check for self-recursion, which SCC computation does not account for
-        match stm_visitor_dfs(body, &mut |stm| match &stm.x {
-            StmX::Call { fun, resolved_method, .. }
-                if is_self_call(ctx, fun, resolved_method, name) =>
-            {
-                VisitorControlFlow::Stop(())
-            }
-            _ => VisitorControlFlow::Recurse,
-        }) {
-            VisitorControlFlow::Stop(()) => true,
-            _ => false,
-        }
-    }
+pub(crate) fn fun_is_recursive(ctx: &Ctx, name: &Fun) -> bool {
+    ctx.global.func_call_graph.node_is_in_cycle(&Node::Fun(name.clone()))
 }
 
 fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<LocalDecl>, Vec<Stm>) {
@@ -407,7 +358,7 @@ pub(crate) fn check_termination_exp(
     proof_body: Vec<Stm>,
     uses_decreases_by: bool,
 ) -> Result<(bool, Commands, Exp), VirErr> {
-    if !is_recursive_exp(ctx, &function.x.name, body) {
+    if !fun_is_recursive(ctx, &function.x.name) {
         return Ok((false, Arc::new(vec![]), body.clone()));
     }
     let num_decreases = function.x.decrease.len();
@@ -484,7 +435,7 @@ pub(crate) fn check_termination_stm(
     function: &Function,
     body: &Stm,
 ) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
-    if !is_recursive_stm(ctx, &function.x.name, body) {
+    if !fun_is_recursive(ctx, &function.x.name) {
         return Ok((vec![], body.clone()));
     }
     let num_decreases = function.x.decrease.len();
