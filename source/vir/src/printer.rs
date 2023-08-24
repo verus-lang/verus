@@ -142,7 +142,7 @@ impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
 impl ToDebugSNode for String {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(match self.is_ascii() {
-            true => format!("\"{}\"", self),
+            true => format!("\"{}\"", self.replace("\n", "\\n")),
             false => "non_ascii_string".to_string(),
         })
     }
