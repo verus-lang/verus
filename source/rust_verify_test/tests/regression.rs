@@ -705,3 +705,44 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] str_len_contradiction_from_suspect_unsoundness_report verus_code! {
+        use vstd::string::*;
+        use vstd::seq::*;
+        proof fn test(s1: Seq<char>, s2: Seq<char>)
+            requires
+                (s2 + new_strlit("-ab")@ == s1 + new_strlit("-cde")@) ||
+                (s2 + new_strlit("-cde")@ == s1 + new_strlit("-cde")@),
+        {
+            assert(
+                (s2.len() + 3 == s1.len() + 4) ||
+                (s2.len() + 4 == s1.len() + 4)
+            ) by {
+                reveal_strlit("-cde");
+                reveal_strlit("-ab");
+                assert((s2 + new_strlit("-ab")@).len() == s2.len() + new_strlit("-ab")@.len() == s2.len() + 3);
+                assert((s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                assert((s1 + new_strlit("-cde")@).len() == s1.len() + new_strlit("-cde")@.len() == s1.len() + 4);
+            };
+
+            assert(s2 + new_strlit("-ab")@ != s1 + new_strlit("-cde")@) by {
+                let str1 = s1 + new_strlit("-cde")@;
+                let str2 = s2 + new_strlit("-ab")@;
+                reveal_strlit("-cde");
+                reveal_strlit("-ab");
+                assert(str1.len() == (s1 + new_strlit("-cde")@).len() == s1.len() + new_strlit("-cde")@.len() == s1.len() + 4);
+                assert(str2.len() == (s2 + new_strlit("-ab")@).len() == s2.len() + new_strlit("-ab")@.len() == s2.len() + 3);
+                assert(str1.len() == s1.len() + 4);
+                assert(str2.len() == s2.len() + 3);
+                if str1.len() == str2.len() {
+                    assert(s1.len() + 4 == s2.len() + 3);
+                    assert(str1.len() - 1 == s1.len() + 3);
+                    assert(str1[str1.len() - 1] == 'e');
+                    assert(str1[str1.len() - 1] == 'd');
+                    assert(str1[str1.len() - 1] != 'e');
+                }
+            };
+        }
+    } => Ok(())
+}
