@@ -191,6 +191,7 @@ fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(
+    cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: std::sync::Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
@@ -198,6 +199,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     erasure_hints: &ErasureHints,
 ) -> State {
     let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
+        cmd_line_args,
         tcx,
         verus_items,
         krate,
@@ -282,6 +284,7 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
 }
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
+    cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
@@ -290,8 +293,14 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
     let mut emit_state = EmitState::new();
-    let gen_state =
-        emit_check_tracked_lifetimes(tcx, verus_items, krate, &mut emit_state, erasure_hints);
+    let gen_state = emit_check_tracked_lifetimes(
+        cmd_line_args,
+        tcx,
+        verus_items,
+        krate,
+        &mut emit_state,
+        erasure_hints,
+    );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
         rust_code.push_str(&line.text);

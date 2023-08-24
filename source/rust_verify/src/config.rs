@@ -38,6 +38,7 @@ pub struct ArgsX {
     pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
     pub verify_pervasive: bool,
+    pub external_by_default: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
@@ -128,6 +129,7 @@ pub fn parse_args_with_imports(
     const OPT_VERIFY_MODULE: &str = "verify-module";
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
     const OPT_VERIFY_PERVASIVE: &str = "verify-pervasive";
+    const OPT_EXTERNAL_BY_DEFAULT: &str = "external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
@@ -196,6 +198,7 @@ pub fn parse_args_with_imports(
         "MODULE",
     );
     opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules (and nothing else)");
+    opts.optflag("", OPT_EXTERNAL_BY_DEFAULT, "Treat items outside the verus! macro as #[verifier::external] unless marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optflag(
@@ -330,6 +333,7 @@ pub fn parse_args_with_imports(
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
+        external_by_default: matches.opt_present(OPT_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),

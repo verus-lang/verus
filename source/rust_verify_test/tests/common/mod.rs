@@ -268,6 +268,8 @@ pub fn run_verus(
             verus_args.push("--compile".to_string());
             verus_args.push("-o".to_string());
             verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
+        } else if *option == "--external-by-default" {
+            verus_args.push(option.to_string());
         } else if *option == "vstd" {
             // ignore
         } else {

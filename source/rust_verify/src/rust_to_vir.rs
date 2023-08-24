@@ -100,7 +100,7 @@ fn check_item<'tcx>(
             // rustc_middle; in fact, we still rely on attributes which we can only
             // get from the HIR data.
 
-            if vattrs.external {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
                 if vattrs.external_type_specification {
                     return err_span(
                         item.span,
@@ -132,7 +132,7 @@ fn check_item<'tcx>(
             )?;
         }
         ItemKind::Enum(enum_def, generics) => {
-            if vattrs.external {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
                 let def_id = id.owner_id.to_def_id();
                 let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
                 vir.external_types.push(path);
@@ -161,7 +161,7 @@ fn check_item<'tcx>(
             let impl_def_id = item.owner_id.to_def_id();
             let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
 
-            if vattrs.external {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
                 return Ok(());
             }
             if impll.unsafety != Unsafety::Normal {
@@ -416,7 +416,7 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 Some(&mut *ctxt.diagnostics.borrow_mut()),
             )?
-            .external =>
+            .is_external(&ctxt.cmd_line_args) =>
         {
             return Ok(());
         }
@@ -454,7 +454,7 @@ fn check_item<'tcx>(
         }
         ItemKind::Macro(_, _) => {}
         ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {
-            if vattrs.external {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
                 return Ok(());
             }
 
@@ -623,7 +623,7 @@ fn check_foreign_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 Some(&mut *ctxt.diagnostics.borrow_mut()),
             )?
-            .external =>
+            .is_external(&ctxt.cmd_line_args) =>
         {
             return Ok(());
         }

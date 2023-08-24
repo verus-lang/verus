@@ -14,6 +14,8 @@ use state_machines_macros::tokenized_state_machine;
 // rather complicated to use, and it wasn't necessary.
 // Now, I expect storage to be a lot easier to use, easier than the alternative.
 
+verus! {
+
 pub struct Request {
     pub rid: int,
     pub req: int,
@@ -35,6 +37,8 @@ pub enum Combiner {
     Collecting {elems: Seq<Option<int>>},
     Responding {elems: Seq<Option<int>>, idx: nat},
 }
+
+} // verus!
 
 tokenized_state_machine!{
     FlatCombiner {
