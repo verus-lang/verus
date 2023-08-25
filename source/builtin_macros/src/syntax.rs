@@ -9,6 +9,7 @@ use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
+use syn_verus::token::Colon2;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
@@ -203,7 +204,10 @@ impl Visitor {
                     //       #[verifier::proof_block] { t = verus_tmp_x.get() };
                     let span = pat.span();
                     let x = wrapped_pat_id.ident;
-                    let tmp_id = Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site());
+                    let tmp_id = Ident::new(
+                        &format!("verus_tmp_{x}"),
+                        Span::mixed_site().located_at(pat.span()),
+                    );
                     wrapped_pat_id.ident = tmp_id.clone();
                     *pat = Pat::Ident(wrapped_pat_id);
                     if self.erase_ghost.keep() {
@@ -254,6 +258,16 @@ impl Visitor {
                 ));
             }
             _ => {}
+        }
+
+        if matches!(sig.mode, FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_))
+            && !matches!(sig.publish, Publish::Default)
+        {
+            let publish_span = sig.publish.span();
+            stmts.push(stmt_with_semi!(
+                publish_span =>
+                compile_error!("only `spec` functions can be marked `open` or `closed`")
+            ));
         }
 
         let publish_attrs = match &sig.publish {
@@ -334,23 +348,63 @@ impl Visitor {
                 ));
             }
         }
-        if let Some(Ensures { token, mut exprs }) = ensures {
+        if let Some(Ensures { attrs, token, mut exprs }) = ensures {
             if exprs.exprs.len() > 0 {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
-                if let Some((p, ty)) = ret_pat {
-                    stmts.push(Stmt::Semi(
-                        Expr::Verbatim(
-                            quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs])),
-                        ),
-                        Semi { spans: [token.span] },
-                    ));
-                } else {
-                    stmts.push(Stmt::Semi(
-                        Expr::Verbatim(quote_spanned!(token.span => ::builtin::ensures([#exprs]))),
-                        Semi { spans: [token.span] },
-                    ));
+                let cont = match self.extract_quant_triggers(attrs, token.span) {
+                    Ok(
+                        found @ (ExtractQuantTriggersFound::Auto
+                        | ExtractQuantTriggersFound::Triggers(..)),
+                    ) => {
+                        if exprs.exprs.len() == 0 {
+                            let err =
+                                "when using #![trigger f(x)], at least one ensures is required";
+                            let expr =
+                                Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                            stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                            false
+                        } else {
+                            let e = take_expr(&mut exprs.exprs[0]);
+                            match found {
+                                ExtractQuantTriggersFound::Auto => {
+                                    exprs.exprs[0] = Expr::Verbatim(
+                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(auto_trigger)] (#e)),
+                                    );
+                                }
+                                ExtractQuantTriggersFound::Triggers(tuple) => {
+                                    exprs.exprs[0] = Expr::Verbatim(
+                                        quote_spanned!(exprs.exprs[0].span() => ::builtin::with_triggers(#tuple, #e)),
+                                    );
+                                }
+                                ExtractQuantTriggersFound::None => unreachable!(),
+                            }
+                            true
+                        }
+                    }
+                    Ok(ExtractQuantTriggersFound::None) => true,
+                    Err(err_expr) => {
+                        exprs.exprs[0] = err_expr;
+                        false
+                    }
+                };
+                if cont {
+                    if let Some((p, ty)) = ret_pat {
+                        stmts.push(Stmt::Semi(
+                            Expr::Verbatim(
+                                quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs])),
+                            ),
+                            Semi { spans: [token.span] },
+                        ));
+                    } else {
+                        stmts.push(Stmt::Semi(
+                            Expr::Verbatim(
+                                quote_spanned!(token.span => ::builtin::ensures([#exprs])),
+                            ),
+                            Semi { spans: [token.span] },
+                        ));
+                    }
                 }
             }
         }
@@ -488,8 +542,12 @@ impl VisitMut for ExecGhostPatVisitor {
         //   x_decls: let tracked x; let ghost mut y; let [mode] mut z;
         //   x_assigns: x = tmp_x.get(); y = tmp_y.view(); z = tmp_z;
         use syn_verus::parse_quote_spanned;
+        let pat_span = pat.span();
         let mk_ident_tmp = |x: &Ident| {
-            Ident::new(&("verus_tmp_".to_string() + &x.to_string()), Span::mixed_site())
+            Ident::new(
+                &("verus_tmp_".to_string() + &x.to_string()),
+                Span::mixed_site().located_at(pat_span),
+            )
         };
         match pat {
             Pat::TupleStruct(pts)
@@ -653,11 +711,11 @@ impl Visitor {
             (false, stmts)
         } else {
             use syn_verus::parse_quote_spanned;
-            let tmp = Ident::new("verus_tmp", Span::mixed_site());
+            let tmp = Ident::new("verus_tmp", Span::mixed_site().located_at(local.span()));
             let tmp_decl = if local.tracked.is_some() {
-                parse_quote_spanned!(span => #[verus::internal(proof)] let #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(proof)] #[verus::internal(unwrapped_binding)] let #tmp;)
             } else {
-                parse_quote_spanned!(span => #[verus::internal(spec)] let mut #tmp;)
+                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(unwrapped_binding)] let mut #tmp;)
             };
             stmts.push(tmp_decl);
             let pat = take_pat(&mut local.pat);
@@ -1017,7 +1075,7 @@ impl Visitor {
             _ => panic!("expected closure for quantifier"),
         };
 
-        match extract_quant_triggers(inner_attrs, span) {
+        match self.extract_quant_triggers(inner_attrs, span) {
             Ok(ExtractQuantTriggersFound::Auto) => match &mut *arg {
                 Expr::Closure(closure) => {
                     let body = take_expr(&mut closure.body);
@@ -1089,8 +1147,12 @@ impl Visitor {
                 stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
             }
         }
-        if let Some(Ensures { token, mut exprs }) = ensures {
-            if exprs.exprs.len() > 0 {
+        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+            if attrs.len() > 0 {
+                let err = "outer attributes only allowed on function's ensures";
+                let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+            } else if exprs.exprs.len() > 0 {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
@@ -1110,66 +1172,70 @@ impl Visitor {
         }
         self.inside_ghost -= 1;
     }
+
+    fn extract_quant_triggers(
+        &mut self,
+        inner_attrs: Vec<Attribute>,
+        span: Span,
+    ) -> Result<ExtractQuantTriggersFound, Expr> {
+        let mut triggers: Vec<Expr> = Vec::new();
+        for attr in inner_attrs {
+            let trigger: syn_verus::Result<syn_verus::Specification> =
+                syn_verus::parse2(attr.tokens.clone());
+            let path_segments_str =
+                attr.path.segments.iter().map(|x| x.ident.to_string()).collect::<Vec<_>>();
+            let ident_str = match &path_segments_str[..] {
+                [attr_name] => Some(attr_name),
+                _ => None,
+            };
+            match (trigger, ident_str) {
+                (Ok(trigger), Some(id)) if id == &"auto" && trigger.exprs.len() == 0 => {
+                    return Ok(ExtractQuantTriggersFound::Auto);
+                }
+                (Ok(trigger), Some(id)) if id == &"trigger" => {
+                    let mut exprs = trigger.exprs;
+                    for expr in exprs.iter_mut() {
+                        self.visit_expr_mut(expr);
+                    }
+                    let tuple = ExprTuple { attrs: vec![], paren_token: Paren(span), elems: exprs };
+                    triggers.push(Expr::Tuple(tuple));
+                }
+                (Err(err), _) => {
+                    let span = attr.span();
+                    let err = err.to_string();
+
+                    return Err(Expr::Verbatim(quote_spanned!(span => compile_error!(#err))));
+                }
+                _ => {
+                    let span = attr.span();
+                    return Err(Expr::Verbatim(
+                        quote_spanned!(span => compile_error!("expected trigger")),
+                    ));
+                }
+            }
+        }
+
+        Ok(if triggers.len() > 0 {
+            let mut elems = Punctuated::new();
+            for elem in triggers {
+                elems.push(elem);
+                elems.push_punct(Token![,](span));
+            }
+            ExtractQuantTriggersFound::Triggers(ExprTuple {
+                attrs: vec![],
+                paren_token: Paren(span),
+                elems,
+            })
+        } else {
+            ExtractQuantTriggersFound::None
+        })
+    }
 }
 
 enum ExtractQuantTriggersFound {
     Auto,
     Triggers(ExprTuple),
     None,
-}
-
-fn extract_quant_triggers(
-    inner_attrs: Vec<Attribute>,
-    span: Span,
-) -> Result<ExtractQuantTriggersFound, Expr> {
-    let mut triggers: Vec<Expr> = Vec::new();
-    for attr in inner_attrs {
-        let trigger: syn_verus::Result<syn_verus::Specification> =
-            syn_verus::parse2(attr.tokens.clone());
-        let path_segments_str =
-            attr.path.segments.iter().map(|x| x.ident.to_string()).collect::<Vec<_>>();
-        let ident_str = match &path_segments_str[..] {
-            [attr_name] => Some(attr_name),
-            _ => None,
-        };
-        match (trigger, ident_str) {
-            (Ok(trigger), Some(id)) if id == &"auto" && trigger.exprs.len() == 0 => {
-                return Ok(ExtractQuantTriggersFound::Auto);
-            }
-            (Ok(trigger), Some(id)) if id == &"trigger" => {
-                let tuple =
-                    ExprTuple { attrs: vec![], paren_token: Paren(span), elems: trigger.exprs };
-                triggers.push(Expr::Tuple(tuple));
-            }
-            (Err(err), _) => {
-                let span = attr.span();
-                let err = err.to_string();
-
-                return Err(Expr::Verbatim(quote_spanned!(span => compile_error!(#err))));
-            }
-            _ => {
-                let span = attr.span();
-                return Err(Expr::Verbatim(
-                    quote_spanned!(span => compile_error!("expected trigger")),
-                ));
-            }
-        }
-    }
-
-    Ok(if triggers.len() > 0 {
-        let mut elems = Punctuated::new();
-        for elem in triggers {
-            elems.push(elem);
-            elems.push_punct(Token![,](span));
-        }
-        ExtractQuantTriggersFound::Triggers(ExprTuple {
-            attrs: vec![],
-            paren_token: Paren(span),
-            elems,
-        })
-    } else {
-        ExtractQuantTriggersFound::None
-    })
 }
 
 impl VisitMut for Visitor {
@@ -1723,7 +1789,7 @@ impl VisitMut for Visitor {
                 Expr::AssertForall(assert) => {
                     let span = assert.assert_token.span;
                     let mut arg = assert.expr;
-                    match extract_quant_triggers(assert.attrs, span) {
+                    match self.extract_quant_triggers(assert.attrs, span) {
                         Ok(ExtractQuantTriggersFound::Auto) => {
                             arg = Box::new(Expr::Verbatim(
                                 quote_spanned!(arg.span() => #[verus::internal(auto_trigger)] #arg),
@@ -1793,16 +1859,24 @@ impl VisitMut for Visitor {
                             stmts.push(stmt_with_semi!(
                                 token.span => ::builtin::requires([#exprs])));
                         }
-                        if let Some(Ensures { token, mut exprs }) = ensures {
-                            for expr in exprs.exprs.iter_mut() {
-                                self.visit_expr_mut(expr);
-                            }
-                            if let Some((p, ty)) = ret_pat {
-                                stmts.push(stmt_with_semi!(
-                                    token.span => ::builtin::ensures(|#p: #ty| [#exprs])));
+                        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+                            if attrs.len() > 0 {
+                                let err = "outer attributes only allowed on function's ensures";
+                                let expr = Expr::Verbatim(
+                                    quote_spanned!(token.span => compile_error!(#err)),
+                                );
+                                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
                             } else {
-                                stmts.push(stmt_with_semi!(
-                                    token.span => ::builtin::ensures([#exprs])));
+                                for expr in exprs.exprs.iter_mut() {
+                                    self.visit_expr_mut(expr);
+                                }
+                                if let Some((p, ty)) = ret_pat {
+                                    stmts.push(stmt_with_semi!(
+                                        token.span => ::builtin::ensures(|#p: #ty| [#exprs])));
+                                } else {
+                                    stmts.push(stmt_with_semi!(
+                                        token.span => ::builtin::ensures([#exprs])));
+                                }
                             }
                         }
                         self.inside_ghost -= 1;
@@ -1846,10 +1920,34 @@ impl VisitMut for Visitor {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
                 }
                 [attr_name] if attr_name.to_string() == "verifier" => {
-                    let parsed = attr.parse_meta().expect("failed to parse attribute");
+                    let Ok(parsed) = attr.parse_meta() else {
+                        return;
+                    };
+                    let span = attr.span();
+                    fn path_verifier(span: Span) -> Punctuated<PathSegment, Colon2> {
+                        let mut path_segments = Punctuated::new();
+                        path_segments.push(PathSegment {
+                            ident: Ident::new("verifier", span),
+                            arguments: PathArguments::None,
+                        });
+                        path_segments
+                    }
+                    fn invalid_attribute(span: Span) -> Attribute {
+                        let mut path_segments = path_verifier(span);
+                        path_segments.push(PathSegment {
+                            ident: Ident::new("invalid_attribute", span),
+                            arguments: PathArguments::None,
+                        });
+                        Attribute {
+                            pound_token: token::Pound { spans: [span] },
+                            style: AttrStyle::Outer,
+                            bracket_token: token::Bracket { span },
+                            path: Path { leading_colon: None, segments: path_segments },
+                            tokens: quote!(),
+                        }
+                    }
                     match parsed {
                         syn_verus::Meta::List(meta_list) if meta_list.nested.len() == 1 => {
-                            let span = attr.span();
                             let (second_segment, nested) = match &meta_list.nested[0] {
                                 syn_verus::NestedMeta::Meta(syn_verus::Meta::List(meta_list)) => {
                                     let rest = &meta_list.nested[0];
@@ -1859,14 +1957,11 @@ impl VisitMut for Visitor {
                                     (&meta_path.segments[0], None)
                                 }
                                 _ => {
-                                    panic!("invalid verifier attribute (1)"); // TODO(main_new) use compile_error! if possible
+                                    *attr = invalid_attribute(span);
+                                    return;
                                 }
                             };
-                            let mut path_segments = Punctuated::new();
-                            path_segments.push(PathSegment {
-                                ident: Ident::new("verifier", span),
-                                arguments: PathArguments::None,
-                            });
+                            let mut path_segments = path_verifier(span);
                             path_segments.push(second_segment.clone());
                             *attr = Attribute {
                                 pound_token: token::Pound { spans: [span] },
@@ -1880,7 +1975,10 @@ impl VisitMut for Visitor {
                                 },
                             };
                         }
-                        _ => panic!("invalid verifier attribute (2)"), // TODO(main_new) use compile_error! if possible
+                        _ => {
+                            *attr = invalid_attribute(span);
+                            return;
+                        }
                     }
                 }
                 _ => (),

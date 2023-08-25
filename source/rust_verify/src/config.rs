@@ -71,6 +71,7 @@ pub struct ArgsX {
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
+    pub record: bool,
     pub version: bool,
     pub num_threads: usize,
     pub trace: bool,
@@ -164,6 +165,7 @@ pub fn parse_args_with_imports(
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const OPT_VERSION: &str = "version";
+    const OPT_RECORD: &str = "record";
     const OPT_NUM_THREADS: &str = "num-threads";
     const OPT_TRACE: &str = "trace";
 
@@ -190,7 +192,7 @@ pub fn parse_args_with_imports(
     opts.optopt(
         "",
         OPT_VERIFY_FUNCTION,
-        "Verify just one function (e.g. 'foo' or 'foo::bar') within the one module specified by verify-module or verify-root",
+        "Verify just one function within the one module specified by verify-module or verify-root, \nmatches on unique substring (foo) or wildcards at ends of the argument (*foo, foo*, *foo*)",
         "MODULE",
     );
     opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules (and nothing else)");
@@ -208,7 +210,7 @@ pub fn parse_args_with_imports(
     opts.optopt(
         "",
         OPT_RLIMIT,
-        format!("Set SMT resource limit (roughly in seconds). Default: {} (available parallelism on this system).", DEFAULT_RLIMIT_SECS)
+        format!("Set SMT resource limit (roughly in seconds). Default: {}.", DEFAULT_RLIMIT_SECS)
             .as_str(),
         "INTEGER",
     );
@@ -261,13 +263,18 @@ pub fn parse_args_with_imports(
     opts.optopt(
         "",
         OPT_NUM_THREADS,
-        format!("Number of threads to use for verification. Default: {}.", default_num_threads)
+        format!("Number of threads to use for verification. Default: {} (available parallelism on this system).", default_num_threads)
             .as_str(),
         "INTEGER",
     );
     opts.optflag("", OPT_TRACE, "Print progress information");
 
     opts.optflag("h", "help", "print this help menu");
+    opts.optflag(
+        "",
+        OPT_RECORD,
+        "Rerun verus and package source files of the current crate to the current directory, alongside with output and version information. The file will be named YYYY-MM-DD-HH-MM-SS.zip. If you are reporting an error, please keep the original arguments in addition to this flag",
+    );
 
     let print_usage = || {
         let brief = format!("Usage: {} INPUT [options]", program);
@@ -405,6 +412,7 @@ pub fn parse_args_with_imports(
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),
+        record: matches.opt_present(OPT_RECORD),
         version: matches.opt_present(OPT_VERSION),
         num_threads: matches
             .opt_get::<usize>(OPT_NUM_THREADS)

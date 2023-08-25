@@ -7,7 +7,7 @@ use crate::rust_to_vir_base::{
     check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::{err_span, err_span_bare, unsupported_err_span};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
@@ -24,8 +24,8 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX, Typ, TypX,
-    VirErr,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX,
+    SpannedTyped, Typ, TypDecoration, TypX, VirErr,
 };
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 
@@ -69,6 +69,7 @@ pub(crate) fn body_to_vir<'tcx>(
 fn check_fn_decl<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
+    id: DefId,
     decl: &'tcx FnDecl<'tcx>,
     attrs: &[Attribute],
     mode: Mode,
@@ -89,7 +90,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, span, &output_ty, false)?;
+            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, span, &output_ty, false)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -271,19 +272,21 @@ pub(crate) fn handle_external_fn<'tcx>(
             ),
         );
     }
+
     // trait bounds aren't part of the type signature - we have to check those separately
-    if !predicates_match_by_id(ctxt.tcx, id, external_id, substs1) {
-        println!("Proxy function trait bounds: {:#?}", &all_predicates(ctxt.tcx, id, substs1));
-        println!(
-            "External function trait bounds: {:#?}",
-            &all_predicates(ctxt.tcx, external_id, substs1)
-        );
-        return err_span(
+    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1);
+    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs1);
+    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
+    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
+    if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
+        let err = err_span_bare(
             sig.span,
-            format!(
-                "external_fn_specification requires function type signature to match exactly (trait bound mismatch)"
-            ),
-        );
+            "external_fn_specification trait bound mismatch")
+            .help(format!("external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
+          but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
+          proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
+          external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
+        return Err(err);
     }
 
     let external_item_visibility = mk_visibility(ctxt, external_id);
@@ -324,7 +327,7 @@ pub(crate) fn check_item_fn<'tcx>(
             crate::verus_items::CompilableOprItem::NewStrLit,
         ));
 
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let mode = get_mode(Mode::Exec, attrs);
 
     let (path, proxy, visibility, kind) = if vattrs.external_fn_specification {
@@ -362,7 +365,13 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
-        Some(check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, cg, impl_def_id)?)
+        Some(check_generics_bounds_fun(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            cg,
+            impl_def_id,
+            Some(&mut *ctxt.diagnostics.borrow_mut()),
+        )?)
     } else {
         None
     };
@@ -379,7 +388,7 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(sig.span, ctxt, decl, attrs, mode, fn_sig.output())?
+            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output())?
         }
     };
 
@@ -400,11 +409,17 @@ pub(crate) fn check_item_fn<'tcx>(
         return Ok(None);
     }
 
-    let (sig_typ_params, sig_typ_bounds) =
-        check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
+    let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_fun(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        generics,
+        id,
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
+    )?;
     let fuel = get_fuel(&vattrs);
 
-    let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>)>) = match body_id {
+    let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>, bool)>) = match body_id
+    {
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let Body { params, value: _, generator_kind } = body;
@@ -417,17 +432,9 @@ pub(crate) fn check_item_fn<'tcx>(
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
                 let (is_mut_var, name) = pat_to_mut_var(pat)?;
-                // is_mut_var: means a parameter is like `mut x: X` (unsupported)
+                // is_mut_var: means a parameter is like `mut x: X`
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-                if is_mut_var {
-                    return err_span(
-                        *span,
-                        format!(
-                            "Verus does not support `mut` arguments (try writing `let mut param = param;` in the body of the function)"
-                        ),
-                    );
-                }
-                ps.push((name, *span, Some(*hir_id)));
+                ps.push((name, *span, Some(*hir_id), is_mut_var));
             }
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
@@ -435,15 +442,17 @@ pub(crate) fn check_item_fn<'tcx>(
             (Some(vir_body), header, ps)
         }
         CheckItemFnEither::ParamNames(params) => {
-            let params = params.iter().map(|p| (p.to_string(), p.span, None)).collect();
+            let params = params.iter().map(|p| (p.to_string(), p.span, None, false)).collect();
             let header = vir::headers::read_header_block(&mut vec![])?;
             (None, header, params)
         }
     };
 
+    let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
-    for ((name, span, hir_id), input) in params.into_iter().zip(inputs.iter()) {
+    for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let name = Arc::new(name);
         let param_mode = if let Some(hir_id) = hir_id {
             get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
@@ -461,22 +470,73 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let typ = mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            span,
-            is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-        )?;
+        let typ = {
+            let typ = mid_ty_to_vir(
+                ctxt.tcx,
+                &ctxt.verus_items,
+                id,
+                span,
+                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
+                false,
+            )?;
+            if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
+                Arc::new(TypX::Decorate(decoration, typ))
+            } else {
+                typ
+            }
+        };
 
         // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
         let is_mut = is_ref_mut.is_some();
 
         let vir_param = ctxt.spanned_new(
             span,
-            ParamX { name, typ, mode: param_mode, is_mut, unwrapped_info: None },
+            ParamX {
+                name: name.clone(),
+                typ: typ.clone(),
+                mode: param_mode,
+                is_mut,
+                unwrapped_info: None,
+            },
         );
-        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten()));
+        if is_mut_var {
+            if mode == Mode::Spec {
+                return err_span(span, format!("mut argument not allowed for spec functions"));
+            }
+            if is_mut {
+                // REVIEW
+                // For all mut params, we introduce a new variable that shadows the original mut
+                // param and assign the value of the param to the new variable. This does not
+                // work properly when the type of the param is a mutable reference because
+                // declaring and assigning to a variable of type `&mut T` is not implemented yet.
+                unsupported_err!(span, "mut parameters of &mut types")
+            }
+            vir_mut_params.push((
+                vir_param.clone(),
+                is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode),
+            ));
+            let new_binding_pat = ctxt.spanned_typed_new(
+                span,
+                &typ,
+                vir::ast::PatternX::Var { name: name.clone(), mutable: true },
+            );
+            let new_init_expr =
+                ctxt.spanned_typed_new(span, &typ, vir::ast::ExprX::Var(name.clone()));
+            if let Some(hir_id) = hir_id {
+                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
+                ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
+            }
+            let redecl = ctxt.spanned_new(
+                span,
+                vir::ast::StmtX::Decl {
+                    pattern: new_binding_pat,
+                    mode: mode,
+                    init: Some(new_init_expr),
+                },
+            );
+            mut_params_redecl.push(redecl);
+        }
+        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode)));
     }
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
@@ -567,8 +627,16 @@ pub(crate) fn check_item_fn<'tcx>(
             paramx.name = unwrap.inner_name.clone();
             paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
-        } else if unwrap_mut.is_some() {
-            return err_span(sig.span, format!("parameter {} must be unwrapped", &param.x.name));
+        } else if vir_body.is_some() && unwrap_mut.is_some() {
+            let param_user_name = vir::def::user_local_name(&param.x.name);
+            return Err(air::messages::error(
+                format!("parameter {} must be unwrapped", param_user_name),
+                &param.span,
+            )
+            .help(format!(
+                "use Tracked({}): Tracked<&mut T> to unwrap the tracked argument",
+                param_user_name
+            )));
         }
     }
     for name in all_param_names.iter() {
@@ -656,6 +724,20 @@ pub(crate) fn check_item_fn<'tcx>(
         visibility.restricted_to = None;
     }
 
+    // Given a func named 'f' which has mut parameters 'x_0', ..., 'x_n' and body
+    // 'f_body', we rewrite it to a function without mut params and body
+    // 'let mut x_0 = x_0; ...; let mut x_n = x_n; f_body'.
+    let body_with_mut_redecls = if vir_mut_params.is_empty() {
+        vir_body
+    } else {
+        vir_body.map(move |body| {
+            SpannedTyped::new(
+                &body.span.clone(),
+                &body.typ.clone(),
+                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body)),
+            )
+        })
+    };
     let func = FunctionX {
         name: name.clone(),
         proxy,
@@ -681,7 +763,7 @@ pub(crate) fn check_item_fn<'tcx>(
         body: if vattrs.external_body || vattrs.external_fn_specification || header.no_method_body {
             None
         } else {
-            vir_body
+            body_with_mut_redecls
         },
         extra_dependencies: header.extra_dependencies,
     };
@@ -698,7 +780,7 @@ pub(crate) fn check_item_fn<'tcx>(
 fn is_mut_ty<'tcx>(
     ctxt: &Context<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
-) -> Option<(&'tcx rustc_middle::ty::Ty<'tcx>, Option<Mode>)> {
+) -> Option<(&'tcx rustc_middle::ty::Ty<'tcx>, Option<(Mode, TypDecoration)>)> {
     use rustc_middle::ty::*;
     match ty.kind() {
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some((tys, None)),
@@ -712,12 +794,12 @@ fn is_mut_ty<'tcx>(
                 assert_eq!(args.len(), 1);
                 if let subst::GenericArgKind::Type(t) = args[0].unpack() {
                     if let Some((inner, None)) = is_mut_ty(ctxt, t) {
-                        let mode = match bt {
-                            BuiltinTypeItem::Ghost => Mode::Spec,
-                            BuiltinTypeItem::Tracked => Mode::Proof,
+                        let mode_and_decoration = match bt {
+                            BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
+                            BuiltinTypeItem::Tracked => (Mode::Proof, TypDecoration::Tracked),
                             _ => unreachable!(),
                         };
-                        return Some((inner, Some(mode)));
+                        return Some((inner, Some(mode_and_decoration)));
                     }
                 }
             }
@@ -727,22 +809,25 @@ fn is_mut_ty<'tcx>(
     }
 }
 
-fn predicates_match_by_id<'tcx>(
+fn remove_destruct_trait_bounds_from_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
-    id1: rustc_span::def_id::DefId,
-    id2: rustc_span::def_id::DefId,
-    substs: SubstsRef<'tcx>,
-) -> bool {
-    let preds1 = all_predicates(tcx, id1, substs);
-    let preds2 = all_predicates(tcx, id2, substs);
-
-    predicates_match(tcx, preds1, preds2)
+    preds: &mut Vec<Predicate<'tcx>>,
+) {
+    preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
+        rustc_middle::ty::PredicateKind::<'tcx>::Clause(
+            rustc_middle::ty::Clause::<'tcx>::Trait(tp),
+        ) => match crate::verus_items::def_id_to_stable_rust_path(tcx, tp.trait_ref.def_id) {
+            Some(s) => s != "core::marker::Destruct",
+            None => true,
+        },
+        _ => true,
+    });
 }
 
 pub(crate) fn predicates_match<'tcx>(
     tcx: TyCtxt<'tcx>,
-    preds1: Vec<Predicate<'tcx>>,
-    preds2: Vec<Predicate<'tcx>>,
+    preds1: &Vec<Predicate<'tcx>>,
+    preds2: &Vec<Predicate<'tcx>>,
 ) -> bool {
     if preds1.len() != preds2.len() {
         return false;
@@ -884,7 +969,7 @@ pub(crate) fn check_item_const<'tcx>(
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = Arc::new(FunX { path });
     let mode = get_mode(Mode::Exec, attrs);
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not yet supported for const");
@@ -952,10 +1037,15 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fn_sig = fn_sig.skip_binder();
     let inputs = fn_sig.inputs();
 
-    let ret_typ_mode = check_fn_decl(span, ctxt, decl, attrs, mode, fn_sig.output())?;
-    let (typ_params, typ_bounds) =
-        check_generics_bounds_fun(ctxt.tcx, &ctxt.verus_items, generics, id)?;
-    let vattrs = get_verifier_attrs(attrs)?;
+    let ret_typ_mode = check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output())?;
+    let (typ_params, typ_bounds) = check_generics_bounds_fun(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        generics,
+        id,
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
+    )?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 
@@ -973,6 +1063,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         let typ = mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
+            id,
             param.span,
             is_mut.map(|(t, _)| t).unwrap_or(input),
             false,

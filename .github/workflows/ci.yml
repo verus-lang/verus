@@ -2,15 +2,20 @@ name: ci
 
 on:
   push:
+    branches:
+      - 'main'
 
   workflow_dispatch:
+
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
@@ -31,7 +36,7 @@ jobs:
         features: ['', 'singular']
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: get z3
         working-directory: ./source
         run: |
@@ -79,7 +84,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: get z3
         shell: pwsh
         working-directory: .\source

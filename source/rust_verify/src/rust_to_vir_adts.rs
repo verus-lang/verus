@@ -1,8 +1,7 @@
 use crate::attributes::{get_mode, get_verifier_attrs, VerifierAttrs};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir_param_env, mk_visibility,
-    mk_visibility_from_vis,
+    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility, mk_visibility_from_vis,
 };
 use crate::unsupported_err_unless;
 use crate::util::{err_span, unsupported_err_span};
@@ -82,7 +81,7 @@ where
             str_ident(&field_def_ident.as_str())
         };
 
-        let typ = mid_ty_to_vir_param_env(
+        let typ = mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
             item_id.owner_id.to_def_id(),
@@ -124,7 +123,7 @@ pub fn check_item_struct<'tcx>(
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     let is_strslice_struct = matches!(
         ctxt.verus_items.id_to_name.get(&id.owner_id.to_def_id()),
@@ -162,6 +161,7 @@ pub fn check_item_struct<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
     let name = path.segments.last().expect("unexpected struct path");
@@ -231,7 +231,7 @@ pub fn check_item_enum<'tcx>(
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
 
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");
@@ -245,6 +245,7 @@ pub fn check_item_enum<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
     let mut total_vis = visibility.clone();
@@ -420,7 +421,7 @@ pub(crate) fn check_item_external<'tcx>(
     }
     let preds1 = external_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
     let preds2 = proxy_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
-    let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, preds1, preds2);
+    let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2);
     if !preds_match {
         println!("external_predicates: {:#?}", external_predicates.predicates);
         println!("proxy_predicates: {:#?}", proxy_predicates.predicates);
@@ -449,6 +450,7 @@ pub(crate) fn check_item_external<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let mode = Mode::Exec;
 

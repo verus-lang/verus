@@ -45,6 +45,8 @@ pub struct Diagnostic {
 #[derive(Debug)]
 pub struct TestErr {
     pub errors: Vec<Diagnostic>,
+    pub warnings: Vec<Diagnostic>,
+    pub notes: Vec<Diagnostic>,
     pub expand_errors_notes: Vec<Diagnostic>, // produced by the `--expand-errors` flag
 }
 
@@ -71,6 +73,17 @@ pub fn verify_files_vstd(
     import_vstd: bool,
     options: &[&str],
 ) -> Result<(), TestErr> {
+    verify_files_vstd_all_diags(name, files, entry_file, import_vstd, options).map(|_| ())
+}
+
+#[allow(dead_code)]
+pub fn verify_files_vstd_all_diags(
+    name: &str,
+    files: impl IntoIterator<Item = (String, String)>,
+    entry_file: String,
+    import_vstd: bool,
+    options: &[&str],
+) -> Result<TestErr, TestErr> {
     THREAD_LOCAL_TEST_NAME.with(|tn| *tn.borrow_mut() = Some(name.to_string()));
 
     let files: Vec<(String, String)> = files.into_iter().collect();
@@ -102,7 +115,7 @@ pub fn verify_files_vstd(
     }
 
     let run =
-        run_verus(options, &test_input_dir, &test_input_dir.join(entry_file), import_vstd, true);
+        run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
 
     let mut errors = Vec::new();
@@ -123,6 +136,8 @@ pub fn verify_files_vstd(
     };
 
     let mut is_failure = code != 0;
+    let mut warnings = Vec::new();
+    let mut notes = Vec::new();
 
     // eprintln!("rust_output: {}", &rust_output);
     if rust_output.len() > 0 {
@@ -138,8 +153,13 @@ pub fn verify_files_vstd(
                     // TODO(main_new) define in defs
                     expand_errors_notes.push(diag);
                     continue;
-                }
-                if diag.level == "failure-note" || diag.level == "note" || diag.level == "warning" {
+                } else if diag.level == "note" {
+                    notes.push(diag);
+                    continue;
+                } else if diag.level == "warning" {
+                    warnings.push(diag);
+                    continue;
+                } else if diag.level == "failure-note" {
                     continue;
                 }
                 assert!(diag.level == "error");
@@ -156,9 +176,22 @@ pub fn verify_files_vstd(
 
     if !is_failure {
         std::fs::remove_dir_all(&test_input_dir).unwrap();
+    } else {
+        eprintln!("the input directory is {}", test_input_dir.to_string_lossy());
+        eprintln!("{}", yansi::Paint::blue("rerun this test with:"));
+        eprintln!(
+            "vargo run -p rust_verify -- --crate-type=lib {} {}",
+            options.join(" "),
+            test_input_dir.join(entry_file).to_string_lossy()
+        );
+        eprintln!();
     }
 
-    if is_failure { Err(TestErr { errors, expand_errors_notes }) } else { Ok(()) }
+    if is_failure {
+        Err(TestErr { errors, warnings, notes, expand_errors_notes })
+    } else {
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
+    }
 }
 
 pub fn run_verus(
@@ -312,7 +345,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 };
 
 #[allow(dead_code)]
-pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<(), TestErr> {
+pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<TestErr, TestErr> {
     let o: Vec<&str>;
     let (no_prelude, options) = if options.contains(&"no-auto-import-builtin") {
         o = options.iter().filter(|opt| **opt != "no-auto-import-builtin").map(|x| *x).collect();
@@ -325,7 +358,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<(),
     let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
 
     let files = vec![("test.rs".to_string(), code)];
-    verify_files_vstd(name, files, "test.rs".to_string(), vstd, options)
+    verify_files_vstd_all_diags(name, files, "test.rs".to_string(), vstd, options)
 }
 
 #[macro_export]
@@ -346,8 +379,12 @@ macro_rules! test_verify_one_file_with_options {
         $(#[$attrs])*
         fn $name() {
             let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            let result_unit = result.as_ref().map(|_| ());
             #[allow(irrefutable_let_patterns)]
-            if let $result = result {
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
             } else {
                 assert!(false, "Err(_) does not match $result");
             }

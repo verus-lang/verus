@@ -405,5 +405,5 @@ test_verify_one_file! {
                 loop { }
             });
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }

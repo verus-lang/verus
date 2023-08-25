@@ -73,6 +73,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::StrSlice => false,
         TypX::Char => false,
+        TypX::Primitive(_, _) => true,
     }
 }
 
@@ -578,7 +579,7 @@ fn datatype_or_fun_to_air_commands(
     }
 }
 
-pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Commands {
+pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Commands {
     let source_module = &ctx.module;
     let mut transparent_air_datatypes: Vec<air::ast::Datatype> = Vec::new();
     let mut opaque_sort_commands: Vec<Command> = Vec::new();
@@ -610,7 +611,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         );
     }
 
-    for monotyp in &ctx.mono_abstract_datatypes {
+    for monotyp in &ctx.mono_types {
         // Encode concrete instantiations of abstract types as AIR sorts
         let dpath = crate::sst_to_air::monotyp_to_path(monotyp);
         let sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&dpath)));

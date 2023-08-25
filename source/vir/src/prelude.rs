@@ -135,6 +135,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let from_unicode = str_to_node(CHAR_FROM_UNICODE);
     let to_unicode = str_to_node(CHAR_TO_UNICODE);
 
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_slice = str_to_node(TYPE_ID_SLICE);
+
     nodes_vec!(
         // Fuel
         (declare-sort [FuelId] 0)
@@ -196,6 +199,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_ghost] ([decoration]) [decoration])
         (declare-fun [decorate_tracked] ([decoration]) [decoration])
         (declare-fun [decorate_never] ([decoration]) [decoration])
+        (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
+        (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
         (declare-fun [mk_fun] (Fun) Fun)
@@ -535,7 +540,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_has_type_char
         )))
         (axiom (forall ((x Int)) (!
-            (= ([to_unicode] ([from_unicode] x)) x)
+            (=>
+                (and
+                    (<= 0 x)
+                    (< x ([u_hi] 32))
+                )
+                (= x ([to_unicode] ([from_unicode] x)))
+            )
             :pattern (([from_unicode] x))
             :qid prelude_char_injective
             :skolemid skolem_prelude_char_injective
@@ -616,9 +627,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         //  - the closure
         //  - param value (as tuple)
         //  - ret value (for closure_ens only)
+        //
+        // Also for the closure type param, we exclude the decoration.
+        // This is useful because it's pretty easy to write code that instantiates
+        // type parameters with either `F` or `&F` (where F: Fn(...))
+        // So we need to be able to handle both.
 
-        (declare-fun [closure_req] ([decoration] [typ] [decoration] [typ] [Poly] [Poly]) Bool)
-        (declare-fun [closure_ens] ([decoration] [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+        (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
+        (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
     )
 }
 

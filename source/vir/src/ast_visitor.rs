@@ -1,7 +1,8 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX,
-    Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOpr, Variant, VirErr,
+    Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs, UnaryOpr,
+    Variant, VirErr,
 };
 use crate::ast_util::error;
 use crate::def::Spanned;
@@ -77,6 +78,11 @@ where
                 TypX::Boxed(t) => {
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }
+                TypX::Primitive(_, ts) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
             }
             VisitorControlFlow::Recurse
         }
@@ -127,6 +133,10 @@ where
         TypX::Boxed(t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
             ft(env, &Arc::new(TypX::Boxed(t)))
+        }
+        TypX::Primitive(name, ts) => {
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            ft(env, &Arc::new(TypX::Primitive(name.clone(), Arc::new(ts))))
         }
     }
 }
@@ -639,6 +649,10 @@ where
             let t = map_typ_visitor_env(t, env, ft)?;
             ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t))
         }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p.clone(), ts))
+        }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::Unary(*op, expr1)
@@ -1118,6 +1132,25 @@ where
     }
     let variants = Arc::new(variants);
     Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, typ_bounds, ..datatypex }))
+}
+
+pub(crate) fn map_trait_impl_visitor_env<E, FT>(
+    imp: &TraitImpl,
+    env: &mut E,
+    ft: &FT,
+) -> Result<TraitImpl, VirErr>
+where
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+{
+    let TraitImplX { impl_path, typ_params, typ_bounds, trait_path, trait_typ_args } = &imp.x;
+    let impx = TraitImplX {
+        impl_path: impl_path.clone(),
+        typ_params: typ_params.clone(),
+        typ_bounds: map_generic_bounds_visitor(typ_bounds, env, ft)?,
+        trait_path: trait_path.clone(),
+        trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
+    };
+    Ok(Spanned::new(imp.span.clone(), impx))
 }
 
 pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(

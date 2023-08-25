@@ -1218,27 +1218,28 @@ pub fn closure_to_fn_spec<Args: core::marker::Tuple, F: FnOnce<Args>>(
     unimplemented!();
 }
 
+#[rustc_diagnostic_item = "verus::builtin::FnWithSpecification"]
 pub trait FnWithSpecification<Args> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::FnWithSpecification::requires"]
-    fn requires(&self, args: Args) -> bool;
+    fn requires(self, args: Args) -> bool;
 
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::FnWithSpecification::ensures"]
-    fn ensures(&self, args: Args, output: Self::Output) -> bool;
+    fn ensures(self, args: Args, output: Self::Output) -> bool;
 }
 
 #[cfg(verus_keep_ghost)]
 impl<Args: core::marker::Tuple, F: FnOnce<Args>> FnWithSpecification<Args> for F {
     type Output = F::Output;
 
-    fn requires(&self, _args: Args) -> bool {
+    fn requires(self, _args: Args) -> bool {
         unimplemented!();
     }
 
-    fn ensures(&self, _args: Args, _output: Self::Output) -> bool {
+    fn ensures(self, _args: Args, _output: Self::Output) -> bool {
         unimplemented!();
     }
 }

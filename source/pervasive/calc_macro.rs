@@ -27,31 +27,33 @@ macro_rules! calc_internal {
     (__internal expr (<=) ($a:expr) ($b:expr)) => { ($a <= $b) };
     (__internal expr (>) ($a:expr) ($b:expr)) => { ($a > $b) };
     (__internal expr (>=) ($a:expr) ($b:expr)) => { ($a >= $b) };
-    (__internal expr ($reln:tt) ($a:expr) ($b:expr)) => {
-        compile_error!(concat!("INTERNAL ERROR\nUnexpected ", stringify!(($reln, $a, $b)))); }; // Fallthrough
+    (__internal expr (==>) ($a:expr) ($b:expr)) => { ::builtin::imply($a, $b) };
+    (__internal expr (<==>) ($a:expr) ($b:expr)) => { ::builtin::imply($a, $b) && ::builtin::imply($b, $a) };
+    (__internal expr ($($reln:tt)+) ($a:expr) ($b:expr)) => {
+        compile_error!(concat!("INTERNAL ERROR\nUnexpected ", stringify!(($($reln)+, $a, $b)))); }; // Fallthrough
 
     // Any of the relation steps occuring in the middle of the chain
-    (__internal mid [$topreln:tt] $start:expr ; () $b:block $end:expr ; ) => {{
-        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($topreln) ($start) ($end)), { $b });
+    (__internal mid [$($topreln:tt)+] $start:expr ; () $b:block $end:expr ; ) => {{
+        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($($topreln)+) ($start) ($end)), { $b });
     }};
-    (__internal mid [$topreln:tt] $start:expr ; ($reln:tt) $b:block $end:expr ; ) => {{
-        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($reln) ($start) ($end)), { $b });
+    (__internal mid [$($topreln:tt)+] $start:expr ; ($($reln:tt)+) $b:block $end:expr ; ) => {{
+        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($($reln)+) ($start) ($end)), { $b });
     }};
-    (__internal mid [$topreln:tt] $start:expr ; () $b:block $mid:expr ; $(($($tailreln:tt)?) $tailb:block $taile:expr);* ;) => {{
-        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($topreln) ($start) ($mid)), { $b });
-        $crate::calc_macro::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
+    (__internal mid [$($topreln:tt)+] $start:expr ; () $b:block $mid:expr ; $(($($tailreln:tt)*) $tailb:block $taile:expr);* ;) => {{
+        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($($topreln)+) ($start) ($mid)), { $b });
+        $crate::calc_macro::calc_internal!(__internal mid [$($topreln)+] $mid ; $(($($tailreln)*) $tailb $taile);* ;);
     }};
-    (__internal mid [$topreln:tt] $start:expr ; ($reln:tt) $b:block $mid:expr ; $(($($tailreln:tt)?) $tailb:block $taile:expr);* ;) => {{
-        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($reln) ($start) ($mid)), { $b });
-        $crate::calc_macro::calc_internal!(__internal mid [$topreln] $mid ; $(($($tailreln)?) $tailb $taile);* ;);
+    (__internal mid [$($topreln:tt)+] $start:expr ; ($($reln:tt)+) $b:block $mid:expr ; $(($($tailreln:tt)*) $tailb:block $taile:expr);* ;) => {{
+        ::builtin::assert_by($crate::calc_macro::calc_internal!(__internal expr ($($reln)+) ($start) ($mid)), { $b });
+        $crate::calc_macro::calc_internal!(__internal mid [$($topreln)+] $mid ; $(($($tailreln)*) $tailb $taile);* ;);
     }};
 
     // Main entry point to this macro; this is still an internal macro, but this is where the main
     // `calc!` macro will invoke this.
-    (($reln:tt) $start:expr ; $(($($midreln:tt)?) $b:block ; $mid:expr);* $(;)?) => {{
+    (($($reln:tt)+) $start:expr ; $(($($($midreln:tt)+)?) $b:block ; $mid:expr);* $(;)?) => {{
         ::builtin::assert_by(
-            calc_internal!(__internal expr ($reln) ($start) ($crate::calc_macro::calc_internal!(__internal get_last $($mid ;)*))),
-            { $crate::calc_macro::calc_internal!(__internal mid [$reln] $start ; $(($($midreln)?) $b $mid);* ;); }
+            calc_internal!(__internal expr ($($reln)+) ($start) ($crate::calc_macro::calc_internal!(__internal get_last $($mid ;)*))),
+            { $crate::calc_macro::calc_internal!(__internal mid [$($reln)+] $start ; $(($($($midreln)+)?) $b $mid);* ;); }
         );
     }};
 
@@ -81,7 +83,9 @@ macro_rules! calc_aux {
     (confirm_allowed_relation (<=)) => { }; // Allowed
     (confirm_allowed_relation (>)) => { }; // Allowed
     (confirm_allowed_relation (>=)) => { }; // Allowed
-    (confirm_allowed_relation ($t:tt)) => { compile_error!(concat!("Currently unsupported relation `", stringify!($t), "` in calc")); }; // Fallthrough
+    (confirm_allowed_relation (==>)) => { }; // Allowed
+    (confirm_allowed_relation (<==>)) => { }; // Allowed
+    (confirm_allowed_relation ($($t:tt)+)) => { compile_error!(concat!("Currently unsupported relation `", stringify!($($t)*), "` in calc")); }; // Fallthrough
 
     // Confirm that an middle relation is consistent with the main relation
     (confirm_middle_relation (==) (==)) => { }; // Equality is only consistent with itself
@@ -97,8 +101,19 @@ macro_rules! calc_aux {
     (confirm_middle_relation (>) (>)) => { }; // Strictly-greater-than, similar to less-than-or-equal
     (confirm_middle_relation (>) (>=)) => { }; //
     (confirm_middle_relation (>) (==)) => { }; //
-    (confirm_middle_relation ($main:tt) ($middle:tt)) => {
-        compile_error!(concat!("Potentially inconsistent relation `", stringify!($middle), "` with `", stringify!($main), "`")); }; // Fallthrough
+    (confirm_middle_relation (==>) (==>)) => { }; // Implication is consistent with itself, equality, and if-and-only-if
+    (confirm_middle_relation (==>) (==)) => { }; //
+    (confirm_middle_relation (==>) (<==>)) => { }; //
+    (confirm_middle_relation (<==>) (<==>)) => { }; // If-and-only-if is consistent with itself, and equality
+    (confirm_middle_relation (<==>) (==)) => { }; //
+    (confirm_middle_relation ($($main:tt)+) ($($middle:tt)+)) => {
+        compile_error!(concat!("Potentially inconsistent relation `", stringify!($($middle)*), "` with `", stringify!($($main)*), "`")); }; // Fallthrough
+
+    (confirm_middle_relations ($($main:tt)+)) => { };
+    (confirm_middle_relations ($($main:tt)+) ($($middle:tt)+) $($rest:tt)* ) => {
+        $crate::calc_macro::calc_aux!(confirm_middle_relation ($($main)+) ($($middle)+));
+        $crate::calc_macro::calc_aux!(confirm_middle_relations ($($main)+) $($rest)*);
+    };
 }
 
 /// The `calc!` macro supports structured proofs through calculations.
@@ -146,15 +161,15 @@ macro_rules! calc_aux {
 #[macro_export]
 macro_rules! calc {
     // The main entry point to this macro.
-    (($reln:tt) $start:expr ; $($(($middlereln:tt))? $b:block $mid:expr);* $(;)?) => {
-        $crate::calc_macro::calc_aux!(confirm_allowed_relation ($reln));
+    (($($reln:tt)+) $start:expr ; $($(($($middlereln:tt)+))? $b:block $mid:expr);* $(;)?) => {
+        $crate::calc_macro::calc_aux!(confirm_allowed_relation ($($reln)+));
         $($(
-            $crate::calc_macro::calc_aux!(confirm_allowed_relation ($middlereln));
-            $crate::calc_macro::calc_aux!(confirm_middle_relation ($reln) ($middlereln));
+            $crate::calc_macro::calc_aux!(confirm_allowed_relation ($($middlereln)+));
         )?)*
+        $crate::calc_macro::calc_aux!(confirm_middle_relations ($($reln)+) $($(($($middlereln)+))?)*);
         ::builtin_macros::verus_proof_macro_explicit_exprs!(
             $crate::calc_macro::calc_internal!(
-                ($reln) @@$start ; $(($($middlereln)?) @@$b ; @@$mid);* ;
+                ($($reln)+) @@$start ; $(($($($middlereln)+)?) @@$b ; @@$mid);* ;
             )
         )
     };

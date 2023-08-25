@@ -54,7 +54,12 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_) | TypX::StrSlice | TypX::Char => true,
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::ConstInt(_)
+        | TypX::StrSlice
+        | TypX::Char
+        | TypX::Primitive(_, _) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -208,6 +213,12 @@ fn check_positive_uses(
             Ok(())
         }
         TypX::Decorate(_, t) => check_positive_uses(global, local, polarity, t),
+        TypX::Primitive(_, ts) => {
+            for t in ts.iter() {
+                check_positive_uses(global, local, polarity, t)?;
+            }
+            Ok(())
+        }
         TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
         TypX::TypParam(x) => {
             let strictly_positive = local.tparams[x] != AcceptRecursiveType::Reject;
@@ -283,13 +294,6 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     for function in &krate.functions {
         if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
             assert!(&function.x.typ_params[0] == &crate::def::trait_self_type_param());
-        }
-        if function.x.typ_bounds.len() != 0 && function.x.attrs.broadcast_forall {
-            // See the todo!() in func_to_air.rs
-            return error(
-                &function.span,
-                "not yet supported: bounds on broadcast_forall function type parameters",
-            );
         }
     }
 

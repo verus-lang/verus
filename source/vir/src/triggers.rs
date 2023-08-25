@@ -241,6 +241,9 @@ fn check_trigger_expr(
             ExpX::VarAt(_, VarAt::Pre) => Ok(()),
             ExpX::Old(_, _) => panic!("internal error: Old"),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
+                error(&exp.span, "triggers cannot contain trait bounds")
+            }
             ExpX::Unary(op, arg) => match op {
                 UnaryOp::StrLen | UnaryOp::StrIsAscii => check_trigger_expr_arg(state, true, arg),
                 UnaryOp::Clip { .. } | UnaryOp::BitNot | UnaryOp::CharToInt => {

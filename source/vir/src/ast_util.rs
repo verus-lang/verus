@@ -78,6 +78,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
+        (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
         (TypX::Decorate(d1, t1), TypX::Decorate(d2, t2)) => d1 == d2 && types_equal(t1, t2),
         (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
@@ -109,6 +110,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Lambda(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
+        (TypX::Primitive(_, _), _) => false,
         (TypX::Decorate(_, _), _) => false,
         (TypX::Boxed(_), _) => false,
         (TypX::TypParam(_), _) => false,
@@ -563,6 +565,13 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
+        TypX::Primitive(prim, typs) => {
+            let typs_str = typs_to_comma_separated_str(typs);
+            match prim {
+                crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
+                crate::ast::Primitive::Slice => format!("[{typs_str}]"),
+            }
+        }
         TypX::Datatype(path, typs, _) => format!(
             "{}{}",
             path_as_friendly_rust_name(path),

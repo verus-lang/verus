@@ -1,6 +1,6 @@
 use crate::attributes::{
     get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs,
-    parse_attrs, Attr, GhostBlockAttr,
+    parse_attrs, parse_attrs_opt, Attr, GhostBlockAttr,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -10,7 +10,10 @@ use crate::rust_to_vir_base::{
     is_smt_arith, is_smt_equality, is_type_std_rc_or_arc_or_ref, local_to_var, mid_ty_simplify,
     mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
-use crate::util::{err_span, slice_vec_map_result, unsupported_err_span, vec_map_result};
+use crate::spans::err_air_span;
+use crate::util::{
+    err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
+};
 use crate::verus_items::{
     self, BuiltinFunctionItem, CompilableOprItem, OpenInvariantBlockItem, RustItem,
     SpecGhostTrackedItem, UnaryOpItem, VerusItem,
@@ -24,7 +27,9 @@ use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Closure, Destination, Expr, ExprKind, Guard, HirId, Let,
     Local, LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
-use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, AutoBorrowMutability};
+use rustc_middle::ty::adjustment::{
+    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
+};
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
@@ -37,7 +42,7 @@ use vir::ast::{
     FieldOpr, FunX, HeaderExprX, InequalityOp, IntRange, InvAtomicity, Mode, PatternX,
     SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
-use vir::ast_util::{ident_binder, types_equal, undecorate_typ};
+use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::positional_field_ident;
 
 pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, String), VirErr> {
@@ -97,6 +102,7 @@ pub(crate) fn closure_param_typs<'tcx>(
                 args.push(mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    bctx.fun_id,
                     expr.span,
                     t,
                     false, /* allow_mut_ref */
@@ -121,6 +127,7 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
             mid_ty_to_vir(
                 bctx.ctxt.tcx,
                 &bctx.ctxt.verus_items,
+                bctx.fun_id,
                 expr.span,
                 &t,
                 false, /* allow_mut_ref */
@@ -437,6 +444,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                     let vir_typ = mid_ty_to_vir(
                         bctx.ctxt.tcx,
                         &bctx.ctxt.verus_items,
+                        bctx.fun_id,
                         pat.span,
                         &typ,
                         false,
@@ -537,7 +545,7 @@ pub(crate) fn block_to_vir<'tcx>(
 
 /// Check for the #[verifier(invariant_block)] attribute
 pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
-    let attrs_vec = parse_attrs(attrs)?;
+    let attrs_vec = parse_attrs(attrs, None)?;
     for attr in &attrs_vec {
         match attr {
             Attr::InvariantBlock => {
@@ -955,6 +963,16 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 "dereferencing a pointer (here the dereference is implicit)"
             )
         }
+        Adjust::Pointer(PointerCast::Unsize) => {
+            // REVIEW Should we track the size of the array as a fact about the resulting slice?
+            expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                current_modifier,
+                adjustments,
+                adjustment_idx - 1,
+            )
+        }
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
         }
@@ -1003,7 +1021,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+    let expr_vattrs =
+        get_verifier_attrs(expr_attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
     if expr_vattrs.truncate {
         if !match &expr.kind {
             ExprKind::Cast(_, _) => true,
@@ -1146,15 +1165,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // `exec_nonstatic_call` which is defined in the pervasive lib.
                         let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
                         let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
-                        let fun = vir::def::exec_nonstatic_call_fun(&bctx.ctxt.vstd_crate_name);
+                        let helper_fun =
+                            vir::def::exec_nonstatic_call_fun(&bctx.ctxt.vstd_crate_name);
                         let ret_typ = expr_typ.clone();
 
-                        // We need the tuple type to have the correct decoration:
+                        // Anything that goes in `typ_args` needs to have the correct
+                        // decoration, so call mid_ty_to_vir for these
+                        // Compute `tup_typ` with the correct decoration:
                         let mut arg_typs = vec![];
                         for arg in args {
                             arg_typs.push(mid_ty_to_vir(
                                 tcx,
                                 &bctx.ctxt.verus_items,
+                                bctx.fun_id,
                                 arg.span,
                                 &bctx.types.expr_ty_adjusted(arg),
                                 false,
@@ -1162,11 +1185,25 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                         let tup_typ = Arc::new(TypX::Tuple(Arc::new(arg_typs)));
 
-                        let typ_args = Arc::new(vec![tup_typ, ret_typ, vir_fun.typ.clone()]);
+                        // Compute fun_typ with the correct decoration
+                        // (technically not needed since the fun_typ decoration gets
+                        // ignored later, but for consistency with other typ_args I
+                        // decided to get the decorated version)
+                        // Also, allow &mut refs here since that can happen for FnMut.
+                        let fun_typ = mid_ty_to_vir(
+                            tcx,
+                            &bctx.ctxt.verus_items,
+                            bctx.fun_id,
+                            fun.span,
+                            &fun_ty,
+                            true,
+                        )?;
+
+                        let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
                         (
                             CallTarget::Fun(
                                 vir::ast::CallTargetKind::Static,
-                                fun,
+                                helper_fun,
                                 typ_args,
                                 Arc::new(vec![]),
                                 AutospecUsage::Final,
@@ -1700,6 +1737,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                     typ_args.push(mid_ty_to_vir(
                                         tcx,
                                         &bctx.ctxt.verus_items,
+                                        bctx.fun_id,
                                         expr.span,
                                         &ty,
                                         false,
@@ -1782,10 +1820,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             };
             if !matches!(&*idx_vir.typ, TypX::Int(IntRange::USize)) {
-                return err_span(
+                return Err(err_span_bare(
                     expr.span,
-                    "in exec code, Verus only supports the index operator for usize index",
-                );
+                    "in exec code, the index operator is only supported for usize index",
+                )
+                .secondary_label(
+                    &err_air_span(idx_expr.span),
+                    format!("expected usize, found {}", typ_to_diagnostic_str(&idx_vir.typ)),
+                ));
             }
 
             let call_target = CallTarget::Fun(
@@ -1936,7 +1978,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 let deref_ghost = mid_ty_to_vir_ghost(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
-                    None,
+                    bctx.fun_id,
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
                     false,
@@ -1969,9 +2011,36 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     initializer: &Option<&Expr<'tcx>>,
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
-    let vir_pattern = pattern_to_vir(bctx, pattern)?;
     let mode = get_var_mode(bctx.mode, attrs);
     let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::REGULAR)).transpose()?;
+
+    if parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
+        .contains(&Attr::UnwrappedBinding)
+    {
+        let pat_typ = &bctx.types.node_type(pattern.hir_id);
+        if let TyKind::Adt(AdtDef(adt_def_data), _args) = pat_typ.kind() {
+            let pat_typ_verus_item = bctx.ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            if pat_typ_verus_item
+                == Some(&VerusItem::BuiltinType(verus_items::BuiltinTypeItem::Tracked))
+                && mode == Mode::Proof
+            {
+                bctx.ctxt.diagnostics.borrow_mut().push(
+                    vir::ast::VirErrAs::Warning(
+                        crate::util::err_span_bare(pattern.span, format!("the right-hand side is already wrapped with `Tracked`, you likely don't need a `tracked` variable"))
+                        .help("consider `.get()` on the right-hand side, or removing `tracked` on the left-hand side")));
+            } else if pat_typ_verus_item
+                == Some(&VerusItem::BuiltinType(verus_items::BuiltinTypeItem::Ghost))
+                && mode == Mode::Spec
+            {
+                bctx.ctxt.diagnostics.borrow_mut().push(
+                    vir::ast::VirErrAs::Warning(
+                        crate::util::err_span_bare(pattern.span, format!("the right-hand side is already wrapped with `Ghost`, you likely don't need a `ghost` variable"))
+                        .help("consider `@` on the right-hand side, or removing `ghost` on the left-hand side")));
+            }
+        }
+    }
+
+    let vir_pattern = pattern_to_vir(bctx, pattern)?;
     Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init })])
 }
 
@@ -2105,7 +2174,8 @@ pub(crate) fn stmts_to_vir<'tcx>(
     stmts: &mut impl Iterator<Item = &'tcx Stmt<'tcx>>,
 ) -> Result<Option<Vec<vir::ast::Stmt>>, VirErr> {
     if let Some(stmt) = stmts.next() {
-        let attrs = crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir().attrs(stmt.hir_id));
+        let attrs =
+            crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir().attrs(stmt.hir_id), None);
         if let [Attr::UnwrapParameter] = attrs[..] {
             if let Some(stmt2) = stmts.next() {
                 return Ok(Some(unwrap_parameter_to_vir(bctx, stmt, stmt2)?));

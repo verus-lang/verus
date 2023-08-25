@@ -202,7 +202,7 @@ test_verify_one_file! {
         proof fn test() {
             reveal(X::foo);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow deprecated warning */ }
 }
 
 test_verify_one_file! {
@@ -279,23 +279,6 @@ test_verify_one_file! {
             true
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
-}
-
-test_verify_one_file! {
-    #[ignore] #[test] trait_argument_names_issue278 verus_code! {
-        trait T {
-            fn f(&self, a: usize) -> (res: usize)
-                ensures res == a;
-        }
-
-        struct S { }
-
-        impl T for S {
-            fn f(&self, b: usize) -> usize {
-                b
-            }
-        }
-    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -450,7 +433,7 @@ test_verify_one_file! {
                 self.field0 = val;
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow deprecated warning */ }
 }
 
 test_verify_one_file_with_options! {
@@ -465,7 +448,7 @@ test_verify_one_file_with_options! {
         }
 
         } // verus!
-    } => Ok(())
+    } => Ok(_err) => { /* allow unused warning */ }
 }
 
 test_verify_one_file! {
@@ -521,6 +504,253 @@ test_verify_one_file_with_options! {
             assert(seq.to_set().finite());
         }
 
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_387_discussioncomment_6611094_1 verus_code! {
+        #[verifier:ext_equal]
+        pub struct Y {
+            y: int
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected one of")
+}
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_387_discussioncomment_6611094_2 verus_code! {
+        #[verifier(wat, wat)]
+        pub struct Y {
+            y: int
+        }
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
+}
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_regression_684 verus_code! {
+        #[verifier(external),verifier(external_body)]
+        proof fn bar() {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected `]`, found `,`")
+}
+
+test_verify_one_file! {
+    #[test] test_attr_parsing_387_discussioncomment_6611094_3 verus_code! {
+        #[verifier("something")]
+        proof fn bar() {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
+}
+
+test_verify_one_file! {
+    #[test] test_for_loop_387_discussioncomment_5683342 verus_code! {
+        struct T{}
+        fn f(v: Vec<T>) {
+            for t in v {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support IntoIterator::into_iter")
+}
+
+test_verify_one_file! {
+    #[test] test_associated_type_with_bound_387_discussioncomment_6179829 verus_code! {
+        pub trait T { }
+
+        pub trait U {
+            type S: T;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support associated types with trait bounds")
+}
+
+test_verify_one_file! {
+    #[test] test_empty_recommends_387_discussioncomment_5670055 verus_code! {
+        pub open spec fn foo() -> bool
+          recommends
+          {
+              true
+          }
+
+        proof fn test() {
+            assert(foo());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_empty_recommends_387_discussioncomment_6117310_1 verus_code! {
+        pub open fn test() -> bool {
+            1int > 0int
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open` or `closed`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
+        use vstd::set::*;
+
+        spec fn yes() -> bool { true }
+
+        spec fn both(s: Set<nat>) -> bool {
+            &&& yes()
+            &&& s.contains(0) // EXPAND-ERRORS
+        }
+
+        proof fn test(s: Set<nat>) {
+            assert(both(s)); // EXPAND-ERRORS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("this function is uninterpreted"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_2 ["--expand-errors"] => verus_code! {
+        struct Z { _temp: (), }
+
+        mod X {
+            pub trait T {
+                open spec fn foo(&self) -> bool; // EXPAND-ERRORS
+            }
+
+            impl T for super::Z {
+                open spec fn foo(&self) -> bool { false }
+            }
+        }
+
+        use X::T;
+
+        fn f() {
+            let z = Z { _temp: () };
+            assert(z.foo()); // EXPAND-ERRORS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("trait function declaration"));
+        assert_expand_fails(err, 2);
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_1 verus_code! {
+        fn test_bug1(Tracked(s): Tracked<&mut i32>)
+        {
+            let tracked x: &mut i32 = s;
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].rendered.contains("let tracked x: &mut i32 = s;"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_2 verus_code! {
+        fn test_bug2(Tracked(s): Tracked<&mut i32>)
+        {
+            let tracked x: i32 = s;
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].rendered.contains("let tracked x: i32 = s;"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_unwrapped_tracked_unintended_387_discussioncomment_6680621 verus_code! {
+        exec fn f(foo: &mut usize) {
+            let tracked tracked_foo = Tracked(foo);
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert_eq!(err.warnings.len(), 1);
+        assert!(err.errors[0].rendered.contains("let tracked tracked_foo = Tracked(foo);"));
+        assert!(err.warnings.iter().find(|x| x.message.contains("the right-hand side is already wrapped with `Tracked`")).is_some());
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_unwrapped_ghost_unintended_387_discussioncomment_6680621 verus_code! {
+        exec fn f(foo: usize) {
+            let ghost ghost_foo = Ghost(foo);
+        }
+    } => Ok(err) => {
+        dbg!(&err);
+        assert_eq!(err.errors.len(), 0);
+        assert!(err.warnings.iter().find(|x| x.message.contains("the right-hand side is already wrapped with `Ghost`")).is_some());
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_multiset_finite_false_1 verus_code! {
+        use vstd::{map::*, multiset::*};
+        proof fn test(mymap: Map<nat, nat>)
+            requires !mymap.dom().finite() {
+
+            let m = Multiset::new(mymap);
+            assert(m.dom().finite());
+
+            assert(!m.dom().finite()); // FAILS
+            // assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_multiset_finite_false_2 verus_code! {
+        use vstd::{map::*, multiset::*};
+        proof fn test(mymap: Map<nat, nat>)
+            requires !mymap.dom().finite() {
+
+            let m = Multiset::new(mymap);
+            assert(m.dom().finite());
+
+            assert(m.dom() =~= mymap.dom()); // FAILS
+            // assert(!m.dom().finite());
+            // assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] str_len_contradiction_from_suspect_unsoundness_report verus_code! {
+        use vstd::string::*;
+        use vstd::seq::*;
+        proof fn test(s2: Seq<char>, s1: Seq<char>)
+            requires
+                (s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@) ||
+                (s1 + new_strlit("-cde")@ == s2 + new_strlit("-cde")@),
+        {
+            assert(
+                (s1.len() + 3 == s2.len() + 4) ||
+                (s1.len() + 4 == s2.len() + 4)
+            ) by {
+                reveal_strlit("-cde");
+                reveal_strlit("-ab");
+                assert((s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
+                assert((s1 + new_strlit("-cde")@).len() == s1.len() + new_strlit("-cde")@.len() == s1.len() + 4);
+                assert((s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+            };
+
+            assert(s1 + new_strlit("-ab")@ != s2 + new_strlit("-cde")@) by {
+                let str1 = s1 + new_strlit("-ab")@;
+                let str2 = s2 + new_strlit("-cde")@;
+                assert(str1.len() == s1.len() + 3) by {
+                    reveal_strlit("-ab");
+                    assert(str1.len() == (s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
+                };
+                assert(str2.len() == s2.len() + 4) by {
+                    reveal_strlit("-cde");
+                    assert(str2.len() == (s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                };
+                if str2.len() == str1.len() {
+                    assert(s1.len() + 3 == s2.len() + 4);
+                    assert(s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@); // from the requires
+
+                    assert(str1 == s2 + new_strlit("-cde")@);
+                    assert(str1 == s1 + new_strlit("-ab")@);
+
+                    reveal_strlit("-ab");
+                    reveal_strlit("-cde");
+                    assert(str2[str2.len() - 1] == 'e');
+                    assert(str2[str2.len() - 1] == 'b');
+                    assert(false);
+                }
+            };
         }
     } => Ok(())
 }

@@ -188,6 +188,7 @@ pub struct Verifier {
     vstd_crate_name: Option<Ident>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
+    current_crate_module_ids: Option<Vec<vir::ast::Path>>,
 
     // proof debugging purposes
     expand_flag: bool,
@@ -237,6 +238,7 @@ impl Verifier {
             vstd_crate_name: None,
             air_no_span: None,
             inferred_modes: None,
+            current_crate_module_ids: None,
 
             expand_flag: false,
             expand_targets: vec![],
@@ -264,6 +266,7 @@ impl Verifier {
             vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
             inferred_modes: self.inferred_modes.clone(),
+            current_crate_module_ids: self.current_crate_module_ids.clone(),
             expand_flag: self.expand_flag,
             expand_targets: self.expand_targets.clone(),
         }
@@ -591,14 +594,35 @@ impl Verifier {
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
+        verify_function_exact_match: bool,
         comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
         if let Some(verify_function) = &self.args.verify_function {
             if let Some(function_name) = function_name {
                 let name = friendly_fun_name_crate_relative(&module, function_name);
-                if &name != verify_function {
-                    return false;
+                if verify_function_exact_match {
+                    if &name != verify_function
+                        && !name.ends_with(&format!("::{}", verify_function))
+                    {
+                        return false;
+                    }
+                } else {
+                    let clean_verify_function = verify_function.trim_matches('*');
+                    let left_wildcard = verify_function.starts_with('*');
+                    let right_wildcard = verify_function.ends_with('*');
+
+                    if left_wildcard && !right_wildcard {
+                        if !name.ends_with(clean_verify_function) {
+                            return false;
+                        }
+                    } else if !left_wildcard && right_wildcard {
+                        if !name.starts_with(clean_verify_function) {
+                            return false;
+                        }
+                    } else if !name.contains(clean_verify_function) {
+                        return false;
+                    }
                 }
             } else {
                 return false;
@@ -610,6 +634,7 @@ impl Verifier {
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
+            air_context.comment(&span.as_string);
         }
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
@@ -750,7 +775,6 @@ impl Verifier {
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
-
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -840,7 +864,7 @@ impl Verifier {
             &("Associated-Type-Decls".to_string()),
         );
 
-        let datatype_commands = vir::datatype_to_air::datatypes_to_air(
+        let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
             ctx,
             &krate
                 .datatypes
@@ -855,6 +879,15 @@ impl Verifier {
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
+        );
+
+        let trait_commands = vir::traits::traits_to_air(ctx, &krate);
+        self.run_commands(
+            module,
+            reporter,
+            &mut air_context,
+            &trait_commands,
+            &("Traits".to_string()),
         );
 
         let assoc_type_impl_commands =
@@ -913,6 +946,7 @@ impl Verifier {
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
+        let mut verify_function_exact_match = false;
         if let Some(verify_function) = &self.args.verify_function {
             let module_funs = funs
                 .iter()
@@ -920,7 +954,13 @@ impl Verifier {
                 .filter(|f| Some(module.clone()) == f.x.owning_module);
             let mut module_fun_names: Vec<String> =
                 module_funs.map(|f| friendly_fun_name_crate_relative(&module, &f.x.name)).collect();
-            if !module_fun_names.iter().any(|f| f == verify_function) {
+
+            let clean_verify_function = verify_function.trim_matches('*');
+            let mut filtered_functions: Vec<&String> =
+                module_fun_names.iter().filter(|f| f.contains(clean_verify_function)).collect();
+
+            // no match
+            if filtered_functions.len() == 0 {
                 module_fun_names.sort();
                 let msg = vec![
                     format!(
@@ -933,6 +973,62 @@ impl Verifier {
                 .collect::<Vec<String>>()
                 .join("\n");
                 return Err(error(msg));
+            }
+
+            // substring match
+            if verify_function == clean_verify_function {
+                verify_function_exact_match = filtered_functions
+                    .iter()
+                    .filter(|f| {
+                        // filter for exact match and impl func match
+                        *f == &verify_function || f.ends_with(&format!("::{}", verify_function))
+                    })
+                    .count()
+                    == 1;
+
+                if filtered_functions.len() > 1 && !verify_function_exact_match {
+                    filtered_functions.sort();
+                    let msg = vec![
+                        format!(
+                            "more than one match found for --verify-function {verify_function}, consider using wildcard *{verify_function}* to verify all matched results,"
+                        ),
+                        format!(
+                            "or specify a unique substring for the desired function, matched results are:"
+                        ),
+                    ].into_iter()
+                    .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                    return Err(error(msg));
+                }
+            } else {
+                // wildcard match
+                let wildcard_mismatch =
+                    match (verify_function.starts_with("*"), verify_function.ends_with("*")) {
+                        (true, false) => {
+                            !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function))
+                        }
+                        (false, true) => {
+                            !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function))
+                        }
+                        _ => false,
+                    };
+
+                if wildcard_mismatch {
+                    filtered_functions.sort();
+                    let msg = vec![
+                            format!(
+                                "could not find function {verify_function} specified by --verify-function,"
+                            ),
+                            format!(
+                                "consider *{clean_verify_function}* if you want to verify similar functions:"
+                            ),
+                        ].into_iter()
+                        .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
+                        .collect::<Vec<String>>()
+                        .join("\n");
+                    return Err(error(msg));
+                }
             }
         }
 
@@ -1008,6 +1104,7 @@ impl Verifier {
                     &ctx.global.qid_map.borrow(),
                     module,
                     Some(&function.x.name),
+                    verify_function_exact_match,
                     &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
                 );
@@ -1040,6 +1137,7 @@ impl Verifier {
                             &ctx.global.qid_map.borrow(),
                             module,
                             Some(&function.x.name),
+                            verify_function_exact_match,
                             &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                             Some("recommends check: "),
                         );
@@ -1168,6 +1266,7 @@ impl Verifier {
                         &ctx.global.qid_map.borrow(),
                         module,
                         Some(&function.x.name),
+                        verify_function_exact_match,
                         &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                         desc_prefix,
                     );
@@ -1211,14 +1310,17 @@ impl Verifier {
 
         let module_name = module_name(module);
         if self.args.trace || (self.args.verify_module.len() > 0 || self.args.verify_root) {
-            if module.segments.len() == 0 {
-                reporter.report_now(&note_bare("verifying root module"));
+            let module_msg = if module.segments.len() == 0 {
+                "root module".into()
             } else {
-                reporter.report_now(&note_bare(&format!("verifying module {}", &module_name)));
-            }
+                format!("module {}", &module_name)
+            };
+            let functions_msg =
+                if self.args.verify_function.is_some() { " (selected functions)" } else { "" };
+            reporter.report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")));
         }
 
-        let (pruned_krate, mono_abstract_datatypes, lambda_types) =
+        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits) =
             vir::prune::prune_krate_for_module(&krate, &module, &self.vstd_crate_name);
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
@@ -1226,6 +1328,7 @@ impl Verifier {
             module.clone(),
             mono_abstract_datatypes,
             lambda_types,
+            bound_traits,
             self.args.debug,
         )?;
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
@@ -1317,7 +1420,7 @@ impl Verifier {
                 ));
             }
 
-            if self.args.verify_module.len() > 1 {
+            if self.args.verify_module.len() + (if self.args.verify_root { 1 } else { 0 }) > 1 {
                 return Err(error(
                     "--verify-function only allowed with a single --verify-module (or --verify-root)",
                 ));
@@ -1325,9 +1428,12 @@ impl Verifier {
         }
 
         let module_ids_to_verify: Vec<vir::ast::Path> = {
+            let current_crate_module_ids = self
+                .current_crate_module_ids
+                .as_ref()
+                .expect("current_crate_module_ids should be initialized");
             let mut remaining_verify_module: HashSet<_> = self.args.verify_module.iter().collect();
-            let module_ids_to_verify = krate
-                .module_ids
+            let module_ids_to_verify = current_crate_module_ids
                 .iter()
                 .filter(|m| {
                     let name = module_name(m);
@@ -1337,29 +1443,30 @@ impl Verifier {
                     (!self.args.verify_root
                         && self.args.verify_module.is_empty()
                         && (!is_pervasive ^ self.args.verify_pervasive))
-                        || (self.args.verify_root && m.segments.len() == 0)
+                        || (self.args.verify_root && m.segments.len() == 0 && !is_pervasive)
                         || remaining_verify_module.take(&name).is_some()
                 })
                 .cloned()
                 .collect();
 
             if let Some(mod_name) = remaining_verify_module.into_iter().next() {
-                let msg = vec![
+                let mut lines = current_crate_module_ids
+                    .iter()
+                    .filter_map(|m| {
+                        let name = module_name(m);
+                        (!(name.starts_with("pervasive::") || name == "pervasive")
+                            && m.segments.len() > 0)
+                            .then(|| format!("- {name}"))
+                    })
+                    .collect::<Vec<_>>();
+                lines.sort(); // Present the available modules in sorted order
+                let mut msg = vec![
                     format!("could not find module {mod_name} specified by --verify-module"),
                     format!("available modules are:"),
-                ]
-                .into_iter()
-                .chain(krate.module_ids.iter().filter_map(|m| {
-                    let name = module_name(m);
-                    (!(name.starts_with("pervasive::") || name == "pervasive")
-                        && m.segments.len() > 0)
-                        .then(|| format!("- {name}"))
-                }))
-                .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
-                .collect::<Vec<_>>()
-                .join("\n");
-
-                return Err(error(msg));
+                ];
+                msg.extend(lines);
+                msg.push(format!("or use --verify-root, --verify-pervasive"));
+                return Err(error(msg.join("\n")));
             }
 
             module_ids_to_verify
@@ -1565,7 +1672,13 @@ impl Verifier {
         if self.args.profile_all {
             let profiler = Profiler::new(&reporter);
             self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
+        } else if self.args.profile && self.count_errors == 0 {
+            let msg = note_bare(
+                "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
+            );
+            reporter.report(&msg);
         }
+
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
             let mut file = self.create_log_file(None, None, crate::config::TRIGGERS_FILE_SUFFIX)?;
@@ -1638,7 +1751,7 @@ impl Verifier {
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl Diagnostics,
         crate_name: String,
-    ) -> Result<bool, VirErr> {
+    ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
         let time0 = Instant::now();
 
         match rustc_hir_analysis::check_crate(tcx) {
@@ -1686,9 +1799,8 @@ impl Verifier {
 
         let mut crate_names: Vec<String> = vec![crate_name];
         crate_names.extend(other_crate_names.into_iter());
-        let mut vir_crates: Vec<Krate> =
-            vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
-        vir_crates.extend(other_vir_crates.into_iter());
+        let mut vir_crates: Vec<Krate> = other_vir_crates;
+        // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
@@ -1715,16 +1827,21 @@ impl Verifier {
             vstd_crate_name: vstd_crate_name.clone(),
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
             verus_items,
+            diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
+        let map_err_diagnostics =
+            |err: VirErr| (err, ctxt.diagnostics.borrow_mut().drain(..).collect());
+
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt).map_err(map_err_diagnostics)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
+        self.current_crate_module_ids = Some(vir_crate.module_ids.clone());
 
         // Export crate if requested.
         if self.args.export.is_some() {
@@ -1740,7 +1857,8 @@ impl Verifier {
             crate_id: spans.local_crate.to_u64(),
             original_files: spans.local_files.clone(),
         };
-        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())?;
+        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
+            .map_err(map_err_diagnostics)?;
 
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
@@ -1749,17 +1867,21 @@ impl Verifier {
         // the new crate.  (We do need to have all the crate definitions available in some form,
         // because well_formed and modes checking look up definitions from libraries.)
         vir_crates.push(vir_crate);
-        let vir_crate = vir::ast_simplify::merge_krates(vir_crates)?;
+        let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_vir {
-            let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
+            let mut file = self
+                .create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)
+                .map_err(map_err_diagnostics)?;
             vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
         }
-        let mut check_crate_diags = vec![];
+        let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
-        let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
-        let check_crate_result = vir::well_formed::check_crate(&vir_crate, &mut check_crate_diags);
-        for diag in check_crate_diags {
+        let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)
+            .map_err(map_err_diagnostics)?;
+        let check_crate_result =
+            vir::well_formed::check_crate(&vir_crate, &mut ctxt.diagnostics.borrow_mut());
+        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err, MessageLevel::Warning)
@@ -1767,9 +1889,10 @@ impl Verifier {
                 vir::ast::VirErrAs::Note(err) => diagnostics.report_as(&err, MessageLevel::Note),
             }
         }
-        check_crate_result?;
-        let vir_crate = vir::autospec::resolve_autospec(&vir_crate)?;
-        let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate, true)?;
+        check_crate_result.map_err(|e| (e, Vec::new()))?;
+        let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let (erasure_modes, inferred_modes) =
+            vir::modes::check_crate(&vir_crate, true).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);
@@ -1860,7 +1983,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 if self.verifier.args.trace {
                     reporter.report_now(&note_bare("preparing crate for verification"));
                 }
-                if let Err(err) = self.verifier.construct_vir_crate(
+                if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
                     tcx,
                     verus_items.clone(),
                     &spans,
@@ -1871,6 +1994,17 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 ) {
                     reporter.report_as(&err, MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
+
+                    for diag in diagnostics.drain(..) {
+                        match diag {
+                            vir::ast::VirErrAs::Warning(err) => {
+                                reporter.report_as(&err, MessageLevel::Warning)
+                            }
+                            vir::ast::VirErrAs::Note(err) => {
+                                reporter.report_as(&err, MessageLevel::Note)
+                            }
+                        }
+                    }
                     return;
                 }
                 if !compiler.session().compile_status().is_ok() {

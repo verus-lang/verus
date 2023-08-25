@@ -90,6 +90,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(RustItem::TryTraitBranch) => {
             return err_span(expr.span, "Verus does not yet support the ? operator");
         }
+        Some(RustItem::IntoIterFn) => {
+            return err_span(
+                expr.span,
+                "Verus does not yet support IntoIterator::into_iter and for loops, use a while loop instead",
+            );
+        }
         _ => {}
     }
 
@@ -98,6 +104,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             VerusItem::Pervasive(_, _)
             | VerusItem::Marker(_)
             | VerusItem::BuiltinType(_)
+            | VerusItem::BuiltinTrait(_)
             | VerusItem::BuiltinFunction(_) => (),
             _ => {
                 return verus_item_to_vir(
@@ -725,7 +732,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let proof = vir_expr;
 
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                    let expr_vattrs = get_verifier_attrs(
+                        expr_attrs,
+                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+                    )?;
                     if expr_vattrs.spinoff_prover {
                         return err_span(
                             expr.span,
@@ -810,12 +820,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 (TypX::Int(_), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                    let expr_vattrs = get_verifier_attrs(
+                        expr_attrs,
+                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+                    )?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
                 (TypX::Char, TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(expr_attrs)?;
+                    let expr_vattrs = get_verifier_attrs(
+                        expr_attrs,
+                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+                    )?;
                     let source_unicode =
                         mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()))?;
                     Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
@@ -1040,9 +1056,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             if matches!(equ_item, EqualityItem::ExtEqual | EqualityItem::ExtEqualDeep) {
                 assert!(node_substs.len() == 1);
                 let t = match node_substs[0].unpack() {
-                    GenericArgKind::Type(ty) => {
-                        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, expr.span, &ty, false)?
-                    }
+                    GenericArgKind::Type(ty) => mid_ty_to_vir(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        bctx.fun_id,
+                        expr.span,
+                        &ty,
+                        false,
+                    )?,
                     _ => panic!("unexpected ext_equal type argument"),
                 };
                 let vop = vir::ast::BinaryOpr::ExtEq(equ_item == &EqualityItem::ExtEqualDeep, t);
@@ -1141,6 +1162,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Pervasive(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
+        | VerusItem::BuiltinTrait(_)
         | VerusItem::BuiltinFunction(_) => unreachable!(),
     }
 }
@@ -1445,7 +1467,14 @@ fn mk_typ_args<'tcx>(
     for typ_arg in substs {
         match typ_arg.unpack() {
             GenericArgKind::Type(ty) => {
-                typ_args.push(mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &ty, false)?);
+                typ_args.push(mid_ty_to_vir(
+                    tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    span,
+                    &ty,
+                    false,
+                )?);
             }
             GenericArgKind::Lifetime(_) => {}
             GenericArgKind::Const(cnst) => {
@@ -1553,7 +1582,7 @@ fn check_variant_field<'tcx>(
         return err_span(span, format!("no variant `{variant_name:}` for this datatype"));
     };
 
-    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &ty, false)?;
+    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {
@@ -1570,9 +1599,16 @@ fn check_variant_field<'tcx>(
             };
 
             let field_ty = field.ty(tcx, substs);
-            let vir_field_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &field_ty, false)?;
-            let vir_expected_field_ty =
-                mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, span, &expected_field_typ, false)?;
+            let vir_field_ty =
+                mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &field_ty, false)?;
+            let vir_expected_field_ty = mid_ty_to_vir(
+                tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                span,
+                &expected_field_typ,
+                false,
+            )?;
             if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
                 return err_span(span, "field has the wrong type");
             }

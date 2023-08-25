@@ -390,3 +390,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_std_specs_option_ext_eq verus_code! {
+        use vstd::prelude::*;
+        proof fn test(a: core::option::Option<Seq<int>>, b: core::option::Option<Seq<int>>)
+            requires
+                a.is_Some() == b.is_Some(),
+                a.is_Some() ==> {
+                    &&& a.get_Some_0().len() == 2
+                    &&& b.get_Some_0().len() == 2
+                    &&& a.get_Some_0()[0] == 0
+                    &&& b.get_Some_0()[0] == 0
+                    &&& a.get_Some_0()[1] == 1
+                    &&& b.get_Some_0()[1] == 1
+                },
+        {
+            assert(a =~= b);
+        }
+    } => Ok(())
+}

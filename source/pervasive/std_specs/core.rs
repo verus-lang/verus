@@ -11,6 +11,7 @@ pub fn ex_swap<T>(a: &mut T, b: &mut T)
 
 #[verifier(external_type_specification)]
 #[verifier::accept_recursive_types(V)]
+#[verifier::ext_equal]
 pub struct ExOption<V>(core::option::Option<V>);
 
 #[verifier(external_type_specification)]

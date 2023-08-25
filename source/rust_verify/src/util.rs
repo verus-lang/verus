@@ -8,6 +8,10 @@ pub(crate) fn err_span<A, S: Into<String>>(span: Span, msg: S) -> Result<A, VirE
     vir_error(&crate::spans::err_air_span(span), msg)
 }
 
+pub(crate) fn err_span_bare<S: Into<String>>(span: Span, msg: S) -> VirErr {
+    air::messages::error(msg, &crate::spans::err_air_span(span))
+}
+
 pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
     vir_err_span_string(span, msg.to_string())
 }

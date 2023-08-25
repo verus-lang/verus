@@ -493,7 +493,7 @@ test_verify_one_file! {
         {
             core::mem::swap(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -507,7 +507,7 @@ test_verify_one_file! {
         {
             sw(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -527,7 +527,7 @@ test_verify_one_file! {
         {
             x::<Stuff>()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -581,7 +581,7 @@ test_verify_one_file! {
         {
             f1(y, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -597,7 +597,7 @@ test_verify_one_file! {
         {
             f1::<S, T>()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
 }
 
 // Lifetime checking
@@ -765,7 +765,7 @@ test_verify_one_file! {
         {
             X::<T>::new(a)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
 }
 
 // Methods
@@ -855,7 +855,7 @@ test_verify_one_file! {
         {
             x.swap()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match exactly (trait bound mismatch)")
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
 }
 
 // when_used_as_spec

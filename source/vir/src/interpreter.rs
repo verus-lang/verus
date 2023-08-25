@@ -1575,14 +1575,33 @@ fn eval_expr_launch(
                             TypX::Datatype(_, typs, _) => {
                                 // Grab the type the sequence holds
                                 let inner_type = typs[0].clone();
+                                // Convert back to a standard SST sequence representation
                                 let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                                // Wrap the sequence construction in unwrap to account for the Poly
+                                // Wrap the sequence construction in unbox to account for the Poly
                                 // type of the sequence functions
                                 let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
                                 let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
                                 let unboxed_e =
                                     SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
                                 Ok(unboxed_e)
+                            }
+                            TypX::Boxed(t) => {
+                                match &**t {
+                                    TypX::Datatype(_, typs, _) => {
+                                        // Grab the type the sequence holds
+                                        let inner_type = typs[0].clone();
+                                        // Convert back to a standard SST sequence representation
+                                        let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                                        Ok(s)
+                                    }
+                                    _ => error(
+                                        &e.span,
+                                        format!(
+                                            "Internal error: Expected to find a sequence type but found: {:?}",
+                                            e.typ,
+                                        ),
+                                    ),
+                                }
                             }
                             _ => error(
                                 &e.span,

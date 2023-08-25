@@ -25,17 +25,6 @@ fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &air::ast::Span) -> Result<(), 
         if let TypX::Datatype(path, _, _) = &**t {
             check_path_and_get_datatype(ctxt, path, span)?;
             Ok(())
-        } else if let TypX::Projection { .. } = &**t {
-            if crate::poly::rooted_in_typ_param(t) {
-                // Types rooted in type parameters are handled with type Poly.
-                Ok(())
-            } else {
-                // Otherwise, we don't have a good way to handle boxing/unboxing.
-                // Probably the best way to handle this would be to normalize the type
-                // to a non-projection type, which could be done by rust_to_vir_base
-                // during MIR-to-VIR type translation (see the comments there).
-                error(span, "type projections on concrete types not yet supported")
-            }
         } else {
             Ok(())
         }
@@ -720,10 +709,7 @@ fn check_function(
     }
 
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
-        return error(
-            &function.span,
-            "function is marked #[verifier(publish)] but not marked #[verifier::spec]",
-        );
+        return error(&function.span, "function is marked `open` but it is not a `spec` function");
     }
 
     if function.x.is_main() && function.x.mode != Mode::Exec {
@@ -735,7 +721,7 @@ fn check_function(
     {
         return error(
             &function.span,
-            "function is marked #[verifier(publish)] but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
+            "function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
         );
     }
 
@@ -964,7 +950,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
             };
             if !proof_function.x.attrs.is_decrease_by {
                 return Err(air::messages::error(
-                    "proof function must be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] to be used as decreases_by/recommends_by",
+                    "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by",
                     &proof_function.span,
                 )
                 .secondary_span(&function.span));
@@ -1028,6 +1014,9 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 &function,
             )?;
         }
+        if function.x.body.is_none() && function.x.fuel == 0 {
+            return error(&function.span, "opaque has no effect on a function without a body");
+        }
     }
     for function in krate.functions.iter() {
         if function.x.attrs.is_decrease_by
@@ -1035,7 +1024,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
         {
             return error(
                 &function.span,
-                "function cannot be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] unless it is used in some decreases_by/recommends_by",
+                "function cannot be marked #[verifier::decreases_by] or #[verifier::recommends_by] unless it is used in some decreases_by/recommends_by",
             );
         }
     }
