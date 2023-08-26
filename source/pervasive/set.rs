@@ -103,11 +103,25 @@ impl<A> Set<A> {
 
     pub spec fn intersect(self, s2: Set<A>) -> Set<A>;
 
+    /// `*` operator, synonymous with `intersect`
+
+    #[verifier(inline)]
+    pub open spec fn spec_mul(self, s2: Set<A>) -> Set<A> {
+        self.intersect(s2)
+    }
+
     /// Set difference, i.e., the set of all elements in the first one but not in the second.
 
     pub spec fn difference(self, s2: Set<A>) -> Set<A>;
 
     /// Set complement (within the space of all possible elements in `A`).
+
+    /// `-` operator, synonymous with `difference`
+
+    #[verifier(inline)]
+    pub open spec fn spec_sub(self, s2: Set<A>) -> Set<A> {
+        self.difference(s2)
+    }
 
     pub spec fn complement(self) -> Set<A>;
 
