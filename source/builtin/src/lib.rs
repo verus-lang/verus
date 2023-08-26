@@ -1218,6 +1218,7 @@ pub fn closure_to_fn_spec<Args: core::marker::Tuple, F: FnOnce<Args>>(
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::FnWithSpecification"]
 pub trait FnWithSpecification<Args> {
     type Output;
