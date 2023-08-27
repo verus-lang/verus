@@ -1179,7 +1179,7 @@ impl Verifier {
                 ctx.expand_flag = expands_rerun;
                 self.expand_flag = expands_rerun;
                 if expands_rerun {
-                    ctx.debug_expand_targets = self.expand_targets.to_vec();
+                    ctx.debug_expand_targets = self.expand_targets.drain(..).collect();
                 }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
