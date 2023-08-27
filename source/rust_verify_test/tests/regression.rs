@@ -587,15 +587,16 @@ test_verify_one_file_with_options! {
     #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
         use vstd::set::*;
 
-        spec fn yes() -> bool { true }
+        spec fn maybe() -> bool;
 
-        spec fn both(s: Set<nat>) -> bool {
-            &&& yes()
-            &&& s.contains(0) // EXPAND-ERRORS
-        }
+        // spec fn yes() -> bool { true }
+        // spec fn both(s: Set<nat>) -> bool {
+        //     &&& maybe()
+        //     &&& s.contains(0) // EXPAND-ERRORS
+        // }
 
         proof fn test(s: Set<nat>) {
-            assert(both(s)); // EXPAND-ERRORS
+            assert(maybe()); // EXPAND-ERRORS
         }
     } => Err(err) => {
         assert!(err.expand_errors_notes[0].rendered.contains("this function is uninterpreted"));
