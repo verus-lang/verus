@@ -1535,7 +1535,7 @@ fn mk_two_vir_args<'tcx>(
     span: Span,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<(vir::ast::Expr, vir::ast::Expr), VirErr> {
-    unsupported_err_unless!(args.len() == 2, span, "expected 1 argument", &args);
+    unsupported_err_unless!(args.len() == 2, span, "expected 2 arguments", &args);
     let e0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
     let e1 = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
     Ok((e0, e1))
