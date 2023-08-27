@@ -2069,3 +2069,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "trait function declarations cannot be open or closed, as they don't have a body")
 }
+
+test_verify_one_file! {
+    #[test] require_open_closed_on_pub_crate verus_code! {
+        mod m1 {
+            use vstd::prelude::*;
+
+            pub(crate) trait T {
+                spec fn f() -> int;
+            }
+            pub(crate) struct S;
+            impl T for S {
+                spec fn f() -> int { 5 }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
+}
