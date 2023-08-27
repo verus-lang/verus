@@ -474,7 +474,7 @@ fn expr_get_call(
             }
             CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage) => {
                 if *autospec_usage != AutospecUsage::Final {
-                    return Err(internal_error("autospec not discharged", &expr.span));
+                    return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
@@ -700,8 +700,8 @@ pub(crate) fn expr_to_one_stm_with_post(
     // secondary label (indicating which post-condition failed) is added later
     // in ast_to_sst when the post condition is expanded
     let base_error = error_with_label(
-        crate::def::POSTCONDITION_FAILURE.to_string(),
         &expr.span,
+        crate::def::POSTCONDITION_FAILURE.to_string(),
         "at the end of the function body".to_string(),
     );
 
@@ -1659,8 +1659,8 @@ fn expr_to_stm_opt(
                 &mut ctx.global.interpreter_log.lock().unwrap(),
             )?;
             let err = error_with_label(
-                "assertion failed",
                 &expr.span.clone(),
+                "assertion failed",
                 format!("simplified to {}", interp_expr),
             );
             let mut stmts = Vec::new();
@@ -1809,8 +1809,8 @@ fn expr_to_stm_opt(
             match &containing_closure {
                 None => {
                     let base_error = error_with_label(
-                        crate::def::POSTCONDITION_FAILURE.to_string(),
                         &expr.span,
+                        crate::def::POSTCONDITION_FAILURE.to_string(),
                         "at this exit".to_string(),
                     );
 
@@ -2096,8 +2096,8 @@ fn closure_emit_postconditions(
         stms.push(init_var(&ret_value.span, dest, &ret_value));
         for ens in ensures.iter() {
             let er = error_with_label(
-                "unable to prove post-condition of closure",
                 &ret_value.span,
+                "unable to prove post-condition of closure",
                 "returning this expression",
             )
             .secondary_label(&ens.span, crate::def::THIS_POST_FAILED);

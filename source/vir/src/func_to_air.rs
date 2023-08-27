@@ -197,8 +197,8 @@ fn func_body_to_air(
         }
     } else {
         let base_error = error_with_label(
-            "could not prove termination".to_string(),
             &body_exp.span,
+            "could not prove termination".to_string(),
             "of this function body".to_string(),
         );
 

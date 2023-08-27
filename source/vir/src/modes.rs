@@ -203,8 +203,8 @@ impl AtomicInstCollector {
 
         if self.loops.len() > 0 {
             return Err(error_with_label(
-                format!("{context:} cannot contain an 'exec' loop"),
                 inv_block_span,
+                format!("{context:} cannot contain an 'exec' loop"),
                 "this invariant block contains a loop",
             )
             .secondary_span(&self.loops[0]));

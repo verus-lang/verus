@@ -1780,8 +1780,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let error = match error {
                 Some(error) => error.clone(),
                 None => error_with_label(
-                    "assertion failed".to_string(),
                     &stm.span,
+                    "assertion failed".to_string(),
                     "assertion failed".to_string(),
                 ),
             };
@@ -2003,9 +2003,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     loop_info.invs_entry.clone()
                 };
                 let base_error = if *is_break {
-                    error_with_label("loop invariant not satisfied", &stm.span, "at this loop exit")
+                    error_with_label(&stm.span, "loop invariant not satisfied", "at this loop exit")
                 } else {
-                    error_with_label("loop invariant not satisfied", &stm.span, "at this continue")
+                    error_with_label(&stm.span, "loop invariant not satisfied", "at this continue")
                 };
                 for (span, inv) in invs.iter() {
                     let error = base_error.secondary_label(span, "failed this invariant");
@@ -2580,8 +2580,8 @@ pub(crate) fn body_stm_to_air(
         let mut singular_stmts: Vec<Stmt> = vec![];
         for req in reqs {
             let error = error_with_label(
-                "Failed to translate this expression into a singular query".to_string(),
                 &req.span,
+                "Failed to translate this expression into a singular query".to_string(),
                 "at the require clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -2590,8 +2590,8 @@ pub(crate) fn body_stm_to_air(
         }
         for ens in enss {
             let error = error_with_label(
-                "Failed to translate this expression into a singular query".to_string(),
                 &ens.span,
+                "Failed to translate this expression into a singular query".to_string(),
                 "at the ensure clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
