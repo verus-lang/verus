@@ -187,7 +187,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 fn verus_item_to_vir<'tcx, 'a>(
     bctx: &'a BodyCtxt<'tcx>,
     expr: &'a Expr<'tcx>,
-    expr_typ: impl Fn() -> Result<Arc<TypX>, Arc<air::messages::MessageX>>,
+    expr_typ: impl Fn() -> Result<Arc<TypX>, VirErr>,
     verus_item: &VerusItem,
     args: &'a Vec<&'tcx Expr<'tcx>>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,

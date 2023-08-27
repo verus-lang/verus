@@ -75,6 +75,7 @@ For example, #[trigger] g(f(x), x + 1) would not be allowed,
 because x is used both for f and for +.
 */
 
+use crate::air_ast::Binder;
 use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp,
@@ -84,7 +85,6 @@ use crate::ast::{
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::util::vec_map;
-use air::ast::Binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -1,10 +1,10 @@
+use crate::air_ast::{Binder, BinderX, Binders};
 use crate::ast::{Ident, SpannedTyped, Typ, UnaryOpr, VirErr};
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LoopInv, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
-use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;

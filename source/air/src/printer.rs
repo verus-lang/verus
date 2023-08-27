@@ -3,9 +3,10 @@ use crate::ast::{
     MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::def::mk_skolem_id;
-use crate::messages::all_msgs_from_error;
+use crate::messages::Message;
 use crate::util::vec_map;
 use sise::{Node, Writer};
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub fn str_to_node(s: &str) -> Node {
@@ -74,14 +75,15 @@ macro_rules! nodes_vec {
    };
 }
 
-pub struct Printer {
+pub struct Printer<M: Message> {
     // print as SMT, not as AIR
     print_as_smt: bool,
+    _p: PhantomData<(M,)>,
 }
 
-impl Printer {
+impl<M: Message> Printer<M> {
     pub fn new(print_as_smt: bool) -> Self {
-        Printer { print_as_smt }
+        Printer { print_as_smt, _p: PhantomData }
     }
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
@@ -109,7 +111,7 @@ impl Printer {
         node!((_ {bv_node} {width_node}))
     }
 
-    pub fn expr_to_node(&self, expr: &Expr) -> Node {
+    pub fn expr_to_node(&self, expr: &Expr<M>) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
@@ -227,7 +229,7 @@ impl Printer {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
             }
             ExprX::Bind(bind, expr) => {
-                let with_triggers = |expr: &Expr, triggers: &Triggers, qid: &Qid| {
+                let with_triggers = |expr: &Expr<M>, triggers: &Triggers<M>, qid: &Qid| {
                     if triggers.len() == 0 && qid.is_none() {
                         self.expr_to_node(expr)
                     } else {
@@ -274,7 +276,8 @@ impl Printer {
                 }
             }
             ExprX::LabeledAxiom(labels, expr) => {
-                let spans = vec_map(labels, |s| Node::Atom(format!("\"{}\"", s.note)));
+                let spans =
+                    vec_map(labels, |s| Node::Atom(format!("\"{}\"", M::get_label_note(s))));
                 if spans.len() == 0 {
                     self.expr_to_node(expr)
                 } else {
@@ -282,8 +285,7 @@ impl Printer {
                 }
             }
             ExprX::LabeledAssertion(error, expr) => {
-                let spans =
-                    vec_map(&all_msgs_from_error(error), |s| Node::Atom(format!("\"{}\"", s)));
+                let spans = vec_map(&error.all_msgs(), |s| Node::Atom(format!("\"{}\"", s)));
                 if spans.len() == 0 {
                     self.expr_to_node(expr)
                 } else {
@@ -293,7 +295,7 @@ impl Printer {
         }
     }
 
-    pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
+    pub fn exprs_to_node(&self, exprs: &Exprs<M>) -> Node {
         Node::List(vec_map(exprs, |e| self.expr_to_node(e)))
     }
 
@@ -354,7 +356,7 @@ impl Printer {
         nodes!(declare-var {str_to_node(x)} {self.typ_to_node(typ)})
     }
 
-    pub fn decl_to_node(&self, decl: &Decl) -> Node {
+    pub fn decl_to_node(&self, decl: &Decl<M>) -> Node {
         match &**decl {
             DeclX::Sort(x) => self.sort_decl_to_node(x),
             DeclX::Datatypes(datatypes) => self.datatypes_decl_to_node(datatypes),
@@ -365,12 +367,11 @@ impl Printer {
         }
     }
 
-    pub fn stmt_to_node(&self, stmt: &Stmt) -> Node {
+    pub fn stmt_to_node(&self, stmt: &Stmt<M>) -> Node {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
             StmtX::Assert(labels, expr) => {
-                let spans =
-                    vec_map(&all_msgs_from_error(labels), |s| Node::Atom(format!("\"{}\"", s)));
+                let spans = vec_map(&labels.all_msgs(), |s| Node::Atom(format!("\"{}\"", s)));
                 if spans.len() == 0 {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {
@@ -396,7 +397,7 @@ impl Printer {
         }
     }
 
-    pub fn query_to_node(&self, query: &Query) -> Node {
+    pub fn query_to_node(&self, query: &Query<M>) -> Node {
         let QueryX { local, assertion } = &**query;
         let mut nodes = Vec::new();
         nodes.push(str_to_node("check-valid"));

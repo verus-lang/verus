@@ -1,10 +1,10 @@
+use crate::air_ast::Binders;
 use crate::ast::{
     BinaryOp, Ident, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
-use crate::ast_util::error;
 use crate::context::Ctx;
+use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
-use air::ast::{Binders, Span};
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -127,13 +127,13 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
                     (true, TriggerBoxing::TypeId) => Ok(()),
                     _ => {
                         // See poly.rs for an explanation
-                        error(
+                        Err(error(
                             &arg.span,
                             format!(
                                 "variable `{}` in trigger cannot appear in both arithmetic and non-arithmetic positions",
                                 crate::def::user_local_name(&x.name)
                             ),
-                        )
+                        ))
                     }
                 }
             } else {
@@ -193,10 +193,10 @@ fn check_trigger_expr(
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
         _ => {
-            return error(
+            return Err(error(
                 &exp.span,
                 "trigger must be a function call, a field access, or arithmetic operator",
-            );
+            ));
         }
     }
 
@@ -229,10 +229,10 @@ fn check_trigger_expr(
             }
             ExpX::Var(UniqueIdent { name: x, local: None }) => {
                 if lets.contains(x) {
-                    return error(
+                    return Err(error(
                         &exp.span,
                         "let variables in triggers not supported, use #![trigger ...] instead",
-                    );
+                    ));
                 }
                 free_vars.insert(x.clone());
                 Ok(())
@@ -242,7 +242,7 @@ fn check_trigger_expr(
             ExpX::Old(_, _) => panic!("internal error: Old"),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
-                error(&exp.span, "triggers cannot contain trait bounds")
+                Err(error(&exp.span, "triggers cannot contain trait bounds"))
             }
             ExpX::Unary(op, arg) => match op {
                 UnaryOp::StrLen | UnaryOp::StrIsAscii => check_trigger_expr_arg(state, true, arg),
@@ -253,7 +253,7 @@ fn check_trigger_expr(
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized => Ok(()),
-                UnaryOp::Not => error(&exp.span, "triggers cannot contain boolean operators"),
+                UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => Ok(()),
@@ -267,13 +267,13 @@ fn check_trigger_expr(
                 use BinaryOp::*;
                 match op {
                     And | Or | Xor | Implies | Eq(_) | Ne => {
-                        error(&exp.span, "triggers cannot contain boolean operators")
+                        Err(error(&exp.span, "triggers cannot contain boolean operators"))
                     }
-                    HeightCompare { .. } => error(
+                    HeightCompare { .. } => Err(error(
                         &exp.span,
                         "triggers cannot contain interior is_smaller_than expressions",
-                    ),
-                    Inequality(_) => error(&exp.span, "triggers cannot contain inequalities"),
+                    )),
+                    Inequality(_) => Err(error(&exp.span, "triggers cannot contain inequalities")),
                     StrGetChar => {
                         check_trigger_expr_arg(state, true, arg1)?;
                         check_trigger_expr_arg(state, true, arg2)
@@ -289,10 +289,12 @@ fn check_trigger_expr(
                 check_trigger_expr_arg(state, true, arg1)?;
                 check_trigger_expr_arg(state, true, arg2)
             }
-            ExpX::If(_, _, _) => error(&exp.span, "triggers cannot contain if/else"),
-            ExpX::WithTriggers(..) => error(&exp.span, "triggers cannot contain #![trigger ...]"),
+            ExpX::If(_, _, _) => Err(error(&exp.span, "triggers cannot contain if/else")),
+            ExpX::WithTriggers(..) => {
+                Err(error(&exp.span, "triggers cannot contain #![trigger ...]"))
+            }
             ExpX::Bind(_, _) => {
-                error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
+                Err(error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose"))
             }
             ExpX::Interp(_) => {
                 panic!("Found an interpreter expression {:?} outside the interpreter", exp)
@@ -372,7 +374,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 };
                 for x in bvars {
                     if map.contains_key(&x) {
-                        return error(&bnd.span, "variable shadowing not yet supported");
+                        return Err(error(&bnd.span, "variable shadowing not yet supported"));
                     }
                 }
                 if let BndX::Let(binders) = &bnd.x {
@@ -404,10 +406,10 @@ pub(crate) fn build_triggers(
     get_manual_triggers(&mut state, exp)?;
     if state.triggers.len() > 0 || allow_empty {
         if state.auto_trigger {
-            return error(
+            return Err(error(
                 span,
                 "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",
-            );
+            ));
         }
         let mut trigs: Vec<Trig> = Vec::new();
         for (group, trig) in state.triggers {
@@ -417,14 +419,14 @@ pub(crate) fn build_triggers(
                         None => "".to_string(),
                         Some(id) => format!(" group {}", id),
                     };
-                    return error(
+                    return Err(error(
                         span,
                         format!(
                             "trigger{} does not cover variable {}",
                             group_name,
                             crate::def::user_local_name(x)
                         ),
-                    );
+                    ));
                 }
             }
             trigs.push(Arc::new(trig.clone()));

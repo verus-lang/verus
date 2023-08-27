@@ -26,6 +26,7 @@
 //!
 //! To ensure that VIR stays simple and easy to use, the vir crate does not depend on rustc.
 
+pub mod air_ast;
 pub mod assoc_types_to_air;
 pub mod ast;
 pub mod ast_simplify;
@@ -44,6 +45,7 @@ pub mod func_to_air;
 pub mod headers;
 pub mod interpreter;
 mod inv_masks;
+pub mod messages;
 pub mod modes;
 pub mod poly;
 pub mod prelude;

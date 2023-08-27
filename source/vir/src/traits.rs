@@ -1,12 +1,13 @@
+use crate::air_ast::{Command, CommandX, Commands, DeclX};
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBounds, Ident,
     Krate, Mode, Path, SpannedTyped, Typ, TypX, Typs, VirErr, WellKnownItem,
 };
-use crate::ast_util::{error, path_as_friendly_rust_name};
+use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::Ctx;
 use crate::def::Spanned;
+use crate::messages::{error, Span};
 use crate::sst_to_air::typ_to_ids;
-use air::ast::{Command, CommandX, Commands, DeclX, Span};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -55,17 +56,17 @@ pub fn demote_foreign_traits(
             } else {
                 if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
                     if !function.x.require.is_empty() {
-                        return error(
+                        return Err(error(
                             &function.span,
                             "requires are not allowed on the implementation for Drop",
-                        );
+                        ));
                     }
                     if !matches!(&function.x.mask_spec, crate::ast::MaskSpec::InvariantOpens(es) if es.len() == 0)
                     {
-                        return error(
+                        return Err(error(
                             &function.span,
                             "the implementation for Drop must be marked opens_invariants none",
-                        );
+                        ));
                     }
                 }
                 check_modes(function, &function.span)?;
@@ -78,10 +79,10 @@ pub fn demote_foreign_traits(
             let our_trait = traits.contains(trait_path);
             let mut functionx = function.x.clone();
             if our_trait {
-                return error(
+                return Err(error(
                     &function.x.proxy.as_ref().unwrap().span,
                     "external_fn_specification can only be used on trait functions when the trait itself is external",
-                );
+                ));
             } else {
                 check_modes(function, &function.x.proxy.as_ref().unwrap().span)?;
                 functionx.kind = FunctionKind::Static;
@@ -105,21 +106,21 @@ pub fn demote_foreign_traits(
 
 fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
     if function.x.mode != Mode::Exec {
-        return error(span, "function for external trait must have mode 'exec'");
+        return Err(error(span, "function for external trait must have mode 'exec'"));
     }
     for param in function.x.params.iter() {
         if param.x.mode != Mode::Exec {
-            return error(
+            return Err(error(
                 span,
                 "function for external trait must have all parameters have mode 'exec'",
-            );
+            ));
         }
     }
     if function.x.ret.x.mode != Mode::Exec {
-        return error(
+        return Err(error(
             span,
             "function for external trait must have all parameters have mode 'exec'",
-        );
+        ));
     }
     Ok(())
 }
@@ -190,19 +191,22 @@ pub(crate) fn trait_bound_to_air(
     ctx: &Ctx,
     path: &Path,
     typ_args: &Typs,
-) -> Option<air::ast::Expr> {
+) -> Option<crate::air_ast::Expr> {
     if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
         return None;
     }
-    let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
+    let mut typ_exprs: Vec<crate::air_ast::Expr> = Vec::new();
     for t in typ_args.iter() {
         typ_exprs.extend(typ_to_ids(t));
     }
     Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs))
 }
 
-pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<air::ast::Expr> {
-    let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
+pub(crate) fn trait_bounds_to_air(
+    ctx: &Ctx,
+    typ_bounds: &GenericBounds,
+) -> Vec<crate::air_ast::Expr> {
+    let mut bound_exprs: Vec<crate::air_ast::Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         let crate::ast::GenericBoundX::Trait(path, typ_args) = &**bound;
         if let Some(bound) = trait_bound_to_air(ctx, path, typ_args) {

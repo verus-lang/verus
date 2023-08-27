@@ -4,6 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall};
 use crate::context::Context;
+use crate::messages::Message;
 use crate::typecheck::{typ_eq, DeclaredX};
 use crate::util::vec_map;
 use std::sync::Arc;
@@ -43,20 +44,20 @@ pub(crate) enum TermX {
 }
 
 #[derive(Debug)]
-struct ClosureState {
+struct ClosureState<M: Message> {
     typing_depth: usize,
-    holes: Vec<(Ident, Typ, Expr)>,
+    holes: Vec<(Ident, Typ, Expr<M>)>,
 }
 
 #[derive(Debug)]
-struct State {
+struct State<M: Message> {
     // function and axiom declarations generated to represent closures
-    generated_decls: Vec<Decl>,
+    generated_decls: Vec<Decl<M>>,
     // stack of active ClosureStates
-    closure_states: Vec<ClosureState>,
+    closure_states: Vec<ClosureState<M>>,
 }
 
-impl State {
+impl<M: Message> State<M> {
     fn new() -> Self {
         State { generated_decls: Vec::new(), closure_states: Vec::new() }
     }
@@ -74,7 +75,7 @@ pub(crate) struct ClosureTermX {
 // that contain the closures.
 // The function declarations live in scope outside the expression scope, so
 // we need to insert them into the typing's outer scope:
-fn insert_fun_typing(ctxt: &mut Context, x: &Ident, typs: &Typs, typ: &Typ) {
+fn insert_fun_typing<M: Message>(ctxt: &mut Context<M>, x: &Ident, typs: &Typs, typ: &Typ) {
     let fun = DeclaredX::Fun(typs.clone(), typ.clone());
 
     // the maps that aren't ctxt.typing.decls (e.g. apply_map) are still in the outer scope,
@@ -84,7 +85,12 @@ fn insert_fun_typing(ctxt: &mut Context, x: &Ident, typs: &Typs, typ: &Typ) {
     ctxt.typing.decls.insert_at(scope_index, x.clone(), Arc::new(fun)).expect("insert_fun_typing");
 }
 
-fn mk_apply(ctxt: &mut Context, state: &mut State, param_typs: Typs, ret_typ: Typ) -> Ident {
+fn mk_apply<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
+    param_typs: Typs,
+    ret_typ: Typ,
+) -> Ident {
     if let Some(name) = ctxt.apply_map.get(&(param_typs.clone(), ret_typ.clone())) {
         name.clone()
     } else {
@@ -103,12 +109,12 @@ fn mk_apply(ctxt: &mut Context, state: &mut State, param_typs: Typs, ret_typ: Ty
     }
 }
 
-fn enclose_force_hole(
-    state: &mut ClosureState,
+fn enclose_force_hole<M: Message>(
+    state: &mut ClosureState<M>,
     typ: Typ,
-    expr: Expr,
+    expr: Expr<M>,
     term: Option<Term>,
-) -> (Expr, Term) {
+) -> (Expr<M>, Term) {
     match term {
         None => {
             // allocate hole
@@ -121,17 +127,17 @@ fn enclose_force_hole(
     }
 }
 
-fn enclose(
-    state: &mut State,
+fn enclose<M: Message>(
+    state: &mut State<M>,
     app: App,
-    exprs: Vec<Expr>,
+    exprs: Vec<Expr<M>>,
     terms: Vec<(Typ, Option<Term>)>,
-) -> (Vec<Expr>, Option<Term>) {
+) -> (Vec<Expr<M>>, Option<Term>) {
     if let Some(state) = state.closure_states.last_mut() {
         if terms.iter().any(|(_, t)| t.is_some()) {
             // At least one of the exprs is not a hole, so we will return a non-hole (Some).
             // For any of the exprs that are holes (None), we need to allocate an actual hole.
-            let mut es: Vec<Expr> = Vec::new();
+            let mut es: Vec<Expr<M>> = Vec::new();
             let mut ts: Vec<Term> = Vec::new();
             for (e, (typ, t)) in exprs.into_iter().zip(terms.into_iter()) {
                 let (e, t) = enclose_force_hole(state, typ, e, t);
@@ -149,7 +155,11 @@ fn enclose(
     }
 }
 
-fn simplify_var(ctxt: &mut Context, state: &mut State, x: &Ident) -> (Typ, Option<Term>) {
+fn simplify_var<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
+    x: &Ident,
+) -> (Typ, Option<Term>) {
     let typ = match ctxt.typing.get(x) {
         Some(DeclaredX::Var { typ, .. }) => typ.clone(),
         _ => panic!("internal error: missing variable {}", x),
@@ -170,14 +180,14 @@ fn simplify_var(ctxt: &mut Context, state: &mut State, x: &Ident) -> (Typ, Optio
     (typ, term)
 }
 
-fn simplify_lambda(
-    ctxt: &mut Context,
-    state: &mut State,
+fn simplify_lambda<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
     binders: &Binders<Typ>,
-    triggers: &Triggers,
+    triggers: &Triggers<M>,
     qid: &Qid,
-    e1: &Expr,
-) -> (Typ, Expr, Option<Term>) {
+    e1: &Expr<M>,
+) -> (Typ, Expr<M>, Option<Term>) {
     let closure_state =
         ClosureState { typing_depth: ctxt.typing.decls.num_scopes(), holes: Vec::new() };
     ctxt.typing.decls.push_scope(true);
@@ -209,14 +219,14 @@ fn simplify_lambda(
             insert_fun_typing(ctxt, &closure_fun, &holes, &typ);
 
             // forall holes params. #[trigger] apply_param_typs(f(captures), params) == body
-            let mut xholes: Vec<Expr> = Vec::new();
+            let mut xholes: Vec<Expr<M>> = Vec::new();
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             for (x, typ, _) in closure_state.holes.iter() {
                 xholes.push(Arc::new(ExprX::Var(x.clone())));
                 bs.push(ident_binder(x, typ));
             }
             let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
-            let mut eparams: Vec<Expr> = vec![call];
+            let mut eparams: Vec<Expr<M>> = vec![call];
             for binder in binders.iter() {
                 bs.push(binder.clone());
                 eparams.push(Arc::new(ExprX::Var(binder.name.clone())));
@@ -251,19 +261,19 @@ fn simplify_lambda(
     }
 }
 
-fn simplify_choose(
-    ctxt: &mut Context,
-    state: &mut State,
+fn simplify_choose<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
     binders: &Binders<Typ>,
-    triggers: &Triggers,
+    triggers: &Triggers<M>,
     qid: &Qid,
-    cond: &Expr,
-    body: &Expr,
-) -> (Typ, Expr, Option<Term>) {
+    cond: &Expr<M>,
+    body: &Expr<M>,
+) -> (Typ, Expr<M>, Option<Term>) {
     let closure_state =
         ClosureState { typing_depth: ctxt.typing.decls.num_scopes(), holes: Vec::new() };
     let mut terms: Vec<Term> = Vec::new();
-    let mut new_triggers: Vec<Trigger> = Vec::new();
+    let mut new_triggers: Vec<Trigger<M>> = Vec::new();
 
     ctxt.typing.decls.push_scope(true);
     for binder in binders.iter() {
@@ -288,7 +298,7 @@ fn simplify_choose(
     terms.push(t_cond);
     terms.push(t_body);
     for trigger in triggers.iter() {
-        let mut new_trigger: Vec<Expr> = Vec::new();
+        let mut new_trigger: Vec<Expr<M>> = Vec::new();
         for e in trigger.iter() {
             let (typ, e, t) = simplify_expr(ctxt, state, e);
             let (e, t) = enclose_force_hole(state.closure_states.last_mut().unwrap(), typ, e, t);
@@ -321,7 +331,7 @@ fn simplify_choose(
             // forall captures {trigger on f(captures)}.
             //   (exists {triggers} binders. cond) ==>
             //   (exists {triggers} binders. cond && f(captures) == body)
-            let mut xholes: Vec<Expr> = Vec::new();
+            let mut xholes: Vec<Expr<M>> = Vec::new();
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             for (x, typ, _) in closure_state.holes.iter() {
                 xholes.push(Arc::new(ExprX::Var(x.clone())));
@@ -372,12 +382,12 @@ fn simplify_choose(
     }
 }
 
-fn simplify_exprs(
-    ctxt: &mut Context,
-    state: &mut State,
-    exprs: &Vec<Expr>,
-) -> (Vec<Expr>, Vec<(Typ, Option<Term>)>) {
-    let mut es: Vec<Expr> = Vec::new();
+fn simplify_exprs<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
+    exprs: &Vec<Expr<M>>,
+) -> (Vec<Expr<M>>, Vec<(Typ, Option<Term>)>) {
+    let mut es: Vec<Expr<M>> = Vec::new();
     let mut ts: Vec<(Typ, Option<Term>)> = Vec::new();
     for expr in exprs.iter() {
         let (typ, e, t) = simplify_expr(ctxt, state, expr);
@@ -387,12 +397,12 @@ fn simplify_exprs(
     (es, ts)
 }
 
-fn simplify_exprs_ref(
-    ctxt: &mut Context,
-    state: &mut State,
-    exprs: &Vec<&Expr>,
-) -> (Vec<Expr>, Vec<(Typ, Option<Term>)>) {
-    let mut es: Vec<Expr> = Vec::new();
+fn simplify_exprs_ref<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
+    exprs: &Vec<&Expr<M>>,
+) -> (Vec<Expr<M>>, Vec<(Typ, Option<Term>)>) {
+    let mut es: Vec<Expr<M>> = Vec::new();
     let mut ts: Vec<(Typ, Option<Term>)> = Vec::new();
     for expr in exprs.iter() {
         let (typ, e, t) = simplify_expr(ctxt, state, expr);
@@ -402,7 +412,11 @@ fn simplify_exprs_ref(
     (es, ts)
 }
 
-fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Expr, Option<Term>) {
+fn simplify_expr<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
+    expr: &Expr<M>,
+) -> (Typ, Expr<M>, Option<Term>) {
     match &**expr {
         ExprX::Const(c) => {
             let typ = match c {
@@ -431,7 +445,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             (typ, Arc::new(ExprX::Apply(x.clone(), Arc::new(es))), t)
         }
         ExprX::ApplyLambda(typ, e0, args) => {
-            let mut es: Vec<&Expr> = vec![e0];
+            let mut es: Vec<&Expr<M>> = vec![e0];
             for e in args.iter() {
                 es.push(e);
             }
@@ -500,7 +514,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
         }
         ExprX::Bind(bind, e1) => match &**bind {
             BindX::Let(binders) => {
-                let mut es: Vec<Expr> = Vec::new();
+                let mut es: Vec<Expr<M>> = Vec::new();
                 let mut ts: Vec<(Typ, Option<Term>)> = Vec::new();
                 for binder in binders.iter() {
                     let (typ, e, t) = simplify_expr(ctxt, state, &binder.a);
@@ -518,7 +532,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 ctxt.typing.decls.pop_scope();
 
                 let (es, t) = enclose(state, App::Let, es, ts);
-                let mut bs: Vec<Binder<Expr>> = Vec::new();
+                let mut bs: Vec<Binder<Expr<M>>> = Vec::new();
                 for (binder, e) in binders.iter().zip(es.iter()) {
                     bs.push(binder.new_a(e.clone()));
                 }
@@ -535,7 +549,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     let _ = ctxt.typing.insert(&binder.name, Arc::new(var));
                     typs.push(binder.a.clone());
                 }
-                let mut es: Vec<&Expr> = Vec::new();
+                let mut es: Vec<&Expr<M>> = Vec::new();
                 let mut trigger_shape: Vec<usize> = Vec::new();
                 for trigger in triggers.iter() {
                     trigger_shape.push(trigger.len());
@@ -549,10 +563,10 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 let (es, t) = enclose(state, app, es, ts);
                 ctxt.typing.decls.pop_scope();
 
-                let mut new_triggers: Vec<Trigger> = Vec::new();
+                let mut new_triggers: Vec<Trigger<M>> = Vec::new();
                 let mut i: usize = 0;
                 for trigger in triggers.iter() {
-                    let mut new_trigger: Vec<Expr> = Vec::new();
+                    let mut new_trigger: Vec<Expr<M>> = Vec::new();
                     for _ in trigger.iter() {
                         new_trigger.push(es[i].clone());
                         i += 1;
@@ -587,7 +601,11 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
     }
 }
 
-fn simplify_stmt_rec(ctxt: &mut Context, state: &mut State, stmt: &Stmt) -> Stmt {
+fn simplify_stmt_rec<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
+    stmt: &Stmt<M>,
+) -> Stmt<M> {
     match &**stmt {
         StmtX::Assume(expr) => {
             let (_, expr, _) = simplify_expr(ctxt, state, expr);
@@ -609,21 +627,31 @@ fn simplify_stmt_rec(ctxt: &mut Context, state: &mut State, stmt: &Stmt) -> Stmt
     }
 }
 
-fn simplify_stmts(ctxt: &mut Context, state: &mut State, stmts: &Stmts) -> Stmts {
-    let mut ss: Vec<Stmt> = Vec::new();
+fn simplify_stmts<M: Message>(
+    ctxt: &mut Context<M>,
+    state: &mut State<M>,
+    stmts: &Stmts<M>,
+) -> Stmts<M> {
+    let mut ss: Vec<Stmt<M>> = Vec::new();
     for s in stmts.iter() {
         ss.push(simplify_stmt_rec(ctxt, state, s));
     }
     Arc::new(ss)
 }
 
-pub(crate) fn simplify_stmt(ctxt: &mut Context, stmt: &Stmt) -> (Vec<Decl>, Stmt) {
+pub(crate) fn simplify_stmt<M: Message>(
+    ctxt: &mut Context<M>,
+    stmt: &Stmt<M>,
+) -> (Vec<Decl<M>>, Stmt<M>) {
     let mut state = State::new();
     let stmt = simplify_stmt_rec(ctxt, &mut state, stmt);
     (state.generated_decls, stmt)
 }
 
-pub(crate) fn simplify_decl(ctxt: &mut Context, decl: &Decl) -> (Vec<Decl>, Decl) {
+pub(crate) fn simplify_decl<M: Message>(
+    ctxt: &mut Context<M>,
+    decl: &Decl<M>,
+) -> (Vec<Decl<M>>, Decl<M>) {
     assert_eq!(ctxt.apply_map.num_scopes(), ctxt.typing.decls.num_scopes());
     let mut state = State::new();
     let decl = match &**decl {

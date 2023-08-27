@@ -4,13 +4,14 @@ use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::util::error;
 use crate::verus_items::VerusItems;
-use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::{message, note, note_bare, Diagnostics, Message, MessageLabel, MessageLevel};
+use air::messages::Diagnostics;
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use verus_rustc_interface::interface::Compiler;
+use vir::air_ast::{Command, CommandX, Commands};
+use vir::messages::{message, note, note_bare, Message, MessageLabel, MessageLevel};
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
@@ -53,7 +54,7 @@ impl<'tcx> Reporter<'tcx> {
 /// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
 /// or emitting the same note twice will be surpressed (even if separated in time by other
 /// errors/notes)
-impl Diagnostics for Reporter<'_> {
+impl air::messages::Diagnostics<Message> for Reporter<'_> {
     fn report_as(&self, msg: &Message, level: MessageLevel) {
         let mut v: Vec<Span> = Vec::new();
         for sp in &msg.spans {
@@ -106,6 +107,18 @@ impl Diagnostics for Reporter<'_> {
             ),
         }
     }
+
+    fn report(&self, msg: &Message) {
+        self.report_as(msg, msg.level)
+    }
+
+    fn report_now(&self, msg: &Message) {
+        self.report_as(msg, msg.level)
+    }
+
+    fn report_as_now(&self, msg: &Message, msg_as: MessageLevel) {
+        self.report_as(msg, msg_as)
+    }
 }
 
 /// A reporter message that is being collected by the main thread
@@ -131,7 +144,7 @@ impl QueuedReporter {
     }
 }
 
-impl Diagnostics for QueuedReporter {
+impl air::messages::Diagnostics<Message> for QueuedReporter {
     fn report_as(&self, msg: &Message, level: MessageLevel) {
         self.queue
             .send(ReporterMessage::Message(self.module_id, msg.clone(), level, false))
@@ -142,6 +155,14 @@ impl Diagnostics for QueuedReporter {
         self.queue
             .send(ReporterMessage::Message(self.module_id, msg.clone(), level, true))
             .expect("could not send the message!");
+    }
+
+    fn report(&self, msg: &Message) {
+        self.report_as(msg, msg.level)
+    }
+
+    fn report_now(&self, msg: &Message) {
+        self.report_as_now(msg, msg.level)
     }
 }
 
@@ -186,17 +207,20 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     crate_names: Option<Vec<String>>,
     vstd_crate_name: Option<Ident>,
-    air_no_span: Option<air::ast::Span>,
+    air_no_span: Option<vir::messages::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
     current_crate_module_ids: Option<Vec<vir::ast::Path>>,
 
     // proof debugging purposes
     expand_flag: bool,
-    pub expand_targets: Vec<air::messages::Message>,
+    pub expand_targets: Vec<Message>,
 }
 
-fn report_chosen_triggers(diagnostics: &impl Diagnostics, chosen: &vir::context::ChosenTriggers) {
-    let msg = note("automatically chose triggers for this expression:", &chosen.span);
+fn report_chosen_triggers(
+    diagnostics: &impl air::messages::Diagnostics<Message>,
+    chosen: &vir::context::ChosenTriggers,
+) {
+    let msg = note(&chosen.span, "automatically chose triggers for this expression:");
     diagnostics.report(&msg);
 
     for (n, trigger) in chosen.triggers.iter().enumerate() {
@@ -327,7 +351,7 @@ impl Verifier {
     /// Use when we expect our call to Z3 to always succeed
     /// If it doesn't, it's an internal error, not a failure
     /// to validate user code.
-    fn check_internal_result(result: ValidityResult) {
+    fn check_internal_result(result: ValidityResult<Message>) {
         match result {
             ValidityResult::Valid => {}
             ValidityResult::TypeError(err) => {
@@ -339,7 +363,7 @@ impl Verifier {
 
     fn print_profile_stats(
         &self,
-        diagnostics: &impl Diagnostics,
+        diagnostics: &impl air::messages::Diagnostics<Message>,
         profiler: Profiler,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
     ) {
@@ -389,15 +413,15 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         module_path: &vir::ast::Path,
-        reporter: &impl Diagnostics,
+        reporter: &impl air::messages::Diagnostics<Message>,
         source_map: Option<&SourceMap>,
         level: MessageLevel,
-        air_context: &mut air::context::Context,
-        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
-        snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        air_context: &mut air::context::Context<Message>,
+        assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
+        snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
-        context: &(&air::ast::Span, &str),
+        context: &(&vir::messages::Span, &str),
         is_singular: bool,
     ) -> bool {
         let report_long_running = || {
@@ -405,7 +429,7 @@ impl Verifier {
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                let msg = if counter % 5 == 0 { note(msg, &context.0) } else { note_bare(msg) };
+                let msg = if counter % 5 == 0 { note(&context.0, msg) } else { note_bare(msg) };
                 reporter.report_now(&msg);
                 counter += 1;
             });
@@ -544,7 +568,7 @@ impl Verifier {
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
             );
-            reporter.report(&note(msg, context.0));
+            reporter.report(&note(context.0, msg));
         }
 
         if is_check_valid && !is_singular {
@@ -557,8 +581,8 @@ impl Verifier {
     fn run_commands(
         &mut self,
         module_path: &vir::ast::Path,
-        diagnostics: &impl Diagnostics,
-        air_context: &mut air::context::Context,
+        diagnostics: &impl air::messages::Diagnostics<Message>,
+        air_context: &mut air::context::Context<Message>,
         commands: &Vec<Command>,
         comment: &str,
     ) {
@@ -584,13 +608,13 @@ impl Verifier {
     /// Returns true if there was at least one Invalid resulting in an error.
     fn run_commands_queries(
         &mut self,
-        reporter: &impl Diagnostics,
+        reporter: &impl air::messages::Diagnostics<Message>,
         source_map: Option<&SourceMap>,
         level: MessageLevel,
-        air_context: &mut air::context::Context,
+        air_context: &mut air::context::Context<Message>,
         commands_with_context: CommandsWithContext,
-        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
-        snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
+        snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
@@ -659,12 +683,12 @@ impl Verifier {
 
     fn new_air_context_with_prelude(
         &mut self,
-        diagnostics: &impl Diagnostics,
+        diagnostics: &impl air::messages::Diagnostics<Message>,
         module_path: &vir::ast::Path,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
-    ) -> Result<air::context::Context, VirErr> {
+    ) -> Result<air::context::Context<Message>, VirErr> {
         let mut air_context = air::context::Context::new();
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
@@ -752,7 +776,7 @@ impl Verifier {
     fn new_air_context_with_module_context(
         &mut self,
         ctx: &vir::context::Ctx,
-        diagnostics: &impl Diagnostics,
+        diagnostics: &impl air::messages::Diagnostics<Message>,
         module_path: &vir::ast::Path,
         function_path: &vir::ast::Path,
         datatype_commands: Commands,
@@ -763,8 +787,8 @@ impl Verifier {
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
         is_rerun: bool,
         context_counter: usize,
-        span: &air::ast::Span,
-    ) -> Result<air::context::Context, VirErr> {
+        span: &vir::messages::Span,
+    ) -> Result<air::context::Context<Message>, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             diagnostics,
             module_path,
@@ -822,7 +846,7 @@ impl Verifier {
     // Verify a single module
     fn verify_module(
         &mut self,
-        reporter: &impl Diagnostics,
+        reporter: &impl air::messages::Diagnostics<Message>,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
@@ -1298,7 +1322,7 @@ impl Verifier {
 
     fn verify_module_outer(
         &mut self,
-        reporter: &impl Diagnostics,
+        reporter: &impl air::messages::Diagnostics<Message>,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
@@ -1719,7 +1743,7 @@ impl Verifier {
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
                 ";
-            reporter.report(&note(msg, &span));
+            reporter.report(&note(&span, msg));
         }
 
         Ok(())
@@ -1749,7 +1773,7 @@ impl Verifier {
         spans: &SpanContext,
         other_crate_names: Vec<String>,
         other_vir_crates: Vec<Krate>,
-        diagnostics: &impl Diagnostics,
+        diagnostics: &impl air::messages::Diagnostics<Message>,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
         let time0 = Instant::now();
@@ -1784,7 +1808,7 @@ impl Verifier {
                 })
                 .next()
                 .expect("OwnerNode::Crate missing");
-            Some(air::ast::Span {
+            Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
                 data: vec![],

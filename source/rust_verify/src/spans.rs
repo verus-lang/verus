@@ -8,22 +8,22 @@ use std::sync::{Arc, Mutex};
 use vir::ast::{SpannedTyped, Typ};
 use vir::def::Spanned;
 
-pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
+pub(crate) fn to_raw_span(span: Span) -> vir::messages::RawSpan {
     Arc::new(span.data())
 }
 
 // Note: this only returns Some for Spans in the local crate
-pub(crate) fn from_raw_span(raw_span: &air::ast::RawSpan) -> Option<Span> {
+pub(crate) fn from_raw_span(raw_span: &vir::messages::RawSpan) -> Option<Span> {
     (**raw_span).downcast_ref::<SpanData>().map(|data| data.span())
 }
 
 // Note: this produces a span suitable for reporting immediate errors;
 // It should not be used to construct VIR AST node spans,
 // and cannot be serialized an deserialized.
-pub(crate) fn err_air_span(span: Span) -> air::ast::Span {
+pub(crate) fn err_air_span(span: Span) -> vir::messages::Span {
     let raw_span = to_raw_span(span);
     let as_string = format!("{:?}", span);
-    air::ast::Span { raw_span, id: 0, data: vec![], as_string }
+    vir::messages::Span { raw_span, id: 0, data: vec![], as_string }
 }
 
 #[derive(Debug, Clone)]
@@ -226,18 +226,18 @@ impl SpanContextX {
         Some(SpanData { lo, hi, ctxt: rustc_span::SyntaxContext::root(), parent: None }.span())
     }
 
-    pub(crate) fn to_air_span(&self, span: Span) -> air::ast::Span {
+    pub(crate) fn to_air_span(&self, span: Span) -> vir::messages::Span {
         let raw_span = to_raw_span(span);
 
         let id = self.next_span_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let data = self.pack_span(span);
         let as_string = format!("{:?}", span);
-        air::ast::Span { raw_span, id, data, as_string }
+        vir::messages::Span { raw_span, id, data, as_string }
     }
 
     pub(crate) fn from_air_span(
         &self,
-        air_span: &air::ast::Span,
+        air_span: &vir::messages::Span,
         source_map: Option<&SourceMap>,
     ) -> Option<Span> {
         if let Some(span) = from_raw_span(&air_span.raw_span) {

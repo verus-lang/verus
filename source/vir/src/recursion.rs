@@ -1,15 +1,17 @@
+use crate::air_ast::{Binder, Commands};
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Constant, ExprX, Fun, Function, FunctionKind,
     GenericBoundX, IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
     VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
-use crate::ast_util::{error, msg_error, QUANT_FORALL};
+use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
 use crate::def::{
     decrease_at_entry, suffix_rename, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
+use crate::messages::{error, Message, Span};
 use crate::scc::Graph;
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
@@ -18,7 +20,6 @@ use crate::sst::{
 use crate::sst_to_air::PostConditionKind;
 use crate::sst_visitor::{exp_rename_vars, exp_visitor_check, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
-use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
@@ -128,7 +129,7 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
 
 fn check_decrease_call(
     ctxt: &Ctxt,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl Diagnostics<Message>,
     fun_ssts: &SstMap,
     span: &Span,
     target: &Fun,
@@ -179,7 +180,7 @@ fn check_decrease_call(
 // Check that exp terminates
 fn terminates(
     ctxt: &Ctxt,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl Diagnostics<Message>,
     fun_ssts: &SstMap,
     exp: &Exp,
 ) -> Result<Exp, VirErr> {
@@ -342,7 +343,7 @@ fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
         ExpX::Call(CallFun::Fun(x, resolved_method), _targs, _)
             if is_recursive_call(ctxt, x, resolved_method) =>
         {
-            error(&exp.span, "recursion not allowed here")
+            Err(error(&exp.span, "recursion not allowed here"))
         }
         _ => Ok(()),
     })
@@ -350,7 +351,7 @@ fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
 
 pub(crate) fn check_termination_exp(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl Diagnostics<Message>,
     fun_ssts: &SstMap,
     function: &Function,
     mut local_decls: Vec<LocalDecl>,
@@ -363,7 +364,7 @@ pub(crate) fn check_termination_exp(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return error(&function.span, "recursive function must have a decreases clause");
+        return Err(error(&function.span, "recursive function must have a decreases clause"));
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
@@ -430,7 +431,7 @@ pub(crate) fn check_termination_exp(
 
 pub(crate) fn check_termination_stm(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl Diagnostics<Message>,
     fun_ssts: &SstMap,
     function: &Function,
     body: &Stm,
@@ -440,7 +441,7 @@ pub(crate) fn check_termination_stm(
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
-        return error(&function.span, "recursive function must have a decreases clause");
+        return Err(error(&function.span, "recursive function must have a decreases clause"));
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
@@ -462,7 +463,7 @@ pub(crate) fn check_termination_stm(
                 resolved_method,
                 args,
             )?;
-            let error = msg_error("could not prove termination", &s.span);
+            let error = error(&s.span, "could not prove termination");
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =
                 Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));

@@ -1,3 +1,7 @@
+use crate::air_ast::{
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
+    Trigger, Triggers,
+};
 use crate::ast::{
     Fun, Function, FunctionKind, Ident, Idents, Mode, Param, ParamX, Params, SpannedTyped, Typ,
     TypX, Typs, VirErr,
@@ -11,21 +15,17 @@ use crate::def::{
     suffix_typ_param_id, suffix_typ_param_ids, unique_local, CommandsWithContext, SnapPos, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
+use crate::messages::{error_with_label, Message, MessageLabel, Span};
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
 use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
-use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
-    Span, Trigger, Triggers,
-};
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
-use air::messages::{error_with_label, Diagnostics, MessageLabel};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -52,7 +52,7 @@ pub(crate) fn func_bind_trig(
     params: &Pars,
     trig_exprs: &Vec<Expr>,
     add_fuel: bool,
-) -> Bind {
+) -> Bind<Message> {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
     for typ_param in typ_params.iter() {
         for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
@@ -84,7 +84,7 @@ pub(crate) fn func_bind(
     params: &Pars,
     trig_expr: &Expr,
     add_fuel: bool,
-) -> Bind {
+) -> Bind<Message> {
     func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel)
 }
 
@@ -127,7 +127,7 @@ fn func_def_quant(
 
 fn func_body_to_air(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl air::messages::Diagnostics<Message>,
     fun_ssts: SstMap,
     decl_commands: &mut Vec<Command>,
     check_commands: &mut Vec<Command>,
@@ -316,7 +316,7 @@ fn func_body_to_air(
 
 pub fn req_ens_to_air(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl air::messages::Diagnostics<Message>,
     fun_ssts: &SstMap,
     commands: &mut Vec<Command>,
     params: &Pars,
@@ -353,7 +353,7 @@ pub fn req_ens_to_air(
                 None => expr,
                 Some(msg) => {
                     let l = MessageLabel { span: e.span.clone(), note: msg.clone() };
-                    let ls = Arc::new(vec![l]);
+                    let ls = vec![l];
                     Arc::new(ExprX::LabeledAxiom(ls, expr))
                 }
             };
@@ -375,7 +375,7 @@ pub fn req_ens_to_air(
 /// if the function is a spec function.
 pub fn func_name_to_air(
     ctx: &Ctx,
-    _diagnostics: &impl Diagnostics,
+    _diagnostics: &impl air::messages::Diagnostics<Message>,
     function: &Function,
 ) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
@@ -468,7 +468,7 @@ fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
 
 pub fn func_decl_to_air(
     ctx: &mut Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl air::messages::Diagnostics<Message>,
     fun_ssts: &SstMap,
     function: &Function,
 ) -> Result<Commands, VirErr> {
@@ -564,7 +564,7 @@ pub fn func_decl_to_air(
 
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl air::messages::Diagnostics<Message>,
     fun_ssts: SstMap,
     function: &Function,
     public_body: bool,
@@ -690,7 +690,7 @@ pub enum FuncDefPhase {
 
 pub fn func_def_to_air(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl air::messages::Diagnostics<Message>,
     fun_ssts: SstMap,
     function: &Function,
     phase: FuncDefPhase,
@@ -907,7 +907,7 @@ pub fn func_def_to_air(
 fn map_expr_rename_vars(
     e: &Arc<SpannedTyped<crate::ast::ExprX>>,
     req_ens_e_rename: &HashMap<Arc<String>, Arc<String>>,
-) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Arc<air::messages::MessageX>> {
+) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Message> {
     ast_visitor::map_expr_visitor_env(
         e,
         &mut air::scope_map::ScopeMap::new(),

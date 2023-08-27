@@ -1,14 +1,15 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Relation, Span, Stmt, StmtX, Stmts,
-    Trigger, Triggers, Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX, Stmts, Trigger,
+    Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
-use crate::messages::{error_from_labels, error_from_spans, MessageLabel, MessageLabels};
+use crate::messages::Message;
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
 use sise::Node;
 use std::io::Write;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 // Following SMT-LIB syntax specification
@@ -90,17 +91,19 @@ where
     Ok(Arc::new(v))
 }
 
-enum QuantOrChooseOrLambda {
+enum QuantOrChooseOrLambda<M: Message> {
     Quant(Quant),
-    Choose(Expr),
+    Choose(Expr<M>),
     Lambda,
 }
 
-pub struct Parser {}
+pub struct Parser<M: Message> {
+    _p: PhantomData<(M,)>,
+}
 
-impl Parser {
+impl<M: Message> Parser<M> {
     pub fn new() -> Self {
-        Parser {}
+        Parser { _p: PhantomData }
     }
 
     pub(crate) fn node_to_typ(&self, node: &Node) -> Result<Typ, String> {
@@ -116,15 +119,13 @@ impl Parser {
         }
     }
 
-    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<MessageLabels, String> {
-        let mut labels: Vec<MessageLabel> = Vec::new();
+    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<Vec<M::MessageLabel>, String> {
+        let mut labels: Vec<M::MessageLabel> = Vec::new();
         for node in nodes {
             match node {
                 Node::Atom(label) if label.starts_with("\"") && label.ends_with("\"") => {
-                    let raw_span = Arc::new(());
                     let as_string = label[1..label.len() - 1].to_string();
-                    let span = Span { raw_span, id: 0, data: vec![], as_string: as_string.clone() };
-                    let label = MessageLabel { span, note: as_string };
+                    let label = M::label_from_air_span(&as_string, &as_string);
                     labels.push(label);
                 }
                 _ => {
@@ -132,10 +133,10 @@ impl Parser {
                 }
             }
         }
-        Ok(Arc::new(labels))
+        Ok(labels)
     }
 
-    pub(crate) fn node_to_expr(&self, node: &Node) -> Result<Expr, String> {
+    pub(crate) fn node_to_expr(&self, node: &Node) -> Result<Expr<M>, String> {
         match node {
             Node::Atom(s) if s.to_string() == "true" => {
                 Ok(Arc::new(ExprX::Const(Constant::Bool(true))))
@@ -150,7 +151,7 @@ impl Parser {
             Node::List(nodes) if nodes.len() > 0 => {
                 match &nodes[..] {
                     [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "location" => {
-                        let error = error_from_labels(self.nodes_to_labels(nodes)?);
+                        let error = M::from_labels(&self.nodes_to_labels(nodes)?);
                         let expr = self.node_to_expr(e)?;
                         return Ok(Arc::new(ExprX::LabeledAssertion(error, expr)));
                     }
@@ -298,7 +299,7 @@ impl Parser {
         }
     }
 
-    fn nodes_to_exprs(&self, nodes: &[Node]) -> Result<Exprs, String> {
+    fn nodes_to_exprs(&self, nodes: &[Node]) -> Result<Exprs<M>, String> {
         map_nodes_to_vec(nodes, &|n| self.node_to_expr(n))
     }
 
@@ -356,13 +357,13 @@ impl Parser {
         Ok(Arc::new(binders))
     }
 
-    fn node_to_let_expr(&self, binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
+    fn node_to_let_expr(&self, binder_nodes: &[Node], expr: &Node) -> Result<Expr<M>, String> {
         let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_expr(n))?;
         Ok(crate::ast_util::mk_let(&binders, &self.node_to_expr(expr)?))
     }
 
-    fn nodes_to_triggers_and_qid(&self, nodes: &[Node]) -> Result<(Triggers, Qid), String> {
-        let mut triggers: Vec<Trigger> = Vec::new();
+    fn nodes_to_triggers_and_qid(&self, nodes: &[Node]) -> Result<(Triggers<M>, Qid), String> {
+        let mut triggers: Vec<Trigger<M>> = Vec::new();
         let mut qid = None;
         // We don't currently use the parsed skolemid, since we emit skolemid = qid,
         // but we still need to account for it, since it will appear in SMTLIB we produce
@@ -426,10 +427,10 @@ impl Parser {
 
     fn node_to_quant_or_lambda_expr(
         &self,
-        quantchooselambda: QuantOrChooseOrLambda,
+        quantchooselambda: QuantOrChooseOrLambda<M>,
         binder_nodes: &[Node],
         expr: &Node,
-    ) -> Result<Expr, String> {
+    ) -> Result<Expr<M>, String> {
         let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_typ(n))?;
         let (expr, triggers, qid) = match &expr {
             Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
@@ -454,7 +455,7 @@ impl Parser {
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }
 
-    pub(crate) fn node_to_stmt(&self, node: &Node) -> Result<Stmt, String> {
+    pub(crate) fn node_to_stmt(&self, node: &Node) -> Result<Stmt<M>, String> {
         match node {
             Node::List(nodes) => match &nodes[..] {
                 [Node::Atom(s), e] if s.to_string() == "assume" => {
@@ -463,7 +464,7 @@ impl Parser {
                 }
                 [Node::Atom(s), e] if s.to_string() == "assert" => {
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(error_from_spans(vec![]), expr)))
+                    Ok(Arc::new(StmtX::Assert(M::empty(), expr)))
                 }
                 [Node::Atom(s), Node::Atom(x)] if s.to_string() == "havoc" && is_symbol(x) => {
                     Ok(Arc::new(StmtX::Havoc(Arc::new(x.clone()))))
@@ -479,7 +480,7 @@ impl Parser {
                 }
                 [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "assert" => {
                     let labels = self.nodes_to_labels(nodes)?;
-                    let error = error_from_labels(labels);
+                    let error = M::from_labels(&labels);
                     let expr = self.node_to_expr(&e)?;
                     Ok(Arc::new(StmtX::Assert(error, expr)))
                 }
@@ -501,11 +502,11 @@ impl Parser {
         }
     }
 
-    fn nodes_to_stmts(&self, nodes: &[Node]) -> Result<Stmts, String> {
+    fn nodes_to_stmts(&self, nodes: &[Node]) -> Result<Stmts<M>, String> {
         map_nodes_to_vec(nodes, &|n| self.node_to_stmt(n))
     }
 
-    fn node_to_decl(&self, node: &Node) -> Result<Decl, String> {
+    fn node_to_decl(&self, node: &Node) -> Result<Decl<M>, String> {
         match node {
             Node::List(nodes) => match &nodes[..] {
                 [Node::Atom(s), Node::Atom(x), Node::Atom(p)]
@@ -601,11 +602,11 @@ impl Parser {
         }
     }
 
-    fn nodes_to_decls(&self, nodes: &[Node]) -> Result<Decls, String> {
+    fn nodes_to_decls(&self, nodes: &[Node]) -> Result<Decls<M>, String> {
         map_nodes_to_vec(nodes, &|d| self.node_to_decl(d))
     }
 
-    pub fn node_to_command(&self, node: &Node) -> Result<Command, String> {
+    pub(crate) fn node_to_command(&self, node: &Node) -> Result<Command<M>, String> {
         match node {
             Node::List(nodes) if nodes.len() >= 1 => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "push" && nodes.len() == 1 => {
@@ -639,7 +640,7 @@ impl Parser {
         }
     }
 
-    pub fn nodes_to_commands(&self, nodes: &[Node]) -> Result<Commands, String> {
+    pub fn nodes_to_commands(&self, nodes: &[Node]) -> Result<Commands<M>, String> {
         map_nodes_to_vec(nodes, &|c| self.node_to_command(c))
     }
 

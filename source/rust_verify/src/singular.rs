@@ -1,11 +1,11 @@
 use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::Message;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
 use std::collections::HashMap;
 use std::sync::Arc;
+use vir::messagesMessage;
 
 // Singular reserved keyword
 const RING_DECL: &str = "ring";
@@ -322,7 +322,7 @@ pub fn singular_printer(
 pub fn check_singular_valid(
     context: &mut air::context::Context,
     command: &Command,
-    func_span: &air::ast::Span,
+    func_span: &vir::messages::Span,
     _query_context: QueryContext<'_, '_>,
 ) -> ValidityResult {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
@@ -392,7 +392,7 @@ pub fn check_singular_valid(
     } else {
         ValidityResult::Invalid(
             None,
-            air::messages::error(
+            vir::messageserror(
                 format!(
                     "postcondition not satisfied: Ensures polynomial failed to be reduced to zero, reduced polynomial is {}\n generated singular query: {} ",
                     res[0].as_str(),

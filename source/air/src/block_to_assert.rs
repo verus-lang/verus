@@ -2,10 +2,15 @@ use crate::ast::{Decl, DeclX, Expr, ExprX, Query, QueryX, Stmt, StmtX, UnaryOp};
 use crate::ast_util::bool_typ;
 use crate::ast_util::{mk_and, mk_implies, mk_or, mk_true};
 use crate::def::SWITCH_LABEL;
-use crate::messages::error_from_spans;
+use crate::messages::Message;
 use std::sync::Arc;
 
-fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Expr) -> Expr {
+fn stmt_to_expr<M: Message>(
+    label_n: &mut u64,
+    locals: &mut Vec<Decl<M>>,
+    stmt: &Stmt<M>,
+    pred: Expr<M>,
+) -> Expr<M> {
     match &**stmt {
         StmtX::Assume(expr) => {
             // wp((assume Q), P) = Q ==> P
@@ -13,7 +18,7 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
         }
         StmtX::Assert(span, expr) => {
             // wp((assert Q), P) = Q /\ P
-            let assertion = Arc::new(ExprX::LabeledAssertion(span.clone(), expr.clone()));
+            let assertion: Expr<M> = Arc::new(ExprX::LabeledAssertion(span.clone(), expr.clone()));
             mk_and(&vec![assertion, pred])
         }
         StmtX::Havoc(_) => panic!("internal error: Havoc in block_to_assert"),
@@ -41,7 +46,7 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
             *label_n += 1;
             locals.push(Arc::new(DeclX::Const(label.clone(), bool_typ())));
             let exp_label = Arc::new(ExprX::Var(label));
-            let mut exprs: Vec<Expr> = Vec::new();
+            let mut exprs: Vec<Expr<M>> = Vec::new();
             for stmt in stmts.iter() {
                 exprs.push(stmt_to_expr(label_n, locals, stmt, exp_label.clone()));
             }
@@ -53,10 +58,10 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
     }
 }
 
-pub(crate) fn lower_query(query: &Query) -> Query {
-    let mut locals: Vec<Decl> = (*query.local).clone();
+pub(crate) fn lower_query<M: Message>(query: &Query<M>) -> Query<M> {
+    let mut locals: Vec<Decl<M>> = (*query.local).clone();
     let mut switch_label: u64 = 0;
     let expr = stmt_to_expr(&mut switch_label, &mut locals, &query.assertion, mk_true());
-    let assertion = Arc::new(StmtX::Assert(error_from_spans(vec![]), expr));
+    let assertion = Arc::new(StmtX::Assert(M::empty(), expr));
     Arc::new(QueryX { local: Arc::new(locals), assertion })
 }

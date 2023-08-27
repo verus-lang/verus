@@ -6,6 +6,7 @@ use crate::ast::{
     Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
+use crate::messages::Message;
 use crate::printer::{node_to_string, Printer};
 use crate::scope_map::ScopeMap;
 use crate::util::vec_map;
@@ -88,12 +89,12 @@ fn check_typs(typing: &Typing, typs: &[Typ]) -> Result<(), TypeError> {
     Ok(())
 }
 
-fn check_exprs(
+fn check_exprs<M: Message>(
     typing: &mut Typing,
     f_name: &str,
     f_typs: &[Typ],
     f_typ: &Typ,
-    exprs: &[Expr],
+    exprs: &[Expr<M>],
 ) -> Result<Typ, TypeError> {
     if f_typs.len() != exprs.len() {
         return Err(format!(
@@ -125,11 +126,11 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     Err("not a bit vector type".to_string())
 }
 
-fn check_bv_unary_exprs(
+fn check_bv_unary_exprs<M: Message>(
     typing: &mut Typing,
     op: UnaryOp,
     f_name: &str,
-    expr: &Expr,
+    expr: &Expr<M>,
 ) -> Result<Typ, TypeError> {
     match op {
         UnaryOp::BitExtract(high, _) => {
@@ -156,11 +157,11 @@ fn check_bv_unary_exprs(
     }
 }
 
-fn check_bv_exprs(
+fn check_bv_exprs<M: Message>(
     typing: &mut Typing,
     bop: BinaryOp,
     f_name: &str,
-    exprs: &[Expr],
+    exprs: &[Expr<M>],
 ) -> Result<Typ, TypeError> {
     let t0 = check_expr(typing, &exprs[0])?;
     let t1 = check_expr(typing, &exprs[1])?;
@@ -185,7 +186,7 @@ fn check_bv_exprs(
     }
 }
 
-fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
+fn check_expr<M: Message>(typing: &mut Typing, expr: &Expr<M>) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
@@ -422,7 +423,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     }
 }
 
-fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
+fn check_stmt<M: Message>(typing: &mut Typing, stmt: &Stmt<M>) -> Result<(), TypeError> {
     let result = match &**stmt {
         StmtX::Assume(expr) => expect_typ(
             &check_expr(typing, expr)?,
@@ -493,10 +494,10 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
     }
 }
 
-pub(crate) fn check_decl(
-    context: &mut Context,
-    decl: &Decl,
-) -> Result<(Vec<Decl>, Decl), TypeError> {
+pub(crate) fn check_decl<M: Message>(
+    context: &mut Context<M>,
+    decl: &Decl<M>,
+) -> Result<(Vec<Decl<M>>, Decl<M>), TypeError> {
     let typing = &mut context.typing;
     let result = match &**decl {
         DeclX::Sort(_) => Ok(()),
@@ -521,9 +522,9 @@ pub(crate) fn check_decl(
     }
 }
 
-pub(crate) fn add_decl<'ctx>(
-    context: &mut Context,
-    decl: &Decl,
+pub(crate) fn add_decl<'ctx, M: Message>(
+    context: &mut Context<M>,
+    decl: &Decl<M>,
     is_global: bool,
 ) -> Result<(), TypeError> {
     let num_scopes = context.typing.decls.num_scopes();
@@ -574,10 +575,13 @@ pub(crate) fn add_decl<'ctx>(
     Ok(())
 }
 
-pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<Query, TypeError> {
+pub(crate) fn check_query<M: Message>(
+    context: &mut Context<M>,
+    query: &Query<M>,
+) -> Result<Query<M>, TypeError> {
     let num_scopes = context.typing.decls.num_scopes();
     context.push_name_scope();
-    let mut locals: Vec<Decl> = Vec::new();
+    let mut locals: Vec<Decl<M>> = Vec::new();
     for decl in query.local.iter() {
         let (mut gen_decls, decl) = check_decl(context, decl)?;
         add_decl(context, &decl, false)?;

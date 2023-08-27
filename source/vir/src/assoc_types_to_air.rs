@@ -10,12 +10,12 @@
 //!   (View::V u8) == u8
 //!   (View::V (Vec A)) == (Seq (View::V A))
 
+use crate::air_ast::{Command, CommandX, Commands, DeclX, Expr};
 use crate::ast::{AssocTypeImpl, AssocTypeImplX, Trait};
 use crate::context::Ctx;
 use crate::def::QID_ASSOC_TYPE_IMPL;
 use crate::func_to_air::func_bind_trig;
 use crate::sst_to_air::typ_to_ids;
-use air::ast::{Command, CommandX, Commands, DeclX, Expr};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_eq, str_typ};
 use std::sync::Arc;
 

@@ -1,7 +1,7 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
-use crate::messages::{Diagnostics, Message, MessageLabels};
+use crate::messages::{Diagnostics, Message};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
@@ -16,35 +16,35 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
-pub(crate) struct AssertionInfo {
-    pub(crate) error: Message,
+pub(crate) struct AssertionInfo<M: Message> {
+    pub(crate) error: M,
     pub(crate) label: Ident,
-    pub(crate) decl: Decl,
+    pub(crate) decl: Decl<M>,
     pub(crate) disabled: bool,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct AxiomInfo {
-    pub(crate) labels: MessageLabels,
+pub(crate) struct AxiomInfo<M: Message> {
+    pub(crate) labels: Vec<M::MessageLabel>,
     pub(crate) label: Ident,
-    pub(crate) decl: Decl,
+    pub(crate) decl: Decl<M>,
 }
 
 #[derive(Debug)]
-pub enum ValidityResult {
+pub enum ValidityResult<M: Message> {
     Valid,
-    Invalid(Option<Model>, Message),
+    Invalid(Option<Model>, M),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ContextState {
+pub(crate) enum ContextState<M: Message> {
     NotStarted,
     ReadyForQuery,
     FoundResult,
-    FoundInvalid(Vec<AssertionInfo>, Model),
+    FoundInvalid(Vec<AssertionInfo<M>>, Model),
     Canceled,
     NoMoreQueriesAllowed,
 }
@@ -59,9 +59,9 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-pub struct Context {
+pub struct Context<M: Message> {
     smt_process: Option<SmtProcess>,
-    pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
+    pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo<M>>>,
     pub(crate) axiom_infos_count: u64,
     pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
     pub(crate) lambda_count: u64,
@@ -75,20 +75,20 @@ pub struct Context {
     pub(crate) profile_all: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
-    pub(crate) air_initial_log: Emitter,
-    pub(crate) air_middle_log: Emitter,
-    pub(crate) air_final_log: Emitter,
-    pub(crate) smt_log: Emitter,
+    pub(crate) air_initial_log: Emitter<M>,
+    pub(crate) air_middle_log: Emitter<M>,
+    pub(crate) air_final_log: Emitter<M>,
+    pub(crate) smt_log: Emitter<M>,
     pub singular_log: Option<std::fs::File>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
-    pub(crate) state: ContextState,
+    pub(crate) state: ContextState<M>,
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) disable_incremental_solving: bool,
 }
 
-impl Context {
-    pub fn new() -> Context {
+impl<M: Message> Context<M> {
+    pub fn new() -> Context<M> {
         let mut context = Context {
             smt_process: None,
             axiom_infos: ScopeMap::new(),
@@ -342,7 +342,7 @@ impl Context {
         self.pop_name_scope();
     }
 
-    pub fn global(&mut self, decl: &Decl) -> Result<(), TypeError> {
+    pub fn global(&mut self, decl: &Decl<M>) -> Result<(), TypeError> {
         self.ensure_started();
         self.air_initial_log.log_decl(decl);
         self.air_middle_log.log_decl(decl);
@@ -358,10 +358,10 @@ impl Context {
 
     pub fn check_valid(
         &mut self,
-        diagnostics: &impl Diagnostics,
-        query: &Query,
+        diagnostics: &impl Diagnostics<M>,
+        query: &Query<M>,
         query_context: QueryContext<'_, '_>,
-    ) -> ValidityResult {
+    ) -> ValidityResult<M> {
         self.ensure_started();
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
@@ -391,10 +391,10 @@ impl Context {
     /// Once only_check_earlier is set, it remains set until finish_query is called.
     pub fn check_valid_again(
         &mut self,
-        diagnostics: &impl Diagnostics,
+        diagnostics: &impl Diagnostics<M>,
         only_check_earlier: bool,
         query_context: QueryContext<'_, '_>,
-    ) -> ValidityResult {
+    ) -> ValidityResult<M> {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
             crate::smt_verify::smt_check_assertion(
                 self,
@@ -431,10 +431,10 @@ impl Context {
 
     pub fn command(
         &mut self,
-        diagnostics: &impl Diagnostics,
-        command: &Command,
+        diagnostics: &impl Diagnostics<M>,
+        command: &Command<M>,
         query_context: QueryContext<'_, '_>,
-    ) -> ValidityResult {
+    ) -> ValidityResult<M> {
         match &**command {
             CommandX::Push => {
                 self.push();

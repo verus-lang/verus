@@ -1,16 +1,17 @@
+use crate::air_ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use crate::ast::{
     Datatype, Fun, Function, GenericBounds, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
     TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
+use crate::messages::Span;
 use crate::poly::MonoTyp;
 use crate::prelude::ArchWordBits;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
-use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use num_bigint::BigUint;
 use std::cell::Cell;
@@ -87,7 +88,7 @@ pub struct Ctx {
     // proof debug purposes
     pub debug: bool,
     pub expand_flag: bool,
-    pub debug_expand_targets: Vec<air::messages::Message>,
+    pub debug_expand_targets: Vec<crate::messages::Message>,
 }
 
 impl Ctx {
@@ -214,9 +215,9 @@ impl GlobalCtx {
                     if f_node != g_node {
                         let g =
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
-                        return Err(air::messages::error(
-                            "found cyclic dependency in decreases_by function",
+                        return Err(crate::messages::error(
                             &f.span,
+                            "found cyclic dependency in decreases_by function",
                         )
                         .secondary_span(&g.unwrap().span));
                     }
@@ -349,7 +350,7 @@ impl Ctx {
     }
 
     pub fn fuel(&self) -> Commands {
-        let mut ids: Vec<air::ast::Expr> = Vec::new();
+        let mut ids: Vec<crate::air_ast::Expr> = Vec::new();
         let mut commands: Vec<Command> = Vec::new();
         for function in &self.functions {
             match (function.x.mode, function.x.body.as_ref()) {

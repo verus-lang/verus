@@ -7,10 +7,11 @@ use crate::context::Ctx;
 use crate::def::unique_local;
 use crate::def::Spanned;
 use crate::func_to_air::{SstInfo, SstMap};
+use crate::messages::Message;
+use crate::messages::{error, Span};
 use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
-use air::ast::Span;
-use air::messages::{Diagnostics, Message};
+use air::messages::Diagnostics;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -214,11 +215,11 @@ pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
 #[derive(Debug)]
 pub struct TracedExpX {
-    pub e: Exp,                        //  Exp to be discharged to Z3
-    pub trace: air::messages::Message, //  when inlining function, record call stack into `trace`
+    pub e: Exp,                          //  Exp to be discharged to Z3
+    pub trace: crate::messages::Message, //  when inlining function, record call stack into `trace`
 }
 impl TracedExpX {
-    pub fn new(e: Exp, trace: air::messages::Message) -> TracedExp {
+    pub fn new(e: Exp, trace: crate::messages::Message) -> TracedExp {
         Arc::new(TracedExpX { e, trace })
     }
 }
@@ -509,7 +510,7 @@ pub fn is_split_error(error: &Message) -> bool {
 fn split_call(
     ctx: &Ctx,
     state: &State,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl Diagnostics<Message>,
     span: &Span,
     name: &Fun,
     typs: &Typs,
@@ -559,13 +560,13 @@ fn split_call(
 fn visit_split_stm(
     ctx: &Ctx,
     state: &mut State,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl Diagnostics<Message>,
     stm: &Stm,
 ) -> Result<Stm, VirErr> {
     match &stm.x {
         StmX::Assert(_err, e1) => {
             if need_split_expression(ctx, &stm.span) {
-                let error = air::messages::error(crate::def::SPLIT_ASSERT_FAILURE, &stm.span);
+                let error = error(&stm.span, crate::def::SPLIT_ASSERT_FAILURE);
                 let split_exprs = split_expr(
                     ctx,
                     &state, // use the state after `body` translation to get the fuel info
@@ -599,7 +600,7 @@ fn visit_split_stm(
                             &state.ens_pars,
                             e,
                         )?;
-                        let error = air::messages::error(crate::def::SPLIT_POST_FAILURE, &e.span);
+                        let error = error(&e.span, crate::def::SPLIT_POST_FAILURE);
                         let split_exprs = split_expr(
                             ctx,
                             &state, // use the state after `body` translation to get the fuel info
@@ -667,7 +668,7 @@ fn visit_split_stm(
 
 pub(crate) fn all_split_exp(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &impl Diagnostics<Message>,
     fun_ssts: &SstMap,
     stm: &Stm,
     ensures: &Exprs,

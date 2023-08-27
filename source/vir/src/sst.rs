@@ -6,14 +6,14 @@
 //! SST expressions cannot contain statments.
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
+use crate::air_ast::{Binders, Ident};
 use crate::ast::{
     AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, NullaryOpr, Path, Quant,
     SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
-use air::ast::{Binders, Ident, Span};
-use air::messages::Message;
+use crate::messages::{Message, Span};
 use std::sync::Arc;
 
 pub type Trig = Exps;

@@ -1,13 +1,19 @@
-use crate::ast::{BindX, Binder, BinderX, Expr, ExprX, Stmt, StmtX, Trigger};
+use crate::{
+    ast::{BindX, Binder, BinderX, Expr, ExprX, Stmt, StmtX, Trigger},
+    messages::Message,
+};
 use std::sync::Arc;
 
-pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) -> Expr {
+pub(crate) fn map_expr_visitor<M: Message, F: FnMut(&Expr<M>) -> Expr<M>>(
+    expr: &Expr<M>,
+    f: &mut F,
+) -> Expr<M> {
     match &**expr {
         ExprX::Const(_) => f(expr),
         ExprX::Var(_) => f(expr),
         ExprX::Old(_, _) => f(expr),
         ExprX::Apply(x, es) => {
-            let mut exprs: Vec<Expr> = Vec::new();
+            let mut exprs: Vec<Expr<M>> = Vec::new();
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
@@ -16,7 +22,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
         }
         ExprX::ApplyLambda(t, e0, es) => {
             let expr0 = map_expr_visitor(e0, f);
-            let mut exprs: Vec<Expr> = Vec::new();
+            let mut exprs: Vec<Expr<M>> = Vec::new();
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
@@ -35,7 +41,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             f(&expr)
         }
         ExprX::Multi(op, es) => {
-            let mut exprs: Vec<Expr> = Vec::new();
+            let mut exprs: Vec<Expr<M>> = Vec::new();
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
@@ -52,7 +58,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
         ExprX::Bind(bind, e1) => {
             let bind = match &**bind {
                 BindX::Let(bs) => {
-                    let mut binders: Vec<Binder<Expr>> = Vec::new();
+                    let mut binders: Vec<Binder<Expr<M>>> = Vec::new();
                     for b in bs.iter() {
                         let a = map_expr_visitor(&b.a, f);
                         binders.push(Arc::new(BinderX { name: b.name.clone(), a }));
@@ -60,9 +66,9 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                     BindX::Let(Arc::new(binders))
                 }
                 BindX::Quant(quant, binders, ts, qid) => {
-                    let mut triggers: Vec<Trigger> = Vec::new();
+                    let mut triggers: Vec<Trigger<M>> = Vec::new();
                     for t in ts.iter() {
-                        let mut exprs: Vec<Expr> = Vec::new();
+                        let mut exprs: Vec<Expr<M>> = Vec::new();
                         for expr in t.iter() {
                             exprs.push(map_expr_visitor(expr, f));
                         }
@@ -71,9 +77,9 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                     BindX::Quant(*quant, binders.clone(), Arc::new(triggers), qid.clone())
                 }
                 BindX::Lambda(binders, ts, qid) => {
-                    let mut triggers: Vec<Trigger> = Vec::new();
+                    let mut triggers: Vec<Trigger<M>> = Vec::new();
                     for t in ts.iter() {
-                        let mut exprs: Vec<Expr> = Vec::new();
+                        let mut exprs: Vec<Expr<M>> = Vec::new();
                         for expr in t.iter() {
                             exprs.push(map_expr_visitor(expr, f));
                         }
@@ -82,9 +88,9 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                     BindX::Lambda(binders.clone(), Arc::new(triggers), qid.clone())
                 }
                 BindX::Choose(binders, ts, qid, e2) => {
-                    let mut triggers: Vec<Trigger> = Vec::new();
+                    let mut triggers: Vec<Trigger<M>> = Vec::new();
                     for t in ts.iter() {
-                        let mut exprs: Vec<Expr> = Vec::new();
+                        let mut exprs: Vec<Expr<M>> = Vec::new();
                         for expr in t.iter() {
                             exprs.push(map_expr_visitor(expr, f));
                         }
@@ -111,7 +117,10 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
     }
 }
 
-pub(crate) fn map_stmt_expr_visitor<F: FnMut(&Expr) -> Expr>(stmt: &Stmt, f: &mut F) -> Stmt {
+pub(crate) fn map_stmt_expr_visitor<M: Message, F: FnMut(&Expr<M>) -> Expr<M>>(
+    stmt: &Stmt<M>,
+    f: &mut F,
+) -> Stmt<M> {
     match &**stmt {
         StmtX::Assume(e) => {
             let expr = map_expr_visitor(e, f);

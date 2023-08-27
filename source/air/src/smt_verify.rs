@@ -4,17 +4,17 @@ use crate::ast::{
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
-use crate::messages::{error_bare, warning_bare, Diagnostics, Message, MessageLabel};
+use crate::messages::{Diagnostics, Message};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-fn label_asserts<'ctx>(
-    context: &mut Context,
-    infos: &mut Vec<AssertionInfo>,
-    axiom_infos: &mut Vec<AxiomInfo>,
-    expr: &Expr,
-) -> Expr {
+fn label_asserts<'ctx, M: Message>(
+    context: &mut Context<M>,
+    infos: &mut Vec<AssertionInfo<M>>,
+    axiom_infos: &mut Vec<AxiomInfo<M>>,
+    expr: &Expr<M>,
+) -> Expr<M> {
     match &**expr {
         ExprX::Binary(op @ BinaryOp::Implies, lhs, rhs)
         | ExprX::Binary(op @ BinaryOp::Eq, lhs, rhs) => {
@@ -27,7 +27,7 @@ fn label_asserts<'ctx>(
             ))
         }
         ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
-            let mut exprs_vec: Vec<Expr> = Vec::new();
+            let mut exprs_vec: Vec<Expr<M>> = Vec::new();
             for expr in exprs.iter() {
                 exprs_vec.push(label_asserts(context, infos, axiom_infos, expr));
             }
@@ -75,14 +75,14 @@ fn label_asserts<'ctx>(
 
 /// In SMT-LIB, functions applied to zero arguments are considered constants.
 /// REVIEW: maybe AIR should follow this design for consistency.
-fn elim_zero_args_expr(expr: &Expr) -> Expr {
+fn elim_zero_args_expr<M: Message>(expr: &Expr<M>) -> Expr<M> {
     crate::visitor::map_expr_visitor(expr, &mut |expr| match &**expr {
         ExprX::Apply(x, es) if es.len() == 0 => Arc::new(ExprX::Var(x.clone())),
         _ => expr.clone(),
     })
 }
 
-pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
+pub(crate) fn smt_add_decl<'ctx, M: Message>(context: &mut Context<M>, decl: &Decl<M>) {
     match &**decl {
         DeclX::Sort(_) | DeclX::Datatypes(_) | DeclX::Const(_, _) | DeclX::Fun(_, _, _) => {
             context.smt_log.log_decl(decl);
@@ -90,8 +90,8 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
         DeclX::Var(_, _) => {}
         DeclX::Axiom(expr) => {
             let expr = elim_zero_args_expr(expr);
-            let mut infos: Vec<AssertionInfo> = Vec::new();
-            let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
+            let mut infos: Vec<AssertionInfo<M>> = Vec::new();
+            let mut axiom_infos: Vec<AxiomInfo<M>> = Vec::new();
             let labeled_expr = label_asserts(context, &mut infos, &mut axiom_infos, &expr);
             for info in axiom_infos {
                 crate::typecheck::add_decl(context, &info.decl, true).unwrap();
@@ -111,17 +111,17 @@ pub type ReportLongRunning<'a> =
 
 const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
 
-pub(crate) fn smt_check_assertion<'ctx>(
-    context: &mut Context,
-    diagnostics: &impl Diagnostics,
-    mut infos: Vec<AssertionInfo>,
+pub(crate) fn smt_check_assertion<'ctx, M: Message>(
+    context: &mut Context<M>,
+    diagnostics: &impl Diagnostics<M>,
+    mut infos: Vec<AssertionInfo<M>>,
     air_model: Model,
     only_check_earlier: bool,
     report_long_running: Option<&mut ReportLongRunning>,
-) -> ValidityResult {
+) -> ValidityResult<M> {
     let disabled_expr = if only_check_earlier {
         // disable all labels that come after the first known error
-        let mut disabled: Vec<Expr> = Vec::new();
+        let mut disabled: Vec<Expr<M>> = Vec::new();
         let mut found_disabled = false;
         let mut found_enabled = false;
         for info in infos.iter_mut() {
@@ -155,10 +155,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
                 let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
-                    diagnostics.report(&error_bare(
-                        format!("The verifier expects z3 version \"{expected_version}\", found version \"{version}\""))
-                        .help("update z3 using tools/get-z3.(sh|ps1) and re-build verus")
-                    );
+                    diagnostics.report(&M::unexpected_z3_version(&expected_version, version));
                     panic!(
                         "The verifier expects z3 version \"{}\", found version \"{}\"",
                         expected_version, version
@@ -166,7 +163,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 }
             }
         } else if context.ignore_unexpected_smt {
-            diagnostics.report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
+            diagnostics.report(&M::bare(
+                crate::messages::MessageLevel::Warning,
+                format!("warning: unexpected SMT output: {}", line).as_str(),
+            ));
         } else {
             return ValidityResult::UnexpectedOutput(line);
         }
@@ -176,8 +176,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
         context.smt_log.log_assert(&disabled_expr);
     }
 
-    let mut discovered_error: Option<Message> = None;
-    let mut discovered_additional_info: Vec<MessageLabel> = Vec::new();
+    let mut discovered_error: Option<M> = None;
+    let mut discovered_additional_info: Vec<M::MessageLabel> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
@@ -224,7 +224,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
-            diagnostics.report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
+            diagnostics.report(&M::bare(
+                crate::messages::MessageLevel::Warning,
+                format!("warning: unexpected SMT output: {}", line).as_str(),
+            ));
         } else {
             return ValidityResult::UnexpectedOutput(line);
         }
@@ -268,8 +271,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
-                    diagnostics
-                        .report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
+                    diagnostics.report(&M::bare(
+                        crate::messages::MessageLevel::Warning,
+                        format!("warning: unexpected SMT output: {}", line).as_str(),
+                    ));
                 } else {
                     return ValidityResult::UnexpectedOutput(line);
                 }
@@ -301,7 +306,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
             return ValidityResult::Canceled;
         };
 
-        let model = crate::parser::Parser::new().lines_to_model(&smt_output);
+        let model = crate::parser::Parser::<M>::new().lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
         for def in model.iter() {
             model_defs.insert(def.name.clone(), def.clone());
@@ -323,7 +328,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         for (_, info) in context.axiom_infos.map().iter() {
             if let Some(def) = model_defs.get(&info.label) {
                 if *def.body == "true" {
-                    discovered_additional_info.append(&mut (*info.labels).clone());
+                    discovered_additional_info.append(&mut info.labels.clone());
                     break;
                 }
             }
@@ -347,13 +352,13 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 }
 
-pub(crate) fn smt_check_query<'ctx>(
-    context: &mut Context,
-    diagnostics: &impl Diagnostics,
-    query: &Query,
+pub(crate) fn smt_check_query<'ctx, M: Message>(
+    context: &mut Context<M>,
+    diagnostics: &impl Diagnostics<M>,
+    query: &Query<M>,
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
-) -> ValidityResult {
+) -> ValidityResult<M> {
     if !context.disable_incremental_solving {
         context.smt_log.log_push();
         context.push_name_scope();
@@ -375,11 +380,11 @@ pub(crate) fn smt_check_query<'ctx>(
     let assertion = elim_zero_args_expr(assertion);
 
     // add labels to assertions for error reporting
-    let mut infos: Vec<AssertionInfo> = Vec::new();
-    let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
+    let mut infos: Vec<AssertionInfo<M>> = Vec::new();
+    let mut axiom_infos: Vec<AxiomInfo<M>> = Vec::new();
     let labeled_assertion = label_asserts(context, &mut infos, &mut axiom_infos, &assertion);
     for info in &infos {
-        context.smt_log.comment(&info.error.note);
+        context.smt_log.comment(&info.error.get_note());
         if let Err(err) = crate::typecheck::add_decl(context, &info.decl, false) {
             return ValidityResult::TypeError(err);
         }
