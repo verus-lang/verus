@@ -55,7 +55,6 @@ pub fn main() {
 
                 let mut our_args: ArgsX = Default::default();
                 our_args.pervasive_path = Some(pervasive_path.to_string());
-                our_args.verify_pervasive = true;
                 our_args.no_verify = !verify;
                 our_args.no_lifetime = !verify;
                 our_args.multiple_errors = 2;
