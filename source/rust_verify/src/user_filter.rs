@@ -13,9 +13,16 @@ pub enum UserFilter {
     /// No filter (i.e., verify everything)
     None,
     /// Verify modules (None for root module)
-    Modules(Vec<Option<String>>),
+    Modules(Vec<ModuleId>),
     /// Verify function
-    Function(Option<String>, String),
+    Function(ModuleId, String),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub enum ModuleId {
+    Root,
+    /// Colon separated, as the user would input
+    Module(String),
 }
 
 impl UserFilter {
@@ -41,7 +48,11 @@ impl UserFilter {
                 ));
             }
 
-            let module = if args.verify_root { None } else { Some(args.verify_module[0].clone()) };
+            let module = if args.verify_root {
+                ModuleId::Root
+            } else {
+                ModuleId::Module(args.verify_module[0].clone())
+            };
             return Ok(UserFilter::Function(module, func_name.clone()));
         }
 
@@ -49,17 +60,17 @@ impl UserFilter {
             return Ok(UserFilter::None);
         }
 
-        let mut modules: Vec<Option<String>> =
-            args.verify_module.iter().map(|s| Some(s.clone())).collect();
+        let mut modules: Vec<ModuleId> =
+            args.verify_module.iter().map(|s| ModuleId::Module(s.clone())).collect();
         if args.verify_root {
-            modules.push(None);
+            modules.push(ModuleId::Root);
         }
 
         Ok(UserFilter::Modules(modules))
     }
 
     pub fn filter_module_ids(&self, module_ids: &Vec<Path>) -> Result<Vec<Path>, VirErr> {
-        let mut remaining_modules: HashSet<&Option<String>> = match self {
+        let mut remaining_modules: HashSet<&ModuleId> = match self {
             UserFilter::None => {
                 return Ok(module_ids.clone());
             }
@@ -70,9 +81,9 @@ impl UserFilter {
         let module_ids_to_verify = module_ids
             .iter()
             .filter(|m| {
-                (m.segments.len() == 0 && remaining_modules.take(&None).is_some())
-                    || (m.segments.len() > 0
-                        && remaining_modules.take(&Some(module_name(m))).is_some())
+                // Return true if the ModuleId is in the remaining_modules set,
+                // and if so, remove it from the set.
+                remaining_modules.take(&module_id_of_path(m)).is_some()
             })
             .cloned()
             .collect();
@@ -83,22 +94,20 @@ impl UserFilter {
                 .iter()
                 .filter_map(|m| {
                     let name = module_name(m);
-                    (!(name.starts_with("pervasive::") || name == "pervasive")
-                        && m.segments.len() > 0)
-                        .then(|| format!("- {name}"))
+                    (m.segments.len() > 0).then(|| format!("- {name}"))
                 })
                 .collect::<Vec<_>>();
             lines.sort(); // Present the available modules in sorted order
             let mod_name = match mod_name {
-                None => "[root module]",
-                Some(m) => &m,
+                ModuleId::Root => "[root module]",
+                ModuleId::Module(m) => &m,
             };
             let mut msg = vec![
                 format!("could not find module {mod_name} specified by --verify-module"),
                 format!("available modules are:"),
             ];
             msg.extend(lines);
-            msg.push(format!("or use --verify-root, --verify-pervasive"));
+            msg.push(format!("or use --verify-root"));
             return Err(error(msg.join("\n")));
         }
 
@@ -231,4 +240,8 @@ impl UserFilter {
             true
         }
     }
+}
+
+fn module_id_of_path(p: &Path) -> ModuleId {
+    if p.segments.len() == 0 { ModuleId::Root } else { ModuleId::Module(module_name(p)) }
 }
