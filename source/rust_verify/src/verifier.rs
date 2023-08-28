@@ -1405,14 +1405,6 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        if self.args.verify_pervasive
-            && (!self.args.verify_module.is_empty() || self.args.verify_root)
-        {
-            return Err(error(
-                "--verify-pervasive not allowed when --verify-root or --verify-module are present",
-            ));
-        }
-
         if self.args.verify_function.is_some() {
             if self.args.verify_module.is_empty() && !self.args.verify_root {
                 return Err(error(
@@ -1437,13 +1429,8 @@ impl Verifier {
                 .iter()
                 .filter(|m| {
                     let name = module_name(m);
-                    let is_pervasive = name.starts_with("pervasive::")
-                        || name == "pervasive"
-                        || m.krate == Some(Arc::new("vstd".to_string()));
-                    (!self.args.verify_root
-                        && self.args.verify_module.is_empty()
-                        && (!is_pervasive ^ self.args.verify_pervasive))
-                        || (self.args.verify_root && m.segments.len() == 0 && !is_pervasive)
+                    (!self.args.verify_root && self.args.verify_module.is_empty())
+                        || (self.args.verify_root && m.segments.len() == 0)
                         || remaining_verify_module.take(&name).is_some()
                 })
                 .cloned()
