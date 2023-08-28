@@ -86,7 +86,7 @@ pub(crate) struct State {
     pub(crate) trait_decl_set: HashSet<Path>,
     pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
-    pub(crate) assoc_type_impls: Vec<AssocTypeImpl>,
+    pub(crate) assoc_type_impls: HashMap<AssocTypeImpl, Vec<AssocTypeImplType>>,
     pub(crate) fun_decls: Vec<FunDecl>,
     enclosing_fun_id: Option<DefId>,
 }
@@ -108,7 +108,7 @@ impl State {
             trait_decl_set: HashSet::new(),
             trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
-            assoc_type_impls: Vec::new(),
+            assoc_type_impls: HashMap::new(),
             fun_decls: Vec::new(),
             enclosing_fun_id: None,
         }
@@ -1878,14 +1878,13 @@ fn erase_impl<'tcx>(
                     let typ = erase_ty(ctxt, state, &ty);
                     let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
                     let assoc = AssocTypeImpl {
-                        name,
                         generic_params,
                         generic_bounds,
                         self_typ,
                         trait_as_datatype,
-                        typ,
                     };
-                    state.assoc_type_impls.push(assoc);
+                    let assoc_type = AssocTypeImplType { name, typ };
+                    state.assoc_type_impls.entry(assoc).or_insert(Vec::new()).push(assoc_type);
                 }
             }
             _ => panic!("unexpected impl"),
