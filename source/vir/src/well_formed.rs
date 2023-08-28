@@ -491,6 +491,14 @@ fn check_function(
         if function.x.mode != Mode::Exec {
             return error(&function.span, "'atomic' only makes sense on an 'exec' function");
         }
+        match function.x.kind {
+            FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
+                return error(&function.span, "'atomic' not supported for trait functions");
+            }
+            FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl(..) => {
+                // ok
+            }
+        }
     }
     match &function.x.mask_spec {
         MaskSpec::NoSpec => {}
