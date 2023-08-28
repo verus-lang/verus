@@ -11,6 +11,8 @@ pub type Expr = air::ast::Expr<Message>;
 pub type StmtX = air::ast::StmtX<Message>;
 pub type Stmt = air::ast::Stmt<Message>;
 
+pub type Stmts = air::ast::Stmts<Message>;
+
 pub type DeclX = air::ast::DeclX<Message>;
 pub type Decl = air::ast::Decl<Message>;
 

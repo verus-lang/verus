@@ -593,22 +593,22 @@ fn check_function(
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
             Ok(_) => {}
             Err(_) => {
-                return error(
-                    "Please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
+                return Err(error(
                     &function.span,
-                );
+                    "Please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
+                ));
             }
         };
 
         if function.x.mode != Mode::Proof {
-            return Err(error("integer_ring mode must be declared as proof", &function.span));
+            return Err(error(&function.span, "integer_ring mode must be declared as proof"));
         }
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |_scope_map, expr| {
                 match &expr.x {
                     ExprX::Block(_, _) => {}
                     _ => {
-                        return Err(error("integer_ring mode cannot have a body", &function.span));
+                        return Err(error(&function.span, "integer_ring mode cannot have a body"));
                     }
                 }
                 Ok(())
@@ -619,17 +619,17 @@ fn check_function(
                 TypX::Int(crate::ast::IntRange::Int) => {}
                 TypX::Boxed(_) => {}
                 _ => {
-                    return error(
-                        "integer_ring proof's parameters should all be int type",
+                    return Err(error(
                         &p.span,
-                    );
+                        "integer_ring proof's parameters should all be int type",
+                    ));
                 }
             }
         }
         if function.x.ensure.len() != 1 {
             return Err(error(
-                "only a single ensures is allowed in integer_ring mode",
                 &function.span,
+                "only a single ensures is allowed in integer_ring mode",
             ));
         } else {
             let ens = function.x.ensure[0].clone();
@@ -644,24 +644,24 @@ fn check_function(
                         crate::ast::ExprX::Const(crate::ast::Constant::Int(zero))
                             if "0" == zero.to_string() => {}
                         _ => {
-                            return error(
-                                "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
+                            return Err(error(
                                 &function.span,
-                            );
+                                "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
+                            ));
                         }
                     }
                 }
             } else {
-                return error(
-                    "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
+                return Err(error(
                     &function.span,
-                );
+                    "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
+                ));
             }
         }
         if function.x.has_return() {
             return Err(error(
-                "integer_ring mode function cannot have a return value",
                 &function.span,
+                "integer_ring mode function cannot have a return value",
             ));
         }
         for req in function.x.require.iter() {
@@ -672,19 +672,19 @@ fn check_function(
                         if let ExprX::Const(..) = &expr.x {
                             return Ok(());
                         } else {
-                            return error(
-                                "integer_ring mode's expressions should be int/bool type",
+                            return Err(error(
                                 &req.span,
-                            );
+                                "integer_ring mode's expressions should be int/bool type",
+                            ));
                         }
                     }
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
-                        return error(
-                            "integer_ring mode's expressions should be int/bool type",
+                        return Err(error(
                             &req.span,
-                        );
+                            "integer_ring mode's expressions should be int/bool type",
+                        ));
                     }
                 }
                 Ok(())
@@ -698,19 +698,19 @@ fn check_function(
                         if let ExprX::Const(..) = &expr.x {
                             return Ok(());
                         } else {
-                            return error(
-                                "integer_ring mode's expressions should be int/bool type",
+                            return Err(error(
                                 &ens.span,
-                            );
+                                "integer_ring mode's expressions should be int/bool type",
+                            ));
                         }
                     }
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
-                        return error(
-                            "integer_ring mode's expressions should be int/bool type",
+                        return Err(error(
                             &ens.span,
-                        );
+                            "integer_ring mode's expressions should be int/bool type",
+                        ));
                     }
                 }
                 Ok(())

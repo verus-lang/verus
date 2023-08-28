@@ -49,20 +49,15 @@ impl SingularProcess {
     }
 }
 
-pub fn log_singular(
-    context: &mut crate::context::Context,
+pub fn log_singular<M: crate::messages::Message>(
+    context: &mut crate::context::Context<M>,
     query: &String,
-    func_span: &crate::ast::Span,
+    func_span: &str,
 ) {
     context.air_initial_log.comment(&query);
     context.air_middle_log.comment(&query);
     context.air_final_log.comment(&query);
 
-    context
-        .singular_log
-        .as_mut()
-        .unwrap()
-        .write(format!("// {}\n", func_span.as_string).as_bytes())
-        .unwrap();
+    context.singular_log.as_mut().unwrap().write(format!("// {}\n", func_span).as_bytes()).unwrap();
     context.singular_log.as_mut().unwrap().write(format!("{}\n", query).as_bytes()).unwrap();
 }

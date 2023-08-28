@@ -1,11 +1,11 @@
-use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use air::context::{QueryContext, ValidityResult};
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::messagesMessage;
+use vir::air_ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
+use vir::messages::{error, Message};
 
 // Singular reserved keyword
 const RING_DECL: &str = "ring";
@@ -320,11 +320,11 @@ pub fn singular_printer(
 }
 
 pub fn check_singular_valid(
-    context: &mut air::context::Context,
+    context: &mut air::context::Context<Message>,
     command: &Command,
     func_span: &vir::messages::Span,
     _query_context: QueryContext<'_, '_>,
-) -> ValidityResult {
+) -> ValidityResult<Message> {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
         query.clone()
     } else {
@@ -333,13 +333,13 @@ pub fn check_singular_valid(
 
     let decl = query.local.clone();
     let statement = query.assertion.clone();
-    let stmts: air::ast::Stmts = if let air::ast::StmtX::Block(stmts) = &*statement {
+    let stmts: vir::air_ast::Stmts = if let air::ast::StmtX::Block(stmts) = &*statement {
         stmts.clone()
     } else {
         panic!("internal error: integer_ring")
     };
 
-    let arc_ens: &air::ast::Stmt = stmts.last().unwrap();
+    let arc_ens: &vir::air_ast::Stmt = stmts.last().unwrap();
     let ens = match &**arc_ens {
         air::ast::StmtX::Assert(error, exp) => (exp.clone(), error.clone()),
         _ => {
@@ -373,7 +373,7 @@ pub fn check_singular_valid(
         Err(err) => return ValidityResult::Invalid(None, err),
     };
 
-    air::singular_manager::log_singular(context, &query, func_span);
+    air::singular_manager::log_singular(context, &query, &func_span.as_string);
 
     let quit_string = format!("{};", QUIT_SINGULAR);
     let query = format!("{} {}", query, quit_string);
@@ -392,13 +392,13 @@ pub fn check_singular_valid(
     } else {
         ValidityResult::Invalid(
             None,
-            vir::messageserror(
+            error(
+                &ens.1.spans[0],
                 format!(
                     "postcondition not satisfied: Ensures polynomial failed to be reduced to zero, reduced polynomial is {}\n generated singular query: {} ",
                     res[0].as_str(),
                     query
                 ),
-                &ens.1.spans[0],
             ),
         )
     }
