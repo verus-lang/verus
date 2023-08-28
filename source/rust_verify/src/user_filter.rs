@@ -114,16 +114,19 @@ impl UserFilter {
         Ok(module_ids_to_verify)
     }
 
-    pub fn get_is_function_exact_match(
-        &self,
-        funs: &Vec<Function>,
-        module: &Path,
-    ) -> Result<bool, VirErr> {
+    pub fn get_is_function_exact_match(&self, funs: &Vec<Function>) -> Result<bool, VirErr> {
         let mut verify_function_exact_match = false;
-        if let UserFilter::Function(_, verify_function) = self {
-            let module_funs = funs.iter().filter(|f| Some(module.clone()) == f.x.owning_module);
-            let mut module_fun_names: Vec<String> =
-                module_funs.map(|f| friendly_fun_name_crate_relative(&module, &f.x.name)).collect();
+        if let UserFilter::Function(module_id, verify_function) = self {
+            let mut module_fun_names: Vec<String> = funs
+                .iter()
+                .filter(|f| match &f.x.owning_module {
+                    None => false,
+                    Some(m) => module_id == &module_id_of_path(m),
+                })
+                .map(|f| {
+                    friendly_fun_name_crate_relative(f.x.owning_module.as_ref().unwrap(), &f.x.name)
+                })
+                .collect();
 
             let clean_verify_function = verify_function.trim_matches('*');
             let mut filtered_functions: Vec<&String> =

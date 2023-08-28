@@ -929,7 +929,7 @@ impl Verifier {
 
         let user_filter = self.user_filter.as_ref().unwrap();
         let verify_function_exact_match =
-            user_filter.get_is_function_exact_match(&krate.functions, module)?;
+            user_filter.get_is_function_exact_match(&krate.functions)?;
 
         // For spec functions, check termination and declare consequence axioms.
         // For proof/exec functions, declare requires/ensures.
