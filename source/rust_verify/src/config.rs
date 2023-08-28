@@ -62,8 +62,6 @@ pub struct ArgsX {
     pub log_smt: bool,
     pub log_triggers: bool,
     pub show_triggers: ShowTriggers,
-    pub print_erased: bool,
-    pub print_erased_spec: bool,
     pub ignore_unexpected_smt: bool,
     pub debug: bool,
     pub profile: bool,
@@ -156,8 +154,6 @@ pub fn parse_args_with_imports(
     const OPT_TRIGGERS_SELECTIVE: &str = "triggers-selective";
     const OPT_TRIGGERS: &str = "triggers";
     const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
-    const OPT_PRINT_ERASED: &str = "print-erased";
-    const OPT_PRINT_ERASED_SPEC: &str = "print-erased-spec";
     const OPT_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const OPT_DEBUG: &str = "debug";
     const OPT_PROFILE: &str = "profile";
@@ -248,8 +244,6 @@ pub fn parse_args_with_imports(
     opts.optflag("", OPT_TRIGGERS_SELECTIVE, "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)");
     opts.optflag("", OPT_TRIGGERS, "Show all automatically chosen triggers for verified modules");
     opts.optflag("", OPT_TRIGGERS_VERBOSE, "Show all automatically chosen triggers for verified modules and imported definitions from other modules");
-    opts.optflag("", OPT_PRINT_ERASED, "Print code after erasing spec/proof (requires --compile)");
-    opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
     opts.optflag("", OPT_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output");
     opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
     opts.optflag(
@@ -403,8 +397,6 @@ pub fn parse_args_with_imports(
         } else {
             ShowTriggers::default()
         },
-        print_erased: matches.opt_present(OPT_PRINT_ERASED),
-        print_erased_spec: matches.opt_present(OPT_PRINT_ERASED_SPEC),
         ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
         debug: matches.opt_present(OPT_DEBUG),
         profile: matches.opt_present(OPT_PROFILE),
