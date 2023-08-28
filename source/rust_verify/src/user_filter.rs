@@ -9,7 +9,7 @@ use vir::ast_util::friendly_fun_name_crate_relative;
 pub enum UserFilter {
     /// No filter (i.e., verify everything)
     None,
-    /// Verify modules (None for root module)
+    /// Verify modules
     Modules(Vec<ModuleId>),
     /// Verify function
     /// bool argument = uses exact match
@@ -207,7 +207,9 @@ impl UserFilter {
         Ok(verify_function_exact_match)
     }
 
-    /// Check if the function_name matches
+    /// Check if the function is included in the filter.
+    /// This assumes the function is already in the correct module
+    /// (i.e., it only checks the function name).
     pub fn includes_function(&self, function_name: &Fun, module: &Path) -> bool {
         if let UserFilter::Function(_, verify_function, exact_match) = self {
             let name = friendly_fun_name_crate_relative(&module, function_name);
