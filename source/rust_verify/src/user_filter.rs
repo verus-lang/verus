@@ -2,10 +2,7 @@ use crate::config::Args;
 use crate::util::error;
 use crate::verifier::module_name;
 use std::collections::HashSet;
-use vir::ast::Fun;
-use vir::ast::Function;
-use vir::ast::Path;
-use vir::ast::VirErr;
+use vir::ast::{Fun, Function, Krate, Path, VirErr};
 use vir::ast_util::friendly_fun_name_crate_relative;
 
 #[derive(Clone)]
@@ -15,7 +12,8 @@ pub enum UserFilter {
     /// Verify modules (None for root module)
     Modules(Vec<ModuleId>),
     /// Verify function
-    Function(ModuleId, String),
+    /// bool argument = uses exact match
+    Function(ModuleId, String, bool),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -34,7 +32,7 @@ impl UserFilter {
         matches!(self, UserFilter::Function(..))
     }
 
-    pub fn from_args(args: &Args) -> Result<UserFilter, VirErr> {
+    pub fn from_args(args: &Args, local_krate: &Krate) -> Result<UserFilter, VirErr> {
         if let Some(func_name) = &args.verify_function {
             if args.verify_module.is_empty() && !args.verify_root {
                 return Err(error(
@@ -53,7 +51,9 @@ impl UserFilter {
             } else {
                 ModuleId::Module(args.verify_module[0].clone())
             };
-            return Ok(UserFilter::Function(module, func_name.clone()));
+            let exact_match =
+                Self::get_is_function_exact_match(&module, func_name, &local_krate.functions)?;
+            return Ok(UserFilter::Function(module, func_name.clone(), exact_match));
         }
 
         if args.verify_module.is_empty() && !args.verify_root {
@@ -75,7 +75,7 @@ impl UserFilter {
                 return Ok(module_ids.clone());
             }
             UserFilter::Modules(m) => m.iter().collect(),
-            UserFilter::Function(m, _) => std::iter::once(m).collect(),
+            UserFilter::Function(m, _, _) => std::iter::once(m).collect(),
         };
 
         let module_ids_to_verify = module_ids
@@ -114,109 +114,104 @@ impl UserFilter {
         Ok(module_ids_to_verify)
     }
 
-    pub fn get_is_function_exact_match(&self, funs: &Vec<Function>) -> Result<bool, VirErr> {
+    fn get_is_function_exact_match(
+        module_id: &ModuleId,
+        verify_function: &String,
+        funs: &Vec<Function>,
+    ) -> Result<bool, VirErr> {
         let mut verify_function_exact_match = false;
-        if let UserFilter::Function(module_id, verify_function) = self {
-            let mut module_fun_names: Vec<String> = funs
+        let mut module_fun_names: Vec<String> = funs
+            .iter()
+            .filter(|f| match &f.x.owning_module {
+                None => false,
+                Some(m) => module_id == &module_id_of_path(m),
+            })
+            .map(|f| {
+                friendly_fun_name_crate_relative(f.x.owning_module.as_ref().unwrap(), &f.x.name)
+            })
+            .collect();
+
+        let clean_verify_function = verify_function.trim_matches('*');
+        let mut filtered_functions: Vec<&String> =
+            module_fun_names.iter().filter(|f| f.contains(clean_verify_function)).collect();
+
+        // no match
+        if filtered_functions.len() == 0 {
+            module_fun_names.sort();
+            let msg = vec![
+                format!("could not find function {verify_function} specified by --verify-function"),
+                format!("available functions are:"),
+            ]
+            .into_iter()
+            .chain(module_fun_names.iter().map(|f| format!("  - {f}")))
+            .collect::<Vec<String>>()
+            .join("\n");
+            return Err(error(msg));
+        }
+
+        // substring match
+        if verify_function == clean_verify_function {
+            verify_function_exact_match = filtered_functions
                 .iter()
-                .filter(|f| match &f.x.owning_module {
-                    None => false,
-                    Some(m) => module_id == &module_id_of_path(m),
+                .filter(|f| {
+                    // filter for exact match and impl func match
+                    *f == &verify_function || f.ends_with(&format!("::{}", verify_function))
                 })
-                .map(|f| {
-                    friendly_fun_name_crate_relative(f.x.owning_module.as_ref().unwrap(), &f.x.name)
-                })
-                .collect();
+                .count()
+                == 1;
 
-            let clean_verify_function = verify_function.trim_matches('*');
-            let mut filtered_functions: Vec<&String> =
-                module_fun_names.iter().filter(|f| f.contains(clean_verify_function)).collect();
-
-            // no match
-            if filtered_functions.len() == 0 {
-                module_fun_names.sort();
+            if filtered_functions.len() > 1 && !verify_function_exact_match {
+                filtered_functions.sort();
                 let msg = vec![
                     format!(
-                        "could not find function {verify_function} specified by --verify-function"
+                        "more than one match found for --verify-function {verify_function}, consider using wildcard *{verify_function}* to verify all matched results,"
                     ),
-                    format!("available functions are:"),
-                ]
-                .into_iter()
-                .chain(module_fun_names.iter().map(|f| format!("  - {f}")))
+                    format!(
+                        "or specify a unique substring for the desired function, matched results are:"
+                    ),
+                ].into_iter()
+                .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
                 .collect::<Vec<String>>()
                 .join("\n");
                 return Err(error(msg));
             }
+        } else {
+            // wildcard match
+            let wildcard_mismatch =
+                match (verify_function.starts_with("*"), verify_function.ends_with("*")) {
+                    (true, false) => {
+                        !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function))
+                    }
+                    (false, true) => {
+                        !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function))
+                    }
+                    _ => false,
+                };
 
-            // substring match
-            if verify_function == clean_verify_function {
-                verify_function_exact_match = filtered_functions
-                    .iter()
-                    .filter(|f| {
-                        // filter for exact match and impl func match
-                        *f == &verify_function || f.ends_with(&format!("::{}", verify_function))
-                    })
-                    .count()
-                    == 1;
-
-                if filtered_functions.len() > 1 && !verify_function_exact_match {
-                    filtered_functions.sort();
-                    let msg = vec![
+            if wildcard_mismatch {
+                filtered_functions.sort();
+                let msg = vec![
                         format!(
-                            "more than one match found for --verify-function {verify_function}, consider using wildcard *{verify_function}* to verify all matched results,"
+                            "could not find function {verify_function} specified by --verify-function,"
                         ),
                         format!(
-                            "or specify a unique substring for the desired function, matched results are:"
+                            "consider *{clean_verify_function}* if you want to verify similar functions:"
                         ),
                     ].into_iter()
                     .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
                     .collect::<Vec<String>>()
                     .join("\n");
-                    return Err(error(msg));
-                }
-            } else {
-                // wildcard match
-                let wildcard_mismatch =
-                    match (verify_function.starts_with("*"), verify_function.ends_with("*")) {
-                        (true, false) => {
-                            !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function))
-                        }
-                        (false, true) => {
-                            !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function))
-                        }
-                        _ => false,
-                    };
-
-                if wildcard_mismatch {
-                    filtered_functions.sort();
-                    let msg = vec![
-                            format!(
-                                "could not find function {verify_function} specified by --verify-function,"
-                            ),
-                            format!(
-                                "consider *{clean_verify_function}* if you want to verify similar functions:"
-                            ),
-                        ].into_iter()
-                        .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
-                        .collect::<Vec<String>>()
-                        .join("\n");
-                    return Err(error(msg));
-                }
+                return Err(error(msg));
             }
         }
         Ok(verify_function_exact_match)
     }
 
     /// Check if the function_name matches
-    pub fn includes_function(
-        &self,
-        function_name: &Fun,
-        verify_function_exact_match: bool,
-        module: &Path,
-    ) -> bool {
-        if let UserFilter::Function(_, verify_function) = self {
+    pub fn includes_function(&self, function_name: &Fun, module: &Path) -> bool {
+        if let UserFilter::Function(_, verify_function, exact_match) = self {
             let name = friendly_fun_name_crate_relative(&module, function_name);
-            if verify_function_exact_match {
+            if *exact_match {
                 if &name != verify_function && !name.ends_with(&format!("::{}", verify_function)) {
                     return false;
                 }

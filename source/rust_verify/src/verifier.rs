@@ -598,13 +598,11 @@ impl Verifier {
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: &Fun,
-        verify_function_exact_match: bool,
         comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
         let user_filter = self.user_filter.as_ref().unwrap();
-        let includes_function =
-            user_filter.includes_function(function_name, verify_function_exact_match, module);
+        let includes_function = user_filter.includes_function(function_name, module);
         if !includes_function {
             return false;
         }
@@ -927,10 +925,6 @@ impl Verifier {
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
-        let user_filter = self.user_filter.as_ref().unwrap();
-        let verify_function_exact_match =
-            user_filter.get_is_function_exact_match(&krate.functions)?;
-
         // For spec functions, check termination and declare consequence axioms.
         // For proof/exec functions, declare requires/ensures.
         // Declare them in SCC (strongly connected component) sorted order so that
@@ -1003,7 +997,6 @@ impl Verifier {
                     &ctx.global.qid_map.borrow(),
                     module,
                     &function.x.name,
-                    verify_function_exact_match,
                     &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
                 );
@@ -1036,7 +1029,6 @@ impl Verifier {
                             &ctx.global.qid_map.borrow(),
                             module,
                             &function.x.name,
-                            verify_function_exact_match,
                             &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                             Some("recommends check: "),
                         );
@@ -1165,7 +1157,6 @@ impl Verifier {
                         &ctx.global.qid_map.borrow(),
                         module,
                         &function.x.name,
-                        verify_function_exact_match,
                         &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                         desc_prefix,
                     );
@@ -1305,8 +1296,7 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        let user_filter = UserFilter::from_args(&self.args)?;
-
+        let user_filter = self.user_filter.as_ref().unwrap();
         let module_ids_to_verify: Vec<vir::ast::Path> = {
             let current_crate_module_ids = self
                 .current_crate_module_ids
@@ -1314,7 +1304,6 @@ impl Verifier {
                 .expect("current_crate_module_ids should be initialized");
             user_filter.filter_module_ids(current_crate_module_ids)?
         };
-        self.user_filter = Some(user_filter);
 
         let time_verify_sequential_end = Instant::now();
         self.time_verify_crate_sequential =
@@ -1703,6 +1692,10 @@ impl Verifier {
         };
         crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
             .map_err(map_err_diagnostics)?;
+
+        let user_filter =
+            UserFilter::from_args(&self.args, &vir_crate).map_err(map_err_diagnostics)?;
+        self.user_filter = Some(user_filter);
 
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
