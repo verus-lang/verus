@@ -909,20 +909,28 @@ fn erase_expr<'tcx>(
                     _ => panic!("unsupported"),
                 },
                 Res::SelfCtor(_) | Res::Def(DefKind::Ctor(_, _), _) => {
-                    let (adt_def_id, variant_def, is_enum) =
-                        get_adt_res(ctxt.tcx, res, expr.span).unwrap();
-                    let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-                    let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+                    if expect_spec {
+                        None
+                    } else {
+                        let (adt_def_id, variant_def, is_enum) =
+                            get_adt_res(ctxt.tcx, res, expr.span).unwrap();
+                        let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+                        let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
-                    let variant =
-                        if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
-                    let typ_args = mk_typ_args(ctxt, state, ctxt.types().node_substs(expr.hir_id));
-                    return mk_exp(ExpX::DatatypeTuple(
-                        state.datatype_name(&vir_path),
-                        variant,
-                        typ_args,
-                        vec![],
-                    ));
+                        let variant = if is_enum {
+                            Some(state.variant(variant_name.to_string()))
+                        } else {
+                            None
+                        };
+                        let typ_args =
+                            mk_typ_args(ctxt, state, ctxt.types().node_substs(expr.hir_id));
+                        return mk_exp(ExpX::DatatypeTuple(
+                            state.datatype_name(&vir_path),
+                            variant,
+                            typ_args,
+                            vec![],
+                        ));
+                    }
                 }
                 Res::Def(DefKind::AssocConst, _id) => {
                     if expect_spec {

@@ -776,6 +776,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_lifetime_constructor_regression_768 verus_code! {
+        use vstd::prelude::*;
+        proof fn foo() {
+            let input: Option<u64> = None;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] lifetime_generate_assoc_type_regression_769 verus_code! {
         pub trait EA {
             type I;
