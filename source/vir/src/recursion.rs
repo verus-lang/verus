@@ -520,10 +520,15 @@ pub(crate) fn expand_call_graph(
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
                 use crate::ast::CallTargetKind;
-                let callee = if let CallTargetKind::Method(Some((x_resolved, _, _))) = kind {
-                    x_resolved
+                let (callee, impl_paths) = if let CallTargetKind::Method(Some((
+                    x_resolved,
+                    _,
+                    impl_paths_resolved,
+                ))) = kind
+                {
+                    (x_resolved, impl_paths_resolved)
                 } else {
-                    x
+                    (x, impl_paths)
                 };
                 let f2 = &func_map[callee];
 
