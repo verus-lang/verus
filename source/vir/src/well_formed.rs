@@ -978,6 +978,14 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 )
                 .secondary_span(&function.span));
             }
+
+            if proof_function.x.mode != Mode::Proof {
+                return Err(air::messages::error(
+                    "decreases_by/recommends_by function must have mode proof",
+                    &proof_function.span,
+                ));
+            }
+
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
             check_functions_match(
                 "decreases_by/recommends_by",
