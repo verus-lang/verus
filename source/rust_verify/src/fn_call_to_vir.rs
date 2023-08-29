@@ -2,7 +2,8 @@ use crate::attributes::{get_ghost_block_opt, get_verifier_attrs, GhostBlockAttr}
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, is_smt_arith, mid_ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
+    def_id_to_vir_path, is_smt_arith, is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node,
+    typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
@@ -10,9 +11,9 @@ use crate::rust_to_vir_expr::{
 };
 use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
-    self, ArithItem, AssertItem, BinaryOpItem, ChainedItem, CompilableOprItem, DirectiveItem,
-    EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem, SpecGhostTrackedItem, SpecItem,
-    SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
+    self, ArithItem, AssertItem, BinaryOpItem, BuiltinFunctionItem, ChainedItem, CompilableOprItem,
+    DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
+    SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast::{Binder, BinderX};
@@ -27,10 +28,10 @@ use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ChainedOp,
-    ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
+    ChainedOp, ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
+    IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
+    UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::positional_field_ident;
@@ -96,6 +97,24 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 "Verus does not yet support IntoIterator::into_iter and for loops, use a while loop instead",
             );
         }
+        Some(RustItem::Clone) => {
+            // Special case `clone` for standard Rc and Arc types
+            // (Could also handle it for other types where cloning is the identity
+            // operation in the SMT encoding.)
+            let node_substs = bctx.types.node_substs(expr.hir_id);
+            let arg_typ = match node_substs[0].unpack() {
+                GenericArgKind::Type(ty) => ty,
+                _ => {
+                    panic!("clone expected type argument");
+                }
+            };
+
+            if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
+                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                record_compilable_operator(bctx, expr, CompilableOperator::SmartPtrClone);
+                return Ok(arg);
+            }
+        }
         _ => {}
     }
 
@@ -104,8 +123,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             VerusItem::Pervasive(_, _)
             | VerusItem::Marker(_)
             | VerusItem::BuiltinType(_)
-            | VerusItem::BuiltinTrait(_)
-            | VerusItem::BuiltinFunction(_) => (),
+            | VerusItem::BuiltinTrait(_) => (),
             _ => {
                 return verus_item_to_vir(
                     bctx,
@@ -1159,11 +1177,39 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Ok(e)
             }
         }
+        VerusItem::BuiltinFunction(
+            re @ (BuiltinFunctionItem::FnWithSpecificationRequires
+            | BuiltinFunctionItem::FnWithSpecificationEnsures),
+        ) => {
+            record_spec_fn_no_proof_args(bctx, expr);
+
+            let bsf = match re {
+                BuiltinFunctionItem::FnWithSpecificationRequires => {
+                    assert!(args.len() == 2);
+                    BuiltinSpecFun::ClosureReq
+                }
+                BuiltinFunctionItem::FnWithSpecificationEnsures => {
+                    assert!(args.len() == 3);
+                    BuiltinSpecFun::ClosureEns
+                }
+            };
+
+            let vir_args = args
+                .iter()
+                .map(|arg| expr_to_vir(bctx, &arg, ExprModifier::REGULAR))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
+
+            return mk_expr(ExprX::Call(
+                CallTarget::BuiltinSpecFun(bsf, typ_args),
+                Arc::new(vir_args),
+            ));
+        }
         VerusItem::Pervasive(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
-        | VerusItem::BuiltinTrait(_)
-        | VerusItem::BuiltinFunction(_) => unreachable!(),
+        | VerusItem::BuiltinTrait(_) => unreachable!(),
     }
 }
 
@@ -1535,7 +1581,7 @@ fn mk_two_vir_args<'tcx>(
     span: Span,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<(vir::ast::Expr, vir::ast::Expr), VirErr> {
-    unsupported_err_unless!(args.len() == 2, span, "expected 1 argument", &args);
+    unsupported_err_unless!(args.len() == 2, span, "expected 2 arguments", &args);
     let e0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
     let e1 = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
     Ok((e0, e1))
