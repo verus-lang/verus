@@ -200,9 +200,30 @@ pub(crate) fn get_impl_paths<'tcx>(
     let mut impl_paths = Vec::new();
     let param_env = tcx.param_env(param_env_src);
     let preds = tcx.predicates_of(target_id);
+
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-    for inst_pred in preds.instantiate(tcx, node_substs).predicates {
+
+    // Note: a worklist of impl ids might be easier to implement.
+    // It would be nice simply because the number of impls is easily boundable.
+    //
+    // I'm not sure if it's sound, though. It might be possible for the same impl
+    // to show up multiple times, but with different predicates that result in different
+    // impls once you start nesting?
+    // So I'm implementing this with a predicate worklist to be safe.
+
+    let mut predicate_worklist: Vec<rustc_middle::ty::Predicate> =
+        preds.instantiate(tcx, node_substs).predicates;
+
+    let mut idx = 0;
+    while idx < predicate_worklist.len() {
+        if idx == 1000 {
+            panic!("get_impl_paths nesting depth exceeds 1000");
+        }
+
+        let inst_pred = &predicate_worklist[idx];
+        idx += 1;
+
         if let PredicateKind::Clause(Clause::Trait(_)) = inst_pred.kind().skip_binder() {
             let poly_trait_refs = inst_pred.kind().map_bound(|p| {
                 if let PredicateKind::Clause(Clause::Trait(tp)) = &p {
@@ -216,6 +237,13 @@ pub(crate) fn get_impl_paths<'tcx>(
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
                     impl_paths.push(impl_path);
+
+                    let preds = tcx.predicates_of(u.impl_def_id);
+                    for p in preds.instantiate(tcx, u.substs).predicates {
+                        if !predicate_worklist.contains(&p) {
+                            predicate_worklist.push(p);
+                        }
+                    }
                 }
             }
         }

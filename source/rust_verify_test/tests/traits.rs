@@ -2148,3 +2148,50 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] termination_fail_issue784 verus_code! {
+        enum Option<V> { Some(V), None }
+
+        trait Tr {
+            spec fn stuff() -> bool;
+        }
+
+        struct X { }
+
+        // impl&%0
+        impl Tr for X
+        {
+            spec fn stuff() -> bool {
+                alpaca()                                // (1)
+            }
+        }
+
+        spec fn alpaca() -> bool {
+            // depends on the bound `X: Tr`
+            // which depends on the above trait impl
+            // which in turn depends on `alpaca`
+            (P::<X> { t: Option::None }).orange()               // (2)
+        }
+
+        struct P<T> {
+            t: Option<T>,
+        }
+
+        trait Zr {
+            spec fn orange(&self) -> bool;
+        }
+
+        // impl&%1
+        impl<T: Tr> Zr for P<T> {
+            spec fn orange(&self) -> bool {
+                !T::stuff()                             // (3)
+            }
+        }
+
+        proof fn paradox() {
+            assert(alpaca() == !alpaca());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
