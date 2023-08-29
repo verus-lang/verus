@@ -228,24 +228,25 @@ impl Printer {
             }
             ExprX::Bind(bind, expr) => {
                 let with_triggers = |expr: &Expr, triggers: &Triggers, qid: &Qid| {
-                    if triggers.len() == 0 && qid.is_none() {
-                        self.expr_to_node(expr)
-                    } else {
-                        let mut nodes: Vec<Node> = Vec::new();
-                        nodes.push(str_to_node("!"));
-                        nodes.push(self.expr_to_node(expr));
+                    let mut nodes: Vec<Node> = Vec::new();
+                    nodes.push(str_to_node("!"));
+                    nodes.push(self.expr_to_node(expr));
+                    if triggers.len() > 0 {
                         for trigger in triggers.iter() {
                             nodes.push(str_to_node(":pattern"));
                             nodes.push(self.exprs_to_node(trigger));
                         }
-                        if let Some(s) = qid {
-                            nodes.push(str_to_node(":qid"));
-                            nodes.push(str_to_node(s));
-                            nodes.push(str_to_node(":skolemid"));
-                            nodes.push(str_to_node(&mk_skolem_id(s)));
-                        }
-                        Node::List(nodes)
+                    } else {
+                        nodes.push(str_to_node(":pattern"));
+                        nodes.push(Node::List(vec![]));
                     }
+                    if let Some(s) = qid {
+                        nodes.push(str_to_node(":qid"));
+                        nodes.push(str_to_node(s));
+                        nodes.push(str_to_node(":skolemid"));
+                        nodes.push(str_to_node(&mk_skolem_id(s)));
+                    }
+                    Node::List(nodes)
                 };
                 match &**bind {
                     BindX::Let(binders) => {

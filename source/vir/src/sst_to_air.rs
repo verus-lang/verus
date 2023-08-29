@@ -2287,7 +2287,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if *fuel >= 2 {
                 // (assume (exists ((fuel Fuel)) (= fuel_nat%f (succ ... succ fuel))))
                 let mut added_fuel = str_var(FUEL_PARAM);
-                for _ in 0..*fuel - 1 {
+                added_fuel = str_apply(SUCC, &vec![added_fuel]);
+                let trigger = added_fuel.clone();
+                for _ in 0..*fuel - 2 {
                     added_fuel = str_apply(SUCC, &vec![added_fuel]);
                 }
                 let eq = mk_eq(
@@ -2296,7 +2298,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 );
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
                 let qid = None; // Introduces a variable name but shouldn't otherwise be instantiated
-                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], qid, &eq))));
+                stmts.push(Arc::new(StmtX::Assume(mk_exists(
+                    &vec![binder],
+                    &vec![Arc::new(vec![trigger])],
+                    qid,
+                    &eq,
+                ))));
             }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
