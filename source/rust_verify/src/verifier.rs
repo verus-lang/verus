@@ -2,6 +2,7 @@ use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
+use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::{Command, CommandX, Commands};
@@ -25,8 +26,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::GlobalCtx;
 
-use crate::user_filter::UserFilter;
-use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
+use vir::ast::{Fun, Function, Ident, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
@@ -190,7 +190,6 @@ pub struct Verifier {
     crate_names: Option<Vec<String>>,
     vstd_crate_name: Option<Ident>,
     air_no_span: Option<air::ast::Span>,
-    inferred_modes: Option<HashMap<InferMode, Mode>>,
     current_crate_module_ids: Option<Vec<vir::ast::Path>>,
 
     // proof debugging purposes
@@ -241,7 +240,6 @@ impl Verifier {
             crate_names: None,
             vstd_crate_name: None,
             air_no_span: None,
-            inferred_modes: None,
             current_crate_module_ids: None,
 
             expand_flag: false,
@@ -270,7 +268,6 @@ impl Verifier {
             crate_names: self.crate_names.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
-            inferred_modes: self.inferred_modes.clone(),
             current_crate_module_ids: self.current_crate_module_ids.clone(),
             expand_flag: self.expand_flag,
             expand_targets: self.expand_targets.clone(),
@@ -1264,8 +1261,6 @@ impl Verifier {
         let reporter = Reporter::new(spans, compiler);
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
-        let inferred_modes =
-            self.inferred_modes.take().expect("inferred_modes should be initialized");
 
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
@@ -1279,7 +1274,6 @@ impl Verifier {
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
-            inferred_modes,
             self.args.rlimit,
             interpreter_log_file,
             self.vstd_crate_name.clone(),
@@ -1656,7 +1650,6 @@ impl Verifier {
             tcx,
             krate: hir.krate(),
             erasure_info,
-            unique_id: std::cell::Cell::new(0),
             spans: spans.clone(),
             vstd_crate_name: vstd_crate_name.clone(),
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
@@ -1678,15 +1671,6 @@ impl Verifier {
         self.current_crate_module_ids = Some(vir_crate.module_ids.clone());
 
         // Export crate if requested.
-        if self.args.export.is_some() {
-            if ctxt.unique_id.get() != 0 {
-                // TODO: we should probably just get rid of InferMode,
-                // but there may still be some pre-syntax-macro code relying on it.
-                // In the meantime, exporting anything that relies on it is not supported.
-                panic!("exporting with InferMode is not supported");
-            }
-        }
-
         let crate_metadata = crate::import_export::CrateMetadata {
             crate_id: spans.local_crate.to_u64(),
             original_files: spans.local_files.clone(),
@@ -1729,13 +1713,12 @@ impl Verifier {
         }
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let (erasure_modes, inferred_modes) =
+        let erasure_modes =
             vir::modes::check_crate(&vir_crate, true).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);
         self.vstd_crate_name = vstd_crate_name;
-        self.inferred_modes = Some(inferred_modes);
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();

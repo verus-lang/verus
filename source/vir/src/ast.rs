@@ -62,10 +62,6 @@ pub enum Mode {
     Exec,
 }
 
-/// Mode that gets filled in by the mode checker.
-/// (A unique id marks the place that needs to be filled in.)
-pub type InferMode = u64;
-
 /// Describes integer types
 #[derive(
     Copy,
@@ -374,9 +370,7 @@ pub enum BinaryOp {
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
-    /// (None for InferMode means always mode Spec)
-    /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
-    Arith(ArithOp, Option<InferMode>),
+    Arith(ArithOp, Mode),
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),
