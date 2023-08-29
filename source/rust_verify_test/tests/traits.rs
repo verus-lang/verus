@@ -556,9 +556,12 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
-        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        // TODO: we could make the recursion rules more precise to allow decreases checking in this example:
+        //assert_eq!(err.errors.len(), 2);
+        //assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        //assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        // For now, we just reject the code as having a cycle:
+        assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition");
     }
 }
 
