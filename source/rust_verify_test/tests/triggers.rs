@@ -279,3 +279,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+
+test_verify_one_file! {
+    #[test] test_trigger_mode_none verus_code! {
+        spec fn foo(x : nat) -> bool;
+        proof fn bar(j : nat) 
+            requires
+                foo(j),
+                forall | i | #![no_triggers] foo(i) ==> i == 5,
+            ensures
+                j == 5, // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
+}

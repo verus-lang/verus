@@ -301,9 +301,10 @@ fn check_trigger_expr(
     )
 }
 
-fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
+fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<bool, VirErr> {
     let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
     let mut lets: HashSet<Ident> = HashSet::new();
+    let mut with_trigger_specified : bool = false;
     map.push_scope(false);
     for x in state.trigger_vars.keys() {
         map.insert(x.clone(), true).expect("duplicate bound variables");
@@ -358,6 +359,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                         state.triggers.insert(group, es);
                         state.coverage.insert(group, coverage);
                     }
+                    with_trigger_specified = true;
                 }
                 Ok(())
             }
@@ -385,7 +387,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     })?;
     map.pop_scope();
     assert_eq!(map.num_scopes(), 0);
-    Ok(())
+    Ok(with_trigger_specified)
 }
 
 pub(crate) fn build_triggers(
@@ -401,8 +403,8 @@ pub(crate) fn build_triggers(
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
     };
-    get_manual_triggers(&mut state, exp)?;
-    if state.triggers.len() > 0 || allow_empty {
+    let triggers_specified = get_manual_triggers(&mut state, exp)?;
+    if state.triggers.len() > 0 || allow_empty || triggers_specified {
         if state.auto_trigger {
             return error(
                 span,

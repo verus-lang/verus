@@ -337,7 +337,8 @@ impl Visitor {
                 let cont = match self.extract_quant_triggers(attrs, token.span) {
                     Ok(
                         found @ (ExtractQuantTriggersFound::Auto
-                        | ExtractQuantTriggersFound::Triggers(..)),
+                        | ExtractQuantTriggersFound::Triggers(..)
+                        | ExtractQuantTriggersFound::NoTriggers),
                     ) => {
                         if exprs.exprs.len() == 0 {
                             let err =
@@ -360,6 +361,11 @@ impl Visitor {
                                     );
                                 }
                                 ExtractQuantTriggersFound::None => unreachable!(),
+                                ExtractQuantTriggersFound::NoTriggers => {
+                                    exprs.exprs[0] = Expr::Verbatim(
+                                        quote_spanned!(exprs.exprs[0].span() => ::builtin::with_triggers((,), #e)),
+                                    );
+                                }
                             }
                             true
                         }
@@ -1033,6 +1039,15 @@ impl Visitor {
                 }
                 _ => panic!("expected closure for quantifier"),
             },
+            Ok(ExtractQuantTriggersFound::NoTriggers) => match &mut *arg {
+                Expr::Closure(closure) => {
+                    let body = take_expr(&mut closure.body);
+                    closure.body = Box::new(Expr::Verbatim(
+                        quote_spanned!(span => ::builtin::with_triggers((,), #body)),
+                    ));
+                }
+                _ => panic!("expected closure for quantifier"),
+            },
             Ok(ExtractQuantTriggersFound::None) => {}
             Err(err_expr) => {
                 *expr = err_expr;
@@ -1139,6 +1154,9 @@ impl Visitor {
                     let tuple = ExprTuple { attrs: vec![], paren_token: Paren(span), elems: exprs };
                     triggers.push(Expr::Tuple(tuple));
                 }
+                (Ok(trigger), Some(id)) if id == &"no_triggers" && trigger.exprs.len() == 0 => {
+                    return Ok(ExtractQuantTriggersFound::NoTriggers);
+                }
                 (Err(err), _) => {
                     let span = attr.span();
                     let err = err.to_string();
@@ -1175,6 +1193,7 @@ enum ExtractQuantTriggersFound {
     Auto,
     Triggers(ExprTuple),
     None,
+    NoTriggers,
 }
 
 impl VisitMut for Visitor {
@@ -1736,6 +1755,11 @@ impl VisitMut for Visitor {
                         Ok(ExtractQuantTriggersFound::Triggers(tuple)) => {
                             arg = Box::new(Expr::Verbatim(
                                 quote_spanned!(span => ::builtin::with_triggers(#tuple, #arg)),
+                            ));
+                        }
+                        Ok(ExtractQuantTriggersFound::NoTriggers) => {
+                            arg = Box::new(Expr::Verbatim(
+                                quote_spanned!(span => ::builtin::with_triggers((,), #arg)),
                             ));
                         }
                         Ok(ExtractQuantTriggersFound::None) => {}
