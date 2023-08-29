@@ -36,7 +36,7 @@ pub struct PathX {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunX {
     /// Path of function
     pub path: Path,

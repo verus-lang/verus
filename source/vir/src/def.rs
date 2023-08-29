@@ -567,7 +567,7 @@ impl<X: Debug> Debug for Spanned<X> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverChoice {
     DefaultProver,
-    Spinoff,
+    Nonlinear,
     BitVector,
     Singular,
 }

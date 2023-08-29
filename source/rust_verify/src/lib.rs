@@ -29,6 +29,7 @@ extern crate rustc_trait_selection;
 extern crate smallvec;
 
 mod attributes;
+mod buckets;
 pub mod config;
 pub mod consts;
 pub mod context;
