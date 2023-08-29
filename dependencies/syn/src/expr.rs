@@ -1100,14 +1100,9 @@ ast_enum! {
 #[cfg(feature = "full")]
 pub(crate) fn requires_terminator(expr: &Expr) -> bool {
     // see https://github.com/rust-lang/rust/blob/2679c38fc/src/librustc_ast/util/classify.rs#L7-L25
-    match *expr {
+    match &*expr {
         Expr::Unsafe(..)
         | Expr::Block(..)
-        | Expr::Unary(ExprUnary {
-            expr: box Expr::Block(..),
-            op: UnOp::Proof(..),
-            ..
-        })
         | Expr::Assert(Assert {
             by_token: Some(..),
             body: Some(..),
@@ -1121,6 +1116,14 @@ pub(crate) fn requires_terminator(expr: &Expr) -> bool {
         | Expr::ForLoop(..)
         | Expr::Async(..)
         | Expr::TryBlock(..) => false,
+        Expr::Unary(ExprUnary {
+            expr,
+            op: UnOp::Proof(..),
+            ..
+        }) => match &**expr {
+            Expr::Block(..) => false,
+            _ => true,
+        },
         _ => true,
     }
 }

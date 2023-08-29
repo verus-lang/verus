@@ -8,6 +8,7 @@ use crate::pervasive::*;
 use crate::seq::*;
 #[allow(unused_imports)]
 use crate::set::Set;
+#[cfg(verus_keep_ghost)]
 use crate::set_lib::lemma_set_properties;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;

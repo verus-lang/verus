@@ -10,7 +10,9 @@ use crate::pervasive::*;
 use crate::set::*;
 #[allow(unused_imports)]
 use crate::map::*;
+#[cfg(verus_keep_ghost)]
 use crate::math::min;
+#[cfg(verus_keep_ghost)]
 use crate::math::clip;
 
 verus!{

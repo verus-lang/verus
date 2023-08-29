@@ -12,20 +12,20 @@ use crate::prelude::*;
 
 verus! {
 
-#[verifier(external_body)]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
 pub struct String {
     inner: string::String,
 }
 
-#[rustc_diagnostic_item = "verus::pervasive::string::StrSlice"]
-#[verifier(external_body)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::pervasive::string::StrSlice")]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
 pub struct StrSlice<'a> {
     inner: &'a str,
 }
 
 
-#[rustc_diagnostic_item = "verus::pervasive::string::new_strlit"]
-#[verifier(external_body)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::pervasive::string::new_strlit")]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
 pub const fn new_strlit<'a>(s: &'a str) -> StrSlice<'a> {
     StrSlice { inner: s }
 }

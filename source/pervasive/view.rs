@@ -51,6 +51,7 @@ macro_rules! declare_identify_view {
     ($t:ty) => {
         impl View for $t {
             type V = $t;
+            #[cfg(verus_keep_ghost)]
             #[verifier::spec]
             fn view(&self) -> $t {
                 *self
@@ -78,6 +79,7 @@ macro_rules! declare_tuple_view {
     ([$($n:tt)*], [$($a:ident)*]) => {
         impl<$($a: View, )*> View for ($($a, )*) {
             type V = ($($a::V, )*);
+            #[cfg(verus_keep_ghost)]
             #[verifier::spec]
             fn view(&self) -> ($($a::V, )*) {
                 ($(self.$n.view(), )*)
