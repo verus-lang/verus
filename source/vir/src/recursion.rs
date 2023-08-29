@@ -520,19 +520,21 @@ pub(crate) fn expand_call_graph(
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
                 use crate::ast::CallTargetKind;
-                let (callee, impl_paths) = if let CallTargetKind::Method(Some((
+
+                let empty = vec![];
+                let (callee, impl_paths_resolved) = if let CallTargetKind::Method(Some((
                     x_resolved,
                     _,
                     impl_paths_resolved,
                 ))) = kind
                 {
-                    (x_resolved, impl_paths_resolved)
+                    (x_resolved, impl_paths_resolved.iter())
                 } else {
-                    (x, impl_paths)
+                    (x, empty.iter())
                 };
                 let f2 = &func_map[callee];
 
-                for impl_path in impl_paths.iter() {
+                for impl_path in impl_paths.iter().chain(impl_paths_resolved) {
                     // f --> D: T
                     // (However: if we can directly resolve a call from f1 inside impl to f2 inside
                     // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
