@@ -1932,7 +1932,28 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) build_test_mode: bool,
 }
 
+pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
+    Option<
+        HashMap<
+            rustc_span::def_id::DefId,
+            (Option<rustc_hir::def::Res>, crate::hir_hide_reveal_rewrite::ResOrSymbol),
+        >,
+    >,
+> = std::sync::RwLock::new(None);
+
+fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
+    let mut crate_ = (verus_rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
+    crate_
+}
+
 impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+    fn config(&mut self, config: &mut verus_rustc_interface::interface::Config) {
+        config.override_queries = Some(|_session, providers, _extern_providers| {
+            providers.hir_crate = hir_crate;
+        });
+    }
+
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,

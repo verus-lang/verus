@@ -114,9 +114,8 @@ pub(crate) enum QuantItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum DirectiveItem {
     ExtraDependency,
-    Hide,
-    Reveal,
-    RevealFuel,
+    RevealHide,
+    RevealHideInternalPath,
     RevealStrlit,
 }
 
@@ -346,9 +345,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::forall_arith",            VerusItem::Quant(QuantItem::ForallArith)),
 
         ("verus::builtin::extra_dependency",        VerusItem::Directive(DirectiveItem::ExtraDependency)),
-        ("verus::builtin::hide",                    VerusItem::Directive(DirectiveItem::Hide)),
-        ("verus::builtin::reveal",                  VerusItem::Directive(DirectiveItem::Reveal)),
-        ("verus::builtin::reveal_with_fuel",        VerusItem::Directive(DirectiveItem::RevealFuel)),
+        ("verus::builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
+        ("verus::builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
         ("verus::builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
 
         ("verus::builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),

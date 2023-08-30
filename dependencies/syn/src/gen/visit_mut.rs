@@ -693,6 +693,9 @@ pub trait VisitMut {
     fn visit_return_type_mut(&mut self, i: &mut ReturnType) {
         visit_return_type_mut(self, i);
     }
+    fn visit_reveal_hide_mut(&mut self, i: &mut RevealHide) {
+        visit_reveal_hide_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_signature_mut(&mut self, i: &mut Signature) {
         visit_signature_mut(self, i);
@@ -1469,6 +1472,9 @@ where
         }
         Expr::AssertForall(_binding_0) => {
             v.visit_assert_forall_mut(_binding_0);
+        }
+        Expr::RevealHide(_binding_0) => {
+            v.visit_reveal_hide_mut(_binding_0);
         }
         Expr::View(_binding_0) => {
             v.visit_view_mut(_binding_0);
@@ -3654,6 +3660,29 @@ where
             }
             v.visit_type_mut(&mut **_binding_3);
         }
+    }
+}
+pub fn visit_reveal_hide_mut<V>(v: &mut V, node: &mut RevealHide)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    if let Some(it) = &mut node.reveal_token {
+        tokens_helper(v, &mut it.span);
+    }
+    if let Some(it) = &mut node.reveal_with_fuel_token {
+        tokens_helper(v, &mut it.span);
+    }
+    if let Some(it) = &mut node.hide_token {
+        tokens_helper(v, &mut it.span);
+    }
+    tokens_helper(v, &mut node.paren_token.span);
+    v.visit_expr_path_mut(&mut *node.path);
+    if let Some(it) = &mut node.fuel {
+        tokens_helper(v, &mut (it).0.spans);
+        v.visit_expr_mut(&mut *(it).1);
     }
 }
 #[cfg(feature = "full")]

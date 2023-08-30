@@ -52,6 +52,9 @@ fn check_item<'tcx>(
 
     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
     let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    if vattrs.internal_reveal_fn {
+        return Ok(());
+    }
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
         return err_span(item.span, "`external_fn_specification` attribute not supported here");
     }

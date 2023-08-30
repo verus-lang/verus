@@ -460,7 +460,7 @@ pub use crate::verus::{
     Assert, AssertForall, Assume, BigAnd, BigOr, Closed, DataMode, Decreases, Ensures, FnMode,
     Invariant, InvariantEnsures, InvariantNameSet, InvariantNameSetAny, InvariantNameSetNone, Mode,
     ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open, OpenRestricted,
-    Publish, Recommends, Requires, SignatureDecreases, SignatureInvariants, Specification,
+    Publish, Recommends, Requires, RevealHide, SignatureDecreases, SignatureInvariants, Specification,
     TypeFnSpec, View,
 };
 

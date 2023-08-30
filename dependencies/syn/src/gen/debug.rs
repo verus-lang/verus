@@ -761,6 +761,12 @@ impl Debug for Expr {
                 formatter.finish()
             }
             #[cfg(feature = "full")]
+            Expr::RevealHide(v0) => {
+                let mut formatter = formatter.debug_tuple("RevealHide");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
             Expr::View(v0) => {
                 let mut formatter = formatter.debug_tuple("View");
                 formatter.field(v0);
@@ -2832,6 +2838,20 @@ impl Debug for ReturnType {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for RevealHide {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("RevealHide");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("reveal_token", &self.reveal_token);
+        formatter.field("reveal_with_fuel_token", &self.reveal_with_fuel_token);
+        formatter.field("hide_token", &self.hide_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("path", &self.path);
+        formatter.field("fuel", &self.fuel);
+        formatter.finish()
     }
 }
 #[cfg(feature = "full")]

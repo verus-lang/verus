@@ -103,14 +103,6 @@ pub fn recommends_by<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::hide"]
-#[verifier::proof]
-pub fn hide<F>(_f: F) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::extra_dependency"]
 #[verifier::proof]
 pub fn extra_dependency<F>(_f: F) {
@@ -150,16 +142,15 @@ pub fn opens_invariants_except<A>(_a: A) {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::reveal"]
+#[rustc_diagnostic_item = "verus::builtin::reveal_hide"]
 #[verifier::proof]
-pub fn reveal<F>(_f: F) {
+pub fn reveal_hide_(_f: fn(), _n: u32) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::reveal_with_fuel"]
-#[verifier::proof]
-pub fn reveal_with_fuel<F>(_f: F, _n: u32) {
+#[rustc_diagnostic_item = "verus::builtin::reveal_hide_internal_path"]
+pub fn reveal_hide_internal_path_<A>(_x: A) {
     unimplemented!();
 }
 
