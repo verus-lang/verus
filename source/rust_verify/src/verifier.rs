@@ -881,6 +881,15 @@ impl Verifier {
             &("Datatypes".to_string()),
         );
 
+        let trait_commands = vir::traits::traits_to_air(ctx, &krate);
+        self.run_commands(
+            module,
+            reporter,
+            &mut air_context,
+            &trait_commands,
+            &("Traits".to_string()),
+        );
+
         let assoc_type_impl_commands =
             vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
         self.run_commands(
@@ -1311,7 +1320,7 @@ impl Verifier {
             reporter.report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")));
         }
 
-        let (pruned_krate, mono_abstract_datatypes, lambda_types) =
+        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits) =
             vir::prune::prune_krate_for_module(&krate, &module, &self.vstd_crate_name);
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
@@ -1319,6 +1328,7 @@ impl Verifier {
             module.clone(),
             mono_abstract_datatypes,
             lambda_types,
+            bound_traits,
             self.args.debug,
         )?;
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
@@ -1395,14 +1405,6 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        if self.args.verify_pervasive
-            && (!self.args.verify_module.is_empty() || self.args.verify_root)
-        {
-            return Err(error(
-                "--verify-pervasive not allowed when --verify-root or --verify-module are present",
-            ));
-        }
-
         if self.args.verify_function.is_some() {
             if self.args.verify_module.is_empty() && !self.args.verify_root {
                 return Err(error(
@@ -1427,13 +1429,8 @@ impl Verifier {
                 .iter()
                 .filter(|m| {
                     let name = module_name(m);
-                    let is_pervasive = name.starts_with("pervasive::")
-                        || name == "pervasive"
-                        || m.krate == Some(Arc::new("vstd".to_string()));
-                    (!self.args.verify_root
-                        && self.args.verify_module.is_empty()
-                        && (!is_pervasive ^ self.args.verify_pervasive))
-                        || (self.args.verify_root && m.segments.len() == 0 && !is_pervasive)
+                    (!self.args.verify_root && self.args.verify_module.is_empty())
+                        || (self.args.verify_root && m.segments.len() == 0)
                         || remaining_verify_module.take(&name).is_some()
                 })
                 .cloned()

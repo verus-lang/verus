@@ -103,11 +103,25 @@ impl<A> Set<A> {
 
     pub spec fn intersect(self, s2: Set<A>) -> Set<A>;
 
+    /// `*` operator, synonymous with `intersect`
+
+    #[verifier(inline)]
+    pub open spec fn spec_mul(self, s2: Set<A>) -> Set<A> {
+        self.intersect(s2)
+    }
+
     /// Set difference, i.e., the set of all elements in the first one but not in the second.
 
     pub spec fn difference(self, s2: Set<A>) -> Set<A>;
 
     /// Set complement (within the space of all possible elements in `A`).
+
+    /// `-` operator, synonymous with `difference`
+
+    #[verifier(inline)]
+    pub open spec fn spec_sub(self, s2: Set<A>) -> Set<A> {
+        self.difference(s2)
+    }
 
     pub spec fn complement(self) -> Set<A>;
 
@@ -410,6 +424,18 @@ pub proof fn axiom_set_remove_len<A>(s: Set<A>, a: A)
         s.finite(),
     ensures
         s.len() == #[trigger] s.remove(a).len() + (if s.contains(a) { 1int } else { 0 }),
+{
+}
+
+/// If a finite set `s` contains any element, it has length greater than 0.
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_set_contains_len<A>(s: Set<A>, a: A)
+    requires
+        s.finite(),
+        #[trigger] s.contains(a),
+    ensures
+        #[trigger] s.len() != 0,
 {
 }
 

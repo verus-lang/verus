@@ -283,11 +283,24 @@ fn check_item<'tcx>(
                         false,
                     )?);
                 }
+                let types = Arc::new(types);
                 let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
-                let trait_impl =
-                    vir::ast::TraitImplX { impl_path: impl_path.clone(), trait_path: path.clone() };
+                let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_fun(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    impll.generics,
+                    impl_def_id,
+                    Some(&mut *ctxt.diagnostics.borrow_mut()),
+                )?;
+                let trait_impl = vir::ast::TraitImplX {
+                    impl_path: impl_path.clone(),
+                    typ_params,
+                    typ_bounds,
+                    trait_path: path.clone(),
+                    trait_typ_args: types.clone(),
+                };
                 vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
-                Some((path, Arc::new(types)))
+                Some((path, types))
             } else {
                 None
             };
@@ -296,18 +309,14 @@ fn check_item<'tcx>(
                 match impl_item_ref.kind {
                     AssocItemKind::Fn { has_self: true | false } => {
                         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                        let mut impl_item_visibility =
-                            mk_visibility(&ctxt, impl_item.owner_id.to_def_id()); // TODO(main_new) correct?
+                        let impl_item_visibility =
+                            mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
                                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
                                 let kind = if let Some((trait_path, trait_typ_args)) =
                                     trait_path_typ_args.clone()
                                 {
-                                    impl_item_visibility = mk_visibility(
-                                        &ctxt,
-                                        impl_item.owner_id.to_def_id(), // TODO(main_new) correct?
-                                    );
                                     let ident = impl_item_ref.ident.to_string();
                                     let ident = Arc::new(ident);
                                     let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
@@ -560,6 +569,7 @@ fn check_item<'tcx>(
             vir.functions.append(&mut methods);
             let traitx = vir::ast::TraitX {
                 name: trait_path,
+                visibility: visibility(),
                 methods: Arc::new(method_names),
                 assoc_typs: Arc::new(assoc_typs),
                 typ_params: generics_params,

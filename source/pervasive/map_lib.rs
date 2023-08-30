@@ -5,6 +5,7 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
 use crate::set::*;
+#[cfg(verus_keep_ghost)]
 use crate::set_lib::lemma_set_properties;
 use crate::map::Map;
 

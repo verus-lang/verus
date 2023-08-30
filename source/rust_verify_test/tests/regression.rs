@@ -282,23 +282,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] trait_argument_names_issue278 verus_code! {
-        trait T {
-            fn f(&self, a: usize) -> (res: usize)
-                ensures res == a;
-        }
-
-        struct S { }
-
-        impl T for S {
-            fn f(&self, b: usize) -> usize {
-                b
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] reveal_non_opaque_issue236_1 verus_code! {
         spec fn is_true(a: bool) -> bool { a }
 
@@ -721,6 +704,55 @@ test_verify_one_file! {
             // assert(false);
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] str_len_contradiction_from_suspect_unsoundness_report verus_code! {
+        use vstd::string::*;
+        use vstd::seq::*;
+        proof fn test(s2: Seq<char>, s1: Seq<char>)
+            requires
+                (s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@) ||
+                (s1 + new_strlit("-cde")@ == s2 + new_strlit("-cde")@),
+        {
+            assert(
+                (s1.len() + 3 == s2.len() + 4) ||
+                (s1.len() + 4 == s2.len() + 4)
+            ) by {
+                reveal_strlit("-cde");
+                reveal_strlit("-ab");
+                assert((s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
+                assert((s1 + new_strlit("-cde")@).len() == s1.len() + new_strlit("-cde")@.len() == s1.len() + 4);
+                assert((s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+            };
+
+            assert(s1 + new_strlit("-ab")@ != s2 + new_strlit("-cde")@) by {
+                let str1 = s1 + new_strlit("-ab")@;
+                let str2 = s2 + new_strlit("-cde")@;
+                assert(str1.len() == s1.len() + 3) by {
+                    reveal_strlit("-ab");
+                    assert(str1.len() == (s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
+                };
+                assert(str2.len() == s2.len() + 4) by {
+                    reveal_strlit("-cde");
+                    assert(str2.len() == (s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                };
+                if str2.len() == str1.len() {
+                    assert(s1.len() + 3 == s2.len() + 4);
+                    assert(s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@); // from the requires
+
+                    assert(str1 == s2 + new_strlit("-cde")@);
+                    assert(str1 == s1 + new_strlit("-ab")@);
+
+                    reveal_strlit("-ab");
+                    reveal_strlit("-cde");
+                    assert(str2[str2.len() - 1] == 'e');
+                    assert(str2[str2.len() - 1] == 'b');
+                    assert(false);
+                }
+            };
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

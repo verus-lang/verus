@@ -37,7 +37,6 @@ pub struct ArgsX {
     pub verify_root: bool,
     pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
-    pub verify_pervasive: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
@@ -62,8 +61,6 @@ pub struct ArgsX {
     pub log_smt: bool,
     pub log_triggers: bool,
     pub show_triggers: ShowTriggers,
-    pub print_erased: bool,
-    pub print_erased_spec: bool,
     pub ignore_unexpected_smt: bool,
     pub debug: bool,
     pub profile: bool,
@@ -127,7 +124,6 @@ pub fn parse_args_with_imports(
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
-    const OPT_VERIFY_PERVASIVE: &str = "verify-pervasive";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
@@ -156,8 +152,6 @@ pub fn parse_args_with_imports(
     const OPT_TRIGGERS_SELECTIVE: &str = "triggers-selective";
     const OPT_TRIGGERS: &str = "triggers";
     const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
-    const OPT_PRINT_ERASED: &str = "print-erased";
-    const OPT_PRINT_ERASED_SPEC: &str = "print-erased-spec";
     const OPT_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const OPT_DEBUG: &str = "debug";
     const OPT_PROFILE: &str = "profile";
@@ -195,7 +189,6 @@ pub fn parse_args_with_imports(
         "Verify just one function within the one module specified by verify-module or verify-root, \nmatches on unique substring (foo) or wildcards at ends of the argument (*foo, foo*, *foo*)",
         "MODULE",
     );
-    opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules (and nothing else)");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optflag(
@@ -248,8 +241,6 @@ pub fn parse_args_with_imports(
     opts.optflag("", OPT_TRIGGERS_SELECTIVE, "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)");
     opts.optflag("", OPT_TRIGGERS, "Show all automatically chosen triggers for verified modules");
     opts.optflag("", OPT_TRIGGERS_VERBOSE, "Show all automatically chosen triggers for verified modules and imported definitions from other modules");
-    opts.optflag("", OPT_PRINT_ERASED, "Print code after erasing spec/proof (requires --compile)");
-    opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
     opts.optflag("", OPT_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output");
     opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
     opts.optflag(
@@ -329,7 +320,6 @@ pub fn parse_args_with_imports(
         import: import,
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
-        verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
@@ -403,8 +393,6 @@ pub fn parse_args_with_imports(
         } else {
             ShowTriggers::default()
         },
-        print_erased: matches.opt_present(OPT_PRINT_ERASED),
-        print_erased_spec: matches.opt_present(OPT_PRINT_ERASED_SPEC),
         ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
         debug: matches.opt_present(OPT_DEBUG),
         profile: matches.opt_present(OPT_PROFILE),

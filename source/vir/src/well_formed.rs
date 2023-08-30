@@ -491,6 +491,14 @@ fn check_function(
         if function.x.mode != Mode::Exec {
             return error(&function.span, "'atomic' only makes sense on an 'exec' function");
         }
+        match function.x.kind {
+            FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
+                return error(&function.span, "'atomic' not supported for trait functions");
+            }
+            FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl(..) => {
+                // ok
+            }
+        }
     }
     match &function.x.mask_spec {
         MaskSpec::NoSpec => {}
@@ -950,7 +958,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
             };
             if !proof_function.x.attrs.is_decrease_by {
                 return Err(air::messages::error(
-                    "proof function must be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] to be used as decreases_by/recommends_by",
+                    "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by",
                     &proof_function.span,
                 )
                 .secondary_span(&function.span));
@@ -970,6 +978,14 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
                 )
                 .secondary_span(&function.span));
             }
+
+            if proof_function.x.mode != Mode::Proof {
+                return Err(air::messages::error(
+                    "decreases_by/recommends_by function must have mode proof",
+                    &proof_function.span,
+                ));
+            }
+
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
             check_functions_match(
                 "decreases_by/recommends_by",
@@ -1024,7 +1040,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
         {
             return error(
                 &function.span,
-                "function cannot be marked #[verifier(decreases_by)] or #[verifier(recommends_by)] unless it is used in some decreases_by/recommends_by",
+                "function cannot be marked #[verifier::decreases_by] or #[verifier::recommends_by] unless it is used in some decreases_by/recommends_by",
             );
         }
     }

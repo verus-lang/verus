@@ -3,6 +3,7 @@ use crate::ast::{
     TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
+use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
@@ -157,11 +158,15 @@ fn func_body_to_air(
     state.fun_ssts.borrow_mut().insert(function.x.name.clone(), info);
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
-    let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
+    let def_reqs = if let Some(req) = &function.x.decrease_when {
+        // "when" means the function is only defined if the requirements hold,
+        // including trait bound requirements
+        let mut def_reqs = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
         let exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &pars, req)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
-        vec![expr]
+        def_reqs.push(expr);
+        def_reqs
     } else {
         vec![]
     };
@@ -282,7 +287,7 @@ fn func_body_to_air(
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
         let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true);
         let bind_body = func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true);
-        let implies_body = mk_implies(&mk_and(&decrease_by_reqs), &eq_body);
+        let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
         let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
@@ -300,7 +305,7 @@ fn func_body_to_air(
         &function.x.typ_params,
         &typ_args,
         &pars,
-        &decrease_by_reqs,
+        &def_reqs,
         def_body,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
@@ -370,7 +375,7 @@ pub fn req_ens_to_air(
 /// if the function is a spec function.
 pub fn func_name_to_air(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    _diagnostics: &impl Diagnostics,
     function: &Function,
 ) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
@@ -395,15 +400,8 @@ pub fn func_name_to_air(
         commands.push(Arc::new(CommandX::Global(decl)));
 
         // Check whether we need to declare the recursive version too
-        if let Some(body) = &function.x.body {
-            let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
-                &ctx,
-                diagnostics,
-                &UpdateCell::new(HashMap::new()),
-                &params_to_pars(&function.x.params, false),
-                &body,
-            )?;
-            if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
+        if function.x.body.is_some() {
+            if crate::recursion::fun_is_recursive(ctx, &function.x.name) {
                 let rec_f =
                     suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
                 let mut rec_typs =
@@ -656,9 +654,6 @@ pub fn func_axioms_to_air(
                 use crate::triggers::{typ_boxing, TriggerBoxing};
                 let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
                 let mut binders: Vec<Binder<Typ>> = Vec::new();
-                if function.x.typ_bounds.len() != 0 {
-                    todo!()
-                }
                 for name in function.x.typ_params.iter() {
                     vars.push((suffix_typ_param_id(&name), TriggerBoxing::TypeId));
                     let typ = Arc::new(TypX::TypeId);
@@ -761,12 +756,29 @@ pub fn func_def_to_air(
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
             }
 
+            let req_ens_e_rename: HashMap<_, _> = req_ens_function
+                .x
+                .params
+                .iter()
+                .zip(function.x.params.iter())
+                .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
+                .collect();
+
             let mut req_stms: Vec<Stm> = Vec::new();
             let mut reqs: Vec<Exp> = Vec::new();
+            reqs.extend(crate::traits::trait_bounds_to_sst(
+                ctx,
+                &function.span,
+                &function.x.typ_bounds,
+            ));
             for e in req_ens_function.x.require.iter() {
+                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
                 if ctx.checking_recommends() {
-                    let (stms, exp) =
-                        crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, e)?;
+                    let (stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(
+                        ctx,
+                        &mut state,
+                        &e_with_req_ens_params,
+                    )?;
                     req_stms.extend(stms);
                     req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
@@ -775,23 +787,27 @@ pub fn func_def_to_air(
                         diagnostics,
                         &state.fun_ssts,
                         &req_pars,
-                        e,
+                        &e_with_req_ens_params,
                     )?);
                 }
             }
             let mut ens_recommend_stms: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.ensure.iter() {
+                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
                 if ctx.checking_recommends() {
-                    ens_recommend_stms
-                        .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
+                    ens_recommend_stms.extend(crate::ast_to_sst::check_pure_expr(
+                        ctx,
+                        &mut state,
+                        &e_with_req_ens_params,
+                    )?);
                 } else {
                     enss.push(crate::ast_to_sst::expr_to_exp(
                         ctx,
                         diagnostics,
                         &state.fun_ssts,
                         &ens_pars,
-                        e,
+                        &e_with_req_ens_params,
                     )?);
                 }
             }
@@ -886,4 +902,32 @@ pub fn func_def_to_air(
             Ok((Arc::new(commands), snap_map, state.fun_ssts))
         }
     }
+}
+
+fn map_expr_rename_vars(
+    e: &Arc<SpannedTyped<crate::ast::ExprX>>,
+    req_ens_e_rename: &HashMap<Arc<String>, Arc<String>>,
+) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Arc<air::messages::MessageX>> {
+    ast_visitor::map_expr_visitor_env(
+        e,
+        &mut air::scope_map::ScopeMap::new(),
+        &mut (),
+        &|_state, _, expr| {
+            use crate::ast::ExprX;
+            Ok(match &expr.x {
+                ExprX::Var(i) => {
+                    expr.new_x(ExprX::Var(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarLoc(i) => {
+                    expr.new_x(ExprX::VarLoc(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarAt(i, at) => {
+                    expr.new_x(ExprX::VarAt(req_ens_e_rename.get(i).unwrap_or(i).clone(), *at))
+                }
+                _ => expr.clone(),
+            })
+        },
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+    )
 }

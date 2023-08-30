@@ -10,7 +10,9 @@ use crate::pervasive::*;
 use crate::set::*;
 #[allow(unused_imports)]
 use crate::map::*;
+#[cfg(verus_keep_ghost)]
 use crate::math::min;
+#[cfg(verus_keep_ghost)]
 use crate::math::clip;
 
 verus!{
@@ -63,7 +65,18 @@ impl<V> Multiset<V> {
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose 
     /// multiplicities are given by the corresponding values of `m[element]`. The map `m` 
     /// must be finite, or else this multiset is arbitrary.
-    pub spec fn new(m: Map<V, nat>) -> Self;
+    pub open spec fn from_map(m: Map<V, nat>) -> Self;
+
+    #[deprecated = "use from_map instead"]
+    pub open spec fn new(m: Map<V, nat>) -> Self
+    {
+        Self::from_map(m)
+    }
+
+    pub open spec fn from_set(m: Set<V>) -> Self
+    {
+        Self::from_map(Map::new(|k| m.contains(k), |v| 1))
+    }
 
     /// A singleton multiset, i.e., a multiset with a single element of multiplicity 1.
     pub spec fn singleton(v: V) -> Self;
@@ -102,7 +115,7 @@ impl<V> Multiset<V> {
     
     pub open spec fn update(self, v: V, mult: nat) -> Self {
         let map = Map::new(|key: V| (self.contains(key) || key == v), |key: V| if key == v { mult } else { self.count(key) });
-        Self::new(map)
+        Self::from_map(map)
     }
 
     /// Returns `true` is the left argument is contained in the right argument,
@@ -154,7 +167,7 @@ impl<V> Multiset<V> {
 
     pub open spec fn intersection_with(self, other: Self) -> Self {
         let m = Map::<V, nat>::new(|v: V| self.contains(v), |v: V| min(self.count(v) as int, other.count(v) as int) as nat);
-        Self::new(m)
+        Self::from_map(m)
     }
 
     /// Returns a multiset containing the difference between the count of a
@@ -162,7 +175,7 @@ impl<V> Multiset<V> {
 
     pub open spec fn difference_with(self, other: Self) -> Self {
         let m = Map::<V, nat>:: new(|v: V| self.contains(v), |v: V| clip(self.count(v) - other.count(v)));
-        Self::new(m)
+        Self::from_map(m)
     }
 
     /// Returns true if there exist no elements that have a count greater 
@@ -199,7 +212,7 @@ pub proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
         && (m.len() > 0 ==> exists |v: V| 0 < m.count(v)),
 {}      
 
-// Specifications of `new`
+// Specifications of `from_map`
 
 /// A call to Multiset::new with input map `m` will return a multiset that maps
 /// value `v` to multiplicity `m[v]` if `v` is in the domain of `m`.
@@ -210,7 +223,7 @@ pub proof fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
         m.dom().finite(),
         m.dom().contains(v),
     ensures 
-        #[trigger] Multiset::new(m).count(v) == m[v],
+        #[trigger] Multiset::from_map(m).count(v) == m[v],
 {}
 
 /// A call to Multiset::new with input map `m` will return a multiset that maps
@@ -222,7 +235,7 @@ pub proof fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
         m.dom().finite(),
         !m.dom().contains(v),
     ensures 
-        Multiset::new(m).count(v) == 0,
+        Multiset::from_map(m).count(v) == 0,
 {}
 
 // Specification of `singleton`
@@ -346,6 +359,8 @@ pub proof fn axiom_choose_count<V>(m: Multiset<V>)
 // Axiom about finiteness
 
 /// The domain of a multiset (the set of all values that map to a multiplicity greater than 0) is always finite.
+// NB this axiom's soundness depends on the inability to learn anything about the entirety of
+// Multiset::from_map.dom().
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)

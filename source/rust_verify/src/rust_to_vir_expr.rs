@@ -7,16 +7,15 @@ use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
     auto_deref_supported_for_ty, def_id_to_vir_path, def_id_to_vir_path_option, get_range,
-    is_smt_arith, is_smt_equality, is_type_std_rc_or_arc_or_ref, local_to_var, mid_ty_simplify,
-    mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
+    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mid_ty_to_vir,
+    mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::spans::err_air_span;
 use crate::util::{
     err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
 };
 use crate::verus_items::{
-    self, BuiltinFunctionItem, CompilableOprItem, OpenInvariantBlockItem, RustItem,
-    SpecGhostTrackedItem, UnaryOpItem, VerusItem,
+    self, CompilableOprItem, OpenInvariantBlockItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
 use air::ast::{Binder, BinderX};
@@ -30,7 +29,6 @@ use rustc_hir::{
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
 };
-use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
 use rustc_span::def_id::DefId;
@@ -38,9 +36,9 @@ use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget, Constant, ExprX,
-    FieldOpr, FunX, HeaderExprX, InequalityOp, IntRange, InvAtomicity, Mode, PatternX,
-    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
+    HeaderExprX, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts,
+    Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::positional_field_ident;
@@ -1248,7 +1246,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 mk_expr(ExprX::Const(c))
             }
             _ => {
-                panic!("unexpected constant: {:?}", lit)
+                panic!("unexpected constant: {:?}", expr)
             }
         },
         ExprKind::Cast(source, _) => {
@@ -1665,101 +1663,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 .type_dependent_def_id(expr.hir_id)
                 .expect("def id of the method definition");
 
-            match tcx.hir().get_if_local(fn_def_id) {
-                Some(rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
-                    kind: rustc_hir::ImplItemKind::Fn(..),
-                    ..
-                })) => {}
-                Some(rustc_hir::Node::TraitItem(rustc_hir::TraitItem {
-                    kind: rustc_hir::TraitItemKind::Fn(..),
-                    ..
-                })) => {}
-                None => {
-                    // Special case `clone` for standard Rc and Arc types
-                    // (Could also handle it for other types where cloning is the identity
-                    // operation in the SMT encoding.)
-                    let rust_item = verus_items::get_rust_item(tcx, fn_def_id);
-                    if rust_item == Some(RustItem::Clone) {
-                        assert!(other_args.len() == 0);
-                        let node_substs = bctx.types.node_substs(expr.hir_id);
-                        let arg_typ = match node_substs[0].unpack() {
-                            GenericArgKind::Type(ty) => ty,
-                            _ => {
-                                panic!("clone expected type argument");
-                            }
-                        };
-
-                        if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
-                            let arg = expr_to_vir(bctx, &receiver, ExprModifier::REGULAR)?;
-                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info.resolved_calls.push((
-                                expr.hir_id,
-                                fn_span.data(),
-                                ResolvedCall::CompilableOperator(CompilableOperator::SmartPtrClone),
-                            ));
-                            return Ok(arg);
-                        }
-                    }
-
-                    let verus_item = bctx.ctxt.verus_items.id_to_name.get(&fn_def_id);
-                    if let Some(VerusItem::BuiltinFunction(
-                        re @ (BuiltinFunctionItem::FnWithSpecificationRequires
-                        | BuiltinFunctionItem::FnWithSpecificationEnsures),
-                    )) = verus_item
-                    {
-                        {
-                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info.resolved_calls.push((
-                                expr.hir_id,
-                                fn_span.data(),
-                                ResolvedCall::Spec,
-                            ));
-                        }
-                        let bsf = match re {
-                            BuiltinFunctionItem::FnWithSpecificationRequires => {
-                                assert!(other_args.len() == 1);
-                                BuiltinSpecFun::ClosureReq
-                            }
-                            BuiltinFunctionItem::FnWithSpecificationEnsures => {
-                                assert!(other_args.len() == 2);
-                                BuiltinSpecFun::ClosureEns
-                            }
-                        };
-                        let vir_args = std::iter::once(*receiver)
-                            .chain(other_args.iter())
-                            .map(|arg| expr_to_vir(bctx, &arg, ExprModifier::REGULAR))
-                            .collect::<Result<Vec<_>, _>>()?;
-
-                        let mut typ_args: Vec<Typ> = Vec::new();
-                        for typ_arg in bctx.types.node_substs(expr.hir_id) {
-                            match typ_arg.unpack() {
-                                GenericArgKind::Type(ty) => {
-                                    typ_args.push(mid_ty_to_vir(
-                                        tcx,
-                                        &bctx.ctxt.verus_items,
-                                        bctx.fun_id,
-                                        expr.span,
-                                        &ty,
-                                        false,
-                                    )?);
-                                }
-                                GenericArgKind::Lifetime(_) => {}
-                                _ => unsupported_err!(
-                                    expr.span,
-                                    format!("const type arguments"),
-                                    expr
-                                ),
-                            }
-                        }
-
-                        return mk_expr(ExprX::Call(
-                            CallTarget::BuiltinSpecFun(bsf, Arc::new(typ_args)),
-                            Arc::new(vir_args),
-                        ));
-                    }
-                }
-                _ => panic!("unexpected hir for method impl item"),
-            };
             let all_args = std::iter::once(*receiver).chain(other_args.iter()).collect::<Vec<_>>();
             fn_call_to_vir(
                 bctx,

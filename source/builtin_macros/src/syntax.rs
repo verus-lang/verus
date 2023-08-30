@@ -1,4 +1,5 @@
 use crate::rustdoc::env_rustdoc;
+use crate::EraseGhost;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
@@ -43,8 +44,8 @@ fn take_pat(pat: &mut Pat) -> Pat {
     std::mem::replace(pat, dummy)
 }
 
-fn take_ghost<T: Default>(erase_ghost: bool, dest: &mut T) -> T {
-    if erase_ghost {
+fn take_ghost<T: Default>(erase_ghost: EraseGhost, dest: &mut T) -> T {
+    if erase_ghost.erase() {
         *dest = T::default();
         T::default()
     } else {
@@ -60,7 +61,7 @@ enum InsideArith {
 }
 
 struct Visitor {
-    erase_ghost: bool,
+    erase_ghost: EraseGhost,
     // TODO: this should always be true
     use_spec_traits: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
@@ -137,7 +138,18 @@ impl Visitor {
     }
 
     fn maybe_erase_expr(&self, span: Span, e: Expr) -> Expr {
-        if self.erase_ghost { Expr::Verbatim(quote_spanned!(span => {})) } else { e }
+        if self.erase_ghost.erase() { Expr::Verbatim(quote_spanned!(span => {})) } else { e }
+    }
+
+    fn filter_attrs(&mut self, attrs: &mut Vec<Attribute>) {
+        if self.erase_ghost.erase_all() {
+            // Remove verus:: and verifier:: attributes to make it easier for
+            // standard rustc to compile the code
+            attrs.retain(|attr| {
+                let prefix = attr.path.segments[0].ident.to_string();
+                prefix != "verus" && prefix != "verifier"
+            });
+        }
     }
 
     fn visit_fn(
@@ -151,10 +163,14 @@ impl Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
-        attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
+        // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
+        if self.erase_ghost.keep() {
+            attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
+        }
 
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
+                _ if self.erase_ghost.erase_all() => {}
                 (None, _) => {}
                 (Some(token), FnArgKind::Receiver(receiver)) => {
                     receiver.attrs.push(mk_verus_attr(token.span, quote! { proof }));
@@ -166,10 +182,11 @@ impl Visitor {
 
             // Check for Ghost(x) or Tracked(x) argument
             use syn_verus::PatType;
-            if let FnArgKind::Typed(PatType { pat: box pat, .. }) = &mut arg.kind {
+            if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
+                let pat = &mut **pat;
                 let mut tracked_wrapper = false;
                 let mut wrapped_pat_id = None;
-                if let Pat::TupleStruct(tup) = &pat {
+                if let Pat::TupleStruct(tup) = &*pat {
                     let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
                     tracked_wrapper = path_is_ident(&tup.path, "Tracked");
                     if ghost_wrapper || tracked_wrapper || tup.pat.elems.len() == 1 {
@@ -193,7 +210,7 @@ impl Visitor {
                     );
                     wrapped_pat_id.ident = tmp_id.clone();
                     *pat = Pat::Ident(wrapped_pat_id);
-                    if !self.erase_ghost {
+                    if self.erase_ghost.keep() {
                         unwrap_ghost_tracked.push(stmt_with_semi!(
                             span => #[verus::internal(header_unwrap_parameter)] let #x));
                         if tracked_wrapper {
@@ -213,17 +230,19 @@ impl Visitor {
             ReturnType::Default => None,
             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
                 if let Some(token) = tracked {
-                    attrs.push(mk_verus_attr(token.span, quote! { returns(proof) }));
+                    if !self.erase_ghost.erase_all() {
+                        attrs.push(mk_verus_attr(token.span, quote! { returns(proof) }));
+                    }
                     *tracked = None;
                 }
                 match std::mem::take(ret_opt) {
                     None => None,
-                    Some(box (_, p, _)) => Some((p.clone(), ty.clone())),
+                    Some(ret) => Some((ret.1.clone(), ty.clone())),
                 }
             }
         };
 
-        match (vis, &sig.publish, &sig.mode, &semi_token, self.erase_ghost) {
+        match (vis, &sig.publish, &sig.mode, &semi_token, self.erase_ghost.erase()) {
             (Some(Visibility::Inherited), _, _, _, _) => {}
             (
                 Some(_),
@@ -452,6 +471,7 @@ impl Visitor {
         attrs.extend(mode_attrs);
         attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
+        self.filter_attrs(attrs);
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
@@ -466,7 +486,9 @@ impl Visitor {
         publish: &mut Publish,
         mode: &mut FnMode,
     ) {
-        attrs.push(mk_verus_attr(span, quote! { verus_macro }));
+        if self.erase_ghost.keep() {
+            attrs.push(mk_verus_attr(span, quote! { verus_macro }));
+        }
 
         let publish_attrs = match (vis, &publish) {
             (Some(Visibility::Inherited), _) => vec![],
@@ -498,6 +520,7 @@ impl Visitor {
         *mode = FnMode::Default;
         attrs.extend(publish_attrs);
         attrs.extend(mode_attrs);
+        self.filter_attrs(attrs);
     }
 }
 
@@ -618,7 +641,7 @@ impl VisitMut for ExecGhostPatVisitor {
 
 impl Visitor {
     fn visit_local_extend(&mut self, local: &mut Local) -> (bool, Vec<Stmt>) {
-        if self.erase_ghost && (local.tracked.is_some() || local.ghost.is_some()) {
+        if self.erase_ghost.erase() && (local.tracked.is_some() || local.ghost.is_some()) {
             return (true, vec![]);
         }
         if local.init.is_none() {
@@ -665,7 +688,7 @@ impl Visitor {
             assert!(visit_pat.x_assigns.len() == 0);
             return (false, vec![]);
         }
-        if self.erase_ghost {
+        if self.erase_ghost.erase() {
             return (false, vec![]);
         }
 
@@ -730,7 +753,23 @@ impl Visitor {
     }
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
-        let erase_ghost = self.erase_ghost;
+        if self.erase_ghost.erase_all() {
+            // Erase ghost functions and constants
+            items.retain(|item| match item {
+                Item::Fn(fun) => match fun.sig.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Exec(_) | FnMode::Default => true,
+                },
+                Item::Const(c) => match c.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Exec(_) | FnMode::Default => true,
+                },
+                _ => true,
+            });
+            // We can't erase ghost datatypes D, because they can be used
+            // as Ghost<D> or Tracked<D>.
+        }
+        let erase_ghost = self.erase_ghost.erase();
         // We'd like to erase ghost items, but there may be dangling references to the ghost items:
         // - "use" declarations may refer to the items ("use m::f;" makes it hard to erase f)
         // - "impl" may refer to struct and enum items ("impl<A> S<A> { ... }" impedes erasing S)
@@ -794,14 +833,27 @@ impl Visitor {
             };
             if let Some((name, vis)) = erase_fn {
                 *item = Item::Verbatim(quote_spanned! {
-                    span => #[allow(unused_imports)] #vis use bool as #name;
+                    span => #[allow(unused_imports)] #vis use core::primitive::bool as #name;
                 });
             }
         }
     }
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
-        let erase_ghost = self.erase_ghost;
+        if self.erase_ghost.erase_all() {
+            items.retain(|item| match item {
+                ImplItem::Method(fun) => match fun.sig.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Exec(_) | FnMode::Default => true,
+                },
+                ImplItem::Const(c) => match c.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Exec(_) | FnMode::Default => true,
+                },
+                _ => true,
+            });
+        }
+        let erase_ghost = self.erase_ghost.erase();
         // Unfortunately, we just have to assume that if for_trait == true,
         // the methods might be public
         items.retain(|item| match item {
@@ -845,6 +897,15 @@ impl Visitor {
     }
 
     fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
+        if self.erase_ghost.erase_all() {
+            items.retain(|item| match item {
+                TraitItem::Method(fun) => match fun.sig.mode {
+                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Exec(_) | FnMode::Default => true,
+                },
+                _ => true,
+            });
+        }
         // In addition to prefiltering ghost code, we also split methods declarations
         // into separate spec and implementation declarations.  For example:
         //   fn f() requires x;
@@ -858,7 +919,7 @@ impl Visitor {
         // aren't supported yet anyway), because it turns out that the parameter names
         // don't exactly match between fun and fun.clone() (they have different macro contexts),
         // which would cause the body and specs to mismatch.
-        let erase_ghost = self.erase_ghost;
+        let erase_ghost = self.erase_ghost.erase();
         let mut spec_items: Vec<TraitItem> = Vec::new();
         for item in items.iter_mut() {
             match item {
@@ -1222,17 +1283,18 @@ impl VisitMut for Visitor {
 
         let mode_block = match expr {
             Expr::Unary(ExprUnary { op: UnOp::Proof(..), .. }) => Some((false, false)),
-            Expr::Call(ExprCall { func: box Expr::Path(path), args, .. })
-                if path.qself.is_none() && args.len() == 1 =>
-            {
-                if path_is_ident(&path.path, "Ghost") {
-                    Some((true, false))
-                } else if path_is_ident(&path.path, "Tracked") {
-                    Some((true, true))
-                } else {
-                    None
+            Expr::Call(ExprCall { func, args, .. }) => match &**func {
+                Expr::Path(path) if path.qself.is_none() && args.len() == 1 => {
+                    if path_is_ident(&path.path, "Ghost") {
+                        Some((true, false))
+                    } else if path_is_ident(&path.path, "Tracked") {
+                        Some((true, true))
+                    } else {
+                        None
+                    }
                 }
-            }
+                _ => None,
+            },
             _ => None,
         };
 
@@ -1288,7 +1350,7 @@ impl VisitMut for Visitor {
         } else {
             None
         };
-        if !(is_inside_ghost && self.erase_ghost) {
+        if !(is_inside_ghost && self.erase_ghost.erase()) {
             visit_expr_mut(self, expr);
         }
         if let Expr::Assign(assign) = expr {
@@ -1306,7 +1368,7 @@ impl VisitMut for Visitor {
                 if is_tracked {
                     // Tracked(...)
                     let inner = take_expr(&mut call.args[0]);
-                    *expr = Expr::Verbatim(if self.erase_ghost {
+                    *expr = Expr::Verbatim(if self.erase_ghost.erase() {
                         quote_spanned!(span => Tracked::assume_new())
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Tracked::new(#inner))
@@ -1316,7 +1378,7 @@ impl VisitMut for Visitor {
                 } else {
                     // Ghost(...)
                     let inner = take_expr(&mut call.args[0]);
-                    *expr = Expr::Verbatim(if self.erase_ghost {
+                    *expr = Expr::Verbatim(if self.erase_ghost.erase() {
                         quote_spanned!(span => Ghost::assume_new())
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Ghost::new(#inner))
@@ -1688,8 +1750,8 @@ impl VisitMut for Visitor {
                                 }
                             }
                             "bit_vector" | "nonlinear_arith" => {
-                                let mut block = if let Some(box block) = assert.body {
-                                    block
+                                let mut block = if let Some(block) = assert.body {
+                                    *block
                                 } else {
                                     Block { brace_token: token::Brace { span }, stmts: vec![] }
                                 };
@@ -1720,7 +1782,7 @@ impl VisitMut for Visitor {
                                 *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
                             }
                         }
-                    } else if let Some(box block) = assert.body {
+                    } else if let Some(block) = assert.body {
                         // assert-by
                         if assert.requires.is_some() {
                             *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
@@ -1832,7 +1894,7 @@ impl VisitMut for Visitor {
                                 }
                                 match std::mem::take(ret_opt) {
                                     None => None,
-                                    Some(box (_, p, _)) => Some((p.clone(), ty.clone())),
+                                    Some(ret) => Some((ret.1.clone(), ty.clone())),
                                 }
                             }
                         };
@@ -2049,6 +2111,11 @@ impl VisitMut for Visitor {
         visit_block_mut(self, block);
     }
 
+    fn visit_type_param_mut(&mut self, p: &mut syn_verus::TypeParam) {
+        self.filter_attrs(&mut p.attrs);
+        syn_verus::visit_mut::visit_type_param_mut(self, p);
+    }
+
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
         // Process rustdoc before processing the ItemFn itself.
         // That way, the generated rustdoc gets the prettier syntax instead of the
@@ -2090,7 +2157,7 @@ impl VisitMut for Visitor {
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
         if let Some(block) = &mut method.default {
             block.stmts.splice(0..0, stmts);
-        } else if !self.erase_ghost && is_spec_method {
+        } else if self.erase_ghost.keep() && is_spec_method {
             let span = method.sig.fn_token.span;
             stmts.push(Stmt::Expr(Expr::Verbatim(
                 quote_spanned!(span => ::builtin::no_method_body()),
@@ -2098,7 +2165,7 @@ impl VisitMut for Visitor {
             let block = Block { brace_token: Brace(span), stmts };
             method.default = Some(block);
         }
-        if !self.erase_ghost && is_spec_method {
+        if self.erase_ghost.keep() && is_spec_method {
             method.semi_token = None;
         }
         visit_trait_item_method_mut(self, method);
@@ -2119,18 +2186,21 @@ impl VisitMut for Visitor {
         visit_field_mut(self, field);
         field.attrs.extend(data_mode_attrs(&field.mode));
         field.mode = DataMode::Default;
+        self.filter_attrs(&mut field.attrs);
     }
 
     fn visit_item_enum_mut(&mut self, item: &mut ItemEnum) {
         visit_item_enum_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
+        self.filter_attrs(&mut item.attrs);
     }
 
     fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
         visit_item_struct_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
+        self.filter_attrs(&mut item.attrs);
     }
 
     fn visit_type_mut(&mut self, ty: &mut Type) {
@@ -2209,16 +2279,19 @@ impl VisitMut for Visitor {
         if let Some((_, items)) = &mut item.content {
             self.visit_items_prefilter(items);
         }
+        self.filter_attrs(&mut item.attrs);
         syn_verus::visit_mut::visit_item_mod_mut(self, item);
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
+        self.filter_attrs(&mut imp.attrs);
         syn_verus::visit_mut::visit_item_impl_mut(self, imp);
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
         self.visit_trait_items_prefilter(&mut tr.items);
+        self.filter_attrs(&mut tr.attrs);
         syn_verus::visit_mut::visit_item_trait_mut(self, tr);
     }
 }
@@ -2476,7 +2549,7 @@ impl quote::ToTokens for MacroInvokeExplicitExpr {
 
 pub(crate) fn rewrite_items(
     stream: proc_macro::TokenStream,
-    erase_ghost: bool,
+    erase_ghost: EraseGhost,
     use_spec_traits: bool,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
@@ -2504,7 +2577,7 @@ pub(crate) fn rewrite_items(
 }
 
 pub(crate) fn rewrite_expr(
-    erase_ghost: bool,
+    erase_ghost: EraseGhost,
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
@@ -2527,7 +2600,7 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
-pub(crate) fn rewrite_expr_node(erase_ghost: bool, inside_ghost: bool, expr: &mut Expr) {
+pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
@@ -2543,6 +2616,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: bool, inside_ghost: bool, expr: &mu
 
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
 // Try to put the original tokens back together here.
+#[cfg(verus_keep_ghost)]
 fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use proc_macro::{Group, Punct, Spacing::*, Span, TokenTree};
     let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
@@ -2553,7 +2627,7 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let adjacent = |s1: Span, s2: Span| {
         let l1 = s1.end();
         let l2 = s2.start();
-        s1.source_file() == s2.source_file() && l1 == l2
+        s1.source_file() == s2.source_file() && l1.eq(&l2)
     };
     for i in 0..(if tokens.len() >= 2 { tokens.len() - 2 } else { 0 }) {
         let t0 = pun(&tokens[i]);
@@ -2596,8 +2670,14 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::TokenStream::from_iter(tokens.into_iter())
 }
 
+#[cfg(not(verus_keep_ghost))]
+// REVIEW: how much do we actually rely on rejoin_tokens?
+fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    stream
+}
+
 pub(crate) fn proof_macro_exprs(
-    erase_ghost: bool,
+    erase_ghost: EraseGhost,
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
@@ -2626,7 +2706,7 @@ pub(crate) fn proof_macro_exprs(
 }
 
 pub(crate) fn inv_macro_exprs(
-    erase_ghost: bool,
+    erase_ghost: EraseGhost,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
@@ -2656,7 +2736,7 @@ pub(crate) fn inv_macro_exprs(
 }
 
 pub(crate) fn proof_macro_explicit_exprs(
-    erase_ghost: bool,
+    erase_ghost: EraseGhost,
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
