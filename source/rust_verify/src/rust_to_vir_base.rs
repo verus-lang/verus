@@ -221,8 +221,18 @@ pub(crate) fn get_impl_paths<'tcx>(
             panic!("get_impl_paths nesting depth exceeds 1000");
         }
 
-        let inst_pred = &predicate_worklist[idx];
+        let inst_pred = predicate_worklist[idx];
         idx += 1;
+
+        if let Some(ok) =
+            crate::sized_overrides::check_sized_trait_predicate(tcx, param_env_src, inst_pred)
+        {
+            if ok {
+                continue;
+            } else {
+                panic!("Sized is not ok");
+            }
+        }
 
         if let PredicateKind::Clause(Clause::Trait(_)) = inst_pred.kind().skip_binder() {
             let poly_trait_refs = inst_pred.kind().map_bound(|p| {

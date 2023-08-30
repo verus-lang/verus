@@ -51,6 +51,7 @@ pub mod rust_to_vir_expr;
 pub mod rust_to_vir_func;
 #[cfg(feature = "singular")]
 pub mod singular;
+mod sized_overrides;
 mod spans;
 pub mod util;
 pub mod verifier;
