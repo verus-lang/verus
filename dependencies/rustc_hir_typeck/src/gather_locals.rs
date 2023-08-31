@@ -125,11 +125,11 @@ impl<'a, 'tcx> Visitor<'tcx> for GatherLocalsVisitor<'a, 'tcx> {
 
             if let Some(ty_span) = self.outermost_fn_param_pat {
                 if !self.fcx.tcx.features().unsized_fn_params {
-                    self.fcx.require_type_is_sized(
-                        var_ty,
-                        p.span,
-                        traits::SizedArgumentType(Some(ty_span)),
-                    );
+                    //VERUS //self.fcx.require_type_is_sized(
+                    //VERUS //    var_ty,
+                    //VERUS //    p.span,
+                    //VERUS //    traits::SizedArgumentType(Some(ty_span)),
+                    //VERUS //);
                 }
             } else {
                 if !self.fcx.tcx.features().unsized_locals {

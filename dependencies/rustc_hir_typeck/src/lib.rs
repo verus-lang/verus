@@ -10,6 +10,9 @@
 
 #![feature(rustc_private)]
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
 extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_errors;

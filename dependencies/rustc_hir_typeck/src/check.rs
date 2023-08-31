@@ -58,7 +58,7 @@ pub(super) fn check_fn<'a, 'tcx>(
         let yield_ty = if kind == hir::GeneratorKind::Gen {
             let yield_ty = fcx
                 .next_ty_var(TypeVariableOrigin { kind: TypeVariableOriginKind::TypeInference, span });
-            fcx.require_type_is_sized(yield_ty, span, traits::SizedYieldType);
+            //VERUS //fcx.require_type_is_sized(yield_ty, span, traits::SizedYieldType);
             yield_ty
         } else {
             tcx.mk_unit()
@@ -97,7 +97,7 @@ pub(super) fn check_fn<'a, 'tcx>(
         // for simple cases like `fn foo(x: Trait)`,
         // where we would error once on the parameter as a whole, and once on the binding `x`.
         if param.pat.simple_ident().is_none() && !tcx.features().unsized_fn_params {
-            fcx.require_type_is_sized(param_ty, param.pat.span, traits::SizedArgumentType(ty_span));
+            //VERUS //fcx.require_type_is_sized(param_ty, param.pat.span, traits::SizedArgumentType(ty_span));
         }
 
         fcx.write_ty(param.hir_id, param_ty);
@@ -118,9 +118,9 @@ pub(super) fn check_fn<'a, 'tcx>(
         // the tail expression's type so that the suggestion will be correct, but ignore all other
         // possible cases.
         fcx.check_expr(&body.value);
-        fcx.require_type_is_sized(declared_ret_ty, decl.output.span(), traits::SizedReturnType);
+        //VERUS //fcx.require_type_is_sized(declared_ret_ty, decl.output.span(), traits::SizedReturnType);
     } else {
-        fcx.require_type_is_sized(declared_ret_ty, decl.output.span(), traits::SizedReturnType);
+        //VERUS //fcx.require_type_is_sized(declared_ret_ty, decl.output.span(), traits::SizedReturnType);
         fcx.check_return_expr(&body.value, false);
     }
 

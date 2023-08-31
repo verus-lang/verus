@@ -1951,6 +1951,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut verus_rustc_interface::interface::Config) {
         config.override_queries = Some(|_session, providers, _extern_providers| {
             providers.hir_crate = hir_crate;
+            verus_rustc_hir_typeck::provide(providers);
         });
     }
 
