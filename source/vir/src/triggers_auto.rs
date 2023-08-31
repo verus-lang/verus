@@ -9,6 +9,7 @@ use crate::util::vec_map;
 use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::iter::FromIterator;
 
 /*
 This trigger selection algorithm is experimental and somewhat different from the usual
@@ -521,13 +522,38 @@ fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
 
 // Find the best trigger that covers all the trigger variables.
 // This is a variant of minimum-set-cover, which is NP-complete.
-// TODO: eliminate overcovers?
 fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_triggers : bool) -> Result<(), VirErr> {
     if state.remaining_vars.len() == 0 {
         let trigger: Vec<(Term, Span)> =
             state.accumulated_terms.iter().map(|(t, s)| (t.clone(), s.clone())).collect();
         // println!("found: {:?} {}", trigger, trigger_score(ctxt, &trigger));
-        if state.best_so_far.len() > 0 && !all_triggers {
+        if all_triggers {
+            // when trying to compute all minimal triggers, we need only concern
+            // ourselves with ensuring 
+            // 1) the new trigger isn't a (proper) subset of an existing one
+            //    in which case we remove the existing one
+            // 2) there isn't an existing trigger that is a subset of the new one
+            //    in which case we don't add the new one
+            // claim: it is impossible for both to be true
+            // proof: 
+            // inductive invariant -- all triggers in best_so_far incomparable
+            // preserved as if we have subset in either direction, exactly one is removed
+            // assume now we have a new trigger t that is proper subset of to1 and such that to2 is a subset of t.
+            // we have that to2 is a subset of t1, a contradiction of inductive invariant
+            // maybe we can formalize this someday :)
+            let mut old_sub_new = false;
+            let trig_exp_set = HashSet::<Arc<TermX>>::from_iter(vec_map(&trigger, |(term,_)| term.clone()));
+            state.best_so_far.retain(|old_trig| {
+                let old_trig_exp_set = HashSet::<Arc<TermX>>::from_iter(vec_map(&old_trig, |(term,_)| term.clone()));
+                old_sub_new = old_sub_new || old_trig_exp_set.is_subset(&trig_exp_set);
+                !(trig_exp_set.is_subset(&old_trig_exp_set) && trig_exp_set.len() < old_trig_exp_set.len())
+            });
+            if !old_sub_new {
+                state.best_so_far.push(trigger);
+            }
+            return Ok(());
+        }
+        if state.best_so_far.len() > 0 {
             // If we're better than what came before, drop what came before
             if state.best_so_far[0].len() > trigger.len() {
                 state.best_so_far.clear();
@@ -550,6 +576,7 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_trigg
     }
     if state.best_so_far.len() > 0 && !all_triggers && state.best_so_far[0].len() <= state.accumulated_terms.len() {
         // We've already found something better
+        // this early exit optimization only necessary when not computing full set
         return Ok(());
     }
     check_timeout(timer)?;
