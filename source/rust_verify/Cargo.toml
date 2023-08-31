@@ -19,6 +19,7 @@ regex = "1"
 
 verus_rustc_driver = { path = "../../dependencies/rustc_driver" }
 verus_rustc_interface = { path = "../../dependencies/rustc_interface" }
+verus_rustc_hir_typeck = { path = "../../dependencies/rustc_hir_typeck" }
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"

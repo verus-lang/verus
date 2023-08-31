@@ -896,8 +896,9 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
             for trait_candidate in applicable_traits.iter() {
                 let trait_did = trait_candidate.def_id;
                 if duplicates.insert(trait_did) {
+                    let t = trait_candidate.import_ids.iter().cloned().collect();
                     self.assemble_extension_candidates_for_trait(
-                        &trait_candidate.import_ids,
+                        &t,
                         trait_did,
                     );
                 }

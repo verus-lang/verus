@@ -8,6 +8,26 @@
 #![allow(rustc::potential_query_instability)]
 #![recursion_limit = "256"]
 
+#![feature(rustc_private)]
+
+extern crate rustc_ast;
+extern crate rustc_data_structures;
+extern crate rustc_errors;
+extern crate rustc_graphviz;
+extern crate rustc_index;
+extern crate rustc_infer;
+extern crate rustc_hir;
+extern crate rustc_hir_analysis;
+extern crate rustc_hir_pretty;
+extern crate rustc_lint;
+extern crate rustc_macros;
+extern crate rustc_serialize;
+extern crate rustc_session;
+extern crate rustc_span;
+extern crate rustc_target;
+extern crate rustc_trait_selection;
+extern crate rustc_type_ir;
+
 #[macro_use]
 extern crate tracing;
 
