@@ -29,6 +29,13 @@ and then programmers can use manual triggers to make the quantifiers more libera
 rather than the defaults causing timeouts,
 and programmers having to use manual triggers to eliminate the timeouts.
 */
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AutoType {
+    Regular,
+    All,
+    None
+}
+
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum App {
@@ -514,12 +521,13 @@ fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
 
 // Find the best trigger that covers all the trigger variables.
 // This is a variant of minimum-set-cover, which is NP-complete.
-fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result<(), VirErr> {
+// TODO: eliminate overcovers?
+fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_triggers : bool) -> Result<(), VirErr> {
     if state.remaining_vars.len() == 0 {
         let trigger: Vec<(Term, Span)> =
             state.accumulated_terms.iter().map(|(t, s)| (t.clone(), s.clone())).collect();
         // println!("found: {:?} {}", trigger, trigger_score(ctxt, &trigger));
-        if state.best_so_far.len() > 0 {
+        if state.best_so_far.len() > 0 && !all_triggers {
             // If we're better than what came before, drop what came before
             if state.best_so_far[0].len() > trigger.len() {
                 state.best_so_far.clear();
@@ -540,7 +548,7 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result
         state.best_so_far.push(trigger);
         return Ok(());
     }
-    if state.best_so_far.len() > 0 && state.best_so_far[0].len() <= state.accumulated_terms.len() {
+    if state.best_so_far.len() > 0 && !all_triggers && state.best_so_far[0].len() <= state.accumulated_terms.len() {
         // We've already found something better
         return Ok(());
     }
@@ -560,7 +568,7 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result
                     removed.push(y.clone());
                 }
             }
-            compute_triggers(ctxt, state, timer)?;
+            compute_triggers(ctxt, state, timer, all_triggers)?;
             // restore vars
             for y in removed {
                 state.remaining_vars.insert(y);
@@ -576,7 +584,7 @@ pub(crate) fn build_triggers(
     span: &Span,
     vars: &Vec<Ident>,
     exp: &Exp,
-    auto_trigger: bool,
+    auto_trigger: AutoType,
 ) -> Result<Trigs, VirErr> {
     let mut ctxt = Ctxt {
         trigger_vars: vars.iter().cloned().collect(),
@@ -625,7 +633,7 @@ pub(crate) fn build_triggers(
         best_so_far: Vec::new(),
         low_confidence: false,
     };
-    compute_triggers(&ctxt, &mut state, &mut timer)?;
+    compute_triggers(&ctxt, &mut state, &mut timer, auto_trigger == AutoType::All)?;
 
     // To stabilize the order of the chosen triggers,
     // sort the triggers by the position of their terms in exp
@@ -652,7 +660,7 @@ pub(crate) fn build_triggers(
         module,
         span: span.clone(),
         triggers: found_triggers,
-        low_confidence: state.low_confidence && !auto_trigger,
+        low_confidence: state.low_confidence && (auto_trigger == AutoType::None),
     };
     chosen_triggers_vec.push(chosen_triggers);
     if state.best_so_far.len() >= 1 {

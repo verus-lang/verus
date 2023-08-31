@@ -279,3 +279,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_trigger_all verus_code! {
+        spec fn bar(i: nat) -> bool;
+        spec fn baz(i: nat) -> bool;
+        spec fn qux(j: nat) -> bool;
+        spec fn mux(j: nat) -> bool;
+        spec fn res(i : nat, j : nat) -> bool;
+
+        proof fn foo()
+            requires
+                forall|i : nat, j : nat| #![all_triggers]
+                    (bar(i) && qux(j)) ==> res(i, j) && (baz(j) && mux(i)),
+                bar(3),
+                qux(4),
+            ensures
+                baz(4) 
+        {}
+    } => Ok(())
+}
