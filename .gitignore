@@ -2,3 +2,4 @@
 *.swp
 *.exe
 *.pdb
+.vscode/settings.json
