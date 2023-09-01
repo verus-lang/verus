@@ -402,18 +402,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88bffebc5d80432c9b140ee17875ff173a8ab62faad5b257da912bd2f6c1c0a1"
 
 [[package]]
-name = "error_report"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "regex",
- "serde_json",
- "toml",
- "yansi",
- "zip",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1796,8 +1784,13 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "verus"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "regex",
+ "serde_json",
+ "toml",
  "win32job",
+ "yansi",
+ "zip",
 ]
 
 [[package]]

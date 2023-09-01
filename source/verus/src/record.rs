@@ -1,87 +1,19 @@
 use chrono::{prelude::*, DateTime};
 use regex::Regex;
-use std::time::{Duration, Instant};
+use std::path::PathBuf;
+use std::time::Duration;
 use std::{
-    env,
     fs::{self, File},
     io::prelude::*,
     io::{BufRead, BufReader},
-    path::Path,
-    process::{Command, Stdio},
+    process::Command,
     str,
 };
 use toml::{map::Map, value::Value};
 use zip::write::FileOptions;
 
-fn main() {
-    if cfg!(windows) && !yansi::Paint::enable_windows_ascii() {
-        yansi::Paint::disable();
-    }
-    match run() {
-        Ok(()) => (),
-        Err(err) => {
-            eprintln!("{}", yansi::Paint::red(format!("error: {}", err)));
-            std::process::exit(1);
-        }
-    }
-}
-
-fn run() -> Result<(), String> {
-    let mut file_path: Option<String> = None;
-
-    let mut our_args = Vec::new();
-
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() > 1 {
-        for argument in &args {
-            if argument.ends_with(".rs") {
-                if file_path.is_some() {
-                    Err("multiple .rs files passed, unsupported by the --record flag")?;
-                }
-                file_path = Some(argument.clone());
-            }
-            if argument.starts_with("-o") || argument.starts_with("--out-dir") {
-                Err("--record does not support `-o` or `--out-dir` flag")?;
-            }
-        }
-        our_args = args[2..].to_vec();
-    } else {
-        eprintln!("Usage: verus INPUT --record <args..>");
-        Err("no arguments provided")?;
-    }
-
-    let Some(file_path) = file_path else { return Err("no INPUT provided, Usage: verus INPUT --record [options]")?; };
-
-    // add this error message because verus output is blocked
-    // though normally user should make sure simple error like this does not happen
-    // since they add record flag after they meet something wierd
-    if !Path::new(&file_path).exists() {
-        Err(format!("couldn't find crate root: {}", file_path))?;
-    }
-
-    // assumption: when verus is invoking error_report, the dir of verus path should be put in the first argument
-    let program_dir = args[1].clone();
-
-    let z3_path = if let Ok(z3_path) = env::var("VERUS_Z3_PATH") {
-        Path::new(&z3_path).to_path_buf()
-    } else {
-        Path::new(&program_dir).join(if cfg!(windows) { "z3.exe" } else { "z3" })
-    };
-
-    let verus_path = Path::new(&program_dir).join("verus");
-
-    let mut verus_call = our_args.clone();
-    verus_call.insert(
-        0,
-        verus_path
-            .file_name()
-            .ok_or("Cannot get file name of verus path")?
-            .to_string_lossy()
-            .to_string(),
-    );
-
-    let z3_version_output = match Command::new(z3_path.clone()).arg("--version").output() {
+pub fn get_z3_version(z3_path: &PathBuf) -> Option<std::process::Output> {
+    match Command::new(z3_path.clone()).arg("--version").output() {
         Ok(output) => Some(output),
         Err(err) => {
             eprintln!(
@@ -92,82 +24,43 @@ fn run() -> Result<(), String> {
             );
             None
         }
-    };
-
-    // mandating --time and --output-json flag, we remove both flags here to prevent passing duplicates to verus
-    if our_args.contains(&"--time".to_string()) || our_args.contains(&"--output-json".to_string()) {
-        our_args.retain(|x| x != "--time" && x != "--output-json");
     }
-
-    let temp_dep_file = Path::new(&file_path)
-        .with_extension("d")
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
-
-    eprintln!(
-        "{}",
-        yansi::Paint::blue("Rerunning verus to create zip archive (verus outputs are blocked)")
-    );
-    let start_time = Instant::now();
-    let verus_output = match Command::new(verus_path.clone())
-        .stdin(Stdio::null())
-        .args(our_args.clone())
-        .arg("--emit=dep-info")
-        .arg("--time")
-        .arg("--output-json")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-    {
-        Ok(output) => output,
-        Err(err) => {
-            // remove temp file if created
-            fs::remove_file(&temp_dep_file).map_err(|x| {
-                format!("failed to delete `.d` file with this error message: {}", x)
-            })?;
-            Err(format!(
-                "failed to execute verus with error message {}, verus path is at {:?}, args are {:?}",
-                err, verus_path, our_args
-            ))?
-        }
-    };
-
-    let verus_duration = start_time.elapsed();
-
-    match toml_setup_and_write(verus_call, z3_version_output, verus_output, verus_duration) {
-        Ok(()) => (),
-        Err(err) => {
-            // remove temp file if created
-            fs::remove_file(&temp_dep_file).map_err(|x| {
-                format!("failed to delete `.d` file with this error message: {}", x)
-            })?;
-            Err(err)?
-        }
-    }
-
-    let zip_path = zip_setup(temp_dep_file.clone());
-
-    fs::remove_file("error_report.toml")
-        .map_err(|x| format!("failed to delete toml file with this error message: {}", x))?;
-    // TODO: in some cases where the main.d file is not created, the following error will be reported, rather than the error of zip_zetup
-    fs::remove_file(temp_dep_file.clone()).map_err(|x| format!("failed to delete dependencies file with this error message: {}, path to dependency file is {}", x, temp_dep_file))?;
-
-    println!(
-        "Collected dependencies and stored your reproducible crate to zip file: {}\n",
-        zip_path?
-    );
-
-    Ok(())
 }
 
-fn toml_setup_and_write(
+pub fn find_source_file(args: &Vec<String>) -> Result<PathBuf, String> {
+    let mut source_file: Option<String> = None;
+    for argument in args.iter() {
+        if argument.ends_with(".rs") {
+            if source_file.is_some() {
+                return Err("multiple .rs files passed, unsupported by the --record flag".into());
+            }
+            source_file = Some(argument.clone());
+        }
+        if argument.starts_with("-o") || argument.starts_with("--out-dir") {
+            return Err("--record does not support `-o` or `--out-dir` flag".into());
+        }
+    }
+    match source_file {
+        Some(source_file) => Ok(PathBuf::from(source_file)),
+        None => return Err("no .rs files passed, unsupported by the --record flag".into()),
+    }
+}
+
+pub fn temp_dep_file_from_source_file(file: &PathBuf) -> Result<std::ffi::OsString, String> {
+    let dep_file = file.with_extension("d");
+    let Some(dep_file) = dep_file.file_name()
+    else {
+        return Err("invalid input file name for --record".into());
+    };
+    Ok(dep_file.to_owned())
+}
+
+pub fn error_report_toml_string(
     args: Vec<String>,
     z3_version_output: Option<std::process::Output>,
     verus_output: std::process::Output,
     verus_duration: Duration,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let z3_version: Option<toml::Value> = if let Some(z3_version_output) = z3_version_output {
         let mut z3_version = Map::new();
         let stdout_str = str::from_utf8(&z3_version_output.stdout)
@@ -258,16 +151,13 @@ fn toml_setup_and_write(
     ))
     .map_err(|x| format!("Could not encode TOML value with error message: {}", x))?;
 
-    fs::write("error_report.toml", toml_string)
-        .map_err(|x| format!("Could not write to toml file with error message: {}", x))?;
-
-    Ok(())
+    Ok(toml_string)
 }
 
 // Creates a toml file and writes relevant information to this file, including
 // the command-line arguments, versions, rough time info, and verus output.
 fn create_toml(
-    args: Vec<String>,
+    mut args: Vec<String>,
     z3_version: Option<toml::Value>,
     verus_version: Option<toml::Value>,
     verification_results: Option<toml::Value>,
@@ -275,6 +165,7 @@ fn create_toml(
     stdout: Option<toml::Value>,
     stderr: String,
 ) -> Value {
+    args.insert(0, "verus".into());
     let mut command_line_arguments = Map::new();
     command_line_arguments.insert("args".to_string(), Value::String(args.join(" ")));
 
@@ -312,26 +203,27 @@ fn create_toml(
 }
 
 // grab all the files (dependencies + toml) to write the zip archive
-pub fn zip_setup(dep_file_name: String) -> Result<String, String> {
-    let dep_path = Path::new(&dep_file_name);
+pub fn write_zip_for(
+    dep_file_name: &std::ffi::OsString,
+    error_report_contents: String,
+) -> Result<String, String> {
+    let dep_path = PathBuf::from(dep_file_name);
     if !dep_path.exists() {
         Err(format!(
             "file {} does not exist in zip_zetup, {}",
-            dep_file_name,
+            dep_file_name.to_string_lossy(),
             yansi::Paint::red("INTERNAL ERROR").bold()
         ))?;
     }
 
-    let mut deps = get_dependencies(dep_path)?;
-    deps.push("error_report.toml".to_string());
-
-    let zip_file_name = write_zip_archive(deps)?;
+    let (prefix, deps) = get_dependencies(&dep_path)?;
+    let zip_file_name = write_zip_archive(prefix, deps, error_report_contents)?;
 
     Ok(zip_file_name)
 }
 
 // parse the .d file and returns a vector of files names required to generate the crate
-fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<String>, String> {
+fn get_dependencies(dep_file_path: &std::path::Path) -> Result<(PathBuf, Vec<PathBuf>), String> {
     let file = File::open(dep_file_path)
         .map_err(|x| format!("{}, dependency file name: {:?}", x, dep_file_path))?;
     let mut reader = BufReader::new(file);
@@ -339,8 +231,28 @@ fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<String>, Stri
     reader.read_line(&mut dependencies).map_err(|x| {
         format!("Could not read the first line of the dependency file with message: {}", x)
     })?;
-    let result = dependencies.split_whitespace().skip(1).map(|x| x.to_string()).collect();
-    Ok(result)
+    let result: Vec<_> =
+        dependencies.split_whitespace().skip(1).map(|x| PathBuf::from(x)).collect();
+    assert!(result.len() > 0);
+    let mut path_iters: Vec<_> = result.iter().map(|x| x.iter()).collect();
+    let mut chomp_components = 0;
+    loop {
+        let common = path_iters
+            .iter_mut()
+            .map(|x| x.next())
+            .reduce(|acc, x| acc.and_then(|a| if Some(a) == x { Some(a) } else { None }))
+            .flatten();
+        if common.is_some() {
+            chomp_components += 1;
+        } else {
+            break;
+        }
+    }
+    let result_chomped: Vec<PathBuf> =
+        result.iter().map(|p| PathBuf::from_iter(p.components().skip(chomp_components))).collect();
+    let chomped = PathBuf::from_iter(result[0].iter().take(chomp_components));
+
+    Ok((chomped, result_chomped))
 }
 
 // Creates a zip file from a given list of files to compress
@@ -349,7 +261,11 @@ fn get_dependencies(dep_file_path: &std::path::Path) -> Result<Vec<String>, Stri
 //                    (in this context, each file is a dependency of the input)
 //
 // Returns:    The name of the created zip file
-fn write_zip_archive(deps: Vec<String>) -> Result<String, String> {
+fn write_zip_archive(
+    prefix: PathBuf,
+    deps: Vec<PathBuf>,
+    error_report_contents: String,
+) -> Result<String, String> {
     let local: DateTime<Local> = Local::now();
     let formatted = local.format("%Y-%m-%d-%H-%M-%S");
     let date = formatted.to_string();
@@ -364,16 +280,22 @@ fn write_zip_archive(deps: Vec<String>) -> Result<String, String> {
 
     for file in deps {
         let path = file;
-        eprintln!("{}", yansi::Paint::blue(format!("Adding file {} to zip archive", path)));
-        let binding = fs::read_to_string(&path).map_err(|x| {
-            format!("{}, file name: {}. Check if this file can be opened.", x, path)
+        eprintln!(
+            "{}",
+            yansi::Paint::blue(format!("Adding file {} to zip archive", path.display()))
+        );
+        let binding = fs::read_to_string(&prefix.join(&path)).map_err(|x| {
+            format!("{}, file name: {}. Check if this file can be opened.", x, path.display())
         })?;
 
         let content = binding.as_bytes();
 
-        zip.start_file(path, options).expect("Could not start zip file");
+        zip.start_file(path.as_os_str().to_string_lossy(), options)
+            .expect("Could not start zip file");
         zip.write_all(content).expect("Could not write file contents to zip");
     }
+    zip.start_file("error_report.toml", options).expect("Could not start zip file");
+    zip.write_all(error_report_contents.as_bytes()).expect("Could not write toml contents to zip");
     zip.finish().expect("Could not finish up zip file");
     Ok(zip_file_name)
 }

@@ -12,7 +12,6 @@ members = [
   "state_machines_macros",
   "verusdoc",
   "vstd_build",
-  "error_report",
 ]
 exclude = [
   "pervasive",
