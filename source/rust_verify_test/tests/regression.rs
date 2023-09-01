@@ -773,3 +773,36 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] lifetime_generate_assoc_type_regression_769 verus_code! {
+        pub trait EA {
+            type I;
+            type O;
+        }
+
+        pub struct Empty {}
+
+        pub struct EAA {}
+
+        impl EA for EAA {
+            type I = Empty;
+            type O = Empty;
+        }
+
+        pub struct MC<E>(E);
+
+        pub struct M<E: EA> {
+            pub content: MC<E>,
+        }
+
+        enum A<X> {
+            Y(X),
+            Z,
+        }
+
+        proof fn foo() {
+            let input: A<M<EAA>> = A::Z;
+        }
+    } => Ok(())
+}
