@@ -4,9 +4,12 @@
 //! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
 
 #![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
-#![feature(core_intrinsics)]
+#![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 
 pub mod pervasive;
 pub mod array;
@@ -39,6 +42,8 @@ pub mod string;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod vec;
 pub mod view;
+
+#[cfg(verus_keep_ghost)]
 pub mod std_specs;
 pub mod relations;
 

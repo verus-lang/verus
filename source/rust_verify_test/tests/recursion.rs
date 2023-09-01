@@ -1759,3 +1759,48 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] lemma_not_proved_by_impossible_fun verus_code! {
+        spec fn impossible_fun() -> bool
+            decreases 0int
+              via f_decreases
+        {
+            !impossible_fun()
+        }
+
+        #[verifier::decreases_by]
+        proof fn f_decreases() {
+            bad_lemma();
+        }
+
+        proof fn bad_lemma()
+            ensures false,
+        {
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] lemma_not_proved_by_impossible_fun2 verus_code! {
+        spec fn impossible_fun() -> bool
+            decreases 0int
+              via f_decreases
+        {
+            !impossible_fun()
+        }
+
+        #[verifier::decreases_by]
+        proof fn f_decreases() {
+            bad_lemma();
+        }
+
+        proof fn bad_lemma()
+            ensures false,
+        {
+            assert(impossible_fun() == !impossible_fun());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in decreases_by function")
+}

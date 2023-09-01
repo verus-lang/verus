@@ -222,6 +222,15 @@ impl GlobalCtx {
                     }
                 }
             }
+            if f.x.attrs.atomic {
+                let f_node = Node::Fun(f.x.name.clone());
+                if func_call_graph.node_is_in_cycle(&f_node) {
+                    return Err(air::messages::error(
+                        "'atomic' cannot be used on a recursive function",
+                        &f.span,
+                    ));
+                }
+            }
         }
         let qid_map = RefCell::new(HashMap::new());
 

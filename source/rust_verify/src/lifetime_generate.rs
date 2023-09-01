@@ -1547,6 +1547,7 @@ fn erase_fn_common<'tcx>(
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+    // TODO let is_verus_reveal = **path.segments.last().expect("segments.last") == VERUS_REVEAL_INTERNAL;
     if is_verus_spec {
         return;
     }
@@ -2180,7 +2181,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                 OwnerNode::Item(item) => {
                     let attrs = tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
-                    if vattrs.external {
+                    if vattrs.external || vattrs.internal_reveal_fn {
                         continue;
                     }
                     let id = item.owner_id.to_def_id();

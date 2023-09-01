@@ -396,6 +396,8 @@ impl PartialEq for Expr {
             #[cfg(feature = "full")]
             (Expr::AssertForall(self0), Expr::AssertForall(other0)) => self0 == other0,
             #[cfg(feature = "full")]
+            (Expr::RevealHide(self0), Expr::RevealHide(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
             (Expr::View(self0), Expr::View(other0)) => self0 == other0,
             #[cfg(feature = "full")]
             (Expr::BigAnd(self0), Expr::BigAnd(other0)) => self0 == other0,
@@ -1994,6 +1996,17 @@ impl PartialEq for ReturnType {
             ) => self1 == other1 && self2 == other2 && self3 == other3,
             _ => false,
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for RevealHide {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for RevealHide {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.reveal_token == other.reveal_token
+            && self.reveal_with_fuel_token == other.reveal_with_fuel_token
+            && self.hide_token == other.hide_token && self.path == other.path
+            && self.fuel == other.fuel
     }
 }
 #[cfg(feature = "full")]

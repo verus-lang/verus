@@ -2,7 +2,7 @@
     "rust-analyzer.cargo.buildScripts.enable": true,
     "rust-analyzer.cargo.extraEnv": {
         "RUSTC_BOOTSTRAP": "1",
-        "RUSTFLAGS": "--cfg proc_macro_span"
+        "RUSTFLAGS": "--cfg proc_macro_span --cfg verus_keep_ghost"
     },
     "rust-analyzer.runnableEnv": {
         "RUSTC_BOOTSTRAP": "1"

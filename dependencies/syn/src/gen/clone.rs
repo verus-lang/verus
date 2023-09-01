@@ -376,6 +376,8 @@ impl Clone for Expr {
             #[cfg(feature = "full")]
             Expr::AssertForall(v0) => Expr::AssertForall(v0.clone()),
             #[cfg(feature = "full")]
+            Expr::RevealHide(v0) => Expr::RevealHide(v0.clone()),
+            #[cfg(feature = "full")]
             Expr::View(v0) => Expr::View(v0.clone()),
             #[cfg(feature = "full")]
             Expr::BigAnd(v0) => Expr::BigAnd(v0.clone()),
@@ -2065,6 +2067,20 @@ impl Clone for ReturnType {
             ReturnType::Type(v0, v1, v2, v3) => {
                 ReturnType::Type(v0.clone(), v1.clone(), v2.clone(), v3.clone())
             }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for RevealHide {
+    fn clone(&self) -> Self {
+        RevealHide {
+            attrs: self.attrs.clone(),
+            reveal_token: self.reveal_token.clone(),
+            reveal_with_fuel_token: self.reveal_with_fuel_token.clone(),
+            hide_token: self.hide_token.clone(),
+            paren_token: self.paren_token.clone(),
+            path: self.path.clone(),
+            fuel: self.fuel.clone(),
         }
     }
 }

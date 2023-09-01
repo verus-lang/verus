@@ -1405,14 +1405,6 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        if self.args.verify_pervasive
-            && (!self.args.verify_module.is_empty() || self.args.verify_root)
-        {
-            return Err(error(
-                "--verify-pervasive not allowed when --verify-root or --verify-module are present",
-            ));
-        }
-
         if self.args.verify_function.is_some() {
             if self.args.verify_module.is_empty() && !self.args.verify_root {
                 return Err(error(
@@ -1437,13 +1429,8 @@ impl Verifier {
                 .iter()
                 .filter(|m| {
                     let name = module_name(m);
-                    let is_pervasive = name.starts_with("pervasive::")
-                        || name == "pervasive"
-                        || m.krate == Some(Arc::new("vstd".to_string()));
-                    (!self.args.verify_root
-                        && self.args.verify_module.is_empty()
-                        && (!is_pervasive ^ self.args.verify_pervasive))
-                        || (self.args.verify_root && m.segments.len() == 0 && !is_pervasive)
+                    (!self.args.verify_root && self.args.verify_module.is_empty())
+                        || (self.args.verify_root && m.segments.len() == 0)
                         || remaining_verify_module.take(&name).is_some()
                 })
                 .cloned()
@@ -1945,7 +1932,28 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) build_test_mode: bool,
 }
 
+pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
+    Option<
+        HashMap<
+            rustc_span::def_id::DefId,
+            (Option<rustc_hir::def::Res>, crate::hir_hide_reveal_rewrite::ResOrSymbol),
+        >,
+    >,
+> = std::sync::RwLock::new(None);
+
+fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
+    let mut crate_ = (verus_rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
+    crate_
+}
+
 impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+    fn config(&mut self, config: &mut verus_rustc_interface::interface::Config) {
+        config.override_queries = Some(|_session, providers, _extern_providers| {
+            providers.hir_crate = hir_crate;
+        });
+    }
+
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,

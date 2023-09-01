@@ -229,6 +229,7 @@ ast_enum_of_structs! {
         Assume(Assume),
         Assert(Assert),
         AssertForall(AssertForall),
+        RevealHide(RevealHide),
         View(View),
         BigAnd(BigAnd),
         BigOr(BigOr),
@@ -854,6 +855,7 @@ impl Expr {
             | Expr::Assume(Assume { attrs, .. })
             | Expr::Assert(Assert { attrs, .. })
             | Expr::AssertForall(AssertForall { attrs, .. })
+            | Expr::RevealHide(RevealHide { attrs, .. })
             | Expr::View(View { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
@@ -1100,14 +1102,9 @@ ast_enum! {
 #[cfg(feature = "full")]
 pub(crate) fn requires_terminator(expr: &Expr) -> bool {
     // see https://github.com/rust-lang/rust/blob/2679c38fc/src/librustc_ast/util/classify.rs#L7-L25
-    match *expr {
+    match &*expr {
         Expr::Unsafe(..)
         | Expr::Block(..)
-        | Expr::Unary(ExprUnary {
-            expr: box Expr::Block(..),
-            op: UnOp::Proof(..),
-            ..
-        })
         | Expr::Assert(Assert {
             by_token: Some(..),
             body: Some(..),
@@ -1121,6 +1118,14 @@ pub(crate) fn requires_terminator(expr: &Expr) -> bool {
         | Expr::ForLoop(..)
         | Expr::Async(..)
         | Expr::TryBlock(..) => false,
+        Expr::Unary(ExprUnary {
+            expr,
+            op: UnOp::Proof(..),
+            ..
+        }) => match &**expr {
+            Expr::Block(..) => false,
+            _ => true,
+        },
         _ => true,
     }
 }
@@ -1882,6 +1887,8 @@ pub(crate) mod parsing {
             input.parse().map(Expr::AssertForall)
         } else if input.peek(Token![assert]) {
             input.parse().map(Expr::Assert)
+        } else if input.peek(Token![reveal]) || input.peek(Token![reveal_with_fuel]) || input.peek(Token![hide]) {
+            input.parse().map(Expr::RevealHide)
         } else if input.peek(Token![match]) {
             input.parse().map(Expr::Match)
         } else if input.peek(Token![yield]) {
@@ -2206,6 +2213,8 @@ pub(crate) mod parsing {
             Expr::AssertForall(input.parse()?)
         } else if input.peek(Token![assert]) {
             Expr::Assert(input.parse()?)
+        } else if input.peek(Token![reveal]) || input.peek(Token![reveal_with_fuel]) || input.peek(Token![hide]) {
+            Expr::RevealHide(input.parse()?)
         } else if input.peek(Token![match]) {
             Expr::Match(input.parse()?)
         } else if input.peek(Token![try]) && input.peek2(token::Brace) {

@@ -756,6 +756,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_reveal_type_args_regression_704 verus_code! {
+        trait X {}
+        impl X for int {}
+
+        #[verifier::opaque]
+        spec fn foo(x: impl X) -> bool {
+            true
+        }
+
+        proof fn test()
+        {
+            reveal(foo);
+
+            assert(foo(3int));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] lifetime_generate_assoc_type_regression_769 verus_code! {
         pub trait EA {
             type I;
