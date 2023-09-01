@@ -255,7 +255,7 @@ pub fn main() {
                     }
                 },
                 "total-verify": total_verify,
-                "total-verify-module-times" : verify_times.iter().take(3).map(|(m, t)| {
+                "total-verify-module-times" : verify_times.iter().map(|(m, t)| {
                     serde_json::json!({
                         "module" : rust_verify::verifier::module_name(m),
                         "time" : t
@@ -263,7 +263,7 @@ pub fn main() {
                 }).collect::<Vec<serde_json::Value>>(),
                 "air": {
                     "total": total_air,
-                    "module-times" : air_times.iter().take(3).map(|(m, t)| {
+                    "module-times" : air_times.iter().map(|(m, t)| {
                         serde_json::json!({
                             "module" : rust_verify::verifier::module_name(m),
                             "time" : t
@@ -277,14 +277,14 @@ pub fn main() {
                     serde_json::json!({
                         "total": (total_smt_init + total_smt_run),
                         "smt-init": total_smt_init,
-                        "smt-init-module-times" : smt_init_times.iter().take(3).map(|(m, t)| {
+                        "smt-init-module-times" : smt_init_times.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                         "smt-run": total_smt_run,
-                        "smt-init-module-times" : smt_run_times.iter().take(3).map(|(m, t)| {
+                        "smt-init-module-times" : smt_run_times.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t
