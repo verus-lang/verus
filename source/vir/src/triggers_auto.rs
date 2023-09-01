@@ -502,7 +502,9 @@ type Trigger = Vec<(Term, Span)>;
 struct State {
     remaining_vars: HashSet<Ident>,
     accumulated_terms: HashMap<Term, Span>,
-    best_so_far: Vec<Trigger>,
+    // if AutoType::All, chosen_triggers will contain all minimal covers of the variable set
+    // if AutoType::Auto, chosen_triggers will contain a single minimal cover chosen by Score heuristic
+    chosen_triggers: Vec<Trigger>,
     // If we relied on Score to break a tie, we consider this a low-confidence trigger
     // and we emit a report to the user.
     low_confidence: bool,
@@ -542,28 +544,28 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_trigg
             // we have that to2 is a subset of t1, a contradiction of inductive invariant
             // maybe we can formalize this someday :)
             let mut old_sub_new = false;
-            let trig_exp_set = HashSet::<Arc<TermX>>::from_iter(vec_map(&trigger, |(term,_)| term.clone()));
-            state.best_so_far.retain(|old_trig| {
-                let old_trig_exp_set = HashSet::<Arc<TermX>>::from_iter(vec_map(&old_trig, |(term,_)| term.clone()));
+            let trig_exp_set: HashSet<Arc<TermX>> = trigger.iter().map(|(term,_)| term.clone()).collect();
+            state.chosen_triggers.retain(|old_trig| {
+                let old_trig_exp_set: HashSet<Arc<TermX>> = old_trig.iter().map(|(term,_)| term.clone()).collect();
                 old_sub_new = old_sub_new || old_trig_exp_set.is_subset(&trig_exp_set);
                 !(trig_exp_set.is_subset(&old_trig_exp_set) && trig_exp_set.len() < old_trig_exp_set.len())
             });
             if !old_sub_new {
-                state.best_so_far.push(trigger);
+                state.chosen_triggers.push(trigger);
             }
             return Ok(());
         }
-        if state.best_so_far.len() > 0 {
+        if state.chosen_triggers.len() > 0 {
             // If we're better than what came before, drop what came before
-            if state.best_so_far[0].len() > trigger.len() {
-                state.best_so_far.clear();
+            if state.chosen_triggers[0].len() > trigger.len() {
+                state.chosen_triggers.clear();
                 state.low_confidence = false;
             } else {
-                let prev_score = trigger_score(ctxt, &state.best_so_far[0]).lex();
+                let prev_score = trigger_score(ctxt, &state.chosen_triggers[0]).lex();
                 let new_score = trigger_score(ctxt, &trigger).lex();
                 if prev_score > new_score {
                     state.low_confidence = true;
-                    state.best_so_far.clear();
+                    state.chosen_triggers.clear();
                 } else if prev_score < new_score {
                     state.low_confidence = true;
                     // If we're worse, return
@@ -571,10 +573,10 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_trigg
                 }
             }
         }
-        state.best_so_far.push(trigger);
+        state.chosen_triggers.push(trigger);
         return Ok(());
     }
-    if state.best_so_far.len() > 0 && !all_triggers && state.best_so_far[0].len() <= state.accumulated_terms.len() {
+    if state.chosen_triggers.len() > 0 && !all_triggers && state.chosen_triggers[0].len() <= state.accumulated_terms.len() {
         // We've already found something better
         // this early exit optimization only necessary when not computing full set
         return Ok(());
@@ -657,17 +659,17 @@ pub(crate) fn build_triggers(
     let mut state = State {
         remaining_vars: ctxt.trigger_vars.iter().cloned().collect(),
         accumulated_terms: HashMap::new(),
-        best_so_far: Vec::new(),
+        chosen_triggers: Vec::new(),
         low_confidence: false,
     };
     compute_triggers(&ctxt, &mut state, &mut timer, auto_trigger == AutoType::All)?;
 
     // To stabilize the order of the chosen triggers,
     // sort the triggers by the position of their terms in exp
-    for trigger in &mut state.best_so_far {
+    for trigger in &mut state.chosen_triggers {
         trigger.sort_by_key(|(term, _)| ctxt.pure_terms[term].1);
     }
-    state.best_so_far.sort_by_key(|trig| vec_map(trig, |(term, _)| ctxt.pure_terms[term].1));
+    state.chosen_triggers.sort_by_key(|trig| vec_map(trig, |(term, _)| ctxt.pure_terms[term].1));
 
     /*
     for found in &state.best_so_far {
@@ -676,7 +678,7 @@ pub(crate) fn build_triggers(
     }
     */
     let mut chosen_triggers_vec = ctx.global.chosen_triggers.borrow_mut();
-    let found_triggers: Vec<Vec<(Span, String)>> = vec_map(&state.best_so_far, |trig| {
+    let found_triggers: Vec<Vec<(Span, String)>> = vec_map(&state.chosen_triggers, |trig| {
         vec_map(&trig, |(term, span)| (span.clone(), format!("{:?}", term)))
     });
     let module = match &ctx.fun {
@@ -690,8 +692,8 @@ pub(crate) fn build_triggers(
         low_confidence: state.low_confidence && (auto_trigger == AutoType::None),
     };
     chosen_triggers_vec.push(chosen_triggers);
-    if state.best_so_far.len() >= 1 {
-        let trigs: Vec<Trig> = vec_map(&state.best_so_far, |trig| {
+    if state.chosen_triggers.len() >= 1 {
+        let trigs: Vec<Trig> = vec_map(&state.chosen_triggers, |trig| {
             Arc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].0.clone()))
         });
         Ok(Arc::new(trigs))
