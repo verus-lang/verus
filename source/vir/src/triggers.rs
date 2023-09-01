@@ -3,8 +3,8 @@ use crate::ast::{
 };
 use crate::ast_util::error;
 use crate::context::Ctx;
-use crate::triggers_auto::AutoType;
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
+use crate::triggers_auto::AutoType;
 use air::ast::{Binders, Span};
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};

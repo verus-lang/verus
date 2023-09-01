@@ -9,7 +9,6 @@ use crate::util::vec_map;
 use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::iter::FromIterator;
 
 /*
 This trigger selection algorithm is experimental and somewhat different from the usual
@@ -34,9 +33,8 @@ and programmers having to use manual triggers to eliminate the timeouts.
 pub enum AutoType {
     Regular,
     All,
-    None
+    None,
 }
-
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum App {
@@ -524,31 +522,39 @@ fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
 
 // Find the best trigger that covers all the trigger variables.
 // This is a variant of minimum-set-cover, which is NP-complete.
-fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_triggers : bool) -> Result<(), VirErr> {
+fn compute_triggers(
+    ctxt: &Ctxt,
+    state: &mut State,
+    timer: &mut Timer,
+    all_triggers: bool,
+) -> Result<(), VirErr> {
     if state.remaining_vars.len() == 0 {
         let trigger: Vec<(Term, Span)> =
             state.accumulated_terms.iter().map(|(t, s)| (t.clone(), s.clone())).collect();
         // println!("found: {:?} {}", trigger, trigger_score(ctxt, &trigger));
         if all_triggers {
             // when trying to compute all minimal triggers, we need only concern
-            // ourselves with ensuring 
+            // ourselves with ensuring
             // 1) the new trigger isn't a (proper) subset of an existing one
             //    in which case we remove the existing one
             // 2) there isn't an existing trigger that is a subset of the new one
             //    in which case we don't add the new one
             // claim: it is impossible for both to be true
-            // proof: 
+            // proof:
             // inductive invariant -- all triggers in state.computed_triggers incomparable
             // preserved as if we have subset in either direction, exactly one is removed
             // assume now we have a new trigger t that is proper subset of to1 and such that to2 is a subset of t.
             // we have that to2 is a subset of t1, a contradiction of inductive invariant
             // maybe we can formalize this someday :)
             let mut old_sub_new = false;
-            let trig_exp_set: HashSet<Arc<TermX>> = trigger.iter().map(|(term,_)| term.clone()).collect();
+            let trig_exp_set: HashSet<Arc<TermX>> =
+                trigger.iter().map(|(term, _)| term.clone()).collect();
             state.chosen_triggers.retain(|old_trig| {
-                let old_trig_exp_set: HashSet<Arc<TermX>> = old_trig.iter().map(|(term,_)| term.clone()).collect();
+                let old_trig_exp_set: HashSet<Arc<TermX>> =
+                    old_trig.iter().map(|(term, _)| term.clone()).collect();
                 old_sub_new = old_sub_new || old_trig_exp_set.is_subset(&trig_exp_set);
-                !(trig_exp_set.is_subset(&old_trig_exp_set) && trig_exp_set.len() < old_trig_exp_set.len())
+                !(trig_exp_set.is_subset(&old_trig_exp_set)
+                    && trig_exp_set.len() < old_trig_exp_set.len())
             });
             if !old_sub_new {
                 state.chosen_triggers.push(trigger);
@@ -576,7 +582,10 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_trigg
         state.chosen_triggers.push(trigger);
         return Ok(());
     }
-    if state.chosen_triggers.len() > 0 && !all_triggers && state.chosen_triggers[0].len() <= state.accumulated_terms.len() {
+    if state.chosen_triggers.len() > 0
+        && !all_triggers
+        && state.chosen_triggers[0].len() <= state.accumulated_terms.len()
+    {
         // We've already found something better
         // this early exit optimization only necessary when not computing full set
         return Ok(());

@@ -295,7 +295,7 @@ test_verify_one_file! {
                 bar(3),
                 qux(4),
             ensures
-                baz(4) 
+                baz(4)
         {}
     } => Ok(())
 }
