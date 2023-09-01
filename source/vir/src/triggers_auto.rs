@@ -538,7 +538,7 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer, all_trigg
             //    in which case we don't add the new one
             // claim: it is impossible for both to be true
             // proof: 
-            // inductive invariant -- all triggers in best_so_far incomparable
+            // inductive invariant -- all triggers in state.computed_triggers incomparable
             // preserved as if we have subset in either direction, exactly one is removed
             // assume now we have a new trigger t that is proper subset of to1 and such that to2 is a subset of t.
             // we have that to2 is a subset of t1, a contradiction of inductive invariant
