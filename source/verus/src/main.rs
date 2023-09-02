@@ -1,6 +1,11 @@
-use std::process::Command;
+use std::{
+    io::{Read, Write},
+    process::Command,
+};
 
 mod record;
+#[cfg(feature = "record-history")]
+mod record_history;
 
 mod platform {
     pub struct ExitCode(pub i32);
@@ -41,7 +46,11 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else {
 
 fn main() {
     match run() {
-        Ok(()) => (),
+        Ok(exit_status) => {
+            if !exit_status.success() {
+                std::process::exit(exit_status.code().unwrap_or(-1));
+            }
+        }
         Err(err) => {
             eprintln!("{}", yansi::Paint::red(format!("error: {}", err)));
             std::process::exit(1);
@@ -53,7 +62,7 @@ fn warning(msg: &str) {
     eprintln!("{}", yansi::Paint::yellow(format!("warning: {}", msg)));
 }
 
-fn run() -> Result<(), String> {
+fn run() -> Result<std::process::ExitStatus, String> {
     let (mut args, record) = {
         let mut args = std::env::args().into_iter();
         let _bin = args.next().expect("executable in args");
@@ -119,7 +128,38 @@ fn run() -> Result<(), String> {
 
     let original_args = args.clone();
 
-    if record {
+    let source_file = record::find_source_file(&args);
+
+    #[cfg(feature = "record-history")]
+    let record_history_dirs = {
+        let source_file = source_file.as_ref()?;
+        let project_dir = source_file
+            .exists()
+            .then(|| ())
+            .and_then(|()| source_file.canonicalize().ok())
+            .and_then(|d| d.parent().map(|x| x.to_owned()));
+        let Some(project_dir) = project_dir else {
+            return Err(format!("cannot find directory for source file {}", source_file.display()));
+        };
+        let history_dir = project_dir.join(".record-history");
+        if history_dir.exists() {
+            if !history_dir.is_dir() {
+                return Err(format!(
+                    ".record-history ({}) is not a directory",
+                    history_dir.display()
+                ));
+            }
+            let git_dir = history_dir.join("git");
+            Some((project_dir, git_dir))
+        } else {
+            None
+        }
+    };
+
+    #[cfg(not(feature = "record-history"))]
+    let record_history_dirs: Option<std::path::PathBuf> = None;
+
+    if record || record_history_dirs.is_some() {
         fn ensure_arg(args: &mut Vec<String>, arg: String) {
             if !args.contains(&arg) {
                 args.push(arg.into());
@@ -127,7 +167,15 @@ fn run() -> Result<(), String> {
         }
         ensure_arg(&mut args, "--output-json".into());
         ensure_arg(&mut args, "--time".into());
+        ensure_arg(&mut args, "--time-expanded".into());
         ensure_arg(&mut args, "--emit=dep-info".into());
+    }
+
+    #[cfg(feature = "record-history")]
+    if record_history_dirs.is_some() && is_terminal::is_terminal(&std::io::stderr()) {
+        if !args.iter().find(|x| x.starts_with("--color")).is_some() {
+            args.push("--color=always".to_owned());
+        }
     }
 
     cmd.arg("run")
@@ -137,7 +185,7 @@ fn run() -> Result<(), String> {
         .args(&args)
         .stdin(std::process::Stdio::inherit());
 
-    if !record {
+    if !record && record_history_dirs.is_none() {
         match platform::exec(&mut cmd) {
             Err(e) => {
                 eprintln!("error: failed to execute rust_verify {e:?}");
@@ -148,20 +196,28 @@ fn run() -> Result<(), String> {
             }
         }
     } else {
-        let source_file = record::find_source_file(&args)?;
+        let source_file = source_file?;
+
         let temp_dep_file = record::temp_dep_file_from_source_file(&source_file)?;
 
-        eprintln!(
-            "{}",
-            yansi::Paint::blue("Rerunning verus to create zip archive (verus outputs are blocked)")
-        );
+        #[cfg(feature = "record-history")]
+        let record_history_repo = record_history::find_record_history_repo(record_history_dirs)?;
+
+        if record {
+            eprintln!(
+                "{}",
+                yansi::Paint::blue(
+                    "Rerunning verus to create zip archive (verus outputs are blocked)"
+                )
+            );
+        }
 
         let start_time = std::time::Instant::now();
 
-        cmd.stdin(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+        cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
 
-        let verus_output = match cmd.output() {
-            Ok(output) => output,
+        let mut verus_child = match cmd.spawn() {
+            Ok(child) => child,
             Err(err) => {
                 // remove temp file if created
                 if let Err(err) = std::fs::remove_file(&temp_dep_file) {
@@ -170,19 +226,88 @@ fn run() -> Result<(), String> {
                         err
                     ));
                 }
-                Err(format!("failed to execute verus with error message {}", err,))?
+                return Err(format!("failed to execute verus with error message {}", err,));
+            }
+        };
+
+        let (mut verus_stdout, mut verus_stderr) = (
+            verus_child.stdout.take().expect("no stdout on verus child process"),
+            verus_child.stderr.take().expect("no stderr on verus child process"),
+        );
+
+        let mut verus_full_stdout = Vec::with_capacity(1024);
+        let mut verus_full_stderr = Vec::with_capacity(1024);
+
+        let mut verus_stdout_buf = Vec::with_capacity(1024);
+        let mut verus_stderr_buf = Vec::with_capacity(1024);
+
+        let write_stdio_streams = &mut |to_end: bool| {
+            if to_end {
+                verus_stdout
+                    .read_to_end(&mut verus_stdout_buf)
+                    .expect("failed to write to stdout buffer");
+                verus_stderr
+                    .read_to_end(&mut verus_stderr_buf)
+                    .expect("failed to write to stderr buffer");
+            } else {
+                verus_stdout.read(&mut verus_stdout_buf).expect("failed to write to stdout buffer");
+                verus_stderr.read(&mut verus_stderr_buf).expect("failed to write to stderr buffer");
+            }
+
+            #[cfg(feature = "record-history")]
+            if !record {
+                std::io::stderr()
+                    .lock()
+                    .write_all(&verus_stderr_buf)
+                    .expect("failed to write to stderr");
+            }
+
+            verus_full_stdout
+                .write_all(&verus_stdout_buf)
+                .expect("failed to write to stdout buffer");
+            verus_full_stderr
+                .write_all(&verus_stderr_buf)
+                .expect("failed to write to stderr buffer");
+
+            verus_stdout_buf.clear();
+            verus_stderr_buf.clear();
+        };
+
+        let exit_status: std::process::ExitStatus = loop {
+            write_stdio_streams(false);
+
+            match verus_child.try_wait() {
+                Ok(Some(exit_status)) => break exit_status,
+                Ok(None) => (),
+                Err(err) => {
+                    // remove temp file if created
+                    if let Err(err) = std::fs::remove_file(&temp_dep_file) {
+                        warning(&format!(
+                            "failed to delete `.d` file with this error message: {}",
+                            err
+                        ));
+                    }
+                    return Err(format!("failed to execute verus with error message {}", err,));
+                }
             }
         };
 
         let verus_duration = start_time.elapsed();
 
-        let toml_string = match record::error_report_toml_string(
+        write_stdio_streams(true);
+
+        #[cfg(feature = "record-history")]
+        record_history::print_verification_results(record, &verus_full_stdout);
+
+        let toml_value = match record::error_report_toml_string(
             original_args,
             z3_version_output,
-            verus_output,
+            verus_full_stdout,
+            verus_full_stderr,
             verus_duration,
+            exit_status.code(),
         ) {
-            Ok(toml_string) => toml_string,
+            Ok(toml_value) => toml_value,
             Err(err) => {
                 // remove temp file if created
                 if let Err(err) = std::fs::remove_file(&temp_dep_file) {
@@ -195,7 +320,23 @@ fn run() -> Result<(), String> {
             }
         };
 
-        let zip_path = record::write_zip_for(&temp_dep_file, toml_string);
+        let (deps_prefix, deps) = record::get_dependencies(&temp_dep_file)?;
+
+        #[cfg(feature = "record-history")]
+        record_history::record_history_commit(
+            record_history_repo,
+            &deps,
+            &deps_prefix,
+            &toml_value,
+        )?;
+
+        let zip_path = if record {
+            let toml_string = toml::to_string(&toml_value)
+                .map_err(|x| format!("Could not encode TOML value with error message: {}", x))?;
+            Some(record::write_zip_archive(deps_prefix, deps, toml_string))
+        } else {
+            None
+        };
 
         if let Err(err) = std::fs::remove_file(&temp_dep_file) {
             warning(&format!(
@@ -205,11 +346,13 @@ fn run() -> Result<(), String> {
             ));
         }
 
-        println!(
-            "Collected dependencies and stored your reproducible crate to zip file: {}\n",
-            zip_path?
-        );
+        if let Some(zip_path) = zip_path {
+            println!(
+                "Collected dependencies and stored your reproducible crate to zip file: {}\n",
+                zip_path?
+            );
+        }
 
-        Ok(())
+        Ok(exit_status)
     }
 }

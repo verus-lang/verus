@@ -391,7 +391,7 @@ fn run() -> Result<(), String> {
                     || y.as_str() == "--features"
             });
         args_bucket = new_args_bucket.into_iter().map(|(_, x)| x).collect();
-        feature_args.into_iter().map(|(_, x)| x).collect()
+        feature_args.into_iter().map(|(_, x)| x).skip(1).collect()
     };
 
     if !in_nextest {
@@ -663,6 +663,33 @@ fn run() -> Result<(), String> {
             for p in packages {
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
+                    let mut feature_args: Vec<_> = feature_args
+                        .iter()
+                        .filter(|a| a.as_str() != "record-history")
+                        .cloned()
+                        .collect();
+                    if feature_args.len() > 0 {
+                        feature_args.insert(0, "--features".to_owned());
+                    } else {
+                        feature_args.clear();
+                    }
+                    rust_verify_forward_args = cargo_forward_args
+                        .iter()
+                        .chain(feature_args.iter())
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    &rust_verify_forward_args
+                } else if p == &"verus" {
+                    let mut feature_args: Vec<_> = feature_args
+                        .iter()
+                        .filter(|a| a.as_str() == "record-history")
+                        .cloned()
+                        .collect();
+                    if feature_args.len() > 0 {
+                        feature_args.insert(0, "--features".to_owned());
+                    } else {
+                        feature_args.clear();
+                    }
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())
