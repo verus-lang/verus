@@ -329,9 +329,9 @@ pub fn run_verus(
             })
             .unwrap_or({
                 if cfg!(target_os = "windows") {
-                    std::ffi::OsString::from("../z3")
-                } else {
                     std::ffi::OsString::from("..\\z3.exe")
+                } else {
+                    std::ffi::OsString::from("../z3")
                 }
             }),
     );
