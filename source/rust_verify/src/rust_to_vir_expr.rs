@@ -1109,6 +1109,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 fun.span,
                                 args,
                                 modifier,
+                                false,
                             ))
                         }
                         rustc_hir::def::Res::Local(_) => {
@@ -1672,6 +1673,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 *fn_span,
                 all_args,
                 modifier,
+                true,
             )
         }
         ExprKind::Closure(..) => closure_to_vir(bctx, expr, expr_typ()?, false, modifier),
