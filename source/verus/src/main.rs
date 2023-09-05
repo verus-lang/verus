@@ -230,71 +230,68 @@ fn run() -> Result<std::process::ExitStatus, String> {
             }
         };
 
-        let (mut verus_stdout, mut verus_stderr) = (
+        let (verus_stdout, verus_stderr) = (
             verus_child.stdout.take().expect("no stdout on verus child process"),
             verus_child.stderr.take().expect("no stderr on verus child process"),
         );
 
-        let mut verus_full_stdout = Vec::with_capacity(1024);
-        let mut verus_full_stderr = Vec::with_capacity(1024);
-
-        let mut verus_stdout_buf = Vec::with_capacity(1024);
-        let mut verus_stderr_buf = Vec::with_capacity(1024);
-
-        let write_stdio_streams = &mut |to_end: bool| {
-            if to_end {
-                verus_stdout
-                    .read_to_end(&mut verus_stdout_buf)
-                    .expect("failed to write to stdout buffer");
-                verus_stderr
-                    .read_to_end(&mut verus_stderr_buf)
-                    .expect("failed to write to stderr buffer");
-            } else {
-                verus_stdout.read(&mut verus_stdout_buf).expect("failed to write to stdout buffer");
-                verus_stderr.read(&mut verus_stderr_buf).expect("failed to write to stderr buffer");
-            }
-
-            #[cfg(feature = "record-history")]
-            if !record {
-                std::io::stderr()
-                    .lock()
-                    .write_all(&verus_stderr_buf)
-                    .expect("failed to write to stderr");
-            }
-
-            verus_full_stdout
-                .write_all(&verus_stdout_buf)
-                .expect("failed to write to stdout buffer");
-            verus_full_stderr
-                .write_all(&verus_stderr_buf)
-                .expect("failed to write to stderr buffer");
-
-            verus_stdout_buf.clear();
-            verus_stderr_buf.clear();
-        };
-
-        let exit_status: std::process::ExitStatus = loop {
-            write_stdio_streams(false);
-
-            match verus_child.try_wait() {
-                Ok(Some(exit_status)) => break exit_status,
-                Ok(None) => (),
-                Err(err) => {
-                    // remove temp file if created
-                    if let Err(err) = std::fs::remove_file(&temp_dep_file) {
-                        warning(&format!(
-                            "failed to delete `.d` file with this error message: {}",
-                            err
-                        ));
+        fn start_reader_thread(
+            child_stdio: impl Read + Send + 'static,
+            print_to: Option<impl Write + Send + 'static>,
+        ) -> std::thread::JoinHandle<Vec<u8>> {
+            std::thread::spawn(move || {
+                let mut child_stdio = child_stdio;
+                let mut print_to = print_to;
+                let mut buffer = vec![0; 512];
+                let mut full_output = Vec::with_capacity(1024);
+                loop {
+                    let bytes = child_stdio.read(&mut buffer[..]).expect("read from stdio failed");
+                    if bytes == 0 {
+                        break;
                     }
-                    return Err(format!("failed to execute verus with error message {}", err,));
+                    if let Some(print_to) = &mut print_to {
+                        print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                    }
+                    full_output
+                        .write_all(&buffer[..bytes])
+                        .expect("failed to write to internal buffer");
                 }
+                let bytes = child_stdio.read_to_end(&mut buffer).expect("read from stdio failed");
+                if let Some(print_to) = &mut print_to {
+                    print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                }
+                full_output
+                    .write_all(&buffer[..bytes])
+                    .expect("failed to write to internal buffer");
+                full_output
+            })
+        }
+
+        let verus_full_stdout_handle =
+            start_reader_thread(verus_stdout, (!record).then(|| std::io::stdout()));
+        let verus_full_stderr_handle =
+            start_reader_thread(verus_stderr, (!record).then(|| std::io::stderr()));
+
+        let exit_status: std::process::ExitStatus = match verus_child.wait() {
+            Ok(exit_status) => exit_status,
+            Err(err) => {
+                // remove temp file if created
+                if let Err(err) = std::fs::remove_file(&temp_dep_file) {
+                    warning(&format!(
+                        "failed to delete `.d` file with this error message: {}",
+                        err
+                    ));
+                }
+                return Err(format!("failed to execute verus with error message {}", err,));
             }
         };
+
+        let verus_full_stdout =
+            verus_full_stdout_handle.join().expect("stdout reader thread failed");
+        let verus_full_stderr =
+            verus_full_stderr_handle.join().expect("stderr reader thread failed");
 
         let verus_duration = start_time.elapsed();
-
-        write_stdio_streams(true);
 
         #[cfg(feature = "record-history")]
         record_history::print_verification_results(record, &verus_full_stdout);
