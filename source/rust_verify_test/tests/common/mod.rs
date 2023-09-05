@@ -319,8 +319,12 @@ pub fn run_verus(
     }
 
     let mut child = std::process::Command::new(bin);
-    #[cfg(not(target_os = "windows"))]
-    let child = child.env("VERUS_Z3_PATH", "../z3");
+    if let Err(_) = std::env::var("VERUS_Z3_PATH") {
+        #[cfg(not(target_os = "windows"))]
+        child.env("VERUS_Z3_PATH", "../z3");
+        #[cfg(target_os = "windows")]
+        child.env("VERUS_Z3_PATH", "../z3.exe");
+    }
     let child = child
         .args(&verus_args[..])
         .stdout(std::process::Stdio::piped())
