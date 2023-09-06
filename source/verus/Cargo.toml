@@ -12,10 +12,11 @@ serde_json = "1.0"
 regex = "1"
 git2 = { version = "0.18", optional = true, default-features = false, features = [] }
 is-terminal = { version = "0.4.9", optional = true }
+rand = { version = "0.8.0", optional = true }
 
 [features]
 default = []
-record-history = ["git2", "is-terminal"]
+record-history = ["git2", "is-terminal", "rand"]
 
 [target."cfg(windows)".dependencies]
 win32job = "1"

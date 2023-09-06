@@ -131,7 +131,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
     let source_file = record::find_source_file(&args);
 
     #[cfg(feature = "record-history")]
-    let record_history_dirs = {
+    let record_history_project_dirs = {
         let source_file = source_file.as_ref()?;
         let project_dir = source_file
             .exists()
@@ -149,17 +149,16 @@ fn run() -> Result<std::process::ExitStatus, String> {
                     history_dir.display()
                 ));
             }
-            let git_dir = history_dir.join("git");
-            Some((project_dir, git_dir))
+            Some((project_dir, history_dir))
         } else {
             None
         }
     };
 
     #[cfg(not(feature = "record-history"))]
-    let record_history_dirs: Option<std::path::PathBuf> = None;
+    let record_history_project_dirs: Option<std::path::PathBuf> = None;
 
-    if record || record_history_dirs.is_some() {
+    if record || record_history_project_dirs.is_some() {
         fn ensure_arg(args: &mut Vec<String>, arg: String) {
             if !args.contains(&arg) {
                 args.push(arg.into());
@@ -172,7 +171,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
     }
 
     #[cfg(feature = "record-history")]
-    if record_history_dirs.is_some() && is_terminal::is_terminal(&std::io::stderr()) {
+    if record_history_project_dirs.is_some() && is_terminal::is_terminal(&std::io::stderr()) {
         if !args.iter().find(|x| x.starts_with("--color")).is_some() {
             args.push("--color=always".to_owned());
         }
@@ -185,7 +184,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
         .args(&args)
         .stdin(std::process::Stdio::inherit());
 
-    if !record && record_history_dirs.is_none() {
+    if !record && record_history_project_dirs.is_none() {
         match platform::exec(&mut cmd) {
             Err(e) => {
                 eprintln!("error: failed to execute rust_verify {e:?}");
@@ -201,7 +200,8 @@ fn run() -> Result<std::process::ExitStatus, String> {
         let temp_dep_file = record::temp_dep_file_from_source_file(&source_file)?;
 
         #[cfg(feature = "record-history")]
-        let record_history_repo = record_history::find_record_history_repo(record_history_dirs)?;
+        let record_history_repo =
+            record_history::find_record_history_repo(record_history_project_dirs)?;
 
         if record {
             eprintln!(
@@ -267,8 +267,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
             })
         }
 
-        let verus_full_stdout_handle =
-            start_reader_thread(verus_stdout, (!record).then(|| std::io::stdout()));
+        let verus_full_stdout_handle = start_reader_thread(verus_stdout, None::<std::io::Stdout>);
         let verus_full_stderr_handle =
             start_reader_thread(verus_stderr, (!record).then(|| std::io::stderr()));
 
