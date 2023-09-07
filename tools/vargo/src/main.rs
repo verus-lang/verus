@@ -140,6 +140,23 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
     "./z3"
 };
 
+fn filter_features(
+    feature_args: &Vec<String>,
+    accepted: std::collections::HashSet<&'static str>,
+) -> Vec<String> {
+    let mut feature_args: Vec<_> = feature_args
+        .iter()
+        .filter(|a| accepted.contains(a.as_str()))
+        .cloned()
+        .collect();
+    if feature_args.len() > 0 {
+        feature_args.insert(0, "--features".to_owned());
+    } else {
+        feature_args.clear();
+    }
+    feature_args
+}
+
 fn run() -> Result<(), String> {
     let vargo_nest = {
         let vargo_nest = std::env::var("VARGO_NEST")
@@ -391,7 +408,7 @@ fn run() -> Result<(), String> {
                     || y.as_str() == "--features"
             });
         args_bucket = new_args_bucket.into_iter().map(|(_, x)| x).collect();
-        feature_args.into_iter().map(|(_, x)| x).skip(1).collect()
+        feature_args.into_iter().map(|(_, x)| x).collect()
     };
 
     if !in_nextest {
@@ -524,6 +541,22 @@ fn run() -> Result<(), String> {
             return Err(format!("`vargo test` must be run with a specific package"));
         }
         (Task::Test { nextest }, Some(_package), false) => {
+            let (feature_args, new_args): (Vec<_>, Vec<_>) =
+                args.iter().cloned().enumerate().partition(|(i, y)| {
+                    args.get(i - 1)
+                        .map(|x| x.as_str() == "-F" || x.as_str() == "--features")
+                        .unwrap_or(false)
+                        || y.as_str() == "-F"
+                        || y.as_str() == "--features"
+                });
+            let (feature_args, mut new_args): (Vec<_>, Vec<_>) = (
+                feature_args.into_iter().map(|(_, x)| x).collect(),
+                new_args.into_iter().map(|(_, x)| x).collect(),
+            );
+            let dashdash_pos = new_args.iter().position(|x| x == "--").expect("-- in args");
+            let feature_args = filter_features(&feature_args, ["singular"].into_iter().collect());
+            new_args.splice(dashdash_pos..dashdash_pos, feature_args);
+            dbg!(&new_args);
             if nextest {
                 args.get(cmd_position + 1)
                     .and_then(|x| (x.as_str() == "run").then(|| ()))
@@ -537,7 +570,7 @@ fn run() -> Result<(), String> {
                     .env("VERUS_IN_VARGO", "1")
                     .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
                     .env("CARGO", current_exe)
-                    .args(&args);
+                    .args(&new_args);
                 log_command(&cargo, verbose);
                 let status = cargo
                     .status()
@@ -549,7 +582,7 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
                     .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
-                    .args(&args);
+                    .args(&new_args);
                 log_command(&cargo, verbose);
                 let status = cargo
                     .status()
@@ -661,18 +694,12 @@ fn run() -> Result<(), String> {
             };
 
             for p in packages {
+                // || y.as_str() == "-F"
+                // || y.as_str() == "--features"
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
-                    let mut feature_args: Vec<_> = feature_args
-                        .iter()
-                        .filter(|a| a.as_str() != "record-history")
-                        .cloned()
-                        .collect();
-                    if feature_args.len() > 0 {
-                        feature_args.insert(0, "--features".to_owned());
-                    } else {
-                        feature_args.clear();
-                    }
+                    let feature_args =
+                        filter_features(&feature_args, ["singular"].into_iter().collect());
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())
@@ -680,16 +707,8 @@ fn run() -> Result<(), String> {
                         .collect::<Vec<_>>();
                     &rust_verify_forward_args
                 } else if p == &"verus" {
-                    let mut feature_args: Vec<_> = feature_args
-                        .iter()
-                        .filter(|a| a.as_str() == "record-history")
-                        .cloned()
-                        .collect();
-                    if feature_args.len() > 0 {
-                        feature_args.insert(0, "--features".to_owned());
-                    } else {
-                        feature_args.clear();
-                    }
+                    let feature_args =
+                        filter_features(&feature_args, ["record-history"].into_iter().collect());
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())
