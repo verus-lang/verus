@@ -240,4 +240,15 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
     vec.truncate(len)
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_vec_from_elem<T>(elem: T, n: usize) -> (return_value: Vec<T>)
+    where
+        T: Clone
+    ensures
+        return_value.len() == n,
+        forall |i| 0 <= i < n ==> return_value[i] == elem,
+{
+    std::vec::from_elem(elem, n)
+}
+
 }
