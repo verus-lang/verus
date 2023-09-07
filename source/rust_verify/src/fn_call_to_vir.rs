@@ -44,6 +44,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     _fn_span: Span,
     args: Vec<&'tcx Expr<'tcx>>,
     outer_modifier: ExprModifier,
+    is_method: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
@@ -101,7 +102,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
             // operation in the SMT encoding.)
-            let node_substs = bctx.types.node_substs(expr.hir_id);
             let arg_typ = match node_substs[0].unpack() {
                 GenericArgKind::Type(ty) => ty,
                 _ => {
@@ -111,7 +111,11 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
             if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                record_compilable_operator(bctx, expr, CompilableOperator::SmartPtrClone);
+                record_compilable_operator(
+                    bctx,
+                    expr,
+                    CompilableOperator::SmartPtrClone { is_method },
+                );
                 return Ok(arg);
             }
         }

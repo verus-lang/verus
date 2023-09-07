@@ -637,16 +637,15 @@ fn erase_call<'tcx>(
         ResolvedCall::CompilableOperator(op) => {
             use crate::erase::CompilableOperator::*;
             let builtin_method = match op {
-                SmartPtrClone => Some("clone"),
-                TrackedGet => Some("get"),
-                TrackedBorrow => Some("borrow"),
-                TrackedBorrowMut => Some("borrow_mut"),
+                SmartPtrClone { is_method } => Some((*is_method, "clone")),
+                TrackedGet => Some((true, "get")),
+                TrackedBorrow => Some((true, "borrow")),
+                TrackedBorrowMut => Some((true, "borrow_mut")),
                 GhostExec | TrackedNew | TrackedExec | TrackedExecBorrow => None,
                 IntIntrinsic | Implies | SmartPtrNew | NewStrLit => None,
                 GhostSplitTuple | TrackedSplitTuple => None,
             };
-            assert!(builtin_method.is_some() == is_method);
-            if let Some(method) = builtin_method {
+            if let Some((true, method)) = builtin_method {
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };

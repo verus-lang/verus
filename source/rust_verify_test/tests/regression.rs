@@ -807,3 +807,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] zulip_rc_clone verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+
+        fn test(rc: Rc<Vec<u8>>) {
+            let rc2 = Rc::clone(&rc);
+        }
+    } => Ok(())
+}
