@@ -52,13 +52,13 @@ pub struct GlobalCtx {
 
 // Context for verifying one function
 pub struct FunctionCtx {
-    // false normally, true if we're just checking recommends
-    pub checking_recommends: bool,
-    // false normally, true if we're just checking recommends for a non-spec function
-    pub checking_recommends_for_non_spec: bool,
+    // false normally, true if we're just checking spec preconditions
+    pub checking_spec_preconditions: bool,
+    // false normally, true if we're just checking spec preconditions for a non-spec function
+    pub checking_spec_preconditions_for_non_spec: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
-    // used to create quantifier identifiers and for checking_recommends
+    // used to create quantifier identifiers and for checking_spec_preconditions
     pub current_fun: Fun,
 }
 
@@ -91,16 +91,16 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn checking_recommends(&self) -> bool {
+    pub fn checking_spec_preconditions(&self) -> bool {
         match self.fun {
-            Some(FunctionCtx { checking_recommends: true, .. }) => true,
+            Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             _ => false,
         }
     }
 
-    pub fn checking_recommends_for_non_spec(&self) -> bool {
+    pub fn checking_spec_preconditions_for_non_spec(&self) -> bool {
         match self.fun {
-            Some(FunctionCtx { checking_recommends_for_non_spec: true, .. }) => true,
+            Some(FunctionCtx { checking_spec_preconditions_for_non_spec: true, .. }) => true,
             _ => false,
         }
     }

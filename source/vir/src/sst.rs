@@ -122,7 +122,7 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    // call to exec/proof function (or spec function for checking_recommends)
+    // call to exec/proof function (or spec function for checking_spec_preconditions)
     Call {
         fun: Fun,
         resolved_method: Option<(Fun, Typs)>,

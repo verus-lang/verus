@@ -144,7 +144,9 @@ fn func_body_to_air(
     state.declare_params(&pars);
     state.view_as_spec = true;
     state.fun_ssts = fun_ssts;
-    let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
+    // Use expr_to_pure_exp_skip_checks here
+    // because spec precondition checking is performed as a separate query
+    let body_exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
     let inline =
         SstInline { typ_params: function.x.typ_params.clone(), do_inline: function.x.attrs.inline };
@@ -162,7 +164,20 @@ fn func_body_to_air(
         // "when" means the function is only defined if the requirements hold,
         // including trait bound requirements
         let mut def_reqs = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
-        let exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, &state.fun_ssts, &pars, req)?;
+        let (check_stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, req)?;
+        let exp = state.finalize_exp(ctx, &state.fun_ssts, &exp)?;
+        for check_stm in check_stms.iter() {
+            let check_stm = state.finalize_stm(
+                ctx,
+                diagnostics,
+                &state.fun_ssts,
+                &check_stm,
+                &Arc::new(vec![]),
+                &Arc::new(vec![]),
+                None,
+            )?;
+            decrease_by_stms.push(check_stm);
+        }
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
         def_reqs.push(expr);
@@ -342,7 +357,9 @@ pub fn req_ens_to_air(
             exprs.push(e.clone());
         }
         for e in specs.iter() {
-            let exp = crate::ast_to_sst::expr_to_exp(ctx, diagnostics, fun_ssts, params, e)?;
+            // Use expr_to_exp_skip_checks because we check req/ens in body
+            let exp =
+                crate::ast_to_sst::expr_to_exp_skip_checks(ctx, diagnostics, fun_ssts, params, e)?;
             let expr_ctxt = if is_singular {
                 ExprCtxt::new_mode_singular(ExprMode::Spec, true)
             } else {
@@ -644,7 +661,9 @@ pub fn func_axioms_to_air(
             if let Some((params, req_ens)) = &function.x.broadcast_forall {
                 let span = &function.span;
                 let params = params_to_pre_post_pars(params, false);
-                let exp = crate::ast_to_sst::expr_to_bind_decls_exp(
+                // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
+                // because the requires/ensures are checked when the function itself is checked
+                let exp = crate::ast_to_sst::expr_to_bind_decls_exp_skip_checks(
                     ctx,
                     diagnostics,
                     &new_fun_ssts,
@@ -694,13 +713,13 @@ pub fn func_def_to_air(
     fun_ssts: SstMap,
     function: &Function,
     phase: FuncDefPhase,
-    checking_recommends: bool,
+    checking_spec_preconditions: bool,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
     let erasure_mode = match (function.x.mode, function.x.is_const) {
         (Mode::Spec, true) => Mode::Exec,
         (mode, _) => mode,
     };
-    match (phase, erasure_mode, checking_recommends, &function.x.body) {
+    match (phase, erasure_mode, checking_spec_preconditions, &function.x.body) {
         (_, _, _, None)
         | (FuncDefPhase::CheckingSpecs, Mode::Proof | Mode::Exec, _, Some(_))
         | (FuncDefPhase::CheckingSpecs, Mode::Spec, false, Some(_))
@@ -773,7 +792,7 @@ pub fn func_def_to_air(
             ));
             for e in req_ens_function.x.require.iter() {
                 let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
-                if ctx.checking_recommends() {
+                if ctx.checking_spec_preconditions() {
                     let (stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(
                         ctx,
                         &mut state,
@@ -782,7 +801,8 @@ pub fn func_def_to_air(
                     req_stms.extend(stms);
                     req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
-                    reqs.push(crate::ast_to_sst::expr_to_exp(
+                    // skip checks because we call expr_to_pure_exp_check above
+                    reqs.push(crate::ast_to_sst::expr_to_exp_skip_checks(
                         ctx,
                         diagnostics,
                         &state.fun_ssts,
@@ -791,18 +811,25 @@ pub fn func_def_to_air(
                     )?);
                 }
             }
-            let mut ens_recommend_stms: Vec<Stm> = Vec::new();
+            for e in function.x.decrease.iter() {
+                if ctx.checking_spec_preconditions() {
+                    let stms = crate::ast_to_sst::check_pure_expr(ctx, &mut state, &e)?;
+                    req_stms.extend(stms);
+                }
+            }
+            let mut ens_spec_precondition_stms: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.ensure.iter() {
                 let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
-                if ctx.checking_recommends() {
-                    ens_recommend_stms.extend(crate::ast_to_sst::check_pure_expr(
+                if ctx.checking_spec_preconditions() {
+                    ens_spec_precondition_stms.extend(crate::ast_to_sst::check_pure_expr(
                         ctx,
                         &mut state,
                         &e_with_req_ens_params,
                     )?);
                 } else {
-                    enss.push(crate::ast_to_sst::expr_to_exp(
+                    // skip checks because we call expr_to_pure_exp_check above
+                    enss.push(crate::ast_to_sst::expr_to_exp_skip_checks(
                         ctx,
                         diagnostics,
                         &state.fun_ssts,
@@ -815,7 +842,7 @@ pub fn func_def_to_air(
 
             // AST --> SST
             let mut stm = crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
-            if ctx.checking_recommends() && trait_typ_substs.len() == 0 {
+            if ctx.checking_spec_preconditions() && trait_typ_substs.len() == 0 {
                 if let Some(fun) = &function.x.decrease_by {
                     let decrease_by_fun = &ctx.func_map[fun];
                     let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
@@ -838,7 +865,7 @@ pub fn func_def_to_air(
                 &ens_pars,
                 dest.clone(),
             )?;
-            let ens_recommend_stms: Result<Vec<_>, _> = ens_recommend_stms
+            let ens_spec_precondition_stms: Result<Vec<_>, _> = ens_spec_precondition_stms
                 .iter()
                 .map(|s| {
                     state.finalize_stm(
@@ -852,13 +879,13 @@ pub fn func_def_to_air(
                     )
                 })
                 .collect();
-            let ens_recommend_stms = ens_recommend_stms?;
+            let ens_spec_precondition_stms = ens_spec_precondition_stms?;
 
             // Check termination
             //
             let no_termination_check =
                 function.x.mode == Mode::Exec && function.x.decrease.len() == 0;
-            let (decls, stm) = if no_termination_check || ctx.checking_recommends() {
+            let (decls, stm) = if no_termination_check || ctx.checking_spec_preconditions() {
                 (vec![], stm)
             } else {
                 crate::recursion::check_termination_stm(
@@ -886,7 +913,7 @@ pub fn func_def_to_air(
                 &function.x.attrs.hidden,
                 &reqs,
                 &enss,
-                &ens_recommend_stms,
+                &ens_spec_precondition_stms,
                 &function.x.mask_spec,
                 function.x.mode,
                 &stm,

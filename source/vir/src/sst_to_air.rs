@@ -1390,12 +1390,12 @@ pub(crate) enum PostConditionKind {
 
 struct PostConditionInfo {
     /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_recommend_stms`.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
     dest: Option<UniqueIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
     ens_exprs: Vec<(Span, Expr)>,
     /// Recommends checks (only used in recommends-checking mode)
-    ens_recommend_stms: Vec<Stm>,
+    ens_spec_precondition_stms: Vec<Stm>,
     /// Extra info about PostCondition for error reporting
     kind: PostConditionKind,
 }
@@ -1638,7 +1638,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
             if func.x.require.len() > 0
-                && (!ctx.checking_recommends_for_non_spec() || *mode == Mode::Spec)
+                && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
@@ -1646,17 +1646,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
                 }
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
-                let description = match (ctx.checking_recommends(), &func.x.attrs.custom_req_err) {
-                    (true, None) => "recommendation not met".to_string(),
-                    (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
-                    (_, Some(s)) => s.clone(),
-                };
+                let description =
+                    match (ctx.checking_spec_preconditions(), &func.x.attrs.custom_req_err) {
+                        (true, None) => "recommendation not met".to_string(),
+                        (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
+                        (_, Some(s)) => s.clone(),
+                    };
                 let error = msg_error(description, &stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
 
             let callee_mask_set = mask_set_from_spec(&func.x.mask_spec, func.x.mode);
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
 
@@ -1789,8 +1790,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
         StmX::Return { base_error, ret_exp, inside_body } => {
-            let skip = if ctx.checking_recommends() {
-                state.post_condition_info.ens_recommend_stms.len() == 0
+            let skip = if ctx.checking_spec_preconditions() {
+                state.post_condition_info.ens_spec_precondition_stms.len() == 0
             } else {
                 state.post_condition_info.ens_exprs.len() == 0
             };
@@ -1813,8 +1814,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     vec![]
                 };
 
-                if ctx.checking_recommends() {
-                    for stm in state.post_condition_info.ens_recommend_stms.clone().iter() {
+                if ctx.checking_spec_preconditions() {
+                    for stm in state.post_condition_info.ens_spec_precondition_stms.clone().iter() {
                         let mut new_stmts = stm_to_stmts(ctx, state, stm)?;
                         stmts.append(&mut new_stmts);
                     }
@@ -1984,7 +1985,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::BreakOrContinue { label, is_break } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 let loop_info = if label.is_some() {
                     state
                         .loop_infos
@@ -2160,7 +2161,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             air_body.append(&mut stm_to_stmts(ctx, state, body)?);
             state.loop_infos.pop();
 
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 for (span, inv) in invs_entry.iter() {
                     let error = msg_error(crate::def::INV_FAIL_LOOP_END, span);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
@@ -2191,7 +2192,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 for (span, inv) in invs_entry.iter() {
                     let error = msg_error(crate::def::INV_FAIL_LOOP_FRONT, span);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
@@ -2242,7 +2243,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // Assert that the namespace of the inv we are opening is in the mask set
             let typ_args = get_inv_typ_args(&inv_exp.typ);
             let namespace_expr = call_namespace(ctx, inv_expr.clone(), &typ_args, *atomicity);
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
             }
 
@@ -2268,7 +2269,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // Note that we re-use main_inv here; but main_inv references the variable
             // given by `uid` which may have been assigned to since the start of the block.
             // so this may evaluate differently in the SMT.
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 let error =
                     msg_error("Cannot show invariant holds at end of block", &body_stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
@@ -2415,7 +2416,7 @@ pub(crate) fn body_stm_to_air(
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
-    ens_recommend_stms: &Vec<Stm>,
+    ens_spec_precondition_stms: &Vec<Stm>,
     mask_spec: &MaskSpec,
     mode: Mode,
     stm: &Stm,
@@ -2484,7 +2485,7 @@ pub(crate) fn body_stm_to_air(
         ens_exprs.push((ens.span.clone(), e));
     }
 
-    let ens_recommend_stms: Vec<_> = ens_recommend_stms
+    let ens_spec_precondition_stms: Vec<_> = ens_spec_precondition_stms
         .iter()
         .map(|ens_recommend_stm| subst_stm(&trait_typ_substs, &HashMap::new(), ens_recommend_stm))
         .collect();
@@ -2511,7 +2512,7 @@ pub(crate) fn body_stm_to_air(
         post_condition_info: PostConditionInfo {
             dest,
             ens_exprs,
-            ens_recommend_stms: ens_recommend_stms.clone(),
+            ens_spec_precondition_stms: ens_spec_precondition_stms.clone(),
             kind: post_condition_kind,
         },
         loop_infos: Vec::new(),

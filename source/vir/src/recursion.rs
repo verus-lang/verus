@@ -3,7 +3,7 @@ use crate::ast::{
     GenericBoundX, IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
     VirErr,
 };
-use crate::ast_to_sst::expr_to_exp;
+use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::{error, msg_error, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
@@ -159,7 +159,8 @@ fn check_decrease_call(
         .collect();
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
-        let decreases_exp = expr_to_exp(
+        // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
+        let decreases_exp = expr_to_exp_skip_checks(
             ctxt.ctx,
             diagnostics,
             fun_ssts,
@@ -366,8 +367,15 @@ pub(crate) fn check_termination_exp(
         return error(&function.span, "recursive function must have a decreases clause");
     }
 
+    // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, diagnostics, fun_ssts, &params_to_pars(&function.x.params, true), e)
+        expr_to_exp_skip_checks(
+            ctx,
+            diagnostics,
+            fun_ssts,
+            &params_to_pars(&function.x.params, true),
+            e,
+        )
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let ctxt =
@@ -443,8 +451,15 @@ pub(crate) fn check_termination_stm(
         return error(&function.span, "recursive function must have a decreases clause");
     }
 
+    // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, diagnostics, fun_ssts, &params_to_pars(&function.x.params, true), e)
+        expr_to_exp_skip_checks(
+            ctx,
+            diagnostics,
+            fun_ssts,
+            &params_to_pars(&function.x.params, true),
+            e,
+        )
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let ctxt =
