@@ -15,6 +15,7 @@ use verus_rustc_interface::interface::Compiler;
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -1964,10 +1965,10 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         if !compiler.session().compile_status().is_ok() {
             return verus_rustc_driver::Compilation::Stop;
         }
-        let crate_name: String =
-            queries.crate_name().expect("crate name").borrow().to_ident_string(); // TODO(main_new) correct?
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+            let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
+
             let imported = match crate::import_export::import_crates(&self.verifier.args) {
                 Ok(imported) => imported,
                 Err(err) => {
