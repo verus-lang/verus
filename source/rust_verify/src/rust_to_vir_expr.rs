@@ -274,7 +274,7 @@ pub(crate) fn get_adt_res<'tcx>(
             Ok((struct_did, variant_def, false))
         }
         Res::Def(DefKind::TyAlias, alias_did) => {
-            let alias_ty = tcx.type_of(alias_did);
+            let alias_ty = tcx.type_of(alias_did).skip_binder();
 
             let struct_did = match alias_ty.kind() {
                 TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
@@ -290,7 +290,7 @@ pub(crate) fn get_adt_res<'tcx>(
             Ok((struct_did, variant_def, false))
         }
         Res::SelfCtor(impl_id) | Res::SelfTyAlias { alias_to: impl_id, .. } => {
-            let self_ty = tcx.type_of(impl_id);
+            let self_ty = tcx.type_of(impl_id).skip_binder();
             let struct_did = match self_ty.kind() {
                 TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
                 _ => {
@@ -1776,7 +1776,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Repeat(..) => unsupported_err!(expr.span, format!("repeat expressions")),
         ExprKind::Yield(..) => unsupported_err!(expr.span, format!("yield expressions")),
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
-        ExprKind::Err => unsupported_err!(expr.span, format!("Err expressions")),
+        ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),
     }
 }
 

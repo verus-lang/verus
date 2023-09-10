@@ -22,7 +22,7 @@ use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::{EarlyBinder, TyKind};
+use rustc_middle::ty::TyKind;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -433,7 +433,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 // implementation of the function for the type
                                 let trait_ = tcx.trait_of_item(res.def_id()).expect("TODO");
                                 let ty_ = tcx.type_of(ty_res.def_id());
-                                *tcx.non_blanket_impls_for_ty(trait_, ty_)
+                                *tcx.non_blanket_impls_for_ty(trait_, ty_.skip_binder())
                                     .find_map(|impl_| {
                                         let implementor_ids = &tcx.impl_item_implementor_ids(impl_);
                                         implementor_ids.get(&res.def_id())
@@ -452,7 +452,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                                             .find_by_name_and_namespace(
                                                 tcx,
                                                 ident,
-                                                rustc_resolve::Namespace::ValueNS,
+                                                rustc_hir::def::Namespace::ValueNS,
                                                 *impl_def_id,
                                             );
                                         found.map(|f| f.def_id)
@@ -1315,7 +1315,7 @@ fn get_impl_paths<'tcx>(
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
 ) -> vir::ast::ImplPaths {
-    if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).kind() {
+    if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).skip_binder().kind() {
         crate::rust_to_vir_base::get_impl_paths(
             bctx.ctxt.tcx,
             &bctx.ctxt.verus_items,
@@ -1640,8 +1640,7 @@ fn mk_vir_args<'tcx>(
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     // TODO(main_new) is calling `subst` still correct with the new API?
     let tcx = bctx.ctxt.tcx;
-    let raw_inputs =
-        EarlyBinder(bctx.ctxt.tcx.fn_sig(f)).subst(tcx, node_substs).skip_binder().inputs();
+    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).subst(tcx, node_substs).skip_binder().inputs();
     assert!(raw_inputs.len() == args.len());
     args.iter()
         .zip(raw_inputs)
