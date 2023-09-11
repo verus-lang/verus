@@ -53,6 +53,7 @@ pub mod rust_to_vir_func;
 #[cfg(feature = "singular")]
 pub mod singular;
 mod spans;
+mod user_filter;
 pub mod util;
 pub mod verifier;
 pub mod verus_items;
