@@ -20,6 +20,7 @@ pub type Trig = Exps;
 pub type Trigs = Arc<Vec<Trig>>;
 
 pub struct BndInfo {
+    pub module: Path,
     pub span: Span,
     pub trigs: Trigs,
 }

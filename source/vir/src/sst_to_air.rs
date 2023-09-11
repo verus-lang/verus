@@ -722,7 +722,8 @@ fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
             exp.x
         ),
     };
-    let bnd_info = BndInfo { span: exp.span.clone(), trigs: trigs.clone() };
+    let bnd_info =
+        BndInfo { module: ctx.module.clone(), span: exp.span.clone(), trigs: trigs.clone() };
     ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
     Some(Arc::new(qid))
 }
