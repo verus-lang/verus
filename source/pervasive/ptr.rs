@@ -136,7 +136,7 @@ verus!{
 #[verifier(external_body)]
 #[verifier::accept_recursive_types(V)]
 pub struct PPtr<V> {
-    uptr: *mut V,
+    pub uptr: *mut V,
 }
 
 // PPtr is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
