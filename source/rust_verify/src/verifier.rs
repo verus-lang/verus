@@ -10,11 +10,12 @@ use air::messages::{message, note, note_bare, Diagnostics, Message, MessageLabel
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
-use verus_rustc_interface::interface::Compiler;
+use rustc_interface::interface::Compiler;
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -1942,13 +1943,13 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
 > = std::sync::RwLock::new(None);
 
 fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
-    let mut crate_ = (verus_rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());
+    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());
     crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
     crate_
 }
 
-impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
-    fn config(&mut self, config: &mut verus_rustc_interface::interface::Config) {
+impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         config.override_queries = Some(|_session, providers, _extern_providers| {
             providers.hir_crate = hir_crate;
         });
@@ -1957,17 +1958,17 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,
-        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
-    ) -> verus_rustc_driver::Compilation {
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
         if !compiler.session().compile_status().is_ok() {
-            return verus_rustc_driver::Compilation::Stop;
+            return rustc_driver::Compilation::Stop;
         }
-        let crate_name: String =
-            queries.crate_name().expect("crate name").borrow().to_ident_string(); // TODO(main_new) correct?
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+            let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
+
             let imported = match crate::import_export::import_crates(&self.verifier.args) {
                 Ok(imported) => imported,
                 Err(err) => {
@@ -2096,6 +2097,6 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
         });
-        verus_rustc_driver::Compilation::Stop
+        rustc_driver::Compilation::Stop
     }
 }

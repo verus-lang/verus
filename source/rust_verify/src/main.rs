@@ -81,7 +81,7 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
-    verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+    rustc_driver::init_env_logger("RUSTVERIFY_LOG");
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
