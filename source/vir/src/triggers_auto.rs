@@ -520,8 +520,10 @@ fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
     total
 }
 
-// Find the best trigger that covers all the trigger variables.
-// This is a variant of minimum-set-cover, which is NP-complete.
+/// Compute a set of covering triggers
+/// If all_triggers is false, Find the best trigger that covers all the trigger variables.
+/// If all_triggers is true, Return all minimal covering triggers
+/// This is a variant of minimum-set-cover, which is NP-complete.
 fn compute_triggers(
     ctxt: &Ctxt,
     state: &mut State,
