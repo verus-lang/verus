@@ -23,6 +23,7 @@ impl<A: View> View for &A {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<A: View> View for Box<A> {
     type V = A::V;
     #[verifier::external_body]
@@ -31,6 +32,7 @@ impl<A: View> View for Box<A> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<A: View> View for std::rc::Rc<A> {
     type V = A::V;
     #[verifier::external_body]
@@ -39,6 +41,7 @@ impl<A: View> View for std::rc::Rc<A> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<A: View> View for std::sync::Arc<A> {
     type V = A::V;
     #[verifier::external_body]
