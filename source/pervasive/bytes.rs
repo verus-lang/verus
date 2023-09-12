@@ -215,9 +215,8 @@ pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
 pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
   ensures
     forall |x: u64|
-      #![trigger spec_u64_to_le_bytes(x)]
     {
-      &&& spec_u64_to_le_bytes(x).len() == 8
+      &&& (#[trigger] spec_u64_to_le_bytes(x)).len() == 8
       &&& spec_u64_from_le_bytes(spec_u64_to_le_bytes(x)) == x
     },
     forall |s: Seq<u8>|
@@ -225,7 +224,7 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
       s.len() == 8 ==> spec_u64_to_le_bytes(spec_u64_from_le_bytes(s)) == s,
 {
   assert forall |x: u64|  {
-    &&& #[trigger] spec_u64_to_le_bytes(x).len() == 8
+    &&& (#[trigger] spec_u64_to_le_bytes(x)).len() == 8
     &&& spec_u64_from_le_bytes(spec_u64_to_le_bytes(x)) == x
   } by {
     let s = spec_u64_to_le_bytes(x);
@@ -350,14 +349,14 @@ pub proof fn lemma_auto_spec_u128_to_from_le_bytes()
   ensures
     forall |x: u128|
     {
-      &&& #[trigger] spec_u128_to_le_bytes(x).len() == 16
+      &&& (#[trigger] spec_u128_to_le_bytes(x)).len() == 16
       &&& spec_u128_from_le_bytes(spec_u128_to_le_bytes(x)) == x
     },
     forall |s: Seq<u8>|
       s.len() == 16 ==> #[trigger] spec_u128_to_le_bytes(spec_u128_from_le_bytes(s)) == s,
 {
   assert forall |x: u128|  {
-    &&& #[trigger] spec_u128_to_le_bytes(x).len() == 16
+    &&& (#[trigger] spec_u128_to_le_bytes(x)).len() == 16
     &&& spec_u128_from_le_bytes(spec_u128_to_le_bytes(x)) == x
   } by {
     let s = spec_u128_to_le_bytes(x);
