@@ -173,6 +173,18 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let vstd_no_std = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-std")
+        .map(|p| args.remove(p))
+        .is_some();
+
+    let vstd_no_alloc = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-alloc")
+        .map(|p| args.remove(p))
+        .is_some();
+
     let mut args_bucket = args.clone();
     let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
 
@@ -814,6 +826,12 @@ fn run() -> Result<(), String> {
                         }
                         if vstd_no_verify {
                             vstd_build = vstd_build.arg("--no-verify");
+                        }
+                        if vstd_no_std {
+                            vstd_build = vstd_build.arg("--no-std");
+                        }
+                        if vstd_no_alloc {
+                            vstd_build = vstd_build.arg("--no-alloc");
                         }
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");
