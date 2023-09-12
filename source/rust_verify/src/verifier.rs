@@ -27,7 +27,7 @@ use vir::context::GlobalCtx;
 
 use crate::user_filter::UserFilter;
 use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
-use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
+use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to, friendly_fun_name_crate_relative};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
 use vir::prelude::PreludeConfig;
@@ -404,7 +404,7 @@ impl Verifier {
         command: &Command,
         context: &(&air::ast::Span, &str),
         is_singular: bool,
-    ) -> bool {
+    ) -> (bool, bool) {
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
@@ -449,6 +449,7 @@ impl Verifier {
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
         let mut invalidity = false;
+        let mut timed_out = false;
         loop {
             match result {
                 ValidityResult::Valid => {
@@ -472,10 +473,9 @@ impl Verifier {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     reporter.report(&message(level, msg, &context.0));
-                    if self.args.profile {
-                        let profiler = Profiler::new(reporter);
-                        self.print_profile_stats(reporter, profiler, qid_map);
-                    }
+                    // remove profiling here, and profile on the second pass
+                    // need to report that we need to rerun from this function (into spinoff)
+                    timed_out = true;
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
@@ -556,7 +556,7 @@ impl Verifier {
             air_context.finish_query();
         }
 
-        invalidity
+        (invalidity, timed_out)
     }
 
     fn run_commands(
@@ -601,14 +601,15 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-    ) -> bool {
+    ) -> (bool, bool) {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name, module);
         if !includes_function {
-            return false;
+            return (false, false);
         }
 
         let mut invalidity = false;
+        let mut timed_out = false;
         let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
         if commands.len() > 0 {
@@ -618,7 +619,7 @@ impl Verifier {
         }
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
-            let result_invalidity = self.check_result_validity(
+            let (result_invalidity, result_timeout) = self.check_result_validity(
                 module,
                 reporter,
                 source_map,
@@ -632,9 +633,10 @@ impl Verifier {
                 *prover_choice == vir::def::ProverChoice::Singular,
             );
             invalidity = invalidity || result_invalidity;
+            timed_out = timed_out || result_timeout;
         }
 
-        invalidity
+        (invalidity, timed_out)
     }
 
     fn new_air_context_with_prelude(
@@ -642,6 +644,7 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
         module_path: &vir::ast::Path,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
+        function_name: Option<String>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
     ) -> Result<air::context::Context, VirErr> {
@@ -650,6 +653,9 @@ impl Verifier {
         air_context.set_debug(self.args.debug);
         air_context.set_profile(self.args.profile);
         air_context.set_profile_all(self.args.profile_all);
+        if let Some(f_name) = function_name {
+            air_context.set_query_function_name(f_name);
+        }
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         let count_msg = query_function_path_counter
@@ -741,6 +747,7 @@ impl Verifier {
         function_decl_commands: Arc<Vec<(Commands, String)>>,
         function_spec_commands: Arc<Vec<(Commands, String)>>,
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
+        function_name : Option<String>,
         is_rerun: bool,
         context_counter: usize,
         span: &air::ast::Span,
@@ -749,6 +756,7 @@ impl Verifier {
             diagnostics,
             module_path,
             Some((function_path, context_counter)),
+            function_name,
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
         )?;
@@ -811,6 +819,7 @@ impl Verifier {
         let mut air_context = self.new_air_context_with_prelude(
             reporter,
             module,
+            None,
             None,
             false,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
@@ -981,7 +990,7 @@ impl Verifier {
                 if not_verifying_owning_module {
                     continue;
                 }
-                let invalidity = self.run_commands_queries(
+                let (invalidity, _) = self.run_commands_queries(
                     reporter,
                     source_map,
                     MessageLevel::Error,
@@ -1057,15 +1066,20 @@ impl Verifier {
         // Create queries to check the validity of proof/exec function bodies
         let no_auto_recommends_check = self.args.no_auto_recommends_check;
         let expand_errors_check = self.args.expand_errors;
+        let profile_flag = self.args.profile;
+        let profile_all_flag = self.args.profile_all;
         self.expand_targets = vec![];
         for function in &krate.functions {
+            let mut has_queries = false;
             if Some(module.clone()) != function.x.owning_module {
                 continue;
             }
             let check_validity = &mut |recommends_rerun: bool,
                                        expands_rerun: bool,
+                                       profile_rerun: bool,
+                                       query_update : &mut bool,
                                        mut fun_ssts: SstMap|
-             -> Result<(bool, SstMap), VirErr> {
+             -> Result<(bool, bool, SstMap), VirErr> {
                 let mut spinoff_context_counter = 1;
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 ctx.expand_flag = expands_rerun;
@@ -1091,7 +1105,9 @@ impl Verifier {
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
 
                 let mut function_invalidity = false;
+                let mut function_timed_out = false;
                 for command in commands.iter().map(|x| &*x) {
+                    *query_update = true;
                     let CommandsWithContextX {
                         span,
                         desc: _,
@@ -1120,7 +1136,8 @@ impl Verifier {
                     }
                     let mut spinoff_z3_context;
                     let do_spinoff = (*prover_choice == vir::def::ProverChoice::Spinoff)
-                        || (*prover_choice == vir::def::ProverChoice::BitVector);
+                        || (*prover_choice == vir::def::ProverChoice::BitVector)
+                        || profile_rerun;
                     let query_air_context = if do_spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
@@ -1133,6 +1150,7 @@ impl Verifier {
                             function_decl_commands.clone(),
                             function_spec_commands.clone(),
                             function_axiom_commands.clone(),
+                            Some(friendly_fun_name_crate_relative(module, &function.x.name)),
                             recommends_rerun,
                             spinoff_context_counter,
                             &span,
@@ -1147,7 +1165,7 @@ impl Verifier {
                         &mut air_context
                     };
                     let desc_prefix = recommends_rerun.then(|| "recommends check: ");
-                    let command_invalidity = self.run_commands_queries(
+                    let (command_invalidity, command_timed_out) = self.run_commands_queries(
                         reporter,
                         source_map,
                         level,
@@ -1168,16 +1186,27 @@ impl Verifier {
                     }
 
                     function_invalidity = function_invalidity || command_invalidity;
+                    function_timed_out = function_timed_out || command_timed_out;
                 }
-                Ok((function_invalidity, fun_ssts))
+                Ok((function_invalidity, function_timed_out, fun_ssts))
             };
-            let (function_invalidity, new_fun_ssts) = check_validity(false, false, fun_ssts)?;
+            let (function_invalidity, function_timed_out, new_fun_ssts) = check_validity(false, false, false, &mut has_queries, fun_ssts)?;
             fun_ssts = new_fun_ssts;
             if function_invalidity && expand_errors_check {
-                fun_ssts = check_validity(false, true, fun_ssts)?.1;
+                fun_ssts = check_validity(false, true, false, &mut has_queries, fun_ssts)?.2;
             }
             if function_invalidity && !no_auto_recommends_check {
-                fun_ssts = check_validity(true, false, fun_ssts)?.1;
+                fun_ssts = check_validity(true, false, false, &mut has_queries, fun_ssts)?.2;
+            }
+            if has_queries &&
+                ((function_timed_out && profile_flag) || profile_all_flag) {
+                // TODO: double check time statistics/fun_sst getting messed up?
+                fun_ssts = check_validity(false, false, true, &mut has_queries, fun_ssts)?.2;
+                let profiler = Profiler::new(
+                    &format!("{}.log", friendly_fun_name_crate_relative(module, &function.x.name).replace("::", "_")), 
+                    reporter
+                );
+                self.print_profile_stats(reporter, profiler, &ctx.global.qid_map.borrow());
             }
         }
         ctx.fun = None;
@@ -1503,10 +1532,7 @@ impl Verifier {
 
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
-        if self.args.profile_all {
-            let profiler = Profiler::new(&reporter);
-            self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
-        } else if self.args.profile && self.count_errors == 0 {
+        if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
                 "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
             );
