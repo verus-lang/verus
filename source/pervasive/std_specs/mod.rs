@@ -3,5 +3,5 @@ pub mod num;
 pub mod result;
 pub mod option;
 
-#[cfg(not(feature = "no_global_allocator"))] 
+#[cfg(feature = "alloc")]
 pub mod vec;
