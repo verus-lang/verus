@@ -464,6 +464,7 @@ impl Verifier {
         #[cfg(feature = "singular")]
         let mut result = if !is_singular {
             air_context.command(
+                &message_interface,
                 reporter,
                 &command,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },

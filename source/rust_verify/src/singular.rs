@@ -1,10 +1,10 @@
+use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use air::context::{QueryContext, ValidityResult};
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::air_ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use vir::messages::{error, Message};
 
 // Singular reserved keyword
@@ -86,6 +86,7 @@ pub(crate) fn expr_to_singular(
     tmp_idx: &mut u32,
     node_map: &mut HashMap<Node, Ident>,
 ) -> Result<String, String> {
+    let message_interface = vir::messages::VirMessageInterface {};
     let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
@@ -95,7 +96,7 @@ pub(crate) fn expr_to_singular(
         }
         ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
             // x % y ->  x - y*tmp
-            let pp = Printer::new(false);
+            let pp = Printer::new(&message_interface, false);
             let key = pp.expr_to_node(expr);
             let value = node_map.get(&key);
             let t = match value {
@@ -168,7 +169,7 @@ pub(crate) fn expr_to_singular(
                 ));
             } else {
                 // treat as uninterpreted functions
-                let pp = Printer::new(false);
+                let pp = Printer::new(&message_interface, false);
                 let key = pp.expr_to_node(expr);
                 let value = node_map.get(&key);
                 match value {
@@ -320,11 +321,11 @@ pub fn singular_printer(
 }
 
 pub fn check_singular_valid(
-    context: &mut air::context::Context<Message>,
+    context: &mut air::context::Context,
     command: &Command,
     func_span: &vir::messages::Span,
     _query_context: QueryContext<'_, '_>,
-) -> ValidityResult<Message> {
+) -> ValidityResult {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
         query.clone()
     } else {
@@ -333,13 +334,13 @@ pub fn check_singular_valid(
 
     let decl = query.local.clone();
     let statement = query.assertion.clone();
-    let stmts: vir::air_ast::Stmts = if let air::ast::StmtX::Block(stmts) = &*statement {
+    let stmts: air::ast::Stmts = if let air::ast::StmtX::Block(stmts) = &*statement {
         stmts.clone()
     } else {
         panic!("internal error: integer_ring")
     };
 
-    let arc_ens: &vir::air_ast::Stmt = stmts.last().unwrap();
+    let arc_ens: &air::ast::Stmt = stmts.last().unwrap();
     let ens = match &**arc_ens {
         air::ast::StmtX::Assert(error, exp) => (exp.clone(), error.clone()),
         _ => {
@@ -367,6 +368,26 @@ pub fn check_singular_valid(
             }
         };
     }
+
+    let reqs = {
+        reqs.into_iter()
+            .map(|r| {
+                let (expr, error) = r;
+                let error: vir::messages::Message = error
+                    .clone()
+                    .downcast()
+                    .expect("unexpected value in Any -> Message conversion");
+                (expr, error)
+            })
+            .collect()
+    };
+
+    let ens = {
+        let (expr, error) = ens;
+        let error: vir::messages::Message =
+            error.clone().downcast().expect("unexpected value in Any -> Message conversion");
+        (expr, error)
+    };
 
     let query = match singular_printer(&vars, &reqs, &ens) {
         Ok(query_string) => query_string,

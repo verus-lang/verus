@@ -49,11 +49,7 @@ impl SingularProcess {
     }
 }
 
-pub fn log_singular<M: crate::messages::Message>(
-    context: &mut crate::context::Context,
-    query: &String,
-    func_span: &str,
-) {
+pub fn log_singular(context: &mut crate::context::Context, query: &String, func_span: &str) {
     context.air_initial_log.comment(&query);
     context.air_middle_log.comment(&query);
     context.air_final_log.comment(&query);
