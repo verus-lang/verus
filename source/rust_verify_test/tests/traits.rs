@@ -2195,3 +2195,80 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
+
+test_verify_one_file! {
+    #[test] termination_fail_issue784_bigger_impl_chain verus_code! {
+        // It appears we have a cycle, (1) -> (2) -> (4) -> (3) -> (1)
+        //
+        // However, (4), being generic, doesn't actually have a dependency on (3);
+        // likewise (3), being generic, doesn't depend on (1).
+        // Instead, the cycle shows up because the call at (2) relies on the
+        // trait implementation 'impl 0'. Thus we should end up
+        // with an edge (2) -> (1) and thus resulting in the cycle:
+        //
+        // (1) -> (2) -> (1)
+        //
+        // Also note that the dependence of (2) upon 'impl 0' is indirect.
+        // Specifically, it relies on `P<Q<X>>: Zr` obtained from 'impl 2'
+        // This in turn relies on `Q<X>: Yr` obtained from 'impl 1'
+        // And this in turn relies on `X: Tr` obtained from 'impl 0'.
+
+        enum Option<V> { Some(V), None }
+
+        trait Tr {
+            spec fn stuff() -> bool;
+        }
+
+        struct X { }
+
+        // impl 0
+        impl Tr for X
+        {
+            spec fn stuff() -> bool {
+                alpaca()                                   // (1)
+            }
+        }
+
+        spec fn alpaca() -> bool {
+            // depends on the bound `X: Tr`
+            // which depends on the above trait impl
+            // which in turn depends on `alpaca`
+            (P::<Q<X>> { t: Option::None }).orange()               // (2)
+        }
+
+        struct P<T> {
+            t: Option<T>,
+        }
+
+        struct Q<T> {
+            t: Option<T>,
+        }
+
+        trait Yr {
+            spec fn banana() -> bool;
+        }
+
+        trait Zr {
+            spec fn orange(&self) -> bool;
+        }
+
+        // impl 1
+        impl<T: Tr> Yr for Q<T> {
+            spec fn banana() -> bool {
+                !T::stuff()                               // (3)
+            }
+        }
+
+        // impl 2
+        impl<T: Yr> Zr for P<T> {
+            spec fn orange(&self) -> bool {
+                T::banana()                               // (4)
+            }
+        }
+
+        proof fn paradox() {
+            assert(alpaca() == !alpaca());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
