@@ -2085,3 +2085,66 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
 }
+
+test_verify_one_file! {
+    #[test] trait_return_unit verus_code! {
+        struct S;
+
+        pub trait E<V> {
+            fn e(&self) -> V;
+        }
+
+        impl E<u64> for S {
+            fn e(&self) -> u64 {
+                7
+            }
+        }
+
+        impl E<()> for S {
+            fn e(&self) {
+                ()
+            }
+        }
+
+        pub trait View<V> {
+            spec fn view(&self) -> V;
+        }
+
+        impl View<int> for S {
+            closed spec fn view(&self) -> int {
+                7
+            }
+        }
+
+        // See https://github.com/verus-lang/verus/issues/682
+        impl View<()> for S {
+            closed spec fn view(&self) {
+                ()
+            }
+        }
+
+        pub trait T {
+            spec fn view(&self);
+        }
+
+        impl T for S {
+            closed spec fn view(&self) {
+                ()
+            }
+        }
+
+        proof fn test<A: View<()>>(a: A) {
+            a.view()
+        }
+
+        pub trait U {
+            fn ff(&self) ensures 2 + 2 == 4;
+        }
+
+        impl U for S {
+            fn ff(&self) {
+                assert(2 + 2 == 4);
+            }
+        }
+    } => Ok(())
+}

@@ -780,7 +780,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let is_trait = !matches!(kind, FunctionKind::Static);
 
     // Return type is left native (except for trait methods)
-    let ret_typ = if is_trait && function.x.has_return() {
+    let ret_typ = if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
         coerce_typ_to_poly(ctx, &ret.x.typ)
     } else {
         coerce_typ_to_native(ctx, &ret.x.typ)
@@ -838,7 +838,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     };
 
     let body = if let Some(body) = body {
-        if is_trait && function.x.has_return() {
+        if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
             Some(coerce_expr_to_poly(ctx, &poly_expr(ctx, &mut state, body)))
         } else {
             Some(coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, body)))

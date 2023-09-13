@@ -62,7 +62,7 @@ macro_rules! declare_identity_view {
     }
 }
 
-// TODO: declare_identify_view!(());
+declare_identity_view!(());
 declare_identity_view!(bool);
 declare_identity_view!(u8);
 declare_identity_view!(u16);

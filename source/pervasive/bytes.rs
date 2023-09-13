@@ -345,6 +345,7 @@ pub closed spec fn spec_u128_from_le_bytes(s: Seq<u8>) -> u128
   (s[15] as u128) << 120
 }
 
+#[verifier::spinoff_prover]
 pub proof fn lemma_auto_spec_u128_to_from_le_bytes()
   ensures
     forall |x: u128|
