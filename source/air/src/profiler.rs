@@ -20,7 +20,6 @@ pub struct Profiler {
 impl Profiler {
     /// Instantiate a new (singleton) profiler
     pub fn new(filename : &str, diagnostics: &impl Diagnostics) -> Profiler {
-        dbg!(filename);
         let path = filename;
 
         // Count the number of lines

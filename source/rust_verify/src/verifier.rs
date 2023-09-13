@@ -1070,6 +1070,13 @@ impl Verifier {
         let profile_all_flag = self.args.profile_all;
         self.expand_targets = vec![];
         for function in &krate.functions {
+            let filtered_function = match self.user_filter.as_ref() 
+                {
+                    Some(filter) => {
+                        filter.includes_function(&function.x.name, module)
+                    }, 
+                    None => false 
+                };
             let mut has_queries = false;
             if Some(module.clone()) != function.x.owning_module {
                 continue;
@@ -1199,7 +1206,7 @@ impl Verifier {
                 fun_ssts = check_validity(true, false, false, &mut has_queries, fun_ssts)?.2;
             }
             if has_queries &&
-                ((function_timed_out && profile_flag) || profile_all_flag) {
+                ((function_timed_out && profile_flag) || (profile_all_flag && filtered_function)) {
                 // TODO: double check time statistics/fun_sst getting messed up?
                 fun_ssts = check_validity(false, false, true, &mut has_queries, fun_ssts)?.2;
                 let profiler = Profiler::new(
