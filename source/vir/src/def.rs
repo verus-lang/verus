@@ -1,8 +1,8 @@
-use crate::air_ast::{Commands, Ident};
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
 use crate::messages::Span;
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
+use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;

@@ -4,17 +4,18 @@ use crate::ast::{
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
-use crate::messages::{Diagnostics, Message};
+use crate::messages::Diagnostics;
 pub use crate::model::{Model, ModelDef};
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-fn label_asserts<'ctx, M: Message>(
-    context: &mut Context<M>,
-    infos: &mut Vec<AssertionInfo<M>>,
-    axiom_infos: &mut Vec<AxiomInfo<M>>,
-    expr: &Expr<M>,
-) -> Expr<M> {
+fn label_asserts<'ctx>(
+    context: &mut Context,
+    infos: &mut Vec<AssertionInfo>,
+    axiom_infos: &mut Vec<AxiomInfo>,
+    expr: &Expr,
+) -> Expr {
     match &**expr {
         ExprX::Binary(op @ BinaryOp::Implies, lhs, rhs)
         | ExprX::Binary(op @ BinaryOp::Eq, lhs, rhs) => {
@@ -27,7 +28,7 @@ fn label_asserts<'ctx, M: Message>(
             ))
         }
         ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
-            let mut exprs_vec: Vec<Expr<M>> = Vec::new();
+            let mut exprs_vec: Vec<Expr> = Vec::new();
             for expr in exprs.iter() {
                 exprs_vec.push(label_asserts(context, infos, axiom_infos, expr));
             }
@@ -75,14 +76,14 @@ fn label_asserts<'ctx, M: Message>(
 
 /// In SMT-LIB, functions applied to zero arguments are considered constants.
 /// REVIEW: maybe AIR should follow this design for consistency.
-fn elim_zero_args_expr<M: Message>(expr: &Expr<M>) -> Expr<M> {
+fn elim_zero_args_expr(expr: &Expr) -> Expr {
     crate::visitor::map_expr_visitor(expr, &mut |expr| match &**expr {
         ExprX::Apply(x, es) if es.len() == 0 => Arc::new(ExprX::Var(x.clone())),
         _ => expr.clone(),
     })
 }
 
-pub(crate) fn smt_add_decl<'ctx, M: Message>(context: &mut Context<M>, decl: &Decl<M>) {
+pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
     match &**decl {
         DeclX::Sort(_) | DeclX::Datatypes(_) | DeclX::Const(_, _) | DeclX::Fun(_, _, _) => {
             context.smt_log.log_decl(decl);
@@ -90,8 +91,8 @@ pub(crate) fn smt_add_decl<'ctx, M: Message>(context: &mut Context<M>, decl: &De
         DeclX::Var(_, _) => {}
         DeclX::Axiom(expr) => {
             let expr = elim_zero_args_expr(expr);
-            let mut infos: Vec<AssertionInfo<M>> = Vec::new();
-            let mut axiom_infos: Vec<AxiomInfo<M>> = Vec::new();
+            let mut infos: Vec<AssertionInfo> = Vec::new();
+            let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
             let labeled_expr = label_asserts(context, &mut infos, &mut axiom_infos, &expr);
             for info in axiom_infos {
                 crate::typecheck::add_decl(context, &info.decl, true).unwrap();
@@ -111,17 +112,17 @@ pub type ReportLongRunning<'a> =
 
 const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
 
-pub(crate) fn smt_check_assertion<'ctx, M: Message>(
-    context: &mut Context<M>,
-    diagnostics: &impl Diagnostics<M>,
-    mut infos: Vec<AssertionInfo<M>>,
+pub(crate) fn smt_check_assertion<'ctx>(
+    context: &mut Context,
+    diagnostics: &impl Diagnostics,
+    mut infos: Vec<AssertionInfo>,
     air_model: Model,
     only_check_earlier: bool,
     report_long_running: Option<&mut ReportLongRunning>,
-) -> ValidityResult<M> {
+) -> ValidityResult {
     let disabled_expr = if only_check_earlier {
         // disable all labels that come after the first known error
-        let mut disabled: Vec<Expr<M>> = Vec::new();
+        let mut disabled: Vec<Expr> = Vec::new();
         let mut found_disabled = false;
         let mut found_enabled = false;
         for info in infos.iter_mut() {
@@ -155,7 +156,11 @@ pub(crate) fn smt_check_assertion<'ctx, M: Message>(
                 let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
                 let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
-                    diagnostics.report(&M::unexpected_z3_version(&expected_version, version));
+                    diagnostics.report(
+                        &context
+                            .message_interface
+                            .unexpected_z3_version(&expected_version, version),
+                    );
                     panic!(
                         "The verifier expects z3 version \"{}\", found version \"{}\"",
                         expected_version, version
@@ -163,7 +168,7 @@ pub(crate) fn smt_check_assertion<'ctx, M: Message>(
                 }
             }
         } else if context.ignore_unexpected_smt {
-            diagnostics.report(&M::bare(
+            diagnostics.report(&context.message_interface.bare(
                 crate::messages::MessageLevel::Warning,
                 format!("warning: unexpected SMT output: {}", line).as_str(),
             ));
@@ -176,8 +181,8 @@ pub(crate) fn smt_check_assertion<'ctx, M: Message>(
         context.smt_log.log_assert(&disabled_expr);
     }
 
-    let mut discovered_error: Option<M> = None;
-    let mut discovered_additional_info: Vec<M::MessageLabel> = Vec::new();
+    let mut discovered_error = None;
+    let mut discovered_additional_info: Vec<Arc<dyn Any + Send + Sync>> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
@@ -224,7 +229,7 @@ pub(crate) fn smt_check_assertion<'ctx, M: Message>(
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
-            diagnostics.report(&M::bare(
+            diagnostics.report(&context.message_interface.bare(
                 crate::messages::MessageLevel::Warning,
                 format!("warning: unexpected SMT output: {}", line).as_str(),
             ));
@@ -271,7 +276,7 @@ pub(crate) fn smt_check_assertion<'ctx, M: Message>(
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
-                    diagnostics.report(&M::bare(
+                    diagnostics.report(&context.message_interface.bare(
                         crate::messages::MessageLevel::Warning,
                         format!("warning: unexpected SMT output: {}", line).as_str(),
                     ));
@@ -306,7 +311,8 @@ pub(crate) fn smt_check_assertion<'ctx, M: Message>(
             return ValidityResult::Canceled;
         };
 
-        let model = crate::parser::Parser::<M>::new().lines_to_model(&smt_output);
+        let model =
+            crate::parser::Parser::new(context.message_interface).lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
         for def in model.iter() {
             model_defs.insert(def.name.clone(), def.clone());
@@ -346,19 +352,19 @@ pub(crate) fn smt_check_assertion<'ctx, M: Message>(
         // to the function precondition)
 
         let error = discovered_error.expect("discovered_error");
-        let e = error.append_labels(&discovered_additional_info);
+        let e = context.message_interface.append_labels(&error, &discovered_additional_info);
         context.state = ContextState::FoundInvalid(infos, air_model.clone());
         ValidityResult::Invalid(Some(air_model), e)
     }
 }
 
-pub(crate) fn smt_check_query<'ctx, M: Message>(
-    context: &mut Context<M>,
-    diagnostics: &impl Diagnostics<M>,
-    query: &Query<M>,
+pub(crate) fn smt_check_query<'ctx>(
+    context: &mut Context,
+    diagnostics: &impl Diagnostics,
+    query: &Query,
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
-) -> ValidityResult<M> {
+) -> ValidityResult {
     if !context.disable_incremental_solving {
         context.smt_log.log_push();
         context.push_name_scope();
@@ -380,11 +386,11 @@ pub(crate) fn smt_check_query<'ctx, M: Message>(
     let assertion = elim_zero_args_expr(assertion);
 
     // add labels to assertions for error reporting
-    let mut infos: Vec<AssertionInfo<M>> = Vec::new();
-    let mut axiom_infos: Vec<AxiomInfo<M>> = Vec::new();
+    let mut infos: Vec<AssertionInfo> = Vec::new();
+    let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
     let labeled_assertion = label_asserts(context, &mut infos, &mut axiom_infos, &assertion);
     for info in &infos {
-        context.smt_log.comment(&info.error.get_note());
+        context.smt_log.comment(&context.message_interface.get_note(&info.error));
         if let Err(err) = crate::typecheck::add_decl(context, &info.decl, false) {
             return ValidityResult::TypeError(err);
         }

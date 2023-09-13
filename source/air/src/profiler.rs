@@ -1,6 +1,6 @@
 //! Analyzes prover performance of the SMT solver
 
-use crate::messages::{Diagnostics, Message, MessageLevel};
+use crate::messages::{Diagnostics, MessageLevel};
 use std::io::BufRead;
 use z3tracer::model::QuantCost;
 use z3tracer::{Model, ModelConfig};
@@ -10,16 +10,19 @@ pub const PROVER_LOG_FILE: &str = "verus-prover-trace.log";
 pub const USER_QUANT_PREFIX: &str = "user_";
 pub const INTERNAL_QUANT_PREFIX: &str = "internal_";
 
-#[derive(Debug)]
 /// Profiler for processing and displaying SMT performance data
-pub struct Profiler {
+pub struct Profiler<'a> {
+    message_interface: &'a dyn crate::messages::MessageInterface,
     //log_path: String,
     quantifier_stats: Vec<QuantCost>,
 }
 
-impl Profiler {
+impl<'a> Profiler<'a> {
     /// Instantiate a new (singleton) profiler
-    pub fn new<M: Message>(diagnostics: &impl Diagnostics<M>) -> Profiler {
+    pub fn new(
+        message_interface: &'a dyn crate::messages::MessageInterface,
+        diagnostics: &impl Diagnostics,
+    ) -> Self {
         let path = PROVER_LOG_FILE;
 
         // Count the number of lines
@@ -37,11 +40,11 @@ impl Profiler {
         model_config.parser_config.ignore_invalid_lines = true;
         model_config.skip_log_consistency_checks = true;
         let mut model = Model::new(model_config);
-        diagnostics.report(&M::bare(MessageLevel::Note, "Analyzing prover log..."));
+        diagnostics.report(&message_interface.bare(MessageLevel::Note, "Analyzing prover log..."));
         let _ = model
             .process(Some(path.to_string()), file, line_count)
             .expect("Error processing prover trace");
-        diagnostics.report(&M::bare(MessageLevel::Note, "... analysis complete\n"));
+        diagnostics.report(&message_interface.bare(MessageLevel::Note, "... analysis complete\n"));
 
         // Analyze the quantifer costs
         let quant_costs = model.quant_costs();
@@ -52,7 +55,7 @@ impl Profiler {
         user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
         user_quant_costs.reverse();
 
-        Profiler { quantifier_stats: user_quant_costs }
+        Profiler { message_interface, quantifier_stats: user_quant_costs }
     }
 
     pub fn quant_count(&self) -> usize {
@@ -63,7 +66,7 @@ impl Profiler {
         self.quantifier_stats.iter().fold(0, |acc, cost| acc + cost.instantiations)
     }
 
-    pub fn print_raw_stats<M: Message>(&self, diagnostics: &impl Diagnostics<M>) {
+    pub fn print_raw_stats(&self, diagnostics: &impl Diagnostics) {
         for cost in &self.quantifier_stats {
             let count = cost.instantiations;
             let msg = format!(
@@ -72,7 +75,7 @@ impl Profiler {
                 count,
                 100 * count / self.total_instantiations()
             );
-            diagnostics.report(&M::bare(MessageLevel::Note, msg.as_str()));
+            diagnostics.report(&self.message_interface.bare(MessageLevel::Note, msg.as_str()));
         }
     }
 

@@ -1,5 +1,5 @@
-use crate::air_ast::{Expr, Stmt, StmtX};
 use crate::messages::{error, error_with_label, Span};
+use air::ast::{Expr, Stmt, StmtX};
 use air::ast_util::{mk_eq, mk_false, mk_not, mk_or};
 use std::sync::Arc;
 

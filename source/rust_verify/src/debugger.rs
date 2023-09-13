@@ -9,7 +9,6 @@ use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use vir::def::{suffix_local_stmt_id, SnapPos, SpanKind};
-use vir::messages::Message;
 use vir::messages::Span as ASpan;
 
 #[derive(Debug)]
@@ -147,7 +146,7 @@ impl Debugger {
         }
     }
 
-    fn eval_expr(&self, context: &mut air::context::Context<Message>, expr: &[u8]) {
+    fn eval_expr(&self, context: &mut air::context::Context, expr: &[u8]) {
         let mut parser = sise::Parser::new(expr);
         let node = sise::read_into_tree(&mut parser).unwrap();
         let expr = self.rewrite_eval_expr(&node).unwrap();
@@ -155,7 +154,7 @@ impl Debugger {
         println!("{}", result);
     }
 
-    pub fn start_shell(&mut self, context: &mut air::context::Context<Message>) {
+    pub fn start_shell(&mut self, context: &mut air::context::Context) {
         println!("welcome to verus debugger shell");
 
         self.set_line(26);

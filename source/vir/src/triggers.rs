@@ -1,10 +1,10 @@
-use crate::air_ast::Binders;
 use crate::ast::{
     BinaryOp, Ident, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::context::Ctx;
 use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
+use air::ast::Binders;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;

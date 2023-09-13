@@ -1,4 +1,3 @@
-use crate::air_ast::{Binder, BinderX, Binders};
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
@@ -10,7 +9,7 @@ use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::interpreter::eval_expr;
-use crate::messages::{error, error_with_label, internal_error, warning, Message, Span};
+use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
     Pars, Stm, StmX, UniqueIdent,
@@ -23,6 +22,7 @@ use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
+use air::ast::{Binder, BinderX, Binders};
 use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
@@ -58,7 +58,7 @@ pub(crate) struct State<'a> {
     // Mapping from a function's name to the SST version of its body.  Used by the interpreter.
     pub fun_ssts: SstMap,
     // Diagnostic output
-    pub diagnostics: &'a (dyn Diagnostics<Message> + 'a),
+    pub diagnostics: &'a (dyn Diagnostics + 'a),
     // If inside a closure
     containing_closure: Option<ClosureState>,
 }
@@ -107,7 +107,7 @@ macro_rules! unwrap_or_return_never {
 }
 
 impl<'a> State<'a> {
-    pub fn new(diagnostics: &'a impl Diagnostics<Message>) -> Self {
+    pub fn new(diagnostics: &'a impl Diagnostics) -> Self {
         let mut rename_map = ScopeMap::new();
         rename_map.push_scope(true);
         State {
@@ -297,7 +297,7 @@ impl<'a> State<'a> {
     pub(crate) fn finalize_stm(
         &self,
         ctx: &Ctx,
-        diagnostics: &impl Diagnostics<Message>,
+        diagnostics: &impl Diagnostics,
         fun_ssts: &SstMap,
         stm: &Stm,
         ensures: &Exprs,
@@ -593,7 +593,7 @@ pub(crate) fn check_pure_expr_bind(
 
 pub(crate) fn expr_to_decls_exp(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics<Message>,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     view_as_spec: bool,
     params: &Pars,
@@ -610,7 +610,7 @@ pub(crate) fn expr_to_decls_exp(
 
 pub(crate) fn expr_to_bind_decls_exp(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics<Message>,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
@@ -628,7 +628,7 @@ pub(crate) fn expr_to_bind_decls_exp(
 
 pub(crate) fn expr_to_exp(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics<Message>,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
@@ -638,7 +638,7 @@ pub(crate) fn expr_to_exp(
 
 pub(crate) fn expr_to_exp_as_spec(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics<Message>,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
@@ -1389,7 +1389,7 @@ fn expr_to_stm_opt(
 
             if skip {
                 state.diagnostics.report(&warning(
-                    &expr.span, "this reveal/fuel statement has no effect because no verification condition in this module depends on this function"));
+                    &expr.span, "this reveal/fuel statement has no effect because no verification condition in this module depends on this function").to_any());
             }
 
             let stms = if skip {

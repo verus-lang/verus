@@ -1,7 +1,5 @@
 //! VIR-AST -> VIR-AST transformation to simplify away some complicated features
 
-use crate::air_ast::BinderX;
-use crate::air_ast::Binders;
 use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::{
@@ -18,6 +16,8 @@ use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, S
 use crate::messages::error;
 use crate::messages::Span;
 use crate::util::vec_map_result;
+use air::ast::BinderX;
+use air::ast::Binders;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;

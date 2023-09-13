@@ -1,13 +1,12 @@
 use crate::ast::{Decl, Expr, Query};
-use crate::messages::Message;
 use crate::printer::{macro_push_node, NodeWriter, Printer};
 use crate::{node, nodes};
 use sise::Node;
 use std::io::Write;
 
-pub(crate) struct Emitter<M: Message> {
+pub(crate) struct Emitter<'a> {
     /// AIR/SMT -> Node printer
-    printer: Printer<M>,
+    printer: Printer<'a>,
     /// Node -> string writer
     node_writer: NodeWriter,
     /// buffer for data to be sent across pipe to Z3 process
@@ -18,15 +17,16 @@ pub(crate) struct Emitter<M: Message> {
     current_indent: String,
 }
 
-impl<M: Message> Emitter<M> {
+impl<'a> Emitter<'a> {
     pub fn new(
+        message_interface: &'a dyn crate::messages::MessageInterface,
         use_pipe: bool,
         print_as_smt: bool,
         writer: Option<Box<dyn std::io::Write>>,
     ) -> Self {
         let pipe_buffer = if use_pipe { Some(Vec::new()) } else { None };
         Emitter {
-            printer: Printer::new(print_as_smt),
+            printer: Printer::new(message_interface, print_as_smt),
             node_writer: NodeWriter::new(),
             pipe_buffer,
             log: writer,
@@ -131,13 +131,13 @@ impl<M: Message> Emitter<M> {
     }
     */
 
-    pub fn log_decl(&mut self, decl: &Decl<M>) {
+    pub fn log_decl(&mut self, decl: &Decl) {
         if !self.is_none() {
             self.log_node(&self.printer.decl_to_node(decl));
         }
     }
 
-    pub fn log_assert(&mut self, expr: &Expr<M>) {
+    pub fn log_assert(&mut self, expr: &Expr) {
         if !self.is_none() {
             self.log_node(&nodes!(assert {self.printer.expr_to_node(expr)}));
         }
@@ -149,7 +149,7 @@ impl<M: Message> Emitter<M> {
         }
     }
 
-    pub fn log_query(&mut self, query: &Query<M>) {
+    pub fn log_query(&mut self, query: &Query) {
         if !self.is_none() {
             self.log_node(&self.printer.query_to_node(query));
         }

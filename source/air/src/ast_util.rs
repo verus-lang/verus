@@ -2,7 +2,6 @@ use crate::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, DeclX, Expr, ExprX, Exprs,
     Ident, MultiOp, Qid, Quant, Trigger, Typ, TypX, Typs, UnaryOp,
 };
-use crate::messages::Message;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -42,14 +41,14 @@ impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
     }
 }
 
-impl<M: Message> ExprX<M> {
-    pub fn apply_or_var(x: Ident, args: Exprs<M>) -> ExprX<M> {
+impl ExprX {
+    pub fn apply_or_var(x: Ident, args: Exprs) -> ExprX {
         if args.len() == 0 { ExprX::Var(x) } else { ExprX::Apply(x, args) }
     }
 }
 
-impl<M: Message> DeclX<M> {
-    pub fn fun_or_const(x: Ident, typs: Typs, typ: Typ) -> DeclX<M> {
+impl DeclX {
+    pub fn fun_or_const(x: Ident, typs: Typs, typ: Typ) -> DeclX {
         if typs.len() == 0 { DeclX::Const(x, typ) } else { DeclX::Fun(x, typs, typ) }
     }
 }
@@ -58,31 +57,31 @@ pub fn str_ident(x: &str) -> Ident {
     Arc::new(x.to_string())
 }
 
-pub fn ident_var<M: Message>(x: &Ident) -> Expr<M> {
+pub fn ident_var(x: &Ident) -> Expr {
     Arc::new(ExprX::Var(x.clone()))
 }
 
-pub fn string_var<M: Message>(x: &String) -> Expr<M> {
+pub fn string_var(x: &String) -> Expr {
     Arc::new(ExprX::Var(Arc::new(x.clone())))
 }
 
-pub fn str_var<M: Message>(x: &str) -> Expr<M> {
+pub fn str_var(x: &str) -> Expr {
     Arc::new(ExprX::Var(Arc::new(x.to_string())))
 }
 
-pub fn ident_apply<M: Message>(x: &Ident, args: &Vec<Expr<M>>) -> Expr<M> {
+pub fn ident_apply(x: &Ident, args: &Vec<Expr>) -> Expr {
     Arc::new(ExprX::Apply(x.clone(), Arc::new(args.clone())))
 }
 
-pub fn ident_apply_or_var<M: Message>(x: &Ident, args: &Vec<Expr<M>>) -> Expr<M> {
+pub fn ident_apply_or_var(x: &Ident, args: &Vec<Expr>) -> Expr {
     Arc::new(ExprX::apply_or_var(x.clone(), Arc::new(args.clone())))
 }
 
-pub fn string_apply<M: Message>(x: &String, args: &Vec<Expr<M>>) -> Expr<M> {
+pub fn string_apply(x: &String, args: &Vec<Expr>) -> Expr {
     Arc::new(ExprX::Apply(Arc::new(x.clone()), Arc::new(args.clone())))
 }
 
-pub fn str_apply<M: Message>(x: &str, args: &Vec<Expr<M>>) -> Expr<M> {
+pub fn str_apply(x: &str, args: &Vec<Expr>) -> Expr {
     Arc::new(ExprX::Apply(Arc::new(x.to_string()), Arc::new(args.clone())))
 }
 
@@ -114,7 +113,7 @@ pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
     Arc::new(BinderX { name: x.clone(), a: a.clone() })
 }
 
-pub fn mk_bind_expr<M: Message>(bind: &Bind<M>, body: &Expr<M>) -> Expr<M> {
+pub fn mk_bind_expr(bind: &Bind, body: &Expr) -> Expr {
     let n = match &**bind {
         BindX::Let(bs) => bs.len(),
         BindX::Quant(_, bs, _, _) => bs.len(),
@@ -123,7 +122,7 @@ pub fn mk_bind_expr<M: Message>(bind: &Bind<M>, body: &Expr<M>) -> Expr<M> {
     if n == 0 { body.clone() } else { Arc::new(ExprX::Bind(bind.clone(), body.clone())) }
 }
 
-pub fn mk_let<M: Message>(binders: &Vec<Binder<Expr<M>>>, body: &Expr<M>) -> Expr<M> {
+pub fn mk_let(binders: &Vec<Binder<Expr>>, body: &Expr) -> Expr {
     if binders.len() == 0 {
         body.clone()
     } else {
@@ -131,13 +130,13 @@ pub fn mk_let<M: Message>(binders: &Vec<Binder<Expr<M>>>, body: &Expr<M>) -> Exp
     }
 }
 
-pub fn mk_quantifier<M: Message>(
+pub fn mk_quantifier(
     quant: Quant,
     binders: &Vec<Binder<Typ>>,
-    triggers: &Vec<Trigger<M>>,
+    triggers: &Vec<Trigger>,
     qid: Qid,
-    body: &Expr<M>,
-) -> Expr<M> {
+    body: &Expr,
+) -> Expr {
     if binders.len() == 0 {
         body.clone()
     } else {
@@ -153,49 +152,49 @@ pub fn mk_quantifier<M: Message>(
     }
 }
 
-pub fn mk_forall<M: Message>(
+pub fn mk_forall(
     binders: &Vec<Binder<Typ>>,
-    triggers: &Vec<Trigger<M>>,
+    triggers: &Vec<Trigger>,
     qid: Qid,
-    body: &Expr<M>,
-) -> Expr<M> {
+    body: &Expr,
+) -> Expr {
     mk_quantifier(Quant::Forall, binders, triggers, qid, body)
 }
 
-pub fn mk_exists<M: Message>(
+pub fn mk_exists(
     binders: &Vec<Binder<Typ>>,
-    triggers: &Vec<Trigger<M>>,
+    triggers: &Vec<Trigger>,
     qid: Qid,
-    body: &Expr<M>,
-) -> Expr<M> {
+    body: &Expr,
+) -> Expr {
     mk_quantifier(Quant::Exists, binders, triggers, qid, body)
 }
 
-pub fn mk_lambda<M: Message>(
+pub fn mk_lambda(
     binders: &Vec<Binder<Typ>>,
-    triggers: &Vec<Trigger<M>>,
+    triggers: &Vec<Trigger>,
     qid: Qid,
-    body: &Expr<M>,
-) -> Expr<M> {
+    body: &Expr,
+) -> Expr {
     Arc::new(ExprX::Bind(
         Arc::new(BindX::Lambda(Arc::new(binders.clone()), Arc::new(triggers.clone()), qid)),
         body.clone(),
     ))
 }
 
-pub fn mk_true<M: Message>() -> Expr<M> {
+pub fn mk_true() -> Expr {
     Arc::new(ExprX::Const(Constant::Bool(true)))
 }
 
-pub fn mk_false<M: Message>() -> Expr<M> {
+pub fn mk_false() -> Expr {
     Arc::new(ExprX::Const(Constant::Bool(false)))
 }
 
-pub fn mk_and<M: Message>(exprs: &Vec<Expr<M>>) -> Expr<M> {
+pub fn mk_and(exprs: &Vec<Expr>) -> Expr {
     if exprs.iter().any(|expr| matches!(**expr, ExprX::Const(Constant::Bool(false)))) {
         return mk_false();
     }
-    let exprs: Vec<Expr<M>> = exprs
+    let exprs: Vec<Expr> = exprs
         .iter()
         .filter(|expr| !matches!(***expr, ExprX::Const(Constant::Bool(true))))
         .cloned()
@@ -209,11 +208,11 @@ pub fn mk_and<M: Message>(exprs: &Vec<Expr<M>>) -> Expr<M> {
     }
 }
 
-pub fn mk_or<M: Message>(exprs: &Vec<Expr<M>>) -> Expr<M> {
+pub fn mk_or(exprs: &Vec<Expr>) -> Expr {
     if exprs.iter().any(|expr| matches!(**expr, ExprX::Const(Constant::Bool(true)))) {
         return mk_true();
     }
-    let exprs: Vec<Expr<M>> = exprs
+    let exprs: Vec<Expr> = exprs
         .iter()
         .filter(|expr| !matches!(***expr, ExprX::Const(Constant::Bool(false))))
         .cloned()
@@ -227,7 +226,7 @@ pub fn mk_or<M: Message>(exprs: &Vec<Expr<M>>) -> Expr<M> {
     }
 }
 
-pub fn mk_not<M: Message>(e1: &Expr<M>) -> Expr<M> {
+pub fn mk_not(e1: &Expr) -> Expr {
     match &**e1 {
         ExprX::Const(Constant::Bool(false)) => mk_true(),
         ExprX::Const(Constant::Bool(true)) => mk_false(),
@@ -236,7 +235,7 @@ pub fn mk_not<M: Message>(e1: &Expr<M>) -> Expr<M> {
     }
 }
 
-pub fn mk_implies<M: Message>(e1: &Expr<M>, e2: &Expr<M>) -> Expr<M> {
+pub fn mk_implies(e1: &Expr, e2: &Expr) -> Expr {
     match (&**e1, &**e2) {
         (ExprX::Const(Constant::Bool(false)), _) => mk_true(),
         (ExprX::Const(Constant::Bool(true)), _) => e2.clone(),
@@ -246,7 +245,7 @@ pub fn mk_implies<M: Message>(e1: &Expr<M>, e2: &Expr<M>) -> Expr<M> {
     }
 }
 
-pub fn mk_xor<M: Message>(e1: &Expr<M>, e2: &Expr<M>) -> Expr<M> {
+pub fn mk_xor(e1: &Expr, e2: &Expr) -> Expr {
     match (&**e1, &**e2) {
         (ExprX::Const(Constant::Bool(false)), _) => e2.clone(),
         (ExprX::Const(Constant::Bool(true)), _) => mk_not(e2),
@@ -256,7 +255,7 @@ pub fn mk_xor<M: Message>(e1: &Expr<M>, e2: &Expr<M>) -> Expr<M> {
     }
 }
 
-pub fn mk_ite<M: Message>(e1: &Expr<M>, e2: &Expr<M>, e3: &Expr<M>) -> Expr<M> {
+pub fn mk_ite(e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
     match (&**e1, &**e2, &**e3) {
         (ExprX::Const(Constant::Bool(true)), _, _) => e2.clone(),
         (ExprX::Const(Constant::Bool(false)), _, _) => e3.clone(),
@@ -268,15 +267,15 @@ pub fn mk_ite<M: Message>(e1: &Expr<M>, e2: &Expr<M>, e3: &Expr<M>) -> Expr<M> {
     }
 }
 
-pub fn mk_eq<M: Message>(e1: &Expr<M>, e2: &Expr<M>) -> Expr<M> {
+pub fn mk_eq(e1: &Expr, e2: &Expr) -> Expr {
     Arc::new(ExprX::Binary(BinaryOp::Eq, e1.clone(), e2.clone()))
 }
 
-pub fn mk_option_command<M: Message>(s1: &str, s2: &str) -> Command<M> {
+pub fn mk_option_command(s1: &str, s2: &str) -> Command {
     Arc::new(CommandX::SetOption(Arc::new(String::from(s1)), Arc::new(String::from(s2))))
 }
 
-pub fn mk_bitvector_option<M: Message>() -> Vec<Command<M>> {
+pub fn mk_bitvector_option() -> Vec<Command> {
     vec![
         mk_option_command("sat.euf", "true"),
         mk_option_command("tactic.default_tactic", "sat"),
@@ -285,14 +284,14 @@ pub fn mk_bitvector_option<M: Message>() -> Vec<Command<M>> {
     ]
 }
 
-pub fn mk_nat<S: ToString, M: Message>(n: S) -> Expr<M> {
+pub fn mk_nat<S: ToString>(n: S) -> Expr {
     Arc::new(ExprX::Const(Constant::Nat(Arc::new(n.to_string()))))
 }
 
-pub fn mk_neg<M: Message>(e: &Expr<M>) -> Expr<M> {
+pub fn mk_neg(e: &Expr) -> Expr {
     Arc::new(ExprX::Multi(MultiOp::Sub, Arc::new(vec![e.clone()])))
 }
 
-pub fn mk_sub<M: Message>(e1: &Expr<M>, e2: &Expr<M>) -> Expr<M> {
+pub fn mk_sub(e1: &Expr, e2: &Expr) -> Expr {
     Arc::new(ExprX::Multi(MultiOp::Sub, Arc::new(vec![e1.clone(), e2.clone()])))
 }

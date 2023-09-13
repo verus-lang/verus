@@ -510,7 +510,7 @@ pub fn is_split_error(error: &Message) -> bool {
 fn split_call(
     ctx: &Ctx,
     state: &State,
-    diagnostics: &impl Diagnostics<Message>,
+    diagnostics: &impl Diagnostics,
     span: &Span,
     name: &Fun,
     typs: &Typs,
@@ -560,7 +560,7 @@ fn split_call(
 fn visit_split_stm(
     ctx: &Ctx,
     state: &mut State,
-    diagnostics: &impl Diagnostics<Message>,
+    diagnostics: &impl Diagnostics,
     stm: &Stm,
 ) -> Result<Stm, VirErr> {
     match &stm.x {
@@ -668,7 +668,7 @@ fn visit_split_stm(
 
 pub(crate) fn all_split_exp(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics<Message>,
+    diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     stm: &Stm,
     ensures: &Exprs,

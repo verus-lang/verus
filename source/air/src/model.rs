@@ -2,7 +2,6 @@
 //! when it reaches a SAT conclusion
 
 use crate::ast::{Binders, Decl, DeclX, Ident, Snapshots, Typ};
-use crate::messages::Message;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -36,7 +35,7 @@ impl Model {
     /// # Arguments
     /// * `model` - The model that Z3 returns
     /// * `snapshots` - Internal mapping of snapshot IDs to snapshots that map AIR variables to usage counts.
-    pub fn new<M: Message>(snapshots: Snapshots, params: Vec<Decl<M>>) -> Model {
+    pub fn new(snapshots: Snapshots, params: Vec<Decl>) -> Model {
         // println!("Creating a new model with {} snapshots", snapshots.len());
         // for (sid, snapshot) in &snapshots {
         //     println!("{:?}", sid);

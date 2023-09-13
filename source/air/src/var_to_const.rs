@@ -3,7 +3,6 @@ use crate::ast::{
     BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, Snapshots, Stmt, StmtX, Typ,
 };
 use crate::ast_util::string_var;
-use crate::messages::Message;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -16,11 +15,7 @@ pub fn rename_var(x: &String, n: u32) -> String {
     if x.ends_with("@") { format!("{}{}", x, n) } else { format!("{}@{}", x, n) }
 }
 
-fn lower_expr_visitor<M: Message>(
-    versions: &IndexMap<Ident, u32>,
-    snapshots: &Snapshots,
-    expr: &Expr<M>,
-) -> Expr<M> {
+fn lower_expr_visitor(versions: &IndexMap<Ident, u32>, snapshots: &Snapshots, expr: &Expr) -> Expr {
     match &**expr {
         ExprX::Var(x) if versions.contains_key(x) => {
             let xn = rename_var(x, find_version(&versions, x));
@@ -35,23 +30,19 @@ fn lower_expr_visitor<M: Message>(
     }
 }
 
-fn lower_expr<M: Message>(
-    versions: &IndexMap<Ident, u32>,
-    snapshots: &Snapshots,
-    expr: &Expr<M>,
-) -> Expr<M> {
+fn lower_expr(versions: &IndexMap<Ident, u32>, snapshots: &Snapshots, expr: &Expr) -> Expr {
     crate::visitor::map_expr_visitor(&expr, &mut |e| lower_expr_visitor(versions, snapshots, e))
 }
 
-fn lower_stmt<M: Message>(
-    decls: &mut Vec<Decl<M>>,
+fn lower_stmt(
+    decls: &mut Vec<Decl>,
     versions: &mut IndexMap<Ident, u32>,
     version_decls: &mut HashSet<Ident>,
     snapshots: &mut Snapshots,
     all_snapshots: &mut Snapshots,
     types: &HashMap<Ident, Typ>,
-    stmt: &Stmt<M>,
-) -> Stmt<M> {
+    stmt: &Stmt,
+) -> Stmt {
     let stmt = crate::visitor::map_stmt_expr_visitor(&stmt, &mut |e| {
         lower_expr_visitor(versions, snapshots, e)
     });
@@ -86,7 +77,7 @@ fn lower_stmt<M: Message>(
             Arc::new(StmtX::DeadEnd(s))
         }
         StmtX::Block(ss) => {
-            let mut stmts: Vec<Stmt<M>> = Vec::new();
+            let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {
                 stmts.push(lower_stmt(
                     decls,
@@ -103,7 +94,7 @@ fn lower_stmt<M: Message>(
         StmtX::Switch(ss) if ss.len() == 0 => stmt,
         StmtX::Switch(ss) => {
             let mut all_versions: Vec<IndexMap<Ident, u32>> = Vec::new();
-            let mut stmts: Vec<Stmt<M>> = Vec::new();
+            let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {
                 let mut versions_i = versions.clone();
                 let mut snapshots_i = snapshots.clone();
@@ -126,7 +117,7 @@ fn lower_stmt<M: Message>(
                 versions.insert(x.clone(), all_versions.iter().map(|v| v[x]).max().unwrap());
             }
             for i in 0..ss.len() {
-                let mut branch: Vec<Stmt<M>> = Vec::new();
+                let mut branch: Vec<Stmt> = Vec::new();
                 branch.push(stmts[i].clone());
                 let versions_i = &all_versions[i];
                 for x in versions.keys() {
@@ -145,15 +136,15 @@ fn lower_stmt<M: Message>(
     }
 }
 
-pub(crate) fn lower_query<M: Message>(query: &Query<M>) -> (Query<M>, Snapshots, Vec<Decl<M>>) {
+pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
     let QueryX { local, assertion } = &**query;
-    let mut decls: Vec<Decl<M>> = Vec::new();
+    let mut decls: Vec<Decl> = Vec::new();
     let mut versions: IndexMap<Ident, u32> = IndexMap::new();
     let mut version_decls: HashSet<Ident> = HashSet::new();
     let mut snapshots: Snapshots = HashMap::new();
     let mut all_snapshots: Snapshots = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
-    let mut local_vars: Vec<Decl<M>> = Vec::new();
+    let mut local_vars: Vec<Decl> = Vec::new();
 
     for decl in local.iter() {
         if let DeclX::Axiom(expr) = &**decl {

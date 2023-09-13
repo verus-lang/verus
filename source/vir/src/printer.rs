@@ -218,7 +218,7 @@ impl ToDebugSNode for num_bigint::BigInt {
 
 impl ToDebugSNode for air::ast::TypX {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        use crate::air_ast::TypX::*;
+        use air::ast::TypX::*;
         match self {
             Bool => Node::Atom("Bool".to_string()),
             Int => Node::Atom("Int".to_string()),

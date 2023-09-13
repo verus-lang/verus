@@ -1,4 +1,3 @@
-use crate::air_ast::{Command, CommandX, Commands, DeclX};
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBounds, Ident,
     Krate, Mode, Path, SpannedTyped, Typ, TypX, Typs, VirErr, WellKnownItem,
@@ -8,6 +7,7 @@ use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::{error, Span};
 use crate::sst_to_air::typ_to_ids;
+use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -191,22 +191,19 @@ pub(crate) fn trait_bound_to_air(
     ctx: &Ctx,
     path: &Path,
     typ_args: &Typs,
-) -> Option<crate::air_ast::Expr> {
+) -> Option<air::ast::Expr> {
     if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
         return None;
     }
-    let mut typ_exprs: Vec<crate::air_ast::Expr> = Vec::new();
+    let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
     for t in typ_args.iter() {
         typ_exprs.extend(typ_to_ids(t));
     }
     Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs))
 }
 
-pub(crate) fn trait_bounds_to_air(
-    ctx: &Ctx,
-    typ_bounds: &GenericBounds,
-) -> Vec<crate::air_ast::Expr> {
-    let mut bound_exprs: Vec<crate::air_ast::Expr> = Vec::new();
+pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<air::ast::Expr> {
+    let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         let crate::ast::GenericBoundX::Trait(path, typ_args) = &**bound;
         if let Some(bound) = trait_bound_to_air(ctx, path, typ_args) {

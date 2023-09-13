@@ -4,20 +4,23 @@ use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::util::error;
 use crate::verus_items::VerusItems;
+use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::Diagnostics;
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use verus_rustc_interface::interface::Compiler;
-use vir::air_ast::{Command, CommandX, Commands};
-use vir::messages::{message, note, note_bare, Message, MessageLabel, MessageLevel};
+use vir::messages::{
+    message, note, note_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
+};
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
+use std::any::Any;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
@@ -54,8 +57,11 @@ impl<'tcx> Reporter<'tcx> {
 /// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
 /// or emitting the same note twice will be surpressed (even if separated in time by other
 /// errors/notes)
-impl air::messages::Diagnostics<Message> for Reporter<'_> {
-    fn report_as(&self, msg: &Message, level: MessageLevel) {
+impl air::messages::Diagnostics for Reporter<'_> {
+    fn report_as(&self, msg: &Arc<dyn Any + Send + Sync>, level: MessageLevel) {
+        let msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+
         let mut v: Vec<Span> = Vec::new();
         for sp in &msg.spans {
             if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
@@ -108,15 +114,19 @@ impl air::messages::Diagnostics<Message> for Reporter<'_> {
         }
     }
 
-    fn report(&self, msg: &Message) {
-        self.report_as(msg, msg.level)
+    fn report(&self, msg: &Arc<dyn Any + Send + Sync>) {
+        let vir_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as(msg, vir_msg.level)
     }
 
-    fn report_now(&self, msg: &Message) {
-        self.report_as(msg, msg.level)
+    fn report_now(&self, msg: &Arc<dyn Any + Send + Sync>) {
+        let vir_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as(msg, vir_msg.level)
     }
 
-    fn report_as_now(&self, msg: &Message, msg_as: MessageLevel) {
+    fn report_as_now(&self, msg: &Arc<dyn Any + Send + Sync>, msg_as: MessageLevel) {
         self.report_as(msg, msg_as)
     }
 }
@@ -144,25 +154,33 @@ impl QueuedReporter {
     }
 }
 
-impl air::messages::Diagnostics<Message> for QueuedReporter {
-    fn report_as(&self, msg: &Message, level: MessageLevel) {
+impl air::messages::Diagnostics for QueuedReporter {
+    fn report_as(&self, msg: &Arc<dyn Any + Send + Sync>, level: MessageLevel) {
+        let msg: Message =
+            msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
-            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, false))
+            .send(ReporterMessage::Message(self.module_id, msg, level, false))
             .expect("could not send the message!");
     }
 
-    fn report_as_now(&self, msg: &Message, level: MessageLevel) {
+    fn report_as_now(&self, msg: &Arc<dyn Any + Send + Sync>, level: MessageLevel) {
+        let msg: Message =
+            msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
-            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, true))
+            .send(ReporterMessage::Message(self.module_id, msg, level, true))
             .expect("could not send the message!");
     }
 
-    fn report(&self, msg: &Message) {
-        self.report_as(msg, msg.level)
+    fn report(&self, msg: &Arc<dyn Any + Send + Sync>) {
+        let air_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as(msg, air_msg.level)
     }
 
-    fn report_now(&self, msg: &Message) {
-        self.report_as_now(msg, msg.level)
+    fn report_now(&self, msg: &Arc<dyn Any + Send + Sync>) {
+        let air_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as_now(msg, air_msg.level)
     }
 }
 
@@ -217,16 +235,20 @@ pub struct Verifier {
 }
 
 fn report_chosen_triggers(
-    diagnostics: &impl air::messages::Diagnostics<Message>,
+    diagnostics: &impl air::messages::Diagnostics,
     chosen: &vir::context::ChosenTriggers,
 ) {
-    let msg = note(&chosen.span, "automatically chose triggers for this expression:");
-    diagnostics.report(&msg);
+    diagnostics
+        .report(&note(&chosen.span, "automatically chose triggers for this expression:").to_any());
 
     for (n, trigger) in chosen.triggers.iter().enumerate() {
         let note = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
         let msg = note_bare(note);
-        let msg = trigger.iter().fold(msg, |m, (s, _)| m.primary_span(s));
+        let msg: Arc<dyn Any + Send + Sync> = trigger.iter().fold(msg, |m, (s, _)| {
+            let m: &vir::messages::MessageX =
+                m.downcast_ref().expect("unexpected value in Any -> Message conversion");
+            m.primary_span(s)
+        });
         diagnostics.report(&msg);
     }
 }
@@ -351,7 +373,7 @@ impl Verifier {
     /// Use when we expect our call to Z3 to always succeed
     /// If it doesn't, it's an internal error, not a failure
     /// to validate user code.
-    fn check_internal_result(result: ValidityResult<Message>) {
+    fn check_internal_result(result: ValidityResult) {
         match result {
             ValidityResult::Valid => {}
             ValidityResult::TypeError(err) => {
@@ -363,7 +385,7 @@ impl Verifier {
 
     fn print_profile_stats(
         &self,
-        diagnostics: &impl air::messages::Diagnostics<Message>,
+        diagnostics: &impl air::messages::Diagnostics,
         profiler: Profiler,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
     ) {
@@ -374,7 +396,7 @@ impl Verifier {
             "Observed {} total instantiations of user-level quantifiers",
             total.to_formatted_string(&Locale::en)
         );
-        diagnostics.report(&note_bare(&msg));
+        diagnostics.report(&note_bare(&msg).to_any());
 
         for (index, cost) in profiler.iter().take(max).enumerate() {
             // Report the quantifier
@@ -403,7 +425,7 @@ impl Verifier {
                 "Triggers selected for this quantifier".to_string(),
             );
 
-            diagnostics.report(&msg);
+            diagnostics.report(&msg.to_any());
         }
     }
 
@@ -413,10 +435,10 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         module_path: &vir::ast::Path,
-        reporter: &impl air::messages::Diagnostics<Message>,
+        reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
         level: MessageLevel,
-        air_context: &mut air::context::Context<Message>,
+        air_context: &mut air::context::Context,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
@@ -424,13 +446,15 @@ impl Verifier {
         context: &(&vir::messages::Span, &str),
         is_singular: bool,
     ) -> bool {
+        let message_interface = vir::messages::VirMessageInterface {};
+
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
                 let msg = if counter % 5 == 0 { note(&context.0, msg) } else { note_bare(msg) };
-                reporter.report_now(&msg);
+                reporter.report_now(&msg.to_any());
                 counter += 1;
             });
             (std::time::Duration::from_secs(2), report_fn)
@@ -455,6 +479,7 @@ impl Verifier {
 
         #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
+            &message_interface,
             reporter,
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
@@ -490,9 +515,9 @@ impl Verifier {
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    reporter.report(&message(level, msg, &context.0));
+                    reporter.report(&message(level, msg, &context.0).to_any());
                     if self.args.profile {
-                        let profiler = Profiler::new(reporter);
+                        let profiler = Profiler::new(&message_interface, reporter);
                         self.print_profile_stats(reporter, profiler, qid_map);
                     }
                     break;
@@ -510,8 +535,9 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
+                    let error: Message = error.downcast().unwrap();
                     if !self.expand_flag || vir::split_expression::is_split_error(&error) {
-                        reporter.report_as(&error, level);
+                        reporter.report_as(&error.clone().to_any(), level);
                     }
 
                     if level == MessageLevel::Error {
@@ -530,7 +556,7 @@ impl Verifier {
                                     MessageLevel::Warning,
                                     "no source map available for debugger. Try running single threaded.",
                                     &context.0,
-                                ));
+                                ).to_any());
                             }
                         }
                     }
@@ -568,7 +594,7 @@ impl Verifier {
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
             );
-            reporter.report(&note(context.0, msg));
+            reporter.report(&note(context.0, msg).to_any());
         }
 
         if is_check_valid && !is_singular {
@@ -581,8 +607,8 @@ impl Verifier {
     fn run_commands(
         &mut self,
         module_path: &vir::ast::Path,
-        diagnostics: &impl air::messages::Diagnostics<Message>,
-        air_context: &mut air::context::Context<Message>,
+        diagnostics: &impl air::messages::Diagnostics,
+        air_context: &mut air::context::Context,
         commands: &Vec<Command>,
         comment: &str,
     ) {
@@ -593,6 +619,7 @@ impl Verifier {
         for command in commands.iter() {
             let time0 = Instant::now();
             Self::check_internal_result(air_context.command(
+                &vir::messages::VirMessageInterface {},
                 diagnostics,
                 &command,
                 Default::default(),
@@ -608,10 +635,10 @@ impl Verifier {
     /// Returns true if there was at least one Invalid resulting in an error.
     fn run_commands_queries(
         &mut self,
-        reporter: &impl air::messages::Diagnostics<Message>,
+        reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
         level: MessageLevel,
-        air_context: &mut air::context::Context<Message>,
+        air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
@@ -681,15 +708,16 @@ impl Verifier {
         invalidity
     }
 
-    fn new_air_context_with_prelude(
+    fn new_air_context_with_prelude<'m>(
         &mut self,
-        diagnostics: &impl air::messages::Diagnostics<Message>,
+        message_interface: &'m dyn air::messages::MessageInterface,
+        diagnostics: &impl air::messages::Diagnostics,
         module_path: &vir::ast::Path,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
-    ) -> Result<air::context::Context<Message>, VirErr> {
-        let mut air_context = air::context::Context::new();
+    ) -> Result<air::context::Context<'m>, VirErr> {
+        let mut air_context = air::context::Context::new(message_interface);
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
         air_context.set_profile(self.args.profile);
@@ -759,6 +787,7 @@ impl Verifier {
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude(prelude_config).iter() {
             Self::check_internal_result(air_context.command(
+                message_interface,
                 diagnostics,
                 &command,
                 Default::default(),
@@ -773,10 +802,11 @@ impl Verifier {
         Ok(air_context)
     }
 
-    fn new_air_context_with_module_context(
+    fn new_air_context_with_module_context<'m>(
         &mut self,
+        message_interface: &'m dyn air::messages::MessageInterface,
         ctx: &vir::context::Ctx,
-        diagnostics: &impl air::messages::Diagnostics<Message>,
+        diagnostics: &impl air::messages::Diagnostics,
         module_path: &vir::ast::Path,
         function_path: &vir::ast::Path,
         datatype_commands: Commands,
@@ -788,8 +818,9 @@ impl Verifier {
         is_rerun: bool,
         context_counter: usize,
         span: &vir::messages::Span,
-    ) -> Result<air::context::Context<Message>, VirErr> {
+    ) -> Result<air::context::Context<'m>, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
+            message_interface,
             diagnostics,
             module_path,
             Some((function_path, context_counter)),
@@ -803,6 +834,7 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
+                message_interface,
                 diagnostics,
                 &command,
                 Default::default(),
@@ -846,13 +878,16 @@ impl Verifier {
     // Verify a single module
     fn verify_module(
         &mut self,
-        reporter: &impl air::messages::Diagnostics<Message>,
+        reporter: &impl air::messages::Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
+        let message_interface = vir::messages::VirMessageInterface {};
+
         let mut air_context = self.new_air_context_with_prelude(
+            &message_interface,
             reporter,
             module,
             None,
@@ -872,6 +907,7 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
+                &message_interface,
                 reporter,
                 &command,
                 Default::default(),
@@ -1255,6 +1291,7 @@ impl Verifier {
                         || (*prover_choice == vir::def::ProverChoice::BitVector);
                     let query_air_context = if do_spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
+                            &message_interface,
                             ctx,
                             reporter,
                             module,
@@ -1322,7 +1359,7 @@ impl Verifier {
 
     fn verify_module_outer(
         &mut self,
-        reporter: &impl air::messages::Diagnostics<Message>,
+        reporter: &impl air::messages::Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         module: &vir::ast::Path,
@@ -1341,7 +1378,8 @@ impl Verifier {
             };
             let functions_msg =
                 if self.args.verify_function.is_some() { " (selected functions)" } else { "" };
-            reporter.report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")));
+            reporter
+                .report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")).to_any());
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits) =
@@ -1376,9 +1414,10 @@ impl Verifier {
 
         if self.args.trace {
             if module.segments.len() == 0 {
-                reporter.report_now(&note_bare("done with root module"));
+                reporter.report_now(&note_bare("done with root module").to_any());
             } else {
-                reporter.report_now(&note_bare(&format!("done with module {}", &module_name)));
+                reporter
+                    .report_now(&note_bare(&format!("done with module {}", &module_name)).to_any());
             }
         }
 
@@ -1589,14 +1628,14 @@ impl Verifier {
                         if now {
                             // if the message should be reported immediately, do so
                             // this is used for printing notices for long running queries
-                            reporter.report_as(&msg, level);
+                            reporter.report_as(&msg.to_any(), level);
                             continue;
                         }
 
                         if let Some(m) = active_module {
                             // if it's the active module, print the message
                             if id == m {
-                                reporter.report_as(&msg, level);
+                                reporter.report_as(&msg.to_any(), level);
                             } else {
                                 let msgs = messages.get_mut(id).expect("message id out of range");
                                 msgs.1.push((msg, level));
@@ -1605,7 +1644,7 @@ impl Verifier {
                             // no active module, print this message and set the module as the
                             // active one
                             active_module = Some(id);
-                            reporter.report_as(&msg, level);
+                            reporter.report_as(&msg.to_any(), level);
                         }
                     }
                     ReporterMessage::Done(id) => {
@@ -1639,7 +1678,7 @@ impl Verifier {
                                 }
                                 // drain and print all messages of the module
                                 for (msg, level) in msgs.1.drain(..) {
-                                    reporter.report_as(&msg, level);
+                                    reporter.report_as(&msg.to_any(), level);
                                 }
                                 // if the module wasn't done, make it active and handle next message
                                 if !msgs.0 {
@@ -1676,7 +1715,7 @@ impl Verifier {
             // print remaining messages
             for msgs in messages.drain(..) {
                 for (msg, level) in msgs.1 {
-                    reporter.report_as(&msg, level);
+                    reporter.report_as(&msg.to_any(), level);
                 }
             }
         } else {
@@ -1694,13 +1733,13 @@ impl Verifier {
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
         if self.args.profile_all {
-            let profiler = Profiler::new(&reporter);
+            let profiler = Profiler::new(&vir::messages::VirMessageInterface {}, &reporter);
             self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
         } else if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
                 "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
             );
-            reporter.report(&msg);
+            reporter.report(&msg.to_any());
         }
 
         // Log/display triggers
@@ -1743,7 +1782,7 @@ impl Verifier {
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
                 ";
-            reporter.report(&note(&span, msg));
+            reporter.report(&note(&span, msg).to_any());
         }
 
         Ok(())
@@ -1773,7 +1812,7 @@ impl Verifier {
         spans: &SpanContext,
         other_crate_names: Vec<String>,
         other_vir_crates: Vec<Krate>,
-        diagnostics: &impl air::messages::Diagnostics<Message>,
+        diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
         let time0 = Instant::now();
@@ -1908,9 +1947,11 @@ impl Verifier {
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
-                    diagnostics.report_as(&err, MessageLevel::Warning)
+                    diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
-                vir::ast::VirErrAs::Note(err) => diagnostics.report_as(&err, MessageLevel::Note),
+                vir::ast::VirErrAs::Note(err) => {
+                    diagnostics.report_as(&err.to_any(), MessageLevel::Note)
+                }
             }
         }
         check_crate_result.map_err(|e| (e, Vec::new()))?;
@@ -2005,7 +2046,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             {
                 let reporter = Reporter::new(&spans, compiler);
                 if self.verifier.args.trace {
-                    reporter.report_now(&note_bare("preparing crate for verification"));
+                    reporter.report_now(&note_bare("preparing crate for verification").to_any());
                 }
                 if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
                     tcx,
@@ -2016,16 +2057,16 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     &reporter,
                     crate_name.clone(),
                 ) {
-                    reporter.report_as(&err, MessageLevel::Error);
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
 
                     for diag in diagnostics.drain(..) {
                         match diag {
                             vir::ast::VirErrAs::Warning(err) => {
-                                reporter.report_as(&err, MessageLevel::Warning)
+                                reporter.report_as(&err.to_any(), MessageLevel::Warning)
                             }
                             vir::ast::VirErrAs::Note(err) => {
-                                reporter.report_as(&err, MessageLevel::Note)
+                                reporter.report_as(&err.to_any(), MessageLevel::Note)
                             }
                         }
                     }
@@ -2048,7 +2089,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         );
                         match file {
                             Err(err) => {
-                                reporter.report_as(&err, MessageLevel::Error);
+                                reporter.report_as(&err.to_any(), MessageLevel::Error);
                                 self.verifier.encountered_vir_error = true;
                                 return;
                             }
@@ -2086,13 +2127,13 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                                 return;
                             }
                             for msg in &msgs {
-                                reporter.report(&msg);
+                                reporter.report(&msg.clone().to_any());
                             }
                             return;
                         }
                     }
                     Err(err) => {
-                        reporter.report_as(&err, MessageLevel::Error);
+                        reporter.report_as(&err.to_any(), MessageLevel::Error);
                         self.verifier.encountered_vir_error = true;
                         return;
                     }
@@ -2107,7 +2148,7 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Ok(()) => {}
                 Err(err) => {
                     let reporter = Reporter::new(&spans, compiler);
-                    reporter.report_as(&err, MessageLevel::Error);
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
                 }
             }

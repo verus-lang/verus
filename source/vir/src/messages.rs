@@ -1,6 +1,6 @@
 pub use air::messages::MessageLevel;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 fn empty_raw_span() -> RawSpan {
     Arc::new(())
@@ -55,73 +55,101 @@ pub struct MessageX {
     pub help: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)] // for Debug, see ast_util
-pub struct Message(Arc<MessageX>);
+pub type Message = Arc<MessageX>;
 
-impl core::ops::Deref for Message {
-    type Target = MessageX;
+pub trait ToAny {
+    fn to_any(self) -> Arc<dyn Any + Send + Sync>;
+}
 
-    fn deref(&self) -> &Self::Target {
-        &*self.0
+impl ToAny for Message {
+    fn to_any(self) -> Arc<dyn Any + Send + Sync> {
+        self
     }
 }
 
-impl air::messages::Message for Message {
-    type MessageLabel = MessageLabel;
+impl ToAny for MessageLabel {
+    fn to_any(self) -> Arc<dyn Any + Send + Sync> {
+        Arc::new(self)
+    }
+}
 
-    fn empty() -> Self {
-        Message(Arc::new(MessageX {
+pub struct VirMessageInterface {}
+
+impl air::messages::MessageInterface for VirMessageInterface {
+    fn empty(&self) -> Arc<dyn Any + Send + Sync> {
+        Arc::new(MessageX {
             level: MessageLevel::Error,
             note: "".to_owned(),
             spans: Vec::new(),
             labels: Vec::new(),
             help: None,
-        }))
+        })
     }
 
-    fn all_msgs(&self) -> Vec<String> {
-        Some(self.note.clone())
+    fn all_msgs(&self, message: &Arc<dyn Any + Send + Sync>) -> Vec<String> {
+        let message: &MessageX =
+            message.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        Some(message.note.clone())
             .into_iter()
-            .chain(self.labels.iter().map(|l| l.note.clone()))
+            .chain(message.labels.iter().map(|l| l.note.clone()))
             .collect()
     }
 
-    fn bare(level: MessageLevel, note: &str) -> Self {
-        Message(Arc::new(MessageX {
+    fn bare(&self, level: MessageLevel, note: &str) -> Arc<dyn Any + Send + Sync> {
+        Arc::new(MessageX {
             level,
             note: note.to_owned(),
             spans: Vec::new(),
             labels: Vec::new(),
             help: None,
-        }))
+        })
     }
 
-    fn unexpected_z3_version(expected: &str, found: &str) -> Self {
-        Message(Arc::new(MessageX {
+    fn unexpected_z3_version(&self, expected: &str, found: &str) -> Arc<dyn Any + Send + Sync> {
+        Arc::new(MessageX {
             level: MessageLevel::Error,
             note: format!("expected z3 version {expected}, found {found}"),
             labels: Vec::new(),
             spans: Vec::new(),
             help: None,
-        }))
+        })
     }
 
-    fn get_note(&self) -> &str {
-        &self.note
+    fn get_note<'b>(&self, message: &'b Arc<dyn Any + Send + Sync>) -> &'b str {
+        let message: &MessageX =
+            message.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        &message.note
     }
 
-    fn get_label_note(message_label: &Self::MessageLabel) -> &str {
+    fn get_message_label_note<'b>(&self, message_label: &'b Arc<dyn Any + Send + Sync>) -> &'b str {
+        let message_label: &MessageLabel =
+            message_label.downcast_ref().expect("unexpected value in Any -> Message conversion");
         &message_label.note
     }
 
-    fn append_labels(&self, labels: &Vec<Self::MessageLabel>) -> Self {
-        let mut s = (*self.0).clone();
-        s.labels.extend(labels.iter().cloned());
-        Message(Arc::new(s))
+    fn append_labels(
+        &self,
+        message: &Arc<dyn Any + Send + Sync>,
+        labels: &Vec<Arc<dyn Any + Send + Sync>>,
+    ) -> Arc<dyn Any + Send + Sync> {
+        let message: &MessageX =
+            message.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        let mut s = message.clone();
+        s.labels.extend(
+            labels
+                .iter()
+                .map(|l| l.downcast_ref().expect("unexpected value in Any -> Message conversion"))
+                .cloned(),
+        );
+        Arc::new(s)
     }
 
-    fn label_from_air_span(air_span: &str, note: &str) -> Self::MessageLabel {
-        MessageLabel {
+    fn message_label_from_air_span(
+        &self,
+        air_span: &str,
+        note: &str,
+    ) -> Arc<dyn Any + Send + Sync> {
+        Arc::new(MessageLabel {
             span: Span {
                 raw_span: Arc::new(()),
                 id: 0,
@@ -129,21 +157,28 @@ impl air::messages::Message for Message {
                 as_string: air_span.to_owned(),
             },
             note: note.to_owned(),
-        }
+        })
     }
 
-    fn from_labels(labels: &Vec<Self::MessageLabel>) -> Self {
+    fn from_labels(&self, labels: &Vec<Arc<dyn Any + Send + Sync>>) -> Arc<dyn Any + Send + Sync> {
         if labels.len() == 0 {
-            Self::empty()
+            self.empty()
         } else {
-            let MessageLabel { span, note } = labels[0].clone();
-            Message(Arc::new(MessageX {
+            let MessageLabel { span, note } =
+                labels[0].downcast_ref::<MessageLabel>().unwrap().clone();
+            Arc::new(MessageX {
                 level: MessageLevel::Error,
                 note,
                 spans: vec![span],
-                labels: labels[1..].to_vec(),
+                labels: labels[1..]
+                    .iter()
+                    .map(|l| {
+                        l.downcast_ref().expect("unexpected value in Any -> Message conversion")
+                    })
+                    .cloned()
+                    .collect(),
                 help: None,
-            }))
+            })
         }
     }
 }
@@ -171,24 +206,18 @@ impl air::messages::Message for Message {
 
 /// Basic message, with a note and a single span to be highlighted with ^^^^^^
 pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Message {
-    Message(Arc::new(MessageX {
+    Arc::new(MessageX {
         level,
         note: note.into(),
         spans: vec![span.clone()],
         labels: Vec::new(),
         help: None,
-    }))
+    })
 }
 
 /// Bare message without any span
 pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S) -> Message {
-    Message(Arc::new(MessageX {
-        level,
-        note: note.into(),
-        spans: vec![],
-        labels: Vec::new(),
-        help: None,
-    }))
+    Arc::new(MessageX { level, note: note.into(), spans: vec![], labels: Vec::new(), help: None })
 }
 
 /// Message with a span to be highlighted with ^^^^^^, and a label for that span
@@ -198,13 +227,13 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
     span: &Span,
     label: T,
 ) -> Message {
-    Message(Arc::new(MessageX {
+    Arc::new(MessageX {
         level,
         note: note.into(),
         spans: vec![span.clone()],
         labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
         help: None,
-    }))
+    })
 }
 
 // Convenience functions
@@ -262,7 +291,7 @@ impl MessageX {
     pub fn primary_span(&self, span: &Span) -> Message {
         let mut e = self.clone();
         e.spans.push(span.clone());
-        Message(Arc::new(e))
+        Arc::new(e)
     }
 
     /// Add a new primary span with a label (rendered with ^^^^^^)
@@ -270,31 +299,31 @@ impl MessageX {
         let mut e = self.clone();
         e.spans.push(span.clone());
         e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
-        Message(Arc::new(e))
+        Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with no label (rendered with ------)
     pub fn secondary_span(&self, span: &Span) -> Message {
         let mut e = self.clone();
         e.labels.push(MessageLabel { span: span.clone(), note: "".to_string() });
-        Message(Arc::new(e))
+        Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with a label (rendered with ------)
     pub fn secondary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
         e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
-        Message(Arc::new(e))
+        Arc::new(e)
     }
 
     pub fn help(&self, help: impl Into<String>) -> Message {
         let MessageX { level, note, spans, labels, help: _ } = &self;
-        Message(Arc::new(MessageX {
+        Arc::new(MessageX {
             level: *level,
             note: note.clone(),
             spans: spans.clone(),
             labels: labels.clone(),
             help: Some(help.into()),
-        }))
+        })
     }
 }

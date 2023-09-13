@@ -1,7 +1,7 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
-use crate::messages::{Diagnostics, Message};
+use crate::messages::Diagnostics;
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
@@ -11,40 +11,41 @@ use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
 use sise::Node;
+use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
-pub(crate) struct AssertionInfo<M: Message> {
-    pub(crate) error: M,
+pub(crate) struct AssertionInfo {
+    pub(crate) error: Arc<dyn Any + Send + Sync>,
     pub(crate) label: Ident,
-    pub(crate) decl: Decl<M>,
+    pub(crate) decl: Decl,
     pub(crate) disabled: bool,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct AxiomInfo<M: Message> {
-    pub(crate) labels: Vec<M::MessageLabel>,
+pub(crate) struct AxiomInfo {
+    pub(crate) labels: Vec<Arc<dyn Any + Send + Sync>>,
     pub(crate) label: Ident,
-    pub(crate) decl: Decl<M>,
+    pub(crate) decl: Decl,
 }
 
 #[derive(Debug)]
-pub enum ValidityResult<M: Message> {
+pub enum ValidityResult {
     Valid,
-    Invalid(Option<Model>, M),
+    Invalid(Option<Model>, Arc<dyn Any + Send + Sync>),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ContextState<M: Message> {
+pub(crate) enum ContextState {
     NotStarted,
     ReadyForQuery,
     FoundResult,
-    FoundInvalid(Vec<AssertionInfo<M>>, Model),
+    FoundInvalid(Vec<AssertionInfo>, Model),
     Canceled,
     NoMoreQueriesAllowed,
 }
@@ -59,9 +60,10 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-pub struct Context<M: Message> {
+pub struct Context<'a> {
+    pub(crate) message_interface: &'a dyn crate::messages::MessageInterface,
     smt_process: Option<SmtProcess>,
-    pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo<M>>>,
+    pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
     pub(crate) axiom_infos_count: u64,
     pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
     pub(crate) lambda_count: u64,
@@ -75,21 +77,22 @@ pub struct Context<M: Message> {
     pub(crate) profile_all: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
-    pub(crate) air_initial_log: Emitter<M>,
-    pub(crate) air_middle_log: Emitter<M>,
-    pub(crate) air_final_log: Emitter<M>,
-    pub(crate) smt_log: Emitter<M>,
+    pub(crate) air_initial_log: Emitter<'a>,
+    pub(crate) air_middle_log: Emitter<'a>,
+    pub(crate) air_final_log: Emitter<'a>,
+    pub(crate) smt_log: Emitter<'a>,
     pub singular_log: Option<std::fs::File>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
-    pub(crate) state: ContextState<M>,
+    pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) disable_incremental_solving: bool,
 }
 
-impl<M: Message> Context<M> {
-    pub fn new() -> Context<M> {
+impl<'a> Context<'a> {
+    pub fn new(message_interface: &'a dyn crate::messages::MessageInterface) -> Self {
         let mut context = Context {
+            message_interface,
             smt_process: None,
             axiom_infos: ScopeMap::new(),
             axiom_infos_count: 0,
@@ -105,10 +108,10 @@ impl<M: Message> Context<M> {
             profile_all: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
-            air_initial_log: Emitter::new(false, false, None),
-            air_middle_log: Emitter::new(false, false, None),
-            air_final_log: Emitter::new(false, false, None),
-            smt_log: Emitter::new(true, true, None),
+            air_initial_log: Emitter::new(message_interface, false, false, None),
+            air_middle_log: Emitter::new(message_interface, false, false, None),
+            air_final_log: Emitter::new(message_interface, false, false, None),
+            smt_log: Emitter::new(message_interface, true, true, None),
             singular_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
@@ -342,7 +345,7 @@ impl<M: Message> Context<M> {
         self.pop_name_scope();
     }
 
-    pub fn global(&mut self, decl: &Decl<M>) -> Result<(), TypeError> {
+    pub fn global(&mut self, decl: &Decl) -> Result<(), TypeError> {
         self.ensure_started();
         self.air_initial_log.log_decl(decl);
         self.air_middle_log.log_decl(decl);
@@ -358,10 +361,11 @@ impl<M: Message> Context<M> {
 
     pub fn check_valid(
         &mut self,
-        diagnostics: &impl Diagnostics<M>,
-        query: &Query<M>,
+        message_interface: &dyn crate::messages::MessageInterface,
+        diagnostics: &impl Diagnostics,
+        query: &Query,
         query_context: QueryContext<'_, '_>,
-    ) -> ValidityResult<M> {
+    ) -> ValidityResult {
         self.ensure_started();
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
@@ -370,7 +374,7 @@ impl<M: Message> Context<M> {
         };
         let (query, snapshots, local_vars) = crate::var_to_const::lower_query(&query);
         self.air_middle_log.log_query(&query);
-        let query = crate::block_to_assert::lower_query(&query);
+        let query = crate::block_to_assert::lower_query(message_interface, &query);
         self.air_final_log.log_query(&query);
 
         let model = Model::new(snapshots, local_vars);
@@ -391,10 +395,10 @@ impl<M: Message> Context<M> {
     /// Once only_check_earlier is set, it remains set until finish_query is called.
     pub fn check_valid_again(
         &mut self,
-        diagnostics: &impl Diagnostics<M>,
+        diagnostics: &impl Diagnostics,
         only_check_earlier: bool,
         query_context: QueryContext<'_, '_>,
-    ) -> ValidityResult<M> {
+    ) -> ValidityResult {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
             crate::smt_verify::smt_check_assertion(
                 self,
@@ -431,10 +435,11 @@ impl<M: Message> Context<M> {
 
     pub fn command(
         &mut self,
-        diagnostics: &impl Diagnostics<M>,
-        command: &Command<M>,
+        message_interface: &dyn crate::messages::MessageInterface,
+        diagnostics: &impl Diagnostics,
+        command: &Command,
         query_context: QueryContext<'_, '_>,
-    ) -> ValidityResult<M> {
+    ) -> ValidityResult {
         match &**command {
             CommandX::Push => {
                 self.push();
@@ -455,7 +460,9 @@ impl<M: Message> Context<M> {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) => self.check_valid(diagnostics, &query, query_context),
+            CommandX::CheckValid(query) => {
+                self.check_valid(message_interface, diagnostics, &query, query_context)
+            }
         }
     }
 }

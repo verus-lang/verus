@@ -5,9 +5,9 @@
 //! VIR-AST follows the structure of Rust-HIR, but omits features that are not needed
 //! for verification.
 
-pub use crate::air_ast::{Binder, Binders};
 use crate::def::Spanned;
 use crate::messages::{Message, Span};
+pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;

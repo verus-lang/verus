@@ -1,4 +1,3 @@
-use crate::air_ast::{Binder, BinderX, Binders, Ident};
 use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
     Quant, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr,
@@ -8,6 +7,7 @@ use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::prelude::ArchWordBits;
 use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
+use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::fmt;

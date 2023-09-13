@@ -1,4 +1,3 @@
-use crate::air_ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use crate::ast::{DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, Variants};
 use crate::ast_util::{is_visible_to_of_owner, path_as_friendly_rust_name};
 use crate::context::Ctx;
@@ -13,6 +12,7 @@ use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
 use crate::sst_to_air::{datatype_id, expr_has_type, path_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::vec_map;
+use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{
     ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies, str_apply,
     str_ident, str_typ,
@@ -455,7 +455,7 @@ fn datatype_or_fun_to_air_commands(
                     &variant_field_ident(&dpath, &variant.name, &field.name),
                     recursive_function_field,
                 );
-                let axioms = air::parser::Parser::new()
+                let axioms = air::parser::Parser::new(&crate::messages::VirMessageInterface {})
                     .nodes_to_commands(&nodes)
                     .expect("internal error: malformed datatype axiom");
                 axiom_commands.extend(axioms.iter().cloned());

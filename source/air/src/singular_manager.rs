@@ -50,7 +50,7 @@ impl SingularProcess {
 }
 
 pub fn log_singular<M: crate::messages::Message>(
-    context: &mut crate::context::Context<M>,
+    context: &mut crate::context::Context,
     query: &String,
     func_span: &str,
 ) {

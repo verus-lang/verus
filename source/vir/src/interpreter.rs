@@ -5,16 +5,16 @@
 //! Current target is supporting proof by computation
 //! https://github.com/secure-foundations/verus/discussions/120
 
-use crate::air_ast::{Binder, BinderX, Binders};
 use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::func_to_air::{SstInfo, SstMap};
-use crate::messages::{error, warning, Message, Span};
+use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
+use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
 use num_bigint::BigInt;
@@ -1613,7 +1613,7 @@ fn eval_expr_launch(
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
     exp: &Exp,
-    diagnostics: &(impl air::messages::Diagnostics<Message> + ?Sized),
+    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
     rlimit: u32,
     arch: ArchWordBits,
@@ -1638,6 +1638,6 @@ pub fn eval_expr(
     });
     *log = taken_log;
     let (e, msgs) = res?;
-    msgs.iter().for_each(|m| diagnostics.report(m));
+    msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
     Ok(e)
 }
