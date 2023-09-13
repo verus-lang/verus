@@ -86,7 +86,7 @@ pub(crate) struct State {
     pub(crate) trait_decl_set: HashSet<Path>,
     pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
-    pub(crate) assoc_type_impls: Vec<AssocTypeImpl>,
+    pub(crate) assoc_type_impls: HashMap<AssocTypeImpl, Vec<AssocTypeImplType>>,
     pub(crate) fun_decls: Vec<FunDecl>,
     enclosing_fun_id: Option<DefId>,
 }
@@ -108,7 +108,7 @@ impl State {
             trait_decl_set: HashSet::new(),
             trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
-            assoc_type_impls: Vec::new(),
+            assoc_type_impls: HashMap::new(),
             fun_decls: Vec::new(),
             enclosing_fun_id: None,
         }
@@ -637,16 +637,15 @@ fn erase_call<'tcx>(
         ResolvedCall::CompilableOperator(op) => {
             use crate::erase::CompilableOperator::*;
             let builtin_method = match op {
-                SmartPtrClone => Some("clone"),
-                TrackedGet => Some("get"),
-                TrackedBorrow => Some("borrow"),
-                TrackedBorrowMut => Some("borrow_mut"),
+                SmartPtrClone { is_method } => Some((*is_method, "clone")),
+                TrackedGet => Some((true, "get")),
+                TrackedBorrow => Some((true, "borrow")),
+                TrackedBorrowMut => Some((true, "borrow_mut")),
                 GhostExec | TrackedNew | TrackedExec | TrackedExecBorrow => None,
                 IntIntrinsic | Implies | SmartPtrNew | NewStrLit => None,
                 GhostSplitTuple | TrackedSplitTuple => None,
             };
-            assert!(builtin_method.is_some() == is_method);
-            if let Some(method) = builtin_method {
+            if let Some((true, method)) = builtin_method {
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
@@ -1451,24 +1450,26 @@ fn erase_mir_generics<'tcx>(
             }
         }
     }
-    let mut fn_traits: Vec<(Typ, ClosureKind)> = Vec::new();
+    let mut fn_traits: Vec<(Typ, Vec<Id>, ClosureKind)> = Vec::new();
     let mut fn_projections: HashMap<Typ, (Typ, Typ)> = HashMap::new();
     for (pred, _) in mir_predicates.predicates.iter() {
-        match pred.kind().no_bound_vars().expect("no_bound_vars") {
-            PredicateKind::Clause(Clause::RegionOutlives(pred)) => {
+        match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
+            (PredicateKind::Clause(Clause::RegionOutlives(pred)), &[]) => {
                 let x = erase_hir_region(ctxt, state, &pred.0).expect("bound");
                 let typ = Box::new(TypX::TypParam(x));
                 let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
-                let generic_bound = GenericBound { typ, bound: Bound::Id(bound) };
+                let generic_bound =
+                    GenericBound { typ, bound_vars: vec![], bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
-            PredicateKind::Clause(Clause::TypeOutlives(pred)) => {
+            (PredicateKind::Clause(Clause::TypeOutlives(pred)), &[]) => {
                 let typ = erase_ty(ctxt, state, &pred.0);
                 let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
-                let generic_bound = GenericBound { typ, bound: Bound::Id(bound) };
+                let generic_bound =
+                    GenericBound { typ, bound_vars: vec![], bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
-            PredicateKind::Clause(Clause::Trait(pred)) => {
+            (PredicateKind::Clause(Clause::Trait(pred)), bound_vars) => {
                 let typ = erase_ty(ctxt, state, &pred.trait_ref.substs[0].expect_ty());
                 let id = pred.trait_ref.def_id;
                 let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
@@ -1485,7 +1486,9 @@ fn erase_mir_generics<'tcx>(
                     None
                 };
                 if let Some(bound) = bound {
-                    let generic_bound = GenericBound { typ: typ.clone(), bound };
+                    assert!(bound_vars.is_empty());
+                    let generic_bound =
+                        GenericBound { typ: typ.clone(), bound_vars: vec![], bound };
                     generic_bounds.push(generic_bound);
                 }
                 let kind = if Some(id) == ctxt.tcx.lang_items().fn_trait() {
@@ -1497,11 +1500,20 @@ fn erase_mir_generics<'tcx>(
                 } else {
                     None
                 };
+                let bound_vars: Vec<_> = bound_vars
+                    .iter()
+                    .map(|v| match v {
+                        BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) => {
+                            state.lifetime(lifetime_key(ctxt, *a))
+                        }
+                        _ => panic!("expected region"),
+                    })
+                    .collect();
                 if let Some(kind) = kind {
-                    fn_traits.push((typ, kind));
+                    fn_traits.push((typ, bound_vars, kind));
                 }
             }
-            PredicateKind::Clause(Clause::Projection(pred)) => {
+            (PredicateKind::Clause(Clause::Projection(pred)), bound_vars) => {
                 if Some(pred.projection_ty.def_id) == ctxt.tcx.lang_items().fn_once_output() {
                     assert!(pred.projection_ty.substs.len() == 2);
                     let typ = erase_ty(ctxt, state, &pred.projection_ty.substs[0].expect_ty());
@@ -1514,6 +1526,8 @@ fn erase_mir_generics<'tcx>(
                     }
                     let fn_ret = erase_ty(ctxt, state, &pred.term.ty().expect("fn_ret"));
                     fn_projections.insert(typ, (fn_params, fn_ret)).map(|_| panic!("{:?}", pred));
+                } else {
+                    assert!(bound_vars.is_empty());
                 }
             }
             _ => {
@@ -1522,9 +1536,9 @@ fn erase_mir_generics<'tcx>(
             }
         }
     }
-    for (typ, kind) in fn_traits.into_iter() {
+    for (typ, bound_vars, kind) in fn_traits.into_iter() {
         let (params, ret) = fn_projections.remove(&typ).expect("fn_projections");
-        let generic_bound = GenericBound { typ, bound: Bound::Fn(kind, params, ret) };
+        let generic_bound = GenericBound { typ, bound_vars, bound: Bound::Fn(kind, params, ret) };
         generic_bounds.push(generic_bound);
     }
 }
@@ -1547,6 +1561,7 @@ fn erase_fn_common<'tcx>(
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
+    // TODO let is_verus_reveal = **path.segments.last().expect("segments.last") == VERUS_REVEAL_INTERNAL;
     if is_verus_spec {
         return;
     }
@@ -1878,14 +1893,13 @@ fn erase_impl<'tcx>(
                     let typ = erase_ty(ctxt, state, &ty);
                     let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
                     let assoc = AssocTypeImpl {
-                        name,
                         generic_params,
                         generic_bounds,
                         self_typ,
                         trait_as_datatype,
-                        typ,
                     };
-                    state.assoc_type_impls.push(assoc);
+                    let assoc_type = AssocTypeImplType { name, typ };
+                    state.assoc_type_impls.entry(assoc).or_insert(Vec::new()).push(assoc_type);
                 }
             }
             _ => panic!("unexpected impl"),
@@ -2181,7 +2195,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                 OwnerNode::Item(item) => {
                     let attrs = tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
-                    if vattrs.external {
+                    if vattrs.external || vattrs.internal_reveal_fn {
                         continue;
                     }
                     let id = item.owner_id.to_def_id();

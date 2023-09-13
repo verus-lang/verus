@@ -1501,6 +1501,13 @@ impl Debug for Lite<syn::Expr> {
                 formatter.write_str(")")?;
                 Ok(())
             }
+            syn::Expr::RevealHide(_val) => {
+                formatter.write_str("RevealHide")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             syn::Expr::View(_val) => {
                 formatter.write_str("View")?;
                 formatter.write_str("(")?;
@@ -5366,6 +5373,69 @@ impl Debug for Lite<syn::ReturnType> {
                 formatter.finish()
             }
         }
+    }
+}
+impl Debug for Lite<syn::RevealHide> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("RevealHide");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        if let Some(val) = &_val.reveal_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Reveal);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("reveal_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.reveal_with_fuel_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::RevealWithFuel);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("reveal_with_fuel_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.hide_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Hide);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("hide_token", Print::ref_cast(val));
+        }
+        formatter.field("path", Lite(&_val.path));
+        if let Some(val) = &_val.fuel {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::Comma, Box<syn::Expr>));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("fuel", Print::ref_cast(val));
+        }
+        formatter.finish()
     }
 }
 impl Debug for Lite<syn::Signature> {

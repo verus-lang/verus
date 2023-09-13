@@ -656,6 +656,14 @@ fn emit_generic_bound(bound: &GenericBound) -> String {
     let mut buf = String::new();
     buf += &bound.typ.to_string();
     buf += ": ";
+    if !bound.bound_vars.is_empty() {
+        buf += "for<";
+        for b in bound.bound_vars.iter() {
+            buf += &b.to_string();
+            buf += ","
+        }
+        buf += "> ";
+    }
     match &bound.bound {
         Bound::Copy => {
             buf += "Copy";
@@ -787,7 +795,7 @@ fn emit_copy_clone(
     for (gparam, copy_bound) in d.generic_params.iter().zip(copy_bounds.iter()) {
         if *copy_bound {
             let typ = Box::new(TypX::TypParam(gparam.name.clone()));
-            let generic_bound = GenericBound { typ, bound: bound.clone() };
+            let generic_bound = GenericBound { typ, bound_vars: vec![], bound: bound.clone() };
             generic_bounds.push(generic_bound);
         }
         copy_generics.push(gparam.clone());
@@ -867,9 +875,12 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     }
 }
 
-pub(crate) fn emit_assoc_type_impl(state: &mut EmitState, a: &AssocTypeImpl) {
-    let AssocTypeImpl { name, generic_params, generic_bounds, self_typ, trait_as_datatype, typ } =
-        a;
+pub(crate) fn emit_assoc_type_impl(
+    state: &mut EmitState,
+    a: &AssocTypeImpl,
+    fns: &Vec<AssocTypeImplType>,
+) {
+    let AssocTypeImpl { trait_as_datatype, self_typ, generic_params, generic_bounds } = a;
     state.newline();
     state.newline();
     state.write("impl");
@@ -879,9 +890,17 @@ pub(crate) fn emit_assoc_type_impl(state: &mut EmitState, a: &AssocTypeImpl) {
     state.write(" for ");
     state.write(&self_typ.to_string());
     emit_generic_bounds(state, &generic_bounds);
-    state.write(" { type ");
-    state.write(&name.to_string());
-    state.write(" = ");
-    state.write(&typ.to_string());
-    state.write("; }");
+    state.write(" {");
+    state.push_indent();
+    for fn_ in fns {
+        let AssocTypeImplType { name, typ } = fn_;
+        state.newline();
+        state.write("type ");
+        state.write(&name.to_string());
+        state.write(" = ");
+        state.write(&typ.to_string());
+        state.write(";");
+    }
+    state.newline_unindent();
+    state.write("}");
 }

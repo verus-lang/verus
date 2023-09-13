@@ -10,7 +10,7 @@ use air::messages::Diagnostics;
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
-use verus_rustc_interface::interface::Compiler;
+use rustc_interface::interface::Compiler;
 use vir::messages::{
     message, note, note_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
 };
@@ -18,6 +18,7 @@ use vir::messages::{
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
 use std::any::Any;
@@ -28,8 +29,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::GlobalCtx;
 
+use crate::user_filter::UserFilter;
 use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
-use vir::ast_util::{friendly_fun_name_crate_relative, fun_as_friendly_rust_name, is_visible_to};
+use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
 use vir::prelude::PreludeConfig;
@@ -204,6 +206,7 @@ pub struct Verifier {
     pub count_verified: u64,
     pub count_errors: u64,
     pub args: Args,
+    pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
 
     /// total real time to verify all activated modules of the crate, including real time for
@@ -269,6 +272,7 @@ impl Verifier {
             count_verified: 0,
             count_errors: 0,
             args,
+            user_filter: None,
             erasure_hints: None,
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
@@ -298,6 +302,7 @@ impl Verifier {
             count_verified: 0,
             count_errors: 0,
             args: self.args.clone(),
+            user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
 
             time_verify_crate: Duration::new(0, 0),
@@ -645,41 +650,16 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
-        function_name: Option<&Fun>,
-        verify_function_exact_match: bool,
+        function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
-        if let Some(verify_function) = &self.args.verify_function {
-            if let Some(function_name) = function_name {
-                let name = friendly_fun_name_crate_relative(&module, function_name);
-                if verify_function_exact_match {
-                    if &name != verify_function
-                        && !name.ends_with(&format!("::{}", verify_function))
-                    {
-                        return false;
-                    }
-                } else {
-                    let clean_verify_function = verify_function.trim_matches('*');
-                    let left_wildcard = verify_function.starts_with('*');
-                    let right_wildcard = verify_function.ends_with('*');
-
-                    if left_wildcard && !right_wildcard {
-                        if !name.ends_with(clean_verify_function) {
-                            return false;
-                        }
-                    } else if !left_wildcard && right_wildcard {
-                        if !name.starts_with(clean_verify_function) {
-                            return false;
-                        }
-                    } else if !name.contains(clean_verify_function) {
-                        return false;
-                    }
-                }
-            } else {
-                return false;
-            }
+        let user_filter = self.user_filter.as_ref().unwrap();
+        let includes_function = user_filter.includes_function(function_name, module);
+        if !includes_function {
+            return false;
         }
+
         let mut invalidity = false;
         let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
@@ -1007,92 +987,6 @@ impl Verifier {
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
-        let mut verify_function_exact_match = false;
-        if let Some(verify_function) = &self.args.verify_function {
-            let module_funs = funs
-                .iter()
-                .map(|(_, (f, _))| f)
-                .filter(|f| Some(module.clone()) == f.x.owning_module);
-            let mut module_fun_names: Vec<String> =
-                module_funs.map(|f| friendly_fun_name_crate_relative(&module, &f.x.name)).collect();
-
-            let clean_verify_function = verify_function.trim_matches('*');
-            let mut filtered_functions: Vec<&String> =
-                module_fun_names.iter().filter(|f| f.contains(clean_verify_function)).collect();
-
-            // no match
-            if filtered_functions.len() == 0 {
-                module_fun_names.sort();
-                let msg = vec![
-                    format!(
-                        "could not find function {verify_function} specified by --verify-function"
-                    ),
-                    format!("available functions are:"),
-                ]
-                .into_iter()
-                .chain(module_fun_names.iter().map(|f| format!("  - {f}")))
-                .collect::<Vec<String>>()
-                .join("\n");
-                return Err(error(msg));
-            }
-
-            // substring match
-            if verify_function == clean_verify_function {
-                verify_function_exact_match = filtered_functions
-                    .iter()
-                    .filter(|f| {
-                        // filter for exact match and impl func match
-                        *f == &verify_function || f.ends_with(&format!("::{}", verify_function))
-                    })
-                    .count()
-                    == 1;
-
-                if filtered_functions.len() > 1 && !verify_function_exact_match {
-                    filtered_functions.sort();
-                    let msg = vec![
-                        format!(
-                            "more than one match found for --verify-function {verify_function}, consider using wildcard *{verify_function}* to verify all matched results,"
-                        ),
-                        format!(
-                            "or specify a unique substring for the desired function, matched results are:"
-                        ),
-                    ].into_iter()
-                    .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                    return Err(error(msg));
-                }
-            } else {
-                // wildcard match
-                let wildcard_mismatch =
-                    match (verify_function.starts_with("*"), verify_function.ends_with("*")) {
-                        (true, false) => {
-                            !filtered_functions.iter().any(|f| f.ends_with(clean_verify_function))
-                        }
-                        (false, true) => {
-                            !filtered_functions.iter().any(|f| f.starts_with(clean_verify_function))
-                        }
-                        _ => false,
-                    };
-
-                if wildcard_mismatch {
-                    filtered_functions.sort();
-                    let msg = vec![
-                            format!(
-                                "could not find function {verify_function} specified by --verify-function,"
-                            ),
-                            format!(
-                                "consider *{clean_verify_function}* if you want to verify similar functions:"
-                            ),
-                        ].into_iter()
-                        .chain(filtered_functions.iter().map(|f| format!("  - {f}")))
-                        .collect::<Vec<String>>()
-                        .join("\n");
-                    return Err(error(msg));
-                }
-            }
-        }
-
         // For spec functions, check termination and declare consequence axioms.
         // For proof/exec functions, declare requires/ensures.
         // Declare them in SCC (strongly connected component) sorted order so that
@@ -1164,8 +1058,7 @@ impl Verifier {
                     &vec![],
                     &ctx.global.qid_map.borrow(),
                     module,
-                    Some(&function.x.name),
-                    verify_function_exact_match,
+                    &function.x.name,
                     &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
                 );
@@ -1197,8 +1090,7 @@ impl Verifier {
                             &snap_map,
                             &ctx.global.qid_map.borrow(),
                             module,
-                            Some(&function.x.name),
-                            verify_function_exact_match,
+                            &function.x.name,
                             &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                             Some("recommends check: "),
                         );
@@ -1240,7 +1132,7 @@ impl Verifier {
                 ctx.expand_flag = expands_rerun;
                 self.expand_flag = expands_rerun;
                 if expands_rerun {
-                    ctx.debug_expand_targets = self.expand_targets.to_vec();
+                    ctx.debug_expand_targets = self.expand_targets.drain(..).collect();
                 }
                 let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
@@ -1327,8 +1219,7 @@ impl Verifier {
                         &snap_map,
                         &ctx.global.qid_map.borrow(),
                         module,
-                        Some(&function.x.name),
-                        verify_function_exact_match,
+                        &function.x.name,
                         &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                         desc_prefix,
                     );
@@ -1371,14 +1262,15 @@ impl Verifier {
         self.module_times.insert(module.clone(), Default::default());
 
         let module_name = module_name(module);
-        if self.args.trace || (self.args.verify_module.len() > 0 || self.args.verify_root) {
+        let user_filter = self.user_filter.as_ref().unwrap();
+        if self.args.trace || !user_filter.is_everything() {
             let module_msg = if module.segments.len() == 0 {
                 "root module".into()
             } else {
                 format!("module {}", &module_name)
             };
             let functions_msg =
-                if self.args.verify_function.is_some() { " (selected functions)" } else { "" };
+                if user_filter.is_function_filter() { " (selected functions)" } else { "" };
             reporter
                 .report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")).to_any());
         }
@@ -1469,71 +1361,13 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        if self.args.verify_pervasive
-            && (!self.args.verify_module.is_empty() || self.args.verify_root)
-        {
-            return Err(error(
-                "--verify-pervasive not allowed when --verify-root or --verify-module are present",
-            ));
-        }
-
-        if self.args.verify_function.is_some() {
-            if self.args.verify_module.is_empty() && !self.args.verify_root {
-                return Err(error(
-                    "--verify-function option requires --verify-module or --verify-root",
-                ));
-            }
-
-            if self.args.verify_module.len() + (if self.args.verify_root { 1 } else { 0 }) > 1 {
-                return Err(error(
-                    "--verify-function only allowed with a single --verify-module (or --verify-root)",
-                ));
-            }
-        }
-
+        let user_filter = self.user_filter.as_ref().unwrap();
         let module_ids_to_verify: Vec<vir::ast::Path> = {
             let current_crate_module_ids = self
                 .current_crate_module_ids
                 .as_ref()
                 .expect("current_crate_module_ids should be initialized");
-            let mut remaining_verify_module: HashSet<_> = self.args.verify_module.iter().collect();
-            let module_ids_to_verify = current_crate_module_ids
-                .iter()
-                .filter(|m| {
-                    let name = module_name(m);
-                    let is_pervasive = name.starts_with("pervasive::")
-                        || name == "pervasive"
-                        || m.krate == Some(Arc::new("vstd".to_string()));
-                    (!self.args.verify_root
-                        && self.args.verify_module.is_empty()
-                        && (!is_pervasive ^ self.args.verify_pervasive))
-                        || (self.args.verify_root && m.segments.len() == 0 && !is_pervasive)
-                        || remaining_verify_module.take(&name).is_some()
-                })
-                .cloned()
-                .collect();
-
-            if let Some(mod_name) = remaining_verify_module.into_iter().next() {
-                let mut lines = current_crate_module_ids
-                    .iter()
-                    .filter_map(|m| {
-                        let name = module_name(m);
-                        (!(name.starts_with("pervasive::") || name == "pervasive")
-                            && m.segments.len() > 0)
-                            .then(|| format!("- {name}"))
-                    })
-                    .collect::<Vec<_>>();
-                lines.sort(); // Present the available modules in sorted order
-                let mut msg = vec![
-                    format!("could not find module {mod_name} specified by --verify-module"),
-                    format!("available modules are:"),
-                ];
-                msg.extend(lines);
-                msg.push(format!("or use --verify-root, --verify-pervasive"));
-                return Err(error(msg.join("\n")));
-            }
-
-            module_ids_to_verify
+            user_filter.filter_module_ids(current_crate_module_ids)?
         };
 
         let time_verify_sequential_end = Instant::now();
@@ -1924,6 +1758,10 @@ impl Verifier {
         crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
             .map_err(map_err_diagnostics)?;
 
+        let user_filter =
+            UserFilter::from_args(&self.args, &vir_crate).map_err(map_err_diagnostics)?;
+        self.user_filter = Some(user_filter);
+
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
         // of the library crates, which were already checked when they were exported.
@@ -2011,21 +1849,42 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) build_test_mode: bool,
 }
 
-impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
+    Option<
+        HashMap<
+            rustc_span::def_id::DefId,
+            (Option<rustc_hir::def::Res>, crate::hir_hide_reveal_rewrite::ResOrSymbol),
+        >,
+    >,
+> = std::sync::RwLock::new(None);
+
+fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
+    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
+    crate_
+}
+
+impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        config.override_queries = Some(|_session, providers, _extern_providers| {
+            providers.hir_crate = hir_crate;
+        });
+    }
+
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,
-        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
-    ) -> verus_rustc_driver::Compilation {
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
         if !compiler.session().compile_status().is_ok() {
-            return verus_rustc_driver::Compilation::Stop;
+            return rustc_driver::Compilation::Stop;
         }
-        let crate_name: String =
-            queries.crate_name().expect("crate name").borrow().to_ident_string(); // TODO(main_new) correct?
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+            let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
+
             let imported = match crate::import_export::import_crates(&self.verifier.args) {
                 Ok(imported) => imported,
                 Err(err) => {
@@ -2154,6 +2013,6 @@ impl verus_rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
         });
-        verus_rustc_driver::Compilation::Stop
+        rustc_driver::Compilation::Stop
     }
 }

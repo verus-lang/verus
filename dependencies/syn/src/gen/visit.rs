@@ -692,6 +692,9 @@ pub trait Visit<'ast> {
     fn visit_return_type(&mut self, i: &'ast ReturnType) {
         visit_return_type(self, i);
     }
+    fn visit_reveal_hide(&mut self, i: &'ast RevealHide) {
+        visit_reveal_hide(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_signature(&mut self, i: &'ast Signature) {
         visit_signature(self, i);
@@ -1468,6 +1471,9 @@ where
         }
         Expr::AssertForall(_binding_0) => {
             v.visit_assert_forall(_binding_0);
+        }
+        Expr::RevealHide(_binding_0) => {
+            v.visit_reveal_hide(_binding_0);
         }
         Expr::View(_binding_0) => {
             v.visit_view(_binding_0);
@@ -3657,6 +3663,29 @@ where
             }
             v.visit_type(&**_binding_3);
         }
+    }
+}
+pub fn visit_reveal_hide<'ast, V>(v: &mut V, node: &'ast RevealHide)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    if let Some(it) = &node.reveal_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.reveal_with_fuel_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.hide_token {
+        tokens_helper(v, &it.span);
+    }
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_expr_path(&*node.path);
+    if let Some(it) = &node.fuel {
+        tokens_helper(v, &(it).0.spans);
+        v.visit_expr(&*(it).1);
     }
 }
 #[cfg(feature = "full")]

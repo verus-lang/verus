@@ -124,7 +124,7 @@ use vir::ast::VirErr;
 use vir::messages::{message_bare, Message, MessageLevel};
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(queries: &'tcx verus_rustc_interface::Queries<'tcx>) {
+pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
@@ -213,8 +213,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
-    for a in gen_state.assoc_type_impls.iter() {
-        emit_assoc_type_impl(emit_state, a);
+    for (a, fns) in gen_state.assoc_type_impls.iter() {
+        emit_assoc_type_impl(emit_state, a, fns);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);
@@ -224,14 +224,14 @@ fn emit_check_tracked_lifetimes<'tcx>(
 
 struct LifetimeCallbacks {}
 
-impl verus_rustc_driver::Callbacks for LifetimeCallbacks {
+impl rustc_driver::Callbacks for LifetimeCallbacks {
     fn after_parsing<'tcx>(
         &mut self,
-        _compiler: &verus_rustc_interface::interface::Compiler,
-        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
-    ) -> verus_rustc_driver::Compilation {
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
         check(queries);
-        verus_rustc_driver::Compilation::Stop
+        rustc_driver::Compilation::Stop
     }
 }
 
@@ -273,7 +273,7 @@ pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
 
 pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
     let mut callbacks = LifetimeCallbacks {};
-    let mut compiler = verus_rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
+    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
     compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
     match compiler.run() {
         Ok(()) => (),

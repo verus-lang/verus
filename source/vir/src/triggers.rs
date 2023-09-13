@@ -4,6 +4,7 @@ use crate::ast::{
 use crate::context::Ctx;
 use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
+use crate::triggers_auto::AutoType;
 use air::ast::Binders;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -19,7 +20,7 @@ pub(crate) enum TriggerBoxing {
 // Manual triggers
 struct State {
     // use results from triggers_auto, no questions asked
-    auto_trigger: bool,
+    auto_trigger: AutoType,
     // variables the triggers must cover
     trigger_vars: HashMap<Ident, TriggerBoxing>,
     // user-specified triggers (for sortedness stability, use BTreeMap rather than HashMap)
@@ -315,7 +316,13 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
         match &exp.x {
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::AutoTrigger), _) => {
                 if map.num_scopes() == 1 {
-                    state.auto_trigger = true;
+                    state.auto_trigger = AutoType::Regular;
+                }
+                Ok(())
+            }
+            ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::AllTriggers), _) => {
+                if map.num_scopes() == 1 {
+                    state.auto_trigger = AutoType::All;
                 }
                 Ok(())
             }
@@ -398,14 +405,14 @@ pub(crate) fn build_triggers(
     allow_empty: bool,
 ) -> Result<Trigs, VirErr> {
     let mut state = State {
-        auto_trigger: false,
+        auto_trigger: AutoType::None,
         trigger_vars: vars.iter().cloned().collect(),
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
     };
     get_manual_triggers(&mut state, exp)?;
     if state.triggers.len() > 0 || allow_empty {
-        if state.auto_trigger {
+        if state.auto_trigger != AutoType::None {
             return Err(error(
                 span,
                 "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",

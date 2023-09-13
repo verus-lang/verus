@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
-use crate::messages::Span;
+use crate::messages::{error, Span};
 use crate::poly::MonoTyp;
 use crate::prelude::ArchWordBits;
 use crate::recursion::Node;
@@ -221,6 +221,12 @@ impl GlobalCtx {
                         )
                         .secondary_span(&g.unwrap().span));
                     }
+                }
+            }
+            if f.x.attrs.atomic {
+                let f_node = Node::Fun(f.x.name.clone());
+                if func_call_graph.node_is_in_cycle(&f_node) {
+                    return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
                 }
             }
         }

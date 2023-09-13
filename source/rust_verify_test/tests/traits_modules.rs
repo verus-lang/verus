@@ -151,7 +151,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                spec fn f(&self) {
+                closed spec fn f(&self) {
                 }
             }
         }
@@ -280,7 +280,7 @@ test_verify_one_file! {
             pub struct S {}
 
             impl crate::M1::T for S {
-                spec fn f(&self) {
+                closed spec fn f(&self) {
                     crate::M1::rec(self);
                 }
             }
@@ -308,7 +308,7 @@ test_verify_one_file! {
             pub struct S {}
 
             impl crate::M1::T for S {
-                spec fn f<A: crate::M1::T>(&self, x: &A) {
+                closed spec fn f<A: crate::M1::T>(&self, x: &A) {
                     x.f(x)
                 }
             }
@@ -336,7 +336,7 @@ test_verify_one_file! {
             struct S {}
 
             impl crate::M1::T for S {
-                spec fn f(&self) {
+                closed spec fn f(&self) {
                     self.f()
                 }
             }
@@ -539,7 +539,7 @@ test_verify_one_file! {
         mod M2 {
             pub struct S {}
             impl crate::M1::T for S {
-                spec fn req(&self) -> bool { false }
+                closed spec fn req(&self) -> bool { false }
                 fn f(&self) {}
             }
         }
@@ -565,7 +565,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T for S {
-                spec fn ens(&self) -> bool { false }
+                closed spec fn ens(&self) -> bool { false }
                 fn f(&self) {} // FAILS
             }
         }
@@ -584,7 +584,7 @@ test_verify_one_file! {
         mod M2 {
             pub struct S {}
             impl crate::M1::T for S {
-                spec fn req(&self) -> bool { true }
+                closed spec fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
         }
@@ -660,11 +660,11 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T<bool> for crate::M2::B {
-                spec fn req(&self, a: bool) -> bool {
+                closed spec fn req(&self, a: bool) -> bool {
                     a
                 }
 
-                spec fn ens(&self, a: bool, r: bool) -> bool {
+                closed spec fn ens(&self, a: bool, r: bool) -> bool {
                     r == (a && self.x)
                 }
 
@@ -677,11 +677,11 @@ test_verify_one_file! {
         mod M5 {
             use builtin::*;
             impl crate::M1::T<u64> for crate::M3::I {
-                spec fn req(&self, a: u64) -> bool {
+                closed spec fn req(&self, a: u64) -> bool {
                     self.x < a && a < 100
                 }
 
-                spec fn ens(&self, a: u64, r: u64) -> bool {
+                closed spec fn ens(&self, a: u64, r: u64) -> bool {
                     self.x <= r && r < 100
                 }
 
@@ -764,7 +764,7 @@ test_verify_one_file! {
         mod M3 {
             use builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                closed spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -866,7 +866,7 @@ test_verify_one_file! {
             pub struct S<A, B>(pub A, pub B);
 
             impl<C> crate::M1::T<(C, u16)> for S<bool, C> {
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                closed spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
                 fn banana(&self, b: (C, u16)) -> (C, u16) {
@@ -1008,7 +1008,7 @@ test_verify_one_file! {
             pub struct S(pub u8);
 
             impl crate::M1::T for S {
-                spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
+                closed spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                     if b { self } else { x }
                 }
 

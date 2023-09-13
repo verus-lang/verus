@@ -392,9 +392,11 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
     expr
 }
 
-pub fn const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
+pub fn fuel_const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
     let (sign, digits) = i.to_u32_digits();
-    if sign != Sign::Plus || digits.len() != 1 {
+    if sign == Sign::NoSign && digits.len() == 0 {
+        return Ok(0);
+    } else if sign != Sign::Plus || digits.len() != 1 {
         return Err(error(span, "Fuel must be a u32 value"));
     }
     let n = digits[0];

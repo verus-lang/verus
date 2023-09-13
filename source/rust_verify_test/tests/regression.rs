@@ -483,7 +483,7 @@ test_verify_one_file! {
         pub type MyType<T> = FnSpec(T) -> bool;
 
         impl<T> Foo for MyType<T> {
-            spec fn foo(&self) -> bool {
+            open spec fn foo(&self) -> bool {
                 true
             }
         }
@@ -587,15 +587,16 @@ test_verify_one_file_with_options! {
     #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
         use vstd::set::*;
 
-        spec fn yes() -> bool { true }
+        spec fn maybe() -> bool;
 
-        spec fn both(s: Set<nat>) -> bool {
-            &&& yes()
-            &&& s.contains(0) // EXPAND-ERRORS
-        }
+        // spec fn yes() -> bool { true }
+        // spec fn both(s: Set<nat>) -> bool {
+        //     &&& maybe()
+        //     &&& s.contains(0) // EXPAND-ERRORS
+        // }
 
         proof fn test(s: Set<nat>) {
-            assert(both(s)); // EXPAND-ERRORS
+            assert(maybe()); // EXPAND-ERRORS
         }
     } => Err(err) => {
         assert!(err.expand_errors_notes[0].rendered.contains("this function is uninterpreted"));
@@ -608,7 +609,7 @@ test_verify_one_file_with_options! {
 
         mod X {
             pub trait T {
-                open spec fn foo(&self) -> bool; // EXPAND-ERRORS
+                spec fn foo(&self) -> bool; // EXPAND-ERRORS
             }
 
             impl T for super::Z {
@@ -751,6 +752,94 @@ test_verify_one_file! {
                     assert(false);
                 }
             };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_reveal_type_args_regression_704 verus_code! {
+        trait X {}
+        impl X for int {}
+
+        #[verifier::opaque]
+        spec fn foo(x: impl X) -> bool {
+            true
+        }
+
+        proof fn test()
+        {
+            reveal(foo);
+
+            assert(foo(3int));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_generate_assoc_type_regression_769 verus_code! {
+        pub trait EA {
+            type I;
+            type O;
+        }
+
+        pub struct Empty {}
+
+        pub struct EAA {}
+
+        impl EA for EAA {
+            type I = Empty;
+            type O = Empty;
+        }
+
+        pub struct MC<E>(E);
+
+        pub struct M<E: EA> {
+            pub content: MC<E>,
+        }
+
+        enum A<X> {
+            Y(X),
+            Z,
+        }
+
+        proof fn foo() {
+            let input: A<M<EAA>> = A::Z;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zulip_rc_clone verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+
+        fn test(rc: Rc<Vec<u8>>) {
+            let rc2 = Rc::clone(&rc);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments_1 ["vstd"] => verus_code! {
+        struct X { v: u64 }
+
+        fn test<F: Fn(&X) -> bool>(f: F, x: X) -> bool
+            requires f.requires((&x,))
+        {
+            f(&x)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments ["vstd"] => verus_code! {
+        struct X { v: u64 }
+        struct Y { w: u64 }
+
+        fn test<F: Fn(&X, &Y) -> bool>(f: F, x: X, y: Y) -> bool
+            requires f.requires((&x, &y,))
+        {
+            f(&x, &y)
         }
     } => Ok(())
 }

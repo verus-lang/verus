@@ -55,7 +55,6 @@ pub fn main() {
 
                 let mut our_args: ArgsX = Default::default();
                 our_args.pervasive_path = Some(pervasive_path.to_string());
-                our_args.verify_pervasive = true;
                 our_args.no_verify = !verify;
                 our_args.no_lifetime = !verify;
                 our_args.multiple_errors = 2;
@@ -82,7 +81,7 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
-    verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+    rustc_driver::init_env_logger("RUSTVERIFY_LOG");
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };

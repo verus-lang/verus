@@ -37,6 +37,7 @@ pub proof fn affirm(b: bool)
 // (Note that this function wouldn't even satisfy the borrow-checker if you tried to
 // use it with a `&F` or `&mut F`, but this doesn't matter since it's only used at VIR.)
 
+#[cfg(verus_keep_ghost)]
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
 #[verifier(external_body)]
@@ -122,7 +123,7 @@ pub fn runtime_assert(b: bool)
 } // verus!
 
 #[inline(always)]
-#[verifier::external]
+#[cfg_attr(verus_keep_ghost, verifier::external)]
 fn runtime_assert_internal(b: bool) {
     assert!(b);
 }

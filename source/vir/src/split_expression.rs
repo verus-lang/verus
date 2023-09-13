@@ -253,7 +253,13 @@ fn mk_imply_traced(e1: &Exp, e2: &TracedExp) -> TracedExp {
 }
 
 // Note: this splitting referenced Dafny - https://github.com/dafny-lang/dafny/blob/cf285b9282499c46eb24f05c7ecc7c72423cd878/Source/Dafny/Verifier/Translator.cs#L11100
-fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> TracedExps {
+fn split_expr(
+    ctx: &Ctx,
+    state: &State,
+    exp: &TracedExp,
+    negated: bool,
+    depth: usize,
+) -> TracedExps {
     if !is_bool_type(&exp.e.typ) {
         panic!("internal error: attempt to split non-boolean expression");
     }
@@ -261,7 +267,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
     match &exp.e.x {
         ExpX::Unary(UnaryOp::Not, e1) => {
             let tr_exp = TracedExpX::new(e1.clone(), exp.trace.clone());
-            return split_expr(ctx, state, &tr_exp, !negated);
+            return split_expr(ctx, state, &tr_exp, !negated, depth);
         }
         ExpX::Binary(bop, e1, e2) => {
             match bop {
@@ -271,12 +277,14 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                         state,
                         &TracedExpX::new(e1.clone(), exp.trace.clone()),
                         false,
+                        depth,
                     );
                     let es2 = split_expr(
                         ctx,
                         state,
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
                         false,
+                        depth,
                     );
                     // instead of `A && B` to [A,B], use [A, A=>B]
                     let es2 = Arc::new(es2.iter().map(|e| mk_imply_traced(e1, e)).collect());
@@ -289,12 +297,14 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                         state,
                         &TracedExpX::new(e1.clone(), exp.trace.clone()),
                         true,
+                        depth,
                     );
                     let es2 = split_expr(
                         ctx,
                         state,
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
                         true,
+                        depth,
                     );
                     // now `Or` is changed to `And`
                     // instead of `A && B` to [A,B], use [A, A=>B]
@@ -313,6 +323,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                         state,
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
                         false,
+                        depth,
                     );
                     let mut split_traced: Vec<TracedExp> = vec![];
                     for e in &*es2 {
@@ -331,6 +342,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                         state,
                         &TracedExpX::new(e1.clone(), exp.trace.clone()),
                         false, // instead of pushing negation, wrap negation outside
+                        depth,
                     );
                     let mut split_traced: Vec<TracedExp> = vec![];
                     for e in &*es1 {
@@ -345,6 +357,10 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
             }
         }
         ExpX::Call(CallFun::Fun(fun_name, _), typs, args) => {
+            if depth == 1 {
+                return mk_atom(exp.clone(), negated);
+            }
+
             let fun = get_function(ctx, &exp.e.span, fun_name).unwrap();
             let res_inlined_exp = tr_inline_function(ctx, state, fun, args, &exp.e.span, typs);
             match res_inlined_exp {
@@ -353,7 +369,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                         inlined_exp,
                         exp.trace.secondary_label(&exp.e.span, "from this function call"),
                     );
-                    return split_expr(ctx, state, &inlined_tr_exp, negated);
+                    return split_expr(ctx, state, &inlined_tr_exp, negated, depth + 1);
                 }
                 Err((sp, msg)) => {
                     // if the function inlining failed, treat as atom
@@ -377,12 +393,14 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                 state,
                 &TracedExpX::new(then_exp.clone(), exp.trace.clone()),
                 negated,
+                depth,
             );
             let es2 = split_expr(
                 ctx,
                 state,
                 &TracedExpX::new(else_exp.clone(), exp.trace.clone()),
                 negated,
+                depth,
             );
             return merge_two_es(es1, es2);
         }
@@ -393,6 +411,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                     state,
                     &TracedExpX::new(e1.clone(), exp.trace.clone()),
                     negated,
+                    depth,
                 );
                 let mut split_traced: Vec<TracedExp> = vec![];
                 for e in &*es1 {
@@ -406,7 +425,7 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
             UnaryOpr::CustomErr(msg) => {
                 let traced_exp =
                     TracedExpX::new(e1.clone(), exp.trace.secondary_label(&exp.e.span, &**msg));
-                return split_expr(ctx, state, &traced_exp, negated);
+                return split_expr(ctx, state, &traced_exp, negated, depth);
             }
             UnaryOpr::HasType(_)
             | UnaryOpr::IntegerTypeBound(..)
@@ -417,6 +436,9 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
             }
         },
         ExpX::Bind(bnd, e1) => {
+            if matches!(&bnd.x, BndX::Quant(..)) && depth == 1 {
+                return mk_atom(exp.clone(), negated);
+            }
             let new_bnd = match &bnd.x {
                 BndX::Let(..) if !negated => bnd.clone(), // REVIEW: Can we support `Let` in negated position?
                 BndX::Quant(
@@ -440,8 +462,13 @@ fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> Trace
                 _ => return mk_atom(exp.clone(), negated),
             };
 
-            let es1 =
-                split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated);
+            let es1 = split_expr(
+                ctx,
+                state,
+                &TracedExpX::new(e1.clone(), exp.trace.clone()),
+                negated,
+                if matches!(&bnd.x, BndX::Quant(..)) { depth + 1 } else { depth },
+            );
             let mut split_traced: Vec<TracedExp> = vec![];
             for e in &*es1 {
                 let new_expx = ExpX::Bind(new_bnd.clone(), e.e.clone());
@@ -550,8 +577,13 @@ fn split_call(
         }
         let exp_subsituted = exp_subsituted.unwrap();
         // REVIEW: should we simply use SPLIT_ASSERT_FAILURE?
-        let exprs =
-            split_expr(ctx, &state, &TracedExpX::new(exp_subsituted.clone(), error.clone()), false);
+        let exprs = split_expr(
+            ctx,
+            &state,
+            &TracedExpX::new(exp_subsituted.clone(), error.clone()),
+            false,
+            0,
+        );
         stms.extend(register_split_assertions(exprs).into_iter());
     }
     Ok(stms)
@@ -572,6 +604,7 @@ fn visit_split_stm(
                     &state, // use the state after `body` translation to get the fuel info
                     &TracedExpX::new(e1.clone(), error),
                     false,
+                    0,
                 );
                 let stms = register_split_assertions(split_exprs);
                 Ok(Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms))))
@@ -606,6 +639,7 @@ fn visit_split_stm(
                             &state, // use the state after `body` translation to get the fuel info
                             &TracedExpX::new(ens_exp.clone(), error.clone()),
                             false,
+                            0,
                         );
                         stms.extend(register_split_assertions(split_exprs));
                     }

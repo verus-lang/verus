@@ -11,7 +11,7 @@ pub enum CompilableOperator {
     IntIntrinsic,
     Implies,
     SmartPtrNew,
-    SmartPtrClone,
+    SmartPtrClone { is_method: bool },
     NewStrLit,
     GhostExec,
     TrackedNew,
