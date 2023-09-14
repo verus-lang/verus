@@ -134,7 +134,7 @@ fn func_body_to_air(
     check_commands: &mut Vec<Command>,
     function: &Function,
     body: &crate::ast::Expr,
-    not_verifying_owning_module: bool,
+    not_verifying_owning_bucket: bool,
 ) -> Result<SstMap, VirErr> {
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
@@ -194,7 +194,7 @@ fn func_body_to_air(
 
             decrease_by_stms.push(body_stm);
         } else {
-            assert!(not_verifying_owning_module);
+            assert!(not_verifying_owning_bucket);
         }
     } else {
         let base_error = error_with_label(
@@ -563,13 +563,24 @@ pub fn func_decl_to_air(
     Ok(Arc::new(decl_commands))
 }
 
+/// Returns axioms for function definition
+/// For spec functions this is like `forall input . f(input) == body`
+/// For proof/exec function this contains the req/ens functions.
+/// For broadcast_forall this contains the broadcasted axiom.
+///
+/// The second 'Commands' contains additional things that need proving at this point
+/// For a spec function, it may also output the proof obligations related to decreases-ness
+/// (This may include the proof content of a decreases_by function.)
+/// (Note: this means that you shouldn't call func_axioms_to_air with a decreases_by function
+/// on its own.)
+
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
     public_body: bool,
-    not_verifying_owning_module: bool,
+    not_verifying_owning_bucket: bool,
 ) -> Result<(Commands, Commands, SstMap), VirErr> {
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
@@ -588,7 +599,7 @@ pub fn func_axioms_to_air(
                         &mut check_commands,
                         function,
                         body,
-                        not_verifying_owning_module,
+                        not_verifying_owning_bucket,
                     )?;
                 }
             }
@@ -894,7 +905,6 @@ pub fn func_def_to_air(
                 function.x.attrs.integer_ring,
                 function.x.attrs.bit_vector,
                 function.x.attrs.nonlinear,
-                function.x.attrs.spinoff_prover,
                 dest,
                 PostConditionKind::Ensures,
             )?;

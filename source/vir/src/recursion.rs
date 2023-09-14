@@ -398,7 +398,6 @@ pub(crate) fn check_termination_exp(
         false,
         false,
         false,
-        false,
         None,
         if uses_decreases_by {
             PostConditionKind::DecreasesBy

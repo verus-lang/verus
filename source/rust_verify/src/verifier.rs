@@ -29,6 +29,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::GlobalCtx;
 
+use crate::buckets::{Bucket, BucketId};
 use vir::ast::{Fun, Function, Ident, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
@@ -141,17 +142,17 @@ pub(crate) enum ReporterMessage {
 
 /// A reporter that forwards messages on an mpsc channel
 pub(crate) struct QueuedReporter {
-    module_id: usize,
+    bucket_id: usize,
     queue: std::sync::mpsc::Sender<ReporterMessage>,
 }
 
 impl QueuedReporter {
-    pub(crate) fn new(module_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
-        Self { module_id, queue }
+    pub(crate) fn new(bucket_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
+        Self { bucket_id, queue }
     }
 
     pub(crate) fn done(&self) {
-        self.queue.send(ReporterMessage::Done(self.module_id)).expect("could not send!");
+        self.queue.send(ReporterMessage::Done(self.bucket_id)).expect("could not send!");
     }
 }
 
@@ -160,7 +161,7 @@ impl air::messages::Diagnostics for QueuedReporter {
         let msg: Message =
             msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
-            .send(ReporterMessage::Message(self.module_id, msg, level, false))
+            .send(ReporterMessage::Message(self.bucket_id, msg, level, false))
             .expect("could not send the message!");
     }
 
@@ -168,7 +169,7 @@ impl air::messages::Diagnostics for QueuedReporter {
         let msg: Message =
             msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
-            .send(ReporterMessage::Message(self.module_id, msg, level, true))
+            .send(ReporterMessage::Message(self.bucket_id, msg, level, true))
             .expect("could not send the message!");
     }
 
@@ -186,20 +187,20 @@ impl air::messages::Diagnostics for QueuedReporter {
 }
 
 #[derive(Default)]
-pub struct ModuleStats {
-    /// cummulative time in AIR to verify the module (this includes SMT solver time)
+pub struct BucketStats {
+    /// cummulative time in AIR to verify the bucket (this includes SMT solver time)
     pub time_air: Duration,
     /// time to initialize the SMT solver
     pub time_smt_init: Duration,
     /// cummulative time of all SMT queries
     pub time_smt_run: Duration,
-    /// total time to verify the module
+    /// total time to verify the bucket
     pub time_verify: Duration,
 }
 
 pub struct Verifier {
     /// this is the actual number of threads used for verification. This will be set to the
-    /// minimum of the requested threads and the number of modules to verify
+    /// minimum of the requested threads and the number of buckets to verify
     pub num_threads: usize,
     pub encountered_vir_error: bool,
     pub count_verified: u64,
@@ -208,8 +209,8 @@ pub struct Verifier {
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
 
-    /// total real time to verify all activated modules of the crate, including real time for
-    /// the parallel module verification
+    /// total real time to verify all activated buckets of the crate, including real time for
+    /// the parallel bucket verification
     pub time_verify_crate: Duration,
     /// sequential part of the crate verification before parallel verification
     pub time_verify_crate_sequential: Duration,
@@ -219,8 +220,8 @@ pub struct Verifier {
     pub time_vir_rust_to_vir: Duration,
     /// time spent in hir when creating the VIR for the crate
     pub time_hir: Duration,
-    /// execution times for each module run in parallel
-    pub module_times: HashMap<vir::ast::Path, ModuleStats>,
+    /// execution times for each bucket run in parallel
+    pub bucket_times: HashMap<BucketId, BucketStats>,
 
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Option<std::path::PathBuf>,
@@ -229,6 +230,7 @@ pub struct Verifier {
     vstd_crate_name: Option<Ident>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_module_ids: Option<Vec<vir::ast::Path>>,
+    buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
     expand_flag: bool,
@@ -278,7 +280,7 @@ impl Verifier {
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
 
-            module_times: HashMap::new(),
+            bucket_times: HashMap::new(),
 
             created_log_dir: None,
             vir_crate: None,
@@ -286,6 +288,7 @@ impl Verifier {
             vstd_crate_name: None,
             air_no_span: None,
             current_crate_module_ids: None,
+            buckets: HashMap::new(),
 
             expand_flag: false,
             expand_targets: vec![],
@@ -307,13 +310,14 @@ impl Verifier {
             time_hir: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
-            module_times: HashMap::new(),
+            bucket_times: HashMap::new(),
             created_log_dir: self.created_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
             crate_names: self.crate_names.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_module_ids: self.current_crate_module_ids.clone(),
+            buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
             expand_targets: self.expand_targets.clone(),
         }
@@ -325,13 +329,16 @@ impl Verifier {
         self.count_errors += other.count_errors;
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
-        self.module_times.extend(other.module_times);
+        self.bucket_times.extend(other.bucket_times);
+    }
+
+    fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
+        self.buckets.get(bucket_id).expect("expected valid BucketId")
     }
 
     fn create_log_file(
         &mut self,
-        module: Option<&vir::ast::Path>,
-        function: Option<&vir::ast::Path>,
+        bucket_id_opt: Option<&BucketId>,
         suffix: &str,
     ) -> Result<File, VirErr> {
         if self.created_log_dir.is_none() {
@@ -362,21 +369,11 @@ impl Verifier {
             self.created_log_dir = Some(dir);
         }
         let dir_path = self.created_log_dir.clone().unwrap();
-        let prefix = match module {
+        let prefix = match bucket_id_opt {
             None => "crate".to_string(),
-            Some(module) if module.segments.len() == 0 => "root".to_string(),
-            Some(module) => {
-                module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
-            }
+            Some(bucket_id) => bucket_id.to_log_string(),
         };
-        let middle = match function {
-            None => "".to_string(),
-            Some(fcn) => format!(
-                "__{}",
-                fcn.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
-            ),
-        };
-        let path = std::path::Path::new(&dir_path).join(format!("{prefix}{middle}{suffix}"));
+        let path = std::path::Path::new(&dir_path).join(format!("{prefix}{suffix}"));
         match File::create(path.clone()) {
             Ok(file) => Ok(file),
             Err(err) => Err(io_vir_err(format!("could not open file {path:?}"), err)),
@@ -447,7 +444,7 @@ impl Verifier {
     /// Returns true if there was at least one Invalid resulting in an error.
     fn check_result_validity(
         &mut self,
-        module_path: &vir::ast::Path,
+        bucket_id: &BucketId,
         reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
         level: MessageLevel,
@@ -500,8 +497,8 @@ impl Verifier {
         );
 
         let time1 = Instant::now();
-        let module_time = self.module_times.get_mut(module_path).expect("module time not found");
-        module_time.time_air += time1 - time0;
+        let bucket_time = self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+        bucket_time.time_air += time1 - time0;
 
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
@@ -594,9 +591,9 @@ impl Verifier {
                     );
                     let time1 = Instant::now();
 
-                    let module_time =
-                        self.module_times.get_mut(module_path).expect("module time not found");
-                    module_time.time_air += time1 - time0;
+                    let bucket_time =
+                        self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+                    bucket_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     panic!("unexpected output from solver: {}", err);
@@ -620,7 +617,7 @@ impl Verifier {
 
     fn run_commands(
         &mut self,
-        module_path: &vir::ast::Path,
+        bucket_id: &BucketId,
         diagnostics: &impl air::messages::Diagnostics,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
@@ -640,9 +637,8 @@ impl Verifier {
             ));
             let time1 = Instant::now();
 
-            let module_time =
-                self.module_times.get_mut(module_path).expect("module time not found");
-            module_time.time_air += time1 - time0;
+            let bucket_time = self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+            bucket_time.time_air += time1 - time0;
         }
     }
 
@@ -657,13 +653,13 @@ impl Verifier {
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
-        module: &vir::ast::Path,
+        bucket_id: &BucketId,
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
     ) -> bool {
         let user_filter = self.user_filter.as_ref().unwrap();
-        let includes_function = user_filter.includes_function(function_name, module);
+        let includes_function = user_filter.includes_function(function_name);
         if !includes_function {
             return false;
         }
@@ -679,7 +675,7 @@ impl Verifier {
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
             let result_invalidity = self.check_result_validity(
-                module,
+                bucket_id,
                 reporter,
                 source_map,
                 level,
@@ -701,7 +697,7 @@ impl Verifier {
         &mut self,
         message_interface: Arc<dyn air::messages::MessageInterface>,
         diagnostics: &impl air::messages::Diagnostics,
-        module_path: &vir::ast::Path,
+        bucket_id: &BucketId,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
@@ -718,11 +714,9 @@ impl Verifier {
             .unwrap_or("".to_string());
         let expand_msg = if self.expand_flag { "_expand" } else { "" };
 
-        let function_path = query_function_path_counter.map(|(p, _)| p);
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
-                Some(module_path),
-                function_path,
+                Some(bucket_id),
                 format!(
                     "{}{}{}{}",
                     rerun_msg,
@@ -736,8 +730,7 @@ impl Verifier {
         }
         if self.args.log_all || self.args.log_air_final {
             let file = self.create_log_file(
-                Some(module_path),
-                function_path,
+                Some(bucket_id),
                 format!(
                     "{}{}{}{}",
                     rerun_msg,
@@ -751,8 +744,7 @@ impl Verifier {
         }
         if self.args.log_all || self.args.log_smt {
             let file = self.create_log_file(
-                Some(module_path),
-                function_path,
+                Some(bucket_id),
                 format!(
                     "{}{}{}{}",
                     rerun_msg,
@@ -783,20 +775,18 @@ impl Verifier {
             ));
         }
 
-        let module_name =
-            module_path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
         air_context.blank_line();
-        air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+        air_context.comment(&("MODULE '".to_string() + &bucket_id.friendly_name() + "'"));
 
         Ok(air_context)
     }
 
-    fn new_air_context_with_module_context<'m>(
+    fn new_air_context_with_bucket_context<'m>(
         &mut self,
         message_interface: Arc<dyn air::messages::MessageInterface>,
         ctx: &vir::context::Ctx,
         diagnostics: &impl air::messages::Diagnostics,
-        module_path: &vir::ast::Path,
+        bucket_id: &BucketId,
         function_path: &vir::ast::Path,
         datatype_commands: Commands,
         assoc_type_decl_commands: Commands,
@@ -811,7 +801,7 @@ impl Verifier {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
             diagnostics,
-            module_path,
+            bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
@@ -830,47 +820,47 @@ impl Verifier {
             ));
         }
 
-        // set up module context
+        // set up bucket context
         self.run_commands(
-            module_path,
+            bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_decl_commands,
             &("Associated-Type-Decls".to_string()),
         );
         self.run_commands(
-            module_path,
+            bucket_id,
             diagnostics,
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
         );
         self.run_commands(
-            module_path,
+            bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_impl_commands,
             &("Associated-Type-Impls".to_string()),
         );
         for commands in &*function_decl_commands {
-            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
+            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         for commands in &*function_spec_commands {
-            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
+            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         for commands in &*function_axiom_commands {
-            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
+            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
         Ok(air_context)
     }
 
-    // Verify a single module
-    fn verify_module(
+    // Verify a single bucket
+    fn verify_bucket(
         &mut self,
         reporter: &impl air::messages::Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
-        module: &vir::ast::Path,
+        bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
@@ -878,7 +868,7 @@ impl Verifier {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
             reporter,
-            module,
+            bucket_id,
             None,
             false,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
@@ -906,7 +896,7 @@ impl Verifier {
         let assoc_type_decl_commands =
             vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &assoc_type_decl_commands,
@@ -923,7 +913,7 @@ impl Verifier {
                 .collect(),
         );
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &datatype_commands,
@@ -932,7 +922,7 @@ impl Verifier {
 
         let trait_commands = vir::traits::traits_to_air(ctx, &krate);
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &trait_commands,
@@ -942,7 +932,7 @@ impl Verifier {
         let assoc_type_impl_commands =
             vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &assoc_type_impl_commands,
@@ -971,7 +961,7 @@ impl Verifier {
             let commands = vir::func_to_air::func_name_to_air(ctx, reporter, &function)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
-            self.run_commands(module, reporter, &mut air_context, &commands, &comment);
+            self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
@@ -1022,9 +1012,10 @@ impl Verifier {
                     vir::func_to_air::func_decl_to_air(ctx, reporter, &fun_ssts, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(module, reporter, &mut air_context, &decl_commands, &comment);
+                self.run_commands(bucket_id, reporter, &mut air_context, &decl_commands, &comment);
                 function_spec_commands.push((decl_commands.clone(), comment.clone()));
             }
+
             // Check termination
             for f in scc_fun_nodes.iter() {
                 if !funs.contains_key(f) {
@@ -1033,7 +1024,9 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let not_verifying_owning_module = Some(module) != function.x.owning_module.as_ref();
+                let bucket = self.get_bucket(bucket_id);
+                let not_verifying_owning_bucket = !bucket.contains(&function.x.name);
+
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
@@ -1041,13 +1034,13 @@ impl Verifier {
                         fun_ssts,
                         &function,
                         is_visible_to(&vis_abs, module),
-                        not_verifying_owning_module,
+                        not_verifying_owning_bucket,
                     )?;
                 fun_ssts = new_fun_ssts;
                 fun_axioms.insert(f.clone(), decl_commands);
                 ctx.fun = None;
 
-                if not_verifying_owning_module {
+                if not_verifying_owning_bucket {
                     continue;
                 }
                 let invalidity = self.run_commands_queries(
@@ -1065,7 +1058,7 @@ impl Verifier {
                     &HashMap::new(),
                     &vec![],
                     &ctx.global.qid_map.borrow(),
-                    module,
+                    bucket_id,
                     &function.x.name,
                     &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
                     Some("function termination: "),
@@ -1097,7 +1090,7 @@ impl Verifier {
                             &HashMap::new(),
                             &snap_map,
                             &ctx.global.qid_map.borrow(),
-                            module,
+                            bucket_id,
                             &function.x.name,
                             &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                             Some("recommends check: "),
@@ -1113,7 +1106,7 @@ impl Verifier {
                 }
                 let decl_commands = &fun_axioms[f];
                 let comment = "Function-Axioms ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(module, reporter, &mut air_context, &decl_commands, &comment);
+                self.run_commands(bucket_id, reporter, &mut air_context, &decl_commands, &comment);
                 function_axiom_commands.push((decl_commands.clone(), comment.clone()));
                 funs.remove(f);
             }
@@ -1128,7 +1121,8 @@ impl Verifier {
         let expand_errors_check = self.args.expand_errors;
         self.expand_targets = vec![];
         for function in &krate.functions {
-            if Some(module.clone()) != function.x.owning_module {
+            let bucket = self.get_bucket(bucket_id);
+            if !bucket.contains(&function.x.name) {
                 continue;
             }
             let check_validity = &mut |recommends_rerun: bool,
@@ -1180,22 +1174,21 @@ impl Verifier {
                         #[cfg(feature = "singular")]
                         if air_context.singular_log.is_none() {
                             let file = self.create_log_file(
-                                Some(module),
-                                None,
+                                Some(bucket_id),
                                 crate::config::SINGULAR_FILE_SUFFIX,
                             )?;
                             air_context.singular_log = Some(file);
                         }
                     }
                     let mut spinoff_z3_context;
-                    let do_spinoff = (*prover_choice == vir::def::ProverChoice::Spinoff)
+                    let do_spinoff = (*prover_choice == vir::def::ProverChoice::Nonlinear)
                         || (*prover_choice == vir::def::ProverChoice::BitVector);
                     let query_air_context = if do_spinoff {
-                        spinoff_z3_context = self.new_air_context_with_module_context(
+                        spinoff_z3_context = self.new_air_context_with_bucket_context(
                             message_interface.clone(),
                             ctx,
                             reporter,
-                            module,
+                            bucket_id,
                             &(function.x.name).path,
                             datatype_commands.clone(),
                             assoc_type_decl_commands.clone(),
@@ -1226,7 +1219,7 @@ impl Verifier {
                         &HashMap::new(),
                         &snap_map,
                         &ctx.global.qid_map.borrow(),
-                        module,
+                        bucket_id,
                         &function.x.name,
                         &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
                         desc_prefix,
@@ -1257,38 +1250,38 @@ impl Verifier {
         Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run))
     }
 
-    fn verify_module_outer(
+    fn verify_bucket_outer(
         &mut self,
         reporter: &impl air::messages::Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
-        module: &vir::ast::Path,
+        bucket_id: &BucketId,
         mut global_ctx: vir::context::GlobalCtx,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
         let time_verify_start = Instant::now();
 
-        self.module_times.insert(module.clone(), Default::default());
+        self.bucket_times.insert(bucket_id.clone(), Default::default());
 
-        let module_name = module_name(module);
+        let bucket_name = bucket_id.friendly_name();
         let user_filter = self.user_filter.as_ref().unwrap();
         if self.args.trace || !user_filter.is_everything() {
-            let module_msg = if module.segments.len() == 0 {
-                "root module".into()
-            } else {
-                format!("module {}", &module_name)
-            };
             let functions_msg =
                 if user_filter.is_function_filter() { " (selected functions)" } else { "" };
             reporter
-                .report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")).to_any());
+                .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits) =
-            vir::prune::prune_krate_for_module(&krate, &module, &self.vstd_crate_name);
+            vir::prune::prune_krate_for_module(
+                &krate,
+                bucket_id.module(),
+                bucket_id.function(),
+                &self.vstd_crate_name,
+            );
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
-            module.clone(),
+            bucket_id.module().clone(),
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
@@ -1297,29 +1290,26 @@ impl Verifier {
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_vir_poly {
             let mut file =
-                self.create_log_file(Some(&module), None, crate::config::VIR_POLY_FILE_SUFFIX)?;
+                self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.vir_log_option);
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_module(reporter, &poly_krate, source_map, module, &mut ctx)?;
+            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
 
         let time_verify_end = Instant::now();
 
-        let mut time_module = self.module_times.get_mut(module).expect("module should exist");
-        time_module.time_smt_init = time_smt_init;
-        time_module.time_smt_run = time_smt_run;
-        time_module.time_verify = time_verify_end - time_verify_start;
+        let mut time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
+        time_bucket.time_smt_init = time_smt_init;
+        time_bucket.time_smt_run = time_smt_run;
+        time_bucket.time_verify = time_verify_end - time_verify_start;
 
         if self.args.trace {
-            if module.segments.len() == 0 {
-                reporter.report_now(&note_bare("done with root module").to_any());
-            } else {
-                reporter
-                    .report_now(&note_bare(&format!("done with module {}", &module_name)).to_any());
-            }
+            reporter.report_now(
+                &note_bare(format!("done with {:}", bucket_id.friendly_name())).to_any(),
+            );
         }
 
         Ok(global_ctx)
@@ -1342,7 +1332,7 @@ impl Verifier {
 
         let interpreter_log_file =
             Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_interpreter {
-                Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+                Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None
             }));
@@ -1358,13 +1348,37 @@ impl Verifier {
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         if self.args.log_all || self.args.log_vir_simple {
-            let mut file =
-                self.create_log_file(None, None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
+            let mut file = self.create_log_file(None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &krate, &self.args.vir_log_option);
         }
 
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
+
+        // The 'user_filter' handles the filter provided on the command line
+        // (--verify-module, --verify-funciton, etc.)
+        // Whereas the 'buckets' are the way we group obligations for parallelizing
+        // and context pruning.
+        // Buckets usually fall along module boundaries, but the user can create
+        // more buckets using #[spinoff_prover] can create
+        // more buckets.
+        //
+        // For example, suppose module M has functions a, b, c, d.
+        // with a and b both marked spinoff_prover.
+        // Then we would create buckets {a}, {b}, and {c, d}.
+        //
+        // We don't need to create any buckets for stuff that we don't intend
+        // to verify. However, we can't shrink any existing bucket based on the
+        // the user_filter.
+        // For example, suppose the user includes a filter `--verify-function c`.
+        // Then, we can drop the {a} and {b} buckets.
+        // HOWEVER, we still create the entire {c, d} bucket.
+        // We skip the d-related queries when we get to them; however, we still
+        // include d in the bucket because d influences the context.
+        // Our objective is to generate the same queries for c that we'd otherwise
+        // get if we were running verification on the whole module.
+        // If the user wants to reduce the context used for d, then they can use
+        // the spinoff_prover attribute.
 
         let user_filter = self.user_filter.as_ref().unwrap();
         let module_ids_to_verify: Vec<vir::ast::Path> = {
@@ -1374,6 +1388,10 @@ impl Verifier {
                 .expect("current_crate_module_ids should be initialized");
             user_filter.filter_module_ids(current_crate_module_ids)?
         };
+        let buckets = crate::buckets::get_buckets(&krate, &module_ids_to_verify);
+        let buckets = user_filter.filter_buckets(buckets);
+        let bucket_ids: Vec<BucketId> = buckets.iter().map(|p| p.0.clone()).collect();
+        self.buckets = buckets.into_iter().collect();
 
         let time_verify_sequential_end = Instant::now();
         self.time_verify_crate_sequential =
@@ -1381,21 +1399,20 @@ impl Verifier {
 
         let source_map = compiler.session().source_map();
 
-        self.num_threads = std::cmp::min(self.args.num_threads, module_ids_to_verify.len());
+        self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
         if self.num_threads > 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
-            // collect the modules and create the task queueu
-            let mut tasks = VecDeque::with_capacity(module_ids_to_verify.len());
+            // collect the buckets and create the task queueu
+            let mut tasks = VecDeque::with_capacity(bucket_ids.len());
             let mut messages: Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
-            for (i, module) in module_ids_to_verify.iter().enumerate() {
-                // give each module its own log file
+            for (i, bucket_id) in bucket_ids.iter().enumerate() {
+                // give each bucket its own log file
                 let interpreter_log_file = Arc::new(std::sync::Mutex::new(
                     if self.args.log_all || self.args.log_vir_simple {
                         Some(self.create_log_file(
-                            Some(module),
-                            None,
+                            Some(bucket_id),
                             crate::config::INTERPRETER_FILE_SUFFIX,
                         )?)
                     } else {
@@ -1403,11 +1420,11 @@ impl Verifier {
                     },
                 ));
 
-                // give each task a queued reporter to identify the module that is sending messages
+                // give each task a queued reporter to identify the bucket that is sending messages
                 let reporter = QueuedReporter::new(i, sender.clone());
 
                 tasks.push_back((
-                    module.clone(),
+                    bucket_id.clone(),
                     global_ctx.from_self_with_log(interpreter_log_file),
                     reporter,
                 ));
@@ -1432,15 +1449,15 @@ impl Verifier {
                         let mut tq = thread_taskq.lock().unwrap();
                         let elm = tq.pop_front();
                         drop(tq);
-                        if let Some((module, task, reporter)) = elm {
-                            let res = thread_verifier.verify_module_outer(
+                        if let Some((bucket_id, task, reporter)) = elm {
+                            let res = thread_verifier.verify_bucket_outer(
                                 &reporter,
                                 &thread_krate,
                                 None,
-                                &module,
+                                &bucket_id,
                                 task,
                             );
-                            reporter.done(); // we've verified the module, send the done message
+                            reporter.done(); // we've verified the bucket, send the done message
                             match res {
                                 Ok(res) => {
                                     completed_tasks.push(res);
@@ -1456,9 +1473,9 @@ impl Verifier {
                 workers.push(worker);
             }
 
-            // start handling messages, we keep track of the current active module for which we
-            // print messages immediately, while buffering other messages from the other modules
-            let mut active_module = None;
+            // start handling messages, we keep track of the current active bucket for which we
+            // print messages immediately, while buffering other messages from the other buckets
+            let mut active_bucket = None;
             let mut num_done = 0;
             let reporter = Reporter::new(spans, compiler);
             loop {
@@ -1472,8 +1489,8 @@ impl Verifier {
                             continue;
                         }
 
-                        if let Some(m) = active_module {
-                            // if it's the active module, print the message
+                        if let Some(m) = active_bucket {
+                            // if it's the active bucket, print the message
                             if id == m {
                                 reporter.report_as(&msg.to_any(), level);
                             } else {
@@ -1481,23 +1498,23 @@ impl Verifier {
                                 msgs.1.push((msg, level));
                             }
                         } else {
-                            // no active module, print this message and set the module as the
+                            // no active bucket, print this message and set the bucket as the
                             // active one
-                            active_module = Some(id);
+                            active_bucket = Some(id);
                             reporter.report_as(&msg.to_any(), level);
                         }
                     }
                     ReporterMessage::Done(id) => {
                         // the done message is sent by the thread whenever it is done with verifying
-                        // a module, we mark the module as done here.
+                        // a bucket, we mark the bucket as done here.
                         {
-                            // record that the module is done
+                            // record that the bucket is done
                             let msgs = messages.get_mut(id).expect("message id out of range");
                             msgs.0 = true;
                         }
 
-                        // if it is the active module, mark it as done, and reset the active module
-                        if let Some(m) = active_module {
+                        // if it is the active bucket, mark it as done, and reset the active bucket
+                        if let Some(m) = active_bucket {
                             if m == id {
                                 assert!(
                                     messages
@@ -1506,23 +1523,23 @@ impl Verifier {
                                         .1
                                         .is_empty()
                                 );
-                                active_module = None;
+                                active_bucket = None;
                             }
                         }
 
-                        // try to pick a new active module here, the first one that has any messages
-                        if active_module.is_none() {
+                        // try to pick a new active bucket here, the first one that has any messages
+                        if active_bucket.is_none() {
                             for (i, msgs) in messages.iter_mut().enumerate() {
                                 if msgs.1.is_empty() {
                                     continue;
                                 }
-                                // drain and print all messages of the module
+                                // drain and print all messages of the bucket
                                 for (msg, level) in msgs.1.drain(..) {
                                     reporter.report_as(&msg.to_any(), level);
                                 }
-                                // if the module wasn't done, make it active and handle next message
+                                // if the bucket wasn't done, make it active and handle next message
                                 if !msgs.0 {
-                                    active_module = Some(i);
+                                    active_bucket = Some(i);
                                     break;
                                 }
                             }
@@ -1532,7 +1549,7 @@ impl Verifier {
                     }
                 }
 
-                if num_done == module_ids_to_verify.len() {
+                if num_done == bucket_ids.len() {
                     break;
                 }
             }
@@ -1559,18 +1576,16 @@ impl Verifier {
                 }
             }
         } else {
-            for module in &module_ids_to_verify {
-                global_ctx = self.verify_module_outer(
+            for bucket_id in &bucket_ids {
+                global_ctx = self.verify_bucket_outer(
                     &reporter,
                     &krate,
                     Some(source_map),
-                    module,
+                    bucket_id,
                     global_ctx,
                 )?;
             }
         }
-
-        let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
         if self.args.profile_all {
             let profiler =
@@ -1585,7 +1600,7 @@ impl Verifier {
 
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
-            let mut file = self.create_log_file(None, None, crate::config::TRIGGERS_FILE_SUFFIX)?;
+            let mut file = self.create_log_file(None, crate::config::TRIGGERS_FILE_SUFFIX)?;
             let chosen_triggers = global_ctx.get_chosen_triggers();
             for triggers in chosen_triggers {
                 writeln!(file, "{:#?}", triggers).expect("error writing to trigger log file");
@@ -1594,7 +1609,7 @@ impl Verifier {
         let chosen_triggers = global_ctx.get_chosen_triggers();
         let mut low_confidence_triggers = None;
         for chosen in chosen_triggers {
-            match (self.args.show_triggers, verified_modules.contains(&chosen.module)) {
+            match (self.args.show_triggers, module_ids_to_verify.contains(&chosen.module)) {
                 (ShowTriggers::Selective, true) if chosen.low_confidence => {
                     report_chosen_triggers(&reporter, &chosen);
                     low_confidence_triggers = Some(chosen.span);
@@ -1769,7 +1784,7 @@ impl Verifier {
 
         if self.args.log_all || self.args.log_vir {
             let mut file = self
-                .create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)
+                .create_log_file(None, crate::config::VIR_FILE_SUFFIX)
                 .map_err(map_err_diagnostics)?;
             vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
         }
@@ -1937,11 +1952,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     let log_lifetime =
                         self.verifier.args.log_all || self.verifier.args.log_lifetime;
                     let lifetime_log_file = if log_lifetime {
-                        let file = self.verifier.create_log_file(
-                            None,
-                            None,
-                            crate::config::LIFETIME_FILE_SUFFIX,
-                        );
+                        let file = self
+                            .verifier
+                            .create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
                         match file {
                             Err(err) => {
                                 reporter.report_as(&err.to_any(), MessageLevel::Error);
