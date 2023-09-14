@@ -532,7 +532,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "bool".to_owned(),
         TypX::Int(IntRange::Nat) => "nat".to_owned(),
-        TypX::Int(IntRange::Int) => "nat".to_owned(),
+        TypX::Int(IntRange::Int) => "int".to_owned(),
         TypX::Int(IntRange::ISize) => "isize".to_owned(),
         TypX::Int(IntRange::USize) => "usize".to_owned(),
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
