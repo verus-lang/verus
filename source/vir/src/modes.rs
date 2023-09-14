@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
-    FunctionKind, Ident, InferMode, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
+    FunctionKind, Ident, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern, PatternX,
+    Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{error, error_with_help, get_field, msg_error, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -43,54 +43,6 @@ enum Ghost {
     Ghost,
 }
 
-// Placeholder for the erasure expected mode, which is computed after first mode checking pass.
-// (See in erase_expr(..., expect: Mode, ...) in erase.rs.)
-// We compute the erasure expected mode here so that the AIR/SMT generation can use it.
-// For example, if there are arithmetic operations that are exec (and therefore not erased),
-// then the AIR/SMT code will insert overflow checks for those arithmetic operations.
-// Example:
-//   fn test(#[verifier::exec] e: u64, #[verifier::spec] s: u64) {
-//     if e + 1 < s { ... }
-//   }
-// Here, e + 1 < y is erased because the "<" comparison with s is spec, not exec.
-// Therefore, the e + 1 is a spec-mode arithmetic operation, not an exec-mode arithmetic operation.
-// However, the mode checker doesn't know this when it first descends into e + 1:
-//   - the "if" expression can take a spec or proof or exec condition, so this doesn't constrain
-//     the mode of e + 1 < s a priori
-//   - the "<" expression can take spec or proof or exec subexpressions, so this doesn't constrain
-//     the mode of e + 1 a priori
-//   - we check the left side e + 1 before we check the right side s,
-//     so when we first reach e + 1, we don't yet know that "<"'s right side is spec
-// Therefore, we use Cell to delay the decision about the erasure expected mode of e + 1.
-type ErasureMode = std::rc::Rc<ErasureModeX>;
-#[derive(Debug)]
-enum ErasureModeX {
-    Mode(std::cell::Cell<Option<Mode>>),
-    Join(ErasureMode, ErasureMode),
-}
-
-impl ErasureModeX {
-    fn new(mode: Option<Mode>) -> ErasureMode {
-        std::rc::Rc::new(ErasureModeX::Mode(std::cell::Cell::new(mode)))
-    }
-    fn join(m1: &ErasureMode, m2: &ErasureMode) -> ErasureMode {
-        std::rc::Rc::new(ErasureModeX::Join(m1.clone(), m2.clone()))
-    }
-    fn set(&self, mode: Mode) {
-        if let ErasureModeX::Mode(cell) = self {
-            cell.set(Some(mode));
-        } else {
-            panic!("unexpected ErasureMode");
-        }
-    }
-    fn force(&self) -> Mode {
-        match self {
-            ErasureModeX::Mode(cell) => cell.get().expect("unresolved ErasureMode"),
-            ErasureModeX::Join(m1, m2) => mode_join(m1.force(), m2.force()),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct ErasureModes {
     // Modes of conditions in If
@@ -122,7 +74,6 @@ struct Typing {
     // for each variable: (is_mutable, mode)
     pub(crate) vars: ScopeMap<Ident, (bool, Mode)>,
     pub(crate) erasure_modes: ErasureModes,
-    inferred_modes: HashMap<InferMode, ErasureMode>,
     pub(crate) in_forall_stmt: bool,
     pub(crate) check_ghost_blocks: bool,
     pub(crate) macro_erasure: bool,
@@ -430,7 +381,7 @@ fn check_expr_has_mode(
     expr: &Expr,
     expected: Mode,
 ) -> Result<(), VirErr> {
-    let mode = check_expr(typing, outer_mode, &ErasureModeX::new(Some(expected)), expr)?;
+    let mode = check_expr(typing, outer_mode, expr)?;
     match &*expr.typ {
         crate::ast::TypX::Tuple(ts) if ts.len() == 0 => return Ok(()),
         _ => {}
@@ -442,19 +393,13 @@ fn check_expr_has_mode(
     }
 }
 
-fn check_expr(
-    typing: &mut Typing,
-    outer_mode: Mode,
-    erasure_mode: &ErasureMode,
-    expr: &Expr,
-) -> Result<Mode, VirErr> {
-    Ok(check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, expr)?.0)
+fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode, VirErr> {
+    Ok(check_expr_handle_mut_arg(typing, outer_mode, expr)?.0)
 }
 
 fn check_expr_handle_mut_arg(
     typing: &mut Typing,
     outer_mode: Mode,
-    erasure_mode: &ErasureMode,
     expr: &Expr,
 ) -> Result<(Mode, Option<Mode>), VirErr> {
     let mode = match &expr.x {
@@ -552,9 +497,8 @@ fn check_expr_handle_mut_arg(
                             "cannot call function with &mut parameter inside 'assert ... by' statements",
                         );
                     }
-                    let arg_erasure = ErasureModeX::new(Some(param.x.mode));
                     let (arg_mode_read, arg_mode_write) =
-                        check_expr_handle_mut_arg(typing, outer_mode, &arg_erasure, arg)?;
+                        check_expr_handle_mut_arg(typing, outer_mode, arg)?;
                     let arg_mode_write = if let Some(arg_mode_write) = arg_mode_write {
                         arg_mode_write
                     } else {
@@ -607,7 +551,7 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Spec)
         }
         ExprX::Tuple(es) => {
-            let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, erasure_mode, e))?;
+            let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;
             Ok(modes.into_iter().fold(outer_mode, mode_join))
         }
         ExprX::Ctor(path, variant, binders, update) => {
@@ -615,18 +559,11 @@ fn check_expr_handle_mut_arg(
             let variant = datatype.x.get_variant(variant);
             let mut mode = mode_join(outer_mode, datatype.x.mode);
             if let Some(update) = update {
-                mode = mode_join(mode, check_expr(typing, outer_mode, erasure_mode, update)?);
+                mode = mode_join(mode, check_expr(typing, outer_mode, update)?);
             }
             for arg in binders.iter() {
                 let (_, field_mode, _) = get_field(&variant.a, &arg.name).a;
-                let field_erasure_mode =
-                    ErasureModeX::join(&erasure_mode, &ErasureModeX::new(Some(field_mode)));
-                let mode_arg = check_expr(
-                    typing,
-                    mode_join(outer_mode, field_mode),
-                    &field_erasure_mode,
-                    &arg.a,
-                )?;
+                let mode_arg = check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
                 if !mode_le(mode_arg, field_mode) {
                     // allow this arg by weakening whole struct's mode
                     mode = mode_join(mode, mode_arg);
@@ -664,18 +601,18 @@ fn check_expr_handle_mut_arg(
         ExprX::Unary(UnaryOp::HeightTrigger, _) => {
             panic!("direct access to 'height' is not allowed")
         }
-        ExprX::Unary(_, e1) => check_expr(typing, outer_mode, erasure_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, erasure_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, erasure_mode, e1),
+        ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
         ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return error(&expr.span, "cannot test variant in exec mode");
             }
-            check_expr(typing, outer_mode, erasure_mode, e1)
+            check_expr(typing, outer_mode, e1)
         }
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
-            return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1);
+            return check_expr_handle_mut_arg(typing, outer_mode, e1);
         }
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant }),
@@ -684,8 +621,7 @@ fn check_expr_handle_mut_arg(
             if *get_variant && typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return error(&expr.span, "cannot get variant in exec mode");
             }
-            let (e1_mode_read, e1_mode_write) =
-                check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?;
+            let (e1_mode_read, e1_mode_write) = check_expr_handle_mut_arg(typing, outer_mode, e1)?;
             let datatype = &typing.datatypes[datatype];
             let field = get_field(&datatype.x.get_variant(variant).a, field);
             let field_mode = field.a.1;
@@ -698,7 +634,7 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind, min_mode), e1) => {
             let joined_mode = mode_join(outer_mode, *min_mode);
-            let mode = check_expr(typing, joined_mode, erasure_mode, e1)?;
+            let mode = check_expr(typing, joined_mode, e1)?;
             Ok(mode_join(*min_mode, mode))
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => {
@@ -706,7 +642,7 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Spec)
         }
         ExprX::Loc(e) => {
-            return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e);
+            return check_expr_handle_mut_arg(typing, outer_mode, e);
         }
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
@@ -714,21 +650,14 @@ fn check_expr_handle_mut_arg(
                 BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => Mode::Exec,
             };
-            match op {
-                BinaryOp::Arith(_, Some(id)) => {
-                    assert!(!typing.inferred_modes.contains_key(id));
-                    typing.inferred_modes.insert(*id, erasure_mode.clone());
-                }
-                _ => {}
-            }
             let outer_mode = match op {
                 // because Implies isn't compiled, make it spec-only
                 BinaryOp::Implies => Mode::Spec,
                 BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => outer_mode,
             };
-            let mode1 = check_expr(typing, outer_mode, erasure_mode, e1)?;
-            let mode2 = check_expr(typing, outer_mode, erasure_mode, e2)?;
+            let mode1 = check_expr(typing, outer_mode, e1)?;
+            let mode2 = check_expr(typing, outer_mode, e2)?;
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))
         }
         ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
@@ -838,7 +767,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::Assign { init_not_mut, lhs, rhs, op } => {
+        ExprX::Assign { init_not_mut, lhs, rhs, op: _ } => {
             if typing.in_forall_stmt {
                 return error(&expr.span, "assignment is not allowed in 'assert ... by' statement");
             }
@@ -850,10 +779,6 @@ fn check_expr_handle_mut_arg(
                 );
             }
             check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
-            if let Some(BinaryOp::Arith(_, Some(id))) = op {
-                assert!(!typing.inferred_modes.contains_key(id));
-                typing.inferred_modes.insert(*id, erasure_mode.clone());
-            }
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => {
@@ -928,40 +853,36 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Proof)
         }
         ExprX::If(e1, e2, e3) => {
-            let erasure_mode1 = ErasureModeX::new(None);
-            let mode1 = check_expr(typing, outer_mode, &erasure_mode1, e1)?;
+            let mode1 = check_expr(typing, outer_mode, e1)?;
             if typing.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && mode1 != Mode::Exec
             {
                 return error(&expr.span, "condition must have mode exec");
             }
-            erasure_mode1.set(mode1);
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
 
             let mode_branch = match (outer_mode, mode1) {
                 (Mode::Exec, Mode::Spec) => Mode::Proof,
                 _ => outer_mode,
             };
-            let mode2 = check_expr(typing, mode_branch, erasure_mode, e2)?;
+            let mode2 = check_expr(typing, mode_branch, e2)?;
             match e3 {
                 None => Ok(mode2),
                 Some(e3) => {
-                    let mode3 = check_expr(typing, mode_branch, erasure_mode, e3)?;
+                    let mode3 = check_expr(typing, mode_branch, e3)?;
                     Ok(mode_join(mode2, mode3))
                 }
             }
         }
         ExprX::Match(e1, arms) => {
-            let erasure_mode1 = ErasureModeX::new(None);
-            let mode1 = check_expr(typing, outer_mode, &erasure_mode1, e1)?;
+            let mode1 = check_expr(typing, outer_mode, e1)?;
             if typing.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && mode1 != Mode::Exec
             {
                 return error(&expr.span, "exec code cannot match on non-exec value");
             }
-            erasure_mode1.set(mode1);
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
 
             match (mode1, arms.len()) {
@@ -980,12 +901,12 @@ fn check_expr_handle_mut_arg(
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,
                 };
-                let guard_mode = check_expr(typing, arm_outer_mode, erasure_mode, &arm.x.guard)?;
+                let guard_mode = check_expr(typing, arm_outer_mode, &arm.x.guard)?;
                 let arm_outer_mode = match (arm_outer_mode, guard_mode) {
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,
                 };
-                let arm_mode = check_expr(typing, arm_outer_mode, erasure_mode, &arm.x.body)?;
+                let arm_mode = check_expr(typing, arm_outer_mode, &arm.x.body)?;
                 final_mode = mode_join(final_mode, arm_mode);
                 typing.vars.pop_scope();
             }
@@ -1086,7 +1007,7 @@ fn check_expr_handle_mut_arg(
                 (Mode::Exec, Ghost::Ghost) => Mode::Proof,
                 _ => outer_mode,
             };
-            let inner_mode = check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1)?;
+            let inner_mode = check_expr_handle_mut_arg(typing, outer_mode, e1)?;
             let mode = if *alloc_wrapper {
                 let (inner_read, inner_write) = inner_mode;
                 let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };
@@ -1112,16 +1033,16 @@ fn check_expr_handle_mut_arg(
             return Ok(mode);
         }
         ExprX::Block(ss, Some(e1)) if ss.len() == 0 => {
-            return check_expr_handle_mut_arg(typing, outer_mode, erasure_mode, e1);
+            return check_expr_handle_mut_arg(typing, outer_mode, e1);
         }
         ExprX::Block(ss, e1) => {
             for stmt in ss.iter() {
                 typing.vars.push_scope(true);
-                check_stmt(typing, outer_mode, erasure_mode, stmt)?;
+                check_stmt(typing, outer_mode, stmt)?;
             }
             let mode = match e1 {
                 None => outer_mode,
-                Some(expr) => check_expr(typing, outer_mode, erasure_mode, expr)?,
+                Some(expr) => check_expr(typing, outer_mode, expr)?,
             };
             for _ in ss.iter() {
                 typing.vars.pop_scope();
@@ -1135,7 +1056,7 @@ fn check_expr_handle_mut_arg(
 
             let prev = typing.block_ghostness;
             typing.block_ghostness = Ghost::Ghost;
-            let mode1 = check_expr(typing, outer_mode, erasure_mode, inv)?;
+            let mode1 = check_expr(typing, outer_mode, inv)?;
             typing.block_ghostness = prev;
 
             if mode1 != Mode::Proof {
@@ -1154,11 +1075,11 @@ fn check_expr_handle_mut_arg(
                 // mode, and we don't need to do the atomicity check at all.
                 // And of course, we don't do atomicity checks for the 'NonAtomic'
                 // invariant type.
-                let _ = check_expr(typing, outer_mode, erasure_mode, body)?;
+                let _ = check_expr(typing, outer_mode, body)?;
             } else {
                 let mut my_atomic_insts = Some(AtomicInstCollector::new());
                 swap(&mut my_atomic_insts, &mut typing.atomic_insts);
-                let _ = check_expr(typing, outer_mode, erasure_mode, body)?;
+                let _ = check_expr(typing, outer_mode, body)?;
                 swap(&mut my_atomic_insts, &mut typing.atomic_insts);
                 my_atomic_insts.expect("my_atomic_insts").validate(&body.span, false)?;
             }
@@ -1170,15 +1091,10 @@ fn check_expr_handle_mut_arg(
     Ok((mode?, None))
 }
 
-fn check_stmt(
-    typing: &mut Typing,
-    outer_mode: Mode,
-    erasure_mode: &ErasureMode,
-    stmt: &Stmt,
-) -> Result<(), VirErr> {
+fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), VirErr> {
     match &stmt.x {
         StmtX::Expr(e) => {
-            let _ = check_expr(typing, outer_mode, erasure_mode, e)?;
+            let _ = check_expr(typing, outer_mode, e)?;
             Ok(())
         }
         StmtX::Decl { pattern, mode, init } => {
@@ -1308,7 +1224,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 pub fn check_crate(
     krate: &Krate,
     macro_erasure: bool, // TODO(main_new) remove, always true
-) -> Result<(ErasureModes, HashMap<InferMode, Mode>), VirErr> {
+) -> Result<ErasureModes, VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -1324,7 +1240,6 @@ pub fn check_crate(
         traits: krate.traits.iter().map(|t| t.x.name.clone()).collect(),
         vars: ScopeMap::new(),
         erasure_modes,
-        inferred_modes: HashMap::new(),
         in_forall_stmt: false,
         check_ghost_blocks: false,
         macro_erasure,
@@ -1348,6 +1263,5 @@ pub fn check_crate(
             check_function(&mut typing, function)?;
         }
     }
-    let inferred_modes = typing.inferred_modes.into_iter().map(|(k, m)| (k, m.force())).collect();
-    Ok((typing.erasure_modes, inferred_modes))
+    Ok(typing.erasure_modes)
 }
