@@ -9,12 +9,12 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{error, path_as_vstd_name, undecorate_typ};
+use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::func_to_air::{SstInfo, SstMap};
+use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{warning, Diagnostics, Message};
+use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
 use num_bigint::BigInt;
@@ -793,7 +793,7 @@ fn eval_seq(
                             Const(Constant::Int(index)) => match BigInt::to_usize(index) {
                                 None => {
                                     let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
-                                    state.msgs.push(warning(msg, &exp.span));
+                                    state.msgs.push(warning(&exp.span, msg));
                                     ok_seq(&args[0], &s, &args[1..])
                                 }
                                 Some(index) => {
@@ -801,7 +801,7 @@ fn eval_seq(
                                         Ok(s[index].clone())
                                     } else {
                                         let msg = "Computation tried to index past the length of a sequence";
-                                        state.msgs.push(warning(msg, &exp.span));
+                                        state.msgs.push(warning(&exp.span, msg));
                                         ok_seq(&args[0], &s, &args[1..])
                                     }
                                 }
@@ -853,7 +853,7 @@ fn eval_seq(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        return error(&exp.span, "assert_by_compute timed out");
+        return Err(error(&exp.span, "assert_by_compute timed out"));
     }
     state.log(format!("{}Evaluating {:}", "\t".repeat(state.depth), exp));
     let ok = Ok(exp.clone());
@@ -941,7 +941,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 if !in_range(lower, upper) {
                                     let msg =
                                         "Computation clipped an integer that was out of range";
-                                    state.msgs.push(warning(msg, &exp.span));
+                                    state.msgs.push(warning(&exp.span, msg));
                                     ok.clone()
                                 } else {
                                     Ok(e.clone())
@@ -971,7 +971,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower, upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
                                                 ok.clone()
                                             }
                                         }
@@ -988,7 +988,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower(32), upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
                                                 ok.clone()
                                             }
                                         }
@@ -1528,7 +1528,7 @@ fn eval_expr_launch(
         log.replace(state.log.unwrap());
     }
     if let ExpX::Const(Constant::Bool(false)) = res.x {
-        error(&exp.span, "assert simplifies to false")
+        Err(error(&exp.span, "assert simplifies to false"))
     } else {
         match mode {
             // Send partial result to Z3
@@ -1563,48 +1563,48 @@ fn eval_expr_launch(
                                         let s = seq_to_sst(&e.span, inner_type.clone(), v);
                                         Ok(s)
                                     }
-                                    _ => error(
+                                    _ => Err(error(
                                         &e.span,
                                         format!(
                                             "Internal error: Expected to find a sequence type but found: {:?}",
                                             e.typ,
                                         ),
-                                    ),
+                                    )),
                                 }
                             }
-                            _ => error(
+                            _ => Err(error(
                                 &e.span,
                                 format!(
                                     "Internal error: Expected to find a sequence type but found: {:?}",
                                     e.typ
                                 ),
-                            ),
+                            )),
                         }
                     }
-                    ExpX::Interp(InterpExp::Closure(..)) => error(
+                    ExpX::Interp(InterpExp::Closure(..)) => Err(error(
                         &e.span,
                         "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
-                    ),
+                    )),
                     _ => Ok(e.clone()),
                 })?;
                 if exp.definitely_eq(&res) {
                     let msg =
                         format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
-                    state.msgs.push(warning(msg, &exp.span));
+                    state.msgs.push(warning(&exp.span, msg));
                 }
                 Ok((res, state.msgs))
             }
             // Proof must succeed purely through computation
             ComputeMode::ComputeOnly => match res.x {
                 ExpX::Const(Constant::Bool(true)) => Ok((res, state.msgs)),
-                _ => error(
+                _ => Err(error(
                     &exp.span,
                     &format!(
                         "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
                         res
                     )
                     .to_string(),
-                ),
+                )),
             },
         }
     }
@@ -1613,7 +1613,7 @@ fn eval_expr_launch(
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
     exp: &Exp,
-    diagnostics: &(impl Diagnostics + ?Sized),
+    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
     rlimit: u32,
     arch: ArchWordBits,
@@ -1638,6 +1638,6 @@ pub fn eval_expr(
     });
     *log = taken_log;
     let (e, msgs) = res?;
-    msgs.iter().for_each(|m| diagnostics.report(m));
+    msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
     Ok(e)
 }

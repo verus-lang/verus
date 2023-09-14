@@ -6,9 +6,8 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::Span;
+use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
-use air::messages::Message;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;

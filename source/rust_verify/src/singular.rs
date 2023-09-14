@@ -1,11 +1,11 @@
 use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::Message;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
 use std::collections::HashMap;
 use std::sync::Arc;
+use vir::messages::{error, Message};
 
 // Singular reserved keyword
 const RING_DECL: &str = "ring";
@@ -86,6 +86,7 @@ pub(crate) fn expr_to_singular(
     tmp_idx: &mut u32,
     node_map: &mut HashMap<Node, Ident>,
 ) -> Result<String, String> {
+    let message_interface = Arc::new(vir::messages::VirMessageInterface {});
     let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
@@ -95,7 +96,7 @@ pub(crate) fn expr_to_singular(
         }
         ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
             // x % y ->  x - y*tmp
-            let pp = Printer::new(false);
+            let pp = Printer::new(message_interface.clone(), false);
             let key = pp.expr_to_node(expr);
             let value = node_map.get(&key);
             let t = match value {
@@ -168,7 +169,7 @@ pub(crate) fn expr_to_singular(
                 ));
             } else {
                 // treat as uninterpreted functions
-                let pp = Printer::new(false);
+                let pp = Printer::new(message_interface.clone(), false);
                 let key = pp.expr_to_node(expr);
                 let value = node_map.get(&key);
                 match value {
@@ -322,7 +323,7 @@ pub fn singular_printer(
 pub fn check_singular_valid(
     context: &mut air::context::Context,
     command: &Command,
-    func_span: &air::ast::Span,
+    func_span: &vir::messages::Span,
     _query_context: QueryContext<'_, '_>,
 ) -> ValidityResult {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
@@ -368,12 +369,32 @@ pub fn check_singular_valid(
         };
     }
 
+    let reqs = {
+        reqs.into_iter()
+            .map(|r| {
+                let (expr, error) = r;
+                let error: vir::messages::Message = error
+                    .clone()
+                    .downcast()
+                    .expect("unexpected value in Any -> Message conversion");
+                (expr, error)
+            })
+            .collect()
+    };
+
+    let ens = {
+        let (expr, error) = ens;
+        let error: vir::messages::Message =
+            error.clone().downcast().expect("unexpected value in Any -> Message conversion");
+        (expr, error)
+    };
+
     let query = match singular_printer(&vars, &reqs, &ens) {
         Ok(query_string) => query_string,
         Err(err) => return ValidityResult::Invalid(None, err),
     };
 
-    air::singular_manager::log_singular(context, &query, func_span);
+    air::singular_manager::log_singular(context, &query, &func_span.as_string);
 
     let quit_string = format!("{};", QUIT_SINGULAR);
     let query = format!("{} {}", query, quit_string);
@@ -392,13 +413,13 @@ pub fn check_singular_valid(
     } else {
         ValidityResult::Invalid(
             None,
-            air::messages::error(
+            error(
+                &ens.1.spans[0],
                 format!(
                     "postcondition not satisfied: Ensures polynomial failed to be reduced to zero, reduced polynomial is {}\n generated singular query: {} ",
                     res[0].as_str(),
                     query
                 ),
-                &ens.1.spans[0],
             ),
         )
     }

@@ -1,7 +1,8 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::messages::Span;
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
-use air::ast::{Commands, Ident, Span};
+use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -572,7 +573,7 @@ pub enum ProverChoice {
 }
 
 pub struct CommandsWithContextX {
-    pub span: air::ast::Span,
+    pub span: crate::messages::Span,
     pub desc: String,
     pub commands: Commands,
     pub prover_choice: ProverChoice,

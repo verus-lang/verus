@@ -4,11 +4,12 @@ use crate::ast::{
     Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{error, internal_error, types_equal, undecorate_typ, QUANT_FORALL};
+use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_bound, unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::interpreter::eval_expr;
+use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
     Pars, Stm, StmX, UniqueIdent,
@@ -21,8 +22,8 @@ use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
-use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{error_with_label, warning, Diagnostics};
+use air::ast::{Binder, BinderX, Binders};
+use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
@@ -356,7 +357,7 @@ fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
-        None => error(span, format!("could not find function {:?}", &name)),
+        None => Err(error(span, format!("could not find function {:?}", &name))),
         Some(func) => Ok(func.clone()),
     }
 }
@@ -473,7 +474,7 @@ fn expr_get_call(
             }
             CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage) => {
                 if *autospec_usage != AutospecUsage::Final {
-                    return internal_error(&expr.span, "autospec not discharged");
+                    return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
@@ -530,7 +531,7 @@ pub(crate) fn expr_to_pure_exp(ctx: &Ctx, state: &mut State, expr: &Expr) -> Res
     let result = if stms.len() == 0 {
         Ok(exp)
     } else {
-        error(&expr.span, "expected pure mathematical expression")
+        Err(error(&expr.span, "expected pure mathematical expression"))
     };
     state.disable_recommends -= 1;
     result
@@ -658,7 +659,7 @@ pub(crate) fn expr_to_stm_or_error(
     let (stms, exp_opt) = expr_to_stm_opt(ctx, state, expr)?;
     match exp_opt.to_value() {
         Some(e) => Ok((stms, e)),
-        None => error(&expr.span, "expression must produce a value"),
+        None => Err(error(&expr.span, "expression must produce a value")),
     }
 }
 
@@ -699,8 +700,8 @@ pub(crate) fn expr_to_one_stm_with_post(
     // secondary label (indicating which post-condition failed) is added later
     // in ast_to_sst when the post condition is expanded
     let base_error = error_with_label(
-        crate::def::POSTCONDITION_FAILURE.to_string(),
         &expr.span,
+        crate::def::POSTCONDITION_FAILURE.to_string(),
         "at the end of the function body".to_string(),
     );
 
@@ -769,7 +770,7 @@ fn stm_call(
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
     if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
-        let error = air::messages::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
+        let error = error(span, crate::def::SPLIT_PRE_FAILURE.to_string());
         let call = StmX::Call {
             fun: name.clone(),
             resolved_method: resolved_method.clone(),
@@ -914,7 +915,7 @@ fn expr_to_stm_opt(
         ExprX::VarAt(x, VarAt::Pre) => {
             if let Some((scope, _)) = state.rename_map.scope_and_index_of_key(x) {
                 if scope != 0 {
-                    error(&expr.span, "the parameter is shadowed here")?;
+                    Err(error(&expr.span, "the parameter is shadowed here"))?;
                 }
             }
             Ok((
@@ -1111,9 +1112,9 @@ fn expr_to_stm_opt(
                 let unary = UnaryOpr::HasType(expr.typ.clone());
                 let has_type = ExpX::UnaryOpr(unary, exp.clone());
                 let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
-                let error = air::messages::error(
-                    "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
+                let error = crate::messages::error(
                     &expr.span,
+                    "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
                 );
                 let assert = StmX::Assert(Some(error), has_type);
                 let assert = Spanned::new(expr.span.clone(), assert);
@@ -1198,7 +1199,7 @@ fn expr_to_stm_opt(
                                         (ne, "possible division by zero")
                                     }
                                 };
-                                let error = air::messages::error(msg, &expr.span);
+                                let error = error(&expr.span, msg);
                                 let assert = StmX::Assert(Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
@@ -1230,7 +1231,7 @@ fn expr_to_stm_opt(
                                 );
 
                                 let msg = "possible bit shift underflow/overflow";
-                                let error = air::messages::error(msg, &expr.span);
+                                let error = error(&expr.span, msg);
                                 let assert = StmX::Assert(Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
@@ -1382,7 +1383,7 @@ fn expr_to_stm_opt(
 
             if skip {
                 state.diagnostics.report(&warning(
-                    "this reveal/fuel statement has no effect because no verification condition in this module depends on this function", &expr.span));
+                    &expr.span, "this reveal/fuel statement has no effect because no verification condition in this module depends on this function").to_any());
             }
 
             let stms = if skip {
@@ -1398,7 +1399,7 @@ fn expr_to_stm_opt(
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Header(_) => {
-            return error(&expr.span, "header expression not allowed here");
+            return Err(error(&expr.span, "header expression not allowed here"));
         }
         ExprX::AssertAssume { is_assume: false, expr: e } => {
             if state.checking_recommends(ctx) {
@@ -1449,7 +1450,10 @@ fn expr_to_stm_opt(
             }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let ReturnValue::Some(_) = e {
-                return error(&expr.span, "'assert ... by' block cannot end with an expression");
+                return Err(error(
+                    &expr.span,
+                    "'assert ... by' block cannot end with an expression",
+                ));
             }
             let (check_recommends, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
             body.extend(check_recommends);
@@ -1499,10 +1503,10 @@ fn expr_to_stm_opt(
 
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
                     if let ReturnValue::Some(_) = e {
-                        return error(
+                        return Err(error(
                             &expr.span,
                             "'assert ... by' block cannot end with an expression",
-                        );
+                        ));
                     }
                     inner_body.extend(proof_stms);
 
@@ -1537,9 +1541,9 @@ fn expr_to_stm_opt(
                             let assert = Spanned::new(
                                 r.span.clone(),
                                 StmX::Assert(
-                                    Some(air::messages::error(
-                                        "requires not satisfied".to_string(),
+                                    Some(crate::messages::error(
                                         &r.span.clone(),
+                                        "requires not satisfied".to_string(),
                                     )),
                                     require_exp,
                                 ),
@@ -1570,12 +1574,12 @@ fn expr_to_stm_opt(
                     // check if assertion block is consisted only with requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
                     let proof_block_err =
-                        error(&expr.span, "assert_bitvector_by cannot contain a proof block");
+                        Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));
                     if let ReturnValue::Some(_) = e {
-                        return error(
+                        return Err(error(
                             &expr.span,
                             "assert_bitvector_by cannot contain a return value",
-                        );
+                        ));
                     }
                     if proof_stms.len() > 1 {
                         return proof_block_err;
@@ -1609,10 +1613,7 @@ fn expr_to_stm_opt(
                         let assert = Spanned::new(
                             r.span.clone(),
                             StmX::Assert(
-                                Some(air::messages::error(
-                                    "requires not satisfied".to_string(),
-                                    &r.span.clone(),
-                                )),
+                                Some(error(&r.span.clone(), "requires not satisfied".to_string())),
                                 require_exp,
                             ),
                         );
@@ -1652,8 +1653,8 @@ fn expr_to_stm_opt(
                 &mut ctx.global.interpreter_log.lock().unwrap(),
             )?;
             let err = error_with_label(
-                "assertion failed",
                 &expr.span.clone(),
+                "assertion failed",
                 format!("simplified to {}", interp_expr),
             );
             let mut stmts = Vec::new();
@@ -1802,8 +1803,8 @@ fn expr_to_stm_opt(
             match &containing_closure {
                 None => {
                     let base_error = error_with_label(
-                        crate::def::POSTCONDITION_FAILURE.to_string(),
                         &expr.span,
+                        crate::def::POSTCONDITION_FAILURE.to_string(),
                         "at this exit".to_string(),
                     );
 
@@ -2089,8 +2090,8 @@ fn closure_emit_postconditions(
         stms.push(init_var(&ret_value.span, dest, &ret_value));
         for ens in ensures.iter() {
             let er = error_with_label(
-                "unable to prove post-condition of closure",
                 &ret_value.span,
+                "unable to prove post-condition of closure",
                 "returning this expression",
             )
             .secondary_label(&ens.span, crate::def::THIS_POST_FAILED);

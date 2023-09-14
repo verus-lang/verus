@@ -1,11 +1,11 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
-use air::ast::AstId;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::SpanData;
 use std::sync::Arc;
 use vir::ast::{Expr, Ident, Mode, Pattern};
+use vir::messages::AstId;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
