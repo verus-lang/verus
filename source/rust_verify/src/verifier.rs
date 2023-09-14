@@ -224,7 +224,7 @@ pub struct Verifier {
     pub bucket_times: HashMap<BucketId, BucketStats>,
 
     // If we've already created the log directory, this is the path to it:
-    created_log_dir: Option<std::path::PathBuf>,
+    created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
     crate_names: Option<Vec<String>>,
     vstd_crate_name: Option<Ident>,
@@ -282,7 +282,7 @@ impl Verifier {
 
             bucket_times: HashMap::new(),
 
-            created_log_dir: None,
+            created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
             crate_names: None,
             vstd_crate_name: None,
@@ -341,34 +341,48 @@ impl Verifier {
         bucket_id_opt: Option<&BucketId>,
         suffix: &str,
     ) -> Result<File, VirErr> {
-        if self.created_log_dir.is_none() {
-            let dir = std::path::PathBuf::from(if let Some(dir) = &self.args.log_dir {
-                dir.clone()
+        let dir_path = {
+            let mut created_log_dir =
+                self.created_log_dir.lock().expect("failed to lock created_log_dir");
+            if let Some(dir_path) = &*created_log_dir {
+                dir_path.clone()
             } else {
-                crate::config::LOG_DIR.to_string()
-            });
-            if dir.exists() && dir.is_dir() {
-                let entries = std::fs::read_dir(&dir).map_err(|err| {
-                    io_vir_err(format!("could not read directory {}", dir.display()), err)
-                })?;
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        if entry.path().is_file() {
-                            std::fs::remove_file(entry.path()).map_err(|err| {
-                                io_vir_err(format!("could not remove file {}", dir.display()), err)
-                            })?;
+                let dir = std::path::PathBuf::from(if let Some(dir) = &self.args.log_dir {
+                    dir.clone()
+                } else {
+                    crate::config::LOG_DIR.to_string()
+                });
+                if dir.exists() {
+                    if dir.is_dir() {
+                        let entries = std::fs::read_dir(&dir).map_err(|err| {
+                            io_vir_err(format!("could not read directory {}", dir.display()), err)
+                        })?;
+                        for entry in entries {
+                            if let Ok(entry) = entry {
+                                if entry.path().is_file() {
+                                    std::fs::remove_file(entry.path()).map_err(|err| {
+                                        io_vir_err(
+                                            format!("could not remove file {}", dir.display()),
+                                            err,
+                                        )
+                                    })?;
+                                }
+                            }
                         }
+                    } else {
+                        return Err(error(format!(
+                            "{} exists and is not a directory",
+                            dir.display()
+                        )));
                     }
                 }
-            } else {
-                return Err(error(format!("{} exists and is not a directory", dir.display())));
+                std::fs::create_dir_all(&dir).map_err(|err| {
+                    io_vir_err(format!("could not create directory {}", dir.display()), err)
+                })?;
+                *created_log_dir = Some(dir.clone());
+                dir
             }
-            std::fs::create_dir_all(&dir).map_err(|err| {
-                io_vir_err(format!("could not create directory {}", dir.display()), err)
-            })?;
-            self.created_log_dir = Some(dir);
-        }
-        let dir_path = self.created_log_dir.clone().unwrap();
+        };
         let prefix = match bucket_id_opt {
             None => "crate".to_string(),
             Some(bucket_id) => bucket_id.to_log_string(),
