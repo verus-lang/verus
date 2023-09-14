@@ -969,7 +969,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
             let zero_const = vir::ast_util::const_int_from_u128(0);
             let zero = mk_expr(ExprX::Const(zero_const))?;
-            mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, None), zero, varg))
+            mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, Mode::Spec), zero, varg))
         }
         VerusItem::Chained(chained_item) => {
             record_spec_fn_allow_proof_args(bctx, expr);
@@ -1217,24 +1217,25 @@ fn verus_item_to_vir<'tcx, 'a>(
                     SpecOrdItem::Lt => BinaryOp::Inequality(InequalityOp::Lt),
                     SpecOrdItem::Gt => BinaryOp::Inequality(InequalityOp::Gt),
                 },
-                VerusItem::BinaryOp(BinaryOpItem::Arith(arith_item)) => match arith_item {
-                    ArithItem::BuiltinAdd => {
-                        BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode()))
+                VerusItem::BinaryOp(BinaryOpItem::Arith(arith_item)) => {
+                    let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
+                    match arith_item {
+                        ArithItem::BuiltinAdd => BinaryOp::Arith(ArithOp::Add, mode_for_ghostness),
+                        ArithItem::BuiltinSub => BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
+                        ArithItem::BuiltinMul => BinaryOp::Arith(ArithOp::Mul, mode_for_ghostness),
                     }
-                    ArithItem::BuiltinSub => {
-                        BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode()))
-                    }
-                    ArithItem::BuiltinMul => {
-                        BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode()))
-                    }
-                },
+                }
                 VerusItem::BinaryOp(BinaryOpItem::SpecArith(spec_arith_item)) => {
                     match spec_arith_item {
-                        SpecArithItem::Add => BinaryOp::Arith(ArithOp::Add, None),
-                        SpecArithItem::Sub => BinaryOp::Arith(ArithOp::Sub, None),
-                        SpecArithItem::Mul => BinaryOp::Arith(ArithOp::Mul, None),
-                        SpecArithItem::EuclideanDiv => BinaryOp::Arith(ArithOp::EuclideanDiv, None),
-                        SpecArithItem::EuclideanMod => BinaryOp::Arith(ArithOp::EuclideanMod, None),
+                        SpecArithItem::Add => BinaryOp::Arith(ArithOp::Add, Mode::Spec),
+                        SpecArithItem::Sub => BinaryOp::Arith(ArithOp::Sub, Mode::Spec),
+                        SpecArithItem::Mul => BinaryOp::Arith(ArithOp::Mul, Mode::Spec),
+                        SpecArithItem::EuclideanDiv => {
+                            BinaryOp::Arith(ArithOp::EuclideanDiv, Mode::Spec)
+                        }
+                        SpecArithItem::EuclideanMod => {
+                            BinaryOp::Arith(ArithOp::EuclideanMod, Mode::Spec)
+                        }
                     }
                 }
                 VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(spec_bitwise)) => {

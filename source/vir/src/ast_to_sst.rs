@@ -1166,18 +1166,12 @@ fn expr_to_stm_opt(
                     let e2 = unwrap_or_return_never!(e2, stms1);
                     let bin = mk_exp(ExpX::Binary(*op, e1.clone(), e2.clone()));
 
-                    if let BinaryOp::Arith(arith, inferred_mode) = op {
+                    if let BinaryOp::Arith(arith, arith_mode) = op {
                         // Insert bounds check
-
-                        let arith_mode = if let Some(inferred_mode) = inferred_mode {
-                            ctx.global.inferred_modes[inferred_mode]
-                        } else {
-                            Mode::Spec
-                        };
 
                         match (
                             arith_mode,
-                            state.checking_bounds_for_mode(ctx, arith_mode),
+                            state.checking_bounds_for_mode(ctx, *arith_mode),
                             &*undecorate_typ(&expr.typ),
                         ) {
                             (_, false, _) => {}

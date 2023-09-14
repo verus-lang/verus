@@ -1,6 +1,6 @@
 use crate::ast::{
-    Datatype, Fun, Function, GenericBounds, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
-    TypX, Variants, VirErr,
+    Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path, Trait, TypX,
+    Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -44,7 +44,6 @@ pub struct GlobalCtx {
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub(crate) inferred_modes: Arc<HashMap<InferMode, Mode>>,
     pub(crate) rlimit: u32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) vstd_crate_name: Option<Ident>, // already an arc
@@ -179,7 +178,6 @@ impl GlobalCtx {
     pub fn new(
         krate: &Krate,
         no_span: Span,
-        inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
@@ -243,7 +241,6 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             qid_map,
-            inferred_modes: Arc::new(inferred_modes),
             rlimit,
             interpreter_log,
             vstd_crate_name,
@@ -265,7 +262,6 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
             qid_map,
-            inferred_modes: self.inferred_modes.clone(),
             rlimit: self.rlimit,
             interpreter_log,
             vstd_crate_name: self.vstd_crate_name.clone(),

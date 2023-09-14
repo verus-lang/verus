@@ -843,3 +843,31 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] zulip_external_body_clone_regression_800_1 verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+        #[verifier(external_body)]
+        pub exec fn rc_clone(rc: &Rc<Vec<u8>>) -> (res: Rc<Vec<u8>>)
+            ensures (*rc)@ == (*res)@
+        {
+            Rc::clone(&rc)
+        }
+
+        pub exec fn blah(rc: Rc<Vec<u8>>) {
+            let tmp: Rc<Vec<u8>> = rc_clone(&rc);
+            assert((*rc)@ == tmp@); // assertion fails
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zulip_external_body_clone_regression_800_2 verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+        pub exec fn blah(rc: Rc<Vec<u8>>) {
+            assert(rc@ == (*rc)@); // fails
+        }
+    } => Ok(())
+}
