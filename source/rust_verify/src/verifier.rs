@@ -223,7 +223,7 @@ pub struct Verifier {
     pub module_times: HashMap<vir::ast::Path, ModuleStats>,
 
     // If we've already created the log directory, this is the path to it:
-    created_log_dir: Option<String>,
+    created_log_dir: Option<std::path::PathBuf>,
     vir_crate: Option<Krate>,
     crate_names: Option<Vec<String>>,
     vstd_crate_name: Option<Ident>,
@@ -335,19 +335,31 @@ impl Verifier {
         suffix: &str,
     ) -> Result<File, VirErr> {
         if self.created_log_dir.is_none() {
-            let dir = if let Some(dir) = &self.args.log_dir {
+            let dir = std::path::PathBuf::from(if let Some(dir) = &self.args.log_dir {
                 dir.clone()
             } else {
                 crate::config::LOG_DIR.to_string()
-            };
-            match std::fs::create_dir_all(dir.clone()) {
-                Ok(()) => {
-                    self.created_log_dir = Some(dir);
+            });
+            if dir.exists() && dir.is_dir() {
+                let entries = std::fs::read_dir(&dir).map_err(|err| {
+                    io_vir_err(format!("could not read directory {}", dir.display()), err)
+                })?;
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        if entry.path().is_file() {
+                            std::fs::remove_file(entry.path()).map_err(|err| {
+                                io_vir_err(format!("could not remove file {}", dir.display()), err)
+                            })?;
+                        }
+                    }
                 }
-                Err(err) => {
-                    return Err(io_vir_err(format!("could not create directory {dir}"), err));
-                }
+            } else {
+                return Err(error(format!("{} exists and is not a directory", dir.display())));
             }
+            std::fs::create_dir_all(&dir).map_err(|err| {
+                io_vir_err(format!("could not create directory {}", dir.display()), err)
+            })?;
+            self.created_log_dir = Some(dir);
         }
         let dir_path = self.created_log_dir.clone().unwrap();
         let prefix = match module {
