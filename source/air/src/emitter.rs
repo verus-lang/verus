@@ -4,9 +4,9 @@ use crate::{node, nodes};
 use sise::Node;
 use std::io::Write;
 
-pub(crate) struct Emitter<'a> {
+pub(crate) struct Emitter {
     /// AIR/SMT -> Node printer
-    printer: Printer<'a>,
+    printer: Printer,
     /// Node -> string writer
     node_writer: NodeWriter,
     /// buffer for data to be sent across pipe to Z3 process
@@ -17,9 +17,9 @@ pub(crate) struct Emitter<'a> {
     current_indent: String,
 }
 
-impl<'a> Emitter<'a> {
+impl Emitter {
     pub fn new(
-        message_interface: &'a dyn crate::messages::MessageInterface,
+        message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
         use_pipe: bool,
         print_as_smt: bool,
         writer: Option<Box<dyn std::io::Write>>,

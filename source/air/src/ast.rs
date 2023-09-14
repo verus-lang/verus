@@ -1,8 +1,9 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use crate::messages::ArcDynMessage;
 
 pub type TypeError = String;
 
@@ -144,8 +145,8 @@ pub enum ExprX {
     Bind(Bind, Expr),
     // Sometimes an axiom will have additional error messages. If an assert fails
     // and this axiom was relevant, then we append the error labels to the Message.
-    LabeledAxiom(Vec<Arc<dyn Any + Send + Sync>>, Expr),
-    LabeledAssertion(Arc<dyn Any + Send + Sync>, Expr),
+    LabeledAxiom(Vec<ArcDynMessage>, Expr),
+    LabeledAssertion(ArcDynMessage, Expr),
 }
 
 pub type Stmt = Arc<StmtX>;
@@ -153,7 +154,7 @@ pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
-    Assert(Arc<dyn Any + Send + Sync>, Expr),
+    Assert(ArcDynMessage, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
     // create a named snapshot of the state of the variables

@@ -10,15 +10,15 @@ use sise::Node;
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
-    let message_interface = crate::messages::AirMessageInterface {};
+    let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
     let reporter = Reporter {};
-    let mut air_context = crate::context::Context::new(&message_interface);
+    let mut air_context = crate::context::Context::new(message_interface.clone());
     air_context.set_z3_param("air_recommended_options", "true");
-    match Parser::new(&message_interface).nodes_to_commands(&nodes) {
+    match Parser::new(message_interface.clone()).nodes_to_commands(&nodes) {
         Ok(commands) => {
             for command in commands.iter() {
                 let result = air_context.command(
-                    &message_interface,
+                    &*message_interface,
                     &reporter,
                     &command,
                     Default::default(),

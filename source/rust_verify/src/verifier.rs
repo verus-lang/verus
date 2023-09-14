@@ -6,7 +6,7 @@ use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::Diagnostics;
+use air::messages::{ArcDynMessage, Diagnostics};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
@@ -21,7 +21,6 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
-use std::any::Any;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
@@ -60,7 +59,7 @@ impl<'tcx> Reporter<'tcx> {
 /// or emitting the same note twice will be surpressed (even if separated in time by other
 /// errors/notes)
 impl air::messages::Diagnostics for Reporter<'_> {
-    fn report_as(&self, msg: &Arc<dyn Any + Send + Sync>, level: MessageLevel) {
+    fn report_as(&self, msg: &ArcDynMessage, level: MessageLevel) {
         let msg: &MessageX =
             msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
 
@@ -116,19 +115,19 @@ impl air::messages::Diagnostics for Reporter<'_> {
         }
     }
 
-    fn report(&self, msg: &Arc<dyn Any + Send + Sync>) {
+    fn report(&self, msg: &ArcDynMessage) {
         let vir_msg: &MessageX =
             msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
         self.report_as(msg, vir_msg.level)
     }
 
-    fn report_now(&self, msg: &Arc<dyn Any + Send + Sync>) {
+    fn report_now(&self, msg: &ArcDynMessage) {
         let vir_msg: &MessageX =
             msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
         self.report_as(msg, vir_msg.level)
     }
 
-    fn report_as_now(&self, msg: &Arc<dyn Any + Send + Sync>, msg_as: MessageLevel) {
+    fn report_as_now(&self, msg: &ArcDynMessage, msg_as: MessageLevel) {
         self.report_as(msg, msg_as)
     }
 }
@@ -157,7 +156,7 @@ impl QueuedReporter {
 }
 
 impl air::messages::Diagnostics for QueuedReporter {
-    fn report_as(&self, msg: &Arc<dyn Any + Send + Sync>, level: MessageLevel) {
+    fn report_as(&self, msg: &ArcDynMessage, level: MessageLevel) {
         let msg: Message =
             msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
@@ -165,7 +164,7 @@ impl air::messages::Diagnostics for QueuedReporter {
             .expect("could not send the message!");
     }
 
-    fn report_as_now(&self, msg: &Arc<dyn Any + Send + Sync>, level: MessageLevel) {
+    fn report_as_now(&self, msg: &ArcDynMessage, level: MessageLevel) {
         let msg: Message =
             msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
@@ -173,13 +172,13 @@ impl air::messages::Diagnostics for QueuedReporter {
             .expect("could not send the message!");
     }
 
-    fn report(&self, msg: &Arc<dyn Any + Send + Sync>) {
+    fn report(&self, msg: &ArcDynMessage) {
         let air_msg: &MessageX =
             msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
         self.report_as(msg, air_msg.level)
     }
 
-    fn report_now(&self, msg: &Arc<dyn Any + Send + Sync>) {
+    fn report_now(&self, msg: &ArcDynMessage) {
         let air_msg: &MessageX =
             msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
         self.report_as_now(msg, air_msg.level)
@@ -247,7 +246,7 @@ fn report_chosen_triggers(
     for (n, trigger) in chosen.triggers.iter().enumerate() {
         let note = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
         let msg = note_bare(note);
-        let msg: Arc<dyn Any + Send + Sync> = trigger.iter().fold(msg, |m, (s, _)| {
+        let msg: ArcDynMessage = trigger.iter().fold(msg, |m, (s, _)| {
             let m: &vir::messages::MessageX =
                 m.downcast_ref().expect("unexpected value in Any -> Message conversion");
             m.primary_span(s)
@@ -451,7 +450,7 @@ impl Verifier {
         context: &(&vir::messages::Span, &str),
         is_singular: bool,
     ) -> bool {
-        let message_interface = vir::messages::VirMessageInterface {};
+        let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let report_long_running = || {
             let mut counter = 0;
@@ -469,7 +468,7 @@ impl Verifier {
         #[cfg(feature = "singular")]
         let mut result = if !is_singular {
             air_context.command(
-                &message_interface,
+                &*message_interface,
                 reporter,
                 &command,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
@@ -485,7 +484,7 @@ impl Verifier {
 
         #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
-            &message_interface,
+            &*message_interface,
             reporter,
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
@@ -523,7 +522,7 @@ impl Verifier {
                     }
                     reporter.report(&message(level, msg, &context.0).to_any());
                     if self.args.profile {
-                        let profiler = Profiler::new(&message_interface, reporter);
+                        let profiler = Profiler::new(message_interface, reporter);
                         self.print_profile_stats(reporter, profiler, qid_map);
                     }
                     break;
@@ -691,14 +690,14 @@ impl Verifier {
 
     fn new_air_context_with_prelude<'m>(
         &mut self,
-        message_interface: &'m dyn air::messages::MessageInterface,
+        message_interface: Arc<dyn air::messages::MessageInterface>,
         diagnostics: &impl air::messages::Diagnostics,
         module_path: &vir::ast::Path,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
-    ) -> Result<air::context::Context<'m>, VirErr> {
-        let mut air_context = air::context::Context::new(message_interface);
+    ) -> Result<air::context::Context, VirErr> {
+        let mut air_context = air::context::Context::new(message_interface.clone());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
         air_context.set_profile(self.args.profile);
@@ -768,7 +767,7 @@ impl Verifier {
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude(prelude_config).iter() {
             Self::check_internal_result(air_context.command(
-                message_interface,
+                &*message_interface,
                 diagnostics,
                 &command,
                 Default::default(),
@@ -785,7 +784,7 @@ impl Verifier {
 
     fn new_air_context_with_module_context<'m>(
         &mut self,
-        message_interface: &'m dyn air::messages::MessageInterface,
+        message_interface: Arc<dyn air::messages::MessageInterface>,
         ctx: &vir::context::Ctx,
         diagnostics: &impl air::messages::Diagnostics,
         module_path: &vir::ast::Path,
@@ -799,9 +798,9 @@ impl Verifier {
         is_rerun: bool,
         context_counter: usize,
         span: &vir::messages::Span,
-    ) -> Result<air::context::Context<'m>, VirErr> {
+    ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
-            message_interface,
+            message_interface.clone(),
             diagnostics,
             module_path,
             Some((function_path, context_counter)),
@@ -815,7 +814,7 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
-                message_interface,
+                &*message_interface,
                 diagnostics,
                 &command,
                 Default::default(),
@@ -865,10 +864,10 @@ impl Verifier {
         module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
-        let message_interface = vir::messages::VirMessageInterface {};
+        let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let mut air_context = self.new_air_context_with_prelude(
-            &message_interface,
+            message_interface.clone(),
             reporter,
             module,
             None,
@@ -888,7 +887,7 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
-                &message_interface,
+                &*message_interface,
                 reporter,
                 &command,
                 Default::default(),
@@ -1184,7 +1183,7 @@ impl Verifier {
                         || (*prover_choice == vir::def::ProverChoice::BitVector);
                     let query_air_context = if do_spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
-                            &message_interface,
+                            message_interface.clone(),
                             ctx,
                             reporter,
                             module,
@@ -1568,7 +1567,8 @@ impl Verifier {
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
         if self.args.profile_all {
-            let profiler = Profiler::new(&vir::messages::VirMessageInterface {}, &reporter);
+            let profiler =
+                Profiler::new(Arc::new(vir::messages::VirMessageInterface {}), &reporter);
             self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
         } else if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(

@@ -1,4 +1,5 @@
 pub use air::messages::MessageLevel;
+use air::messages::{ArcDynMessage, ArcDynMessageLabel};
 use serde::{Deserialize, Serialize};
 use std::{any::Any, sync::Arc};
 
@@ -76,7 +77,7 @@ impl ToAny for MessageLabel {
 pub struct VirMessageInterface {}
 
 impl air::messages::MessageInterface for VirMessageInterface {
-    fn empty(&self) -> Arc<dyn Any + Send + Sync> {
+    fn empty(&self) -> ArcDynMessage {
         Arc::new(MessageX {
             level: MessageLevel::Error,
             note: "".to_owned(),
@@ -86,7 +87,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
         })
     }
 
-    fn all_msgs(&self, message: &Arc<dyn Any + Send + Sync>) -> Vec<String> {
+    fn all_msgs(&self, message: &ArcDynMessage) -> Vec<String> {
         let message: &MessageX =
             message.downcast_ref().expect("unexpected value in Any -> Message conversion");
         Some(message.note.clone())
@@ -95,7 +96,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             .collect()
     }
 
-    fn bare(&self, level: MessageLevel, note: &str) -> Arc<dyn Any + Send + Sync> {
+    fn bare(&self, level: MessageLevel, note: &str) -> ArcDynMessage {
         Arc::new(MessageX {
             level,
             note: note.to_owned(),
@@ -105,7 +106,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
         })
     }
 
-    fn unexpected_z3_version(&self, expected: &str, found: &str) -> Arc<dyn Any + Send + Sync> {
+    fn unexpected_z3_version(&self, expected: &str, found: &str) -> ArcDynMessage {
         Arc::new(MessageX {
             level: MessageLevel::Error,
             note: format!("expected z3 version {expected}, found {found}"),
@@ -115,13 +116,13 @@ impl air::messages::MessageInterface for VirMessageInterface {
         })
     }
 
-    fn get_note<'b>(&self, message: &'b Arc<dyn Any + Send + Sync>) -> &'b str {
+    fn get_note<'b>(&self, message: &'b ArcDynMessage) -> &'b str {
         let message: &MessageX =
             message.downcast_ref().expect("unexpected value in Any -> Message conversion");
         &message.note
     }
 
-    fn get_message_label_note<'b>(&self, message_label: &'b Arc<dyn Any + Send + Sync>) -> &'b str {
+    fn get_message_label_note<'b>(&self, message_label: &'b ArcDynMessageLabel) -> &'b str {
         let message_label: &MessageLabel =
             message_label.downcast_ref().expect("unexpected value in Any -> Message conversion");
         &message_label.note
@@ -129,9 +130,9 @@ impl air::messages::MessageInterface for VirMessageInterface {
 
     fn append_labels(
         &self,
-        message: &Arc<dyn Any + Send + Sync>,
-        labels: &Vec<Arc<dyn Any + Send + Sync>>,
-    ) -> Arc<dyn Any + Send + Sync> {
+        message: &ArcDynMessage,
+        labels: &Vec<ArcDynMessageLabel>,
+    ) -> ArcDynMessage {
         let message: &MessageX =
             message.downcast_ref().expect("unexpected value in Any -> Message conversion");
         let mut s = message.clone();
@@ -144,11 +145,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
         Arc::new(s)
     }
 
-    fn message_label_from_air_span(
-        &self,
-        air_span: &str,
-        note: &str,
-    ) -> Arc<dyn Any + Send + Sync> {
+    fn message_label_from_air_span(&self, air_span: &str, note: &str) -> ArcDynMessageLabel {
         Arc::new(MessageLabel {
             span: Span {
                 raw_span: Arc::new(()),
@@ -160,7 +157,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
         })
     }
 
-    fn from_labels(&self, labels: &Vec<Arc<dyn Any + Send + Sync>>) -> Arc<dyn Any + Send + Sync> {
+    fn from_labels(&self, labels: &Vec<ArcDynMessageLabel>) -> ArcDynMessage {
         if labels.len() == 0 {
             self.empty()
         } else {
@@ -182,25 +179,6 @@ impl air::messages::MessageInterface for VirMessageInterface {
         }
     }
 }
-
-// /// Construct an Error and wrap it in Err.
-// /// For more complex Error objects, use the builder functions in air::errors
-//
-// pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
-//     Err(Err(message(msg, span)))
-// }
-//
-// pub fn internal_error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
-//     Err(crate::messages::internal_error(msg, span))
-// }
-//
-// pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
-//     span: &Span,
-//     msg: S,
-//     help: H,
-// ) -> Result<A, VirErr> {
-//     Err(error(span, msg).help(help))
-// }
 
 // Basic Message constructors
 

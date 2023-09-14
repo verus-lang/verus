@@ -73,15 +73,15 @@ macro_rules! nodes_vec {
    };
 }
 
-pub struct Printer<'a> {
-    message_interface: &'a dyn crate::messages::MessageInterface,
+pub struct Printer {
+    message_interface: Arc<dyn crate::messages::MessageInterface>,
     // print as SMT, not as AIR
     print_as_smt: bool,
 }
 
-impl<'a> Printer<'a> {
+impl Printer {
     pub fn new(
-        message_interface: &'a dyn crate::messages::MessageInterface,
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
         print_as_smt: bool,
     ) -> Self {
         Printer { message_interface, print_as_smt }

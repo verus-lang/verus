@@ -4,10 +4,10 @@ use crate::ast::{
     Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
+use crate::messages::ArcDynMessageLabel;
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
 use sise::Node;
-use std::any::Any;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -96,12 +96,12 @@ enum QuantOrChooseOrLambda {
     Lambda,
 }
 
-pub struct Parser<'a> {
-    message_interface: &'a dyn crate::messages::MessageInterface,
+pub struct Parser {
+    message_interface: Arc<dyn crate::messages::MessageInterface>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(message_interface: &'a dyn crate::messages::MessageInterface) -> Self {
+impl Parser {
+    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>) -> Self {
         Parser { message_interface }
     }
 
@@ -118,11 +118,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn nodes_to_labels(
-        &self,
-        nodes: &Vec<Node>,
-    ) -> Result<Vec<Arc<dyn Any + Send + Sync>>, String> {
-        let mut labels: Vec<Arc<dyn Any + Send + Sync>> = Vec::new();
+    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<Vec<ArcDynMessageLabel>, String> {
+        let mut labels: Vec<ArcDynMessageLabel> = Vec::new();
         for node in nodes {
             match node {
                 Node::Atom(label) if label.starts_with("\"") && label.ends_with("\"") => {

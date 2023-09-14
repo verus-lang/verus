@@ -4,9 +4,8 @@ use crate::ast::{
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
-use crate::messages::Diagnostics;
+use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
-use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -182,7 +181,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 
     let mut discovered_error = None;
-    let mut discovered_additional_info: Vec<Arc<dyn Any + Send + Sync>> = Vec::new();
+    let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
@@ -311,8 +310,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
             return ValidityResult::Canceled;
         };
 
-        let model =
-            crate::parser::Parser::new(context.message_interface).lines_to_model(&smt_output);
+        let model = crate::parser::Parser::new(context.message_interface.clone())
+            .lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
         for def in model.iter() {
             model_defs.insert(def.name.clone(), def.clone());

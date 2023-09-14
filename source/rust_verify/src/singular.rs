@@ -86,7 +86,7 @@ pub(crate) fn expr_to_singular(
     tmp_idx: &mut u32,
     node_map: &mut HashMap<Node, Ident>,
 ) -> Result<String, String> {
-    let message_interface = vir::messages::VirMessageInterface {};
+    let message_interface = Arc::new(vir::messages::VirMessageInterface {});
     let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
@@ -96,7 +96,7 @@ pub(crate) fn expr_to_singular(
         }
         ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
             // x % y ->  x - y*tmp
-            let pp = Printer::new(&message_interface, false);
+            let pp = Printer::new(message_interface.clone(), false);
             let key = pp.expr_to_node(expr);
             let value = node_map.get(&key);
             let t = match value {
@@ -169,7 +169,7 @@ pub(crate) fn expr_to_singular(
                 ));
             } else {
                 // treat as uninterpreted functions
-                let pp = Printer::new(&message_interface, false);
+                let pp = Printer::new(message_interface.clone(), false);
                 let key = pp.expr_to_node(expr);
                 let value = node_map.get(&key);
                 match value {

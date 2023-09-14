@@ -455,9 +455,10 @@ fn datatype_or_fun_to_air_commands(
                     &variant_field_ident(&dpath, &variant.name, &field.name),
                     recursive_function_field,
                 );
-                let axioms = air::parser::Parser::new(&crate::messages::VirMessageInterface {})
-                    .nodes_to_commands(&nodes)
-                    .expect("internal error: malformed datatype axiom");
+                let axioms =
+                    air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+                        .nodes_to_commands(&nodes)
+                        .expect("internal error: malformed datatype axiom");
                 axiom_commands.extend(axioms.iter().cloned());
             }
         }

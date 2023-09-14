@@ -1,7 +1,7 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
-use crate::messages::Diagnostics;
+use crate::messages::{ArcDynMessage, Diagnostics};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
@@ -18,7 +18,7 @@ use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
-    pub(crate) error: Arc<dyn Any + Send + Sync>,
+    pub(crate) error: ArcDynMessage,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
     pub(crate) disabled: bool,
@@ -34,7 +34,7 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Option<Model>, Arc<dyn Any + Send + Sync>),
+    Invalid(Option<Model>, ArcDynMessage),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
@@ -60,8 +60,8 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-pub struct Context<'a> {
-    pub(crate) message_interface: &'a dyn crate::messages::MessageInterface,
+pub struct Context {
+    pub(crate) message_interface: Arc<dyn crate::messages::MessageInterface>,
     smt_process: Option<SmtProcess>,
     pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
     pub(crate) axiom_infos_count: u64,
@@ -77,10 +77,10 @@ pub struct Context<'a> {
     pub(crate) profile_all: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
-    pub(crate) air_initial_log: Emitter<'a>,
-    pub(crate) air_middle_log: Emitter<'a>,
-    pub(crate) air_final_log: Emitter<'a>,
-    pub(crate) smt_log: Emitter<'a>,
+    pub(crate) air_initial_log: Emitter,
+    pub(crate) air_middle_log: Emitter,
+    pub(crate) air_final_log: Emitter,
+    pub(crate) smt_log: Emitter,
     pub singular_log: Option<std::fs::File>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
@@ -89,10 +89,10 @@ pub struct Context<'a> {
     pub(crate) disable_incremental_solving: bool,
 }
 
-impl<'a> Context<'a> {
-    pub fn new(message_interface: &'a dyn crate::messages::MessageInterface) -> Self {
+impl Context {
+    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>) -> Self {
         let mut context = Context {
-            message_interface,
+            message_interface: message_interface.clone(),
             smt_process: None,
             axiom_infos: ScopeMap::new(),
             axiom_infos_count: 0,
@@ -102,16 +102,20 @@ impl<'a> Context<'a> {
             choose_count: 0,
             apply_map: ScopeMap::new(),
             apply_count: 0,
-            typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
+            typing: Typing {
+                message_interface: message_interface.clone(),
+                decls: crate::scope_map::ScopeMap::new(),
+                snapshots: HashSet::new(),
+            },
             debug: false,
             profile: false,
             profile_all: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
-            air_initial_log: Emitter::new(message_interface, false, false, None),
-            air_middle_log: Emitter::new(message_interface, false, false, None),
-            air_final_log: Emitter::new(message_interface, false, false, None),
-            smt_log: Emitter::new(message_interface, true, true, None),
+            air_initial_log: Emitter::new(message_interface.clone(), false, false, None),
+            air_middle_log: Emitter::new(message_interface.clone(), false, false, None),
+            air_final_log: Emitter::new(message_interface.clone(), false, false, None),
+            smt_log: Emitter::new(message_interface.clone(), true, true, None),
             singular_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),

@@ -76,7 +76,7 @@ pub fn main() {
         }
     };
 
-    let message_interface = air::messages::AirMessageInterface {};
+    let message_interface = std::sync::Arc::new(air::messages::AirMessageInterface {});
 
     // Open input file
     let in_filename = &matches.free[0];
@@ -98,12 +98,12 @@ pub fn main() {
     };
 
     // Parse vector of Node to commands
-    let commands = air::parser::Parser::new(&message_interface)
+    let commands = air::parser::Parser::new(message_interface.clone())
         .nodes_to_commands(&nodes)
         .expect("parse error");
 
     // Start AIR
-    let mut air_context = Context::new(&message_interface);
+    let mut air_context = Context::new(message_interface.clone());
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
     let profile = matches.opt_present("profile");
@@ -133,7 +133,7 @@ pub fn main() {
     let reporter = Reporter {};
     for command in commands.iter() {
         let result =
-            air_context.command(&message_interface, &reporter, &command, Default::default());
+            air_context.command(&*message_interface, &reporter, &command, Default::default());
         match result {
             ValidityResult::Valid => {
                 if let CommandX::CheckValid(_) = &**command {
@@ -156,7 +156,7 @@ pub fn main() {
                 count_errors += 1;
                 if profile {
                     println!("Resource limit (rlimit) exceeded");
-                    let profiler = Profiler::new(&message_interface, &reporter);
+                    let profiler = Profiler::new(message_interface.clone(), &reporter);
                     profiler.print_raw_stats(&reporter);
                 } else if !profile_all {
                     println!(
@@ -175,7 +175,7 @@ pub fn main() {
         }
     }
     if profile_all {
-        let profiler = Profiler::new(&message_interface, &reporter);
+        let profiler = Profiler::new(message_interface.clone(), &reporter);
         profiler.print_raw_stats(&reporter);
     }
     println!("Verification results:: {} verified, {} errors", count_verified, count_errors);

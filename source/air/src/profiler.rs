@@ -11,16 +11,16 @@ pub const USER_QUANT_PREFIX: &str = "user_";
 pub const INTERNAL_QUANT_PREFIX: &str = "internal_";
 
 /// Profiler for processing and displaying SMT performance data
-pub struct Profiler<'a> {
-    message_interface: &'a dyn crate::messages::MessageInterface,
+pub struct Profiler {
+    message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
     //log_path: String,
     quantifier_stats: Vec<QuantCost>,
 }
 
-impl<'a> Profiler<'a> {
+impl Profiler {
     /// Instantiate a new (singleton) profiler
     pub fn new(
-        message_interface: &'a dyn crate::messages::MessageInterface,
+        message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
         diagnostics: &impl Diagnostics,
     ) -> Self {
         let path = PROVER_LOG_FILE;
