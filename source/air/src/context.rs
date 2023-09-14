@@ -84,7 +84,7 @@ pub struct Context {
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
-    pub(crate) query_function_name: Option<String>,
+    pub(crate) query_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
 }
 
@@ -115,7 +115,7 @@ impl Context {
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
             expected_solver_version: None,
-            query_function_name: None,
+            query_logfile_name: None,
             disable_incremental_solving: false,
         };
         context.axiom_infos.push_scope(false);
@@ -186,10 +186,9 @@ impl Context {
         self.expected_solver_version = Some(version);
     }
 
-    pub fn set_query_function_name(&mut self, func_name : String) {
-        self.query_function_name = Some(func_name);
+    pub fn set_query_logfile_name(&mut self, func_name: String) {
+        self.query_logfile_name = Some(func_name);
     }
-
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
         self.rlimit = rlimit;
@@ -314,10 +313,10 @@ impl Context {
                     self.set_z3_param("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
                     //self.set_z3_param("proof", "true");
-                    let file_name = match &self.query_function_name {
-                        Some(name) => format!("{}.log", name.replace("::", "_")),
-                        None => profiler::PROVER_LOG_FILE.to_string()
-                    }; 
+                    let file_name = match &self.query_logfile_name {
+                        Some(name) => name.to_string(),
+                        None => profiler::PROVER_LOG_FILE.to_string(),
+                    };
                     self.log_set_z3_param("trace_file_name", &file_name);
                 }
                 self.blank_line();

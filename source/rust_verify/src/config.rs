@@ -26,6 +26,7 @@ pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 
@@ -395,8 +396,22 @@ pub fn parse_args_with_imports(
         },
         ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
         debug: matches.opt_present(OPT_DEBUG),
-        profile: matches.opt_present(OPT_PROFILE),
-        profile_all: matches.opt_present(OPT_PROFILE_ALL),
+        profile: {
+            if matches.opt_present(OPT_PROFILE) {
+                if !matches.opt_present(OPT_VERIFY_MODULE) {
+                    error("Must pass --verify-module when profiling".to_string())
+                }
+            };
+            matches.opt_present(OPT_PROFILE)
+        },
+        profile_all: {
+            if matches.opt_present(OPT_PROFILE_ALL) {
+                if !matches.opt_present(OPT_VERIFY_MODULE) {
+                    error("Must pass --verify-module when profiling".to_string())
+                }
+            };
+            matches.opt_present(OPT_PROFILE_ALL)
+        },
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),

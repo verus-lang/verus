@@ -1,7 +1,7 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
 use air::messages::{MessageLabel, Reporter};
-use air::profiler::Profiler;
+use air::profiler::{Profiler, PROVER_LOG_FILE};
 use getopts::Options;
 use sise::Node;
 use std::fs::File;
@@ -149,7 +149,7 @@ pub fn main() {
                 count_errors += 1;
                 if profile {
                     println!("Resource limit (rlimit) exceeded");
-                    let profiler = Profiler::new(&reporter);
+                    let profiler = Profiler::new(PROVER_LOG_FILE, &reporter);
                     profiler.print_raw_stats(&reporter);
                 } else if !profile_all {
                     println!(
@@ -168,7 +168,7 @@ pub fn main() {
         }
     }
     if profile_all {
-        let profiler = Profiler::new(&reporter);
+        let profiler = Profiler::new(PROVER_LOG_FILE, &reporter);
         profiler.print_raw_stats(&reporter);
     }
     println!("Verification results:: {} verified, {} errors", count_verified, count_errors);

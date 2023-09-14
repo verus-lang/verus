@@ -27,7 +27,7 @@ use vir::context::GlobalCtx;
 
 use crate::user_filter::UserFilter;
 use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
-use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to, friendly_fun_name_crate_relative};
+use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
 use vir::prelude::PreludeConfig;
@@ -308,6 +308,19 @@ impl Verifier {
             }
         }
         let dir_path = self.created_log_dir.clone().unwrap();
+        let path =
+            std::path::Path::new(&dir_path).join(Self::gen_log_file_name(module, function, suffix));
+        match File::create(path.clone()) {
+            Ok(file) => Ok(file),
+            Err(err) => Err(io_vir_err(format!("could not open file {path:?}"), err)),
+        }
+    }
+
+    fn gen_log_file_name(
+        module: Option<&vir::ast::Path>,
+        function: Option<&vir::ast::Path>,
+        suffix: &str,
+    ) -> String {
         let prefix = match module {
             None => "crate".to_string(),
             Some(module) if module.segments.len() == 0 => "root".to_string(),
@@ -322,11 +335,7 @@ impl Verifier {
                 fcn.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
             ),
         };
-        let path = std::path::Path::new(&dir_path).join(format!("{prefix}{middle}{suffix}"));
-        match File::create(path.clone()) {
-            Ok(file) => Ok(file),
-            Err(err) => Err(io_vir_err(format!("could not open file {path:?}"), err)),
-        }
+        format!("{prefix}{middle}{suffix}")
     }
 
     /// Use when we expect our call to Z3 to always succeed
@@ -400,7 +409,6 @@ impl Verifier {
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&air::ast::Span, &str),
         is_singular: bool,
@@ -473,8 +481,8 @@ impl Verifier {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     reporter.report(&message(level, msg, &context.0));
-                    // remove profiling here, and profile on the second pass
                     // need to report that we need to rerun from this function (into spinoff)
+                    // so that we can run the profiler on an isolated file on the second pass
                     timed_out = true;
                     break;
                 }
@@ -596,7 +604,6 @@ impl Verifier {
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: &Fun,
         comment: &str,
@@ -627,7 +634,6 @@ impl Verifier {
                 air_context,
                 assign_map,
                 snap_map,
-                qid_map,
                 &command,
                 &(span, &desc),
                 *prover_choice == vir::def::ProverChoice::Singular,
@@ -644,7 +650,7 @@ impl Verifier {
         diagnostics: &impl Diagnostics,
         module_path: &vir::ast::Path,
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
-        function_name: Option<String>,
+        function_path: Option<&Arc<vir::ast::PathX>>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
     ) -> Result<air::context::Context, VirErr> {
@@ -653,8 +659,12 @@ impl Verifier {
         air_context.set_debug(self.args.debug);
         air_context.set_profile(self.args.profile);
         air_context.set_profile_all(self.args.profile_all);
-        if let Some(f_name) = function_name {
-            air_context.set_query_function_name(f_name);
+        if function_path.is_some() {
+            air_context.set_query_logfile_name(Self::gen_log_file_name(
+                Some(module_path),
+                function_path,
+                crate::config::PROFILE_FILE_SUFFIX,
+            ));
         }
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
@@ -747,7 +757,6 @@ impl Verifier {
         function_decl_commands: Arc<Vec<(Commands, String)>>,
         function_spec_commands: Arc<Vec<(Commands, String)>>,
         function_axiom_commands: Arc<Vec<(Commands, String)>>,
-        function_name : Option<String>,
         is_rerun: bool,
         context_counter: usize,
         span: &air::ast::Span,
@@ -756,7 +765,7 @@ impl Verifier {
             diagnostics,
             module_path,
             Some((function_path, context_counter)),
-            function_name,
+            Some(function_path),
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
         )?;
@@ -1004,7 +1013,6 @@ impl Verifier {
                     }),
                     &HashMap::new(),
                     &vec![],
-                    &ctx.global.qid_map.borrow(),
                     module,
                     &function.x.name,
                     &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
@@ -1036,7 +1044,6 @@ impl Verifier {
                             command.clone(),
                             &HashMap::new(),
                             &snap_map,
-                            &ctx.global.qid_map.borrow(),
                             module,
                             &function.x.name,
                             &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
@@ -1070,13 +1077,10 @@ impl Verifier {
         let profile_all_flag = self.args.profile_all;
         self.expand_targets = vec![];
         for function in &krate.functions {
-            let filtered_function = match self.user_filter.as_ref() 
-                {
-                    Some(filter) => {
-                        filter.includes_function(&function.x.name, module)
-                    }, 
-                    None => false 
-                };
+            let filtered_function = match self.user_filter.as_ref() {
+                Some(filter) => filter.includes_function(&function.x.name, module),
+                None => false,
+            };
             let mut has_queries = false;
             if Some(module.clone()) != function.x.owning_module {
                 continue;
@@ -1084,7 +1088,7 @@ impl Verifier {
             let check_validity = &mut |recommends_rerun: bool,
                                        expands_rerun: bool,
                                        profile_rerun: bool,
-                                       query_update : &mut bool,
+                                       query_update: &mut bool,
                                        mut fun_ssts: SstMap|
              -> Result<(bool, bool, SstMap), VirErr> {
                 let mut spinoff_context_counter = 1;
@@ -1157,7 +1161,6 @@ impl Verifier {
                             function_decl_commands.clone(),
                             function_spec_commands.clone(),
                             function_axiom_commands.clone(),
-                            Some(friendly_fun_name_crate_relative(module, &function.x.name)),
                             recommends_rerun,
                             spinoff_context_counter,
                             &span,
@@ -1180,7 +1183,6 @@ impl Verifier {
                         command.clone(),
                         &HashMap::new(),
                         &snap_map,
-                        &ctx.global.qid_map.borrow(),
                         module,
                         &function.x.name,
                         &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
@@ -1197,7 +1199,8 @@ impl Verifier {
                 }
                 Ok((function_invalidity, function_timed_out, fun_ssts))
             };
-            let (function_invalidity, function_timed_out, new_fun_ssts) = check_validity(false, false, false, &mut has_queries, fun_ssts)?;
+            let (function_invalidity, function_timed_out, new_fun_ssts) =
+                check_validity(false, false, false, &mut has_queries, fun_ssts)?;
             fun_ssts = new_fun_ssts;
             if function_invalidity && expand_errors_check {
                 fun_ssts = check_validity(false, true, false, &mut has_queries, fun_ssts)?.2;
@@ -1205,13 +1208,18 @@ impl Verifier {
             if function_invalidity && !no_auto_recommends_check {
                 fun_ssts = check_validity(true, false, false, &mut has_queries, fun_ssts)?.2;
             }
-            if has_queries &&
-                ((function_timed_out && profile_flag) || (profile_all_flag && filtered_function)) {
+            if has_queries
+                && ((function_timed_out && profile_flag) || (profile_all_flag && filtered_function))
+            {
                 // TODO: double check time statistics/fun_sst getting messed up?
                 fun_ssts = check_validity(false, false, true, &mut has_queries, fun_ssts)?.2;
                 let profiler = Profiler::new(
-                    &format!("{}.log", friendly_fun_name_crate_relative(module, &function.x.name).replace("::", "_")), 
-                    reporter
+                    &Self::gen_log_file_name(
+                        Some(module),
+                        Some(&function.x.name.path),
+                        crate::config::PROFILE_FILE_SUFFIX,
+                    ),
+                    reporter,
                 );
                 self.print_profile_stats(reporter, profiler, &ctx.global.qid_map.borrow());
             }
