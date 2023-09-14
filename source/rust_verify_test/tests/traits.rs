@@ -1268,6 +1268,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_broadcast_forall_causes_cycle verus_code! {
+        mod M {
+            pub trait Tr {
+                spec fn f() -> bool;
+
+                proof fn bad() ensures false;
+            }
+
+            // note the external_body isn't necessary here
+            #[verifier::broadcast_forall]
+            #[verifier::external_body]
+            pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+                ensures #[trigger] T::f() == !T::f(),
+            {
+                T::bad();
+            }
+        }
+
+        use M::*;
+
+        struct X { }
+
+        impl Tr for X {
+            open spec fn f() -> bool
+            {
+                true
+            }
+
+            proof fn bad() {
+                other_bad();
+            }
+        }
+
+        pub proof fn other_bad()
+            ensures false,
+        {
+            // This can be used to trigger the 'proves_false_requiring_trait_bound' lemma.
+            // Therefore, it is important we draw a dependency edge from `other_bad` function
+            // to the `impl Tr for X` object.
+
+            let t = X::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
     #[test] test_decreases_trait_bound verus_code! {
         trait T {
             proof fn impossible()
