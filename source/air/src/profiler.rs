@@ -36,6 +36,8 @@ impl Profiler {
         model_config.parser_config.skip_z3_version_check = true;
         model_config.parser_config.ignore_invalid_lines = true;
         model_config.skip_log_consistency_checks = true;
+        model_config.log_internal_term_equalities = false;
+        model_config.log_term_equalities = false;
         let mut model = Model::new(model_config);
         diagnostics.report(&note_bare("Analyzing prover log..."));
         let _ = model
