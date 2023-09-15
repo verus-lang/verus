@@ -61,6 +61,7 @@ pub(crate) struct State<'a> {
     pub diagnostics: &'a (dyn Diagnostics + 'a),
     // If inside a closure
     containing_closure: Option<ClosureState>,
+    pub tmp_var_map: HashMap<Ident, Span>,
 }
 
 #[derive(Clone)]
@@ -121,12 +122,14 @@ impl<'a> State<'a> {
             fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
             diagnostics,
             containing_closure: None,
+            tmp_var_map: HashMap::new(),
         }
     }
 
     fn next_temp(&mut self, span: &Span, typ: &Typ) -> (Ident, Exp) {
         self.next_var += 1;
         let x = crate::def::prefix_temp_var(self.next_var);
+        self.tmp_var_map.insert(x.clone(), span.clone());
         (x.clone(), SpannedTyped::new(span, typ, ExpX::Var(unique_local(&x))))
     }
 

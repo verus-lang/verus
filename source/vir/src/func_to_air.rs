@@ -16,6 +16,7 @@ use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
+use crate::sst_vars::AssignMap;
 use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
 use air::ast::{
@@ -707,7 +708,10 @@ pub fn func_def_to_air(
     function: &Function,
     phase: FuncDefPhase,
     checking_recommends: bool,
-) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
+) -> Result<
+    (Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap, HashMap<Ident, Span>),
+    VirErr,
+> {
     let erasure_mode = match (function.x.mode, function.x.is_const) {
         (Mode::Spec, true) => Mode::Exec,
         (mode, _) => mode,
@@ -717,7 +721,7 @@ pub fn func_def_to_air(
         | (FuncDefPhase::CheckingSpecs, Mode::Proof | Mode::Exec, _, Some(_))
         | (FuncDefPhase::CheckingSpecs, Mode::Spec, false, Some(_))
         | (FuncDefPhase::CheckingProofExec, Mode::Spec, _, Some(_)) => {
-            Ok((Arc::new(vec![]), vec![], fun_ssts))
+            Ok((Arc::new(vec![]), vec![], fun_ssts, HashMap::new()))
         }
         (FuncDefPhase::CheckingSpecs, Mode::Spec, true, Some(body))
         | (FuncDefPhase::CheckingProofExec, Mode::Proof | Mode::Exec, _, Some(body)) => {
@@ -910,7 +914,7 @@ pub fn func_def_to_air(
             )?;
 
             state.finalize();
-            Ok((Arc::new(commands), snap_map, state.fun_ssts))
+            Ok((Arc::new(commands), snap_map, state.fun_ssts, state.tmp_var_map))
         }
     }
 }

@@ -56,14 +56,36 @@ impl Model {
 
     pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
         // look for variable in the snapshot first
-        let id_snapshot = &self.id_snapshots.get(sid)?;
-        if let Some(var_label) = id_snapshot.get(name) {
-            return Some(crate::var_to_const::rename_var(name, *var_label));
+        if let Some(id_snapshot) = &self.id_snapshots.get(sid) {
+            if let Some(var_label) = id_snapshot.get(name) {
+                return Some(crate::var_to_const::rename_var(name, *var_label));
+            }
         }
         // then look in the parameter list
         if self.parameters.contains(name) {
             return Some((**name).clone());
         }
         None
+    }
+
+    pub fn param_names(&self) -> HashSet<Arc<String>> {
+        let mut ret: HashSet<Arc<String>> = HashSet::new();
+        for param in &self.parameters {
+            ret.insert(Arc::new(param.to_string()));
+        }
+        return ret;
+    }
+
+    pub fn snapshot_names(&self, sid: &Ident) -> HashSet<Arc<String>> {
+        let mut ret: HashSet<Arc<String>> = HashSet::new();
+
+        if !self.id_snapshots.contains_key(sid) {
+            return ret;
+        }
+        let id_snapshot = &self.id_snapshots.get(sid).unwrap();
+        for var in id_snapshot.keys() {
+            ret.insert(var.clone());
+        }
+        return ret;
     }
 }

@@ -1757,7 +1757,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         let havoc = StmtX::Havoc(var.clone());
                         stmts.push(Arc::new(havoc));
                     }
-                    if ctx.debug {
+                    if ctx.debug && !is_init {
                         // Add a snapshot after we modify the destination
                         let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
                         // Update the snap_map so that it reflects the state _after_ the
@@ -2160,7 +2160,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
             state.loop_infos.push(loop_info);
             air_body.append(&mut stm_to_stmts(ctx, state, body)?);
-            state.loop_infos.pop();
 
             if !ctx.checking_recommends() {
                 for (span, inv) in invs_entry.iter() {

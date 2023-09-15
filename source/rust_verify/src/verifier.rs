@@ -465,6 +465,7 @@ impl Verifier {
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
+        tmp_var_map: &HashMap<Ident, vir::messages::Span>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&vir::messages::Span, &str),
@@ -575,7 +576,25 @@ impl Verifier {
                             if let Some(source_map) = source_map {
                                 let mut debugger =
                                     Debugger::new(air_model, assign_map, snap_map, source_map);
-                                debugger.start_shell(air_context);
+                                for err_ast_span in &error.spans {
+                                    let example: Vec<MessageLabel> = debugger.start_shell(
+                                        air_context,
+                                        source_map,
+                                        tmp_var_map,
+                                        context.0,
+                                        &err_ast_span,
+                                    );
+                                    for e in &example {
+                                        reporter.report(
+                                            &message(
+                                                MessageLevel::Note,
+                                                e.note.clone(),
+                                                &context.0,
+                                            )
+                                            .to_any(),
+                                        );
+                                    }
+                                }
                             } else {
                                 reporter.report(&message(
                                     MessageLevel::Warning,
@@ -666,6 +685,7 @@ impl Verifier {
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
+        tmp_var_map: &HashMap<Ident, vir::messages::Span>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         bucket_id: &BucketId,
         function_name: &Fun,
@@ -696,6 +716,7 @@ impl Verifier {
                 air_context,
                 assign_map,
                 snap_map,
+                tmp_var_map,
                 qid_map,
                 &command,
                 &(span, &desc),
@@ -1071,6 +1092,7 @@ impl Verifier {
                     }),
                     &HashMap::new(),
                     &vec![],
+                    &HashMap::new(),
                     &ctx.global.qid_map.borrow(),
                     bucket_id,
                     &function.x.name,
@@ -1082,14 +1104,15 @@ impl Verifier {
                     // Rerun failed query to report possible recommends violations
                     // or (optionally) check recommends for spec function bodies
                     ctx.fun = mk_fun_ctx(&function, true);
-                    let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
-                        ctx,
-                        reporter,
-                        fun_ssts,
-                        &function,
-                        vir::func_to_air::FuncDefPhase::CheckingSpecs,
-                        true,
-                    )?;
+                    let (commands, snap_map, new_fun_ssts, assign_map) =
+                        vir::func_to_air::func_def_to_air(
+                            ctx,
+                            reporter,
+                            fun_ssts,
+                            &function,
+                            vir::func_to_air::FuncDefPhase::CheckingSpecs,
+                            true,
+                        )?;
                     ctx.fun = None;
                     fun_ssts = new_fun_ssts;
                     let level = if invalidity { MessageLevel::Note } else { MessageLevel::Warning };
@@ -1103,6 +1126,7 @@ impl Verifier {
                             command.clone(),
                             &HashMap::new(),
                             &snap_map,
+                            &HashMap::new(),
                             &ctx.global.qid_map.borrow(),
                             bucket_id,
                             &function.x.name,
@@ -1148,16 +1172,17 @@ impl Verifier {
                 ctx.expand_flag = expands_rerun;
                 self.expand_flag = expands_rerun;
                 if expands_rerun {
-                    ctx.debug_expand_targets = self.expand_targets.drain(..).collect();
+                    ctx.debug_expand_targets = self.expand_targets.to_vec();
                 }
-                let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
-                    ctx,
-                    reporter,
-                    fun_ssts,
-                    &function,
-                    vir::func_to_air::FuncDefPhase::CheckingProofExec,
-                    recommends_rerun,
-                )?;
+                let (commands, snap_map, new_fun_ssts, tmp_var_map) =
+                    vir::func_to_air::func_def_to_air(
+                        ctx,
+                        reporter,
+                        fun_ssts,
+                        &function,
+                        vir::func_to_air::FuncDefPhase::CheckingProofExec,
+                        recommends_rerun,
+                    )?;
                 fun_ssts = new_fun_ssts;
                 let level = if recommends_rerun || expands_rerun {
                     MessageLevel::Note
@@ -1232,6 +1257,7 @@ impl Verifier {
                         command.clone(),
                         &HashMap::new(),
                         &snap_map,
+                        &tmp_var_map,
                         &ctx.global.qid_map.borrow(),
                         bucket_id,
                         &function.x.name,

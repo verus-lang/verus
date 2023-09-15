@@ -324,7 +324,11 @@ pub(crate) fn smt_check_assertion<'ctx>(
                     // Disable this label in subsequent check-sat calls to get additional errors
                     info.disabled = true;
                     let disable_label = mk_not(&ident_var(&info.label));
-                    context.smt_log.log_assert(&disable_label);
+                    if context.debug {
+                        context.smt_asserts_after_debug.push(disable_label);
+                    } else {
+                        context.smt_log.log_assert(&disable_label);
+                    }
 
                     break;
                 }
@@ -340,7 +344,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
 
         if context.debug {
-            println!("Z3 model: {:?}", &model);
+            //println!("Z3 model: {:?}", &model);
         }
 
         // Attach the additional info to the error

@@ -682,6 +682,19 @@ pub fn user_local_name<'a>(s: &'a str) -> &'a str {
     }
 }
 
+/// Inverse of unique_local_name: extracts the user_given_name from
+/// a unique name (e.g., given "a~2", returns "a"
+pub fn user_local_id<'a>(s: &'a str) -> Option<usize> {
+    match s.find(LOCAL_UNIQUE_ID_SEPARATOR) {
+        None => None,
+        Some(idx) => {
+            let idstr = &s[idx + 1..];
+            let idstr = idstr.chars().take_while(|c| c.is_digit(10)).collect::<String>();
+            Some(idstr.parse::<usize>().unwrap())
+        }
+    }
+}
+
 pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
     user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
 }

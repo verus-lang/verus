@@ -1,4 +1,4 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
+use crate::ast::{Command, CommandX, Decl, ExprX, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::messages::{ArcDynMessage, Diagnostics};
@@ -15,7 +15,6 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
-
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
     pub(crate) error: ArcDynMessage,
@@ -81,6 +80,7 @@ pub struct Context {
     pub(crate) air_middle_log: Emitter,
     pub(crate) air_final_log: Emitter,
     pub(crate) smt_log: Emitter,
+    pub smt_asserts_after_debug: Vec<Arc<ExprX>>,
     pub singular_log: Option<std::fs::File>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
@@ -122,6 +122,7 @@ impl Context {
             state: ContextState::NotStarted,
             expected_solver_version: None,
             disable_incremental_solving: false,
+            smt_asserts_after_debug: vec![],
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -129,6 +130,14 @@ impl Context {
         context.apply_map.push_scope(false);
         context.typing.decls.push_scope(false);
         context
+    }
+
+    pub fn flush_delayed_asserts(&mut self) {
+        if self.debug {
+            for disable_label in &self.smt_asserts_after_debug {
+                self.smt_log.log_assert(disable_label);
+            }
+        }
     }
 
     pub fn get_smt_process(&mut self) -> &mut SmtProcess {
