@@ -15,6 +15,7 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
     pub(crate) error: ArcDynMessage,
