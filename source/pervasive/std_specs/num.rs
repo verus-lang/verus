@@ -3,6 +3,76 @@ use builtin::*;
 use builtin_macros::*;
 use crate::prelude::*;
 
+macro_rules! unsigned_num_specs {
+    ($uN: ty, $iN: ty, $modname:ident, $range:expr) => {
+        verus!{
+
+        // Put in separate module to avoid name collisions.
+        // Names don't matter - the user uses the stdlib functions.
+        mod $modname {
+            use super::*;
+
+            pub open spec fn wrapping_add(x: $uN, y: $uN) -> $uN {
+                if x + y > <$uN>::MAX {
+                    (x + y - $rang) as $uN
+                } else {
+                    (x + y) as $uN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_add)]
+            pub fn ex_wrapping_add(x: $uN, y: $uN) -> (res: $uN)
+                ensures res == wrapping_add(x, y)
+            {
+                x.wrapping_add(y)
+            }
+
+            pub open spec fn wrapping_add_signed(x: $uN, y: $iN) -> $uN {
+                if x + y > <$uN>::MAX {
+                    (x + y - $range) as $uN
+                } else if x + y < 0 {
+                    (x + y + $range) as $uN
+                } else {
+                    (x + y) as $uN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_add_signed)]
+            pub fn ex_wrapping_add_signed(x: $uN, y: $iN) -> (res: $uN)
+                ensures res == wrapping_add_signed(x, y)
+            {
+                x.wrapping_add_signed(y)
+            }
+
+            pub open spec fn wrapping_sub(x: $uN, y: $uN) -> $uN {
+                if x - y < 0 {
+                    (x - y + $range) as $uN
+                } else {
+                    (x - y) as $uN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_sub)]
+            pub fn ex_wrapping_sub(x: $uN, y: $uN) -> (res: $uN)
+                ensures res == wrapping_sub(x, y)
+            {
+                x.wrapping_sub(y)
+            }
+        }
+
+        }
+    }
+}
+
+unsigned_num_specs!(u8, i8, u8_specs, 0x100);
+unsigned_num_specs!(u16, i16, u16_specs, 0x1_0000);
+unsigned_num_specs!(u32, i32, u32_specs, 0x1_0000_0000);
+unsigned_num_specs!(u64, i64, u64_specs, 0x1_0000_0000_0000_0000);
+unsigned_num_specs!(u128, i128, u128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000);
+
 verus!{
 
 // == u32 methods ==
