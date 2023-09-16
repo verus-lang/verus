@@ -81,7 +81,7 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
-    verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+    rustc_driver::init_env_logger("RUSTVERIFY_LOG");
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
@@ -166,33 +166,39 @@ pub fn main() {
 
     let times_ms_json_data = if verifier.args.time {
         let mut smt_init_times = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, v.time_smt_init.as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| (k.module(), v.time_smt_init.as_millis()))
             .collect::<Vec<_>>();
         smt_init_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_init: u128 = smt_init_times.iter().map(|(_, v)| v).sum();
 
         let mut smt_run_times: Vec<(&std::sync::Arc<vir::ast::PathX>, u128)> = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, v.time_smt_run.as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| (k.module(), v.time_smt_run.as_millis()))
             .collect::<Vec<_>>();
         smt_run_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v).sum();
 
         let mut air_times = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, (v.time_air - (v.time_smt_init + v.time_smt_run)).as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| {
+                (k.module(), (v.time_air - (v.time_smt_init + v.time_smt_run)).as_millis())
+            })
             .collect::<Vec<_>>();
         air_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_air: u128 = air_times.iter().map(|(_, v)| v).sum();
 
         let mut verify_times = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, (v.time_verify).as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| (k.module(), (v.time_verify).as_millis()))
             .collect::<Vec<_>>();
         verify_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_verify: u128 = verify_times.iter().map(|(_, v)| v).sum();

@@ -483,7 +483,7 @@ test_verify_one_file! {
         pub type MyType<T> = FnSpec(T) -> bool;
 
         impl<T> Foo for MyType<T> {
-            spec fn foo(&self) -> bool {
+            open spec fn foo(&self) -> bool {
                 true
             }
         }
@@ -609,7 +609,7 @@ test_verify_one_file_with_options! {
 
         mod X {
             pub trait T {
-                open spec fn foo(&self) -> bool; // EXPAND-ERRORS
+                spec fn foo(&self) -> bool; // EXPAND-ERRORS
             }
 
             impl T for super::Z {
@@ -815,6 +815,59 @@ test_verify_one_file! {
 
         fn test(rc: Rc<Vec<u8>>) {
             let rc2 = Rc::clone(&rc);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments_1 ["vstd"] => verus_code! {
+        struct X { v: u64 }
+
+        fn test<F: Fn(&X) -> bool>(f: F, x: X) -> bool
+            requires f.requires((&x,))
+        {
+            f(&x)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments ["vstd"] => verus_code! {
+        struct X { v: u64 }
+        struct Y { w: u64 }
+
+        fn test<F: Fn(&X, &Y) -> bool>(f: F, x: X, y: Y) -> bool
+            requires f.requires((&x, &y,))
+        {
+            f(&x, &y)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zulip_external_body_clone_regression_800_1 verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+        #[verifier(external_body)]
+        pub exec fn rc_clone(rc: &Rc<Vec<u8>>) -> (res: Rc<Vec<u8>>)
+            ensures (*rc)@ == (*res)@
+        {
+            Rc::clone(&rc)
+        }
+
+        pub exec fn blah(rc: Rc<Vec<u8>>) {
+            let tmp: Rc<Vec<u8>> = rc_clone(&rc);
+            assert((*rc)@ == tmp@); // assertion fails
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zulip_external_body_clone_regression_800_2 verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+        pub exec fn blah(rc: Rc<Vec<u8>>) {
+            assert(rc@ == (*rc)@); // fails
         }
     } => Ok(())
 }

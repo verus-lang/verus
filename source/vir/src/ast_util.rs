@@ -3,36 +3,17 @@ use crate::ast::{
     GenericBoundX, Ident, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
     TriggerAnnotation, Typ, TypX, Typs, UnaryOp, Variant, Variants, VirErr, Visibility,
 };
+use crate::messages::{error, Span};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
-use air::ast::{Binder, BinderX, Binders, Span};
+use air::ast::{Binder, BinderX, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
-pub use air::messages::error as msg_error;
 use num_bigint::{BigInt, Sign};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-
-/// Construct an Error and wrap it in Err.
-/// For more complex Error objects, use the builder functions in air::errors
-
-pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
-    Err(msg_error(msg, span))
-}
-
-pub fn internal_error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
-    Err(air::messages::internal_error(msg, span))
-}
-
-pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
-    span: &Span,
-    msg: S,
-    help: H,
-) -> Result<A, VirErr> {
-    Err(msg_error(msg, span).help(help))
-}
 
 impl PathX {
     pub fn pop_segment(&self) -> Path {
@@ -416,7 +397,7 @@ pub fn fuel_const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
     if sign == Sign::NoSign && digits.len() == 0 {
         return Ok(0);
     } else if sign != Sign::Plus || digits.len() != 1 {
-        return error(span, "Fuel must be a u32 value");
+        return Err(error(span, "Fuel must be a u32 value"));
     }
     let n = digits[0];
     Ok(n)
@@ -551,7 +532,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "bool".to_owned(),
         TypX::Int(IntRange::Nat) => "nat".to_owned(),
-        TypX::Int(IntRange::Int) => "nat".to_owned(),
+        TypX::Int(IntRange::Int) => "int".to_owned(),
         TypX::Int(IntRange::ISize) => "isize".to_owned(),
         TypX::Int(IntRange::USize) => "usize".to_owned(),
         TypX::Int(IntRange::U(n)) => format!("u{n}"),

@@ -205,7 +205,7 @@ test_verify_one_file! {
         impl std::ops::Index<int> for V {
             type Output = nat;
 
-            spec fn index(&self, idx: int) -> &nat {
+            open spec fn index(&self, idx: int) -> &nat {
                 if idx == 0 {
                     &self.one
                 } else {

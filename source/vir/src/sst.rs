@@ -12,8 +12,8 @@ use crate::ast::{
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
-use air::ast::{Binders, Ident, Span};
-use air::messages::Message;
+use crate::messages::{Message, Span};
+use air::ast::{Binders, Ident};
 use std::sync::Arc;
 
 pub type Trig = Exps;

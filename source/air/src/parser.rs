@@ -1,10 +1,10 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Relation, Span, Stmt, StmtX, Stmts,
-    Trigger, Triggers, Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX, Stmts, Trigger,
+    Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
-use crate::messages::{error_from_labels, error_from_spans, MessageLabel, MessageLabels};
+use crate::messages::ArcDynMessageLabel;
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
 use sise::Node;
@@ -96,11 +96,13 @@ enum QuantOrChooseOrLambda {
     Lambda,
 }
 
-pub struct Parser {}
+pub struct Parser {
+    message_interface: Arc<dyn crate::messages::MessageInterface>,
+}
 
 impl Parser {
-    pub fn new() -> Self {
-        Parser {}
+    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>) -> Self {
+        Parser { message_interface }
     }
 
     pub(crate) fn node_to_typ(&self, node: &Node) -> Result<Typ, String> {
@@ -116,15 +118,14 @@ impl Parser {
         }
     }
 
-    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<MessageLabels, String> {
-        let mut labels: Vec<MessageLabel> = Vec::new();
+    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<Vec<ArcDynMessageLabel>, String> {
+        let mut labels: Vec<ArcDynMessageLabel> = Vec::new();
         for node in nodes {
             match node {
                 Node::Atom(label) if label.starts_with("\"") && label.ends_with("\"") => {
-                    let raw_span = Arc::new(());
                     let as_string = label[1..label.len() - 1].to_string();
-                    let span = Span { raw_span, id: 0, data: vec![], as_string: as_string.clone() };
-                    let label = MessageLabel { span, note: as_string };
+                    let label =
+                        self.message_interface.message_label_from_air_span(&as_string, &as_string);
                     labels.push(label);
                 }
                 _ => {
@@ -132,7 +133,7 @@ impl Parser {
                 }
             }
         }
-        Ok(Arc::new(labels))
+        Ok(labels)
     }
 
     pub(crate) fn node_to_expr(&self, node: &Node) -> Result<Expr, String> {
@@ -150,7 +151,8 @@ impl Parser {
             Node::List(nodes) if nodes.len() > 0 => {
                 match &nodes[..] {
                     [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "location" => {
-                        let error = error_from_labels(self.nodes_to_labels(nodes)?);
+                        let error =
+                            self.message_interface.from_labels(&self.nodes_to_labels(nodes)?);
                         let expr = self.node_to_expr(e)?;
                         return Ok(Arc::new(ExprX::LabeledAssertion(error, expr)));
                     }
@@ -463,7 +465,7 @@ impl Parser {
                 }
                 [Node::Atom(s), e] if s.to_string() == "assert" => {
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(error_from_spans(vec![]), expr)))
+                    Ok(Arc::new(StmtX::Assert(self.message_interface.empty(), expr)))
                 }
                 [Node::Atom(s), Node::Atom(x)] if s.to_string() == "havoc" && is_symbol(x) => {
                     Ok(Arc::new(StmtX::Havoc(Arc::new(x.clone()))))
@@ -479,7 +481,7 @@ impl Parser {
                 }
                 [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "assert" => {
                     let labels = self.nodes_to_labels(nodes)?;
-                    let error = error_from_labels(labels);
+                    let error = self.message_interface.from_labels(&labels);
                     let expr = self.node_to_expr(&e)?;
                     Ok(Arc::new(StmtX::Assert(error, expr)))
                 }
@@ -605,7 +607,7 @@ impl Parser {
         map_nodes_to_vec(nodes, &|d| self.node_to_decl(d))
     }
 
-    pub fn node_to_command(&self, node: &Node) -> Result<Command, String> {
+    pub(crate) fn node_to_command(&self, node: &Node) -> Result<Command, String> {
         match node {
             Node::List(nodes) if nodes.len() >= 1 => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "push" && nodes.len() == 1 => {

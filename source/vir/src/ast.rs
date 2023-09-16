@@ -6,9 +6,8 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::Span;
+use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
-use air::messages::Message;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -37,7 +36,7 @@ pub struct PathX {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunX {
     /// Path of function
     pub path: Path,
@@ -61,10 +60,6 @@ pub enum Mode {
     /// Non-ghost (compiled code)
     Exec,
 }
-
-/// Mode that gets filled in by the mode checker.
-/// (A unique id marks the place that needs to be filled in.)
-pub type InferMode = u64;
 
 /// Describes integer types
 #[derive(
@@ -200,6 +195,7 @@ pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
     /// with no diagnostics printed
     AutoTrigger,
+    AllTriggers,
     /// Each trigger group is named by either Some integer, or the unnamed group None.
     /// (None is just another name; it is no different from an integer-named group.)
     /// Example: #[trigger] expr is translated into Trigger(None) applied to expr
@@ -373,9 +369,7 @@ pub enum BinaryOp {
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
-    /// (None for InferMode means always mode Spec)
-    /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
-    Arith(ArithOp, Option<InferMode>),
+    Arith(ArithOp, Mode),
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),

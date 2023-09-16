@@ -6,7 +6,6 @@ use crate::rust_to_vir_base::{
 use crate::rust_to_vir_expr::get_adt_res;
 use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
-use air::ast::AstId;
 use air::ast_util::str_ident;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
@@ -29,6 +28,7 @@ use std::sync::Arc;
 use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::VERUS_SPEC;
+use vir::messages::AstId;
 
 impl TypX {
     fn mk_unit() -> Typ {
@@ -1450,24 +1450,26 @@ fn erase_mir_generics<'tcx>(
             }
         }
     }
-    let mut fn_traits: Vec<(Typ, ClosureKind)> = Vec::new();
+    let mut fn_traits: Vec<(Typ, Vec<Id>, ClosureKind)> = Vec::new();
     let mut fn_projections: HashMap<Typ, (Typ, Typ)> = HashMap::new();
     for (pred, _) in mir_predicates.predicates.iter() {
-        match pred.kind().no_bound_vars().expect("no_bound_vars") {
-            PredicateKind::Clause(Clause::RegionOutlives(pred)) => {
+        match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
+            (PredicateKind::Clause(Clause::RegionOutlives(pred)), &[]) => {
                 let x = erase_hir_region(ctxt, state, &pred.0).expect("bound");
                 let typ = Box::new(TypX::TypParam(x));
                 let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
-                let generic_bound = GenericBound { typ, bound: Bound::Id(bound) };
+                let generic_bound =
+                    GenericBound { typ, bound_vars: vec![], bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
-            PredicateKind::Clause(Clause::TypeOutlives(pred)) => {
+            (PredicateKind::Clause(Clause::TypeOutlives(pred)), &[]) => {
                 let typ = erase_ty(ctxt, state, &pred.0);
                 let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
-                let generic_bound = GenericBound { typ, bound: Bound::Id(bound) };
+                let generic_bound =
+                    GenericBound { typ, bound_vars: vec![], bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
-            PredicateKind::Clause(Clause::Trait(pred)) => {
+            (PredicateKind::Clause(Clause::Trait(pred)), bound_vars) => {
                 let typ = erase_ty(ctxt, state, &pred.trait_ref.substs[0].expect_ty());
                 let id = pred.trait_ref.def_id;
                 let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
@@ -1484,7 +1486,9 @@ fn erase_mir_generics<'tcx>(
                     None
                 };
                 if let Some(bound) = bound {
-                    let generic_bound = GenericBound { typ: typ.clone(), bound };
+                    assert!(bound_vars.is_empty());
+                    let generic_bound =
+                        GenericBound { typ: typ.clone(), bound_vars: vec![], bound };
                     generic_bounds.push(generic_bound);
                 }
                 let kind = if Some(id) == ctxt.tcx.lang_items().fn_trait() {
@@ -1496,11 +1500,20 @@ fn erase_mir_generics<'tcx>(
                 } else {
                     None
                 };
+                let bound_vars: Vec<_> = bound_vars
+                    .iter()
+                    .map(|v| match v {
+                        BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) => {
+                            state.lifetime(lifetime_key(ctxt, *a))
+                        }
+                        _ => panic!("expected region"),
+                    })
+                    .collect();
                 if let Some(kind) = kind {
-                    fn_traits.push((typ, kind));
+                    fn_traits.push((typ, bound_vars, kind));
                 }
             }
-            PredicateKind::Clause(Clause::Projection(pred)) => {
+            (PredicateKind::Clause(Clause::Projection(pred)), bound_vars) => {
                 if Some(pred.projection_ty.def_id) == ctxt.tcx.lang_items().fn_once_output() {
                     assert!(pred.projection_ty.substs.len() == 2);
                     let typ = erase_ty(ctxt, state, &pred.projection_ty.substs[0].expect_ty());
@@ -1513,6 +1526,8 @@ fn erase_mir_generics<'tcx>(
                     }
                     let fn_ret = erase_ty(ctxt, state, &pred.term.ty().expect("fn_ret"));
                     fn_projections.insert(typ, (fn_params, fn_ret)).map(|_| panic!("{:?}", pred));
+                } else {
+                    assert!(bound_vars.is_empty());
                 }
             }
             _ => {
@@ -1521,9 +1536,9 @@ fn erase_mir_generics<'tcx>(
             }
         }
     }
-    for (typ, kind) in fn_traits.into_iter() {
+    for (typ, bound_vars, kind) in fn_traits.into_iter() {
         let (params, ret) = fn_projections.remove(&typ).expect("fn_projections");
-        let generic_bound = GenericBound { typ, bound: Bound::Fn(kind, params, ret) };
+        let generic_bound = GenericBound { typ, bound_vars, bound: Bound::Fn(kind, params, ret) };
         generic_bounds.push(generic_bound);
     }
 }

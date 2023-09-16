@@ -1,6 +1,6 @@
-use air::ast::{Expr, Span, Stmt, StmtX};
+use crate::messages::{error, error_with_label, Span};
+use air::ast::{Expr, Stmt, StmtX};
 use air::ast_util::{mk_eq, mk_false, mk_not, mk_or};
-use air::messages::{error, error_with_label};
 use std::sync::Arc;
 
 /// This is where we handle VCs to ensure that the same invariant is not opened
@@ -64,8 +64,8 @@ impl MaskSet {
                 }
                 let equals_one = mk_or(&disjuncts);
                 let error = error_with_label(
-                    "cannot show invariant namespace is in the mask given by the function signature".to_string(),
                     span,
+                    "cannot show invariant namespace is in the mask given by the function signature".to_string(),
                     "invariant opened here".to_string());
                 results.push(Arc::new(StmtX::Assert(error, equals_one)));
             }
@@ -75,8 +75,8 @@ impl MaskSet {
         for prev_e in &self.minus {
             let not_equal = mk_not(&mk_eq(e, &prev_e.expr));
             let error = error_with_label(
-                "possible invariant collision".to_string(),
                 &prev_e.span,
+                "possible invariant collision".to_string(),
                 "this invariant".to_string(),
             )
             .primary_label(span, "might be the same as this invariant".to_string());
@@ -104,7 +104,7 @@ impl MaskSet {
             SetBase::Full => match other.base {
                 SetBase::Empty => {
                     let fa = mk_false();
-                    let error = error("callee may open invariants that caller cannot", call_span);
+                    let error = error(call_span, "callee may open invariants that caller cannot");
                     results.push(Arc::new(StmtX::Assert(error, fa)));
                 }
                 SetBase::Full => {
@@ -115,8 +115,8 @@ impl MaskSet {
                         }
                         let equals_one = mk_or(&disjuncts);
                         let error = error_with_label(
-                            "callee may open invariants disallowed at call-site".to_string(),
                             &e.span,
+                            "callee may open invariants disallowed at call-site".to_string(),
                             "invariant opened here".to_string(),
                         )
                         .primary_label(call_span, "might be opened again in this call".to_string());

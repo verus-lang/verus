@@ -248,7 +248,7 @@ impl<V: Copy> PCell<V> {
 
 struct InvCellPred { }
 impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
-    spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
+    closed spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k; {
           &&& perm@.value.is_Some()
           &&& possible_values.contains(perm@.value.get_Some_0())

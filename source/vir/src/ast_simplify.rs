@@ -10,14 +10,14 @@ use crate::ast::{
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
-use crate::ast_util::{conjoin, disjoin, if_then_else};
-use crate::ast_util::{error, wrap_in_trigger};
+use crate::ast_util::{conjoin, disjoin, if_then_else, wrap_in_trigger};
 use crate::context::GlobalCtx;
 use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
+use crate::messages::error;
+use crate::messages::Span;
 use crate::util::vec_map_result;
 use air::ast::BinderX;
 use air::ast::Binders;
-use air::ast::Span;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -400,7 +400,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 };
                 Ok(if_expr)
             } else {
-                error(&expr.span, "not yet implemented: zero-arm match expressions")
+                Err(error(&expr.span, "not yet implemented: zero-arm match expressions"))
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
@@ -475,7 +475,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                         },
                     ))
                 }
-                _ => error(&lhs.span, "not yet implemented: lhs of compound assignment"),
+                _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),
             }
         }
         _ => Ok(expr.clone()),
@@ -502,7 +502,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
-            _ => error(&stmt.span, "let-pattern declaration must have an initializer"),
+            _ => Err(error(&stmt.span, "let-pattern declaration must have an initializer")),
         },
         StmtX::Decl { pattern, mode: _, init: Some(init) }
             if !matches!(pattern.x, PatternX::Var { .. }) =>
@@ -529,10 +529,10 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
         }
         TypX::TypParam(x) => {
             if !local.typ_params.contains(x) {
-                return error(
+                return Err(error(
                     &local.span,
                     format!("type parameter {} used before being declared", x),
-                );
+                ));
             }
             Ok(typ.clone())
         }
@@ -971,7 +971,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.no_span.clone(),
-        ctx.inferred_modes.as_ref().clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.vstd_crate_name.clone(),

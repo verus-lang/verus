@@ -1,6 +1,5 @@
 use crate::spans::from_raw_span;
 use air::ast::Ident;
-use air::ast::Span as ASpan;
 use air::model::Model as AModel;
 use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
@@ -10,6 +9,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use vir::def::{suffix_local_stmt_id, SnapPos, SpanKind};
+use vir::messages::Span as ASpan;
 
 #[derive(Debug)]
 /// Rust-level model of a concrete counterexample
