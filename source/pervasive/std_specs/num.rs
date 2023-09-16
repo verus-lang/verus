@@ -14,7 +14,7 @@ macro_rules! unsigned_num_specs {
 
             pub open spec fn wrapping_add(x: $uN, y: $uN) -> $uN {
                 if x + y > <$uN>::MAX {
-                    (x + y - $rang) as $uN
+                    (x + y - $range) as $uN
                 } else {
                     (x + y) as $uN
                 }
