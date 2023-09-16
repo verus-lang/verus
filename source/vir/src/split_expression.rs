@@ -556,14 +556,15 @@ fn split_call(
     let params = &fun.x.params;
     let typ_params = &fun.x.typ_params;
     for e in &**fun.x.require {
-        let exp = crate::ast_to_sst::expr_to_exp_as_spec(
+        // skip checks on require, since this is checked when the function is checked
+        let exp = crate::ast_to_sst::expr_to_exp_as_spec_skip_checks(
             &ctx,
             diagnostics,
             &state.fun_ssts,
             &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
             &e,
         )
-        .expect("expr_to_exp_as_spec");
+        .expect("expr_to_exp_as_spec_skip_checks");
 
         // In requires, old(x) is really just x:
         let mut f_var_at = |e: &Exp| match &e.x {
@@ -626,7 +627,8 @@ fn visit_split_stm(
 
                 for e in state.ensures.iter() {
                     if need_split_expression(ctx, &e.span) {
-                        let ens_exp = crate::ast_to_sst::expr_to_exp(
+                        // skip checks because ensures are checked elsewhere
+                        let ens_exp = crate::ast_to_sst::expr_to_exp_skip_checks(
                             ctx,
                             diagnostics,
                             &state.fun_ssts,
