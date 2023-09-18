@@ -1001,7 +1001,7 @@ impl Verifier {
                     );
                     all_context_ops.push(op);
                 }
-                OpKind::Query(query_op, commands_with_context_list) => {
+                OpKind::Query(query_op, commands_with_context_list, snap_map) => {
                     let level = match query_op {
                         QueryOp::SpecTermination => MessageLevel::Error,
                         QueryOp::Body(Style::Normal) => MessageLevel::Error,
@@ -1073,7 +1073,7 @@ impl Verifier {
                             query_air_context,
                             cmds.clone(),
                             &HashMap::new(),
-                            &Vec::new(), // TODO
+                            &snap_map,
                             &opgen.ctx.global.qid_map.borrow(),
                             bucket_id,
                             &function.x.name,

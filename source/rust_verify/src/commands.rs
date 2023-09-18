@@ -9,7 +9,7 @@ use vir::ast::{Fun, Function, Krate, Mode, VirErr};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
-use vir::def::{CommandsWithContext, CommandsWithContextX};
+use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::func_to_air::SstMap;
 use vir::messages::Message;
 use vir::recursion::Node;
@@ -48,7 +48,7 @@ pub enum OpKind {
     /// new into the context. Maybe be skipped if it's from a different module,
     /// or as a result of user options.
     /// The 'CommandsWithContext' allows for additional options like which prover to use
-    Query(QueryOp, Arc<Vec<CommandsWithContext>>),
+    Query(QueryOp, Arc<Vec<CommandsWithContext>>, Arc<Vec<(vir::messages::Span, SnapPos)>>),
 }
 
 #[derive(Clone)]
@@ -243,7 +243,8 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                     prover_choice: vir::def::ProverChoice::DefaultProver,
                     skip_recommends: false,
                 })]);
-                query_ops.push(Op::query(QueryOp::SpecTermination, commands, &function));
+                let snap_map = vec![];
+                query_ops.push(Op::query(QueryOp::SpecTermination, commands, snap_map, &function));
             }
 
             let op_kind = if function.x.broadcast_forall.is_some() {
@@ -335,7 +336,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         self.ctx.fun = None;
         self.ctx.expand_flag = false;
 
-        Ok(vec![Op::query(QueryOp::Body(style), commands, &function)])
+        Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function)])
     }
 }
 
@@ -355,13 +356,13 @@ impl Op {
             OpKind::Context(ContextOp::SpecDefinition, _) => "Function-Axioms",
             OpKind::Context(ContextOp::ReqEns, _) => "Function-Specs",
             OpKind::Context(ContextOp::Broadcast, _) => "Broadcast",
-            OpKind::Query(QueryOp::SpecTermination, _) => "Spec-Termination",
-            OpKind::Query(QueryOp::Body(Style::Normal), _) => "Function-Def",
+            OpKind::Query(QueryOp::SpecTermination, ..) => "Spec-Termination",
+            OpKind::Query(QueryOp::Body(Style::Normal), ..) => "Function-Def",
             OpKind::Query(
                 QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked),
-                _,
+                ..,
             ) => "Function-Recommends",
-            OpKind::Query(QueryOp::Body(Style::Expanded), _) => "Function-Expand-Errors",
+            OpKind::Query(QueryOp::Body(Style::Expanded), ..) => "Function-Expand-Errors",
         };
         format!("{:} {:}", prefix, fun_as_friendly_rust_name(&self.function.x.name))
     }
@@ -370,13 +371,15 @@ impl Op {
     pub fn to_friendly_desc(&self) -> Option<&'static str> {
         match &self.kind {
             OpKind::Context(_, _) => None,
-            OpKind::Query(QueryOp::SpecTermination, _) => Some("checking termination"),
-            OpKind::Query(QueryOp::Body(Style::Normal), _) => None,
+            OpKind::Query(QueryOp::SpecTermination, ..) => Some("checking termination"),
+            OpKind::Query(QueryOp::Body(Style::Normal), ..) => None,
             OpKind::Query(
                 QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked),
-                _,
+                ..,
             ) => Some("checking recommends"),
-            OpKind::Query(QueryOp::Body(Style::Expanded), _) => Some("running expand-errors check"),
+            OpKind::Query(QueryOp::Body(Style::Expanded), ..) => {
+                Some("running expand-errors check")
+            }
         }
     }
 
@@ -384,8 +387,13 @@ impl Op {
         Op { kind: OpKind::Context(context_op, commands), function: f.clone() }
     }
 
-    pub fn query(query_op: QueryOp, commands: Arc<Vec<CommandsWithContext>>, f: &Function) -> Self {
-        Op { kind: OpKind::Query(query_op, commands), function: f.clone() }
+    pub fn query(
+        query_op: QueryOp,
+        commands: Arc<Vec<CommandsWithContext>>,
+        snap_map: Vec<(vir::messages::Span, SnapPos)>,
+        f: &Function,
+    ) -> Self {
+        Op { kind: OpKind::Query(query_op, commands, Arc::new(snap_map)), function: f.clone() }
     }
 }
 
