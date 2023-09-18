@@ -1643,6 +1643,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let func = &ctx.func_map[fun];
             if func.x.require.len() > 0
                 && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
+                // don't check recommends during decreases checking; these are separate passes:
+                && !ctx.checking_spec_decreases()
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();

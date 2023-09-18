@@ -1100,12 +1100,11 @@ test_verify_one_file! {
             decreases_when(i >= 0);
             decreases_by(check_arith_sum);
 
-            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+            if i == 0 { 0 } else { i + arith_sum(i - 1) } // FAILS
         }
 
         #[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
-            // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1325,6 +1324,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "a decreases_by function must be in the same module as the function definition")
 }
 
+// TODO: this test fails because we're not yet checking for return, while, etc.
 test_verify_one_file! {
     #[test] decreases_by_lemma_with_return_stmt_checks_postcondition verus_code! {
         spec fn some_fun(i: nat) -> nat
@@ -1735,6 +1735,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// TODO: we now also allow decreases inside choose|x| body,
+// on the grounds that you could rewrite this as let f = |x| body; choose|x| f(x)
+// and decreases is already allowed in |x| body.
+// Nevertheless, we should add tests for decreases inside choose.
 
 test_verify_one_file! {
     #[test] decreases_inside_closure verus_code! {
