@@ -106,6 +106,7 @@ impl<'a> StrSlice<'a> {
         }
     }
 
+    #[cfg(feature = "std")]
     pub fn to_string(self) -> (ret: String)
         ensures
             self@ == ret@,
@@ -131,13 +132,13 @@ impl<'a> StrSlice<'a> {
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
 
     #[verifier(external_body)]
-    pub fn as_bytes(&self) -> (ret: Vec<u8>)
+    pub fn as_bytes(&self) -> (ret: alloc::vec::Vec<u8>)
         requires
             self.is_ascii()
         ensures
             ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8)
     {
-        let mut v = Vec::new();
+        let mut v = alloc::vec::Vec::new();
         for c in self.inner.as_bytes().iter() {
             v.push(*c);
         }
@@ -184,6 +185,7 @@ impl String {
 
     pub spec fn is_ascii(&self) -> bool;
 
+    #[cfg(feature = "std")]
     #[verifier(external_body)]
     pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
         ensures
@@ -237,19 +239,19 @@ impl String {
     }
 
     #[verifier(external)]
-    pub fn from_rust_string(inner: std::string::String) -> String
+    pub fn from_rust_string(inner: alloc::string::String) -> String
     {
         String { inner }
     }
 
     #[verifier(external)]
-    pub fn into_rust_string(self) -> std::string::String
+    pub fn into_rust_string(self) -> alloc::string::String
     {
         self.inner
     }
 
     #[verifier(external)]
-    pub fn as_rust_string_ref(&self) -> &std::string::String
+    pub fn as_rust_string_ref(&self) -> &alloc::string::String
     {
         &self.inner
     }

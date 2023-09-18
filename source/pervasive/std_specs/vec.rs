@@ -222,6 +222,7 @@ pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
     vec.as_slice()
 }
 
+#[cfg(feature = "std")]
 #[verifier::external_fn_specification]
 pub fn ex_vec_split_off<T, A: Allocator+ std::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
     ensures
