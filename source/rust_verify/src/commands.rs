@@ -13,6 +13,7 @@ use vir::func_to_air::SstMap;
 use vir::messages::Message;
 use vir::recursion::Node;
 use vir::update_cell::UpdateCell;
+use std::collections::VecDeque;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ContextOp {
@@ -66,8 +67,7 @@ pub struct OpGenerator<'a, D: Diagnostics> {
     sst_map: SstMap,
     func_map: HashMap<Fun, (Function, Visibility)>,
 
-    current_queue: Vec<Op>,
-    queue_idx: usize,
+    current_queue: VecDeque<Op>,
     scc_idx: usize,
     fun_idx: usize,
 }
@@ -107,8 +107,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             bucket,
             reporter,
             sst_map: UpdateCell::new(HashMap::new()),
-            current_queue: vec![],
-            queue_idx: 0,
+            current_queue: VecDeque::new(),
             scc_idx: 0,
             fun_idx: 0,
         }
@@ -126,25 +125,23 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
     fn _next(&mut self) -> Result<Option<Op>, VirErr> {
         loop {
-            if self.queue_idx < self.current_queue.len() {
-                self.queue_idx += 1;
-                return Ok(Some(self.current_queue[self.queue_idx - 1].clone()));
+            if !self.current_queue.is_empty() {
+                let op = self.current_queue.pop_front();
+                return Ok(op);
             } else {
-                self.queue_idx = 0;
-
                 // Iterate through each SCC and do spec stuff,
                 // Then iterate through every function and prove its body
                 // if necessary.
                 // TODO this ordering needs a revisit
                 if self.scc_idx < self.ctx.global.func_call_sccs.len() {
-                    self.current_queue = self.handle_specs_scc_component(
+                    self.current_queue = VecDeque::from(self.handle_specs_scc_component(
                         self.ctx.global.func_call_sccs[self.scc_idx].clone(),
-                    )?;
+                    )?);
                     self.scc_idx += 1;
                 } else if self.fun_idx < self.krate.functions.len() {
-                    self.current_queue = self.handle_proof_body_normal_for_proof_and_exec(
+                    self.current_queue = VecDeque::from(self.handle_proof_body_normal_for_proof_and_exec(
                         self.krate.functions[self.fun_idx].clone(),
-                    )?;
+                    )?);
                     self.fun_idx += 1;
                 } else {
                     return Ok(None);
@@ -170,12 +167,9 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
     }
 
     fn append_to_front_of_queue(&mut self, ops: Vec<Op>) {
-        // Remove everything in self.current_queue up to queue_idx (already processed)
-        // And prepend `ops`. Reset the queue_idx to 0.
-        let mut ops = ops;
-        std::mem::swap(&mut ops, &mut self.current_queue);
-        self.current_queue.append(&mut ops[self.queue_idx..].to_vec());
-        self.queue_idx = 0;
+        for op in ops.into_iter().rev() {
+            self.current_queue.push_front(op);
+        }
     }
 
     fn handle_specs_scc_component(&mut self, scc_rep: Node) -> Result<Vec<Op>, VirErr> {
