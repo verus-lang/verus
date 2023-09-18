@@ -33,10 +33,31 @@ impl From<FFileTime> for FileTime {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
 struct Fingerprint {
     dependencies_mtime: FileTime,
     vstd_mtime: FileTime,
+    vstd_no_std: bool,
+    vstd_no_alloc: bool,
+}
+
+impl PartialOrd for Fingerprint {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.vstd_no_std != other.vstd_no_std || self.vstd_no_alloc != other.vstd_no_alloc {
+            None
+        } else {
+            use std::cmp::Ordering::*;
+            match (
+                self.dependencies_mtime.cmp(&other.dependencies_mtime),
+                self.vstd_mtime.cmp(&other.vstd_mtime),
+            ) {
+                (Less, Less) => Some(Less),
+                (Equal, Equal) => Some(Equal),
+                (Greater, Greater) => Some(Greater),
+                _ => None,
+            }
+        }
+    }
 }
 
 fn main() {
@@ -184,6 +205,10 @@ fn run() -> Result<(), String> {
         .position(|x| x.as_str() == "--vstd-no-alloc")
         .map(|p| args.remove(p))
         .is_some();
+
+    if vstd_no_alloc && !vstd_no_std {
+        return Err(format!("--vstd-no-alloc requires --vstd-no-std"));
+    }
 
     let mut args_bucket = args.clone();
     let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
@@ -779,7 +804,7 @@ fn run() -> Result<(), String> {
                     .map_err(|x| format!("cannot read {} ({x:?})", fingerprint_path.display()))?;
                 let f = toml::from_str::<Fingerprint>(&s).map_err(|x| {
                     format!(
-                        "cannot parse {}, try `vargo clean` ({x})",
+                        "cannot parse {}, try `vargo clean -p vstd` (first), or `vargo clean` ({x})",
                         fingerprint_path.display()
                     )
                 })?;
@@ -804,10 +829,12 @@ fn run() -> Result<(), String> {
                     let current_fingerprint = Fingerprint {
                         dependencies_mtime,
                         vstd_mtime,
+                        vstd_no_std,
+                        vstd_no_alloc,
                     };
 
                     if stored_fingerprint
-                        .map(|s| current_fingerprint > s)
+                        .map(|s| !(current_fingerprint <= s))
                         .unwrap_or(true)
                     {
                         info("vstd outdated, rebuilding");
