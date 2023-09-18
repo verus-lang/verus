@@ -1090,15 +1090,15 @@ impl Verifier {
                     }
 
                     if matches!(query_op, QueryOp::Body(Style::Normal)) {
-                        if any_invalid && self.args.expand_errors {
-                            let expand_targets = self.expand_targets.drain(..).collect();
-                            opgen.retry_with_expand_errors(&op, expand_targets)?;
-                        }
-
                         if (any_invalid && !self.args.no_auto_recommends_check)
                             || function.x.attrs.check_recommends
                         {
                             opgen.retry_with_recommends(&op, any_invalid)?;
+                        }
+
+                        if any_invalid && self.args.expand_errors {
+                            let expand_targets = self.expand_targets.drain(..).collect();
+                            opgen.retry_with_expand_errors(&op, expand_targets)?;
                         }
                     }
 
