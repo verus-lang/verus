@@ -2,6 +2,7 @@ use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX, GenericBound,
     GenericBoundX, Ident, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
     TriggerAnnotation, Typ, TypX, Typs, UnaryOp, Variant, Variants, VirErr, Visibility,
+    TypDecoration,
 };
 use crate::messages::{error, Span};
 use crate::prelude::ArchWordBits;
@@ -564,8 +565,17 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
-        TypX::Decorate(decoration, typ) => {
-            format!("{:?}{}", decoration, typ_to_diagnostic_str(typ))
+        TypX::Decorate(TypDecoration::Ref, typ) => {
+            format!("&{}", typ_to_diagnostic_str(typ))
+        }
+        TypX::Decorate(TypDecoration::MutRef, typ) => {
+            format!("&mut {}", typ_to_diagnostic_str(typ))
+        }
+        TypX::Decorate(decoration @ (TypDecoration::Box | TypDecoration::Rc | TypDecoration::Arc | TypDecoration::Ghost | TypDecoration::Tracked), typ) => {
+            format!("{:?}<{}>", decoration, typ_to_diagnostic_str(typ))
+        }
+        TypX::Decorate(TypDecoration::Never, _typ) => {
+            format!("!")
         }
         TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
         TypX::TypParam(ident) => (**ident).clone(),
