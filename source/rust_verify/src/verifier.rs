@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 use vir::context::GlobalCtx;
 
 use crate::buckets::{Bucket, BucketId};
-use vir::ast::{Fun, Function, Ident, Krate, Mode, VirErr};
+use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
@@ -968,21 +968,11 @@ impl Verifier {
             &("Associated-Type-Impls".to_string()),
         );
 
-        let mk_fun_ctx = |f: &Function, checking_spec_preconditions: bool| {
-            Some(vir::context::FunctionCtx {
-                checking_spec_preconditions,
-                checking_spec_preconditions_for_non_spec: checking_spec_preconditions
-                    && f.x.mode != Mode::Spec,
-                module_for_chosen_triggers: f.x.owning_module.clone(),
-                current_fun: f.x.name.clone(),
-            })
-        };
-
         let mut function_decl_commands = vec![];
 
         // Declare the function symbols
         for function in &krate.functions {
-            ctx.fun = mk_fun_ctx(&function, false);
+            ctx.fun = crate::commands::mk_fun_ctx(&function, false);
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }

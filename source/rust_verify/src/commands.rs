@@ -344,10 +344,11 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
     }
 }
 
-fn mk_fun_ctx(f: &Function, checking_recommends: bool) -> Option<FunctionCtx> {
+pub fn mk_fun_ctx(f: &Function, checking_spec_preconditions: bool) -> Option<FunctionCtx> {
     Some(vir::context::FunctionCtx {
-        checking_recommends,
-        checking_recommends_for_non_spec: checking_recommends && f.x.mode != Mode::Spec,
+        checking_spec_preconditions,
+        checking_spec_preconditions_for_non_spec: checking_spec_preconditions
+            && f.x.mode != Mode::Spec,
         module_for_chosen_triggers: f.x.owning_module.clone(),
         current_fun: f.x.name.clone(),
     })
