@@ -2,6 +2,7 @@ use crate::buckets::Bucket;
 use air::ast::Command;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::Visibility;
 use vir::ast::{Fun, Function, Krate, Mode, VirErr};
@@ -13,7 +14,6 @@ use vir::func_to_air::SstMap;
 use vir::messages::Message;
 use vir::recursion::Node;
 use vir::update_cell::UpdateCell;
-use std::collections::VecDeque;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ContextOp {
@@ -139,9 +139,10 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                     )?);
                     self.scc_idx += 1;
                 } else if self.fun_idx < self.krate.functions.len() {
-                    self.current_queue = VecDeque::from(self.handle_proof_body_normal_for_proof_and_exec(
-                        self.krate.functions[self.fun_idx].clone(),
-                    )?);
+                    self.current_queue =
+                        VecDeque::from(self.handle_proof_body_normal_for_proof_and_exec(
+                            self.krate.functions[self.fun_idx].clone(),
+                        )?);
                     self.fun_idx += 1;
                 } else {
                     return Ok(None);

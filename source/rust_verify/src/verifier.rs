@@ -1106,9 +1106,16 @@ impl Verifier {
                         if (any_invalid && !self.args.no_auto_recommends_check)
                             || function.x.attrs.check_recommends
                         {
-                            // note: This is the equivalent of spec(checked)
-                            // But it doesn't do recommends-checking on the decreases_by lemma
-                            // or anything.
+                            // Do recommends-checking for the body of the function.
+                            // This should always happen for spec(checked).
+                            //
+                            // Note: this is done as a response to the 'termination check'
+                            // because a failed termination check will trigger the
+                            // spec body check even if spec(checked) is not marked.
+                            // TODO the user probably expects us to also do a recommends-retry
+                            // or an expand-errors retry of the decreases-by lemma if
+                            // it exists.
+
                             opgen.retry_with_recommends(&op, any_invalid)?;
                         }
                     }
