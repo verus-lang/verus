@@ -650,6 +650,8 @@ pub enum ExprX {
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
+    /// Reveal a string
+    RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
@@ -658,6 +660,10 @@ pub enum ExprX {
     AssertAssume { is_assume: bool, expr: Expr },
     /// Assert-forall or assert-by statement
     AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Assertion discharged via computation
+    AssertCompute(Expr, ComputeMode),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
@@ -678,12 +684,6 @@ pub enum ExprX {
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
-    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
-    /// Assertion discharged via computation
-    AssertCompute(Expr, ComputeMode),
-    /// Reveal a string
-    RevealString(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt
