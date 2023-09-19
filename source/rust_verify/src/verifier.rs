@@ -804,6 +804,7 @@ impl Verifier {
         function_path: &vir::ast::Path,
         datatype_commands: Commands,
         assoc_type_decl_commands: Commands,
+        trait_commands: Commands,
         assoc_type_impl_commands: Commands,
         function_decl_commands: Arc<Vec<(Commands, String)>>,
         function_spec_commands: Arc<Vec<(Commands, String)>>,
@@ -848,6 +849,13 @@ impl Verifier {
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
+        );
+        self.run_commands(
+            bucket_id,
+            diagnostics,
+            &mut air_context,
+            &trait_commands,
+            &("Traits".to_string()),
         );
         self.run_commands(
             bucket_id,
@@ -1207,6 +1215,7 @@ impl Verifier {
                             &(function.x.name).path,
                             datatype_commands.clone(),
                             assoc_type_decl_commands.clone(),
+                            trait_commands.clone(),
                             assoc_type_impl_commands.clone(),
                             function_decl_commands.clone(),
                             function_spec_commands.clone(),

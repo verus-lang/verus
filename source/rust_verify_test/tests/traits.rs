@@ -2318,3 +2318,30 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
+
+test_verify_one_file! {
+    #[test] trait_bound_query verus_code! {
+        // https://github.com/verus-lang/verus/issues/812
+        trait T {}
+
+        spec fn t<A>() -> bool { true }
+
+        #[verifier::external_body]
+        #[verifier::broadcast_forall]
+        proof fn axiom_f<A: T>()
+            ensures
+                #[trigger] t::<A>(),
+        {
+        }
+
+        struct S1;
+
+        impl T for S1 {}
+        fn test1() {
+            assert(t::<S1>());
+            let v1: u64 = 0;
+            let v2: u64 = 0;
+            assert(v1 * v2  >= 0) by(nonlinear_arith);
+        }
+    } => Ok(())
+}
