@@ -2,8 +2,6 @@
 #![allow(unused_imports)]
 
 #[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "alloc")]
 use alloc::string::{self, ToString};
 
 use crate::view::*;

@@ -12,6 +12,9 @@
 
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod pervasive;
 pub mod array;
 pub mod bytes;
