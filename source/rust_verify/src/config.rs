@@ -399,9 +399,6 @@ pub fn parse_args_with_imports(
         debug: matches.opt_present(OPT_DEBUG),
         profile: {
             if matches.opt_present(OPT_PROFILE) {
-                if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when profiling".to_string())
-                }
                 if matches.opt_present(OPT_PROFILE_ALL) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
                 }
