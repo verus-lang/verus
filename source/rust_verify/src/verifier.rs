@@ -1,3 +1,4 @@
+use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
@@ -30,13 +31,10 @@ use std::time::{Duration, Instant};
 use vir::context::GlobalCtx;
 
 use crate::buckets::{Bucket, BucketId};
-use vir::ast::{Fun, Function, Ident, Krate, Mode, VirErr, Visibility};
+use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
-use vir::func_to_air::SstMap;
 use vir::prelude::PreludeConfig;
-use vir::recursion::Node;
-use vir::update_cell::UpdateCell;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
 
@@ -807,8 +805,7 @@ impl Verifier {
         trait_commands: Commands,
         assoc_type_impl_commands: Commands,
         function_decl_commands: Arc<Vec<(Commands, String)>>,
-        function_spec_commands: Arc<Vec<(Commands, String)>>,
-        function_axiom_commands: Arc<Vec<(Commands, String)>>,
+        ops: &Vec<Op>,
         is_rerun: bool,
         context_counter: usize,
         span: &vir::messages::Span,
@@ -867,11 +864,21 @@ impl Verifier {
         for commands in &*function_decl_commands {
             self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
-        for commands in &*function_spec_commands {
-            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
-        }
-        for commands in &*function_axiom_commands {
-            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
+        for op in ops.iter() {
+            match &op.kind {
+                OpKind::Context(_context_op, commands) => {
+                    self.run_commands(
+                        bucket_id,
+                        diagnostics,
+                        &mut air_context,
+                        commands,
+                        &op.to_air_comment(),
+                    );
+                }
+                OpKind::Query(..) => {
+                    panic!("should have only got Context ops");
+                }
+            }
         }
         Ok(air_context)
     }
@@ -961,23 +968,11 @@ impl Verifier {
             &("Associated-Type-Impls".to_string()),
         );
 
-        let mk_fun_ctx = |f: &Function, checking_spec_preconditions: bool| {
-            Some(vir::context::FunctionCtx {
-                checking_spec_preconditions,
-                checking_spec_preconditions_for_non_spec: checking_spec_preconditions
-                    && f.x.mode != Mode::Spec,
-                module_for_chosen_triggers: f.x.owning_module.clone(),
-                current_fun: f.x.name.clone(),
-            })
-        };
-
         let mut function_decl_commands = vec![];
-        let mut function_spec_commands = vec![];
-        let mut function_axiom_commands = vec![];
 
         // Declare the function symbols
         for function in &krate.functions {
-            ctx.fun = mk_fun_ctx(&function, false);
+            ctx.fun = crate::commands::mk_fun_ctx(&function, false);
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
@@ -989,282 +984,142 @@ impl Verifier {
         }
         ctx.fun = None;
 
-        // Collect function definitions
-        let mut funs: HashMap<Fun, (Function, Visibility)> = HashMap::new();
-        for function in &krate.functions {
-            assert!(!funs.contains_key(&function.x.name));
-            let vis = function.x.visibility.clone();
-            if !is_visible_to(&vis, module) || function.x.attrs.is_decrease_by {
-                continue;
-            }
-            let restricted_to = if function.x.publish.is_none() {
-                // private to owning_module
-                function.x.owning_module.clone()
-            } else {
-                // public
-                None
-            };
-            let vis_abs = Visibility { restricted_to, ..vis };
-            funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
-        }
+        let function_decl_commands = Arc::new(function_decl_commands);
 
-        // For spec functions, check termination and declare consequence axioms.
-        // For proof/exec functions, declare requires/ensures.
-        // Declare them in SCC (strongly connected component) sorted order so that
-        // termination checking precedes consequence axioms for each SCC.
-        let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
-        let mut fun_ssts = UpdateCell::new(HashMap::new());
-        for scc in &ctx.global.func_call_sccs.as_ref().clone() {
-            let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
-            let mut scc_fun_nodes: Vec<Fun> = Vec::new();
-            for node in scc_nodes.into_iter() {
-                match node {
-                    Node::Fun(f) => scc_fun_nodes.push(f),
-                    _ => {}
-                }
-            }
-            // Declare requires/ensures
-            for f in scc_fun_nodes.iter() {
-                if !funs.contains_key(f) {
-                    continue;
-                }
-                let (function, _vis_abs) = &funs[f];
-
-                ctx.fun = mk_fun_ctx(&function, false);
-                let decl_commands =
-                    vir::func_to_air::func_decl_to_air(ctx, reporter, &fun_ssts, &function)?;
-                ctx.fun = None;
-                let comment = "Function-Specs ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(bucket_id, reporter, &mut air_context, &decl_commands, &comment);
-                function_spec_commands.push((decl_commands.clone(), comment.clone()));
-            }
-
-            // Check termination
-            for f in scc_fun_nodes.iter() {
-                if !funs.contains_key(f) {
-                    continue;
-                }
-                let (function, vis_abs) = &funs[f];
-
-                ctx.fun = mk_fun_ctx(&function, false);
-                let bucket = self.get_bucket(bucket_id);
-                let not_verifying_owning_bucket = !bucket.contains(&function.x.name);
-
-                let (decl_commands, check_commands, new_fun_ssts) =
-                    vir::func_to_air::func_axioms_to_air(
-                        ctx,
+        let bucket = self.get_bucket(bucket_id);
+        let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
+        let mut all_context_ops = vec![];
+        while let Some(op) = opgen.next()? {
+            match &op.kind {
+                OpKind::Context(_context_op, commands) => {
+                    self.run_commands(
+                        bucket_id,
                         reporter,
-                        fun_ssts,
-                        &function,
-                        is_visible_to(&vis_abs, module),
-                        not_verifying_owning_bucket,
-                    )?;
-                fun_ssts = new_fun_ssts;
-                fun_axioms.insert(f.clone(), decl_commands);
-                ctx.fun = None;
-
-                if not_verifying_owning_bucket {
-                    continue;
+                        &mut air_context,
+                        commands,
+                        &op.to_air_comment(),
+                    );
+                    all_context_ops.push(op);
                 }
-                let invalidity = self.run_commands_queries(
-                    reporter,
-                    source_map,
-                    MessageLevel::Error,
-                    &mut air_context,
-                    Arc::new(CommandsWithContextX {
-                        span: function.span.clone(),
-                        desc: "termination proof".to_string(),
-                        commands: check_commands,
-                        prover_choice: vir::def::ProverChoice::DefaultProver,
-                        skip_recommends: false,
-                    }),
-                    &HashMap::new(),
-                    &vec![],
-                    &ctx.global.qid_map.borrow(),
-                    bucket_id,
-                    &function.x.name,
-                    &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
-                    Some("function termination: "),
-                );
-                let check_recommends = function.x.attrs.check_recommends;
-                if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {
-                    // Rerun failed query to report possible recommends violations
-                    // or (optionally) check recommends for spec function bodies
-                    ctx.fun = mk_fun_ctx(&function, true);
-                    let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
-                        ctx,
-                        reporter,
-                        fun_ssts,
-                        &function,
-                        vir::func_to_air::FuncDefPhase::CheckingSpecs,
-                        true,
-                    )?;
-                    ctx.fun = None;
-                    fun_ssts = new_fun_ssts;
-                    let level = if invalidity { MessageLevel::Note } else { MessageLevel::Warning };
-                    let s = "Function-Decl-Check-Recommends ";
-                    for command in commands.iter().map(|x| &*x) {
-                        self.run_commands_queries(
+                OpKind::Query(query_op, commands_with_context_list, snap_map) => {
+                    let level = match query_op {
+                        QueryOp::SpecTermination => MessageLevel::Error,
+                        QueryOp::Body(Style::Normal) => MessageLevel::Error,
+                        QueryOp::Body(Style::RecommendsFollowupFromError) => MessageLevel::Note,
+                        QueryOp::Body(Style::RecommendsChecked) => MessageLevel::Warning,
+                        QueryOp::Body(Style::Expanded) => MessageLevel::Note,
+                    };
+                    let function = &op.function;
+                    let is_recommend = query_op.is_recommend();
+                    self.expand_flag = query_op.is_expanded();
+
+                    let mut spinoff_context_counter = 1;
+
+                    let mut any_invalid = false;
+                    self.expand_targets = vec![];
+                    for cmds in commands_with_context_list.iter() {
+                        if is_recommend && cmds.skip_recommends {
+                            continue;
+                        }
+                        if cmds.prover_choice == vir::def::ProverChoice::Singular {
+                            #[cfg(not(feature = "singular"))]
+                            panic!(
+                                "Found singular command when Verus is compiled without Singular feature"
+                            );
+
+                            #[cfg(feature = "singular")]
+                            if air_context.singular_log.is_none() {
+                                let file = self.create_log_file(
+                                    Some(bucket_id),
+                                    crate::config::SINGULAR_FILE_SUFFIX,
+                                )?;
+                                air_context.singular_log = Some(file);
+                            }
+                        }
+                        let mut spinoff_z3_context;
+                        let do_spinoff = (cmds.prover_choice == vir::def::ProverChoice::Nonlinear)
+                            || (cmds.prover_choice == vir::def::ProverChoice::BitVector);
+                        let query_air_context = if do_spinoff {
+                            spinoff_z3_context = self.new_air_context_with_bucket_context(
+                                message_interface.clone(),
+                                &opgen.ctx,
+                                reporter,
+                                bucket_id,
+                                &(function.x.name).path,
+                                datatype_commands.clone(),
+                                assoc_type_decl_commands.clone(),
+                                trait_commands.clone(),
+                                assoc_type_impl_commands.clone(),
+                                function_decl_commands.clone(),
+                                &all_context_ops,
+                                is_recommend,
+                                spinoff_context_counter,
+                                &cmds.span,
+                            )?;
+                            // for bitvector, only one query, no push/pop
+                            if cmds.prover_choice == vir::def::ProverChoice::BitVector {
+                                spinoff_z3_context.disable_incremental_solving();
+                            }
+                            spinoff_context_counter += 1;
+                            &mut spinoff_z3_context
+                        } else {
+                            &mut air_context
+                        };
+
+                        let command_invalidity = self.run_commands_queries(
                             reporter,
                             source_map,
                             level,
-                            &mut air_context,
-                            command.clone(),
+                            query_air_context,
+                            cmds.clone(),
                             &HashMap::new(),
                             &snap_map,
-                            &ctx.global.qid_map.borrow(),
+                            &opgen.ctx.global.qid_map.borrow(),
                             bucket_id,
                             &function.x.name,
-                            &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
-                            Some("recommends check: "),
+                            &op.to_air_comment(),
+                            None,
                         );
+                        if do_spinoff {
+                            let (time_smt_init, time_smt_run) = query_air_context.get_time();
+                            spunoff_time_smt_init += time_smt_init;
+                            spunoff_time_smt_run += time_smt_run;
+                        }
+
+                        any_invalid |= command_invalidity;
                     }
-                }
-            }
 
-            // Declare consequence axioms
-            for f in scc_fun_nodes.iter() {
-                if !funs.contains_key(f) {
-                    continue;
-                }
-                let decl_commands = &fun_axioms[f];
-                let comment = "Function-Axioms ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(bucket_id, reporter, &mut air_context, &decl_commands, &comment);
-                function_axiom_commands.push((decl_commands.clone(), comment.clone()));
-                funs.remove(f);
-            }
-        }
-        assert!(funs.len() == 0);
+                    if matches!(query_op, QueryOp::Body(Style::Normal)) {
+                        if (any_invalid && !self.args.no_auto_recommends_check)
+                            || function.x.attrs.check_recommends
+                        {
+                            opgen.retry_with_recommends(&op, any_invalid)?;
+                        }
 
-        let function_decl_commands = Arc::new(function_decl_commands);
-        let function_spec_commands = Arc::new(function_spec_commands);
-        let function_axiom_commands = Arc::new(function_axiom_commands);
-        // Create queries to check the validity of proof/exec function bodies
-        let no_auto_recommends_check = self.args.no_auto_recommends_check;
-        let expand_errors_check = self.args.expand_errors;
-        self.expand_targets = vec![];
-        for function in &krate.functions {
-            let bucket = self.get_bucket(bucket_id);
-            if !bucket.contains(&function.x.name) {
-                continue;
-            }
-            let check_validity = &mut |recommends_rerun: bool,
-                                       expands_rerun: bool,
-                                       mut fun_ssts: SstMap|
-             -> Result<(bool, SstMap), VirErr> {
-                let mut spinoff_context_counter = 1;
-                ctx.fun = mk_fun_ctx(&function, recommends_rerun);
-                ctx.expand_flag = expands_rerun;
-                self.expand_flag = expands_rerun;
-                if expands_rerun {
-                    ctx.debug_expand_targets = self.expand_targets.drain(..).collect();
-                }
-                let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
-                    ctx,
-                    reporter,
-                    fun_ssts,
-                    &function,
-                    vir::func_to_air::FuncDefPhase::CheckingProofExec,
-                    recommends_rerun,
-                )?;
-                fun_ssts = new_fun_ssts;
-                let level = if recommends_rerun || expands_rerun {
-                    MessageLevel::Note
-                } else {
-                    MessageLevel::Error
-                };
-                let s =
-                    if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
-
-                let mut function_invalidity = false;
-                for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX {
-                        span,
-                        desc: _,
-                        commands: _,
-                        prover_choice,
-                        skip_recommends,
-                    } = &**command;
-                    if recommends_rerun && *skip_recommends {
-                        continue;
-                    }
-                    if *prover_choice == vir::def::ProverChoice::Singular {
-                        #[cfg(not(feature = "singular"))]
-                        panic!(
-                            "Found singular command when Verus is compiled without Singular feature"
-                        );
-
-                        #[cfg(feature = "singular")]
-                        if air_context.singular_log.is_none() {
-                            let file = self.create_log_file(
-                                Some(bucket_id),
-                                crate::config::SINGULAR_FILE_SUFFIX,
-                            )?;
-                            air_context.singular_log = Some(file);
+                        if any_invalid && self.args.expand_errors {
+                            let expand_targets = self.expand_targets.drain(..).collect();
+                            opgen.retry_with_expand_errors(&op, expand_targets)?;
                         }
                     }
-                    let mut spinoff_z3_context;
-                    let do_spinoff = (*prover_choice == vir::def::ProverChoice::Nonlinear)
-                        || (*prover_choice == vir::def::ProverChoice::BitVector);
-                    let query_air_context = if do_spinoff {
-                        spinoff_z3_context = self.new_air_context_with_bucket_context(
-                            message_interface.clone(),
-                            ctx,
-                            reporter,
-                            bucket_id,
-                            &(function.x.name).path,
-                            datatype_commands.clone(),
-                            assoc_type_decl_commands.clone(),
-                            trait_commands.clone(),
-                            assoc_type_impl_commands.clone(),
-                            function_decl_commands.clone(),
-                            function_spec_commands.clone(),
-                            function_axiom_commands.clone(),
-                            recommends_rerun,
-                            spinoff_context_counter,
-                            &span,
-                        )?;
-                        // for bitvector, only one query, no push/pop
-                        if *prover_choice == vir::def::ProverChoice::BitVector {
-                            spinoff_z3_context.disable_incremental_solving();
-                        }
-                        spinoff_context_counter += 1;
-                        &mut spinoff_z3_context
-                    } else {
-                        &mut air_context
-                    };
-                    let desc_prefix = recommends_rerun.then(|| "recommends check: ");
-                    let command_invalidity = self.run_commands_queries(
-                        reporter,
-                        source_map,
-                        level,
-                        query_air_context,
-                        command.clone(),
-                        &HashMap::new(),
-                        &snap_map,
-                        &ctx.global.qid_map.borrow(),
-                        bucket_id,
-                        &function.x.name,
-                        &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
-                        desc_prefix,
-                    );
-                    if do_spinoff {
-                        let (time_smt_init, time_smt_run) = query_air_context.get_time();
-                        spunoff_time_smt_init += time_smt_init;
-                        spunoff_time_smt_run += time_smt_run;
-                    }
 
-                    function_invalidity = function_invalidity || command_invalidity;
+                    if matches!(query_op, QueryOp::SpecTermination) {
+                        if (any_invalid && !self.args.no_auto_recommends_check)
+                            || function.x.attrs.check_recommends
+                        {
+                            // Do recommends-checking for the body of the function.
+                            // This should always happen for spec(checked).
+                            //
+                            // Note: this is done as a response to the 'termination check'
+                            // because a failed termination check will trigger the
+                            // spec body check even if spec(checked) is not marked.
+                            // TODO the user probably expects us to also do a recommends-retry
+                            // or an expand-errors retry of the decreases-by lemma if
+                            // it exists.
+
+                            opgen.retry_with_recommends(&op, any_invalid)?;
+                        }
+                    }
                 }
-                Ok((function_invalidity, fun_ssts))
-            };
-            let (function_invalidity, new_fun_ssts) = check_validity(false, false, fun_ssts)?;
-            fun_ssts = new_fun_ssts;
-            if function_invalidity && expand_errors_check {
-                fun_ssts = check_validity(false, true, fun_ssts)?.1;
-            }
-            if function_invalidity && !no_auto_recommends_check {
-                fun_ssts = check_validity(true, false, fun_ssts)?.1;
             }
         }
         ctx.fun = None;
