@@ -6,7 +6,6 @@ use crate::rust_to_vir_base::{
 use crate::rust_to_vir_expr::get_adt_res;
 use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
-use air::ast::AstId;
 use air::ast_util::str_ident;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
@@ -29,6 +28,7 @@ use std::sync::Arc;
 use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::VERUS_SPEC;
+use vir::messages::AstId;
 
 impl TypX {
     fn mk_unit() -> Typ {

@@ -1,7 +1,7 @@
 use crate::ast::VirErr;
 use crate::ast::{Expr, ExprX};
-use crate::ast_util::error;
 use crate::ast_visitor::expr_visitor_check;
+use crate::messages::error;
 
 /// Makes the following check:
 ///
@@ -22,10 +22,10 @@ pub fn check_closure_well_formed(expr: &Expr) -> Result<(), VirErr> {
                     // If this isn't in the scope_map, then the var must have been
                     // declared outside the closure.
 
-                    error(
+                    Err(error(
                         &expr.span,
                         "Verus does not currently support closures capturing a mutable reference for variables of any mode",
-                    )
+                    ))
                 } else {
                     Ok(())
                 }

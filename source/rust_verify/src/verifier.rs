@@ -1,16 +1,22 @@
+use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
+use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::{message, note, note_bare, Diagnostics, Message, MessageLabel, MessageLevel};
+use air::messages::{ArcDynMessage, Diagnostics};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+
+use vir::messages::{
+    message, note, note_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
+};
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
@@ -25,14 +31,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::GlobalCtx;
 
-use crate::user_filter::UserFilter;
-use vir::ast::{Fun, Function, Ident, InferMode, Krate, Mode, VirErr, Visibility};
+use crate::buckets::{Bucket, BucketId};
+use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
-use vir::func_to_air::SstMap;
 use vir::prelude::PreludeConfig;
-use vir::recursion::Node;
-use vir::update_cell::UpdateCell;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
 
@@ -55,8 +58,11 @@ impl<'tcx> Reporter<'tcx> {
 /// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
 /// or emitting the same note twice will be surpressed (even if separated in time by other
 /// errors/notes)
-impl Diagnostics for Reporter<'_> {
-    fn report_as(&self, msg: &Message, level: MessageLevel) {
+impl air::messages::Diagnostics for Reporter<'_> {
+    fn report_as(&self, msg: &ArcDynMessage, level: MessageLevel) {
+        let msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+
         let mut v: Vec<Span> = Vec::new();
         for sp in &msg.spans {
             if let Some(span) = self.spans.from_air_span(&sp, Some(self.source_map)) {
@@ -108,6 +114,22 @@ impl Diagnostics for Reporter<'_> {
             ),
         }
     }
+
+    fn report(&self, msg: &ArcDynMessage) {
+        let vir_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as(msg, vir_msg.level)
+    }
+
+    fn report_now(&self, msg: &ArcDynMessage) {
+        let vir_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as(msg, vir_msg.level)
+    }
+
+    fn report_as_now(&self, msg: &ArcDynMessage, msg_as: MessageLevel) {
+        self.report_as(msg, msg_as)
+    }
 }
 
 /// A reporter message that is being collected by the main thread
@@ -119,49 +141,65 @@ pub(crate) enum ReporterMessage {
 
 /// A reporter that forwards messages on an mpsc channel
 pub(crate) struct QueuedReporter {
-    module_id: usize,
+    bucket_id: usize,
     queue: std::sync::mpsc::Sender<ReporterMessage>,
 }
 
 impl QueuedReporter {
-    pub(crate) fn new(module_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
-        Self { module_id, queue }
+    pub(crate) fn new(bucket_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
+        Self { bucket_id, queue }
     }
 
     pub(crate) fn done(&self) {
-        self.queue.send(ReporterMessage::Done(self.module_id)).expect("could not send!");
+        self.queue.send(ReporterMessage::Done(self.bucket_id)).expect("could not send!");
     }
 }
 
-impl Diagnostics for QueuedReporter {
-    fn report_as(&self, msg: &Message, level: MessageLevel) {
+impl air::messages::Diagnostics for QueuedReporter {
+    fn report_as(&self, msg: &ArcDynMessage, level: MessageLevel) {
+        let msg: Message =
+            msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
-            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, false))
+            .send(ReporterMessage::Message(self.bucket_id, msg, level, false))
             .expect("could not send the message!");
     }
 
-    fn report_as_now(&self, msg: &Message, level: MessageLevel) {
+    fn report_as_now(&self, msg: &ArcDynMessage, level: MessageLevel) {
+        let msg: Message =
+            msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
-            .send(ReporterMessage::Message(self.module_id, msg.clone(), level, true))
+            .send(ReporterMessage::Message(self.bucket_id, msg, level, true))
             .expect("could not send the message!");
+    }
+
+    fn report(&self, msg: &ArcDynMessage) {
+        let air_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as(msg, air_msg.level)
+    }
+
+    fn report_now(&self, msg: &ArcDynMessage) {
+        let air_msg: &MessageX =
+            msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
+        self.report_as_now(msg, air_msg.level)
     }
 }
 
 #[derive(Default)]
-pub struct ModuleStats {
-    /// cummulative time in AIR to verify the module (this includes SMT solver time)
+pub struct BucketStats {
+    /// cummulative time in AIR to verify the bucket (this includes SMT solver time)
     pub time_air: Duration,
     /// time to initialize the SMT solver
     pub time_smt_init: Duration,
     /// cummulative time of all SMT queries
     pub time_smt_run: Duration,
-    /// total time to verify the module
+    /// total time to verify the bucket
     pub time_verify: Duration,
 }
 
 pub struct Verifier {
     /// this is the actual number of threads used for verification. This will be set to the
-    /// minimum of the requested threads and the number of modules to verify
+    /// minimum of the requested threads and the number of buckets to verify
     pub num_threads: usize,
     pub encountered_vir_error: bool,
     pub count_verified: u64,
@@ -170,8 +208,8 @@ pub struct Verifier {
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
 
-    /// total real time to verify all activated modules of the crate, including real time for
-    /// the parallel module verification
+    /// total real time to verify all activated buckets of the crate, including real time for
+    /// the parallel bucket verification
     pub time_verify_crate: Duration,
     /// sequential part of the crate verification before parallel verification
     pub time_verify_crate_sequential: Duration,
@@ -181,31 +219,39 @@ pub struct Verifier {
     pub time_vir_rust_to_vir: Duration,
     /// time spent in hir when creating the VIR for the crate
     pub time_hir: Duration,
-    /// execution times for each module run in parallel
-    pub module_times: HashMap<vir::ast::Path, ModuleStats>,
+    /// execution times for each bucket run in parallel
+    pub bucket_times: HashMap<BucketId, BucketStats>,
 
     // If we've already created the log directory, this is the path to it:
-    created_log_dir: Option<String>,
+    created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
+    created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
     crate_names: Option<Vec<String>>,
     vstd_crate_name: Option<Ident>,
-    air_no_span: Option<air::ast::Span>,
-    inferred_modes: Option<HashMap<InferMode, Mode>>,
+    air_no_span: Option<vir::messages::Span>,
     current_crate_module_ids: Option<Vec<vir::ast::Path>>,
+    buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
     expand_flag: bool,
-    pub expand_targets: Vec<air::messages::Message>,
+    pub expand_targets: Vec<Message>,
 }
 
-fn report_chosen_triggers(diagnostics: &impl Diagnostics, chosen: &vir::context::ChosenTriggers) {
-    let msg = note("automatically chose triggers for this expression:", &chosen.span);
-    diagnostics.report(&msg);
+fn report_chosen_triggers(
+    diagnostics: &impl air::messages::Diagnostics,
+    chosen: &vir::context::ChosenTriggers,
+) {
+    diagnostics
+        .report(&note(&chosen.span, "automatically chose triggers for this expression:").to_any());
 
     for (n, trigger) in chosen.triggers.iter().enumerate() {
         let note = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
         let msg = note_bare(note);
-        let msg = trigger.iter().fold(msg, |m, (s, _)| m.primary_span(s));
+        let msg: ArcDynMessage = trigger.iter().fold(msg, |m, (s, _)| {
+            let m: &vir::messages::MessageX =
+                m.downcast_ref().expect("unexpected value in Any -> Message conversion");
+            m.primary_span(s)
+        });
         diagnostics.report(&msg);
     }
 }
@@ -216,6 +262,22 @@ pub(crate) fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
 
 pub fn module_name(module: &vir::ast::Path) -> String {
     module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
+}
+
+struct RunCommandQueriesResult {
+    invalidity: bool,
+    timed_out: bool,
+}
+
+impl std::ops::Add for RunCommandQueriesResult {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        RunCommandQueriesResult {
+            invalidity: self.invalidity || rhs.invalidity,
+            timed_out: self.timed_out || rhs.timed_out,
+        }
+    }
 }
 
 impl Verifier {
@@ -234,15 +296,16 @@ impl Verifier {
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
 
-            module_times: HashMap::new(),
+            bucket_times: HashMap::new(),
 
-            created_log_dir: None,
+            created_log_dir: Arc::new(std::sync::Mutex::new(None)),
+            created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
             crate_names: None,
             vstd_crate_name: None,
             air_no_span: None,
-            inferred_modes: None,
             current_crate_module_ids: None,
+            buckets: HashMap::new(),
 
             expand_flag: false,
             expand_targets: vec![],
@@ -264,14 +327,15 @@ impl Verifier {
             time_hir: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
-            module_times: HashMap::new(),
+            bucket_times: HashMap::new(),
             created_log_dir: self.created_log_dir.clone(),
+            created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
             crate_names: self.crate_names.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
-            inferred_modes: self.inferred_modes.clone(),
             current_crate_module_ids: self.current_crate_module_ids.clone(),
+            buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
             expand_targets: self.expand_targets.clone(),
         }
@@ -283,59 +347,97 @@ impl Verifier {
         self.count_errors += other.count_errors;
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
-        self.module_times.extend(other.module_times);
+        self.bucket_times.extend(other.bucket_times);
+    }
+
+    fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
+        self.buckets.get(bucket_id).expect("expected valid BucketId")
+    }
+
+    fn ensure_solver_log_dir(&mut self) -> Result<std::path::PathBuf, VirErr> {
+        Ok({
+            let mut created_solver_log_dir =
+                self.created_solver_log_dir.lock().expect("failed to lock created_solver_log_dir");
+            if let Some(dir_path) = &*created_solver_log_dir {
+                dir_path.clone()
+            } else {
+                let dir = std::path::PathBuf::from(crate::config::SOLVER_LOG_DIR.to_string());
+                std::fs::create_dir_all(&dir).map_err(|err| {
+                    io_vir_err(format!("could not create directory {}", dir.display()), err)
+                })?;
+                *created_solver_log_dir = Some(dir.clone());
+                dir
+            }
+        })
     }
 
     fn create_log_file(
         &mut self,
-        module: Option<&vir::ast::Path>,
-        function: Option<&vir::ast::Path>,
+        bucket_id_opt: Option<&BucketId>,
         suffix: &str,
     ) -> Result<File, VirErr> {
-        if self.created_log_dir.is_none() {
-            let dir = if let Some(dir) = &self.args.log_dir {
-                dir.clone()
+        let dir_path = {
+            let mut created_log_dir =
+                self.created_log_dir.lock().expect("failed to lock created_log_dir");
+            if let Some(dir_path) = &*created_log_dir {
+                dir_path.clone()
             } else {
-                crate::config::LOG_DIR.to_string()
-            };
-            match std::fs::create_dir_all(dir.clone()) {
-                Ok(()) => {
-                    self.created_log_dir = Some(dir);
+                let dir = std::path::PathBuf::from(if let Some(dir) = &self.args.log_dir {
+                    dir.clone()
+                } else {
+                    crate::config::LOG_DIR.to_string()
+                });
+                if dir.exists() {
+                    if dir.is_dir() {
+                        let entries = std::fs::read_dir(&dir).map_err(|err| {
+                            io_vir_err(format!("could not read directory {}", dir.display()), err)
+                        })?;
+                        for entry in entries {
+                            if let Ok(entry) = entry {
+                                if entry.path().is_file() {
+                                    std::fs::remove_file(entry.path()).map_err(|err| {
+                                        io_vir_err(
+                                            format!("could not remove file {}", dir.display()),
+                                            err,
+                                        )
+                                    })?;
+                                }
+                            }
+                        }
+                    } else {
+                        return Err(error(format!(
+                            "{} exists and is not a directory",
+                            dir.display()
+                        )));
+                    }
                 }
-                Err(err) => {
-                    return Err(io_vir_err(format!("could not create directory {dir}"), err));
-                }
+                std::fs::create_dir_all(&dir).map_err(|err| {
+                    io_vir_err(format!("could not create directory {}", dir.display()), err)
+                })?;
+                *created_log_dir = Some(dir.clone());
+                dir
             }
-        }
-        let dir_path = self.created_log_dir.clone().unwrap();
-        let path =
-            std::path::Path::new(&dir_path).join(Self::gen_log_file_name(module, function, suffix));
-        match File::create(path.clone()) {
+        };
+        let log_file_name = self.log_file_name(&dir_path, bucket_id_opt, suffix);
+        match File::create(&log_file_name) {
             Ok(file) => Ok(file),
-            Err(err) => Err(io_vir_err(format!("could not open file {path:?}"), err)),
+            Err(err) => {
+                Err(io_vir_err(format!("could not open file {}", log_file_name.display()), err))
+            }
         }
     }
 
-    fn gen_log_file_name(
-        module: Option<&vir::ast::Path>,
-        function: Option<&vir::ast::Path>,
+    fn log_file_name(
+        &self,
+        dir_path: &std::path::Path,
+        bucket_id_opt: Option<&BucketId>,
         suffix: &str,
-    ) -> String {
-        let prefix = match module {
+    ) -> std::path::PathBuf {
+        let prefix = match bucket_id_opt {
             None => "crate".to_string(),
-            Some(module) if module.segments.len() == 0 => "root".to_string(),
-            Some(module) => {
-                module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
-            }
+            Some(bucket_id) => bucket_id.to_log_string(),
         };
-        let middle = match function {
-            None => "".to_string(),
-            Some(fcn) => format!(
-                "__{}",
-                fcn.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
-            ),
-        };
-        format!("{prefix}{middle}{suffix}")
+        std::path::PathBuf::from(&dir_path).join(format!("{prefix}{suffix}"))
     }
 
     /// Use when we expect our call to Z3 to always succeed
@@ -353,7 +455,7 @@ impl Verifier {
 
     fn print_profile_stats(
         &self,
-        diagnostics: &impl Diagnostics,
+        diagnostics: &impl air::messages::Diagnostics,
         profiler: Profiler,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
     ) {
@@ -364,7 +466,7 @@ impl Verifier {
             "Observed {} total instantiations of user-level quantifiers",
             total.to_formatted_string(&Locale::en)
         );
-        diagnostics.report(&note_bare(&msg));
+        diagnostics.report(&note_bare(&msg).to_any());
 
         for (index, cost) in profiler.iter().take(max).enumerate() {
             // Report the quantifier
@@ -393,33 +495,37 @@ impl Verifier {
                 "Triggers selected for this quantifier".to_string(),
             );
 
-            diagnostics.report(&msg);
+            diagnostics.report(&msg.to_any());
         }
     }
 
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
     /// Returns true if there was at least one Invalid resulting in an error.
+    ///
+    /// If `level` is None, do not report errors.
     fn check_result_validity(
         &mut self,
-        module_path: &vir::ast::Path,
-        reporter: &impl Diagnostics,
+        bucket_id: &BucketId,
+        reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
-        level: MessageLevel,
+        level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
-        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
-        snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
+        snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
-        context: &(&air::ast::Span, &str),
+        context: &(&vir::messages::Span, &str),
         is_singular: bool,
-    ) -> (bool, bool) {
+    ) -> RunCommandQueriesResult {
+        let message_interface = Arc::new(vir::messages::VirMessageInterface {});
+
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                let msg = if counter % 5 == 0 { note(msg, &context.0) } else { note_bare(msg) };
-                reporter.report_now(&msg);
+                let msg = if counter % 5 == 0 { note(&context.0, msg) } else { note_bare(msg) };
+                reporter.report_now(&msg.to_any());
                 counter += 1;
             });
             (std::time::Duration::from_secs(2), report_fn)
@@ -429,6 +535,7 @@ impl Verifier {
         #[cfg(feature = "singular")]
         let mut result = if !is_singular {
             air_context.command(
+                &*message_interface,
                 reporter,
                 &command,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
@@ -444,14 +551,15 @@ impl Verifier {
 
         #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
+            &*message_interface,
             reporter,
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
 
         let time1 = Instant::now();
-        let module_time = self.module_times.get_mut(module_path).expect("module time not found");
-        module_time.time_air += time1 - time0;
+        let bucket_time = self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+        bucket_time.time_air += time1 - time0;
 
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
@@ -461,7 +569,7 @@ impl Verifier {
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if (is_check_valid && is_first_check && level == MessageLevel::Error)
+                    if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
                         || is_singular
                     {
                         self.count_verified += 1;
@@ -472,7 +580,7 @@ impl Verifier {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
-                    if is_first_check && level == MessageLevel::Error {
+                    if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
                         invalidity = true;
                     }
@@ -480,30 +588,37 @@ impl Verifier {
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    reporter.report(&message(level, msg, &context.0));
+                    if let Some(level) = level {
+                        reporter.report(&message(level, msg, &context.0).to_any());
+                    }
                     // need to report that we need to rerun from this function (into spinoff)
                     // so that we can run the profiler on an isolated file on the second pass
                     timed_out = true;
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
-                    if air_model.is_none() {
-                        // singular_invalid case
-                        self.count_errors += 1;
-                        reporter.report_as(&error, level);
-                        break;
+                    if let Some(level) = level {
+                        if air_model.is_none() {
+                            // singular_invalid case
+                            self.count_errors += 1;
+                            reporter.report_as(&error, level);
+                            break;
+                        }
                     }
                     let air_model = air_model.unwrap();
 
-                    if is_first_check && level == MessageLevel::Error {
+                    if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    if !self.expand_flag || vir::split_expression::is_split_error(&error) {
-                        reporter.report_as(&error, level);
+                    let error: Message = error.downcast().unwrap();
+                    if let Some(level) = level {
+                        if !self.expand_flag || vir::split_expression::is_split_error(&error) {
+                            reporter.report_as(&error.clone().to_any(), level);
+                        }
                     }
 
-                    if level == MessageLevel::Error {
+                    if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
                             self.expand_targets.push(error.clone());
@@ -519,7 +634,7 @@ impl Verifier {
                                     MessageLevel::Warning,
                                     "no source map available for debugger. Try running single threaded.",
                                     &context.0,
-                                ));
+                                ).to_any());
                             }
                         }
                     }
@@ -543,34 +658,34 @@ impl Verifier {
                     );
                     let time1 = Instant::now();
 
-                    let module_time =
-                        self.module_times.get_mut(module_path).expect("module time not found");
-                    module_time.time_air += time1 - time0;
+                    let bucket_time =
+                        self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+                    bucket_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     panic!("unexpected output from solver: {}", err);
                 }
             }
         }
-        if level == MessageLevel::Error && checks_remaining == 0 {
+        if level == Some(MessageLevel::Error) && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
             );
-            reporter.report(&note(msg, context.0));
+            reporter.report(&note(context.0, msg).to_any());
         }
 
         if is_check_valid && !is_singular {
             air_context.finish_query();
         }
 
-        (invalidity, timed_out)
+        RunCommandQueriesResult { invalidity, timed_out }
     }
 
     fn run_commands(
         &mut self,
-        module_path: &vir::ast::Path,
-        diagnostics: &impl Diagnostics,
+        bucket_id: &BucketId,
+        diagnostics: &impl air::messages::Diagnostics,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
         comment: &str,
@@ -582,41 +697,40 @@ impl Verifier {
         for command in commands.iter() {
             let time0 = Instant::now();
             Self::check_internal_result(air_context.command(
+                &vir::messages::VirMessageInterface {},
                 diagnostics,
                 &command,
                 Default::default(),
             ));
             let time1 = Instant::now();
 
-            let module_time =
-                self.module_times.get_mut(module_path).expect("module time not found");
-            module_time.time_air += time1 - time0;
+            let bucket_time = self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+            bucket_time.time_air += time1 - time0;
         }
     }
 
     /// Returns true if there was at least one Invalid resulting in an error.
     fn run_commands_queries(
         &mut self,
-        reporter: &impl Diagnostics,
+        reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
-        level: MessageLevel,
+        level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
-        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
-        snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        module: &vir::ast::Path,
+        assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
+        snap_map: &Vec<(vir::messages::Span, SnapPos)>,
+        bucket_id: &BucketId,
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-    ) -> (bool, bool) {
+    ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
-        let includes_function = user_filter.includes_function(function_name, module);
+        let includes_function = user_filter.includes_function(function_name);
         if !includes_function {
-            return (false, false);
+            return RunCommandQueriesResult { invalidity: false, timed_out: false };
         }
 
-        let mut invalidity = false;
-        let mut timed_out = false;
+        let mut result = RunCommandQueriesResult { invalidity: false, timed_out: false };
         let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
         if commands.len() > 0 {
@@ -626,64 +740,66 @@ impl Verifier {
         }
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
-            let (result_invalidity, result_timeout) = self.check_result_validity(
-                module,
-                reporter,
-                source_map,
-                level,
-                air_context,
-                assign_map,
-                snap_map,
-                &command,
-                &(span, &desc),
-                *prover_choice == vir::def::ProverChoice::Singular,
-            );
-            invalidity = invalidity || result_invalidity;
-            timed_out = timed_out || result_timeout;
+            result = result
+                + self.check_result_validity(
+                    bucket_id,
+                    reporter,
+                    source_map,
+                    level,
+                    air_context,
+                    assign_map,
+                    snap_map,
+                    &command,
+                    &(span, &desc),
+                    *prover_choice == vir::def::ProverChoice::Singular,
+                );
         }
 
-        (invalidity, timed_out)
+        result
     }
 
-    fn new_air_context_with_prelude(
-        &mut self,
-        diagnostics: &impl Diagnostics,
-        module_path: &vir::ast::Path,
-        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
-        function_path: Option<&Arc<vir::ast::PathX>>,
+    fn log_fine_name_suffix(
         is_rerun: bool,
-        prelude_config: vir::prelude::PreludeConfig,
-    ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new();
-        air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
-        air_context.set_debug(self.args.debug);
-        air_context.set_profile(self.args.profile);
-        air_context.set_profile_all(self.args.profile_all);
-        if function_path.is_some() {
-            air_context.set_query_logfile_name(Self::gen_log_file_name(
-                Some(module_path),
-                function_path,
-                crate::config::PROFILE_FILE_SUFFIX,
-            ));
-        }
-
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
+        expand_flag: bool,
+        suffix: &str,
+    ) -> String {
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         let count_msg = query_function_path_counter
             .map(|(_, ref c)| format!("_{:02}", c))
             .unwrap_or("".to_string());
-        let expand_msg = if self.expand_flag { "_expand" } else { "" };
+        let expand_msg = if expand_flag { "_expand" } else { "" };
 
-        let function_path = query_function_path_counter.map(|(p, _)| p);
+        format!("{}{}{}{}", rerun_msg, count_msg, expand_msg, suffix,)
+    }
+
+    fn new_air_context_with_prelude<'m>(
+        &mut self,
+        message_interface: Arc<dyn air::messages::MessageInterface>,
+        diagnostics: &impl air::messages::Diagnostics,
+        bucket_id: &BucketId,
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
+        is_rerun: bool,
+        prelude_config: vir::prelude::PreludeConfig,
+        profile_file_name: Option<&std::path::PathBuf>,
+    ) -> Result<air::context::Context, VirErr> {
+        let mut air_context = air::context::Context::new(message_interface.clone());
+        air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
+        air_context.set_debug(self.args.debug);
+        if let Some(profile_file_name) = profile_file_name {
+            air_context.set_profile_with_logfile_name(
+                profile_file_name.to_str().expect("invalid prover log path").to_owned(),
+            );
+        }
+
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
-                Some(module_path),
-                function_path,
-                format!(
-                    "{}{}{}{}",
-                    rerun_msg,
-                    count_msg,
-                    expand_msg,
-                    crate::config::AIR_INITIAL_FILE_SUFFIX
+                Some(bucket_id),
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::AIR_INITIAL_FILE_SUFFIX,
                 )
                 .as_str(),
             )?;
@@ -691,14 +807,12 @@ impl Verifier {
         }
         if self.args.log_all || self.args.log_air_final {
             let file = self.create_log_file(
-                Some(module_path),
-                function_path,
-                format!(
-                    "{}{}{}{}",
-                    rerun_msg,
-                    count_msg,
-                    expand_msg,
-                    crate::config::AIR_FINAL_FILE_SUFFIX
+                Some(bucket_id),
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::AIR_FINAL_FILE_SUFFIX,
                 )
                 .as_str(),
             )?;
@@ -706,14 +820,12 @@ impl Verifier {
         }
         if self.args.log_all || self.args.log_smt {
             let file = self.create_log_file(
-                Some(module_path),
-                function_path,
-                format!(
-                    "{}{}{}{}",
-                    rerun_msg,
-                    count_msg,
-                    expand_msg,
-                    crate::config::SMT_FILE_SUFFIX
+                Some(bucket_id),
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::SMT_FILE_SUFFIX,
                 )
                 .as_str(),
             )?;
@@ -731,43 +843,45 @@ impl Verifier {
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude(prelude_config).iter() {
             Self::check_internal_result(air_context.command(
+                &*message_interface,
                 diagnostics,
                 &command,
                 Default::default(),
             ));
         }
 
-        let module_name =
-            module_path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
         air_context.blank_line();
-        air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+        air_context.comment(&("MODULE '".to_string() + &bucket_id.friendly_name() + "'"));
 
         Ok(air_context)
     }
 
-    fn new_air_context_with_module_context(
+    fn new_air_context_with_bucket_context<'m>(
         &mut self,
+        message_interface: Arc<dyn air::messages::MessageInterface>,
         ctx: &vir::context::Ctx,
-        diagnostics: &impl Diagnostics,
-        module_path: &vir::ast::Path,
+        diagnostics: &impl air::messages::Diagnostics,
+        bucket_id: &BucketId,
         function_path: &vir::ast::Path,
         datatype_commands: Commands,
         assoc_type_decl_commands: Commands,
+        trait_commands: Commands,
         assoc_type_impl_commands: Commands,
         function_decl_commands: Arc<Vec<(Commands, String)>>,
-        function_spec_commands: Arc<Vec<(Commands, String)>>,
-        function_axiom_commands: Arc<Vec<(Commands, String)>>,
+        ops: &Vec<Op>,
         is_rerun: bool,
         context_counter: usize,
-        span: &air::ast::Span,
+        span: &vir::messages::Span,
+        profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
+            message_interface.clone(),
             diagnostics,
-            module_path,
+            bucket_id,
             Some((function_path, context_counter)),
-            Some(function_path),
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            profile_file_name,
         )?;
 
         // Write the span of spun-off query
@@ -776,62 +890,96 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
+                &*message_interface,
                 diagnostics,
                 &command,
                 Default::default(),
             ));
         }
 
-        // set up module context
+        // set up bucket context
         self.run_commands(
-            module_path,
+            bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_decl_commands,
             &("Associated-Type-Decls".to_string()),
         );
         self.run_commands(
-            module_path,
+            bucket_id,
             diagnostics,
             &mut air_context,
             &datatype_commands,
             &("Datatypes".to_string()),
         );
         self.run_commands(
-            module_path,
+            bucket_id,
+            diagnostics,
+            &mut air_context,
+            &trait_commands,
+            &("Traits".to_string()),
+        );
+        self.run_commands(
+            bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_impl_commands,
             &("Associated-Type-Impls".to_string()),
         );
         for commands in &*function_decl_commands {
-            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
+            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
         }
-        for commands in &*function_spec_commands {
-            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
-        }
-        for commands in &*function_axiom_commands {
-            self.run_commands(module_path, diagnostics, &mut air_context, &commands.0, &commands.1);
+        for op in ops.iter() {
+            match &op.kind {
+                OpKind::Context(_context_op, commands) => {
+                    self.run_commands(
+                        bucket_id,
+                        diagnostics,
+                        &mut air_context,
+                        commands,
+                        &op.to_air_comment(),
+                    );
+                }
+                OpKind::Query { .. } => {
+                    panic!("should have only got Context ops");
+                }
+            }
         }
         Ok(air_context)
     }
 
-    // Verify a single module
-    fn verify_module(
+    // Verify a single bucket
+    fn verify_bucket(
         &mut self,
-        reporter: &impl Diagnostics,
+        reporter: &impl air::messages::Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
-        module: &vir::ast::Path,
+        bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
     ) -> Result<(Duration, Duration), VirErr> {
+        let message_interface = Arc::new(vir::messages::VirMessageInterface {});
+
+        assert!(!(self.args.profile && self.args.profile_all));
+        let profile_all_file_name = if self.args.profile_all {
+            let solver_log_dir = self.ensure_solver_log_dir()?;
+            let profile_file_name = self.log_file_name(
+                &solver_log_dir,
+                Some(bucket_id),
+                Self::log_fine_name_suffix(false, None, false, crate::config::PROFILE_FILE_SUFFIX)
+                    .as_str(),
+            );
+            Some(profile_file_name)
+        } else {
+            None
+        };
         let mut air_context = self.new_air_context_with_prelude(
+            message_interface.clone(),
             reporter,
-            module,
-            None,
+            bucket_id,
             None,
             false,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
             air_context
@@ -846,6 +994,7 @@ impl Verifier {
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
             Self::check_internal_result(air_context.command(
+                &*message_interface,
                 reporter,
                 &command,
                 Default::default(),
@@ -855,7 +1004,7 @@ impl Verifier {
         let assoc_type_decl_commands =
             vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &assoc_type_decl_commands,
@@ -872,7 +1021,7 @@ impl Verifier {
                 .collect(),
         );
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &datatype_commands,
@@ -881,7 +1030,7 @@ impl Verifier {
 
         let trait_commands = vir::traits::traits_to_air(ctx, &krate);
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &trait_commands,
@@ -891,339 +1040,230 @@ impl Verifier {
         let assoc_type_impl_commands =
             vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
         self.run_commands(
-            module,
+            bucket_id,
             reporter,
             &mut air_context,
             &assoc_type_impl_commands,
             &("Associated-Type-Impls".to_string()),
         );
 
-        let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
-            Some(vir::context::FunctionCtx {
-                checking_recommends,
-                checking_recommends_for_non_spec: checking_recommends && f.x.mode != Mode::Spec,
-                module_for_chosen_triggers: f.x.owning_module.clone(),
-                current_fun: f.x.name.clone(),
-            })
-        };
-
         let mut function_decl_commands = vec![];
-        let mut function_spec_commands = vec![];
-        let mut function_axiom_commands = vec![];
 
         // Declare the function symbols
         for function in &krate.functions {
-            ctx.fun = mk_fun_ctx(&function, false);
+            ctx.fun = crate::commands::mk_fun_ctx(&function, false);
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
             let commands = vir::func_to_air::func_name_to_air(ctx, reporter, &function)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
-            self.run_commands(module, reporter, &mut air_context, &commands, &comment);
+            self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
 
-        // Collect function definitions
-        let mut funs: HashMap<Fun, (Function, Visibility)> = HashMap::new();
-        for function in &krate.functions {
-            assert!(!funs.contains_key(&function.x.name));
-            let vis = function.x.visibility.clone();
-            if !is_visible_to(&vis, module) || function.x.attrs.is_decrease_by {
-                continue;
-            }
-            let restricted_to = if function.x.publish.is_none() {
-                // private to owning_module
-                function.x.owning_module.clone()
-            } else {
-                // public
-                None
-            };
-            let vis_abs = Visibility { restricted_to, ..vis };
-            funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
-        }
+        let function_decl_commands = Arc::new(function_decl_commands);
 
-        // For spec functions, check termination and declare consequence axioms.
-        // For proof/exec functions, declare requires/ensures.
-        // Declare them in SCC (strongly connected component) sorted order so that
-        // termination checking precedes consequence axioms for each SCC.
-        let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
-        let mut fun_ssts = UpdateCell::new(HashMap::new());
-        for scc in &ctx.global.func_call_sccs.as_ref().clone() {
-            let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
-            let mut scc_fun_nodes: Vec<Fun> = Vec::new();
-            for node in scc_nodes.into_iter() {
-                match node {
-                    Node::Fun(f) => scc_fun_nodes.push(f),
-                    _ => {}
-                }
-            }
-            // Declare requires/ensures
-            for f in scc_fun_nodes.iter() {
-                if !funs.contains_key(f) {
-                    continue;
-                }
-                let (function, _vis_abs) = &funs[f];
-
-                ctx.fun = mk_fun_ctx(&function, false);
-                let decl_commands =
-                    vir::func_to_air::func_decl_to_air(ctx, reporter, &fun_ssts, &function)?;
-                ctx.fun = None;
-                let comment = "Function-Specs ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(module, reporter, &mut air_context, &decl_commands, &comment);
-                function_spec_commands.push((decl_commands.clone(), comment.clone()));
-            }
-            // Check termination
-            for f in scc_fun_nodes.iter() {
-                if !funs.contains_key(f) {
-                    continue;
-                }
-                let (function, vis_abs) = &funs[f];
-
-                ctx.fun = mk_fun_ctx(&function, false);
-                let not_verifying_owning_module = Some(module) != function.x.owning_module.as_ref();
-                let (decl_commands, check_commands, new_fun_ssts) =
-                    vir::func_to_air::func_axioms_to_air(
-                        ctx,
+        let bucket = self.get_bucket(bucket_id);
+        let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
+        let mut all_context_ops = vec![];
+        while let Some(op) = opgen.next()? {
+            match &op.kind {
+                OpKind::Context(_context_op, commands) => {
+                    self.run_commands(
+                        bucket_id,
                         reporter,
-                        fun_ssts,
-                        &function,
-                        is_visible_to(&vis_abs, module),
-                        not_verifying_owning_module,
-                    )?;
-                fun_ssts = new_fun_ssts;
-                fun_axioms.insert(f.clone(), decl_commands);
-                ctx.fun = None;
-
-                if not_verifying_owning_module {
-                    continue;
+                        &mut air_context,
+                        commands,
+                        &op.to_air_comment(),
+                    );
+                    all_context_ops.push(op);
                 }
-                let (invalidity, _) = self.run_commands_queries(
-                    reporter,
-                    source_map,
-                    MessageLevel::Error,
-                    &mut air_context,
-                    Arc::new(CommandsWithContextX {
-                        span: function.span.clone(),
-                        desc: "termination proof".to_string(),
-                        commands: check_commands,
-                        prover_choice: vir::def::ProverChoice::DefaultProver,
-                        skip_recommends: false,
-                    }),
-                    &HashMap::new(),
-                    &vec![],
-                    module,
-                    &function.x.name,
-                    &("Function-Termination ".to_string() + &fun_as_friendly_rust_name(f)),
-                    Some("function termination: "),
-                );
-                let check_recommends = function.x.attrs.check_recommends;
-                if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {
-                    // Rerun failed query to report possible recommends violations
-                    // or (optionally) check recommends for spec function bodies
-                    ctx.fun = mk_fun_ctx(&function, true);
-                    let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
-                        ctx,
-                        reporter,
-                        fun_ssts,
-                        &function,
-                        vir::func_to_air::FuncDefPhase::CheckingSpecs,
-                        true,
-                    )?;
-                    ctx.fun = None;
-                    fun_ssts = new_fun_ssts;
-                    let level = if invalidity { MessageLevel::Note } else { MessageLevel::Warning };
-                    let s = "Function-Decl-Check-Recommends ";
-                    for command in commands.iter().map(|x| &*x) {
-                        self.run_commands_queries(
+                OpKind::Query { query_op, commands_with_context_list, snap_map, profile_rerun } => {
+                    let level = match query_op {
+                        QueryOp::SpecTermination => MessageLevel::Error,
+                        QueryOp::Body(Style::Normal) => MessageLevel::Error,
+                        QueryOp::Body(Style::RecommendsFollowupFromError) => MessageLevel::Note,
+                        QueryOp::Body(Style::RecommendsChecked) => MessageLevel::Warning,
+                        QueryOp::Body(Style::Expanded) => MessageLevel::Note,
+                    };
+                    let function = &op.function;
+                    let is_recommend = query_op.is_recommend();
+                    self.expand_flag = query_op.is_expanded();
+
+                    let mut spinoff_context_counter = 1;
+
+                    let mut any_invalid = false;
+                    self.expand_targets = vec![];
+                    for cmds in commands_with_context_list.iter() {
+                        if is_recommend && cmds.skip_recommends {
+                            continue;
+                        }
+                        if cmds.prover_choice == vir::def::ProverChoice::Singular {
+                            #[cfg(not(feature = "singular"))]
+                            panic!(
+                                "Found singular command when Verus is compiled without Singular feature"
+                            );
+
+                            #[cfg(feature = "singular")]
+                            if air_context.singular_log.is_none() {
+                                let file = self.create_log_file(
+                                    Some(bucket_id),
+                                    crate::config::SINGULAR_FILE_SUFFIX,
+                                )?;
+                                air_context.singular_log = Some(file);
+                            }
+                        }
+                        let mut spinoff_z3_context;
+                        let do_spinoff = (cmds.prover_choice == vir::def::ProverChoice::Nonlinear)
+                            || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
+                            || *profile_rerun;
+
+                        let profile_file_name =
+                            if *profile_rerun || (self.args.profile_all && do_spinoff) {
+                                let solver_log_dir = self.ensure_solver_log_dir()?;
+                                let profile_file_name = self.log_file_name(
+                                    &solver_log_dir,
+                                    Some(bucket_id),
+                                    Self::log_fine_name_suffix(
+                                        is_recommend,
+                                        Some((&(function.x.name).path, spinoff_context_counter)),
+                                        self.expand_flag,
+                                        crate::config::PROFILE_FILE_SUFFIX,
+                                    )
+                                    .as_str(),
+                                );
+                                Some(profile_file_name)
+                            } else {
+                                None
+                            };
+
+                        let query_air_context = if do_spinoff {
+                            spinoff_z3_context = self.new_air_context_with_bucket_context(
+                                message_interface.clone(),
+                                &opgen.ctx,
+                                reporter,
+                                bucket_id,
+                                &(function.x.name).path,
+                                datatype_commands.clone(),
+                                assoc_type_decl_commands.clone(),
+                                trait_commands.clone(),
+                                assoc_type_impl_commands.clone(),
+                                function_decl_commands.clone(),
+                                &all_context_ops,
+                                is_recommend,
+                                spinoff_context_counter,
+                                &cmds.span,
+                                profile_file_name.as_ref(),
+                            )?;
+                            // for bitvector, only one query, no push/pop
+                            if cmds.prover_choice == vir::def::ProverChoice::BitVector {
+                                spinoff_z3_context.disable_incremental_solving();
+                            }
+                            spinoff_context_counter += 1;
+                            &mut spinoff_z3_context
+                        } else {
+                            &mut air_context
+                        };
+
+                        let RunCommandQueriesResult {
+                            invalidity: command_invalidity,
+                            timed_out: command_timed_out,
+                        } = self.run_commands_queries(
                             reporter,
                             source_map,
-                            level,
-                            &mut air_context,
-                            command.clone(),
+                            (!profile_rerun).then(|| level),
+                            query_air_context,
+                            cmds.clone(),
                             &HashMap::new(),
                             &snap_map,
-                            module,
+                            bucket_id,
                             &function.x.name,
-                            &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
-                            Some("recommends check: "),
+                            &op.to_air_comment(),
+                            None,
                         );
-                    }
-                }
-            }
+                        if do_spinoff {
+                            let (time_smt_init, time_smt_run) = query_air_context.get_time();
+                            spunoff_time_smt_init += time_smt_init;
+                            spunoff_time_smt_run += time_smt_run;
+                        }
 
-            // Declare consequence axioms
-            for f in scc_fun_nodes.iter() {
-                if !funs.contains_key(f) {
-                    continue;
-                }
-                let decl_commands = &fun_axioms[f];
-                let comment = "Function-Axioms ".to_string() + &fun_as_friendly_rust_name(f);
-                self.run_commands(module, reporter, &mut air_context, &decl_commands, &comment);
-                function_axiom_commands.push((decl_commands.clone(), comment.clone()));
-                funs.remove(f);
-            }
-        }
-        assert!(funs.len() == 0);
+                        any_invalid |= command_invalidity;
 
-        let function_decl_commands = Arc::new(function_decl_commands);
-        let function_spec_commands = Arc::new(function_spec_commands);
-        let function_axiom_commands = Arc::new(function_axiom_commands);
-        // Create queries to check the validity of proof/exec function bodies
-        let no_auto_recommends_check = self.args.no_auto_recommends_check;
-        let expand_errors_check = self.args.expand_errors;
-        let profile_flag = self.args.profile;
-        let profile_all_flag = self.args.profile_all;
-        self.expand_targets = vec![];
-        for function in &krate.functions {
-            let filtered_function = match self.user_filter.as_ref() {
-                Some(filter) => filter.includes_function(&function.x.name, module),
-                None => false,
-            };
-            let mut has_queries = false;
-            if Some(module.clone()) != function.x.owning_module {
-                continue;
-            }
-            let check_validity = &mut |recommends_rerun: bool,
-                                       expands_rerun: bool,
-                                       profile_rerun: bool,
-                                       query_update: &mut bool,
-                                       mut fun_ssts: SstMap|
-             -> Result<(bool, bool, SstMap), VirErr> {
-                let mut spinoff_context_counter = 1;
-                ctx.fun = mk_fun_ctx(&function, recommends_rerun);
-                ctx.expand_flag = expands_rerun;
-                self.expand_flag = expands_rerun;
-                if expands_rerun {
-                    ctx.debug_expand_targets = self.expand_targets.drain(..).collect();
-                }
-                let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
-                    ctx,
-                    reporter,
-                    fun_ssts,
-                    &function,
-                    vir::func_to_air::FuncDefPhase::CheckingProofExec,
-                    recommends_rerun,
-                )?;
-                fun_ssts = new_fun_ssts;
-                let level = if recommends_rerun || expands_rerun {
-                    MessageLevel::Note
-                } else {
-                    MessageLevel::Error
-                };
-                let s =
-                    if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
-
-                let mut function_invalidity = false;
-                let mut function_timed_out = false;
-                for command in commands.iter().map(|x| &*x) {
-                    *query_update = true;
-                    let CommandsWithContextX {
-                        span,
-                        desc: _,
-                        commands: _,
-                        prover_choice,
-                        skip_recommends,
-                    } = &**command;
-                    if recommends_rerun && *skip_recommends {
-                        continue;
-                    }
-                    if *prover_choice == vir::def::ProverChoice::Singular {
-                        #[cfg(not(feature = "singular"))]
-                        panic!(
-                            "Found singular command when Verus is compiled without Singular feature"
-                        );
-
-                        #[cfg(feature = "singular")]
-                        if air_context.singular_log.is_none() {
-                            let file = self.create_log_file(
-                                Some(module),
-                                None,
-                                crate::config::SINGULAR_FILE_SUFFIX,
-                            )?;
-                            air_context.singular_log = Some(file);
+                        if let Some(profile_file_name) = profile_file_name {
+                            let profiler = Profiler::new(
+                                message_interface.clone(),
+                                &profile_file_name,
+                                reporter,
+                            );
+                            reporter.report(
+                                &note_bare(format!(
+                                    "Profile statistics for {}",
+                                    fun_as_friendly_rust_name(&function.x.name)
+                                ))
+                                .to_any(),
+                            );
+                            self.print_profile_stats(
+                                reporter,
+                                profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                            );
+                        } else {
+                            if command_timed_out && self.args.profile {
+                                opgen.retry_with_profile_later(
+                                    query_op.clone(),
+                                    commands_with_context_list.clone(),
+                                    snap_map.clone(),
+                                    function,
+                                );
+                            }
                         }
                     }
-                    let mut spinoff_z3_context;
-                    let do_spinoff = (*prover_choice == vir::def::ProverChoice::Spinoff)
-                        || (*prover_choice == vir::def::ProverChoice::BitVector)
-                        || profile_rerun;
-                    let query_air_context = if do_spinoff {
-                        spinoff_z3_context = self.new_air_context_with_module_context(
-                            ctx,
-                            reporter,
-                            module,
-                            &(function.x.name).path,
-                            datatype_commands.clone(),
-                            assoc_type_decl_commands.clone(),
-                            assoc_type_impl_commands.clone(),
-                            function_decl_commands.clone(),
-                            function_spec_commands.clone(),
-                            function_axiom_commands.clone(),
-                            recommends_rerun,
-                            spinoff_context_counter,
-                            &span,
-                        )?;
-                        // for bitvector, only one query, no push/pop
-                        if *prover_choice == vir::def::ProverChoice::BitVector {
-                            spinoff_z3_context.disable_incremental_solving();
+
+                    if matches!(query_op, QueryOp::Body(Style::Normal)) {
+                        if (any_invalid && !self.args.no_auto_recommends_check)
+                            || function.x.attrs.check_recommends
+                        {
+                            opgen.retry_with_recommends(&op, any_invalid)?;
                         }
-                        spinoff_context_counter += 1;
-                        &mut spinoff_z3_context
-                    } else {
-                        &mut air_context
-                    };
-                    let desc_prefix = recommends_rerun.then(|| "recommends check: ");
-                    let (command_invalidity, command_timed_out) = self.run_commands_queries(
-                        reporter,
-                        source_map,
-                        level,
-                        query_air_context,
-                        command.clone(),
-                        &HashMap::new(),
-                        &snap_map,
-                        module,
-                        &function.x.name,
-                        &(s.to_string() + &fun_as_friendly_rust_name(&function.x.name)),
-                        desc_prefix,
-                    );
-                    if do_spinoff {
-                        let (time_smt_init, time_smt_run) = query_air_context.get_time();
-                        spunoff_time_smt_init += time_smt_init;
-                        spunoff_time_smt_run += time_smt_run;
+
+                        if any_invalid && self.args.expand_errors {
+                            let expand_targets = self.expand_targets.drain(..).collect();
+                            opgen.retry_with_expand_errors(&op, expand_targets)?;
+                        }
                     }
 
-                    function_invalidity = function_invalidity || command_invalidity;
-                    function_timed_out = function_timed_out || command_timed_out;
+                    if matches!(query_op, QueryOp::SpecTermination) {
+                        if (any_invalid && !self.args.no_auto_recommends_check)
+                            || function.x.attrs.check_recommends
+                        {
+                            // Do recommends-checking for the body of the function.
+                            // This should always happen for spec(checked).
+                            //
+                            // Note: this is done as a response to the 'termination check'
+                            // because a failed termination check will trigger the
+                            // spec body check even if spec(checked) is not marked.
+                            // TODO the user probably expects us to also do a recommends-retry
+                            // or an expand-errors retry of the decreases-by lemma if
+                            // it exists.
+
+                            opgen.retry_with_recommends(&op, any_invalid)?;
+                        }
+                    }
                 }
-                Ok((function_invalidity, function_timed_out, fun_ssts))
-            };
-            let (function_invalidity, function_timed_out, new_fun_ssts) =
-                check_validity(false, false, false, &mut has_queries, fun_ssts)?;
-            fun_ssts = new_fun_ssts;
-            if function_invalidity && expand_errors_check {
-                fun_ssts = check_validity(false, true, false, &mut has_queries, fun_ssts)?.2;
-            }
-            if function_invalidity && !no_auto_recommends_check {
-                fun_ssts = check_validity(true, false, false, &mut has_queries, fun_ssts)?.2;
-            }
-            if has_queries
-                && ((function_timed_out && profile_flag) || (profile_all_flag && filtered_function))
-            {
-                // TODO: double check time statistics/fun_sst getting messed up?
-                fun_ssts = check_validity(false, false, true, &mut has_queries, fun_ssts)?.2;
-                let profiler = Profiler::new(
-                    &Self::gen_log_file_name(
-                        Some(module),
-                        Some(&function.x.name.path),
-                        crate::config::PROFILE_FILE_SUFFIX,
-                    ),
-                    reporter,
-                );
-                self.print_profile_stats(reporter, profiler, &ctx.global.qid_map.borrow());
             }
         }
+        if let Some(profile_all_file_name) = profile_all_file_name {
+            let profiler =
+                Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
+            reporter.report(
+                &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
+                    .to_any(),
+            );
+            self.print_profile_stats(reporter, profiler, &opgen.ctx.global.qid_map.borrow());
+        }
+
         ctx.fun = None;
 
         let (time_smt_init, time_smt_run) = air_context.get_time();
@@ -1231,37 +1271,38 @@ impl Verifier {
         Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run))
     }
 
-    fn verify_module_outer(
+    fn verify_bucket_outer(
         &mut self,
-        reporter: &impl Diagnostics,
+        reporter: &impl air::messages::Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
-        module: &vir::ast::Path,
+        bucket_id: &BucketId,
         mut global_ctx: vir::context::GlobalCtx,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
         let time_verify_start = Instant::now();
 
-        self.module_times.insert(module.clone(), Default::default());
+        self.bucket_times.insert(bucket_id.clone(), Default::default());
 
-        let module_name = module_name(module);
+        let bucket_name = bucket_id.friendly_name();
         let user_filter = self.user_filter.as_ref().unwrap();
         if self.args.trace || !user_filter.is_everything() {
-            let module_msg = if module.segments.len() == 0 {
-                "root module".into()
-            } else {
-                format!("module {}", &module_name)
-            };
             let functions_msg =
                 if user_filter.is_function_filter() { " (selected functions)" } else { "" };
-            reporter.report_now(&note_bare(format!("verifying {module_msg}{functions_msg}")));
+            reporter
+                .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits) =
-            vir::prune::prune_krate_for_module(&krate, &module, &self.vstd_crate_name);
+            vir::prune::prune_krate_for_module(
+                &krate,
+                bucket_id.module(),
+                bucket_id.function(),
+                &self.vstd_crate_name,
+            );
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
-            module.clone(),
+            bucket_id.module().clone(),
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
@@ -1270,28 +1311,26 @@ impl Verifier {
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_vir_poly {
             let mut file =
-                self.create_log_file(Some(&module), None, crate::config::VIR_POLY_FILE_SUFFIX)?;
+                self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.vir_log_option);
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_module(reporter, &poly_krate, source_map, module, &mut ctx)?;
+            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
 
         let time_verify_end = Instant::now();
 
-        let mut time_module = self.module_times.get_mut(module).expect("module should exist");
-        time_module.time_smt_init = time_smt_init;
-        time_module.time_smt_run = time_smt_run;
-        time_module.time_verify = time_verify_end - time_verify_start;
+        let mut time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
+        time_bucket.time_smt_init = time_smt_init;
+        time_bucket.time_smt_run = time_smt_run;
+        time_bucket.time_verify = time_verify_end - time_verify_start;
 
         if self.args.trace {
-            if module.segments.len() == 0 {
-                reporter.report_now(&note_bare("done with root module"));
-            } else {
-                reporter.report_now(&note_bare(&format!("done with module {}", &module_name)));
-            }
+            reporter.report_now(
+                &note_bare(format!("done with {:}", bucket_id.friendly_name())).to_any(),
+            );
         }
 
         Ok(global_ctx)
@@ -1308,22 +1347,19 @@ impl Verifier {
         let reporter = Reporter::new(spans, compiler);
         let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
-        let inferred_modes =
-            self.inferred_modes.take().expect("inferred_modes should be initialized");
 
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
         let interpreter_log_file =
             Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_interpreter {
-                Some(self.create_log_file(None, None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+                Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None
             }));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
-            inferred_modes,
             self.args.rlimit,
             interpreter_log_file,
             self.vstd_crate_name.clone(),
@@ -1333,13 +1369,37 @@ impl Verifier {
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         if self.args.log_all || self.args.log_vir_simple {
-            let mut file =
-                self.create_log_file(None, None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
+            let mut file = self.create_log_file(None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &krate, &self.args.vir_log_option);
         }
 
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
+
+        // The 'user_filter' handles the filter provided on the command line
+        // (--verify-module, --verify-funciton, etc.)
+        // Whereas the 'buckets' are the way we group obligations for parallelizing
+        // and context pruning.
+        // Buckets usually fall along module boundaries, but the user can create
+        // more buckets using #[spinoff_prover] can create
+        // more buckets.
+        //
+        // For example, suppose module M has functions a, b, c, d.
+        // with a and b both marked spinoff_prover.
+        // Then we would create buckets {a}, {b}, and {c, d}.
+        //
+        // We don't need to create any buckets for stuff that we don't intend
+        // to verify. However, we can't shrink any existing bucket based on the
+        // the user_filter.
+        // For example, suppose the user includes a filter `--verify-function c`.
+        // Then, we can drop the {a} and {b} buckets.
+        // HOWEVER, we still create the entire {c, d} bucket.
+        // We skip the d-related queries when we get to them; however, we still
+        // include d in the bucket because d influences the context.
+        // Our objective is to generate the same queries for c that we'd otherwise
+        // get if we were running verification on the whole module.
+        // If the user wants to reduce the context used for d, then they can use
+        // the spinoff_prover attribute.
 
         let user_filter = self.user_filter.as_ref().unwrap();
         let module_ids_to_verify: Vec<vir::ast::Path> = {
@@ -1349,6 +1409,10 @@ impl Verifier {
                 .expect("current_crate_module_ids should be initialized");
             user_filter.filter_module_ids(current_crate_module_ids)?
         };
+        let buckets = crate::buckets::get_buckets(&krate, &module_ids_to_verify);
+        let buckets = user_filter.filter_buckets(buckets);
+        let bucket_ids: Vec<BucketId> = buckets.iter().map(|p| p.0.clone()).collect();
+        self.buckets = buckets.into_iter().collect();
 
         let time_verify_sequential_end = Instant::now();
         self.time_verify_crate_sequential =
@@ -1356,21 +1420,20 @@ impl Verifier {
 
         let source_map = compiler.session().source_map();
 
-        self.num_threads = std::cmp::min(self.args.num_threads, module_ids_to_verify.len());
+        self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
         if self.num_threads > 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
-            // collect the modules and create the task queueu
-            let mut tasks = VecDeque::with_capacity(module_ids_to_verify.len());
+            // collect the buckets and create the task queueu
+            let mut tasks = VecDeque::with_capacity(bucket_ids.len());
             let mut messages: Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
-            for (i, module) in module_ids_to_verify.iter().enumerate() {
-                // give each module its own log file
+            for (i, bucket_id) in bucket_ids.iter().enumerate() {
+                // give each bucket its own log file
                 let interpreter_log_file = Arc::new(std::sync::Mutex::new(
                     if self.args.log_all || self.args.log_vir_simple {
                         Some(self.create_log_file(
-                            Some(module),
-                            None,
+                            Some(bucket_id),
                             crate::config::INTERPRETER_FILE_SUFFIX,
                         )?)
                     } else {
@@ -1378,11 +1441,11 @@ impl Verifier {
                     },
                 ));
 
-                // give each task a queued reporter to identify the module that is sending messages
+                // give each task a queued reporter to identify the bucket that is sending messages
                 let reporter = QueuedReporter::new(i, sender.clone());
 
                 tasks.push_back((
-                    module.clone(),
+                    bucket_id.clone(),
                     global_ctx.from_self_with_log(interpreter_log_file),
                     reporter,
                 ));
@@ -1407,15 +1470,15 @@ impl Verifier {
                         let mut tq = thread_taskq.lock().unwrap();
                         let elm = tq.pop_front();
                         drop(tq);
-                        if let Some((module, task, reporter)) = elm {
-                            let res = thread_verifier.verify_module_outer(
+                        if let Some((bucket_id, task, reporter)) = elm {
+                            let res = thread_verifier.verify_bucket_outer(
                                 &reporter,
                                 &thread_krate,
                                 None,
-                                &module,
+                                &bucket_id,
                                 task,
                             );
-                            reporter.done(); // we've verified the module, send the done message
+                            reporter.done(); // we've verified the bucket, send the done message
                             match res {
                                 Ok(res) => {
                                     completed_tasks.push(res);
@@ -1431,9 +1494,9 @@ impl Verifier {
                 workers.push(worker);
             }
 
-            // start handling messages, we keep track of the current active module for which we
-            // print messages immediately, while buffering other messages from the other modules
-            let mut active_module = None;
+            // start handling messages, we keep track of the current active bucket for which we
+            // print messages immediately, while buffering other messages from the other buckets
+            let mut active_bucket = None;
             let mut num_done = 0;
             let reporter = Reporter::new(spans, compiler);
             loop {
@@ -1443,36 +1506,36 @@ impl Verifier {
                         if now {
                             // if the message should be reported immediately, do so
                             // this is used for printing notices for long running queries
-                            reporter.report_as(&msg, level);
+                            reporter.report_as(&msg.to_any(), level);
                             continue;
                         }
 
-                        if let Some(m) = active_module {
-                            // if it's the active module, print the message
+                        if let Some(m) = active_bucket {
+                            // if it's the active bucket, print the message
                             if id == m {
-                                reporter.report_as(&msg, level);
+                                reporter.report_as(&msg.to_any(), level);
                             } else {
                                 let msgs = messages.get_mut(id).expect("message id out of range");
                                 msgs.1.push((msg, level));
                             }
                         } else {
-                            // no active module, print this message and set the module as the
+                            // no active bucket, print this message and set the bucket as the
                             // active one
-                            active_module = Some(id);
-                            reporter.report_as(&msg, level);
+                            active_bucket = Some(id);
+                            reporter.report_as(&msg.to_any(), level);
                         }
                     }
                     ReporterMessage::Done(id) => {
                         // the done message is sent by the thread whenever it is done with verifying
-                        // a module, we mark the module as done here.
+                        // a bucket, we mark the bucket as done here.
                         {
-                            // record that the module is done
+                            // record that the bucket is done
                             let msgs = messages.get_mut(id).expect("message id out of range");
                             msgs.0 = true;
                         }
 
-                        // if it is the active module, mark it as done, and reset the active module
-                        if let Some(m) = active_module {
+                        // if it is the active bucket, mark it as done, and reset the active bucket
+                        if let Some(m) = active_bucket {
                             if m == id {
                                 assert!(
                                     messages
@@ -1481,23 +1544,23 @@ impl Verifier {
                                         .1
                                         .is_empty()
                                 );
-                                active_module = None;
+                                active_bucket = None;
                             }
                         }
 
-                        // try to pick a new active module here, the first one that has any messages
-                        if active_module.is_none() {
+                        // try to pick a new active bucket here, the first one that has any messages
+                        if active_bucket.is_none() {
                             for (i, msgs) in messages.iter_mut().enumerate() {
                                 if msgs.1.is_empty() {
                                     continue;
                                 }
-                                // drain and print all messages of the module
+                                // drain and print all messages of the bucket
                                 for (msg, level) in msgs.1.drain(..) {
-                                    reporter.report_as(&msg, level);
+                                    reporter.report_as(&msg.to_any(), level);
                                 }
-                                // if the module wasn't done, make it active and handle next message
+                                // if the bucket wasn't done, make it active and handle next message
                                 if !msgs.0 {
-                                    active_module = Some(i);
+                                    active_bucket = Some(i);
                                     break;
                                 }
                             }
@@ -1507,7 +1570,7 @@ impl Verifier {
                     }
                 }
 
-                if num_done == module_ids_to_verify.len() {
+                if num_done == bucket_ids.len() {
                     break;
                 }
             }
@@ -1530,33 +1593,31 @@ impl Verifier {
             // print remaining messages
             for msgs in messages.drain(..) {
                 for (msg, level) in msgs.1 {
-                    reporter.report_as(&msg, level);
+                    reporter.report_as(&msg.to_any(), level);
                 }
             }
         } else {
-            for module in &module_ids_to_verify {
-                global_ctx = self.verify_module_outer(
+            for bucket_id in &bucket_ids {
+                global_ctx = self.verify_bucket_outer(
                     &reporter,
                     &krate,
                     Some(source_map),
-                    module,
+                    bucket_id,
                     global_ctx,
                 )?;
             }
         }
 
-        let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
-
         if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
                 "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
             );
-            reporter.report(&msg);
+            reporter.report(&msg.to_any());
         }
 
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
-            let mut file = self.create_log_file(None, None, crate::config::TRIGGERS_FILE_SUFFIX)?;
+            let mut file = self.create_log_file(None, crate::config::TRIGGERS_FILE_SUFFIX)?;
             let chosen_triggers = global_ctx.get_chosen_triggers();
             for triggers in chosen_triggers {
                 writeln!(file, "{:#?}", triggers).expect("error writing to trigger log file");
@@ -1565,7 +1626,7 @@ impl Verifier {
         let chosen_triggers = global_ctx.get_chosen_triggers();
         let mut low_confidence_triggers = None;
         for chosen in chosen_triggers {
-            match (self.args.show_triggers, verified_modules.contains(&chosen.module)) {
+            match (self.args.show_triggers, module_ids_to_verify.contains(&chosen.module)) {
                 (ShowTriggers::Selective, true) if chosen.low_confidence => {
                     report_chosen_triggers(&reporter, &chosen);
                     low_confidence_triggers = Some(chosen.span);
@@ -1594,7 +1655,7 @@ impl Verifier {
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
                 ";
-            reporter.report(&note(msg, &span));
+            reporter.report(&note(&span, msg).to_any());
         }
 
         Ok(())
@@ -1624,7 +1685,7 @@ impl Verifier {
         spans: &SpanContext,
         other_crate_names: Vec<String>,
         other_vir_crates: Vec<Krate>,
-        diagnostics: &impl Diagnostics,
+        diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
         let time0 = Instant::now();
@@ -1659,7 +1720,7 @@ impl Verifier {
                 })
                 .next()
                 .expect("OwnerNode::Crate missing");
-            Some(air::ast::Span {
+            Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
                 data: vec![],
@@ -1697,7 +1758,6 @@ impl Verifier {
             tcx,
             krate: hir.krate(),
             erasure_info,
-            unique_id: std::cell::Cell::new(0),
             spans: spans.clone(),
             vstd_crate_name: vstd_crate_name.clone(),
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
@@ -1719,15 +1779,6 @@ impl Verifier {
         self.current_crate_module_ids = Some(vir_crate.module_ids.clone());
 
         // Export crate if requested.
-        if self.args.export.is_some() {
-            if ctxt.unique_id.get() != 0 {
-                // TODO: we should probably just get rid of InferMode,
-                // but there may still be some pre-syntax-macro code relying on it.
-                // In the meantime, exporting anything that relies on it is not supported.
-                panic!("exporting with InferMode is not supported");
-            }
-        }
-
         let crate_metadata = crate::import_export::CrateMetadata {
             crate_id: spans.local_crate.to_u64(),
             original_files: spans.local_files.clone(),
@@ -1750,7 +1801,7 @@ impl Verifier {
 
         if self.args.log_all || self.args.log_vir {
             let mut file = self
-                .create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)
+                .create_log_file(None, crate::config::VIR_FILE_SUFFIX)
                 .map_err(map_err_diagnostics)?;
             vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
         }
@@ -1763,20 +1814,21 @@ impl Verifier {
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
-                    diagnostics.report_as(&err, MessageLevel::Warning)
+                    diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
-                vir::ast::VirErrAs::Note(err) => diagnostics.report_as(&err, MessageLevel::Note),
+                vir::ast::VirErrAs::Note(err) => {
+                    diagnostics.report_as(&err.to_any(), MessageLevel::Note)
+                }
             }
         }
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let (erasure_modes, inferred_modes) =
+        let erasure_modes =
             vir::modes::check_crate(&vir_crate, true).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);
         self.vstd_crate_name = vstd_crate_name;
-        self.inferred_modes = Some(inferred_modes);
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
@@ -1881,7 +1933,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             {
                 let reporter = Reporter::new(&spans, compiler);
                 if self.verifier.args.trace {
-                    reporter.report_now(&note_bare("preparing crate for verification"));
+                    reporter.report_now(&note_bare("preparing crate for verification").to_any());
                 }
                 if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
                     tcx,
@@ -1892,16 +1944,16 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     &reporter,
                     crate_name.clone(),
                 ) {
-                    reporter.report_as(&err, MessageLevel::Error);
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
 
                     for diag in diagnostics.drain(..) {
                         match diag {
                             vir::ast::VirErrAs::Warning(err) => {
-                                reporter.report_as(&err, MessageLevel::Warning)
+                                reporter.report_as(&err.to_any(), MessageLevel::Warning)
                             }
                             vir::ast::VirErrAs::Note(err) => {
-                                reporter.report_as(&err, MessageLevel::Note)
+                                reporter.report_as(&err.to_any(), MessageLevel::Note)
                             }
                         }
                     }
@@ -1917,14 +1969,12 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     let log_lifetime =
                         self.verifier.args.log_all || self.verifier.args.log_lifetime;
                     let lifetime_log_file = if log_lifetime {
-                        let file = self.verifier.create_log_file(
-                            None,
-                            None,
-                            crate::config::LIFETIME_FILE_SUFFIX,
-                        );
+                        let file = self
+                            .verifier
+                            .create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
                         match file {
                             Err(err) => {
-                                reporter.report_as(&err, MessageLevel::Error);
+                                reporter.report_as(&err.to_any(), MessageLevel::Error);
                                 self.verifier.encountered_vir_error = true;
                                 return;
                             }
@@ -1962,13 +2012,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                                 return;
                             }
                             for msg in &msgs {
-                                reporter.report(&msg);
+                                reporter.report(&msg.clone().to_any());
                             }
                             return;
                         }
                     }
                     Err(err) => {
-                        reporter.report_as(&err, MessageLevel::Error);
+                        reporter.report_as(&err.to_any(), MessageLevel::Error);
                         self.verifier.encountered_vir_error = true;
                         return;
                     }
@@ -1983,7 +2033,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Ok(()) => {}
                 Err(err) => {
                     let reporter = Reporter::new(&spans, compiler);
-                    reporter.report_as(&err, MessageLevel::Error);
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
                 }
             }

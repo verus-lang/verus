@@ -1,4 +1,4 @@
-use air::ast::AstId;
+use vir::messages::AstId;
 
 use rustc_hir::HirId;
 use rustc_span::SpanData;

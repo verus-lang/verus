@@ -1,7 +1,8 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::messages::Span;
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
-use air::ast::{Commands, Ident, Span};
+use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -566,13 +567,13 @@ impl<X: Debug> Debug for Spanned<X> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverChoice {
     DefaultProver,
-    Spinoff,
+    Nonlinear,
     BitVector,
     Singular,
 }
 
 pub struct CommandsWithContextX {
-    pub span: air::ast::Span,
+    pub span: crate::messages::Span,
     pub desc: String,
     pub commands: Commands,
     pub prover_choice: ProverChoice,

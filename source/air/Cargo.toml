@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 sise = "0.6.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
-z3tracer = { git = "https://github.com/verus-lang/smt2utils.git", rev = "eba8f8156376ae96c2460111659ca9ef249b0c26" }
+z3tracer = { git = "https://github.com/verus-lang/smt2utils.git", rev = "dd5232dc515154bd06e0f51710926a4cdb17affa" }
 serde = { version = "1", features = ["derive", "rc"] }
 indexmap = { version = "1" }
 yansi = "0.5"

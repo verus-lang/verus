@@ -6,9 +6,8 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::Span;
+use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
-use air::messages::Message;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -37,7 +36,7 @@ pub struct PathX {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunX {
     /// Path of function
     pub path: Path,
@@ -61,10 +60,6 @@ pub enum Mode {
     /// Non-ghost (compiled code)
     Exec,
 }
-
-/// Mode that gets filled in by the mode checker.
-/// (A unique id marks the place that needs to be filled in.)
-pub type InferMode = u64;
 
 /// Describes integer types
 #[derive(
@@ -374,9 +369,7 @@ pub enum BinaryOp {
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
-    /// (None for InferMode means always mode Spec)
-    /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
-    Arith(ArithOp, Option<InferMode>),
+    Arith(ArithOp, Mode),
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),
@@ -657,6 +650,8 @@ pub enum ExprX {
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
+    /// Reveal a string
+    RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
@@ -665,6 +660,10 @@ pub enum ExprX {
     AssertAssume { is_assume: bool, expr: Expr },
     /// Assert-forall or assert-by statement
     AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Assertion discharged via computation
+    AssertCompute(Expr, ComputeMode),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
@@ -685,12 +684,6 @@ pub enum ExprX {
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
-    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
-    /// Assertion discharged via computation
-    AssertCompute(Expr, ComputeMode),
-    /// Reveal a string
-    RevealString(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt

@@ -11,7 +11,7 @@ pub open spec fn min(x: int, y: int) -> int {
 }
 
 pub open spec fn max(x: int, y: int) -> int {
-    if x <= y {x}
+    if x >= y {x}
     else {y}
 }
 

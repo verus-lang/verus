@@ -18,6 +18,7 @@ impl Default for ShowTriggers {
 }
 
 pub const LOG_DIR: &str = ".verus-log";
+pub const SOLVER_LOG_DIR: &str = ".verus-solver-log";
 pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
@@ -401,6 +402,9 @@ pub fn parse_args_with_imports(
                 if !matches.opt_present(OPT_VERIFY_MODULE) {
                     error("Must pass --verify-module when profiling".to_string())
                 }
+                if matches.opt_present(OPT_PROFILE_ALL) {
+                    error("--profile and --profile-all are mutually exclusive".to_string())
+                }
             };
             matches.opt_present(OPT_PROFILE)
         },
@@ -408,6 +412,9 @@ pub fn parse_args_with_imports(
             if matches.opt_present(OPT_PROFILE_ALL) {
                 if !matches.opt_present(OPT_VERIFY_MODULE) {
                     error("Must pass --verify-module when profiling".to_string())
+                }
+                if matches.opt_present(OPT_PROFILE) {
+                    error("--profile and --profile-all are mutually exclusive".to_string())
                 }
             };
             matches.opt_present(OPT_PROFILE_ALL)

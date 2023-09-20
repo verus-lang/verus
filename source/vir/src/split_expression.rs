@@ -7,10 +7,11 @@ use crate::context::Ctx;
 use crate::def::unique_local;
 use crate::def::Spanned;
 use crate::func_to_air::{SstInfo, SstMap};
+use crate::messages::Message;
+use crate::messages::{error, Span};
 use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
-use air::ast::Span;
-use air::messages::{Diagnostics, Message};
+use air::messages::Diagnostics;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -214,11 +215,11 @@ pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
 #[derive(Debug)]
 pub struct TracedExpX {
-    pub e: Exp,                        //  Exp to be discharged to Z3
-    pub trace: air::messages::Message, //  when inlining function, record call stack into `trace`
+    pub e: Exp,                          //  Exp to be discharged to Z3
+    pub trace: crate::messages::Message, //  when inlining function, record call stack into `trace`
 }
 impl TracedExpX {
-    pub fn new(e: Exp, trace: air::messages::Message) -> TracedExp {
+    pub fn new(e: Exp, trace: crate::messages::Message) -> TracedExp {
         Arc::new(TracedExpX { e, trace })
     }
 }
@@ -555,14 +556,15 @@ fn split_call(
     let params = &fun.x.params;
     let typ_params = &fun.x.typ_params;
     for e in &**fun.x.require {
-        let exp = crate::ast_to_sst::expr_to_exp_as_spec(
+        // skip checks on require, since this is checked when the function is checked
+        let exp = crate::ast_to_sst::expr_to_exp_as_spec_skip_checks(
             &ctx,
             diagnostics,
             &state.fun_ssts,
             &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
             &e,
         )
-        .expect("expr_to_exp_as_spec");
+        .expect("expr_to_exp_as_spec_skip_checks");
 
         // In requires, old(x) is really just x:
         let mut f_var_at = |e: &Exp| match &e.x {
@@ -597,7 +599,7 @@ fn visit_split_stm(
     match &stm.x {
         StmX::Assert(_err, e1) => {
             if need_split_expression(ctx, &stm.span) {
-                let error = air::messages::error(crate::def::SPLIT_ASSERT_FAILURE, &stm.span);
+                let error = error(&stm.span, crate::def::SPLIT_ASSERT_FAILURE);
                 let split_exprs = split_expr(
                     ctx,
                     &state, // use the state after `body` translation to get the fuel info
@@ -625,14 +627,15 @@ fn visit_split_stm(
 
                 for e in state.ensures.iter() {
                     if need_split_expression(ctx, &e.span) {
-                        let ens_exp = crate::ast_to_sst::expr_to_exp(
+                        // skip checks because ensures are checked elsewhere
+                        let ens_exp = crate::ast_to_sst::expr_to_exp_skip_checks(
                             ctx,
                             diagnostics,
                             &state.fun_ssts,
                             &state.ens_pars,
                             e,
                         )?;
-                        let error = air::messages::error(crate::def::SPLIT_POST_FAILURE, &e.span);
+                        let error = error(&e.span, crate::def::SPLIT_POST_FAILURE);
                         let split_exprs = split_expr(
                             ctx,
                             &state, // use the state after `body` translation to get the fuel info

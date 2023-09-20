@@ -1268,6 +1268,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_broadcast_forall_causes_cycle verus_code! {
+        mod M {
+            pub trait Tr {
+                spec fn f() -> bool;
+
+                proof fn bad() ensures false;
+            }
+
+            // note the external_body isn't necessary here
+            #[verifier::broadcast_forall]
+            #[verifier::external_body]
+            pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+                ensures #[trigger] T::f() == !T::f(),
+            {
+                T::bad();
+            }
+        }
+
+        use M::*;
+
+        struct X { }
+
+        impl Tr for X {
+            open spec fn f() -> bool
+            {
+                true
+            }
+
+            proof fn bad() {
+                other_bad();
+            }
+        }
+
+        pub proof fn other_bad()
+            ensures false,
+        {
+            // This can be used to trigger the 'proves_false_requiring_trait_bound' lemma.
+            // Therefore, it is important we draw a dependency edge from `other_bad` function
+            // to the `impl Tr for X` object.
+
+            let t = X::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
     #[test] test_decreases_trait_bound verus_code! {
         trait T {
             proof fn impossible()
@@ -2084,4 +2130,218 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
+}
+
+test_verify_one_file! {
+    #[test] trait_return_unit verus_code! {
+        struct S;
+
+        pub trait E<V> {
+            fn e(&self) -> V;
+        }
+
+        impl E<u64> for S {
+            fn e(&self) -> u64 {
+                7
+            }
+        }
+
+        impl E<()> for S {
+            fn e(&self) {
+                ()
+            }
+        }
+
+        pub trait View<V> {
+            spec fn view(&self) -> V;
+        }
+
+        impl View<int> for S {
+            closed spec fn view(&self) -> int {
+                7
+            }
+        }
+
+        // See https://github.com/verus-lang/verus/issues/682
+        impl View<()> for S {
+            closed spec fn view(&self) {
+                ()
+            }
+        }
+
+        pub trait T {
+            spec fn view(&self);
+        }
+
+        impl T for S {
+            closed spec fn view(&self) {
+                ()
+            }
+        }
+
+        proof fn test<A: View<()>>(a: A) {
+            a.view()
+        }
+
+        pub trait U {
+            fn ff(&self) ensures 2 + 2 == 4;
+        }
+
+        impl U for S {
+            fn ff(&self) {
+                assert(2 + 2 == 4);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] termination_fail_issue784 verus_code! {
+        enum Option<V> { Some(V), None }
+
+        trait Tr {
+            spec fn stuff() -> bool;
+        }
+
+        struct X { }
+
+        // impl&%0
+        impl Tr for X
+        {
+            spec fn stuff() -> bool {
+                alpaca()                                // (1)
+            }
+        }
+
+        spec fn alpaca() -> bool {
+            // depends on the bound `X: Tr`
+            // which depends on the above trait impl
+            // which in turn depends on `alpaca`
+            (P::<X> { t: Option::None }).orange()               // (2)
+        }
+
+        struct P<T> {
+            t: Option<T>,
+        }
+
+        trait Zr {
+            spec fn orange(&self) -> bool;
+        }
+
+        // impl&%1
+        impl<T: Tr> Zr for P<T> {
+            spec fn orange(&self) -> bool {
+                !T::stuff()                             // (3)
+            }
+        }
+
+        proof fn paradox() {
+            assert(alpaca() == !alpaca());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] termination_fail_issue784_bigger_impl_chain verus_code! {
+        // It appears we have a cycle, (1) -> (2) -> (4) -> (3) -> (1)
+        //
+        // However, (4), being generic, doesn't actually have a dependency on (3);
+        // likewise (3), being generic, doesn't depend on (1).
+        // Instead, the cycle shows up because the call at (2) relies on the
+        // trait implementation 'impl 0'. Thus we should end up
+        // with an edge (2) -> (1) and thus resulting in the cycle:
+        //
+        // (1) -> (2) -> (1)
+        //
+        // Also note that the dependence of (2) upon 'impl 0' is indirect.
+        // Specifically, it relies on `P<Q<X>>: Zr` obtained from 'impl 2'
+        // This in turn relies on `Q<X>: Yr` obtained from 'impl 1'
+        // And this in turn relies on `X: Tr` obtained from 'impl 0'.
+
+        enum Option<V> { Some(V), None }
+
+        trait Tr {
+            spec fn stuff() -> bool;
+        }
+
+        struct X { }
+
+        // impl 0
+        impl Tr for X
+        {
+            spec fn stuff() -> bool {
+                alpaca()                                   // (1)
+            }
+        }
+
+        spec fn alpaca() -> bool {
+            // depends on the bound `X: Tr`
+            // which depends on the above trait impl
+            // which in turn depends on `alpaca`
+            (P::<Q<X>> { t: Option::None }).orange()               // (2)
+        }
+
+        struct P<T> {
+            t: Option<T>,
+        }
+
+        struct Q<T> {
+            t: Option<T>,
+        }
+
+        trait Yr {
+            spec fn banana() -> bool;
+        }
+
+        trait Zr {
+            spec fn orange(&self) -> bool;
+        }
+
+        // impl 1
+        impl<T: Tr> Yr for Q<T> {
+            spec fn banana() -> bool {
+                !T::stuff()                               // (3)
+            }
+        }
+
+        // impl 2
+        impl<T: Yr> Zr for P<T> {
+            spec fn orange(&self) -> bool {
+                T::banana()                               // (4)
+            }
+        }
+
+        proof fn paradox() {
+            assert(alpaca() == !alpaca());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] trait_bound_query verus_code! {
+        // https://github.com/verus-lang/verus/issues/812
+        trait T {}
+
+        spec fn t<A>() -> bool { true }
+
+        #[verifier::external_body]
+        #[verifier::broadcast_forall]
+        proof fn axiom_f<A: T>()
+            ensures
+                #[trigger] t::<A>(),
+        {
+        }
+
+        struct S1;
+
+        impl T for S1 {}
+        fn test1() {
+            assert(t::<S1>());
+            let v1: u64 = 0;
+            let v2: u64 = 0;
+            assert(v1 * v2  >= 0) by(nonlinear_arith);
+        }
+    } => Ok(())
 }

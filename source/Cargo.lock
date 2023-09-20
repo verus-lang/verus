@@ -385,9 +385,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.8.1"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fcaabb2fef8c910e7f4c7ce9f67a1283a1715879a7c230ca9d6d1ae31f16d91"
+checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
 
 [[package]]
 name = "encode_unicode"
@@ -1419,7 +1419,7 @@ checksum = "62bb4feee49fdd9f707ef802e22365a35de4b7b299de4763d44bfea899442ff9"
 [[package]]
 name = "smt2parser"
 version = "0.6.1"
-source = "git+https://github.com/verus-lang/smt2utils.git?rev=eba8f8156376ae96c2460111659ca9ef249b0c26#eba8f8156376ae96c2460111659ca9ef249b0c26"
+source = "git+https://github.com/verus-lang/smt2utils.git?rev=dd5232dc515154bd06e0f51710926a4cdb17affa#dd5232dc515154bd06e0f51710926a4cdb17affa"
 dependencies = [
  "fst",
  "itertools",
@@ -2058,7 +2058,7 @@ checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
 [[package]]
 name = "z3tracer"
 version = "0.11.2"
-source = "git+https://github.com/verus-lang/smt2utils.git?rev=eba8f8156376ae96c2460111659ca9ef249b0c26#eba8f8156376ae96c2460111659ca9ef249b0c26"
+source = "git+https://github.com/verus-lang/smt2utils.git?rev=dd5232dc515154bd06e0f51710926a4cdb17affa#dd5232dc515154bd06e0f51710926a4cdb17affa"
 dependencies = [
  "indicatif",
  "once_cell",

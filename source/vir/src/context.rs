@@ -1,16 +1,17 @@
 use crate::ast::{
-    Datatype, Fun, Function, GenericBounds, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
-    TypX, Variants, VirErr,
+    Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path, Trait, TypX,
+    Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
+use crate::messages::{error, Span};
 use crate::poly::MonoTyp;
 use crate::prelude::ArchWordBits;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
-use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
+use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::str_typ;
 use num_bigint::BigUint;
 use std::cell::Cell;
@@ -43,7 +44,6 @@ pub struct GlobalCtx {
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub(crate) inferred_modes: Arc<HashMap<InferMode, Mode>>,
     pub(crate) rlimit: u32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) vstd_crate_name: Option<Ident>, // already an arc
@@ -52,13 +52,13 @@ pub struct GlobalCtx {
 
 // Context for verifying one function
 pub struct FunctionCtx {
-    // false normally, true if we're just checking recommends
-    pub checking_recommends: bool,
-    // false normally, true if we're just checking recommends for a non-spec function
-    pub checking_recommends_for_non_spec: bool,
+    // false normally, true if we're just checking spec preconditions
+    pub checking_spec_preconditions: bool,
+    // false normally, true if we're just checking spec preconditions for a non-spec function
+    pub checking_spec_preconditions_for_non_spec: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
-    // used to create quantifier identifiers and for checking_recommends
+    // used to create quantifier identifiers and for checking_spec_preconditions
     pub current_fun: Fun,
 }
 
@@ -87,20 +87,20 @@ pub struct Ctx {
     // proof debug purposes
     pub debug: bool,
     pub expand_flag: bool,
-    pub debug_expand_targets: Vec<air::messages::Message>,
+    pub debug_expand_targets: Vec<crate::messages::Message>,
 }
 
 impl Ctx {
-    pub fn checking_recommends(&self) -> bool {
+    pub fn checking_spec_preconditions(&self) -> bool {
         match self.fun {
-            Some(FunctionCtx { checking_recommends: true, .. }) => true,
+            Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             _ => false,
         }
     }
 
-    pub fn checking_recommends_for_non_spec(&self) -> bool {
+    pub fn checking_spec_preconditions_for_non_spec(&self) -> bool {
         match self.fun {
-            Some(FunctionCtx { checking_recommends_for_non_spec: true, .. }) => true,
+            Some(FunctionCtx { checking_spec_preconditions_for_non_spec: true, .. }) => true,
             _ => false,
         }
     }
@@ -178,7 +178,6 @@ impl GlobalCtx {
     pub fn new(
         krate: &Krate,
         no_span: Span,
-        inferred_modes: HashMap<InferMode, Mode>,
         rlimit: u32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
@@ -214,9 +213,9 @@ impl GlobalCtx {
                     if f_node != g_node {
                         let g =
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
-                        return Err(air::messages::error(
-                            "found cyclic dependency in decreases_by function",
+                        return Err(crate::messages::error(
                             &f.span,
+                            "found cyclic dependency in decreases_by function",
                         )
                         .secondary_span(&g.unwrap().span));
                     }
@@ -225,10 +224,7 @@ impl GlobalCtx {
             if f.x.attrs.atomic {
                 let f_node = Node::Fun(f.x.name.clone());
                 if func_call_graph.node_is_in_cycle(&f_node) {
-                    return Err(air::messages::error(
-                        "'atomic' cannot be used on a recursive function",
-                        &f.span,
-                    ));
+                    return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
                 }
             }
         }
@@ -245,7 +241,6 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             qid_map,
-            inferred_modes: Arc::new(inferred_modes),
             rlimit,
             interpreter_log,
             vstd_crate_name,
@@ -267,7 +262,6 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
             qid_map,
-            inferred_modes: self.inferred_modes.clone(),
             rlimit: self.rlimit,
             interpreter_log,
             vstd_crate_name: self.vstd_crate_name.clone(),
@@ -348,7 +342,7 @@ impl Ctx {
 
     pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
         let nodes = crate::prelude::prelude_nodes(prelude_config);
-        air::parser::Parser::new()
+        air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")
     }

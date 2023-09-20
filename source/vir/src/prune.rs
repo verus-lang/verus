@@ -390,8 +390,17 @@ impl AssocTypeImplX {
 pub fn prune_krate_for_module(
     krate: &Krate,
     module: &Path,
+    fun: Option<&Fun>,
     vstd_crate_name: &Option<Ident>,
 ) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>) {
+    let is_root = |function: &Function| match fun {
+        Some(f) => &function.x.name == f,
+        None => match &function.x.owning_module {
+            Some(m) => m == module,
+            None => false,
+        },
+    };
+
     let mut state: State = Default::default();
     state.reached_modules.insert(module.clone());
     state.worklist_modules.push(module.clone());
@@ -399,8 +408,8 @@ pub fn prune_krate_for_module(
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     for f in &krate.functions {
-        match (&f.x.owning_module, &f.x.body) {
-            (Some(path), Some(body)) if path == module => {
+        if is_root(f) {
+            if let Some(body) = &f.x.body {
                 crate::ast_visitor::expr_visitor_check::<(), _>(
                     body,
                     &mut |_scope_map, e: &Expr| {
@@ -415,7 +424,6 @@ pub fn prune_krate_for_module(
                 )
                 .expect("expr_visitor_check failed unexpectedly");
             }
-            _ => {}
         }
     }
 
@@ -425,15 +433,12 @@ pub fn prune_krate_for_module(
     let mut datatypes: Vec<Datatype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.functions {
-        match &f.x.owning_module {
-            Some(path) if path == module => {
-                // our function
-                functions.push(f.clone());
-                state.reached_functions.insert(f.x.name.clone());
-                state.worklist_functions.push(f.x.name.clone());
-                continue;
-            }
-            _ => {}
+        if is_root(f) {
+            // our function
+            functions.push(f.clone());
+            state.reached_functions.insert(f.x.name.clone());
+            state.worklist_functions.push(f.x.name.clone());
+            continue;
         }
         // Remove body if any of the following are true:
         // - function is not visible

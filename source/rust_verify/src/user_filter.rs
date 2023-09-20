@@ -1,3 +1,4 @@
+use crate::buckets::{Bucket, BucketId};
 use crate::config::Args;
 use crate::util::error;
 use crate::verifier::module_name;
@@ -5,7 +6,7 @@ use std::collections::HashSet;
 use vir::ast::{Fun, Function, Krate, Path, VirErr};
 use vir::ast_util::friendly_fun_name_crate_relative;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum UserFilter {
     /// No filter (i.e., verify everything)
     None,
@@ -16,7 +17,7 @@ pub enum UserFilter {
     Function(ModuleId, String, bool),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ModuleId {
     Root,
     /// Colon separated, as the user would input
@@ -114,6 +115,37 @@ impl UserFilter {
         Ok(module_ids_to_verify)
     }
 
+    /// Filter the bucket list to only include buckets that contain some
+    /// element accepted by the filter.
+    /// Assumes the input vector is already restricted to the modules
+    /// as returned by `filter_module_ids`.
+
+    pub fn filter_buckets(&self, vec: Vec<(BucketId, Bucket)>) -> Vec<(BucketId, Bucket)> {
+        match self {
+            UserFilter::None | UserFilter::Modules(_) => vec,
+            UserFilter::Function(..) => {
+                vec.into_iter()
+                    .filter(|(_, bucket)| {
+                        // Check if any function in the bucket is accepted.
+                        for fun in &bucket.funs {
+                            if self.includes_function(fun) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    /// Infer whether this is an "exact match" filter.
+    /// (If the user doesn't supply any * in the pattern, then it is usuall
+    /// exact - however, if there is no exact match, but there is _exactly one_
+    /// partial match, then we upgrade to a partial match, i.e., return false)
+    ///
+    /// Errors if there is no match.
+
     fn get_is_function_exact_match(
         module_id: &ModuleId,
         verify_function: &String,
@@ -210,9 +242,24 @@ impl UserFilter {
     /// Check if the function is included in the filter.
     /// This assumes the function is already in the correct module
     /// (i.e., it only checks the function name).
-    pub fn includes_function(&self, function_name: &Fun, module: &Path) -> bool {
-        if let UserFilter::Function(_, verify_function, exact_match) = self {
-            let name = friendly_fun_name_crate_relative(&module, function_name);
+    pub fn includes_function(&self, function_name: &Fun) -> bool {
+        if let UserFilter::Function(module_id, verify_function, exact_match) = self {
+            let full_name = function_name
+                .path
+                .segments
+                .iter()
+                .map(|segment| (**segment).clone())
+                .collect::<Vec<_>>()
+                .join("::");
+            let module_prefix = match module_id {
+                ModuleId::Root => "::".to_string(),
+                ModuleId::Module(m) => m.to_string() + "::",
+            };
+            if !full_name.starts_with(&module_prefix) {
+                return false;
+            }
+            let name = full_name[module_prefix.len()..].to_string();
+
             if *exact_match {
                 if &name != verify_function && !name.ends_with(&format!("::{}", verify_function)) {
                     return false;

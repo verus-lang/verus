@@ -115,13 +115,13 @@ use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verus_items::VerusItems;
-use air::messages::{message_bare, Message, MessageLevel};
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Write;
 use vir::ast::VirErr;
+use vir::messages::{message_bare, Message, MessageLevel};
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
 pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
