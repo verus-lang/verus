@@ -629,9 +629,9 @@ pub(crate) fn check_item_fn<'tcx>(
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
         } else if vir_body.is_some() && unwrap_mut.is_some() {
             let param_user_name = vir::def::user_local_name(&param.x.name);
-            return Err(air::messages::error(
-                format!("parameter {} must be unwrapped", param_user_name),
+            return Err(vir::messages::error(
                 &param.span,
+                format!("parameter {} must be unwrapped", param_user_name),
             )
             .help(format!(
                 "use Tracked({}): Tracked<&mut T> to unwrap the tracked argument",
@@ -680,7 +680,40 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
         (Arc::new(typ_params), Arc::new(typ_bounds))
     };
-    let publish = get_publish(&vattrs);
+
+    let body = if vattrs.external_body || vattrs.external_fn_specification || header.no_method_body
+    {
+        None
+    } else {
+        vir_body
+    };
+    let publish = {
+        let (publish, open_closed_present) = get_publish(&vattrs);
+        match kind {
+            FunctionKind::TraitMethodImpl { .. } => {
+                if mode == Mode::Spec
+                    && visibility.restricted_to.as_ref() != Some(module_path)
+                    && body.is_some()
+                    && !open_closed_present
+                {
+                    return err_span(
+                        sig.span,
+                        "open/closed is required for implementations of non-private traits",
+                    );
+                }
+            }
+            FunctionKind::TraitMethodDecl { .. } => {
+                if mode == Mode::Spec && open_closed_present && body.is_none() {
+                    return err_span(
+                        sig.span,
+                        "trait function declarations cannot be open or closed, as they don't have a body",
+                    );
+                }
+            }
+            _ => (),
+        }
+        publish
+    };
     let autospec = vattrs.autospec.map(|method_name| {
         let path = autospec_fun(&this_path, method_name.clone());
         Arc::new(FunX { path })
@@ -728,9 +761,9 @@ pub(crate) fn check_item_fn<'tcx>(
     // 'f_body', we rewrite it to a function without mut params and body
     // 'let mut x_0 = x_0; ...; let mut x_n = x_n; f_body'.
     let body_with_mut_redecls = if vir_mut_params.is_empty() {
-        vir_body
+        body
     } else {
-        vir_body.map(move |body| {
+        body.map(move |body| {
             SpannedTyped::new(
                 &body.span.clone(),
                 &body.typ.clone(),
@@ -760,11 +793,7 @@ pub(crate) fn check_item_fn<'tcx>(
         is_const: false,
         publish,
         attrs: Arc::new(fattrs),
-        body: if vattrs.external_body || vattrs.external_fn_specification || header.no_method_body {
-            None
-        } else {
-            body_with_mut_redecls
-        },
+        body: body_with_mut_redecls,
         extra_dependencies: header.extra_dependencies,
     };
 
@@ -1009,7 +1038,7 @@ pub(crate) fn check_item_const<'tcx>(
         broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: true,
-        publish: get_publish(&vattrs),
+        publish: get_publish(&vattrs).0,
         attrs: Default::default(),
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],

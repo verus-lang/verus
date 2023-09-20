@@ -4,9 +4,10 @@ use crate::ast::{
 };
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
+use crate::messages::Span;
 use crate::prelude::ArchWordBits;
 use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Ident, Span};
+use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::fmt;

@@ -656,6 +656,14 @@ fn emit_generic_bound(bound: &GenericBound) -> String {
     let mut buf = String::new();
     buf += &bound.typ.to_string();
     buf += ": ";
+    if !bound.bound_vars.is_empty() {
+        buf += "for<";
+        for b in bound.bound_vars.iter() {
+            buf += &b.to_string();
+            buf += ","
+        }
+        buf += "> ";
+    }
     match &bound.bound {
         Bound::Copy => {
             buf += "Copy";
@@ -787,7 +795,7 @@ fn emit_copy_clone(
     for (gparam, copy_bound) in d.generic_params.iter().zip(copy_bounds.iter()) {
         if *copy_bound {
             let typ = Box::new(TypX::TypParam(gparam.name.clone()));
-            let generic_bound = GenericBound { typ, bound: bound.clone() };
+            let generic_bound = GenericBound { typ, bound_vars: vec![], bound: bound.clone() };
             generic_bounds.push(generic_bound);
         }
         copy_generics.push(gparam.clone());

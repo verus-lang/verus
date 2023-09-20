@@ -556,7 +556,6 @@ fn run() -> Result<(), String> {
             let dashdash_pos = new_args.iter().position(|x| x == "--").expect("-- in args");
             let feature_args = filter_features(&feature_args, ["singular"].into_iter().collect());
             new_args.splice(dashdash_pos..dashdash_pos, feature_args);
-            dbg!(&new_args);
             if nextest {
                 args.get(cmd_position + 1)
                     .and_then(|x| (x.as_str() == "run").then(|| ()))

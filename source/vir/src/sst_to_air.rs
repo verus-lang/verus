@@ -4,9 +4,8 @@ use crate::ast::{
     SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
 };
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, error,
-    fun_as_friendly_rust_name, get_field, get_variant, is_integer_type, msg_error, undecorate_typ,
-    IntegerTypeBitwidth,
+    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, fun_as_friendly_rust_name,
+    get_field, get_variant, is_integer_type, undecorate_typ, IntegerTypeBitwidth,
 };
 use crate::context::Ctx;
 use crate::def::{
@@ -22,6 +21,7 @@ use crate::def::{
     SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
+use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX, UniqueIdent,
@@ -31,14 +31,13 @@ use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
-    Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
+    Quant, QueryX, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not,
     mk_option_command, mk_or, mk_sub, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
-use air::messages::error_with_label;
 use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
@@ -639,10 +638,10 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
             _ => return Ok(Arc::new(bit_expr)),
         };
     } else {
-        return error(
+        return Err(error(
             &exp.span,
             format!("In translating Bitwise operator, encountered non-integer operand",),
-        );
+        ));
     }
 }
 
@@ -650,10 +649,10 @@ fn check_unsigned(exp: &Exp) -> Result<(), VirErr> {
     if let TypX::Int(range) = &*undecorate_typ(&exp.typ) {
         match range {
             IntRange::I(_) | IntRange::ISize => {
-                return error(
+                return Err(error(
                     &exp.span,
                     format!("error: signed integer is not supported for bit-vector reasoning",),
-                );
+                ));
             }
             _ => (),
         }
@@ -684,19 +683,19 @@ fn bitvector_expect_exact(
             let w = w.to_exact(&ctx.global.arch);
             match w {
                 Some(w) => Ok(w),
-                None => error(
+                None => Err(error(
                     span,
                     format!(
                         "IntRange error: the bit-width of type {:?} is architecture-dependent, which `by(bit_vector)` does not currently support",
                         typ
                     ),
-                ),
+                )),
             }
         }
-        None => error(
+        None => Err(error(
             span,
             format!("IntRange error: expected finite-width integer for bit-vector, got {:?}", typ),
-        ),
+        )),
     }
 }
 
@@ -762,12 +761,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     if allowed_bitvector_type(&exp.typ) {
                         // ok
                     } else {
-                        return error(
+                        return Err(error(
                             &exp.span,
                             format!(
                                 "error: bit_vector prover cannot handle this type (bit_vector can only handle variables of type `bool` or of fixed-width integers)"
                             ),
-                        );
+                        ));
                     }
                 }
             }
@@ -850,10 +849,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         (ExpX::Unary(op, arg), true) => {
             if !allowed_bitvector_type(&arg.typ) {
-                return error(
+                return Err(error(
                     &arg.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", arg.typ),
-                );
+                ));
             }
             let hint = match op {
                 UnaryOp::BitNot => expr_ctxt.bit_vector_typ_hint.clone(),
@@ -1025,16 +1024,16 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         },
         (ExpX::Binary(op, lhs, rhs), true) => {
             if !allowed_bitvector_type(&exp.typ) {
-                return error(
+                return Err(error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
-                );
+                ));
             }
             if let BinaryOp::HeightCompare { .. } = op {
-                return error(
+                return Err(error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on is_smaller_than"),
-                );
+                ));
             }
             // disallow signed integer from bitvec reasoning. However, allow that for shift
             // TODO: sanity check for shift
@@ -1097,7 +1096,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             return Ok(Arc::new(ExprX::Binary(bop, lh, rh)));
         }
         (ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _), true) => {
-            return error(&exp.span, "error: cannot use extensional equality in bit vector proof");
+            return Err(error(
+                &exp.span,
+                "error: cannot use extensional equality in bit vector proof",
+            ));
         }
         (ExpX::Binary(op, lhs, rhs), false) => {
             let wrap_arith = true; // use Add, Sub, etc. wrappers to allow triggers on +, -, etc.
@@ -1186,13 +1188,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let width_right = bitwidth_from_type(&rhs.typ).expect("bounded integer type");
 
                     if width_left != width_right {
-                        return error(
+                        return Err(error(
                             &exp.span,
                             format!(
                                 "error: argument bit-width does not match. Left: {}, Right: {}",
                                 width_left, width_right
                             ),
-                        );
+                        ));
                     }
                     let width_exp = bitwidth_to_exp(&width_left);
                     let fname = match bo {
@@ -1287,10 +1289,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let typ = if expr_ctxt.is_bit_vector {
                         let bv_typ_option = bv_typ_to_air(&binder.a);
                         if bv_typ_option.is_none() {
-                            return error(
+                            return Err(error(
                                 &exp.span,
                                 format!("unsupported type in bitvector {:?}", &binder.a),
-                            );
+                            ));
                         };
                         bv_typ_option.unwrap()
                     } else {
@@ -1363,20 +1365,20 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 choose_expr
             }
             (_, true) => {
-                return error(
+                return Err(error(
                     &exp.span,
                     format!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
-                );
+                ));
             }
         },
         (ExpX::Interp(_), _) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
         (_, true) => {
-            return error(
+            return Err(error(
                 &exp.span,
                 format!("unsupported for bit-vector: expression conversion {:?}", exp.x),
-            );
+            ));
         }
     };
     Ok(result)
@@ -1390,12 +1392,12 @@ pub(crate) enum PostConditionKind {
 
 struct PostConditionInfo {
     /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_recommend_stms`.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
     dest: Option<UniqueIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
     ens_exprs: Vec<(Span, Expr)>,
     /// Recommends checks (only used in recommends-checking mode)
-    ens_recommend_stms: Vec<Stm>,
+    ens_spec_precondition_stms: Vec<Stm>,
     /// Extra info about PostCondition for error reporting
     kind: PostConditionKind,
 }
@@ -1638,7 +1640,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
             if func.x.require.len() > 0
-                && (!ctx.checking_recommends_for_non_spec() || *mode == Mode::Spec)
+                && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
@@ -1646,17 +1648,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
                 }
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
-                let description = match (ctx.checking_recommends(), &func.x.attrs.custom_req_err) {
-                    (true, None) => "recommendation not met".to_string(),
-                    (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
-                    (_, Some(s)) => s.clone(),
-                };
-                let error = msg_error(description, &stm.span);
+                let description =
+                    match (ctx.checking_spec_preconditions(), &func.x.attrs.custom_req_err) {
+                        (true, None) => "recommendation not met".to_string(),
+                        (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
+                        (_, Some(s)) => s.clone(),
+                    };
+                let error = error(&stm.span, description);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
 
             let callee_mask_set = mask_set_from_spec(&func.x.mask_spec, func.x.mode);
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
 
@@ -1778,8 +1781,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let error = match error {
                 Some(error) => error.clone(),
                 None => error_with_label(
-                    "assertion failed".to_string(),
                     &stm.span,
+                    "assertion failed".to_string(),
                     "assertion failed".to_string(),
                 ),
             };
@@ -1789,8 +1792,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
         StmX::Return { base_error, ret_exp, inside_body } => {
-            let skip = if ctx.checking_recommends() {
-                state.post_condition_info.ens_recommend_stms.len() == 0
+            let skip = if ctx.checking_spec_preconditions() {
+                state.post_condition_info.ens_spec_precondition_stms.len() == 0
             } else {
                 state.post_condition_info.ens_exprs.len() == 0
             };
@@ -1813,8 +1816,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     vec![]
                 };
 
-                if ctx.checking_recommends() {
-                    for stm in state.post_condition_info.ens_recommend_stms.clone().iter() {
+                if ctx.checking_spec_preconditions() {
+                    for stm in state.post_condition_info.ens_spec_precondition_stms.clone().iter() {
                         let mut new_stmts = stm_to_stmts(ctx, state, stm)?;
                         stmts.append(&mut new_stmts);
                     }
@@ -1880,7 +1883,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             mk_option_command("smt.arith.solver", "6"),
                             Arc::new(CommandX::CheckValid(query)),
                         ]),
-                        ProverChoice::Spinoff,
+                        ProverChoice::Nonlinear,
                         true,
                     ));
                 }
@@ -1911,7 +1914,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut air_body: Vec<Stmt> = Vec::new();
             for (span, ens) in ensures_air.iter() {
-                let error = msg_error("bitvector ensures not satisfied", span);
+                let error = error(span, "bitvector ensures not satisfied");
                 let ens_stmt = StmtX::Assert(error, ens.clone());
                 air_body.push(Arc::new(ens_stmt));
             }
@@ -1984,7 +1987,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::BreakOrContinue { label, is_break } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 let loop_info = if label.is_some() {
                     state
                         .loop_infos
@@ -2001,9 +2004,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     loop_info.invs_entry.clone()
                 };
                 let base_error = if *is_break {
-                    error_with_label("loop invariant not satisfied", &stm.span, "at this loop exit")
+                    error_with_label(&stm.span, "loop invariant not satisfied", "at this loop exit")
                 } else {
-                    error_with_label("loop invariant not satisfied", &stm.span, "at this continue")
+                    error_with_label(&stm.span, "loop invariant not satisfied", "at this continue")
                 };
                 for (span, inv) in invs.iter() {
                     let error = base_error.secondary_label(span, "failed this invariant");
@@ -2160,9 +2163,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             air_body.append(&mut stm_to_stmts(ctx, state, body)?);
             state.loop_infos.pop();
 
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 for (span, inv) in invs_entry.iter() {
-                    let error = msg_error(crate::def::INV_FAIL_LOOP_END, span);
+                    let error = error(span, crate::def::INV_FAIL_LOOP_END);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
                     air_body.push(Arc::new(inv_stmt));
                 }
@@ -2191,9 +2194,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 for (span, inv) in invs_entry.iter() {
-                    let error = msg_error(crate::def::INV_FAIL_LOOP_FRONT, span);
+                    let error = error(span, crate::def::INV_FAIL_LOOP_FRONT);
                     let inv_stmt = StmtX::Assert(error, inv.clone());
                     stmts.push(Arc::new(inv_stmt));
                 }
@@ -2242,7 +2245,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // Assert that the namespace of the inv we are opening is in the mask set
             let typ_args = get_inv_typ_args(&inv_exp.typ);
             let namespace_expr = call_namespace(ctx, inv_expr.clone(), &typ_args, *atomicity);
-            if !ctx.checking_recommends() {
+            if !ctx.checking_spec_preconditions() {
                 state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
             }
 
@@ -2268,9 +2271,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // Note that we re-use main_inv here; but main_inv references the variable
             // given by `uid` which may have been assigned to since the start of the block.
             // so this may evaluate differently in the SMT.
-            if !ctx.checking_recommends() {
-                let error =
-                    msg_error("Cannot show invariant holds at end of block", &body_stm.span);
+            if !ctx.checking_spec_preconditions() {
+                let error = error(&body_stm.span, "Cannot show invariant holds at end of block");
                 stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
             }
 
@@ -2415,14 +2417,13 @@ pub(crate) fn body_stm_to_air(
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
-    ens_recommend_stms: &Vec<Stm>,
+    ens_spec_precondition_stms: &Vec<Stm>,
     mask_spec: &MaskSpec,
     mode: Mode,
     stm: &Stm,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
-    is_spinoff_prover: bool,
     dest: Option<UniqueIdent>,
     post_condition_kind: PostConditionKind,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
@@ -2484,7 +2485,7 @@ pub(crate) fn body_stm_to_air(
         ens_exprs.push((ens.span.clone(), e));
     }
 
-    let ens_recommend_stms: Vec<_> = ens_recommend_stms
+    let ens_spec_precondition_stms: Vec<_> = ens_spec_precondition_stms
         .iter()
         .map(|ens_recommend_stm| subst_stm(&trait_typ_substs, &HashMap::new(), ens_recommend_stm))
         .collect();
@@ -2511,7 +2512,7 @@ pub(crate) fn body_stm_to_air(
         post_condition_info: PostConditionInfo {
             dest,
             ens_exprs,
-            ens_recommend_stms: ens_recommend_stms.clone(),
+            ens_spec_precondition_stms: ens_spec_precondition_stms.clone(),
             kind: post_condition_kind,
         },
         loop_infos: Vec::new(),
@@ -2579,8 +2580,8 @@ pub(crate) fn body_stm_to_air(
         let mut singular_stmts: Vec<Stmt> = vec![];
         for req in reqs {
             let error = error_with_label(
-                "Failed to translate this expression into a singular query".to_string(),
                 &req.span,
+                "Failed to translate this expression into a singular query".to_string(),
                 "at the require clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -2589,8 +2590,8 @@ pub(crate) fn body_stm_to_air(
         }
         for ens in enss {
             let error = error_with_label(
-                "Failed to translate this expression into a singular query".to_string(),
                 &ens.span,
+                "Failed to translate this expression into a singular query".to_string(),
                 "at the ensure clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -2626,8 +2627,8 @@ pub(crate) fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            if is_spinoff_prover || is_nonlinear {
-                ProverChoice::Spinoff
+            if is_nonlinear {
+                ProverChoice::Nonlinear
             } else if is_bit_vector_mode {
                 ProverChoice::BitVector
             } else {

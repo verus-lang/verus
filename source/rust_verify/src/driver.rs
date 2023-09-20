@@ -4,10 +4,10 @@ use std::time::{Duration, Instant};
 
 fn mk_compiler<'a, 'b>(
     rustc_args: &'a [String],
-    verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
+    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> verus_rustc_driver::RunCompiler<'a, 'b> {
-    let mut compiler = verus_rustc_driver::RunCompiler::new(rustc_args, verifier);
+) -> rustc_driver::RunCompiler<'a, 'b> {
+    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
     compiler.set_file_loader(Some(file_loader));
     compiler
 }
@@ -16,7 +16,7 @@ fn run_compiler<'a, 'b>(
     mut rustc_args: Vec<String>,
     syntax_macro: bool,
     erase_ghost: bool,
-    verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
+    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     _build_test_mode: bool, // TODO is this needed?
 ) -> Result<(), ErrorGuaranteed> {
@@ -89,17 +89,17 @@ pub struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
 }
 
-impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
+impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     fn after_parsing<'tcx>(
         &mut self,
-        _compiler: &verus_rustc_interface::interface::Compiler,
-        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
-    ) -> verus_rustc_driver::Compilation {
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
         if !self.do_compile {
             crate::lifetime::check(queries);
-            verus_rustc_driver::Compilation::Stop
+            rustc_driver::Compilation::Stop
         } else {
-            verus_rustc_driver::Compilation::Continue
+            rustc_driver::Compilation::Continue
         }
     }
 }

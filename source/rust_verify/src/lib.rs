@@ -16,6 +16,7 @@ extern crate rustc_hir;
 extern crate rustc_hir_analysis;
 extern crate rustc_hir_pretty;
 extern crate rustc_infer;
+extern crate rustc_interface;
 extern crate rustc_lint;
 extern crate rustc_macros;
 extern crate rustc_middle;
@@ -28,6 +29,8 @@ extern crate rustc_trait_selection;
 extern crate smallvec;
 
 mod attributes;
+mod buckets;
+pub mod commands;
 pub mod config;
 pub mod consts;
 pub mod context;
@@ -52,6 +55,7 @@ pub mod rust_to_vir_func;
 #[cfg(feature = "singular")]
 pub mod singular;
 mod spans;
+mod user_filter;
 pub mod util;
 pub mod verifier;
 pub mod verus_items;

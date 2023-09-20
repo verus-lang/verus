@@ -1307,8 +1307,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     } else {
                         expr_to_vir(bctx, arg, modifier)?
                     };
+                let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
                 mk_expr(ExprX::Binary(
-                    BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
+                    BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
                     zero,
                     varg,
                 ))
@@ -1346,7 +1347,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 _ => (),
             }
             let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-            let vop = binopkind_to_binaryop(op, bctx, tc, lhs, rhs, mode_for_ghostness);
+            let vop = binopkind_to_binaryop(op, tc, lhs, rhs, mode_for_ghostness);
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?;
             match op.node {
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
@@ -1781,7 +1782,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
 fn binopkind_to_binaryop(
     op: &Spanned<BinOpKind>,
-    bctx: &BodyCtxt,
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr,
     rhs: &Expr,
@@ -1796,11 +1796,11 @@ fn binopkind_to_binaryop(
         BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
         BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
         BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
-        BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode())),
-        BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
-        BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode())),
-        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode())),
-        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode())),
+        BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, mode_for_ghostness),
+        BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
+        BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, mode_for_ghostness),
+        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, mode_for_ghostness),
+        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, mode_for_ghostness),
         BinOpKind::BitXor => {
             match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
                 (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
@@ -1855,11 +1855,11 @@ fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr<'tcx>,
-    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, air::messages::Message>,
+    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
     rhs: &Expr<'tcx>,
     modifier: ExprModifier,
     op_kind: Option<&Spanned<BinOpKind>>,
-) -> Result<vir::ast::Expr, air::messages::Message> {
+) -> Result<vir::ast::Expr, vir::messages::Message> {
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
             ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
@@ -1900,7 +1900,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         })
     }
     let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-    let op = op_kind.map(|op| binopkind_to_binaryop(op, bctx, tc, lhs, rhs, mode_for_ghostness));
+    let op = op_kind.map(|op| binopkind_to_binaryop(op, tc, lhs, rhs, mode_for_ghostness));
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,

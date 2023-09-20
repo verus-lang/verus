@@ -2,11 +2,11 @@ use crate::ast::{
     AcceptRecursiveType, Datatype, FunctionKind, GenericBound, GenericBoundX, Ident, Idents, Krate,
     Path, Trait, Typ, TypX, VirErr,
 };
-use crate::ast_util::{error, path_as_friendly_rust_name};
+use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::GlobalCtx;
+use crate::messages::{error, Span};
 use crate::recursion::Node;
 use crate::scc::Graph;
-use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
@@ -184,14 +184,14 @@ fn check_positive_uses(
                 match polarity {
                     Some(true) => {}
                     _ => {
-                        return error(
+                        return Err(error(
                             &local.span,
                             format!(
                                 "Type {} recursively uses type {} in a non-positive position",
                                 path_as_friendly_rust_name(&local.my_datatype),
                                 path_as_friendly_rust_name(path)
                             ),
-                        );
+                        ));
                     }
                 }
             }
@@ -225,13 +225,13 @@ fn check_positive_uses(
             match (strictly_positive, polarity) {
                 (false, _) => Ok(()),
                 (true, Some(true)) => Ok(()),
-                (true, _) => error(
+                (true, _) => Err(error(
                     &local.span,
                     format!(
                         "Type parameter {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
                         x
                     ),
-                ),
+                )),
             }
         }
         TypX::Projection { .. } => {
@@ -340,10 +340,10 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
                         check_well_founded(&global.datatypes, &mut datatypes_well_founded, path);
                     if converged && !wf {
                         let span = &global.datatypes[path].span;
-                        return error(
+                        return Err(error(
                             span,
                             "datatype must have at least one non-recursive variant",
-                        );
+                        ));
                     }
                 }
             }
@@ -361,7 +361,7 @@ fn type_scc_error(krate: &Krate, head: &TypNode, nodes: &Vec<TypNode>) -> VirErr
     let msg =
         "found a cyclic self-reference in a trait definition, which may result in nontermination"
             .to_string();
-    let mut err = air::messages::error_bare(msg);
+    let mut err = crate::messages::error_bare(msg);
     for node in nodes {
         let mut push = |node: &TypNode, span: Span| {
             if node == head {
@@ -393,7 +393,7 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
     let msg =
         "found a cyclic self-reference in a trait definition, which may result in nontermination"
             .to_string();
-    let mut err = air::messages::error_bare(msg);
+    let mut err = crate::messages::error_bare(msg);
     for node in nodes {
         let mut push = |node: &Node, span: Span| {
             if node == head {

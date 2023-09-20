@@ -140,6 +140,7 @@ pub(crate) enum Bound {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct GenericBound {
     pub(crate) typ: Typ,
+    pub(crate) bound_vars: Vec<Id>,
     pub(crate) bound: Bound,
 }
 

@@ -345,6 +345,7 @@ mod printing {
             expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
             self.let_token.to_tokens(tokens);
             self.tracked.to_tokens(tokens);
+            self.ghost.to_tokens(tokens);
             self.pat.to_tokens(tokens);
             if let Some((eq_token, init)) = &self.init {
                 eq_token.to_tokens(tokens);

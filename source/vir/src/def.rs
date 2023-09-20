@@ -1,7 +1,8 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::messages::Span;
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
-use air::ast::{Commands, Ident, Span};
+use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -566,13 +567,13 @@ impl<X: Debug> Debug for Spanned<X> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverChoice {
     DefaultProver,
-    Spinoff,
+    Nonlinear,
     BitVector,
     Singular,
 }
 
 pub struct CommandsWithContextX {
-    pub span: air::ast::Span,
+    pub span: crate::messages::Span,
     pub desc: String,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
@@ -605,22 +606,6 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
         InvAtomicity::NonAtomic => Arc::new("LocalInvariant".to_string()),
     }
 }
-
-// TODO unused?
-// TODO pub fn datatype_invariant_path(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Path {
-// TODO     Arc::new(PathX {
-// TODO         krate: vstd_crate_name.clone(),
-// TODO         segments: Arc::new(if vstd_crate_name.is_some() {
-// TODO             vec![Arc::new("invariant".to_string()), atomicity_type_name(atomicity)]
-// TODO         } else {
-// TODO             vec![
-// TODO                 Arc::new("pervasive".to_string()),
-// TODO                 Arc::new("invariant".to_string()),
-// TODO                 atomicity_type_name(atomicity),
-// TODO             ]
-// TODO         }),
-// TODO     })
-// TODO }
 
 pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {

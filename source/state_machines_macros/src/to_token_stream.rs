@@ -277,7 +277,7 @@ pub fn output_primary_stuff(
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
-                    #[verus::internal(publish)] /* vattr */
+                    #[verus::internal(open)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
                     }
@@ -288,7 +288,7 @@ pub fn output_primary_stuff(
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
-                    #[verus::internal(publish)] /* vattr */
+                    #[verus::internal(open)] /* vattr */
                     pub fn #name (#args) -> ::core::primitive::bool {
                         ::builtin_macros::verus_proof_expr!({ #f })
                     }
@@ -311,7 +311,7 @@ pub fn output_primary_stuff(
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
                     ::builtin_macros::verus_proof_expr!({ #f })
                 }
@@ -331,7 +331,7 @@ pub fn output_primary_stuff(
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 pub fn #name (#params) -> ::core::primitive::bool {
                     ::builtin_macros::verus_proof_expr!({ #f })
                 }
@@ -530,7 +530,7 @@ fn output_step_datatype(
         impl_stream.extend(quote! {
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
-            #[verus::internal(publish)] /* vattr */
+            #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
@@ -543,7 +543,7 @@ fn output_step_datatype(
 
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
-            #[verus::internal(publish)] /* vattr */
+            #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
@@ -574,7 +574,7 @@ fn output_step_datatype(
         impl_stream.extend(quote!{
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
-            #[verus::internal(publish)] /* vattr */
+            #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
@@ -586,7 +586,7 @@ fn output_step_datatype(
 
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
-            #[verus::internal(publish)] /* vattr */
+            #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
@@ -595,7 +595,7 @@ fn output_step_datatype(
 
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
-            #[verus::internal(publish)] /* vattr */
+            #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
@@ -607,7 +607,7 @@ fn output_step_datatype(
 
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
-            #[verus::internal(publish)] /* vattr */
+            #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
@@ -947,7 +947,7 @@ fn output_other_fns(
         #[cfg(verus_keep_ghost_body)]
         #[verifier::spec]
         #[verus::internal(verus_macro)]
-        #[verus::internal(publish)] /* vattr */
+        #[verus::internal(open)] /* vattr */
         pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
         }

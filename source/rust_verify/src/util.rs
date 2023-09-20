@@ -2,14 +2,13 @@ use std::fmt::Display;
 
 use rustc_span::Span;
 use vir::ast::VirErr;
-use vir::ast_util::error as vir_error;
 
 pub(crate) fn err_span<A, S: Into<String>>(span: Span, msg: S) -> Result<A, VirErr> {
-    vir_error(&crate::spans::err_air_span(span), msg)
+    Err(vir::messages::error(&crate::spans::err_air_span(span), msg))
 }
 
 pub(crate) fn err_span_bare<S: Into<String>>(span: Span, msg: S) -> VirErr {
-    air::messages::error(msg, &crate::spans::err_air_span(span))
+    vir::messages::error(&crate::spans::err_air_span(span), msg)
 }
 
 pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
@@ -17,7 +16,7 @@ pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
 }
 
 pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
-    air::messages::error(msg, &crate::spans::err_air_span(span))
+    vir::messages::error(&crate::spans::err_air_span(span), msg)
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
@@ -72,7 +71,7 @@ macro_rules! err_unless {
 
 /// Basic error, with just a message
 pub fn error<S: Into<String>>(msg: S) -> VirErr {
-    air::messages::error_bare(msg)
+    vir::messages::error_bare(msg)
 }
 
 #[allow(dead_code)]

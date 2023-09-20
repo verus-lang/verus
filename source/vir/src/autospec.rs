@@ -4,7 +4,6 @@ use crate::ast::{
 };
 use crate::util::vec_map_result;
 pub use air::ast_util::{ident_binder, str_ident};
-pub use air::messages::error as msg_error;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;

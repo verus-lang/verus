@@ -12,8 +12,8 @@ use crate::ast::{
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
-use air::ast::{Binders, Ident, Span};
-use air::messages::Message;
+use crate::messages::{Message, Span};
+use air::ast::{Binders, Ident};
 use std::sync::Arc;
 
 pub type Trig = Exps;
@@ -122,7 +122,7 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    // call to exec/proof function (or spec function for checking_recommends)
+    // call to exec/proof function (or spec function for checking_spec_preconditions)
     Call {
         fun: Fun,
         resolved_method: Option<(Fun, Typs)>,
