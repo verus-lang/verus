@@ -300,6 +300,9 @@ impl Context {
                     self.set_z3_param("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
                     // self.set_z3_param("proof", "true");
+
+                    // sise does not support backslashes in atoms, which appear in Windows paths
+                    let profile_logfile_name = profile_logfile_name.replace("\\", "/");
                     self.log_set_z3_param("trace_file_name", &profile_logfile_name);
                 }
                 self.blank_line();
