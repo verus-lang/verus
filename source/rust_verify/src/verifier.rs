@@ -1108,15 +1108,6 @@ impl Verifier {
                             panic!(
                                 "Found singular command when Verus is compiled without Singular feature"
                             );
-
-                            #[cfg(feature = "singular")]
-                            if air_context.singular_log.is_none() {
-                                let file = self.create_log_file(
-                                    Some(bucket_id),
-                                    crate::config::SINGULAR_FILE_SUFFIX,
-                                )?;
-                                air_context.singular_log = Some(file);
-                            }
                         }
                         let mut spinoff_z3_context;
                         let do_spinoff = (cmds.prover_choice == vir::def::ProverChoice::Nonlinear)
