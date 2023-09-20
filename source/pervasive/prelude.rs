@@ -10,7 +10,8 @@ pub use super::map::Map;
 pub use super::map::map;
 
 #[cfg(feature = "alloc")]
-pub use super::string::{String, StrSlice};
+pub use super::string::String;
+pub use super::string::StrSlice;
 
 #[cfg(verus_keep_ghost)]
 pub use super::pervasive::{

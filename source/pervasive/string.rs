@@ -1,8 +1,10 @@
 #![feature(rustc_attrs)]
 #![allow(unused_imports)]
 
+#[cfg(feature = "alloc")]
 extern crate alloc;
-use alloc::string;
+#[cfg(feature = "alloc")]
+use alloc::string::{self, ToString};
 
 use crate::view::*;
 use super::seq::Seq;
@@ -12,6 +14,7 @@ use crate::prelude::*;
 
 verus! {
 
+#[cfg(feature = "alloc")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 pub struct String {
     inner: string::String,
@@ -106,7 +109,7 @@ impl<'a> StrSlice<'a> {
         }
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub fn to_string(self) -> (ret: String)
         ensures
             self@ == ret@,
@@ -131,6 +134,7 @@ impl<'a> StrSlice<'a> {
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
 
+    #[cfg(feature = "alloc")]
     #[verifier(external_body)]
     pub fn as_bytes(&self) -> (ret: alloc::vec::Vec<u8>)
         requires
@@ -180,12 +184,12 @@ pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
         #[trigger] s@.index(i) == builtin::strslice_get_char(s, i),
 { }
 
+#[cfg(feature = "alloc")]
 impl String {
     pub spec fn view(&self) -> Seq<char>;
 
     pub spec fn is_ascii(&self) -> bool;
 
-    #[cfg(feature = "std")]
     #[verifier(external_body)]
     pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
         ensures

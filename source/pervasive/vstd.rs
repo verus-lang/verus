@@ -38,7 +38,6 @@ pub mod state_machine_internal;
 pub mod thread;
 #[cfg(feature = "alloc")]
 pub mod ptr;
-#[cfg(feature = "alloc")]
 pub mod string;
 #[cfg(feature = "alloc")]
 pub mod vec;
