@@ -338,23 +338,6 @@ pub fn output_primary_stuff(
             };
             impl_stream.extend(rel_fn);
         }
-        if trans.kind == TransitionKind::Init {
-            let params = just_params(&trans.params);
-            let name = Ident::new(&(trans.name.to_string() + "_enabled"), trans.name.span());
-
-            let f = crate::to_relation::to_is_enabled_condition_weak(&simplified_body);
-
-            let rel_fn = quote! {
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::spec]
-                #[verus::internal(open)] /* vattr */
-                pub fn #name (#params) -> ::core::primitive::bool {
-                    ::builtin_macros::verus_proof_expr!({ #f })
-                }
-            };
-            impl_stream.extend(rel_fn);
-        }
 
         // If necessary, output a lemma with proof obligations for the safety conditions.
         // Note that we specifically check for asserts on the _simplified_ transition AST,
@@ -451,42 +434,6 @@ fn output_take_step_fns(
                     );
                     ::builtin::ensures(|post: #super_self_ty|
                         super::State::#tr_name_strong(#args2) && post.invariant()
-                    );
-                    #extra_deps
-                    loop { }
-                }
-
-                // #[cfg(verus_macro_erase_ghost)]
-                use bool as #tr_name;
-            });
-        }
-        if matches!(trans.kind, TransitionKind::Init) {
-            let self_ty = get_self_ty(sm);
-            let super_self_ty = Type::Verbatim(quote! { super::#self_ty });
-            let params = just_params(&trans.params);
-            let args = just_args(&trans.params, false);
-            let args2 = post_args(&trans.params);
-
-            let (gen1, gen2) = generic_components_for_fn(&sm.generics);
-            let tr_name = &trans.name;
-
-            let tr_name_enabled =
-                Ident::new(&(trans.name.to_string() + "_enabled"), trans.name.span());
-
-            let extra_deps =
-                crate::concurrency_tokens::get_extra_deps(bundle, trans, safety_condition_lemmas);
-
-            stream.extend(quote! {
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::proof]
-                pub fn #tr_name#gen1(#params) -> #super_self_ty #gen2 {
-                    ::builtin::requires(
-                        super::State::#tr_name_enabled(#args)
-                    );
-                    ::builtin::ensures(|post: #super_self_ty|
-                        super::State::#tr_name(#args2) && post.invariant()
                     );
                     #extra_deps
                     loop { }
@@ -855,21 +802,6 @@ fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
         .collect();
     return quote! {
         post: Self,
-        #(#params),*
-    };
-}
-
-// params...
-fn just_params(params: &Vec<TransitionParam>) -> TokenStream {
-    let params: Vec<TokenStream> = params
-        .iter()
-        .map(|param| {
-            let ident = &param.name;
-            let ty = &param.ty;
-            quote! { #ident: #ty }
-        })
-        .collect();
-    return quote! {
         #(#params),*
     };
 }
