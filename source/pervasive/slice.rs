@@ -4,8 +4,6 @@ use builtin_macros::*;
 use crate::view::*;
 use crate::seq::*;
 
-extern crate alloc;
-
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalSpecFns;

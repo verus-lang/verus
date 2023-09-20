@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use builtin::*;
-extern crate alloc;
 
 use alloc::vec::Vec;
 use core::option::Option;

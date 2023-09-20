@@ -3,8 +3,6 @@ use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
 
-extern crate alloc;
-
 verus! {
 
 /// Types used in executable code can implement View to provide a mathematical abstraction
