@@ -1211,7 +1211,7 @@ impl Verifier {
                             );
                         } else {
                             if command_timed_out && self.args.profile {
-                                opgen.retry_with_profile_later(
+                                opgen.retry_with_profile(
                                     query_op.clone(),
                                     commands_with_context_list.clone(),
                                     snap_map.clone(),

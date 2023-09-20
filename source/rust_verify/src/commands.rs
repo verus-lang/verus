@@ -172,7 +172,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         Ok(())
     }
 
-    pub fn retry_with_profile_later(
+    pub fn retry_with_profile(
         &mut self,
         query_op: QueryOp,
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
