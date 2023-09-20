@@ -13,6 +13,7 @@ use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+
 use vir::messages::{
     message, note, note_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
 };
@@ -223,6 +224,7 @@ pub struct Verifier {
 
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
+    created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
     crate_names: Option<Vec<String>>,
     vstd_crate_name: Option<Ident>,
@@ -262,6 +264,22 @@ pub fn module_name(module: &vir::ast::Path) -> String {
     module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
 }
 
+struct RunCommandQueriesResult {
+    invalidity: bool,
+    timed_out: bool,
+}
+
+impl std::ops::Add for RunCommandQueriesResult {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        RunCommandQueriesResult {
+            invalidity: self.invalidity || rhs.invalidity,
+            timed_out: self.timed_out || rhs.timed_out,
+        }
+    }
+}
+
 impl Verifier {
     pub fn new(args: Args) -> Verifier {
         Verifier {
@@ -281,6 +299,7 @@ impl Verifier {
             bucket_times: HashMap::new(),
 
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
+            created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
             crate_names: None,
             vstd_crate_name: None,
@@ -310,6 +329,7 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_times: HashMap::new(),
             created_log_dir: self.created_log_dir.clone(),
+            created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
             crate_names: self.crate_names.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
@@ -332,6 +352,23 @@ impl Verifier {
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
         self.buckets.get(bucket_id).expect("expected valid BucketId")
+    }
+
+    fn ensure_solver_log_dir(&mut self) -> Result<std::path::PathBuf, VirErr> {
+        Ok({
+            let mut created_solver_log_dir =
+                self.created_solver_log_dir.lock().expect("failed to lock created_solver_log_dir");
+            if let Some(dir_path) = &*created_solver_log_dir {
+                dir_path.clone()
+            } else {
+                let dir = std::path::PathBuf::from(crate::config::SOLVER_LOG_DIR.to_string());
+                std::fs::create_dir_all(&dir).map_err(|err| {
+                    io_vir_err(format!("could not create directory {}", dir.display()), err)
+                })?;
+                *created_solver_log_dir = Some(dir.clone());
+                dir
+            }
+        })
     }
 
     fn create_log_file(
@@ -384,15 +421,26 @@ impl Verifier {
                 dir
             }
         };
+        let log_file_name = self.log_file_name(&dir_path, bucket_id_opt, suffix);
+        match File::create(&log_file_name) {
+            Ok(file) => Ok(file),
+            Err(err) => {
+                Err(io_vir_err(format!("could not open file {}", log_file_name.display()), err))
+            }
+        }
+    }
+
+    fn log_file_name(
+        &self,
+        dir_path: &std::path::Path,
+        bucket_id_opt: Option<&BucketId>,
+        suffix: &str,
+    ) -> std::path::PathBuf {
         let prefix = match bucket_id_opt {
             None => "crate".to_string(),
             Some(bucket_id) => bucket_id.to_log_string(),
         };
-        let path = std::path::Path::new(&dir_path).join(format!("{prefix}{suffix}"));
-        match File::create(path.clone()) {
-            Ok(file) => Ok(file),
-            Err(err) => Err(io_vir_err(format!("could not open file {path:?}"), err)),
-        }
+        std::path::PathBuf::from(&dir_path).join(format!("{prefix}{suffix}"))
     }
 
     /// Use when we expect our call to Z3 to always succeed
@@ -457,20 +505,21 @@ impl Verifier {
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
     /// Returns true if there was at least one Invalid resulting in an error.
+    ///
+    /// If `level` is None, do not report errors.
     fn check_result_validity(
         &mut self,
         bucket_id: &BucketId,
         reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
-        level: MessageLevel,
+        level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
-        qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&vir::messages::Span, &str),
         is_singular: bool,
-    ) -> bool {
+    ) -> RunCommandQueriesResult {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let report_long_running = || {
@@ -519,10 +568,11 @@ impl Verifier {
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
         let mut invalidity = false;
+        let mut timed_out = false;
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if (is_check_valid && is_first_check && level == MessageLevel::Error)
+                    if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
                         || is_singular
                     {
                         self.count_verified += 1;
@@ -533,7 +583,7 @@ impl Verifier {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
-                    if is_first_check && level == MessageLevel::Error {
+                    if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
                         invalidity = true;
                     }
@@ -541,32 +591,37 @@ impl Verifier {
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    reporter.report(&message(level, msg, &context.0).to_any());
-                    if self.args.profile {
-                        let profiler = Profiler::new(message_interface, reporter);
-                        self.print_profile_stats(reporter, profiler, qid_map);
+                    if let Some(level) = level {
+                        reporter.report(&message(level, msg, &context.0).to_any());
                     }
+                    // need to report that we need to rerun from this function (into spinoff)
+                    // so that we can run the profiler on an isolated file on the second pass
+                    timed_out = true;
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
-                    if air_model.is_none() {
-                        // singular_invalid case
-                        self.count_errors += 1;
-                        reporter.report_as(&error, level);
-                        break;
+                    if let Some(level) = level {
+                        if air_model.is_none() {
+                            // singular_invalid case
+                            self.count_errors += 1;
+                            reporter.report_as(&error, level);
+                            break;
+                        }
                     }
                     let air_model = air_model.unwrap();
 
-                    if is_first_check && level == MessageLevel::Error {
+                    if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
                         invalidity = true;
                     }
                     let error: Message = error.downcast().unwrap();
-                    if !self.expand_flag || vir::split_expression::is_split_error(&error) {
-                        reporter.report_as(&error.clone().to_any(), level);
+                    if let Some(level) = level {
+                        if !self.expand_flag || vir::split_expression::is_split_error(&error) {
+                            reporter.report_as(&error.clone().to_any(), level);
+                        }
                     }
 
-                    if level == MessageLevel::Error {
+                    if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
                             self.expand_targets.push(error.clone());
@@ -615,7 +670,7 @@ impl Verifier {
                 }
             }
         }
-        if level == MessageLevel::Error && checks_remaining == 0 {
+        if level == Some(MessageLevel::Error) && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
                 context.1
@@ -627,7 +682,7 @@ impl Verifier {
             air_context.finish_query();
         }
 
-        invalidity
+        RunCommandQueriesResult { invalidity, timed_out }
     }
 
     fn run_commands(
@@ -662,24 +717,23 @@ impl Verifier {
         &mut self,
         reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
-        level: MessageLevel,
+        level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
-        qid_map: &HashMap<String, vir::sst::BndInfo>,
         bucket_id: &BucketId,
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-    ) -> bool {
+    ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
         if !includes_function {
-            return false;
+            return RunCommandQueriesResult { invalidity: false, timed_out: false };
         }
 
-        let mut invalidity = false;
+        let mut result = RunCommandQueriesResult { invalidity: false, timed_out: false };
         let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
         if commands.len() > 0 {
@@ -689,23 +743,37 @@ impl Verifier {
         }
         let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
-            let result_invalidity = self.check_result_validity(
-                bucket_id,
-                reporter,
-                source_map,
-                level,
-                air_context,
-                assign_map,
-                snap_map,
-                qid_map,
-                &command,
-                &(span, &desc),
-                *prover_choice == vir::def::ProverChoice::Singular,
-            );
-            invalidity = invalidity || result_invalidity;
+            result = result
+                + self.check_result_validity(
+                    bucket_id,
+                    reporter,
+                    source_map,
+                    level,
+                    air_context,
+                    assign_map,
+                    snap_map,
+                    &command,
+                    &(span, &desc),
+                    *prover_choice == vir::def::ProverChoice::Singular,
+                );
         }
 
-        invalidity
+        result
+    }
+
+    fn log_fine_name_suffix(
+        is_rerun: bool,
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
+        expand_flag: bool,
+        suffix: &str,
+    ) -> String {
+        let rerun_msg = if is_rerun { "_rerun" } else { "" };
+        let count_msg = query_function_path_counter
+            .map(|(_, ref c)| format!("_{:02}", c))
+            .unwrap_or("".to_string());
+        let expand_msg = if expand_flag { "_expand" } else { "" };
+
+        format!("{}{}{}{}", rerun_msg, count_msg, expand_msg, suffix,)
     }
 
     fn new_air_context_with_prelude<'m>(
@@ -716,28 +784,25 @@ impl Verifier {
         query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
+        profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = air::context::Context::new(message_interface.clone());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
-        air_context.set_profile(self.args.profile);
-        air_context.set_profile_all(self.args.profile_all);
-
-        let rerun_msg = if is_rerun { "_rerun" } else { "" };
-        let count_msg = query_function_path_counter
-            .map(|(_, ref c)| format!("_{:02}", c))
-            .unwrap_or("".to_string());
-        let expand_msg = if self.expand_flag { "_expand" } else { "" };
+        if let Some(profile_file_name) = profile_file_name {
+            air_context.set_profile_with_logfile_name(
+                profile_file_name.to_str().expect("invalid prover log path").to_owned(),
+            );
+        }
 
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
                 Some(bucket_id),
-                format!(
-                    "{}{}{}{}",
-                    rerun_msg,
-                    count_msg,
-                    expand_msg,
-                    crate::config::AIR_INITIAL_FILE_SUFFIX
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::AIR_INITIAL_FILE_SUFFIX,
                 )
                 .as_str(),
             )?;
@@ -746,12 +811,11 @@ impl Verifier {
         if self.args.log_all || self.args.log_air_final {
             let file = self.create_log_file(
                 Some(bucket_id),
-                format!(
-                    "{}{}{}{}",
-                    rerun_msg,
-                    count_msg,
-                    expand_msg,
-                    crate::config::AIR_FINAL_FILE_SUFFIX
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::AIR_FINAL_FILE_SUFFIX,
                 )
                 .as_str(),
             )?;
@@ -760,12 +824,11 @@ impl Verifier {
         if self.args.log_all || self.args.log_smt {
             let file = self.create_log_file(
                 Some(bucket_id),
-                format!(
-                    "{}{}{}{}",
-                    rerun_msg,
-                    count_msg,
-                    expand_msg,
-                    crate::config::SMT_FILE_SUFFIX
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::SMT_FILE_SUFFIX,
                 )
                 .as_str(),
             )?;
@@ -812,6 +875,7 @@ impl Verifier {
         is_rerun: bool,
         context_counter: usize,
         span: &vir::messages::Span,
+        profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
@@ -820,6 +884,7 @@ impl Verifier {
             Some((function_path, context_counter)),
             is_rerun,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            profile_file_name,
         )?;
 
         // Write the span of spun-off query
@@ -878,7 +943,7 @@ impl Verifier {
                         &op.to_air_comment(),
                     );
                 }
-                OpKind::Query(..) => {
+                OpKind::Query { .. } => {
                     panic!("should have only got Context ops");
                 }
             }
@@ -897,6 +962,19 @@ impl Verifier {
     ) -> Result<(Duration, Duration), VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
+        assert!(!(self.args.profile && self.args.profile_all));
+        let profile_all_file_name = if self.args.profile_all {
+            let solver_log_dir = self.ensure_solver_log_dir()?;
+            let profile_file_name = self.log_file_name(
+                &solver_log_dir,
+                Some(bucket_id),
+                Self::log_fine_name_suffix(false, None, false, crate::config::PROFILE_FILE_SUFFIX)
+                    .as_str(),
+            );
+            Some(profile_file_name)
+        } else {
+            None
+        };
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
             reporter,
@@ -904,6 +982,7 @@ impl Verifier {
             None,
             false,
             PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
             air_context
@@ -1004,7 +1083,7 @@ impl Verifier {
                     );
                     all_context_ops.push(op);
                 }
-                OpKind::Query(query_op, commands_with_context_list, snap_map) => {
+                OpKind::Query { query_op, commands_with_context_list, snap_map, profile_rerun } => {
                     let level = match query_op {
                         QueryOp::SpecTermination => MessageLevel::Error,
                         QueryOp::Body(Style::Normal) => MessageLevel::Error,
@@ -1041,7 +1120,28 @@ impl Verifier {
                         }
                         let mut spinoff_z3_context;
                         let do_spinoff = (cmds.prover_choice == vir::def::ProverChoice::Nonlinear)
-                            || (cmds.prover_choice == vir::def::ProverChoice::BitVector);
+                            || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
+                            || *profile_rerun;
+
+                        let profile_file_name =
+                            if *profile_rerun || (self.args.profile_all && do_spinoff) {
+                                let solver_log_dir = self.ensure_solver_log_dir()?;
+                                let profile_file_name = self.log_file_name(
+                                    &solver_log_dir,
+                                    Some(bucket_id),
+                                    Self::log_fine_name_suffix(
+                                        is_recommend,
+                                        Some((&(function.x.name).path, spinoff_context_counter)),
+                                        self.expand_flag,
+                                        crate::config::PROFILE_FILE_SUFFIX,
+                                    )
+                                    .as_str(),
+                                );
+                                Some(profile_file_name)
+                            } else {
+                                None
+                            };
+
                         let query_air_context = if do_spinoff {
                             spinoff_z3_context = self.new_air_context_with_bucket_context(
                                 message_interface.clone(),
@@ -1058,6 +1158,7 @@ impl Verifier {
                                 is_recommend,
                                 spinoff_context_counter,
                                 &cmds.span,
+                                profile_file_name.as_ref(),
                             )?;
                             // for bitvector, only one query, no push/pop
                             if cmds.prover_choice == vir::def::ProverChoice::BitVector {
@@ -1069,15 +1170,17 @@ impl Verifier {
                             &mut air_context
                         };
 
-                        let command_invalidity = self.run_commands_queries(
+                        let RunCommandQueriesResult {
+                            invalidity: command_invalidity,
+                            timed_out: command_timed_out,
+                        } = self.run_commands_queries(
                             reporter,
                             source_map,
-                            level,
+                            (!profile_rerun).then(|| level),
                             query_air_context,
                             cmds.clone(),
                             &HashMap::new(),
                             &snap_map,
-                            &opgen.ctx.global.qid_map.borrow(),
                             bucket_id,
                             &function.x.name,
                             &op.to_air_comment(),
@@ -1090,6 +1193,35 @@ impl Verifier {
                         }
 
                         any_invalid |= command_invalidity;
+
+                        if let Some(profile_file_name) = profile_file_name {
+                            let profiler = Profiler::new(
+                                message_interface.clone(),
+                                &profile_file_name,
+                                reporter,
+                            );
+                            reporter.report(
+                                &note_bare(format!(
+                                    "Profile statistics for {}",
+                                    fun_as_friendly_rust_name(&function.x.name)
+                                ))
+                                .to_any(),
+                            );
+                            self.print_profile_stats(
+                                reporter,
+                                profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                            );
+                        } else {
+                            if command_timed_out && self.args.profile {
+                                opgen.retry_with_profile(
+                                    query_op.clone(),
+                                    commands_with_context_list.clone(),
+                                    snap_map.clone(),
+                                    function,
+                                );
+                            }
+                        }
                     }
 
                     if matches!(query_op, QueryOp::Body(Style::Normal)) {
@@ -1125,6 +1257,16 @@ impl Verifier {
                 }
             }
         }
+        if let Some(profile_all_file_name) = profile_all_file_name {
+            let profiler =
+                Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
+            reporter.report(
+                &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
+                    .to_any(),
+            );
+            self.print_profile_stats(reporter, profiler, &opgen.ctx.global.qid_map.borrow());
+        }
+
         ctx.fun = None;
 
         let (time_smt_init, time_smt_run) = air_context.get_time();
@@ -1469,11 +1611,7 @@ impl Verifier {
             }
         }
 
-        if self.args.profile_all {
-            let profiler =
-                Profiler::new(Arc::new(vir::messages::VirMessageInterface {}), &reporter);
-            self.print_profile_stats(&reporter, profiler, &global_ctx.qid_map.borrow());
-        } else if self.args.profile && self.count_errors == 0 {
+        if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
                 "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
             );

@@ -5,7 +5,7 @@ use crate::messages::{ArcDynMessage, Diagnostics};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
-use crate::profiler;
+
 use crate::scope_map::ScopeMap;
 use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
@@ -73,8 +73,6 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
-    pub(crate) profile: bool,
-    pub(crate) profile_all: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
@@ -86,6 +84,7 @@ pub struct Context {
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
+    pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
 }
 
@@ -108,8 +107,6 @@ impl Context {
                 snapshots: HashSet::new(),
             },
             debug: false,
-            profile: false,
-            profile_all: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(message_interface.clone(), false, false, None),
@@ -121,6 +118,7 @@ impl Context {
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
             expected_solver_version: None,
+            profile_logfile_name: None,
             disable_incremental_solving: false,
         };
         context.axiom_infos.push_scope(false);
@@ -163,22 +161,6 @@ impl Context {
         self.debug
     }
 
-    pub fn set_profile(&mut self, profile: bool) {
-        self.profile = profile;
-    }
-
-    pub fn get_profile(&self) -> bool {
-        self.profile
-    }
-
-    pub fn set_profile_all(&mut self, profile_all: bool) {
-        self.profile_all = profile_all;
-    }
-
-    pub fn get_profile_all(&self) -> bool {
-        self.profile_all
-    }
-
     pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
         self.ignore_unexpected_smt = ignore_unexpected_smt;
     }
@@ -189,6 +171,11 @@ impl Context {
 
     pub fn set_expected_solver_version(&mut self, version: String) {
         self.expected_solver_version = Some(version);
+    }
+
+    pub fn set_profile_with_logfile_name(&mut self, file_name: String) {
+        assert!(matches!(self.state, ContextState::NotStarted));
+        self.profile_logfile_name = Some(file_name);
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
@@ -310,11 +297,12 @@ impl Context {
     fn ensure_started(&mut self) {
         match self.state {
             ContextState::NotStarted => {
-                if self.profile || self.profile_all {
+                let profile_logfile_name = self.profile_logfile_name.clone();
+                if let Some(profile_logfile_name) = profile_logfile_name {
                     self.set_z3_param("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
-                    //self.set_z3_param("proof", "true");
-                    self.log_set_z3_param("trace_file_name", profiler::PROVER_LOG_FILE);
+                    // self.set_z3_param("proof", "true");
+                    self.log_set_z3_param("trace_file_name", &profile_logfile_name);
                 }
                 self.blank_line();
                 self.comment("AIR prelude");

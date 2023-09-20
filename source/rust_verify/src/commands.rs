@@ -48,7 +48,12 @@ pub enum OpKind {
     /// new into the context. Maybe be skipped if it's from a different module,
     /// or as a result of user options.
     /// The 'CommandsWithContext' allows for additional options like which prover to use
-    Query(QueryOp, Arc<Vec<CommandsWithContext>>, Arc<Vec<(vir::messages::Span, SnapPos)>>),
+    Query {
+        query_op: QueryOp,
+        commands_with_context_list: Arc<Vec<CommandsWithContext>>,
+        snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
+        profile_rerun: bool,
+    },
 }
 
 #[derive(Clone)]
@@ -116,7 +121,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
     pub fn next(&mut self) -> Result<Option<Op>, VirErr> {
         let op_opt = self._next()?;
         if let Some(op) = &op_opt {
-            if matches!(op.kind, OpKind::Query(..)) {
+            if matches!(op.kind, OpKind::Query { .. }) {
                 assert!(self.bucket.contains(&op.function.x.name));
             }
         }
@@ -165,6 +170,25 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         let ops = self.handle_proof_body_expand(op.function.clone(), expand_targets)?;
         self.append_to_front_of_queue(ops);
         Ok(())
+    }
+
+    pub fn retry_with_profile(
+        &mut self,
+        query_op: QueryOp,
+        commands_with_context_list: Arc<Vec<CommandsWithContext>>,
+        snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
+        function: &Function,
+    ) {
+        let op = Op {
+            kind: OpKind::Query {
+                query_op,
+                commands_with_context_list,
+                snap_map,
+                profile_rerun: true,
+            },
+            function: function.clone(),
+        };
+        self.current_queue.push_back(op);
     }
 
     fn append_to_front_of_queue(&mut self, ops: Vec<Op>) {
@@ -352,33 +376,53 @@ pub fn mk_fun_ctx(f: &Function, checking_spec_preconditions: bool) -> Option<Fun
 
 impl Op {
     pub fn to_air_comment(&self) -> String {
+        fn append_profile_rerun(s: &str, profile: bool) -> String {
+            if !profile { s.to_owned() } else { format!("{s}-Profile-Rerun") }
+        }
         let prefix = match &self.kind {
-            OpKind::Context(ContextOp::SpecDefinition, _) => "Function-Axioms",
-            OpKind::Context(ContextOp::ReqEns, _) => "Function-Specs",
-            OpKind::Context(ContextOp::Broadcast, _) => "Broadcast",
-            OpKind::Query(QueryOp::SpecTermination, ..) => "Spec-Termination",
-            OpKind::Query(QueryOp::Body(Style::Normal), ..) => "Function-Def",
-            OpKind::Query(
-                QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked),
-                ..,
-            ) => "Function-Recommends",
-            OpKind::Query(QueryOp::Body(Style::Expanded), ..) => "Function-Expand-Errors",
+            OpKind::Context(ContextOp::SpecDefinition, _) => "Function-Axioms".into(),
+            OpKind::Context(ContextOp::ReqEns, _) => "Function-Specs".into(),
+            OpKind::Context(ContextOp::Broadcast, _) => "Broadcast".into(),
+            OpKind::Query { query_op: QueryOp::SpecTermination, profile_rerun, .. } => {
+                append_profile_rerun("Spec-Termination", *profile_rerun)
+            }
+            OpKind::Query { query_op: QueryOp::Body(Style::Normal), profile_rerun, .. } => {
+                append_profile_rerun("Function-Def", *profile_rerun)
+            }
+            OpKind::Query {
+                query_op:
+                    QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked),
+                profile_rerun,
+                ..
+            } => append_profile_rerun("Function-Recommends", *profile_rerun),
+            OpKind::Query { query_op: QueryOp::Body(Style::Expanded), profile_rerun, .. } => {
+                append_profile_rerun("Function-Expand-Errors", *profile_rerun)
+            }
         };
         format!("{:} {:}", prefix, fun_as_friendly_rust_name(&self.function.x.name))
     }
 
     /// Intended for Query ops, so the driver can describe queries to the user
-    pub fn to_friendly_desc(&self) -> Option<&'static str> {
+    pub fn to_friendly_desc(&self) -> Option<String> {
+        fn append_profile_rerun(s: &str, profile: bool) -> String {
+            if !profile { s.to_owned() } else { format!("{s} (profile rerun)") }
+        }
         match &self.kind {
             OpKind::Context(_, _) => None,
-            OpKind::Query(QueryOp::SpecTermination, ..) => Some("checking termination"),
-            OpKind::Query(QueryOp::Body(Style::Normal), ..) => None,
-            OpKind::Query(
-                QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked),
-                ..,
-            ) => Some("checking recommends"),
-            OpKind::Query(QueryOp::Body(Style::Expanded), ..) => {
-                Some("running expand-errors check")
+            OpKind::Query { query_op: QueryOp::SpecTermination, profile_rerun, .. } => {
+                Some(append_profile_rerun("checking termination", *profile_rerun))
+            }
+            OpKind::Query { query_op: QueryOp::Body(Style::Normal), profile_rerun, .. } => {
+                profile_rerun.then(|| "(profile rerun)".into())
+            }
+            OpKind::Query {
+                query_op:
+                    QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked),
+                profile_rerun,
+                ..
+            } => Some(append_profile_rerun("checking recommends", *profile_rerun)),
+            OpKind::Query { query_op: QueryOp::Body(Style::Expanded), profile_rerun, .. } => {
+                Some(append_profile_rerun("running expand-errors check", *profile_rerun))
             }
         }
     }
@@ -393,7 +437,15 @@ impl Op {
         snap_map: Vec<(vir::messages::Span, SnapPos)>,
         f: &Function,
     ) -> Self {
-        Op { kind: OpKind::Query(query_op, commands, Arc::new(snap_map)), function: f.clone() }
+        Op {
+            kind: OpKind::Query {
+                query_op,
+                commands_with_context_list: commands,
+                snap_map: Arc::new(snap_map),
+                profile_rerun: false,
+            },
+            function: f.clone(),
+        }
     }
 }
 
