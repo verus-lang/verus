@@ -360,7 +360,10 @@ impl Verifier {
                                 if entry.path().is_file() {
                                     std::fs::remove_file(entry.path()).map_err(|err| {
                                         io_vir_err(
-                                            format!("could not remove file {}", dir.display()),
+                                            format!(
+                                                "could not remove file {}",
+                                                entry.path().display()
+                                            ),
                                             err,
                                         )
                                     })?;
