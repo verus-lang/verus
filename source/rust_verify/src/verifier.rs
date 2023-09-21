@@ -1911,7 +1911,7 @@ fn write_instantiation_graph(
                     qid_map.get(n).expect(format!("Failed to find quantifier {}", n).as_str());
                 QuantifierKind::User(UserQuantifier {
                     span: bnd_info.span.as_string.clone(),
-                    module: vec!["TODO".into()],
+                    module: vec![module_name(&bnd_info.module)],
                 })
             } else {
                 QuantifierKind::Internal
