@@ -871,3 +871,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] assert_forall_trigger_regression_824 verus_code! {
+        use vstd::seq::Seq;
+        pub open spec fn f(x: u32) -> bool;
+
+        proof fn test(a: Seq<u32>)
+            requires forall |i| #![trigger f(a[i])] f(a[i]),
+        {
+            // assert forall #![trigger f(a[i])] |i| f(a[i]) by { }
+            assert forall |i| #![trigger f(a[i])] f(a[i]) by { } // <== error
+        }
+    } => Ok(())
+}
