@@ -8,7 +8,6 @@ use builtin_macros::*;
 use crate::pervasive::*;
 use crate::view::*;
 use crate::seq::*;
-extern crate alloc;
 use alloc::vec;
 #[allow(unused_imports)]
 use crate::slice::*;

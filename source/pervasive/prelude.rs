@@ -9,7 +9,9 @@ pub use super::set::set;
 pub use super::map::Map;
 pub use super::map::map;
 
-pub use super::string::{String, StrSlice};
+#[cfg(feature = "alloc")]
+pub use super::string::String;
+pub use super::string::StrSlice;
 
 #[cfg(verus_keep_ghost)]
 pub use super::pervasive::{
@@ -28,8 +30,8 @@ pub use super::std_specs::option::OptionAdditionalFns;
 pub use super::std_specs::result::ResultAdditionalSpecFns;
 
 #[cfg(verus_keep_ghost)]
-#[cfg(not(feature = "no_global_allocator"))] 
+#[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalSpecFns;
 #[cfg(verus_keep_ghost)]
-#[cfg(not(feature = "no_global_allocator"))] 
+#[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalExecFns;
