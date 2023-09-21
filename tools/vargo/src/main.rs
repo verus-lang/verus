@@ -11,6 +11,11 @@ use filetime::FileTime as FFileTime;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+const VARGO_SOURCE_FILES: &[(&'static str, &'static [u8])] = &[
+    ("src/main.rs", include_bytes!("main.rs")),
+    ("src/util.rs", include_bytes!("util.rs")),
+];
+
 static VARGO_NEST: std::sync::RwLock<u64> = std::sync::RwLock::new(0);
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, Debug, Deserialize, Serialize)]
@@ -191,6 +196,19 @@ fn run() -> Result<(), String> {
         .map_err(|x| format!("could not parse Cargo.toml ({})\nrun vargo in `source`", x))?;
         (repo_root, rust_toolchain_toml)
     };
+    if vargo_nest == 0 {
+        let files = crate::util::vargo_file_contents(&repo_root.join("tools").join("vargo"));
+        let build_hash = &crate::util::hash_file_contents(VARGO_SOURCE_FILES.to_vec());
+        let cur_hash = &crate::util::hash_file_contents(
+            files.iter().map(|(f, n)| (f.as_str(), &n[..])).collect(),
+        );
+        if build_hash != cur_hash {
+            return Err(format!(
+                "vargo sources have changed since it was last built, please re-build vargo"
+            ));
+        }
+    }
+
     let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
         .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })
         .ok_or(

@@ -148,3 +148,46 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
         sha: sha_full,
     })
 }
+
+// ============================================================================
+
+pub fn vargo_file_contents(vargo_dir: &std::path::Path) -> Vec<(String, Box<[u8]>)> {
+    use std::io::Read;
+
+    fn add_file(files: &mut Vec<(String, Box<[u8]>)>, path: &Path, relative: &Path) {
+        let mut file = std::fs::File::open(path.join(relative))
+            .expect(&format!("cannot read file {}", relative.display()));
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .expect(&format!("cannot read file {}", relative.display()));
+        files.push((relative.display().to_string(), buffer.into_boxed_slice()));
+    }
+
+    fn add_dir(files: &mut Vec<(String, Box<[u8]>)>, path: &Path, relative: &Path) {
+        for entry in fs::read_dir(path.join(relative))
+            .expect(&format!("cannot read dir {}", relative.display()))
+        {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                add_dir(files, path, &relative.join(entry.file_name()));
+            } else if entry.path().extension() == Some(std::ffi::OsStr::new("rs")) {
+                add_file(files, path, &relative.join(entry.file_name()));
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    add_dir(&mut entries, &vargo_dir, Path::new("src"));
+    entries
+}
+
+pub fn hash_file_contents<'a>(mut files: Vec<(&'a str, &'a [u8])>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    files.sort_by_key(|&(n, _)| n);
+    for (n, b) in files {
+        n.hash(&mut hasher);
+        b.hash(&mut hasher);
+    }
+    hasher.finish()
+}
