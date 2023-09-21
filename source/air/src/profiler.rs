@@ -1,11 +1,13 @@
 //! Analyzes prover performance of the SMT solver
 
 use crate::messages::{Diagnostics, MessageLevel};
+use std::collections::HashSet;
 use std::io::BufRead;
-use std::io::Write;
-use std::collections::{HashMap, BTreeMap, BTreeSet};
-use z3tracer::syntax::{QiFrame, QiKey, MatchedTerm};
+// use std::io::Write;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+// use sise::Node;
 use z3tracer::model::QuantCost;
+use z3tracer::syntax::{MatchedTerm, QiFrame, QiKey};
 // use z3tracer::model::QuantCause;
 use z3tracer::{Model, ModelConfig};
 
@@ -20,6 +22,13 @@ pub struct Profiler {
     //log_path: String,
     quantifier_stats: Vec<QuantCost>,
     // pub quantifier_causes: Vec<QuantCause>,
+    instantiation_graph: InstantiationGraph,
+}
+
+pub struct InstantiationGraph {
+    pub edges: HashMap<(u64, usize), HashSet<(u64, usize)>>,
+    pub names: HashMap<(u64, usize), String>,
+    pub nodes: HashSet<(u64, usize)>,
 }
 
 impl Profiler {
@@ -58,7 +67,7 @@ impl Profiler {
             .expect("Error processing prover trace");
         diagnostics.report(&message_interface.bare(MessageLevel::Note, "... analysis complete\n"));
 
-        Self::print_quant_graph(path, &model);
+        let instantiation_graph = Self::make_instantiation_graph(&model);
 
         // Analyze the quantifer costs
         let quant_costs = model.quant_costs();
@@ -69,7 +78,7 @@ impl Profiler {
         user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
         user_quant_costs.reverse();
 
-        // let quant_causes = model.quant_causes(); 
+        // let quant_causes = model.quant_causes();
         // let mut user_quant_causes = quant_causes
         //     .into_iter()
         //     .filter(|cost| cost.quant.starts_with(USER_QUANT_PREFIX))
@@ -77,18 +86,20 @@ impl Profiler {
         // user_quant_causes.sort_by_key(|qc| qc.instantiations);
         // user_quant_causes.reverse();
 
-        Profiler { message_interface, quantifier_stats: user_quant_costs }
+        Profiler { message_interface, quantifier_stats: user_quant_costs, instantiation_graph }
         // Profiler { message_interface, quantifier_stats: user_quant_costs, quantifier_causes : user_quant_causes }
     }
 
-    fn print_quant_graph(path: &std::path::Path, model : &Model) {
+    pub fn instantiation_graph(&self) -> &InstantiationGraph {
+        &self.instantiation_graph
+    }
+
+    fn make_instantiation_graph(model: &Model) -> InstantiationGraph {
         let quantifier_inst_matches =
-            model.instantiations()
-                .iter()
-                .filter(|(_, quant_inst)| match quant_inst.frame {
-                    QiFrame::Discovered { .. } => false,
-                    QiFrame::NewMatch { .. } => true,
-                });
+            model.instantiations().iter().filter(|(_, quant_inst)| match quant_inst.frame {
+                QiFrame::Discovered { .. } => false,
+                QiFrame::NewMatch { .. } => true,
+            });
 
         // Track which instantiations caused which enodes to appear
         let mut term_blame = HashMap::new();
@@ -100,14 +111,12 @@ impl Profiler {
             }
         }
 
-
         // Create a graph over QuantifierInstances,
         // where U->V if U produced an e-term that
         // triggered V
-        let mut graph : BTreeMap<QiKey, BTreeSet<QiKey>> = BTreeMap::new();
+        let mut graph: BTreeMap<QiKey, BTreeSet<QiKey>> = BTreeMap::new();
         for (qi_key, _) in quantifier_inst_matches.clone() {
             graph.insert(*qi_key, BTreeSet::new());
-
         }
         for (qi_key, quant_inst) in quantifier_inst_matches.clone() {
             match &quant_inst.frame {
@@ -139,27 +148,30 @@ impl Profiler {
             }
         }
         {
-            let mut seen_edges = HashMap::new();
+            let mut edges: HashMap<(u64, usize), HashSet<(u64, usize)>> = HashMap::new();
+            let mut nodes: HashSet<QiKey> = HashSet::new();
             for (src, tgts) in graph.iter() {
-                let src_ident = model.instantiations().get(src).unwrap().frame.quantifier();
-                let src_name = model.term(src_ident).expect("not found").name().unwrap();
+                nodes.insert(*src);
                 for tgt in tgts {
-                    let tgt_ident = model.instantiations().get(tgt).unwrap().frame.quantifier();
-                    let tgt_name = model.term(tgt_ident).expect("not found").name().unwrap();
-                    let key = (src_name, tgt_name);
-                    *seen_edges.entry(key).or_insert(0) += 1;
+                    edges
+                        .entry((src.key, src.version))
+                        .or_insert(std::collections::HashSet::new())
+                        .insert((tgt.key, tgt.version));
+                    nodes.insert(*tgt);
                 }
             }
+            let names: HashMap<(u64, usize), String> = nodes
+                .iter()
+                .map(|k| {
+                    let ident = model.instantiations().get(&k).unwrap().frame.quantifier();
+                    let name = model.term(ident).expect("not found").name().unwrap();
+                    ((k.key, k.version), name.to_owned())
+                })
+                .collect();
+            let nodes = nodes.into_iter().map(|k| (k.key, k.version)).collect();
 
-            let mut file = std::fs::File::create(path.with_extension("dot")).expect("couldn't create dot file"); 
-            writeln!(&mut file, "digraph M {{").expect("failed to write instantiation graph");
-            writeln!(&mut file, "  rankdir=LR;").expect("failed to write instantiation graph");
-            for ((src_name, tgt_name), count) in seen_edges.iter() {
-                writeln!(&mut file, "  \"{}\" -> \"{}\" [ label = \"{}\"];", src_name, tgt_name, count).expect("failed to write instantiation graph");
-            }
-            writeln!(&mut file, "}}").expect("failed to write call graph");
+            InstantiationGraph { edges, names, nodes }
         }
-
     }
 
     pub fn quant_count(&self) -> usize {

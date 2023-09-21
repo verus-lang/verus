@@ -1223,6 +1223,11 @@ impl Verifier {
                                 &profile_file_name,
                                 reporter,
                             );
+                            write_instantiation_graph(
+                                &profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                                profile_file_name,
+                            );
                             reporter.report(
                                 &note_bare(format!(
                                     "Profile statistics for {}",
@@ -1283,6 +1288,11 @@ impl Verifier {
         if let Some(profile_all_file_name) = profile_all_file_name {
             let profiler =
                 Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
+            write_instantiation_graph(
+                &profiler,
+                &opgen.ctx.global.qid_map.borrow(),
+                profile_all_file_name,
+            );
             reporter.report(
                 &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
                     .to_any(),
@@ -1883,6 +1893,58 @@ impl Verifier {
 
         Ok(true)
     }
+}
+
+fn write_instantiation_graph(
+    profiler: &Profiler,
+    qid_map: &HashMap<String, vir::sst::BndInfo>,
+    profile_file_name: std::path::PathBuf,
+) {
+    let air::profiler::InstantiationGraph { edges, nodes, names } = profiler.instantiation_graph();
+    use qi_graph::*;
+    let name_strs: HashSet<String> = names.values().cloned().collect();
+    let quantifiers: HashMap<String, Quantifier> = name_strs
+        .iter()
+        .map(|n| {
+            let kind = if n.starts_with(air::profiler::USER_QUANT_PREFIX) {
+                let bnd_info =
+                    qid_map.get(n).expect(format!("Failed to find quantifier {}", n).as_str());
+                QuantifierKind::User(UserQuantifier {
+                    span: bnd_info.span.as_string.clone(),
+                    module: vec!["TODO".into()],
+                })
+            } else {
+                QuantifierKind::Internal
+            };
+            (n.clone(), std::rc::Rc::new(QuantifierX { qid: n.clone(), kind }))
+        })
+        .collect();
+    let instantiations: HashMap<(u64, usize), Instantiation> = nodes
+        .iter()
+        .map(|n| {
+            (
+                n.clone(),
+                std::rc::Rc::new(InstantiationX {
+                    quantifier: quantifiers[&names[n]].clone(),
+                    id: *n,
+                }),
+            )
+        })
+        .collect();
+    let mut graph: HashMap<Instantiation, HashSet<((), Instantiation)>> = HashMap::new();
+    for (src, tgts) in edges {
+        let graph_src = graph.entry(instantiations[src].clone()).or_insert(HashSet::new());
+        for tgt in tgts {
+            graph_src.insert(((), instantiations[tgt].clone()));
+        }
+    }
+    let quantifiers = quantifiers.into_values().collect();
+    let instantiation_graph = InstantiationGraph { quantifiers, graph: Graph(graph) };
+    let file_name = profile_file_name.with_extension("graph");
+    let mut f = File::create(&file_name)
+        .expect(&format!("failed to open instantiation graph file {}", file_name.display()));
+    bincode::serialize_into(&mut f, &instantiation_graph)
+        .expect("failed to write instantiation graph");
 }
 
 // TODO: move the callbacks into a different file, like driver.rs

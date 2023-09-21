@@ -32,7 +32,7 @@ dependencies = [
 name = "air"
 version = "0.1.0"
 dependencies = [
- "getopts",
+ "getopts 0.2.21 (git+https://github.com/utaal/getopts.git?branch=parse-partial)",
  "indexmap 1.9.3",
  "serde",
  "sise",
@@ -450,6 +450,15 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "getopts"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14dbbfd5c71d70241ecf9e6f13737f7b5ce823821063188d7e46c41d371eebd5"
+dependencies = [
+ "unicode-width",
 ]
 
 [[package]]
@@ -1083,6 +1092,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "qi-graph"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "getopts 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1225,9 +1243,10 @@ version = "0.1.0"
 dependencies = [
  "air",
  "bincode",
- "getopts",
+ "getopts 0.2.21 (git+https://github.com/utaal/getopts.git?branch=parse-partial)",
  "num-bigint 0.4.4",
  "num-format",
+ "qi-graph",
  "regex",
  "rust_verify_test_macros",
  "serde",

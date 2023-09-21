@@ -16,6 +16,7 @@ num-bigint = "0.4.4"
 num-format = "0.4.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 regex = "1"
+qi-graph = { path = "../tools/qi-graph" }
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
