@@ -160,7 +160,12 @@ pub fn vargo_file_contents(vargo_dir: &std::path::Path) -> Vec<(String, Box<[u8]
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)
             .expect(&format!("cannot read file {}", relative.display()));
-        files.push((relative.display().to_string(), buffer.into_boxed_slice()));
+        let path_str = relative
+            .components()
+            .map(|x| x.as_os_str().to_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        files.push((path_str, buffer.into_boxed_slice()));
     }
 
     fn add_dir(files: &mut Vec<(String, Box<[u8]>)>, path: &Path, relative: &Path) {
