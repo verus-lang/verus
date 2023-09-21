@@ -502,6 +502,38 @@ impl Verifier {
         }
     }
 
+    /*fn print_causality_profile_stats(
+        &self,
+        diagnostics: &impl Diagnostics,
+        profiler: Profiler,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
+    ) {
+        let cause_breakdown = profiler.quantifier_causes.clone();
+        for cause in cause_breakdown.iter().take(10) {
+            let total = cause.instantiations;
+            let note  = format!(
+                "Total Instantiations: {}\n",
+                total
+            );
+            let bnd_info = qid_map
+                .get(&cause.quant)
+                .expect(format!("Failed to find quantifier {}", cause.quant).as_str());
+            let mut msg = note_bare(note).primary_span(&bnd_info.span);
+            let mut total = 0.0;
+            for (reason_quant, blame) in &cause.causes {
+                total += blame;
+                if let Some(cause_bnd_info) = qid_map.get(reason_quant) {
+                    msg = msg.secondary_label(&cause_bnd_info.span, format!("caused {} of the instantiations", blame));
+                } else {
+                    msg = msg.secondary_label(&bnd_info.span, format!("{} caused {} of the instantiations", reason_quant, blame));
+                }
+            }
+            dbg!(total);
+            diagnostics.report(&msg.to_any());
+
+        }
+    }*/
+
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
     /// Returns true if there was at least one Invalid resulting in an error.
