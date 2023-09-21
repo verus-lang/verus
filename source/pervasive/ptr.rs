@@ -554,7 +554,8 @@ impl<V> PPtr<V> {
         let ptr = self.uptr as usize as *mut V;
 
         unsafe {
-            *ptr = v;
+            // We use `write` here because it does not attempt to "drop" the memory at `*ptr`.
+            core::ptr::write(ptr, v);
         }
     }
 
