@@ -21,9 +21,10 @@ impl Profiler {
     /// Instantiate a new (singleton) profiler
     pub fn new(
         message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
+        filename: &std::path::Path,
         diagnostics: &impl Diagnostics,
     ) -> Self {
-        let path = PROVER_LOG_FILE;
+        let path = filename;
 
         // Count the number of lines
         let file = std::io::BufReader::new(
@@ -39,10 +40,16 @@ impl Profiler {
         model_config.parser_config.skip_z3_version_check = true;
         model_config.parser_config.ignore_invalid_lines = true;
         model_config.skip_log_consistency_checks = true;
+        model_config.log_internal_term_equalities = false;
+        model_config.log_term_equalities = false;
         let mut model = Model::new(model_config);
         diagnostics.report(&message_interface.bare(MessageLevel::Note, "Analyzing prover log..."));
         let _ = model
-            .process(Some(path.to_string()), file, line_count)
+            .process(
+                Some(path.to_str().expect("invalid profile file path").to_owned()),
+                file,
+                line_count,
+            )
             .expect("Error processing prover trace");
         diagnostics.report(&message_interface.bare(MessageLevel::Note, "... analysis complete\n"));
 

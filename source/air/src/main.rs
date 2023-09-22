@@ -1,7 +1,7 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
-use air::profiler::Profiler;
+use air::profiler::{Profiler, PROVER_LOG_FILE};
 use getopts::Options;
 use sise::Node;
 use std::fs::File;
@@ -106,10 +106,10 @@ pub fn main() {
     let mut air_context = Context::new(message_interface.clone());
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
-    let profile = matches.opt_present("profile");
-    air_context.set_profile(profile);
     let profile_all = matches.opt_present("profile_all");
-    air_context.set_profile_all(profile_all);
+    if profile_all {
+        air_context.set_profile_with_logfile_name(PROVER_LOG_FILE.into());
+    }
     let ignore_unexpected_smt = matches.opt_present("ignore-unexpected-smt");
     air_context.set_ignore_unexpected_smt(ignore_unexpected_smt);
 
@@ -154,11 +154,7 @@ pub fn main() {
             }
             ValidityResult::Canceled => {
                 count_errors += 1;
-                if profile {
-                    println!("Resource limit (rlimit) exceeded");
-                    let profiler = Profiler::new(message_interface.clone(), &reporter);
-                    profiler.print_raw_stats(&reporter);
-                } else if !profile_all {
+                if !profile_all {
                     println!(
                         "Resource limit (rlimit) exceeded; consider rerunning with --profile for more details"
                     );
@@ -175,7 +171,11 @@ pub fn main() {
         }
     }
     if profile_all {
-        let profiler = Profiler::new(message_interface.clone(), &reporter);
+        let profiler = Profiler::new(
+            message_interface.clone(),
+            std::path::Path::new(PROVER_LOG_FILE),
+            &reporter,
+        );
         profiler.print_raw_stats(&reporter);
     }
     println!("Verification results:: {} verified, {} errors", count_verified, count_errors);

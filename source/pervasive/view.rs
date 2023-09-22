@@ -23,7 +23,8 @@ impl<A: View> View for &A {
     }
 }
 
-impl<A: View> View for Box<A> {
+#[cfg(feature = "alloc")]
+impl<A: View> View for alloc::boxed::Box<A> {
     type V = A::V;
     #[verifier::inline]
     open spec fn view(&self) -> A::V {
@@ -31,7 +32,8 @@ impl<A: View> View for Box<A> {
     }
 }
 
-impl<A: View> View for std::rc::Rc<A> {
+#[cfg(feature = "alloc")]
+impl<A: View> View for alloc::rc::Rc<A> {
     type V = A::V;
     #[verifier::inline]
     open spec fn view(&self) -> A::V {
@@ -39,7 +41,8 @@ impl<A: View> View for std::rc::Rc<A> {
     }
 }
 
-impl<A: View> View for std::sync::Arc<A> {
+#[cfg(feature = "alloc")]
+impl<A: View> View for alloc::sync::Arc<A> {
     type V = A::V;
     #[verifier::inline]
     open spec fn view(&self) -> A::V {

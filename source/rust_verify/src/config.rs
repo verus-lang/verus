@@ -18,6 +18,7 @@ impl Default for ShowTriggers {
 }
 
 pub const LOG_DIR: &str = ".verus-log";
+pub const SOLVER_LOG_DIR: &str = ".verus-solver-log";
 pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
@@ -26,6 +27,7 @@ pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 
@@ -395,8 +397,25 @@ pub fn parse_args_with_imports(
         },
         ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
         debug: matches.opt_present(OPT_DEBUG),
-        profile: matches.opt_present(OPT_PROFILE),
-        profile_all: matches.opt_present(OPT_PROFILE_ALL),
+        profile: {
+            if matches.opt_present(OPT_PROFILE) {
+                if matches.opt_present(OPT_PROFILE_ALL) {
+                    error("--profile and --profile-all are mutually exclusive".to_string())
+                }
+            };
+            matches.opt_present(OPT_PROFILE)
+        },
+        profile_all: {
+            if matches.opt_present(OPT_PROFILE_ALL) {
+                if !matches.opt_present(OPT_VERIFY_MODULE) {
+                    error("Must pass --verify-module when profiling".to_string())
+                }
+                if matches.opt_present(OPT_PROFILE) {
+                    error("--profile and --profile-all are mutually exclusive".to_string())
+                }
+            };
+            matches.opt_present(OPT_PROFILE_ALL)
+        },
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),

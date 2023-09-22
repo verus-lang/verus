@@ -731,7 +731,6 @@ pub mod parsing {
             let mut attrs = Vec::new();
             let assert_token: Token![assert] = input.parse()?;
             let forall_token: Token![forall] = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
             let or1_token: Token![|] = input.parse()?;
             let mut inputs = Punctuated::new();
             while !input.peek(Token![|]) {
@@ -754,6 +753,7 @@ pub mod parsing {
                 inputs.push_punct(comma);
             }
             let or2_token: Token![|] = input.parse()?;
+            attr::parsing::parse_inner(input, &mut attrs)?;
             let expr = input.parse()?;
             let implies = if input.peek(Token![implies]) {
                 let implies_token = input.parse()?;

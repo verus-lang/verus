@@ -1,5 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use vir::ast::{Fun, Krate, Path};
+use vir::{
+    ast::{Fun, Krate, Path},
+    ast_util::fun_as_friendly_rust_name,
+};
 
 // A "bucket" is a group of functions that are processed together
 // with the same pruning context.
@@ -50,11 +53,9 @@ impl BucketId {
         };
         match self {
             BucketId::Module(_) => mstring,
-            BucketId::Fun(_, f) => format!(
-                "{}, function {}",
-                mstring,
-                f.path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
-            ),
+            BucketId::Fun(_, f) => {
+                format!("{}, function {}", mstring, fun_as_friendly_rust_name(f),)
+            }
         }
     }
 
