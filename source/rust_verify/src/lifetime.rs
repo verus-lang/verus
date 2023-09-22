@@ -252,6 +252,11 @@ impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
         assert!(path.display().to_string() == Self::FILENAME.to_string());
         Ok(self.rust_code.clone())
     }
+
+    fn read_binary_file(&self, path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
+        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        Ok(self.rust_code.clone().into_bytes())
+    }
 }
 
 #[derive(Debug, Deserialize)]

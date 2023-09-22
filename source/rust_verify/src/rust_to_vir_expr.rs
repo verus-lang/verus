@@ -29,7 +29,6 @@ use rustc_hir::{
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
 };
-use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -437,7 +436,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 let mut wildcard_binders = vec![];
                 for i in 0..n_wildcards {
                     let actual_idx = i + pos_to_insert_wildcards;
-                    let field_def = &variant_def.fields[actual_idx];
+                    let field_def = &variant_def.fields[actual_idx.into()];
                     let typ = field_def.ty(bctx.ctxt.tcx, substs);
                     let vir_typ = mid_ty_to_vir(
                         bctx.ctxt.tcx,
@@ -1287,7 +1286,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Raw, _, _) => {
             unsupported_err!(expr.span, format!("raw borrows"))
         }
-        ExprKind::Box(e) => expr_to_vir_inner(bctx, e, ExprModifier::REGULAR),
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
                 let not_op = match (tc.expr_ty_adjusted(arg)).kind() {

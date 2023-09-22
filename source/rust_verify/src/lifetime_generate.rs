@@ -1111,10 +1111,6 @@ fn erase_expr<'tcx>(
                 mk_exp(ExpX::AddrOf(*mutability, exp.expect("expr")))
             }
         }
-        ExprKind::Box(e) => {
-            let exp = erase_expr(ctxt, state, expect_spec, e);
-            erase_spec_exps(ctxt, state, expr, vec![exp])
-        }
         ExprKind::Unary(op, e1) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
             match op {

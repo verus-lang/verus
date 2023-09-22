@@ -1,6 +1,6 @@
 use air::ast::Ident;
 use regex::Regex;
-use rustc_middle::ty::{DefIdTree, TyCtxt, TyKind};
+use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use std::{collections::HashMap, sync::Arc};
 
