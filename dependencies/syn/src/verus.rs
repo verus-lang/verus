@@ -273,6 +273,15 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct ExprHas {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub has_token: Token![has],
+        pub rhs: Box<Expr>,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -1115,6 +1124,16 @@ mod printing {
             self.base.to_tokens(tokens);
             self.is_token.to_tokens(tokens);
             self.variant_ident.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprHas {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.has_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
         }
     }
 }

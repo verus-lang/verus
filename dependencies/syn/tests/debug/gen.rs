@@ -1538,6 +1538,15 @@ impl Debug for Lite<syn::Expr> {
                 formatter.field("variant_ident", Lite(&_val.variant_ident));
                 formatter.finish()
             }
+            syn::Expr::Has(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::Has");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("lhs", Lite(&_val.lhs));
+                formatter.field("rhs", Lite(&_val.rhs));
+                formatter.finish()
+            }
             _ => unreachable!(),
         }
     }
@@ -1894,6 +1903,18 @@ impl Debug for Lite<syn::ExprGroup> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("expr", Lite(&_val.expr));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprHas> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ExprHas");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("lhs", Lite(&_val.lhs));
+        formatter.field("rhs", Lite(&_val.rhs));
         formatter.finish()
     }
 }
