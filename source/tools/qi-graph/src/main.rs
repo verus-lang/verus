@@ -5,7 +5,7 @@ use std::{
 };
 
 use getopts::Options;
-use qi_graph::{Graph, Instantiation, InstantiationGraph, QuantifierKind};
+use qi_graph::{Graph, Instantiation, InstantiationGraph, Quantifier, QuantifierKind};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -47,26 +47,30 @@ fn main() {
     }
 }
 
-/// Takes a graph and predicate on quantifier, and keeps the nodes that satisfy the predicate
+/// Takes a graph and predicate on quantifier/instantiations, and keeps the nodes that satisfy the predicate
 /// for those that don't collapse, remove the node, and stitch all parents to point at its children
 /// recursively
-fn prune_by_predicate(
-    input_graph: &HashMap<Instantiation, HashMap<Instantiation, u64>>,
-    predicate: &dyn Fn(&Instantiation) -> bool,
-) -> HashMap<Instantiation, HashMap<Instantiation, u64>> {
+fn prune_by_predicate<T>(
+    input_graph: &HashMap<T, HashMap<T, u64>>,
+    predicate: &dyn Fn(&T) -> bool,
+) -> HashMap<T, HashMap<T, u64>> 
+where T : Eq + PartialEq + std::hash::Hash + Clone
+{
     // remove the nodes in the graph relating to internal nodes
-    let mut pruned_graph: HashMap<Instantiation, HashMap<Instantiation, u64>> = HashMap::new();
+    let mut pruned_graph: HashMap<T, HashMap<T, u64>> = HashMap::new();
     for (src, dsts) in input_graph {
         // only add back in the nodes satisfying predicate as sources
         if predicate(src) {
             // function to traverse down the non-internal dsts of a source
-            fn compute_final_edges(
-                visited: &mut HashSet<Instantiation>,
-                graph: &HashMap<Instantiation, HashMap<Instantiation, u64>>,
-                predicate: &dyn Fn(&Instantiation) -> bool,
-                dsts: &HashMap<Instantiation, u64>,
-            ) -> HashMap<Instantiation, u64> {
-                let mut pruned_edges: HashMap<Instantiation, u64> = HashMap::new();
+            fn compute_final_edges<T>(
+                visited: &mut HashSet<T>,
+                graph: &HashMap<T, HashMap<T, u64>>,
+                predicate: &dyn Fn(&T) -> bool,
+                dsts: &HashMap<T, u64>,
+            ) -> HashMap<T, u64>
+            where T : Eq + PartialEq + std::hash::Hash + Clone
+            {
+                let mut pruned_edges: HashMap<T, u64> = HashMap::new();
                 // Ex: #1 -> {#2, #3, #4} , #4 internal
                 for (dst, count) in dsts {
                     if predicate(dst) {
@@ -114,6 +118,19 @@ fn run(input_path: &str) -> Result<(), String> {
     //         *new_src.entry(dst.quantifier.clone()).or_insert(0) += 1;
     //     }
     // }
+    // 
+    // let pruned_graph = prune_by_predicate(&simple_graph, &|src: &Quantifier| {
+    //     src.kind != QuantifierKind::Internal
+    // });
+
+    // let simple_graph: Graph<Quantifier, u64> = Graph(
+    //     pruned_graph
+    //         .into_iter()
+    //         .map(|(src, edges)| {
+    //             (src, { edges.into_iter().map(|(dst, count)| (count, dst)).collect() })
+    //         })
+    //         .collect(),
+    // );
 
     let input_graph = graph
         .graph
@@ -136,9 +153,11 @@ fn run(input_path: &str) -> Result<(), String> {
             })
             .collect(),
     );
+
     simple_graph.to_dot_file(
         &Path::new(input_path).with_extension("dot"),
         |n| format!("{} ({}, {})", n.quantifier.qid, n.id.0, n.id.1),
+        // |n| n.qid.clone(),
         |e| Some(format!("{}", e)),
     )?;
 
