@@ -151,7 +151,7 @@ const VERUS_ROOT_FILE: &str = "verus-root";
 fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     for f in VSTD_FILES.iter() {
         let f = target_verus_dir.join(f);
-        if f.is_file() {
+        if f.is_file() && f.exists() {
             info(format!("removing {}", f.display()).as_str());
             std::fs::remove_file(&f)
                 .map_err(|x| format!("could not delete file {} ({x})", f.display()))?;
@@ -499,12 +499,14 @@ fn run() -> Result<(), String> {
     let target_verus_dir = {
         let parent_dir = std::path::PathBuf::from("target-verus");
         if !parent_dir.exists() {
+            info(&format!("creating {}", parent_dir.display()));
             std::fs::create_dir(&parent_dir)
                 .map_err(|x| format!("could not create target-verus directory ({})", x))?;
         }
         let target_verus_dir = parent_dir.join(if release { "release" } else { "debug" });
 
         if !target_verus_dir.exists() {
+            info(&format!("creating {}", target_verus_dir.display()));
             std::fs::create_dir(&target_verus_dir)
                 .map_err(|x| format!("could not create target-verus directory ({})", x))?;
         }
@@ -546,7 +548,11 @@ fn run() -> Result<(), String> {
                 .map_err(|x| format!("could not canonicalize target-verus directory ({})", x))?;
 
             if let (Task::Clean, Some("vstd")) = (task, package) {
-                clean_vstd(&target_verus_dir)
+                clean_vstd(&std::path::Path::new("target-verus").join("release"))?;
+                if !release {
+                    clean_vstd(&std::path::Path::new("target-verus").join("debug"))?;
+                }
+                Ok(())
             } else {
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
@@ -568,8 +574,30 @@ fn run() -> Result<(), String> {
                             ));
                         }
 
-                        std::fs::remove_dir_all(&target_verus_dir)
-                            .map_err(|x| format!("could not remove target-verus directory ({})", x))
+                        let target_verus_release_dir =
+                            std::path::Path::new("target-verus").join("release");
+                        if target_verus_release_dir.is_dir() && target_verus_release_dir.exists() {
+                            info(
+                                format!("removing {}", target_verus_release_dir.display()).as_str(),
+                            );
+                            std::fs::remove_dir_all(target_verus_release_dir).map_err(|x| {
+                                format!("could not remove target-verus directory ({})", x)
+                            })?;
+                        }
+                        if !release {
+                            let target_verus_debug_dir =
+                                std::path::Path::new("target-verus").join("debug");
+                            if target_verus_debug_dir.is_dir() && target_verus_debug_dir.exists() {
+                                info(
+                                    format!("removing {}", target_verus_debug_dir.display())
+                                        .as_str(),
+                                );
+                                std::fs::remove_dir_all(target_verus_debug_dir).map_err(|x| {
+                                    format!("could not remove target-verus directory ({})", x)
+                                })?;
+                            }
+                        }
+                        Ok(())
                     }
                     _ => std::process::exit(status.code().unwrap_or(1)),
                 }
