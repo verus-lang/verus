@@ -107,5 +107,7 @@ test_verify_one_file! {
         }
 
         type OT = impl Foo;
-    } => Err(err) => assert_rust_error_msg(err, "`impl Trait` in type aliases is unstable")
+    } => Err(err) => {
+        assert!(err.errors.iter().find(|p| p.message == "`impl Trait` in type aliases is unstable").is_some());
+    }
 }

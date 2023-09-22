@@ -98,7 +98,6 @@ pub fn enable_default_features_and_verus_attr(
     }
     for feature in &[
         "stmt_expr_attributes",
-        "box_syntax",
         "box_patterns",
         "negative_impls",
         "rustc_attrs",

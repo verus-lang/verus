@@ -145,15 +145,16 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                 bodies[&body_id.hir_id.local_id] = body;
 
                                 let nodes: rustc_hir::OwnerNodes<'tcx> = rustc_hir::OwnerNodes {
-                                    hash_including_bodies: inner_owner.nodes.hash_including_bodies,
-                                    hash_without_bodies: inner_owner.nodes.hash_without_bodies,
+                                    opt_hash_including_bodies: inner_owner
+                                        .nodes
+                                        .opt_hash_including_bodies,
                                     nodes: inner_owner.nodes.nodes.clone(),
                                     bodies,
                                 };
                                 let attrs: rustc_hir::AttributeMap<'tcx> =
                                     rustc_hir::AttributeMap {
                                         map: inner_owner.attrs.map.clone(),
-                                        hash: inner_owner.attrs.hash,
+                                        opt_hash: inner_owner.attrs.opt_hash,
                                     };
                                 let owner_info = tcx.hir_arena.alloc(rustc_hir::OwnerInfo {
                                     nodes,
