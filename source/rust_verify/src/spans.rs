@@ -91,7 +91,7 @@ impl SpanContextX {
                     local_files.insert(source_file.src_hash.hash_bytes().to_vec(), pos);
                 }
                 ExternalSource::Foreign { .. } => {
-                    let imported_crate = tcx.stable_crate_id(source_file.cnum).to_u64();
+                    let imported_crate = tcx.stable_crate_id(source_file.cnum).as_u64();
                     let start_pos = source_file.start_pos;
                     let end_pos = source_file.end_pos;
                     let hash = source_file.src_hash.hash_bytes().to_vec();
@@ -203,7 +203,7 @@ impl SpanContextX {
         // Encode as [StableCrateId, lo_hi]
         let span_data = span.data();
         let lo_hi = ((span_data.lo.0 as u64) << 32) | (span_data.hi.0 as u64);
-        return vec![self.local_crate.to_u64(), lo_hi];
+        return vec![self.local_crate.as_u64(), lo_hi];
     }
 
     fn unpack_span(&self, packed: &Vec<u64>, source_map: Option<&SourceMap>) -> Option<Span> {

@@ -185,15 +185,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
         let inst = rustc_middle::ty::Instance::resolve(tcx, param_env, f, normalized_substs);
         if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
-                if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item {
-                    let typs = mk_typ_args(bctx, &inst.substs, expr.span)?;
-                    let f = Arc::new(FunX {
-                        path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did),
-                    });
-                    let impl_paths = get_impl_paths(bctx, did, &inst.substs);
-                    resolved = Some((f, typs, impl_paths));
-                }
+            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
+                let typs = mk_typ_args(bctx, &inst.substs, expr.span)?;
+                let f =
+                    Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+                let impl_paths = get_impl_paths(bctx, did, &inst.substs);
+                resolved = Some((f, typs, impl_paths));
             }
         }
         vir::ast::CallTargetKind::Method(resolved)

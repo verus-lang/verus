@@ -526,7 +526,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let id = def.as_local().unwrap().local_def_index.index();
             (Arc::new(TypX::AnonymousClosure(args, ret, id)), false)
         }
-        TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
+        TyKind::Alias(
+            rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
+            t,
+        ) => {
             // First, try to normalize to a non-projection type.
             // This can enable concrete operations on the type (e.g.
             // arithmetic if the normalized type is int) that
@@ -550,8 +553,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   use crate::rustc_middle::ty::DefIdTree;
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
-            match (trait_def, t.substs.try_as_type_list()) {
-                (Some(trait_def), Some(typs)) if typs.len() >= 1 => {
+            match (trait_def, t.substs.into_type_list(tcx)) {
+                (Some(trait_def), typs) if typs.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
                     // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
                     let mut trait_typ_args = Vec::new();
@@ -625,7 +628,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     use rustc_middle::ty::ValTree;
 
     let cnst = match cnst.kind() {
-        ConstKind::Unevaluated(unevaluated) => cnst.eval(tcx, tcx.param_env(unevaluated.def.did)),
+        ConstKind::Unevaluated(unevaluated) => cnst.eval(tcx, tcx.param_env(unevaluated.def)),
         _ => *cnst,
     };
     match cnst.kind() {

@@ -91,24 +91,24 @@ impl air::messages::Diagnostics for Reporter<'_> {
         ) {
             diag.span = multispan;
             if let Some(help) = help {
-                diag.help(help);
+                diag.help(&**help);
             }
             diag.emit();
         }
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note_without_error(&msg.note),
+                self.compiler_diagnostics.struct_note_without_error(&*msg.note),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_warn(&msg.note),
+                self.compiler_diagnostics.struct_warn(&*msg.note),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_err(&msg.note),
+                self.compiler_diagnostics.struct_err(&*msg.note),
                 multispan,
                 &msg.help,
             ),
@@ -1537,7 +1537,7 @@ impl Verifier {
 
         let time_verify_end = Instant::now();
 
-        let mut time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
+        let time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
         time_bucket.time_smt_init = time_smt_init;
         time_bucket.time_smt_run = time_smt_run;
         time_bucket.time_verify = time_verify_end - time_verify_start;
@@ -2017,7 +2017,7 @@ impl Verifier {
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
-            crate_id: spans.local_crate.to_u64(),
+            crate_id: spans.local_crate.as_u64(),
             original_files: spans.local_files.clone(),
         };
         crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
@@ -2178,7 +2178,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Err(err) => {
                     assert!(err.spans.len() == 0);
                     assert!(err.level == MessageLevel::Error);
-                    compiler.session().diagnostic().err(&err.note);
+                    compiler.session().diagnostic().err(&*err.note);
                     self.verifier.encountered_vir_error = true;
                     return;
                 }
