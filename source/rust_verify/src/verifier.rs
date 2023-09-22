@@ -2000,6 +2000,7 @@ impl Verifier {
             arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
             verus_items,
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+            no_vstd: self.args.no_vstd,
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE

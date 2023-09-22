@@ -34,6 +34,7 @@ pub struct ContextX<'tcx> {
     pub(crate) arch: ArchContext,
     pub(crate) verus_items: Arc<VerusItems>,
     pub(crate) diagnostics: std::rc::Rc<std::cell::RefCell<Vec<vir::ast::VirErrAs>>>,
+    pub(crate) no_vstd: bool,
 }
 
 #[derive(Clone)]

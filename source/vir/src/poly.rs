@@ -265,7 +265,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
     }
 }
 
-fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
+pub fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
     match &*crate::ast_util::undecorate_typ(&expr.typ) {
         TypX::Datatype(path, _, _)
             if !ctx.datatype_is_transparent[path] && typ_as_mono(&expr.typ).is_none() =>
@@ -368,6 +368,16 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             }
         },
         ExprX::Tuple(_) => panic!("internal error: ast_simplify should remove Tuple"),
+        ExprX::ArrayLiteral(es) => {
+            let mut es1 = vec![];
+            for e in es.iter() {
+                let e1 = poly_expr(ctx, state, e);
+                let e1 = coerce_expr_to_poly(ctx, &e1);
+                es1.push(e1);
+            }
+            let typ = coerce_typ_to_poly(ctx, &expr.typ);
+            mk_expr_typ(&typ, ExprX::ArrayLiteral(Arc::new(es1)))
+        }
         ExprX::Ctor(path, variant, binders, update) => {
             assert!(update.is_none()); // removed by ast_simplify
             let fields = &ctx.datatype_map[path].x.get_variant(variant).a;

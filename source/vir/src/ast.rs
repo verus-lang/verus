@@ -642,6 +642,8 @@ pub enum ExprX {
         /// can assume about a closure object after it is created.
         external_spec: Option<(Ident, Expr)>,
     },
+    /// Array literal (can also be used for sequence literals in the future)
+    ArrayLiteral(Exprs),
     /// Choose specification values satisfying a condition, compute body
     Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier

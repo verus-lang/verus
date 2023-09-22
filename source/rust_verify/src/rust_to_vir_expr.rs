@@ -1199,6 +1199,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 exprs.iter().map(|e| expr_to_vir(bctx, e, modifier)).collect();
             mk_expr(ExprX::Tuple(Arc::new(args?)))
         }
+        ExprKind::Array(exprs) => {
+            if bctx.ctxt.no_vstd {
+                return err_span(expr.span, "Array literals are not supported with --no-vstd");
+            }
+            let args: Result<Vec<vir::ast::Expr>, VirErr> =
+                exprs.iter().map(|e| expr_to_vir(bctx, e, modifier)).collect();
+            mk_expr(ExprX::ArrayLiteral(Arc::new(args?)))
+        }
         ExprKind::Lit(lit) => match lit.node {
             LitKind::Bool(b) => {
                 let c = vir::ast::Constant::Bool(b);
@@ -1754,7 +1762,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
-        ExprKind::Array(..) => unsupported_err!(expr.span, format!("array expressions")),
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
         ExprKind::DropTemps(..) => unsupported_err!(expr.span, format!("drop-temps expressions")),
         ExprKind::Let(..) => unsupported_err!(expr.span, format!("let expressions")),
