@@ -149,10 +149,6 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                     hash_without_bodies: inner_owner.nodes.hash_without_bodies,
                                     nodes: inner_owner.nodes.nodes.clone(),
                                     bodies,
-                                    local_id_to_def_id: inner_owner
-                                        .nodes
-                                        .local_id_to_def_id
-                                        .clone(),
                                 };
                                 let attrs: rustc_hir::AttributeMap<'tcx> =
                                     rustc_hir::AttributeMap {
@@ -163,7 +159,22 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                     nodes,
                                     parenting: inner_owner.parenting.clone(),
                                     attrs,
-                                    trait_map: inner_owner.trait_map.clone(),
+                                    trait_map: inner_owner
+                                        .trait_map
+                                        .iter()
+                                        .map(|(&id, traits)| {
+                                            (
+                                                id,
+                                                traits
+                                                    .iter()
+                                                    .map(|trait_| rustc_hir::TraitCandidate {
+                                                        def_id: trait_.def_id,
+                                                        import_ids: trait_.import_ids.clone(),
+                                                    })
+                                                    .collect(),
+                                            )
+                                        })
+                                        .collect(),
                                 });
                                 *owner = rustc_hir::MaybeOwner::Owner(owner_info);
                             }

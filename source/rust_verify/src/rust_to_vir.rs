@@ -118,7 +118,7 @@ fn check_item<'tcx>(
                 return Ok(());
             }
 
-            let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id());
+            let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id()).skip_binder();
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
             check_item_struct(
@@ -143,7 +143,7 @@ fn check_item<'tcx>(
                 return Ok(());
             }
 
-            let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id());
+            let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id()).skip_binder();
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
             // TODO use rustc_middle? see `Struct` case
@@ -207,25 +207,26 @@ fn check_item<'tcx>(
                                 impll.self_ty.kind
                             ),
                         };
-                        ctxt.tcx.type_of(def_id)
+                        ctxt.tcx.type_of(def_id).skip_binder()
                     };
                     // TODO: this may be a bit of a hack: to query the TyCtxt for the StructuralEq impl it seems we need
                     // a concrete type, so apply ! to all type parameters
-                    let ty_kind_applied_never =
-                        if let rustc_middle::ty::TyKind::Adt(def, substs) = ty.kind() {
-                            rustc_middle::ty::TyKind::Adt(
-                                def.to_owned(),
-                                ctxt.tcx.mk_substs(substs.iter().map(|g| match g.unpack() {
-                                    rustc_middle::ty::subst::GenericArgKind::Type(_) => {
-                                        (*ctxt.tcx).types.never.into()
-                                    }
-                                    _ => g,
-                                })),
-                            )
-                        } else {
-                            panic!("Structural impl for non-adt type");
-                        };
-                    let ty_applied_never = ctxt.tcx.mk_ty(ty_kind_applied_never);
+                    let ty_kind_applied_never = if let rustc_middle::ty::TyKind::Adt(def, substs) =
+                        ty.kind()
+                    {
+                        rustc_middle::ty::TyKind::Adt(
+                            def.to_owned(),
+                            ctxt.tcx.mk_substs_from_iter(substs.iter().map(|g| match g.unpack() {
+                                rustc_middle::ty::subst::GenericArgKind::Type(_) => {
+                                    (*ctxt.tcx).types.never.into()
+                                }
+                                _ => g,
+                            })),
+                        )
+                    } else {
+                        panic!("Structural impl for non-adt type");
+                    };
+                    let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
                     err_unless!(
                         ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
                         item.span,
@@ -366,7 +367,7 @@ fn check_item<'tcx>(
                         }
                         if let ImplItemKind::Type(_ty) = impl_item.kind {
                             let name = Arc::new(impl_item.ident.to_string());
-                            let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id());
+                            let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id()).skip_binder();
                             let typ = mid_ty_to_vir(
                                 ctxt.tcx,
                                 &ctxt.verus_items,
@@ -439,7 +440,7 @@ fn check_item<'tcx>(
                 return Ok(());
             }
 
-            let mid_ty = ctxt.tcx.type_of(def_id);
+            let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
             let vir_ty =
                 mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
 

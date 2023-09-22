@@ -230,8 +230,8 @@ pub(crate) fn handle_external_fn<'tcx>(
         );
     }
 
-    let ty1 = ctxt.tcx.type_of(id);
-    let ty2 = ctxt.tcx.type_of(external_id);
+    let ty1 = ctxt.tcx.type_of(id).skip_binder();
+    let ty2 = ctxt.tcx.type_of(external_id).skip_binder();
     use rustc_middle::ty::FnDef;
     let (poly_sig1, poly_sig2, substs1) = match (ty1.kind(), ty2.kind()) {
         (FnDef(def_id1, substs1), FnDef(def_id2, substs2)) if substs1.len() == substs2.len() => {
@@ -239,8 +239,8 @@ pub(crate) fn handle_external_fn<'tcx>(
             // This is to ensure that we are comparing the type signatures with
             // the same type params even if the user inputs different generic params
             // note: rustc 1.69.0 has replaced bound_fn_sig with just fn_sig I think
-            let poly_sig1 = ctxt.tcx.bound_fn_sig(*def_id1).subst(ctxt.tcx, substs1);
-            let poly_sig2 = ctxt.tcx.bound_fn_sig(*def_id2).subst(ctxt.tcx, substs1);
+            let poly_sig1 = ctxt.tcx.fn_sig(*def_id1).subst(ctxt.tcx, substs1);
+            let poly_sig2 = ctxt.tcx.fn_sig(*def_id2).subst(ctxt.tcx, substs1);
             (poly_sig1, poly_sig2, substs1)
         }
         _ => {
@@ -379,7 +379,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let fn_sig = ctxt.tcx.fn_sig(id);
     // REVIEW: rustc docs refer to skip_binder as "dangerous"
     let fn_sig = fn_sig.skip_binder();
-    let inputs = fn_sig.inputs();
+    let inputs = fn_sig.inputs().skip_binder();
 
     let ret_typ_mode = match sig {
         FnSig {
@@ -388,7 +388,7 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output())?
+            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
         }
     };
 
@@ -1064,9 +1064,10 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fn_sig = ctxt.tcx.fn_sig(id);
     // REVIEW: rustc docs refer to skip_binder as "dangerous"
     let fn_sig = fn_sig.skip_binder();
-    let inputs = fn_sig.inputs();
+    let inputs = fn_sig.inputs().skip_binder();
 
-    let ret_typ_mode = check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output())?;
+    let ret_typ_mode =
+        check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?;
     let (typ_params, typ_bounds) = check_generics_bounds_fun(
         ctxt.tcx,
         &ctxt.verus_items,

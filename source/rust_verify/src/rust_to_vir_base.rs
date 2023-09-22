@@ -95,7 +95,7 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
             _ => {
                 // To handle cases like [T] which are not syntactically datatypes
                 // but converted into VIR datatypes.
-                let self_ty = tcx.type_of(owner_id.to_def_id());
+                let self_ty = tcx.type_of(owner_id.to_def_id()).skip_binder();
                 match self_ty.kind() {
                     TyKind::Slice(_) => Some(vir::def::slice_type()),
                     _ => None,
@@ -580,6 +580,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
         TyKind::Generator(..) => unsupported_err!(span, "generator types"),
         TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
+        TyKind::GeneratorWitnessMIR(_, _) => unsupported_err!(span, "generator witness mir types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
@@ -708,7 +709,7 @@ pub(crate) fn implements_structural<'tcx>(
         .get(&VerusItem::Marker(crate::verus_items::MarkerItem::Structural))
         .expect("structural trait is not defined");
 
-    use crate::rustc_middle::ty::TypeVisitable;
+    use crate::rustc_middle::ty::TypeVisitableExt;
     let infcx = ctxt.tcx.infer_ctxt().build(); // TODO(main_new) correct?
     let ty = ctxt.tcx.erase_regions(ty);
     if ty.has_escaping_bound_vars() {
@@ -944,6 +945,9 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     return err_span(*span, "Verus does yet not support this type of bound");
                 }
             }
+            PredicateKind::Clause(Clause::ConstArgHasType(..)) => {
+                // Do nothing
+            }
             _ => {
                 return err_span(*span, "Verus does yet not support this type of bound");
             }
@@ -1017,6 +1021,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             kind,
             def_id: _,
             colon_span: _,
+            source: _,
         } = hir_param;
 
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
