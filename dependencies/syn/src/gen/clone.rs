@@ -383,6 +383,8 @@ impl Clone for Expr {
             Expr::BigAnd(v0) => Expr::BigAnd(v0.clone()),
             #[cfg(feature = "full")]
             Expr::BigOr(v0) => Expr::BigOr(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Is(v0) => Expr::Is(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -608,6 +610,17 @@ impl Clone for ExprIndex {
             expr: self.expr.clone(),
             bracket_token: self.bracket_token.clone(),
             index: self.index.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprIs {
+    fn clone(&self) -> Self {
+        ExprIs {
+            attrs: self.attrs.clone(),
+            base: self.base.clone(),
+            is_token: self.is_token.clone(),
+            variant_ident: self.variant_ident.clone(),
         }
     }
 }

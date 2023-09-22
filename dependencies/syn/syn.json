@@ -1102,6 +1102,11 @@
           {
             "syn": "BigOr"
           }
+        ],
+        "Is": [
+          {
+            "syn": "ExprIs"
+          }
         ]
       },
       "exhaustive": false
@@ -1648,6 +1653,32 @@
         "index": {
           "box": {
             "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprIs",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "base": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "is_token": {
+          "token": "Is"
+        },
+        "variant_ident": {
+          "box": {
+            "proc_macro2": "Ident"
           }
         }
       }

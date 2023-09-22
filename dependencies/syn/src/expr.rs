@@ -233,6 +233,7 @@ ast_enum_of_structs! {
         View(View),
         BigAnd(BigAnd),
         BigOr(BigOr),
+        Is(ExprIs),
 
         // Not public API.
         //
@@ -857,6 +858,7 @@ impl Expr {
             | Expr::AssertForall(AssertForall { attrs, .. })
             | Expr::RevealHide(RevealHide { attrs, .. })
             | Expr::View(View { attrs, .. })
+            | Expr::Is(ExprIs { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
@@ -1165,6 +1167,7 @@ pub(crate) mod parsing {
         Arithmetic,
         Term,
         Cast,
+        HasIs,
     }
 
     #[derive(PartialEq, Eq, Clone, Copy)]
@@ -1233,7 +1236,8 @@ pub(crate) mod parsing {
                 | Precedence::Shift
                 | Precedence::Arithmetic
                 | Precedence::Term
-                | Precedence::Cast => Associativity::Left,
+                | Precedence::Cast
+                | Precedence::HasIs => Associativity::Left,
             }
         }
     }
@@ -1483,6 +1487,15 @@ pub(crate) mod parsing {
                     colon_token,
                     ty: Box::new(ty),
                 });
+            } else if Precedence::HasIs >= base && input.peek(Token![is]) {
+                let is_token: Token![is] = input.parse()?;
+                let variant_ident = input.parse()?;
+                lhs = Expr::Is(ExprIs {
+                    attrs: Vec::new(),
+                    base: Box::new(lhs),
+                    is_token,
+                    variant_ident,
+                });
             } else {
                 break;
             }
@@ -1554,7 +1567,9 @@ pub(crate) mod parsing {
         if input.peek(Token![&&&]) || input.peek(Token![|||]) {
             return Precedence::Any;
         }
-        if let Ok(op) = input.fork().parse() {
+        if input.peek(Token![is]) {
+            Precedence::HasIs
+        } else if let Ok(op) = input.fork().parse() {
             Precedence::of(&op)
         } else if input.peek(Token![=]) && !input.peek(Token![=>]) {
             Precedence::Assign
@@ -1887,7 +1902,10 @@ pub(crate) mod parsing {
             input.parse().map(Expr::AssertForall)
         } else if input.peek(Token![assert]) {
             input.parse().map(Expr::Assert)
-        } else if input.peek(Token![reveal]) || input.peek(Token![reveal_with_fuel]) || input.peek(Token![hide]) {
+        } else if input.peek(Token![reveal])
+            || input.peek(Token![reveal_with_fuel])
+            || input.peek(Token![hide])
+        {
             input.parse().map(Expr::RevealHide)
         } else if input.peek(Token![match]) {
             input.parse().map(Expr::Match)
@@ -2213,7 +2231,10 @@ pub(crate) mod parsing {
             Expr::AssertForall(input.parse()?)
         } else if input.peek(Token![assert]) {
             Expr::Assert(input.parse()?)
-        } else if input.peek(Token![reveal]) || input.peek(Token![reveal_with_fuel]) || input.peek(Token![hide]) {
+        } else if input.peek(Token![reveal])
+            || input.peek(Token![reveal_with_fuel])
+            || input.peek(Token![hide])
+        {
             Expr::RevealHide(input.parse()?)
         } else if input.peek(Token![match]) {
             Expr::Match(input.parse()?)
