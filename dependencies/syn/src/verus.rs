@@ -264,6 +264,15 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct ExprIs {
+        pub attrs: Vec<Attribute>,
+        pub base: Box<Expr>,
+        pub is_token: Token![is],
+        pub variant_ident: Box<Ident>,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -806,13 +815,23 @@ pub mod parsing {
                 None
             };
 
-            Ok(RevealHide { attrs, reveal_token, reveal_with_fuel_token, hide_token, paren_token, path, fuel })
+            Ok(RevealHide {
+                attrs,
+                reveal_token,
+                reveal_with_fuel_token,
+                hide_token,
+                paren_token,
+                path,
+                fuel,
+            })
         }
     }
 }
 
 #[cfg(feature = "printing")]
 mod printing {
+    use crate::expr::printing::outer_attrs_to_tokens;
+
     use super::*;
     use proc_macro2::TokenStream;
     use quote::ToTokens;
@@ -1086,6 +1105,16 @@ mod printing {
                 prefix.to_tokens(tokens);
                 expr.to_tokens(tokens);
             }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprIs {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.base.to_tokens(tokens);
+            self.is_token.to_tokens(tokens);
+            self.variant_ident.to_tokens(tokens);
         }
     }
 }

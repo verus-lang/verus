@@ -537,4 +537,16 @@ trait T {
             j <= r;
 }
 
+enum ThisOrThat {
+    This(nat),
+    That { v: int },
+}
+
+proof fn uses_is(t: ThisOrThat) {
+    match t {
+        ThisOrThat::This(..) => assert(t is This),
+        ThisOrThat::That {..} => assert(t is That),
+    }
+}
+
 } // verus!
