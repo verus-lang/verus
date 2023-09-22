@@ -10,17 +10,15 @@ proof fn bound_check(x: u32, y: u32, z: u32)
     requires
         x <= 0xffff,
         y <= 0xffff,
-        z <= 0xffff,
 {
-    assert(x * z == mul(x, z)) by(nonlinear_arith)
+    assert(x * y <= 0x100000000) by(nonlinear_arith)
         requires
             x <= 0xffff,
-            z <= 0xffff,
+            y <= 0xffff,
     {
         // nonlinear_arith proof block does not have any surrounding facts by default
-        // note that y <= 0xffff is not available inside this proof block
-        assert(0 <= x * z);
-        assert(x * z <= 0xffff * 0xffff);
+        // assert(z <= 0xffff);    <- Trivial, but fails since this property is not included in the `requires` clause
+        assert(x * y <= 0x100000000);
     }
 }
 // ANCHOR_END: bound_checking

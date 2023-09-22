@@ -10,7 +10,7 @@ Nonlinear arithmetic involves equations that multiply, divide, or take the remai
 is undecideable in general, meaning that general-purpose SMT solvers like Z3 can only make a best-effort attempt
 to solve them.  These attempts rely on heuristics that can be unpredictable.  Hence, by default, Verus 
 disables Z3's nonlinear arithmetic heuristics.  When you need to prove such properties, Verus offers the two dedicated
-proof strategies described below.  First, `integer_ring` feature can reliably prove a limited subset of nonlinear properties.  For properties
+proof strategies described below.  First, the `integer_ring` feature can reliably prove a limited subset of nonlinear properties.  For properties
 outside that subset, Verus offers a way to invoke Z3's nonlinear heuristics in a way that will hopefully provide
 better reliability.
 
@@ -86,15 +86,15 @@ Using this proof technique requires a bit of additional configuration of your Ve
 - Formulas that involve inequalities are not supported.   
 - Division is not supported.
 - Function calls in the formulas are treated as uninterpreted functions.  If a function definition is important for the proof, you should unfold the definition of the function in the proof function's `requires` clause.
-- When using `integer_ring` lemma, the divisor of `%` operator must not be zero. If a divisor can be zero in the ensures clause of the `integer_ring` lemma, the fact in ensures clause will not be available in the callsite.
+- When using an `integer_ring` lemma, the divisor of a modulus operator (`%`) must not be zero. If a divisor can be zero in the ensures clause of the `integer_ring` lemma, the facts in the ensures clause will not be available in the callsite.
 
 ### Using `integer_ring` as a helper lemma for nonlinear proofs
-As `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with `integer_ring` feature. Instead, it is a common pattern to have `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper function.
+As the `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with the `integer_ring` feature. Instead, it is a common pattern to have a `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper function.
 
-To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. Furthermore, you can also add additional variables to the formulas. For example, to workaround division, one can introduce `c` where `b = a * c`, instead of `b/a`. Experiences indicate that introducing many additional variables can help with the proof.
+To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. Furthermore, you can also add additional variables to the formulas. For example, to work around division, one can introduce `c` where `b = a * c`, instead of `b/a`.
 
 #### Example 1: `integer_ring` as a helper lemma to provide facts on modular arithmetic
-In this below `lemma_mod_difference_equal` function, we have four inequalities inside the requires clauses, which cannot be encoded into `integer_ring`. In the ensures clause, we want to prove `y % d - x % d == y - x`. The helper lemma `lemma_mod_difference_equal_helper` simply provides that `y % d - x % d` is equal to `(y - x)` modulo `d`. The rest of the proof is done by `by(nonlinear_arith)`.
+In the `lemma_mod_difference_equal` function below, we have four inequalities inside the requires clauses, which cannot be encoded into `integer_ring`. In the ensures clause, we want to prove `y % d - x % d == y - x`. The helper lemma `lemma_mod_difference_equal_helper` simply provides that `y % d - x % d` is equal to `(y - x)` modulo `d`. The rest of the proof is done by `by(nonlinear_arith)`.
 
 ```rust
 pub proof fn lemma_mod_difference_equal_helper(x: int, y:int, d:int, small_x:int, small_y:int, tmp1:int, tmp2:int) by(integer_ring)
@@ -123,7 +123,7 @@ pub proof fn lemma_mod_difference_equal(x: int, y: int, d: int) by(nonlinear_ari
 }
 ```
 
-In the below `lemma_mod_between`, we want to prove that `x % d <= z % d < y % d`. However, `integer_ring` only supports equalities, so we need cannot prove `lemma_mod_between` directly. Instead, we provide facts that can help assist the proof. The helper lemma provides 1) `x % d - y % d == x - y  (mod d)` and 2) ` y % d - z % d == y - z  (mod d)`. The rest of the proof is done by `by(nonlinear_arith)`.
+In the `lemma_mod_between` function below, we want to prove that `x % d <= z % d < y % d`. However, `integer_ring` only supports equalities, so we cannot prove `lemma_mod_between` directly. Instead, we provide facts that can help assist the proof. The helper lemma provides 1) `x % d - y % d == x - y  (mod d)` and 2) ` y % d - z % d == y - z  (mod d)`. The rest of the proof is done via `by(nonlinear_arith)`.
 
 ```rust
 pub proof fn lemma_mod_between_helper(x: int, y: int, d: int, small_x:int, small_y:int, tmp1:int) by(integer_ring)
@@ -161,7 +161,7 @@ pub proof fn lemma_mod_between(d: int, x: int, y: int, z: int) by(nonlinear_arit
 
 #### Example 2: Proving properties on bounded integers with the help of `integer_ring`
 
-Since `integer_ring` proofs only support `int`, you need to include explicit bounds when you want to prove properties about bounded integers. For example, in order to use the proof `lemma_mod_after_mul` on `u32`s, `lemma_mod_after_mul_u32` must ensure that all arguments are within the proper bounds before passing them to `lemma_mod_after_mul`.  
+Since `integer_ring` proofs only support `int`, you need to include explicit bounds when you want to prove properties about bounded integers. For example, as shown below, in order to use the proof `lemma_mod_after_mul` on `u32`s, `lemma_mod_after_mul_u32` must ensure that all arguments are within the proper bounds before passing them to `lemma_mod_after_mul`.  
 
 If a necessary bound (e.g., `m > 0`) is not included, Verus will fail to verify the proof.
 
@@ -187,7 +187,9 @@ proof fn lemma_mod_after_mul_u32(x: u32, y: u32 , z: u32, m: u32)
 }
 ```
 
-The desired property for `nat` can be proved similarly. Note that we introduce several additional variables(`ab`, `bc`, and `abc`) to help with the `integer_ring` proof. 
+The desired property for `nat` can be proved similarly.
+
+The next example is similar, but note that we introduce several additional variables(`ab`, `bc`, and `abc`) to help with the integer_ring proof.
 
 ```rust
 pub proof fn multiple_offsed_mod_gt_0_helper(a: int, b: int, c: int, ac: int, bc: int, abc: int) by (integer_ring)
