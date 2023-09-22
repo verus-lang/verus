@@ -385,6 +385,8 @@ impl Clone for Expr {
             Expr::BigOr(v0) => Expr::BigOr(v0.clone()),
             #[cfg(feature = "full")]
             Expr::Is(v0) => Expr::Is(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Has(v0) => Expr::Has(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -585,6 +587,17 @@ impl Clone for ExprGroup {
             attrs: self.attrs.clone(),
             group_token: self.group_token.clone(),
             expr: self.expr.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprHas {
+    fn clone(&self) -> Self {
+        ExprHas {
+            attrs: self.attrs.clone(),
+            lhs: self.lhs.clone(),
+            has_token: self.has_token.clone(),
+            rhs: self.rhs.clone(),
         }
     }
 }

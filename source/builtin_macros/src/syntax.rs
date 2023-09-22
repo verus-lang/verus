@@ -1568,6 +1568,7 @@ impl VisitMut for Visitor {
             Expr::View(..) => true,
             Expr::Closure(..) => true,
             Expr::Is(..) => true,
+            Expr::Has(..) => true,
             _ => false,
         };
         if do_replace && self.inside_type == 0 {
@@ -1974,6 +1975,14 @@ impl VisitMut for Visitor {
                     *expr = Expr::Verbatim(
                         quote_spanned!(span => ::builtin::is_variant(#base, #variant_str)),
                     );
+                }
+                Expr::Has(has) => {
+                    let has_token = has.has_token;
+                    let span = has.span();
+                    let rhs = has.rhs;
+                    let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
+                    let lhs = has.lhs;
+                    *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
                 }
                 _ => panic!("expected to replace expression"),
             }
