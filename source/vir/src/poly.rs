@@ -228,7 +228,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_poly(_ctx, t))),
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
-        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstInt(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }

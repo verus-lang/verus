@@ -961,14 +961,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             )
         }
         Adjust::Pointer(PointerCast::Unsize) => {
-            // REVIEW Should we track the size of the array as a fact about the resulting slice?
-            expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                current_modifier,
-                adjustments,
-                adjustment_idx - 1,
-            )
+            unsupported_err!(
+                expr.span,
+                "unsizing operation (e.g., implicit cast from array [T; N] to slice [T])"
+            );
         }
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
