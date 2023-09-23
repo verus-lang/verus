@@ -784,6 +784,12 @@ impl Debug for Expr {
                 formatter.field(v0);
                 formatter.finish()
             }
+            #[cfg(feature = "full")]
+            Expr::Is(v0) => {
+                let mut formatter = formatter.debug_tuple("Is");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -1009,6 +1015,17 @@ impl Debug for ExprIndex {
         formatter.field("expr", &self.expr);
         formatter.field("bracket_token", &self.bracket_token);
         formatter.field("index", &self.index);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprIs {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprIs");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("base", &self.base);
+        formatter.field("is_token", &self.is_token);
+        formatter.field("variant_ident", &self.variant_ident);
         formatter.finish()
     }
 }

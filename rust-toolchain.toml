@@ -1,4 +1,4 @@
 [toolchain]
-channel = "1.69.0"
-# channel = "nightly-2023-03-05" # (not officially supported)
+channel = "1.70.0"
+# channel = "nightly-2023-04-15" # (not officially supported)
 components = [ "rustc", "rust-std", "cargo", "rustfmt", "rustc-dev", "llvm-tools" ]

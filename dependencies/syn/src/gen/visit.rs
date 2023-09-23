@@ -205,6 +205,9 @@ pub trait Visit<'ast> {
     fn visit_expr_index(&mut self, i: &'ast ExprIndex) {
         visit_expr_index(self, i);
     }
+    fn visit_expr_is(&mut self, i: &'ast ExprIs) {
+        visit_expr_is(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_let(&mut self, i: &'ast ExprLet) {
         visit_expr_let(self, i);
@@ -1484,6 +1487,9 @@ where
         Expr::BigOr(_binding_0) => {
             v.visit_big_or(_binding_0);
         }
+        Expr::Is(_binding_0) => {
+            v.visit_expr_is(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1755,6 +1761,17 @@ where
     v.visit_expr(&*node.expr);
     tokens_helper(v, &node.bracket_token.span);
     v.visit_expr(&*node.index);
+}
+pub fn visit_expr_is<'ast, V>(v: &mut V, node: &'ast ExprIs)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.base);
+    tokens_helper(v, &node.is_token.span);
+    v.visit_ident(&*node.variant_ident);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_let<'ast, V>(v: &mut V, node: &'ast ExprLet)
