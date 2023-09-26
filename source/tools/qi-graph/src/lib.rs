@@ -8,7 +8,7 @@ use std::{
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UserQuantifier {
     pub span: String,
-    pub module: Vec<String>,
+    pub module: String,
 }
 
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]

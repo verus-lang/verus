@@ -1224,6 +1224,7 @@ impl Verifier {
                                 reporter,
                             );
                             write_instantiation_graph(
+                                &opgen.ctx.func_map,
                                 &profiler,
                                 &opgen.ctx.global.qid_map.borrow(),
                                 profile_file_name,
@@ -1289,6 +1290,8 @@ impl Verifier {
             let profiler =
                 Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
             write_instantiation_graph(
+                
+                &opgen.ctx.func_map,
                 &profiler,
                 &opgen.ctx.global.qid_map.borrow(),
                 profile_all_file_name,
@@ -1896,6 +1899,7 @@ impl Verifier {
 }
 
 fn write_instantiation_graph(
+    func_map: &HashMap<Fun, vir::ast::Function>,
     profiler: &Profiler,
     qid_map: &HashMap<String, vir::sst::BndInfo>,
     profile_file_name: std::path::PathBuf,
@@ -1911,7 +1915,7 @@ fn write_instantiation_graph(
                     qid_map.get(n).expect(format!("Failed to find quantifier {}", n).as_str());
                 QuantifierKind::User(UserQuantifier {
                     span: bnd_info.span.as_string.clone(),
-                    module: vec![module_name(&bnd_info.module)],
+                    module: module_name(&func_map[&bnd_info.fun].x.owning_module.as_ref().expect("owning module")),
                 })
             } else {
                 QuantifierKind::Internal
