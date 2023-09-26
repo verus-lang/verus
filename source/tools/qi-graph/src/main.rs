@@ -153,14 +153,14 @@ fn merge_sibling_nodes(
 ) -> (HashMap<(String, u64), u64>, u64) {
     let mut groups = HashMap::new();
     for inst in insts.iter() {
-        let QuantifierKind::User(UserQuantifier { module, .. }) = &inst.quantifier.kind else {  panic!("unexpected internal quantifier") };
+        let module = inst.quantifier.module.clone();
         groups.entry(module.clone()).or_insert(Vec::new()).push(inst.clone());
     }
 
     let mut result = HashMap::new();
     let mut children_total = 0;
     for (module, nodes) in groups {
-        let cur_id = (module, *id_counter);
+        let cur_id = (module.unwrap(), *id_counter);
         *id_counter += 1;
 
         let group_children: HashSet<Instantiation> = nodes
@@ -243,7 +243,7 @@ fn run(input_path: &str) -> Result<(), String> {
         .collect();
 
     let pruned_graph = prune_by_predicate(&input_graph, &|src: &Instantiation| {
-        src.quantifier.kind != QuantifierKind::Internal
+        src.quantifier.module.is_some()
     });
 
     // let module_sets = pruned_graph.iter().fold(HashSet::new(), |(src, tgts)| {});

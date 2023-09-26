@@ -489,12 +489,12 @@ impl Verifier {
             let mut msg = note_bare(note);
 
             // Summarize the triggers it used
-            let triggers = &bnd_info.trigs;
+            let triggers = &bnd_info.user.as_ref().unwrap().trigs;
             for trigger in triggers.iter() {
                 msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
             }
             msg = msg.secondary_label(
-                &bnd_info.span,
+                &bnd_info.user.as_ref().unwrap().span,
                 "Triggers selected for this quantifier".to_string(),
             );
 
@@ -1910,17 +1910,17 @@ fn write_instantiation_graph(
     let quantifiers: HashMap<String, Quantifier> = name_strs
         .iter()
         .map(|n| {
+            let bnd_info = qid_map.get(n);
             let kind = if n.starts_with(air::profiler::USER_QUANT_PREFIX) {
-                let bnd_info =
-                    qid_map.get(n).expect(format!("Failed to find quantifier {}", n).as_str());
                 QuantifierKind::User(UserQuantifier {
-                    span: bnd_info.span.as_string.clone(),
-                    module: module_name(&func_map[&bnd_info.fun].x.owning_module.as_ref().expect("owning module")),
+                    span: bnd_info.as_ref().unwrap().user.as_ref().unwrap().span.as_string.clone(),
                 })
             } else {
                 QuantifierKind::Internal
             };
-            (n.clone(), std::rc::Rc::new(QuantifierX { qid: n.clone(), kind }))
+            (n.clone(), std::rc::Rc::new(QuantifierX { qid: n.clone(),
+                module: bnd_info.map(|b| module_name(&func_map[&b.fun].x.owning_module.as_ref().expect("owning module"))),
+                kind }))
         })
         .collect();
     let instantiations: HashMap<(u64, usize), Instantiation> = nodes

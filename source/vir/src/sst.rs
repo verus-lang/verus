@@ -19,10 +19,14 @@ use std::sync::Arc;
 pub type Trig = Exps;
 pub type Trigs = Arc<Vec<Trig>>;
 
-pub struct BndInfo {
-    pub fun: Fun,
+pub struct BndInfoUser {
     pub span: Span,
     pub trigs: Trigs,
+}
+
+pub struct BndInfo {
+    pub fun: Fun,
+    pub user: Option<BndInfoUser>,
 }
 
 pub type Bnd = Arc<Spanned<BndX>>;

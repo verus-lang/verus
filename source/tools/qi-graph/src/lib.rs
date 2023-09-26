@@ -8,7 +8,6 @@ use std::{
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UserQuantifier {
     pub span: String,
-    pub module: String,
 }
 
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -20,6 +19,7 @@ pub enum QuantifierKind {
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct QuantifierX {
     pub qid: String,
+    pub module: Option<String>,
     pub kind: QuantifierKind,
 }
 pub type Quantifier = Rc<QuantifierX>;

@@ -266,6 +266,7 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
             &Arc::new(vec![]),
             &trigs,
             false,
+            false,
         );
         let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
         let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
