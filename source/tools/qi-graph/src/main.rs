@@ -150,7 +150,7 @@ fn merge_sibling_nodes(
     insts: &Vec<Instantiation>,
     module_graph: &mut HashMap<(String, u64), HashMap<(String, u64), u64>>,
     id_counter: &mut u64,
-) -> HashMap<(String, u64), u64> {
+) -> (HashMap<(String, u64), u64>, u64) {
     let mut groups = HashMap::new();
     for inst in insts.iter() {
         let QuantifierKind::User(UserQuantifier { module, .. }) = &inst.quantifier.kind else {  panic!("unexpected internal quantifier") };
@@ -158,6 +158,7 @@ fn merge_sibling_nodes(
     }
 
     let mut result = HashMap::new();
+    let mut children_total = 0;
     for (module, nodes) in groups {
         let cur_id = (module, *id_counter);
         *id_counter += 1;
@@ -172,7 +173,7 @@ fn merge_sibling_nodes(
             })
             .cloned()
             .collect();
-        let edges = merge_sibling_nodes(
+        let (edges, total) = merge_sibling_nodes(
             src_graph,
             &group_children.iter().cloned().collect(),
             module_graph,
@@ -180,9 +181,11 @@ fn merge_sibling_nodes(
         );
         module_graph.insert(cur_id.clone(), edges);
 
-        result.insert(cur_id, nodes.len() as u64);
+        result.insert(cur_id, nodes.len() as u64 + total);
+        children_total += nodes.len() as u64;
+        children_total += total;
     }
-    result
+    (result, children_total)
 }
 
 fn run(input_path: &str) -> Result<(), String> {
@@ -268,12 +271,13 @@ fn run(input_path: &str) -> Result<(), String> {
     let mut unique_id = 0u64;
     let mut module_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
         HashMap::new();
-    let _ = merge_sibling_nodes(
+    let (_, total_insts) = merge_sibling_nodes(
         &pruned_graph,
         &roots,
         &mut module_merged_graph,
         &mut unique_id,
     );
+    dbg!(total_insts);
 
     let simple_graph: Graph<(String, u64), u64> = Graph(
         module_merged_graph
