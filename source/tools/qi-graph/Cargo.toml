@@ -9,3 +9,4 @@ edition = "2021"
 serde = { version = "1", features = ["derive", "rc"] }
 bincode = "1.3"
 getopts = "*"
+petgraph = "0.5.1"
