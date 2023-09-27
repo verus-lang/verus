@@ -1737,7 +1737,7 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        hir.par_body_owners(|def_id| tcx.ensure().check_match(def_id.to_def_id()));
+        hir.par_body_owners(|def_id| tcx.ensure().check_match(def_id));
         tcx.ensure().check_private_in_public(());
         hir.par_for_each_module(|module| {
             tcx.ensure().check_mod_privacy(module);

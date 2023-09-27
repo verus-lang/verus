@@ -1111,10 +1111,6 @@ fn erase_expr<'tcx>(
                 mk_exp(ExpX::AddrOf(*mutability, exp.expect("expr")))
             }
         }
-        ExprKind::Box(e) => {
-            let exp = erase_expr(ctxt, state, expect_spec, e);
-            erase_spec_exps(ctxt, state, expr, vec![exp])
-        }
         ExprKind::Unary(op, e1) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
             match op {
@@ -1380,7 +1376,7 @@ fn erase_const<'tcx>(
         ctxt.ret_spec = Some(f_vir.x.ret.x.mode == Mode::Spec);
 
         let name = state.fun_name(&fun_name);
-        let ty = ctxt.tcx.type_of(id);
+        let ty = ctxt.tcx.type_of(id).skip_binder();
         let typ = erase_ty(ctxt, state, &ty);
         let body = crate::rust_to_vir_func::find_body_krate(krate, body_id);
         let body_exp = if external_body {
@@ -1423,7 +1419,7 @@ fn erase_mir_generics<'tcx>(
     let mir_generics = ctxt.tcx.generics_of(id);
     let mir_predicates = ctxt.tcx.predicates_of(id);
     if id_is_fn {
-        let mir_ty = ctxt.tcx.type_of(id);
+        let mir_ty = ctxt.tcx.type_of(id).skip_binder();
         if let TyKind::FnDef(..) = mir_ty.kind() {
             for bv in mir_ty.fn_sig(ctxt.tcx).bound_vars().iter() {
                 if let BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) = bv {
@@ -1445,7 +1441,7 @@ fn erase_mir_generics<'tcx>(
             }
             GenericParamDefKind::Const { .. } => {
                 let name = state.typ_param(gparam.name.to_string(), None);
-                let t = erase_ty(ctxt, state, &ctxt.tcx.type_of(gparam.def_id));
+                let t = erase_ty(ctxt, state, &ctxt.tcx.type_of(gparam.def_id).skip_binder());
                 typ_params.push(GenericParam { name, const_typ: Some(t) });
             }
         }
@@ -1530,6 +1526,7 @@ fn erase_mir_generics<'tcx>(
                     assert!(bound_vars.is_empty());
                 }
             }
+            (PredicateKind::Clause(Clause::ConstArgHasType(..)), &[]) => {}
             _ => {
                 dbg!(pred.kind());
                 panic!("unexpected bound")
@@ -1604,7 +1601,7 @@ fn erase_fn_common<'tcx>(
         let fn_sig = fn_sig.skip_binder();
         state.rename_count += 1;
         let name = state.fun_name(&fun_name);
-        let inputs = &fn_sig.inputs();
+        let inputs = &fn_sig.inputs().skip_binder();
         assert!(inputs.len() == f_vir.x.params.len());
         let params_info: Vec<(Option<Span>, bool)> = if let Some(body) = body {
             assert!(inputs.len() == body.params.len());
@@ -1673,12 +1670,12 @@ fn erase_fn_common<'tcx>(
                     if f_vir.x.ret.x.mode == Mode::Spec {
                         None
                     } else {
-                        Some((Some(ty.span), erase_ty(ctxt, state, &fn_sig.output())))
+                        Some((Some(ty.span), erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
                     }
                 }
             }
         } else {
-            Some((None, erase_ty(ctxt, state, &fn_sig.output())))
+            Some((None, erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
         };
         let decl = FunDecl {
             sig_span: sig_span,
@@ -1887,9 +1884,9 @@ fn erase_impl<'tcx>(
                     );
                     let generic_params =
                         lifetimes.into_iter().chain(typ_params.into_iter()).collect();
-                    let self_ty = ctxt.tcx.type_of(impl_id);
+                    let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
                     let self_typ = erase_ty(ctxt, state, &self_ty);
-                    let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id());
+                    let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id()).skip_binder();
                     let typ = erase_ty(ctxt, state, &ty);
                     let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
                     let assoc = AssocTypeImpl {
@@ -1956,7 +1953,7 @@ fn erase_variant_data<'tcx>(
         Some(CtorKind::Fn) => {
             let mut fields: Vec<Typ> = Vec::new();
             for field in &variant.fields {
-                let typ = erase_ty(ctxt, state, &ctxt.tcx.type_of(field.did));
+                let typ = erase_ty(ctxt, state, &ctxt.tcx.type_of(field.did).skip_binder());
                 fields.push(revise_typ(field.did, typ));
             }
             Fields::Pos(fields)
@@ -1965,7 +1962,7 @@ fn erase_variant_data<'tcx>(
             let mut fields: Vec<Field> = Vec::new();
             for field in &variant.fields {
                 let name = state.local(field.ident(ctxt.tcx).to_string());
-                let typ = erase_ty(ctxt, state, &ctxt.tcx.type_of(field.did));
+                let typ = erase_ty(ctxt, state, &ctxt.tcx.type_of(field.did).skip_binder());
                 fields.push(Field { name, typ: revise_typ(field.did, typ) });
             }
             Fields::Named(fields)

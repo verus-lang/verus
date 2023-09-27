@@ -17,7 +17,25 @@ test_verify_one_file! {
         fn test2(ar: [u8; 20]) {
             let y = array_index_get(&ar, 20); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+
+        fn test3(ar: [u8; 20]) {
+            assert(ar@.len() == 20);
+        }
+
+        fn test4(ar: [u8; 20]) {
+            assert(ar@.len() == 21); // FAILS
+        }
+
+        fn test5<const N: usize>(ar: [u8; N]) {
+            assert(ar@.len() == N);
+        }
+
+        fn test6(ar: [u8; 20]) {
+            let mut ar = ar;
+            ar.set(7, 50);
+            assert(ar[7] == 50);
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {

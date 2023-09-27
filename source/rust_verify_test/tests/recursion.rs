@@ -1614,7 +1614,7 @@ test_verify_one_file! {
         }
 
         proof fn testing(l: Tree, r: Tree) {
-            let x = Tree::Node(box l, box r);
+            let x = Tree::Node(Box::new(l), Box::new(r));
 
             assert(l == *x.get_Node_0());
             assert(r == *x.get_Node_1());

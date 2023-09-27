@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use builtin::*;
-extern crate alloc;
 
 use alloc::vec::Vec;
 use core::option::Option;
@@ -223,7 +222,7 @@ pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_vec_split_off<T, A: Allocator+ std::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
+pub fn ex_vec_split_off<T, A: Allocator+ core::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
     ensures
         vec@ == old(vec)@.subrange(0,at as int),
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),

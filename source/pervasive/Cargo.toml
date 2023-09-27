@@ -15,3 +15,8 @@ path = "vstd.rs"
 [dependencies]
 builtin_macros = { path = "../builtin_macros" }
 builtin = { path = "../builtin" }
+
+[features]
+default = ["std"]
+std = ["alloc"]
+alloc = []

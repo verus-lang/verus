@@ -32,4 +32,9 @@ impl rustc_span::source_map::FileLoader for PervasiveFileLoader {
         let path = self.remap_pervasive_path(path);
         rustc_span::source_map::RealFileLoader.read_file(&path)
     }
+
+    fn read_binary_file(&self, path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
+        let path = self.remap_pervasive_path(path);
+        rustc_span::source_map::RealFileLoader.read_binary_file(&path)
+    }
 }

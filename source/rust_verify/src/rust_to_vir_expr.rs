@@ -29,7 +29,6 @@ use rustc_hir::{
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
 };
-use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -274,7 +273,7 @@ pub(crate) fn get_adt_res<'tcx>(
             Ok((struct_did, variant_def, false))
         }
         Res::Def(DefKind::TyAlias, alias_did) => {
-            let alias_ty = tcx.type_of(alias_did);
+            let alias_ty = tcx.type_of(alias_did).skip_binder();
 
             let struct_did = match alias_ty.kind() {
                 TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
@@ -290,7 +289,7 @@ pub(crate) fn get_adt_res<'tcx>(
             Ok((struct_did, variant_def, false))
         }
         Res::SelfCtor(impl_id) | Res::SelfTyAlias { alias_to: impl_id, .. } => {
-            let self_ty = tcx.type_of(impl_id);
+            let self_ty = tcx.type_of(impl_id).skip_binder();
             let struct_did = match self_ty.kind() {
                 TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
                 _ => {
@@ -437,7 +436,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 let mut wildcard_binders = vec![];
                 for i in 0..n_wildcards {
                     let actual_idx = i + pos_to_insert_wildcards;
-                    let field_def = &variant_def.fields[actual_idx];
+                    let field_def = &variant_def.fields[actual_idx.into()];
                     let typ = field_def.ty(bctx.ctxt.tcx, substs);
                     let vir_typ = mid_ty_to_vir(
                         bctx.ctxt.tcx,
@@ -962,14 +961,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             )
         }
         Adjust::Pointer(PointerCast::Unsize) => {
-            // REVIEW Should we track the size of the array as a fact about the resulting slice?
-            expr_to_vir_with_adjustments(
-                bctx,
-                expr,
-                current_modifier,
-                adjustments,
-                adjustment_idx - 1,
-            )
+            unsupported_err!(
+                expr.span,
+                "unsizing operation (e.g., implicit cast from array [T; N] to slice [T])"
+            );
         }
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
@@ -1287,7 +1282,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Raw, _, _) => {
             unsupported_err!(expr.span, format!("raw borrows"))
         }
-        ExprKind::Box(e) => expr_to_vir_inner(bctx, e, ExprModifier::REGULAR),
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
                 let not_op = match (tc.expr_ty_adjusted(arg)).kind() {
@@ -1776,7 +1770,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Repeat(..) => unsupported_err!(expr.span, format!("repeat expressions")),
         ExprKind::Yield(..) => unsupported_err!(expr.span, format!("yield expressions")),
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
-        ExprKind::Err => unsupported_err!(expr.span, format!("Err expressions")),
+        ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),
     }
 }
 

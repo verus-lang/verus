@@ -1177,7 +1177,7 @@ test_verify_one_file! {
         fn test1(Tracked(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
         {
         }
-    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `Ghost`")
+    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `builtin::Ghost` in the current scope")
 }
 
 test_verify_one_file! {
@@ -1207,7 +1207,7 @@ test_verify_one_file! {
         assert_eq!(err.errors.len(), 1);
         let error = &err.errors[0];
         assert_eq!(error.message, "mismatched types");
-        assert!(error.spans[0].label == Some("expected struct `Ghost`, found struct `Tracked`".to_string()));
+        assert!(error.spans[0].label == Some("expected `Ghost<&mut int>`, found `Tracked<&mut _>`".to_string()));
     }
 }
 

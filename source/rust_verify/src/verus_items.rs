@@ -1,6 +1,6 @@
 use air::ast::Ident;
 use regex::Regex;
-use rustc_middle::ty::{DefIdTree, TyCtxt, TyKind};
+use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use std::{collections::HashMap, sync::Arc};
 
@@ -70,7 +70,7 @@ pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId)
                     return None;
                 }
                 one_impl_block_in_path = true;
-                let self_ty = tcx.type_of(tcx.parent(def_id));
+                let self_ty = tcx.type_of(tcx.parent(def_id)).skip_binder();
                 let path = ty_to_stable_string_partial(tcx, &self_ty)?;
                 segments.clear();
                 segments.push(path);
@@ -392,7 +392,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::SpecOrd::spec_ge",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Ge))),
         ("verus::builtin::SpecOrd::spec_lt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Lt))),
         ("verus::builtin::SpecOrd::spec_gt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Gt))),
-        
+
         ("verus::builtin::SpecAdd::spec_add",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Add))),
         ("verus::builtin::SpecSub::spec_sub",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Sub))),
         ("verus::builtin::SpecMul::spec_mul",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Mul))),
@@ -423,7 +423,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
 
         ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
-        
+
         ("verus::builtin::spec_literal_integer",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Integer))),
         ("verus::builtin::spec_literal_int",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Int))),
         ("verus::builtin::spec_literal_nat",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Nat))),

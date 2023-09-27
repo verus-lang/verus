@@ -203,6 +203,9 @@ pub trait Fold {
     fn fold_expr_index(&mut self, i: ExprIndex) -> ExprIndex {
         fold_expr_index(self, i)
     }
+    fn fold_expr_is(&mut self, i: ExprIs) -> ExprIs {
+        fold_expr_is(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_expr_let(&mut self, i: ExprLet) -> ExprLet {
         fold_expr_let(self, i)
@@ -1395,6 +1398,7 @@ where
         Expr::View(_binding_0) => Expr::View(f.fold_view(_binding_0)),
         Expr::BigAnd(_binding_0) => Expr::BigAnd(f.fold_big_and(_binding_0)),
         Expr::BigOr(_binding_0) => Expr::BigOr(f.fold_big_or(_binding_0)),
+        Expr::Is(_binding_0) => Expr::Is(f.fold_expr_is(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1625,6 +1629,17 @@ where
         expr: Box::new(f.fold_expr(*node.expr)),
         bracket_token: Bracket(tokens_helper(f, &node.bracket_token.span)),
         index: Box::new(f.fold_expr(*node.index)),
+    }
+}
+pub fn fold_expr_is<F>(f: &mut F, node: ExprIs) -> ExprIs
+where
+    F: Fold + ?Sized,
+{
+    ExprIs {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        base: Box::new(f.fold_expr(*node.base)),
+        is_token: Token![is](tokens_helper(f, &node.is_token.span)),
+        variant_ident: Box::new(f.fold_ident(*node.variant_ident)),
     }
 }
 #[cfg(feature = "full")]
