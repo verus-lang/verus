@@ -12,6 +12,7 @@ members = [
   "state_machines_macros",
   "verusdoc",
   "vstd_build",
+  "tools/line_count",
 ]
 exclude = [
   "pervasive",

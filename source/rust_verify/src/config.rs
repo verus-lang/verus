@@ -104,6 +104,7 @@ pub fn enable_default_features_and_verus_attr(
         "register_tool",
         "tuple_trait",
         "allocator_api",
+        "custom_inner_attributes",
     ] {
         rustc_args.push("-Z".to_string());
         rustc_args.push(format!("crate-attr=feature({})", feature));

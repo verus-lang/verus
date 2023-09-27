@@ -92,6 +92,7 @@ fn attr_args_to_tree(span: Span, name: String, args: &AttrArgs) -> Result<AttrTr
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerusPrefix {
+    None,
     Internal,
     // Unsafe,
     // Type,
@@ -128,28 +129,27 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
             }
             [prefix_segment, segment] if prefix_segment.ident.as_str() == "verus" => {
                 let name = segment.ident.to_string();
-                let verus_prefix = match &*name {
-                    "internal" => VerusPrefix::Internal,
-                    _ => {
-                        return err_span(attr.span, "invalid verus attribute");
-                    }
-                };
-                match &item.item.args {
-                    AttrArgs::Delimited(delim) => {
-                        let trees: Box<[AttrTree]> =
-                            token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
-                                vir_err_span_str(attr.span, "invalid verus attribute")
-                            })?;
-                        if trees.len() != 1 {
-                            return err_span(attr.span, "invalid verus attribute");
+                match &*name {
+                    "internal" => match &item.item.args {
+                        AttrArgs::Delimited(delim) => {
+                            let trees: Box<[AttrTree]> =
+                                token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
+                                    vir_err_span_str(attr.span, "invalid verus attribute")
+                                })?;
+                            if trees.len() != 1 {
+                                return err_span(attr.span, "invalid verus attribute");
+                            }
+                            let mut trees = trees.into_vec().into_iter();
+                            let tree: AttrTree = trees
+                                .next()
+                                .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
+                            Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span, tree)))
                         }
-                        let mut trees = trees.into_vec().into_iter();
-                        let tree: AttrTree = trees
-                            .next()
-                            .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
-                        Ok(Some((AttrPrefix::Verus(verus_prefix), attr.span, tree)))
-                    }
-                    _ => return err_span(attr.span, "invalid verus attribute"),
+                        _ => return err_span(attr.span, "invalid verus attribute"),
+                    },
+                    _ => attr_args_to_tree(attr.span, name, &item.item.args)
+                        .map(|tree| Some((AttrPrefix::Verus(VerusPrefix::None), attr.span, tree)))
+                        .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute")),
                 }
             }
             [segment]
@@ -264,6 +264,8 @@ pub(crate) enum Attr {
     UnwrappedBinding,
     // Marks the auxiliary function constructed by reveal/hide
     InternalRevealFn,
+    // Marks trusted code
+    Trusted,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -524,6 +526,12 @@ pub(crate) fn parse_attrs(
                         return err_span(span, "unrecognized internal attribute");
                     }
                 },
+                VerusPrefix::None => match &attr {
+                    AttrTree::Fun(_, name, None) if name == "trusted" => v.push(Attr::Trusted),
+                    _ => {
+                        return err_span(span, "unrecognized internal attribute");
+                    }
+                },
             },
         }
     }
@@ -654,6 +662,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_type_specification: bool,
     pub(crate) unwrapped_binding: bool,
     pub(crate) internal_reveal_fn: bool,
+    pub(crate) trusted: bool,
 }
 
 pub(crate) fn get_verifier_attrs(
@@ -690,6 +699,7 @@ pub(crate) fn get_verifier_attrs(
         external_type_specification: false,
         unwrapped_binding: false,
         internal_reveal_fn: false,
+        trusted: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -732,6 +742,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::Truncate => vs.truncate = true,
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
+            Attr::Trusted => vs.trusted = true,
             _ => {}
         }
     }
