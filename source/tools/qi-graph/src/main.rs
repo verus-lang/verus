@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     path::Path,
     process::exit,
 };
@@ -149,11 +149,15 @@ fn merge_sibling_nodes(
     src_graph: &HashMap<Instantiation, HashMap<Instantiation, u64>>,
     insts: &Vec<Instantiation>,
     module_graph: &mut HashMap<(String, u64), HashMap<(String, u64), u64>>,
+    module_list: &mut HashSet<String>,
     id_counter: &mut u64,
 ) -> (HashMap<(String, u64), u64>, u64) {
     let mut groups = HashMap::new();
     for inst in insts.iter() {
         let module = inst.quantifier.module.clone();
+        if let Some(mod_name) = module.clone() {
+            module_list.insert(mod_name);
+        }
         groups.entry(module.clone()).or_insert(Vec::new()).push(inst.clone());
     }
 
@@ -177,6 +181,7 @@ fn merge_sibling_nodes(
             src_graph,
             &group_children.iter().cloned().collect(),
             module_graph,
+            module_list,
             id_counter,
         );
         module_graph.insert(cur_id.clone(), edges);
@@ -186,6 +191,46 @@ fn merge_sibling_nodes(
         children_total += total;
     }
     (result, children_total)
+}
+
+
+fn compute_module_blames(
+    src_graph: &HashMap<(String, u64), HashMap<(String, u64), u64>>,
+    module_list : &HashSet<String>,
+) -> Vec<(String, u64)>
+{
+    // assumes that root has been added as the single parent
+    let mut blames = Vec::new();
+    for module in module_list {
+        // perform a traversal of the tree.
+        let mut visited : HashSet<(String, u64)> = HashSet::new();
+        let mut queue = VecDeque::from([("root".to_string(), 0)]);
+        let mut blame = 0;
+        while !queue.is_empty() {
+            let head = queue.pop_front().unwrap();
+            // should never be recursing on a module that matches name
+            assert!(&head.0 != module);
+            if !visited.contains(&head) {
+                // ensure we don't visit this node again (defensive)
+                visited.insert(head.clone());
+                let children = src_graph.get(&head).unwrap();
+                for (child, count) in children {
+                    // defensive, don't think this can happen unless we have cycles
+                    if !visited.contains(child) {
+                        if &child.0 == module {
+                            // found a matching child, add to blame
+                            blame += count;
+                        } else {
+                            // recurse on non-match
+                            queue.push_back(child.clone());
+                        }
+                    }
+                }
+            }
+        }
+        blames.push((module.clone(), blame));
+    }
+    blames
 }
 
 fn run(input_path: &str) -> Result<(), String> {
@@ -269,15 +314,23 @@ fn run(input_path: &str) -> Result<(), String> {
     let mut unique_id = 0u64;
     let mut module_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
         HashMap::new();
+    let mut module_list = HashSet::new();
     let (top_mods, total_insts) = merge_sibling_nodes(
         &pruned_graph,
         &roots,
         &mut module_merged_graph,
+        &mut module_list,
         &mut unique_id,
     );
-    let dummy_root = ("root".to_string(), total_insts);
+    let dummy_root = ("root".to_string(), 0);
     module_merged_graph.insert(dummy_root, top_mods);
     dbg!(total_insts);
+
+    let mut module_blames = compute_module_blames(&module_merged_graph, &module_list);
+    module_blames.sort_unstable_by_key(|(_, cnt)| *cnt);
+
+    let res : Vec<_> = module_blames.iter().rev().map(|(module, cnt)| (module, *cnt as f32 / total_insts as f32)).collect();
+    dbg!(res);
 
     let simple_graph: Graph<(String, u64), u64> = Graph(
         module_merged_graph
