@@ -246,8 +246,6 @@ fn run(input_path: &str) -> Result<(), String> {
         src.quantifier.module.is_some()
     });
 
-    // let module_sets = pruned_graph.iter().fold(HashSet::new(), |(src, tgts)| {});
-
     let all_tgts : HashSet<Instantiation> = pruned_graph.iter().flat_map(|(src, tgts)| { tgts.iter().map(|(tgt, _)| tgt)} ).cloned().collect();
     let roots : Vec<Instantiation> = pruned_graph
         .iter()
@@ -271,12 +269,14 @@ fn run(input_path: &str) -> Result<(), String> {
     let mut unique_id = 0u64;
     let mut module_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
         HashMap::new();
-    let (_, total_insts) = merge_sibling_nodes(
+    let (top_mods, total_insts) = merge_sibling_nodes(
         &pruned_graph,
         &roots,
         &mut module_merged_graph,
         &mut unique_id,
     );
+    let dummy_root = ("root".to_string(), total_insts);
+    module_merged_graph.insert(dummy_root, top_mods);
     dbg!(total_insts);
 
     let simple_graph: Graph<(String, u64), u64> = Graph(
@@ -293,7 +293,8 @@ fn run(input_path: &str) -> Result<(), String> {
         | (modname, id) | format!("{} ({})", modname, id),
         // |n| format!("{} ({}, {})", n.quantifier.qid, n.id.0, n.id.1), // for pruned graph
         // |n| n.qid.clone(), // for quantifier graph
-        |e| Some(format!("{}", e)),
+        |e| Some(format!("{}", (*e as f32 / total_insts as f32) * 100.0)),
+        // |e| Some(format!("{}", e)),
     )?;
 
     Ok(())
