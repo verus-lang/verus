@@ -174,6 +174,26 @@ impl Profiler {
         }
     }
 
+    // TODO fn make_term_graph(model: &Model) -> InstantiationGraph {
+    // TODO     let term_to_inst =
+    // TODO         model.instantiations().iter().filter_map(|(qi_key, quant_inst)| match quant_inst.frame {
+    // TODO             QiFrame::Discovered { .. } => None,
+    // TODO             QiFrame::NewMatch { terms, .. } => Some((terms, qi_key)),
+    // TODO         });
+
+    // TODO     // Track which instantiations caused which enodes to appear
+    // TODO     let mut term_blame = HashMap::new();
+    // TODO     for (qi_key, quant_inst) in quantifier_inst_matches.clone() {
+    // TODO         for inst in &quant_inst.instances {
+    // TODO             for node_ident in &inst.enodes {
+    // TODO                 term_blame.insert(node_ident, qi_key);
+    // TODO             }
+    // TODO         }
+    // TODO     }
+    // TODO 
+    // TODO     todo!()
+    // TODO }
+
     pub fn quant_count(&self) -> usize {
         self.quantifier_stats.len()
     }

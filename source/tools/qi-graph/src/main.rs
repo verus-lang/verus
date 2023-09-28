@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    path::Path,
-    process::exit,
+    path::{Path, PathBuf},
+    process::exit, fmt::format,
 };
 
 use getopts::Options;
@@ -20,6 +20,7 @@ fn main() {
 
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
+    opts.optflag("d", "output-dir", "output directory");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -39,13 +40,17 @@ fn main() {
     }
 
     let input_path = if !matches.free.is_empty() {
-        matches.free[0].clone()
+        PathBuf::from(matches.free[0].clone())
     } else {
         print_usage(&program, opts);
         return;
     };
+    
+    let output_dir = matches.opt_str("d").map(|x| PathBuf::from(x)).unwrap_or(
+        std::env::current_dir().expect("cannot find current directory")
+    );
 
-    match run(&input_path) {
+    match run(&input_path, &output_dir) {
         Ok(()) => (),
         Err(err) => {
             eprintln!("error: {}", err);
@@ -233,11 +238,11 @@ fn compute_module_blames(
     blames
 }
 
-fn run(input_path: &str) -> Result<(), String> {
+fn run(input_path: &Path, output_dir: &Path) -> Result<(), String> {
     let bytes =
-        std::fs::read(input_path).map_err(|_e| format!("failed to read file {input_path}"))?;
+        std::fs::read(input_path).map_err(|_e| format!("failed to read file {}", input_path.display()))?;
     let graph: InstantiationGraph =
-        bincode::deserialize(&bytes[..]).map_err(|_| format!("input {input_path} is malformed"))?;
+        bincode::deserialize(&bytes[..]).map_err(|_| format!("input {} is malformed", input_path.display()))?;
     dbg!(graph.graph.0.len());
 
     let mut in_deg : HashMap<Instantiation, u64> = HashMap::new();
@@ -326,11 +331,11 @@ fn run(input_path: &str) -> Result<(), String> {
     module_merged_graph.insert(dummy_root, top_mods);
     dbg!(total_insts);
 
-    let mut module_blames = compute_module_blames(&module_merged_graph, &module_list);
-    module_blames.sort_unstable_by_key(|(_, cnt)| *cnt);
-
-    let res : Vec<_> = module_blames.iter().rev().map(|(module, cnt)| (module, *cnt as f32 / total_insts as f32)).collect();
-    dbg!(res);
+    let module_blames: Vec<_> = {
+        let mut module_blames = compute_module_blames(&module_merged_graph, &module_list);
+        module_blames.sort_unstable_by_key(|(_, cnt)| *cnt);
+        module_blames.into_iter().rev().map(|(module, cnt)| (module, cnt as f32 / total_insts as f32)).collect()
+    };
 
     let simple_graph: Graph<(String, u64), u64> = Graph(
         module_merged_graph
@@ -340,15 +345,22 @@ fn run(input_path: &str) -> Result<(), String> {
             })
             .collect(),
     );
+    
+    let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
     simple_graph.to_dot_file(
-        &Path::new(input_path).with_extension("dot"),
+        &output_dir.join(Path::new(file_stem).with_extension("dot")),
         | (modname, id) | format!("{} ({})", modname, id),
         // |n| format!("{} ({}, {})", n.quantifier.qid, n.id.0, n.id.1), // for pruned graph
         // |n| n.qid.clone(), // for quantifier graph
         |e| Some(format!("{}", (*e as f32 / total_insts as f32) * 100.0)),
         // |e| Some(format!("{}", e)),
     )?;
-
+    
+    let module_blames_json_str = serde_json::to_string_pretty(&module_blames)
+        .map_err(|x| format!("cannot format json ({x})"))?;
+    std::fs::write(output_dir.join(Path::new(file_stem).with_extension("json")), module_blames_json_str)
+        .map_err(|err| format!("i/o failed: {}", err))?;
+    
     Ok(())
 }
