@@ -1,13 +1,12 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     ffi::OsStr,
-    fmt::format,
     path::{Path, PathBuf},
     process::exit,
 };
 
 use getopts::Options;
-use qi_graph::{Graph, Instantiation, InstantiationGraph, QuantifierKind, UserQuantifier};
+use qi_graph::{Graph, Instantiation, InstantiationGraph};
 // use qi_graph::Quantifier;
 
 use petgraph::algo::is_cyclic_directed;
@@ -117,7 +116,7 @@ where
                 pruned_edges
             }
             let res = compute_final_edges(&mut HashSet::new(), input_graph, predicate, &dsts);
-            for (dst, cnt) in &res {
+            for (dst, _) in &res {
                 assert!(predicate(dst));
             }
             assert!(predicate(src));
@@ -277,9 +276,10 @@ fn run(input_path: &Path, output_dir: &Path, all: bool) -> Result<(), String> {
                 "bucket_name": datum.bucket_name,
                 "module": datum.module,
                 "function": datum.function,
+                "file_path" : datum.file_path,
                 "module_blames": data,
             })
-        };
+        }
 
         serde_json::json!({
             "module": module,
@@ -308,6 +308,7 @@ fn run(input_path: &Path, output_dir: &Path, all: bool) -> Result<(), String> {
 struct ProcessFileOutput {
     bucket_name: String,
     module: String,
+    file_path: String,
     function: Option<String>,
     module_blames: Vec<(String, f64)>,
 }
@@ -374,7 +375,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
 
     let all_tgts: HashSet<Instantiation> = pruned_graph
         .iter()
-        .flat_map(|(src, tgts)| tgts.iter().map(|(tgt, _)| tgt))
+        .flat_map(|(_, tgts)| tgts.iter().map(|(tgt, _)| tgt))
         .cloned()
         .collect();
     let roots: Vec<Instantiation> =
@@ -439,6 +440,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
     Ok(ProcessFileOutput {
         bucket_name: graph.bucket_name,
         module: graph.module,
+        file_path: file_stem.to_str().unwrap().to_string(),
         function: graph.function,
         module_blames,
     })
