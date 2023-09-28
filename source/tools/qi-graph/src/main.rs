@@ -1,7 +1,9 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    ffi::OsStr,
+    fmt::format,
     path::{Path, PathBuf},
-    process::exit, fmt::format,
+    process::exit,
 };
 
 use getopts::Options;
@@ -21,6 +23,7 @@ fn main() {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.optflag("d", "output-dir", "output directory");
+    opts.optflag("a", "all", "process all graph files in a directory");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -45,12 +48,15 @@ fn main() {
         print_usage(&program, opts);
         return;
     };
-    
-    let output_dir = matches.opt_str("d").map(|x| PathBuf::from(x)).unwrap_or(
-        std::env::current_dir().expect("cannot find current directory")
-    );
 
-    match run(&input_path, &output_dir) {
+    let output_dir = matches
+        .opt_str("d")
+        .map(|x| PathBuf::from(x))
+        .unwrap_or(std::env::current_dir().expect("cannot find current directory"));
+
+    let all = matches.opt_present("a");
+
+    match run(&input_path, &output_dir, all) {
         Ok(()) => (),
         Err(err) => {
             eprintln!("error: {}", err);
@@ -146,7 +152,7 @@ fn convert_to_petgraph(
             pgraph.add_edge(src_node.clone(), tgt_node.clone(), ());
         }
     }
-    (pgraph , node_map)
+    (pgraph, node_map)
 }
 // string: Module name
 // u64: uniue identifier
@@ -175,10 +181,17 @@ fn merge_sibling_nodes(
         let group_children: HashSet<Instantiation> = nodes
             .iter()
             .flat_map(|x| {
-                src_graph.get(x).iter().flat_map(|x| x.iter().map(|(dst, count)| {
-                    assert!(*count == 1);
-                    dst
-                })).collect::<Vec<_>>().into_iter()
+                src_graph
+                    .get(x)
+                    .iter()
+                    .flat_map(|x| {
+                        x.iter().map(|(dst, count)| {
+                            assert!(*count == 1);
+                            dst
+                        })
+                    })
+                    .collect::<Vec<_>>()
+                    .into_iter()
             })
             .cloned()
             .collect();
@@ -198,17 +211,15 @@ fn merge_sibling_nodes(
     (result, children_total)
 }
 
-
 fn compute_module_blames(
     src_graph: &HashMap<(String, u64), HashMap<(String, u64), u64>>,
-    module_list : &HashSet<String>,
-) -> Vec<(String, u64)>
-{
+    module_list: &HashSet<String>,
+) -> Vec<(String, u64)> {
     // assumes that root has been added as the single parent
     let mut blames = Vec::new();
     for module in module_list {
         // perform a traversal of the tree.
-        let mut visited : HashSet<(String, u64)> = HashSet::new();
+        let mut visited: HashSet<(String, u64)> = HashSet::new();
         let mut queue = VecDeque::from([("root".to_string(), 0)]);
         let mut blame = 0;
         while !queue.is_empty() {
@@ -238,24 +249,90 @@ fn compute_module_blames(
     blames
 }
 
-fn run(input_path: &Path, output_dir: &Path) -> Result<(), String> {
-    let bytes =
-        std::fs::read(input_path).map_err(|_e| format!("failed to read file {}", input_path.display()))?;
-    let graph: InstantiationGraph =
-        bincode::deserialize(&bytes[..]).map_err(|_| format!("input {} is malformed", input_path.display()))?;
+fn run(input_path: &Path, output_dir: &Path, all: bool) -> Result<(), String> {
+    let mut module_data: HashMap<String, Vec<ProcessFileOutput>> = HashMap::new();
+    if all {
+        for entry in std::fs::read_dir(input_path)
+            .map_err(|e| format!("cannot read directory {} ({})", input_path.display(), e))?
+        {
+            let entry = entry.map_err(|e| format!("cannot stat directory entry ({})", e))?;
+            if let Some(extension) = entry.path().extension().and_then(|x| x.to_str()) {
+                if extension == "graph" {
+                    let output = process_file(&entry.path(), output_dir)?;
+                    module_data.entry(output.module.clone()).or_insert(Vec::new()).push(output);
+                }
+            }
+        }
+    } else {
+        let output = process_file(input_path, output_dir)?;
+        module_data.entry(output.module.clone()).or_insert(Vec::new()).push(output);
+    }
+
+    let json_value = serde_json::Value::Array(module_data.into_iter().map(|(module, data)| {
+        fn module_blames_datum(datum: ProcessFileOutput) -> serde_json::Value {
+            let data = serde_json::Value::Array(datum.module_blames.into_iter().map(|(module, fraction)|
+                serde_json::json!({"module": module, "fraction": fraction})
+            ).collect());
+            serde_json::json!({
+                "bucket_name": datum.bucket_name,
+                "module": datum.module,
+                "function": datum.function,
+                "module_blames": data,
+            })
+        };
+
+        serde_json::json!({
+            "module": module,
+            "module_blames_data": serde_json::Value::Array(data.into_iter().map(module_blames_datum).collect()),
+        })
+    }).collect());
+
+    let module_blames_json_str = serde_json::to_string_pretty(&json_value)
+        .map_err(|x| format!("cannot format json ({x})"))?;
+
+    let file_stem = if all {
+        OsStr::new("qi-data")
+    } else {
+        input_path.file_stem().ok_or(format!("invalid input filename"))?
+    };
+
+    std::fs::write(
+        output_dir.join(Path::new(file_stem).with_extension("json")),
+        module_blames_json_str,
+    )
+    .map_err(|err| format!("i/o failed: {}", err))?;
+
+    Ok(())
+}
+
+struct ProcessFileOutput {
+    bucket_name: String,
+    module: String,
+    function: Option<String>,
+    module_blames: Vec<(String, f64)>,
+}
+
+fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutput, String> {
+    dbg!(&input_path);
+
+    let bytes = std::fs::read(input_path)
+        .map_err(|_e| format!("failed to read file {}", input_path.display()))?;
+    let graph: InstantiationGraph = bincode::deserialize(&bytes[..])
+        .map_err(|_| format!("input {} is malformed", input_path.display()))?;
     dbg!(graph.graph.0.len());
 
-    let mut in_deg : HashMap<Instantiation, u64> = HashMap::new();
+    let mut in_deg: HashMap<Instantiation, u64> = HashMap::new();
     for (_, tgts) in &graph.graph.0 {
         for (_, tgt) in tgts {
             *in_deg.entry(tgt.clone()).or_insert(0) += 1;
         }
     }
-    let max_in_deg = in_deg.iter().fold(1, |acc, (_, n)| {if *n > acc {*n} else {acc} });
+    let max_in_deg = in_deg.iter().fold(1, |acc, (_, n)| if *n > acc { *n } else { acc });
     dbg!(max_in_deg);
     for i in 0..max_in_deg {
-        let in_degree = i + 1; 
-        let num_nodes = in_deg.iter().fold(0, |acc, (_, n)| {if *n == i + 1 {acc + 1} else {acc} });
+        let in_degree = i + 1;
+        let num_nodes =
+            in_deg.iter().fold(0, |acc, (_, n)| if *n == i + 1 { acc + 1 } else { acc });
         dbg!(in_degree, num_nodes);
     }
     let (pgraph, _) = convert_to_petgraph(&graph);
@@ -269,7 +346,7 @@ fn run(input_path: &Path, output_dir: &Path) -> Result<(), String> {
     //         *new_src.entry(dst.quantifier.clone()).or_insert(0) += 1;
     //     }
     // }
-    // 
+    //
     // let pruned_graph = prune_by_predicate(&simple_graph, &|src: &Quantifier| {
     //     src.kind != QuantifierKind::Internal
     // });
@@ -288,24 +365,22 @@ fn run(input_path: &Path, output_dir: &Path) -> Result<(), String> {
         .0
         .into_iter()
         .map(|(src, dsts)| {
-           (src, dsts.into_iter().map(|((), inst)| (inst, 1)).collect::<HashMap<_, _>>())
+            (src, dsts.into_iter().map(|((), inst)| (inst, 1)).collect::<HashMap<_, _>>())
         })
         .collect();
 
-    let pruned_graph = prune_by_predicate(&input_graph, &|src: &Instantiation| {
-        src.quantifier.module.is_some()
-    });
+    let pruned_graph =
+        prune_by_predicate(&input_graph, &|src: &Instantiation| src.quantifier.module.is_some());
 
-    let all_tgts : HashSet<Instantiation> = pruned_graph.iter().flat_map(|(src, tgts)| { tgts.iter().map(|(tgt, _)| tgt)} ).cloned().collect();
-    let roots : Vec<Instantiation> = pruned_graph
+    let all_tgts: HashSet<Instantiation> = pruned_graph
         .iter()
-        .map(|x| x.0)
-        .filter(|x| !all_tgts.contains(*x))
+        .flat_map(|(src, tgts)| tgts.iter().map(|(tgt, _)| tgt))
         .cloned()
         .collect();
+    let roots: Vec<Instantiation> =
+        pruned_graph.iter().map(|x| x.0).filter(|x| !all_tgts.contains(*x)).cloned().collect();
 
     dbg!(roots.len());
-
 
     // let simple_graph: Graph<Instantiation, u64> = Graph(
     //     pruned_graph
@@ -334,7 +409,11 @@ fn run(input_path: &Path, output_dir: &Path) -> Result<(), String> {
     let module_blames: Vec<_> = {
         let mut module_blames = compute_module_blames(&module_merged_graph, &module_list);
         module_blames.sort_unstable_by_key(|(_, cnt)| *cnt);
-        module_blames.into_iter().rev().map(|(module, cnt)| (module, cnt as f32 / total_insts as f32)).collect()
+        module_blames
+            .into_iter()
+            .rev()
+            .map(|(module, cnt)| (module, cnt as f64 / total_insts as f64))
+            .collect()
     };
 
     let simple_graph: Graph<(String, u64), u64> = Graph(
@@ -345,22 +424,22 @@ fn run(input_path: &Path, output_dir: &Path) -> Result<(), String> {
             })
             .collect(),
     );
-    
+
     let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
     simple_graph.to_dot_file(
         &output_dir.join(Path::new(file_stem).with_extension("dot")),
-        | (modname, id) | format!("{} ({})", modname, id),
+        |(modname, id)| format!("{} ({})", modname, id),
         // |n| format!("{} ({}, {})", n.quantifier.qid, n.id.0, n.id.1), // for pruned graph
         // |n| n.qid.clone(), // for quantifier graph
-        |e| Some(format!("{}", (*e as f32 / total_insts as f32) * 100.0)),
+        |e| Some(format!("{}", (*e as f64 / total_insts as f64) * 100.0)),
         // |e| Some(format!("{}", e)),
     )?;
-    
-    let module_blames_json_str = serde_json::to_string_pretty(&module_blames)
-        .map_err(|x| format!("cannot format json ({x})"))?;
-    std::fs::write(output_dir.join(Path::new(file_stem).with_extension("json")), module_blames_json_str)
-        .map_err(|err| format!("i/o failed: {}", err))?;
-    
-    Ok(())
+
+    Ok(ProcessFileOutput {
+        bucket_name: graph.bucket_name,
+        module: graph.module,
+        function: graph.function,
+        module_blames,
+    })
 }

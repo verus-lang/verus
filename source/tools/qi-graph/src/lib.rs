@@ -38,6 +38,9 @@ pub struct Graph<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::h
 
 #[derive(Serialize, Deserialize)]
 pub struct InstantiationGraph {
+    pub bucket_name: String,
+    pub module: String,
+    pub function: Option<String>,
     pub quantifiers: HashSet<Quantifier>,
     pub graph: Graph<Instantiation, ()>,
 }

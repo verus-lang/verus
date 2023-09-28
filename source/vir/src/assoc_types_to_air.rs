@@ -80,7 +80,7 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
                 &Arc::new(vec![]),
                 &vec![projection],
                 false,
-                false
+                false,
             );
             let forall = mk_bind_expr(&bind, &eq);
             commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));

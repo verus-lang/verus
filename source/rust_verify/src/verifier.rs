@@ -1224,6 +1224,8 @@ impl Verifier {
                                 reporter,
                             );
                             write_instantiation_graph(
+                                &bucket_id,
+                                Some(&op),
                                 &opgen.ctx.func_map,
                                 &profiler,
                                 &opgen.ctx.global.qid_map.borrow(),
@@ -1290,7 +1292,8 @@ impl Verifier {
             let profiler =
                 Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
             write_instantiation_graph(
-                
+                &bucket_id,
+                None,
                 &opgen.ctx.func_map,
                 &profiler,
                 &opgen.ctx.global.qid_map.borrow(),
@@ -1899,6 +1902,8 @@ impl Verifier {
 }
 
 fn write_instantiation_graph(
+    bucket_id: &BucketId,
+    op: Option<&Op>,
     func_map: &HashMap<Fun, vir::ast::Function>,
     profiler: &Profiler,
     qid_map: &HashMap<String, vir::sst::BndInfo>,
@@ -1918,9 +1923,18 @@ fn write_instantiation_graph(
             } else {
                 QuantifierKind::Internal
             };
-            (n.clone(), std::rc::Rc::new(QuantifierX { qid: n.clone(),
-                module: bnd_info.map(|b| module_name(&func_map[&b.fun].x.owning_module.as_ref().expect("owning module"))),
-                kind }))
+            (
+                n.clone(),
+                std::rc::Rc::new(QuantifierX {
+                    qid: n.clone(),
+                    module: bnd_info.map(|b| {
+                        module_name(
+                            &func_map[&b.fun].x.owning_module.as_ref().expect("owning module"),
+                        )
+                    }),
+                    kind,
+                }),
+            )
         })
         .collect();
     let instantiations: HashMap<(u64, usize), Instantiation> = nodes
@@ -1943,7 +1957,13 @@ fn write_instantiation_graph(
         }
     }
     let quantifiers = quantifiers.into_values().collect();
-    let instantiation_graph = InstantiationGraph { quantifiers, graph: Graph(graph) };
+    let instantiation_graph = InstantiationGraph {
+        bucket_name: bucket_id.to_log_string(),
+        module: module_name(bucket_id.module()),
+        function: op.map(|op| fun_as_friendly_rust_name(&op.function.x.name)),
+        quantifiers,
+        graph: Graph(graph),
+    };
     let file_name = profile_file_name.with_extension("graph");
     let mut f = File::create(&file_name)
         .expect(&format!("failed to open instantiation graph file {}", file_name.display()));

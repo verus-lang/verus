@@ -522,8 +522,15 @@ pub fn new_internal_qid(ctx: &crate::context::Ctx, name: String, record: bool) -
     let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
 
     if record {
-        let bnd_info =
-            crate::sst::BndInfo { fun: ctx.fun.as_ref().expect("expressions are expected to be within a function").current_fun.clone(), user: None, };
+        let bnd_info = crate::sst::BndInfo {
+            fun: ctx
+                .fun
+                .as_ref()
+                .expect("expressions are expected to be within a function")
+                .current_fun
+                .clone(),
+            user: None,
+        };
         ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
     }
 

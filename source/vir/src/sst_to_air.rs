@@ -24,7 +24,8 @@ use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
-    BndInfo, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX, UniqueIdent, BndInfoUser,
+    BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX,
+    UniqueIdent,
 };
 use crate::sst_util::{subst_exp, subst_stm};
 use crate::sst_vars::{get_loc_var, AssignMap};
@@ -722,8 +723,15 @@ fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
             exp.x
         ),
     };
-    let bnd_info =
-        BndInfo { fun: ctx.fun.as_ref().expect("expressions are expected to be within a function").current_fun.clone(), user: Some(BndInfoUser { span: exp.span.clone(), trigs: trigs.clone() }) };
+    let bnd_info = BndInfo {
+        fun: ctx
+            .fun
+            .as_ref()
+            .expect("expressions are expected to be within a function")
+            .current_fun
+            .clone(),
+        user: Some(BndInfoUser { span: exp.span.clone(), trigs: trigs.clone() }),
+    };
     ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
     Some(Arc::new(qid))
 }

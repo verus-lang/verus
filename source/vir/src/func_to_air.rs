@@ -125,7 +125,10 @@ fn func_def_quant(
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
     let f_imply = mk_implies(&mk_and(pre), &f_eq);
-    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false, true), &f_imply))
+    Ok(mk_bind_expr(
+        &func_bind(ctx, name.to_string(), typ_params, params, &f_app, false, true),
+        &f_imply,
+    ))
 }
 
 fn func_body_to_air(
@@ -303,8 +306,10 @@ fn func_body_to_air(
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
         let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
-        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true, true);
-        let bind_body = func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true, true);
+        let bind_zero =
+            func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true, true);
+        let bind_body =
+            func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true, true);
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
