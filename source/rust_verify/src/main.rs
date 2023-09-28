@@ -174,14 +174,20 @@ pub fn main() {
         smt_init_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_init: u128 = smt_init_times.iter().map(|(_, v)| v).sum();
 
-        let mut smt_run_times: Vec<(&std::sync::Arc<vir::ast::PathX>, u128)> = verifier
+        let mut smt_run_times: Vec<(&std::sync::Arc<vir::ast::PathX>, (u128, u128))> = verifier
             .bucket_times
             .iter()
             .filter(|(k, _)| k.function().is_none())
-            .map(|(k, v)| (k.module(), v.time_smt_run.as_millis()))
+            .map(|(k, v)| (k.module(), (v.time_smt_run.as_millis(), v.unaccounted_smt_run_time.as_millis())))
             .collect::<Vec<_>>();
-        smt_run_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v).sum();
+        smt_run_times.sort_by(|(_, a), (_, b)| b.0.cmp(&a.0));
+        let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v.0).sum();
+
+        let mut smt_function_breakdown = verifier
+            .func_times
+            .iter()
+            .map(|(k, v)| (k.module(), v.iter().map(|(f, t)| (f, t.as_millis())).collect::<Vec<_>>()))
+            .collect::<std::collections::HashMap<_, _>>();
 
         let mut air_times = verifier
             .bucket_times
@@ -284,10 +290,17 @@ pub fn main() {
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                         "smt-run": total_smt_run,
-                        "smt-init-module-times" : smt_run_times.iter().map(|(m, t)| {
+                        "smt-run-module-times" : smt_run_times.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
-                                "time" : t
+                                "time" : t.0,
+                                "unaccounted-time" : t.1,
+                                "function-breakdown" : smt_function_breakdown.get_mut(m).expect("Module should exist").iter().map(|(f, t)| {
+                                    serde_json::json!({
+                                        "function" : vir::ast_util::friendly_fun_name_crate_relative(m, f),
+                                        "time" : t
+                                    })
+                                 }).collect::<Vec<serde_json::Value>>()
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                     }),
@@ -375,7 +388,7 @@ pub fn main() {
                             "            {}. {:<40} {:>10} ms",
                             i + 1,
                             rust_verify::verifier::module_name(m),
-                            t
+                            t.0
                         );
                     }
                 }

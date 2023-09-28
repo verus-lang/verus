@@ -195,6 +195,8 @@ pub struct BucketStats {
     pub time_smt_run: Duration,
     /// total time to verify the bucket
     pub time_verify: Duration,
+    /// tracking time of context before the module enters function verification loop
+    pub unaccounted_smt_run_time : Duration,
 }
 
 pub struct Verifier {
@@ -221,6 +223,8 @@ pub struct Verifier {
     pub time_hir: Duration,
     /// execution times for each bucket run in parallel
     pub bucket_times: HashMap<BucketId, BucketStats>,
+    /// smt runtimes for each function per bucket
+    pub func_times: HashMap<BucketId, HashMap<Fun, Duration>>,
 
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
@@ -297,6 +301,7 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
 
             bucket_times: HashMap::new(),
+            func_times: HashMap::new(),
 
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
@@ -328,6 +333,7 @@ impl Verifier {
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_times: HashMap::new(),
+            func_times: HashMap::new(),
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
@@ -348,6 +354,7 @@ impl Verifier {
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_times.extend(other.bucket_times);
+        self.func_times.extend(other.func_times);
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -991,7 +998,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
-    ) -> Result<(Duration, Duration), VirErr> {
+    ) -> Result<(Duration, Duration, Duration), VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         assert!(!(self.args.profile && self.args.profile_all));
@@ -1100,6 +1107,8 @@ impl Verifier {
 
         let function_decl_commands = Arc::new(function_decl_commands);
 
+        let unaccounted_smt_run_time = air_context.get_time().1;
+
         let bucket = self.get_bucket(bucket_id);
         let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
         let mut all_context_ops = vec![];
@@ -1131,6 +1140,7 @@ impl Verifier {
 
                     let mut any_invalid = false;
                     self.expand_targets = vec![];
+                    let mut func_curr_smt_time = Duration::ZERO;
                     for cmds in commands_with_context_list.iter() {
                         if is_recommend && cmds.skip_recommends {
                             continue;
@@ -1192,7 +1202,7 @@ impl Verifier {
                         } else {
                             &mut air_context
                         };
-
+                        let iter_curr_smt_time = query_air_context.get_time().1;
                         let RunCommandQueriesResult {
                             invalidity: command_invalidity,
                             timed_out: command_timed_out,
@@ -1209,6 +1219,7 @@ impl Verifier {
                             &op.to_air_comment(),
                             None,
                         );
+                        func_curr_smt_time += query_air_context.get_time().1 - iter_curr_smt_time;
                         if do_spinoff {
                             let (time_smt_init, time_smt_run) = query_air_context.get_time();
                             spunoff_time_smt_init += time_smt_init;
@@ -1254,6 +1265,10 @@ impl Verifier {
                             }
                         }
                     }
+
+                    // collect the smt run time from this command into the function duration
+                    let func_time = self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
+                    *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) += func_curr_smt_time;
 
                     if matches!(query_op, QueryOp::Body(Style::Normal)) {
                         if (any_invalid && !self.args.no_auto_recommends_check)
@@ -1310,7 +1325,7 @@ impl Verifier {
 
         let (time_smt_init, time_smt_run) = air_context.get_time();
 
-        Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run))
+        Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run, unaccounted_smt_run_time))
     }
 
     fn verify_bucket_outer(
@@ -1357,7 +1372,7 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.vir_log_option);
         }
 
-        let (time_smt_init, time_smt_run) =
+        let (time_smt_init, time_smt_run, unaccounted_smt_run_time) =
             self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
@@ -1367,6 +1382,7 @@ impl Verifier {
         let mut time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
         time_bucket.time_smt_init = time_smt_init;
         time_bucket.time_smt_run = time_smt_run;
+        time_bucket.unaccounted_smt_run_time = unaccounted_smt_run_time;
         time_bucket.time_verify = time_verify_end - time_verify_start;
 
         if self.args.trace {
