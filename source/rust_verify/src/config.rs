@@ -67,6 +67,7 @@ pub struct ArgsX {
     pub debug: bool,
     pub profile: bool,
     pub profile_all: bool,
+    pub spinoff_all: bool,
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -155,6 +156,7 @@ pub fn parse_args_with_imports(
     const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
     const OPT_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const OPT_DEBUG: &str = "debug";
+    const OPT_SPINOFF_ALL: &str = "spinoff-all";
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
@@ -249,6 +251,7 @@ pub fn parse_args_with_imports(
         OPT_PROFILE,
         "Collect and report prover performance data when resource limits are hit",
     );
+    opts.optflag("", OPT_SPINOFF_ALL, "Always spinoff individual functions to separate z3 instances");
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
@@ -415,6 +418,7 @@ pub fn parse_args_with_imports(
             };
             matches.opt_present(OPT_PROFILE_ALL)
         },
+        spinoff_all: matches.opt_present(OPT_SPINOFF_ALL),
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !matches.opt_present(OPT_NO_SOLVER_VERSION_CHECK),

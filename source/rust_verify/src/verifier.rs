@@ -1154,8 +1154,8 @@ impl Verifier {
                         let mut spinoff_z3_context;
                         let do_spinoff = (cmds.prover_choice == vir::def::ProverChoice::Nonlinear)
                             || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
-                            || *profile_rerun;
-
+                            || *profile_rerun
+                            || self.args.spinoff_all;
                         let profile_file_name =
                             if *profile_rerun || (self.args.profile_all && do_spinoff) {
                                 let solver_log_dir = self.ensure_solver_log_dir()?;
@@ -1174,6 +1174,8 @@ impl Verifier {
                             } else {
                                 None
                             };
+                        let profile_file_generated = cmds.commands.len() > 0;
+                        // dbg!(&profile_file_name);
 
                         let query_air_context = if do_spinoff {
                             spinoff_z3_context = self.new_air_context_with_bucket_context(
@@ -1228,7 +1230,7 @@ impl Verifier {
 
                         any_invalid |= command_invalidity;
 
-                        if let Some(profile_file_name) = profile_file_name {
+                        if let (Some(profile_file_name), true) = (profile_file_name , profile_file_generated) {
                             let profiler = Profiler::new(
                                 message_interface.clone(),
                                 &profile_file_name,
@@ -1303,7 +1305,8 @@ impl Verifier {
                 }
             }
         }
-        if let Some(profile_all_file_name) = profile_all_file_name {
+        // if spinning off all, the regular profile loop inside has already profiled everything
+        if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all) {
             let profiler =
                 Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
             write_instantiation_graph(
