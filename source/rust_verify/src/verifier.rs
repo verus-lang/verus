@@ -195,8 +195,6 @@ pub struct BucketStats {
     pub time_smt_run: Duration,
     /// total time to verify the bucket
     pub time_verify: Duration,
-    /// tracking time of context before the module enters function verification loop
-    pub unaccounted_smt_run_time : Duration,
 }
 
 pub struct Verifier {
@@ -998,7 +996,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
-    ) -> Result<(Duration, Duration, Duration), VirErr> {
+    ) -> Result<(Duration, Duration), VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         assert!(!(self.args.profile && self.args.profile_all));
@@ -1106,8 +1104,6 @@ impl Verifier {
         ctx.fun = None;
 
         let function_decl_commands = Arc::new(function_decl_commands);
-
-        let unaccounted_smt_run_time = air_context.get_time().1;
 
         let bucket = self.get_bucket(bucket_id);
         let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
@@ -1332,7 +1328,7 @@ impl Verifier {
 
         let (time_smt_init, time_smt_run) = air_context.get_time();
 
-        Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run, unaccounted_smt_run_time))
+        Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run))
     }
 
     fn verify_bucket_outer(
@@ -1379,7 +1375,7 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.vir_log_option);
         }
 
-        let (time_smt_init, time_smt_run, unaccounted_smt_run_time) =
+        let (time_smt_init, time_smt_run) =
             self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
@@ -1389,7 +1385,6 @@ impl Verifier {
         let mut time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
         time_bucket.time_smt_init = time_smt_init;
         time_bucket.time_smt_run = time_smt_run;
-        time_bucket.unaccounted_smt_run_time = unaccounted_smt_run_time;
         time_bucket.time_verify = time_verify_end - time_verify_start;
 
         if self.args.trace {
