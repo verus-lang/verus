@@ -35,7 +35,18 @@ test_verify_one_file! {
             ar.set(7, 50);
             assert(ar[7] == 50);
         }
-    } => Err(err) => assert_fails(err, 2)
+
+        fn test7(ar: [u8; 20])
+            requires ar[1] == 19
+        {
+            let x = ar[1];
+            assert(x == 19);
+        }
+
+        fn test8(ar: [u8; 20]) {
+            let y = ar[20]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
