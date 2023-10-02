@@ -189,6 +189,19 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
 }
 
+test_verify_one_file! {
+    #[test] test_call_extern_external verus_code! {
+        extern "C" {
+            #[verifier(external)]
+            fn stuff();
+        }
+
+        fn test() {
+            stuff();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+}
+
 // If you wrongly try to apply a mode
 
 test_verify_one_file! {
@@ -408,7 +421,7 @@ test_verify_one_file! {
             #[verifier(external_fn_specification)]
             fn stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported on foreign items")
+    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
 }
 
 // Mismatched type signatures

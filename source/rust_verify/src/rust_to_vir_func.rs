@@ -1059,6 +1059,20 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     idents: &[Ident],
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let name = Arc::new(FunX { path });
+
+    if vattrs.external_fn_specification {
+        return err_span(span, "`external_fn_specification` attribute not supported here");
+    }
+    if vattrs.external {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
+        return Ok(());
+    }
+
     let mode = get_mode(Mode::Exec, attrs);
 
     let fn_sig = ctxt.tcx.fn_sig(id);
@@ -1075,16 +1089,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
-
-    if vattrs.external_fn_specification {
-        return err_span(
-            span,
-            "`external_fn_specification` attribute not supported on foreign items",
-        );
-    }
 
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
@@ -1105,8 +1111,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         );
         vir_params.push(vir_param);
     }
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    let name = Arc::new(FunX { path });
     let params = Arc::new(vir_params);
     let (ret_typ, ret_mode) = match ret_typ_mode {
         None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
