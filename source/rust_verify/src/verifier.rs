@@ -727,7 +727,7 @@ impl Verifier {
         }
     }
 
-    /// Returns true if there was at least one Invalid resulting in an error.
+    // The second element of the tuple is true if the query was _not_ skipped.
     fn run_commands_queries(
         &mut self,
         reporter: &impl air::messages::Diagnostics,
@@ -741,11 +741,11 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-    ) -> RunCommandQueriesResult {
+    ) -> (RunCommandQueriesResult, bool) {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
         if !includes_function {
-            return RunCommandQueriesResult { invalidity: false, timed_out: false };
+            return (RunCommandQueriesResult { invalidity: false, timed_out: false }, false);
         }
 
         let mut result = RunCommandQueriesResult { invalidity: false, timed_out: false };
@@ -773,7 +773,7 @@ impl Verifier {
                 );
         }
 
-        result
+        (result, true)
     }
 
     fn log_fine_name_suffix(
@@ -1178,10 +1178,10 @@ impl Verifier {
                             &mut air_context
                         };
                         let iter_curr_smt_time = query_air_context.get_time().1;
-                        let RunCommandQueriesResult {
+                        let (RunCommandQueriesResult {
                             invalidity: command_invalidity,
                             timed_out: command_timed_out,
-                        } = self.run_commands_queries(
+                        }, not_skipped) = self.run_commands_queries(
                             reporter,
                             source_map,
                             (!profile_rerun).then(|| level),
@@ -1204,8 +1204,8 @@ impl Verifier {
                         any_invalid |= command_invalidity;
 
                         if let Some(profile_file_name) = profile_file_name {
-                            if profile_file_name.exists() {
-                                dbg!(&profile_file_name);
+                            if not_skipped && query_air_context.check_valid_used() {
+                                assert!(profile_file_name.exists());
                                 let profiler = Profiler::new(
                                     message_interface.clone(),
                                     &profile_file_name,

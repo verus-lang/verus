@@ -85,6 +85,7 @@ pub struct Context {
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
+    pub(crate) check_valid_used: bool,
 }
 
 impl Context {
@@ -118,6 +119,7 @@ impl Context {
             expected_solver_version: None,
             profile_logfile_name: None,
             disable_incremental_solving: false,
+            check_valid_used: false,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -378,8 +380,13 @@ impl Context {
             model,
             query_context.report_long_running,
         );
+        self.check_valid_used = true;
 
         validity
+    }
+    
+    pub fn check_valid_used(&self) -> bool {
+        self.check_valid_used
     }
 
     /// After receiving ValidityResult::Invalid, try to find another error.
@@ -393,14 +400,16 @@ impl Context {
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
-            crate::smt_verify::smt_check_assertion(
+            let res = crate::smt_verify::smt_check_assertion(
                 self,
                 diagnostics,
                 infos,
                 air_model,
                 only_check_earlier,
                 query_context.report_long_running,
-            )
+            );
+            self.check_valid_used = true;
+            res
         } else {
             panic!("check_valid_again expected query to be ValidityResult::Invalid");
         }
