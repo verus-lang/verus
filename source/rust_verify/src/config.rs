@@ -67,6 +67,7 @@ pub struct ArgsX {
     pub debug: bool,
     pub profile: bool,
     pub profile_all: bool,
+    pub capture_profiles: bool,
     pub spinoff_all: bool,
     pub no_vstd: bool,
     pub compile: bool,
@@ -159,6 +160,7 @@ pub fn parse_args_with_imports(
     const OPT_SPINOFF_ALL: &str = "spinoff-all";
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
+    const OPT_CAPTURE_PROFILES: &str = "capture-profiles";
     const OPT_COMPILE: &str = "compile";
     const OPT_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const OPT_VERSION: &str = "version";
@@ -253,6 +255,7 @@ pub fn parse_args_with_imports(
     );
     opts.optflag("", OPT_SPINOFF_ALL, "Always spinoff individual functions to separate z3 instances");
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
+    opts.optflag("", OPT_CAPTURE_PROFILES, "Always collect prover performance data, but don't generate output reports");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
     opts.optopt(
@@ -410,13 +413,21 @@ pub fn parse_args_with_imports(
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
                 if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when profiling".to_string())
+                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider --capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
                 }
             };
             matches.opt_present(OPT_PROFILE_ALL)
+        },
+        capture_profiles : {
+            if matches.opt_present(OPT_CAPTURE_PROFILES) {
+                if matches.opt_present(OPT_PROFILE) {
+                    error("--profile and --capture-profiles are mutually exclusive".to_string())
+                }
+            };
+            matches.opt_present(OPT_CAPTURE_PROFILES)
         },
         spinoff_all: matches.opt_present(OPT_SPINOFF_ALL),
         compile: matches.opt_present(OPT_COMPILE),

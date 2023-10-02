@@ -603,7 +603,7 @@ impl Verifier {
                         invalidity = true;
                     }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
-                    if !self.args.profile && !self.args.profile_all {
+                    if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     if let Some(level) = level {
@@ -978,7 +978,8 @@ impl Verifier {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         assert!(!(self.args.profile && self.args.profile_all));
-        let profile_all_file_name = if self.args.profile_all {
+        assert!(!(self.args.profile && self.args.capture_profiles));
+        let profile_all_file_name = if self.args.profile_all || self.args.capture_profiles {
             let solver_log_dir = self.ensure_solver_log_dir()?;
             let profile_file_name = self.log_file_name(
                 &solver_log_dir,
@@ -1131,7 +1132,7 @@ impl Verifier {
                             || *profile_rerun
                             || self.args.spinoff_all;
                         let profile_file_name =
-                            if *profile_rerun || (self.args.profile_all && do_spinoff) {
+                            if *profile_rerun || ((self.args.profile_all  || self.args.capture_profiles) && do_spinoff) {
                                 let solver_log_dir = self.ensure_solver_log_dir()?;
                                 let profile_file_name = self.log_file_name(
                                     &solver_log_dir,
@@ -1219,18 +1220,22 @@ impl Verifier {
                                     &opgen.ctx.global.qid_map.borrow(),
                                     profile_file_name,
                                 );
-                                reporter.report(
-                                    &note_bare(format!(
-                                        "Profile statistics for {}",
-                                        fun_as_friendly_rust_name(&function.x.name)
-                                    ))
-                                    .to_any(),
-                                );
-                                self.print_profile_stats(
-                                    reporter,
-                                    profiler,
-                                    &opgen.ctx.global.qid_map.borrow(),
-                                );
+                                // if capture profiles was passed, silence the report
+                                // as we are only interested in the graph/profile data
+                                if !self.args.capture_profiles {
+                                    reporter.report(
+                                        &note_bare(format!(
+                                            "Profile statistics for {}",
+                                            fun_as_friendly_rust_name(&function.x.name)
+                                        ))
+                                        .to_any(),
+                                    );
+                                    self.print_profile_stats(
+                                        reporter,
+                                        profiler,
+                                        &opgen.ctx.global.qid_map.borrow(),
+                                    );
+                                }
                             }
                         } else {
                             if command_timed_out && self.args.profile {
@@ -1294,11 +1299,13 @@ impl Verifier {
                 &opgen.ctx.global.qid_map.borrow(),
                 profile_all_file_name,
             );
-            reporter.report(
-                &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
-                    .to_any(),
-            );
-            self.print_profile_stats(reporter, profiler, &opgen.ctx.global.qid_map.borrow());
+            if !self.args.capture_profiles {
+                reporter.report(
+                    &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
+                        .to_any(),
+                );
+                self.print_profile_stats(reporter, profiler, &opgen.ctx.global.qid_map.borrow());
+            }
         }
 
         ctx.fun = None;
