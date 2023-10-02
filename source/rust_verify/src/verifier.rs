@@ -34,7 +34,7 @@ use vir::context::GlobalCtx;
 use crate::buckets::{Bucket, BucketId};
 use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos, path_to_string};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -367,6 +367,7 @@ impl Verifier {
                 dir_path.clone()
             } else {
                 let dir = std::path::PathBuf::from(crate::config::SOLVER_LOG_DIR.to_string());
+                delete_dir_if_exists_and_is_dir(&dir)?;
                 std::fs::create_dir_all(&dir).map_err(|err| {
                     io_vir_err(format!("could not create directory {}", dir.display()), err)
                 })?;
@@ -392,33 +393,7 @@ impl Verifier {
                 } else {
                     crate::config::LOG_DIR.to_string()
                 });
-                if dir.exists() {
-                    if dir.is_dir() {
-                        let entries = std::fs::read_dir(&dir).map_err(|err| {
-                            io_vir_err(format!("could not read directory {}", dir.display()), err)
-                        })?;
-                        for entry in entries {
-                            if let Ok(entry) = entry {
-                                if entry.path().is_file() {
-                                    std::fs::remove_file(entry.path()).map_err(|err| {
-                                        io_vir_err(
-                                            format!(
-                                                "could not remove file {}",
-                                                entry.path().display()
-                                            ),
-                                            err,
-                                        )
-                                    })?;
-                                }
-                            }
-                        }
-                    } else {
-                        return Err(error(format!(
-                            "{} exists and is not a directory",
-                            dir.display()
-                        )));
-                    }
-                }
+                delete_dir_if_exists_and_is_dir(&dir)?;
                 std::fs::create_dir_all(&dir).map_err(|err| {
                     io_vir_err(format!("could not create directory {}", dir.display()), err)
                 })?;
@@ -496,7 +471,10 @@ impl Verifier {
             // Summarize the triggers it used
             let triggers = &bnd_info.user.as_ref().unwrap().trigs;
             for trigger in triggers.iter() {
-                msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
+                // HACK: we do not have span info for the builtin crate
+                if !trigger.iter().any(|t| t.span.as_string.contains("builtin")) {
+                    msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
+                }
             }
             msg = msg.secondary_label(
                 &bnd_info.user.as_ref().unwrap().span,
@@ -806,7 +784,7 @@ impl Verifier {
     ) -> String {
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         let count_msg = query_function_path_counter
-            .map(|(_, ref c)| format!("_{:02}", c))
+            .map(|(n, ref c)| format!("{}_{:02}", path_to_string(n), c))
             .unwrap_or("".to_string());
         let expand_msg = if expand_flag { "_expand" } else { "" };
 
@@ -1170,7 +1148,6 @@ impl Verifier {
                             } else {
                                 None
                             };
-                        let profile_file_generated = cmds.commands.len() > 0;
                         // dbg!(&profile_file_name);
 
                         let query_air_context = if do_spinoff {
@@ -1226,29 +1203,29 @@ impl Verifier {
 
                         any_invalid |= command_invalidity;
 
-                        if let (Some(profile_file_name), true) = (profile_file_name , profile_file_generated) {
-                            let profiler = Profiler::new(
-                                message_interface.clone(),
-                                &profile_file_name,
-                                reporter,
-                            );
-                            write_instantiation_graph(
-                                &bucket_id,
-                                Some(&op),
-                                &opgen.ctx.func_map,
-                                &profiler,
-                                &opgen.ctx.global.qid_map.borrow(),
-                                profile_file_name,
-                            );
-                            reporter.report(
-                                &note_bare(format!(
-                                    "Profile statistics for {}",
-                                    fun_as_friendly_rust_name(&function.x.name)
-                                ))
-                                .to_any(),
-                            );
-                            if !self.args.spinoff_all {
-                                // TODO: broken span makes this hard to print
+                        if let Some(profile_file_name) = profile_file_name {
+                            if profile_file_name.exists() {
+                                dbg!(&profile_file_name);
+                                let profiler = Profiler::new(
+                                    message_interface.clone(),
+                                    &profile_file_name,
+                                    reporter,
+                                );
+                                write_instantiation_graph(
+                                    &bucket_id,
+                                    Some(&op),
+                                    &opgen.ctx.func_map,
+                                    &profiler,
+                                    &opgen.ctx.global.qid_map.borrow(),
+                                    profile_file_name,
+                                );
+                                reporter.report(
+                                    &note_bare(format!(
+                                        "Profile statistics for {}",
+                                        fun_as_friendly_rust_name(&function.x.name)
+                                    ))
+                                    .to_any(),
+                                );
                                 self.print_profile_stats(
                                     reporter,
                                     profiler,
@@ -1917,6 +1894,36 @@ impl Verifier {
 
         Ok(true)
     }
+}
+
+fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirErr> {
+    Ok(if dir.exists() {
+        if dir.is_dir() {
+            let entries = std::fs::read_dir(dir).map_err(|err| {
+                io_vir_err(format!("could not read directory {}", dir.display()), err)
+            })?;
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    if entry.path().is_file() {
+                        std::fs::remove_file(entry.path()).map_err(|err| {
+                            io_vir_err(
+                                format!(
+                                    "could not remove file {}",
+                                    entry.path().display()
+                                ),
+                                err,
+                            )
+                        })?;
+                    }
+                }
+            }
+        } else {
+            return Err(error(format!(
+                "{} exists and is not a directory",
+                dir.display()
+            )));
+        }
+    })
 }
 
 fn write_instantiation_graph(
