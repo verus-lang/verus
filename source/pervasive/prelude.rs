@@ -23,6 +23,8 @@ pub use super::pervasive::{
 };
 
 
+pub use super::array::ArrayAdditionalExecFns;
+pub use super::array::ArrayAdditionalSpecFns;
 pub use super::slice::SliceAdditionalSpecFns;
 #[cfg(verus_keep_ghost)]
 pub use super::std_specs::option::OptionAdditionalFns;
