@@ -1107,6 +1107,11 @@
           {
             "syn": "ExprIs"
           }
+        ],
+        "Has": [
+          {
+            "syn": "ExprHas"
+          }
         ]
       },
       "exhaustive": false
@@ -1582,6 +1587,32 @@
           "group": "Group"
         },
         "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprHas",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "lhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "has_token": {
+          "token": "Has"
+        },
+        "rhs": {
           "box": {
             "syn": "Expr"
           }
@@ -6581,6 +6612,7 @@
     "Ge": ">=",
     "Ghost": "ghost",
     "Gt": ">",
+    "Has": "has",
     "Hide": "hide",
     "If": "if",
     "Impl": "impl",

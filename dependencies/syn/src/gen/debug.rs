@@ -790,6 +790,12 @@ impl Debug for Expr {
                 formatter.field(v0);
                 formatter.finish()
             }
+            #[cfg(feature = "full")]
+            Expr::Has(v0) => {
+                let mut formatter = formatter.debug_tuple("Has");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -990,6 +996,17 @@ impl Debug for ExprGroup {
         formatter.field("attrs", &self.attrs);
         formatter.field("group_token", &self.group_token);
         formatter.field("expr", &self.expr);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprHas {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprHas");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("lhs", &self.lhs);
+        formatter.field("has_token", &self.has_token);
+        formatter.field("rhs", &self.rhs);
         formatter.finish()
     }
 }

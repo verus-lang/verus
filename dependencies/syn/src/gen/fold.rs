@@ -195,6 +195,9 @@ pub trait Fold {
     fn fold_expr_group(&mut self, i: ExprGroup) -> ExprGroup {
         fold_expr_group(self, i)
     }
+    fn fold_expr_has(&mut self, i: ExprHas) -> ExprHas {
+        fold_expr_has(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_expr_if(&mut self, i: ExprIf) -> ExprIf {
         fold_expr_if(self, i)
@@ -1399,6 +1402,7 @@ where
         Expr::BigAnd(_binding_0) => Expr::BigAnd(f.fold_big_and(_binding_0)),
         Expr::BigOr(_binding_0) => Expr::BigOr(f.fold_big_or(_binding_0)),
         Expr::Is(_binding_0) => Expr::Is(f.fold_expr_is(_binding_0)),
+        Expr::Has(_binding_0) => Expr::Has(f.fold_expr_has(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1600,6 +1604,17 @@ where
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         group_token: Group(tokens_helper(f, &node.group_token.span)),
         expr: Box::new(f.fold_expr(*node.expr)),
+    }
+}
+pub fn fold_expr_has<F>(f: &mut F, node: ExprHas) -> ExprHas
+where
+    F: Fold + ?Sized,
+{
+    ExprHas {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        lhs: Box::new(f.fold_expr(*node.lhs)),
+        has_token: Token![has](tokens_helper(f, &node.has_token.span)),
+        rhs: Box::new(f.fold_expr(*node.rhs)),
     }
 }
 #[cfg(feature = "full")]

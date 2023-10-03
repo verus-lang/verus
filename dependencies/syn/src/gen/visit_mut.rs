@@ -198,6 +198,9 @@ pub trait VisitMut {
     fn visit_expr_group_mut(&mut self, i: &mut ExprGroup) {
         visit_expr_group_mut(self, i);
     }
+    fn visit_expr_has_mut(&mut self, i: &mut ExprHas) {
+        visit_expr_has_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_if_mut(&mut self, i: &mut ExprIf) {
         visit_expr_if_mut(self, i);
@@ -1491,6 +1494,9 @@ where
         Expr::Is(_binding_0) => {
             v.visit_expr_is_mut(_binding_0);
         }
+        Expr::Has(_binding_0) => {
+            v.visit_expr_has_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1734,6 +1740,17 @@ where
     }
     tokens_helper(v, &mut node.group_token.span);
     v.visit_expr_mut(&mut *node.expr);
+}
+pub fn visit_expr_has_mut<V>(v: &mut V, node: &mut ExprHas)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_expr_mut(&mut *node.lhs);
+    tokens_helper(v, &mut node.has_token.span);
+    v.visit_expr_mut(&mut *node.rhs);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_if_mut<V>(v: &mut V, node: &mut ExprIf)

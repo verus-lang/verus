@@ -732,8 +732,9 @@ define_keywords! {
     "FnSpec"      pub struct FnSpec       /// `FnSpec`
     "via"         pub struct Via          /// `via`
     "when"        pub struct When         /// `when`
-    "any"         pub struct InvAny          /// `any`
-    "none"         pub struct InvNone          /// `none`
+    "any"         pub struct InvAny       /// `any`
+    "none"        pub struct InvNone      /// `none`
+    "has"         pub struct Has          /// `has`
 }
 
 define_punctuation! {
@@ -947,6 +948,7 @@ macro_rules! export_token_macro {
             [exists]      => { $crate::token::Exists };
             [choose]      => { $crate::token::Choose };
             [is]          => { $crate::token::Is };
+            [has]         => { $crate::token::Has };
             [FnSpec]      => { $crate::token::FnSpec };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };

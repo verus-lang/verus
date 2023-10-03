@@ -1078,3 +1078,13 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] is_syntax_implies IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat)
+            requires t is This,
+        {
+            assert(t is This ==> true);
+        }
+    } => Ok(())
+}

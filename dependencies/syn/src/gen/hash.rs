@@ -672,6 +672,11 @@ impl Hash for Expr {
                 state.write_u8(47u8);
                 v0.hash(state);
             }
+            #[cfg(feature = "full")]
+            Expr::Has(v0) => {
+                state.write_u8(48u8);
+                v0.hash(state);
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -873,6 +878,17 @@ impl Hash for ExprGroup {
     {
         self.attrs.hash(state);
         self.expr.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprHas {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.lhs.hash(state);
+        self.rhs.hash(state);
     }
 }
 #[cfg(feature = "full")]
