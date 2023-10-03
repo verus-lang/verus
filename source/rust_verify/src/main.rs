@@ -126,33 +126,6 @@ pub fn main() {
 
     let pervasive_path = our_args.pervasive_path.clone();
 
-    if our_args.record {
-        let mut args: Vec<String> = std::env::args().collect();
-        args.remove(0);
-
-        let index = args.iter().position(|x| *x == "--record").unwrap();
-        args.remove(index);
-
-        if let Some(verusroot) = &verus_root {
-            let exe = verusroot.path.join(if cfg!(windows) {
-                "error_report.exe"
-            } else {
-                "error_report"
-            });
-            if !exe.exists() {
-                panic!("error_report binary not found");
-            }
-            let mut res = std::process::Command::new(exe)
-                .arg(&verusroot.path)
-                .args(args)
-                .spawn()
-                .expect("running error_report");
-
-            res.wait().expect("error_report failed to run");
-        }
-        return;
-    }
-
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
     let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);

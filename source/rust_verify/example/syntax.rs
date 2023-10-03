@@ -549,4 +549,18 @@ proof fn uses_is(t: ThisOrThat) {
     }
 }
 
+#[verifier::external_body]
+struct Collection { }
+
+impl Collection {
+    pub spec fn spec_has(&self, v: nat) -> bool;
+}
+
+proof fn uses_spec_has(c: Collection)
+    requires c has 3,
+{
+    assert(c has 3);
+    assert(c has 3 == c has 3);
+}
+
 } // verus!

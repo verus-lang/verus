@@ -234,6 +234,7 @@ ast_enum_of_structs! {
         BigAnd(BigAnd),
         BigOr(BigOr),
         Is(ExprIs),
+        Has(ExprHas),
 
         // Not public API.
         //
@@ -859,6 +860,7 @@ impl Expr {
             | Expr::RevealHide(RevealHide { attrs, .. })
             | Expr::View(View { attrs, .. })
             | Expr::Is(ExprIs { attrs, .. })
+            | Expr::Has(ExprHas { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
@@ -1496,6 +1498,15 @@ pub(crate) mod parsing {
                     is_token,
                     variant_ident,
                 });
+            } else if Precedence::HasIs >= base && input.peek(Token![has]) {
+                let has_token: Token![has] = input.parse()?;
+                let rhs = unary_expr(input, allow_struct)?;
+                lhs = Expr::Has(ExprHas {
+                    attrs: Vec::new(),
+                    lhs: Box::new(lhs),
+                    has_token,
+                    rhs: Box::new(rhs),
+                });
             } else {
                 break;
             }
@@ -1567,7 +1578,7 @@ pub(crate) mod parsing {
         if input.peek(Token![&&&]) || input.peek(Token![|||]) {
             return Precedence::Any;
         }
-        if input.peek(Token![is]) {
+        if input.peek(Token![is]) || input.peek(Token![has]) {
             Precedence::HasIs
         } else if let Ok(op) = input.fork().parse() {
             Precedence::of(&op)
