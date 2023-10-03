@@ -987,6 +987,7 @@ impl Verifier {
                 Self::log_fine_name_suffix(false, None, false, crate::config::PROFILE_FILE_SUFFIX)
                     .as_str(),
             );
+            assert!(!profile_file_name.exists());
             Some(profile_file_name)
         } else {
             None
@@ -1146,6 +1147,7 @@ impl Verifier {
                                 )
                                 .as_str(),
                             );
+                            assert!(!profile_file_name.exists());
                             Some(profile_file_name)
                         } else {
                             None
@@ -1214,6 +1216,11 @@ impl Verifier {
                                 let profiler = Profiler::new(
                                     message_interface.clone(),
                                     &profile_file_name,
+                                    &format!(
+                                        "{} {}",
+                                        op.to_friendly_desc().unwrap_or("".into()),
+                                        fun_as_friendly_rust_name(&function.x.name)
+                                    ),
                                     reporter,
                                 );
                                 write_instantiation_graph(
@@ -1296,22 +1303,32 @@ impl Verifier {
         // if spinning off all, the regular profile loop inside has already profiled everything
         if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
         {
-            let profiler =
-                Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
-            write_instantiation_graph(
-                &bucket_id,
-                None,
-                &opgen.ctx.func_map,
-                &profiler,
-                &opgen.ctx.global.qid_map.borrow(),
-                profile_all_file_name,
-            );
-            if !self.args.capture_profiles {
-                reporter.report(
-                    &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
-                        .to_any(),
+            if air_context.check_valid_used() {
+                let profiler = Profiler::new(
+                    message_interface.clone(),
+                    &profile_all_file_name,
+                    &bucket_id.friendly_name(),
+                    reporter,
                 );
-                self.print_profile_stats(reporter, profiler, &opgen.ctx.global.qid_map.borrow());
+                write_instantiation_graph(
+                    &bucket_id,
+                    None,
+                    &opgen.ctx.func_map,
+                    &profiler,
+                    &opgen.ctx.global.qid_map.borrow(),
+                    profile_all_file_name,
+                );
+                if !self.args.capture_profiles {
+                    reporter.report(
+                        &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
+                            .to_any(),
+                    );
+                    self.print_profile_stats(
+                        reporter,
+                        profiler,
+                        &opgen.ctx.global.qid_map.borrow(),
+                    );
+                }
             }
         }
 

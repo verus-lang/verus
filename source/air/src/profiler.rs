@@ -36,6 +36,7 @@ impl Profiler {
     pub fn new(
         message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
         filename: &std::path::Path,
+        description: &str,
         diagnostics: &impl Diagnostics,
     ) -> Self {
         let path = filename;
@@ -57,7 +58,10 @@ impl Profiler {
         model_config.log_internal_term_equalities = false;
         model_config.log_term_equalities = false;
         let mut model = Model::new(model_config);
-        diagnostics.report(&message_interface.bare(MessageLevel::Note, "Analyzing prover log..."));
+        diagnostics.report_now(
+            &message_interface
+                .bare(MessageLevel::Note, &format!("Analyzing prover log for {} ...", description)),
+        );
         let _ = model
             .process(
                 Some(path.to_str().expect("invalid profile file path").to_owned()),
@@ -65,7 +69,10 @@ impl Profiler {
                 line_count,
             )
             .expect("Error processing prover trace");
-        diagnostics.report(&message_interface.bare(MessageLevel::Note, "... analysis complete\n"));
+        diagnostics.report_now(
+            &message_interface
+                .bare(MessageLevel::Note, &format!("Log analysis complete for {}", description)),
+        );
 
         let instantiation_graph = Self::make_instantiation_graph(&model);
 
