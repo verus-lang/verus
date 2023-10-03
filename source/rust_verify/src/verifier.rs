@@ -15,7 +15,7 @@ use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 
 use vir::messages::{
-    message, note, note_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
+    message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
 };
 
 use num_format::{Locale, ToFormattedString};
@@ -1213,40 +1213,53 @@ impl Verifier {
                         if let Some(profile_file_name) = profile_file_name {
                             if not_skipped && query_air_context.check_valid_used() {
                                 assert!(profile_file_name.exists());
-                                let profiler = Profiler::new(
+
+                                let current_profile_description =
+                                    op.to_friendly_desc().map(|x| x + " ").unwrap_or("".into())
+                                        + &fun_as_friendly_rust_name(&function.x.name);
+
+                                match Profiler::parse(
                                     message_interface.clone(),
                                     &profile_file_name,
-                                    Some(&format!(
-                                        "{} {}",
-                                        op.to_friendly_desc().unwrap_or("".into()),
-                                        fun_as_friendly_rust_name(&function.x.name)
-                                    )),
+                                    Some(&current_profile_description),
                                     self.args.profile || self.args.profile_all,
                                     reporter,
-                                );
-                                write_instantiation_graph(
-                                    &bucket_id,
-                                    Some(&op),
-                                    &opgen.ctx.func_map,
-                                    &profiler,
-                                    &opgen.ctx.global.qid_map.borrow(),
-                                    profile_file_name,
-                                );
-                                // if capture profiles was passed, silence the report
-                                // as we are only interested in the graph/profile data
-                                if !self.args.capture_profiles {
-                                    reporter.report(
-                                        &note_bare(format!(
-                                            "Profile statistics for {}",
-                                            fun_as_friendly_rust_name(&function.x.name)
-                                        ))
-                                        .to_any(),
-                                    );
-                                    self.print_profile_stats(
-                                        reporter,
-                                        profiler,
-                                        &opgen.ctx.global.qid_map.borrow(),
-                                    );
+                                ) {
+                                    Ok(profiler) => {
+                                        write_instantiation_graph(
+                                            &bucket_id,
+                                            Some(&op),
+                                            &opgen.ctx.func_map,
+                                            &profiler,
+                                            &opgen.ctx.global.qid_map.borrow(),
+                                            profile_file_name,
+                                        );
+                                        // if capture profiles was passed, silence the report
+                                        // as we are only interested in the graph/profile data
+                                        if !self.args.capture_profiles {
+                                            reporter.report(
+                                                &note_bare(format!(
+                                                    "Profile statistics for {}",
+                                                    fun_as_friendly_rust_name(&function.x.name)
+                                                ))
+                                                .to_any(),
+                                            );
+                                            self.print_profile_stats(
+                                                reporter,
+                                                profiler,
+                                                &opgen.ctx.global.qid_map.borrow(),
+                                            );
+                                        }
+                                    }
+                                    Err(err) => {
+                                        reporter.report_now(
+                                            &warning_bare(format!(
+                                                "Failed parsing profile file for {}: {}",
+                                                current_profile_description, err
+                                            ))
+                                            .to_any(),
+                                        );
+                                    }
                                 }
                             }
                         } else {
@@ -1305,31 +1318,47 @@ impl Verifier {
         if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
         {
             if air_context.check_valid_used() {
-                let profiler = Profiler::new(
+                match Profiler::parse(
                     message_interface.clone(),
                     &profile_all_file_name,
                     Some(&bucket_id.friendly_name()),
                     self.args.profile || self.args.profile_all,
                     reporter,
-                );
-                write_instantiation_graph(
-                    &bucket_id,
-                    None,
-                    &opgen.ctx.func_map,
-                    &profiler,
-                    &opgen.ctx.global.qid_map.borrow(),
-                    profile_all_file_name,
-                );
-                if !self.args.capture_profiles {
-                    reporter.report(
-                        &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
+                ) {
+                    Ok(profiler) => {
+                        write_instantiation_graph(
+                            &bucket_id,
+                            None,
+                            &opgen.ctx.func_map,
+                            &profiler,
+                            &opgen.ctx.global.qid_map.borrow(),
+                            profile_all_file_name,
+                        );
+                        if !self.args.capture_profiles {
+                            reporter.report(
+                                &note_bare(format!(
+                                    "Profile statistics for {}",
+                                    bucket_id.friendly_name()
+                                ))
+                                .to_any(),
+                            );
+                            self.print_profile_stats(
+                                reporter,
+                                profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        reporter.report_now(
+                            &warning_bare(format!(
+                                "Failed parsing profile file for {}: {}",
+                                bucket_id.friendly_name(),
+                                err
+                            ))
                             .to_any(),
-                    );
-                    self.print_profile_stats(
-                        reporter,
-                        profiler,
-                        &opgen.ctx.global.qid_map.borrow(),
-                    );
+                        );
+                    }
                 }
             }
         }

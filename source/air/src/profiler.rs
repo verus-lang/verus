@@ -31,15 +31,28 @@ pub struct InstantiationGraph {
     pub nodes: HashSet<(u64, usize)>,
 }
 
+#[derive(Debug)]
+pub enum ProfilerError {
+    InvalidTrace(String),
+}
+
+impl std::fmt::Display for ProfilerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProfilerError::InvalidTrace(e) => write!(f, "invalid trace: {}", e),
+        }
+    }
+}
+
 impl Profiler {
     /// Instantiate a new (singleton) profiler
-    pub fn new(
+    pub fn parse(
         message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
         filename: &std::path::Path,
         description: Option<&str>,
         progress_bar: bool,
         diagnostics: &impl Diagnostics,
-    ) -> Self {
+    ) -> Result<Self, ProfilerError> {
         let path = filename;
 
         // Count the number of lines
@@ -72,7 +85,7 @@ impl Profiler {
                 file,
                 line_count,
             )
-            .expect("Error processing prover trace");
+            .map_err(|e| ProfilerError::InvalidTrace(e.to_string()))?;
         if let Some(description) = description {
             diagnostics.report_now(
                 &message_interface.bare(
@@ -101,7 +114,7 @@ impl Profiler {
         // user_quant_causes.sort_by_key(|qc| qc.instantiations);
         // user_quant_causes.reverse();
 
-        Profiler { message_interface, quantifier_stats: user_quant_costs, instantiation_graph }
+        Ok(Profiler { message_interface, quantifier_stats: user_quant_costs, instantiation_graph })
         // Profiler { message_interface, quantifier_stats: user_quant_costs, quantifier_causes : user_quant_causes }
     }
 
