@@ -170,7 +170,7 @@ fn merge_sibling_nodes(
     output_graph: &mut HashMap<(String, u64), HashMap<(String, u64), u64>>,
     output_list: &mut HashSet<String>,
     id_counter: &mut u64,
-    merge_rule: &MergePolicy
+    merge_rule: &MergePolicy,
 ) -> (HashMap<(String, u64), u64>, u64) {
     let mut groups = HashMap::new();
     for inst in insts.iter() {
@@ -214,7 +214,7 @@ fn merge_sibling_nodes(
             output_graph,
             output_list,
             id_counter,
-            merge_rule
+            merge_rule,
         );
         output_graph.insert(cur_id.clone(), edges);
 
@@ -263,20 +263,19 @@ fn compute_module_blames(
     blames
 }
 
-
-fn make_graph<T, S>(base_graph: HashMap<T, HashMap<T, S>>) -> Graph<T, S> 
-where 
-    T : Eq + std::hash::Hash, S : Eq + std::hash::Hash
+fn make_graph<T, S>(base_graph: HashMap<T, HashMap<T, S>>) -> Graph<T, S>
+where
+    T: Eq + std::hash::Hash,
+    S: Eq + std::hash::Hash,
 {
     Graph(
         base_graph
-        .into_iter()
-        .map(|(src, edges)| {
-            (src, { edges.into_iter().map(|(dst, count)| (count, dst)).collect() })
-        })
-        .collect(),
+            .into_iter()
+            .map(|(src, edges)| {
+                (src, { edges.into_iter().map(|(dst, count)| (count, dst)).collect() })
+            })
+            .collect(),
     )
-    
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -473,7 +472,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         &mut quantifier_merged_graph,
         &mut quantifier_list,
         &mut unique_id,
-        &MergePolicy::QuantifierName
+        &MergePolicy::QuantifierName,
     );
     let dummy_root = ("root".to_string(), 0);
     quantifier_merged_graph.insert(dummy_root, top_quants);
@@ -488,7 +487,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         &mut module_merged_graph,
         &mut module_list,
         &mut unique_id,
-        &MergePolicy::Module
+        &MergePolicy::Module,
     );
     let dummy_root = ("root".to_string(), 0);
     module_merged_graph.insert(dummy_root, top_mods);
@@ -503,11 +502,9 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
             .collect()
     };
 
-
     let quant_graph = make_graph(quantifier_merged_graph);
 
     let simple_graph = make_graph(module_merged_graph);
-
 
     let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
@@ -525,7 +522,6 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         |(modname, id)| format!("{} ({})", modname, id),
         |e| Some(format!("{}", (*e as f64 / total_insts as f64) * 100.0)),
     )?;
-
 
     Ok(ProcessFileOutput {
         bucket_name: graph.bucket_name,
