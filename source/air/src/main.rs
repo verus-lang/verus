@@ -174,7 +174,8 @@ pub fn main() {
         let profiler = Profiler::new(
             message_interface.clone(),
             std::path::Path::new(PROVER_LOG_FILE),
-            "",
+            None,
+            true,
             &reporter,
         );
         profiler.print_raw_stats(&reporter);

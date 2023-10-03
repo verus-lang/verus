@@ -36,7 +36,8 @@ impl Profiler {
     pub fn new(
         message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
         filename: &std::path::Path,
-        description: &str,
+        description: Option<&str>,
+        progress_bar: bool,
         diagnostics: &impl Diagnostics,
     ) -> Self {
         let path = filename;
@@ -54,14 +55,17 @@ impl Profiler {
         let mut model_config = ModelConfig::default();
         model_config.parser_config.skip_z3_version_check = true;
         model_config.parser_config.ignore_invalid_lines = true;
+        model_config.parser_config.show_progress_bar = progress_bar;
         model_config.skip_log_consistency_checks = true;
         model_config.log_internal_term_equalities = false;
         model_config.log_term_equalities = false;
         let mut model = Model::new(model_config);
-        diagnostics.report_now(
-            &message_interface
-                .bare(MessageLevel::Note, &format!("Analyzing prover log for {} ...", description)),
-        );
+        if let Some(description) = description {
+            diagnostics.report_now(&message_interface.bare(
+                MessageLevel::Note,
+                &format!("Analyzing prover log for {} ...", description),
+            ));
+        }
         let _ = model
             .process(
                 Some(path.to_str().expect("invalid profile file path").to_owned()),
@@ -69,10 +73,14 @@ impl Profiler {
                 line_count,
             )
             .expect("Error processing prover trace");
-        diagnostics.report_now(
-            &message_interface
-                .bare(MessageLevel::Note, &format!("Log analysis complete for {}", description)),
-        );
+        if let Some(description) = description {
+            diagnostics.report_now(
+                &message_interface.bare(
+                    MessageLevel::Note,
+                    &format!("Log analysis complete for {}", description),
+                ),
+            );
+        }
 
         let instantiation_graph = Self::make_instantiation_graph(&model);
 

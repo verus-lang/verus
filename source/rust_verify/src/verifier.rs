@@ -1216,11 +1216,12 @@ impl Verifier {
                                 let profiler = Profiler::new(
                                     message_interface.clone(),
                                     &profile_file_name,
-                                    &format!(
+                                    Some(&format!(
                                         "{} {}",
                                         op.to_friendly_desc().unwrap_or("".into()),
                                         fun_as_friendly_rust_name(&function.x.name)
-                                    ),
+                                    )),
+                                    self.args.profile || self.args.profile_all,
                                     reporter,
                                 );
                                 write_instantiation_graph(
@@ -1307,7 +1308,8 @@ impl Verifier {
                 let profiler = Profiler::new(
                     message_interface.clone(),
                     &profile_all_file_name,
-                    &bucket_id.friendly_name(),
+                    Some(&bucket_id.friendly_name()),
+                    self.args.profile || self.args.profile_all,
                     reporter,
                 );
                 write_instantiation_graph(
