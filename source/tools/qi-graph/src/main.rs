@@ -21,6 +21,7 @@ fn main() {
 
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
+    opts.optopt("t", "time-file", "time file", "TIME FILE");
     opts.optopt("d", "output-dir", "output directory", "DIRECTORY");
     opts.optflag("a", "all", "process all graph files in a directory");
 
@@ -53,9 +54,12 @@ fn main() {
         .map(|x| PathBuf::from(x))
         .unwrap_or(std::env::current_dir().expect("cannot find current directory"));
 
+    let time_file = matches.opt_str("t").map(|x| PathBuf::from(x));
+    let time_file_ref = time_file.as_ref().map(|x| x.as_path());
+
     let all = matches.opt_present("a");
 
-    match run(&input_path, &output_dir, all) {
+    match run(&input_path, &output_dir, time_file_ref, all) {
         Ok(()) => (),
         Err(err) => {
             eprintln!("error: {}", err);
@@ -275,7 +279,26 @@ where
     
 }
 
-fn run(input_path: &Path, output_dir: &Path, all: bool) -> Result<(), String> {
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct TimeDataFunction {
+    function: String,
+    time: u64,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct TimeDataModule {
+    module: String,
+    time: u64,
+    function_breakdown: Vec<TimeDataFunction>,
+}
+
+fn run(
+    input_path: &Path,
+    output_dir: &Path,
+    time_data: Option<&Path>,
+    all: bool,
+) -> Result<(), String> {
     let mut module_data: HashMap<String, Vec<ProcessFileOutput>> = HashMap::new();
     if all {
         for entry in std::fs::read_dir(input_path)
@@ -294,25 +317,66 @@ fn run(input_path: &Path, output_dir: &Path, all: bool) -> Result<(), String> {
         module_data.entry(output.module.clone()).or_insert(Vec::new()).push(output);
     }
 
-    let json_value = serde_json::Value::Array(module_data.into_iter().map(|(module, data)| {
-        fn module_blames_datum(datum: ProcessFileOutput) -> serde_json::Value {
-            let data = serde_json::Value::Array(datum.module_blames.into_iter().map(|(module, fraction)|
-                serde_json::json!({"module": module, "fraction": fraction})
-            ).collect());
-            serde_json::json!({
-                "bucket_name": datum.bucket_name,
-                "module": datum.module,
-                "function": datum.function,
-                "file_path" : datum.file_path,
-                "module_blames": data,
-            })
-        }
+    // let all_functions = module_data.values().flat_map(|x| x.iter().map(|y| y.function.as_ref().unwrap().clone())).collect::<Vec<String>>();
 
-        serde_json::json!({
-            "module": module,
-            "module_blames_data": serde_json::Value::Array(data.into_iter().map(module_blames_datum).collect()),
-        })
-    }).collect());
+    fn module_blames_datum(
+        datum: ProcessFileOutput,
+        times: Option<&HashMap<String, u64>>,
+    ) -> serde_json::Value {
+        let data = serde_json::Value::Array(datum.module_blames.into_iter().map(|(module, fraction)|
+            serde_json::json!({"module": module, "fraction": fraction})
+        ).collect());
+        let mut value: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        value.insert("bucket_name".to_owned(), datum.bucket_name.into());
+        value.insert("module".to_owned(), datum.module.into());
+        value.insert("function".to_owned(), datum.function.clone().into());
+        value.insert("file_path".to_owned(), datum.file_path.into());
+        value.insert("module_blames".to_owned(), data);
+        if let Some((times, function)) =
+            datum.function.and_then(|function| times.map(|times| (times, function)))
+        {
+            value.insert("time".to_owned(), times.get(&function).cloned().into());
+        }
+        serde_json::Value::Object(value)
+    }
+
+    let json_value = if let Some(time_data) = time_data {
+        let time_data_string = std::fs::read_to_string(time_data)
+            .map_err(|_e| format!("failed to read file {}", time_data.display()))?;
+        let mut time_data_json = serde_json::from_str::<serde_json::Value>(&time_data_string)
+            .map_err(|_| format!("could not parse json in {}", time_data.display()))?;
+        let module_times_json = time_data_json
+            .get_mut("times-ms")
+            .and_then(|x| x.get_mut("smt"))
+            .and_then(|x| x.get_mut("smt-run-module-times"))
+            .ok_or(format!("unexpected json in {}", time_data.display()))?
+            .take();
+        std::mem::drop(time_data_json);
+        let module_times: Vec<TimeDataModule> = serde_json::from_value(module_times_json)
+            .map_err(|x| format!("unexpected json in {}: {}", time_data.display(), x))?;
+        let function_times = {
+            let mut function_times = HashMap::new();
+            for TimeDataFunction { function, time } in
+                module_times.into_iter().flat_map(|m| m.function_breakdown.into_iter())
+            {
+                assert!(function_times.insert(function, time).is_none());
+            }
+            function_times
+        };
+        serde_json::Value::Array(module_data.into_iter().map(|(module, data)| {
+            serde_json::json!({
+                "module": module,
+                "module_blames_data": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, Some(&function_times))).collect()),
+            })
+        }).collect())
+    } else {
+        serde_json::Value::Array(module_data.into_iter().map(|(module, data)| {
+            serde_json::json!({
+                "module": module,
+                "module_blames_data": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, None)).collect()),
+            })
+        }).collect())
+    };
 
     let module_blames_json_str = serde_json::to_string_pretty(&json_value)
         .map_err(|x| format!("cannot format json ({x})"))?;
@@ -332,22 +396,33 @@ fn run(input_path: &Path, output_dir: &Path, all: bool) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
+struct ProcessFileOutputInfo {
+    is_cyclic: bool,
+    max_in_deg: u64,
+    count_by_in_deg: Vec<u64>,
+    roots: u64,
+    total_insts: u64,
+}
+
 struct ProcessFileOutput {
     bucket_name: String,
     module: String,
     file_path: String,
     function: Option<String>,
     module_blames: Vec<(String, f64)>,
+    #[allow(dead_code)]
+    info: ProcessFileOutputInfo,
 }
 
 fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutput, String> {
-    dbg!(&input_path);
+    // dbg!(&input_path);
 
     let bytes = std::fs::read(input_path)
         .map_err(|_e| format!("failed to read file {}", input_path.display()))?;
     let graph: InstantiationGraph = bincode::deserialize(&bytes[..])
         .map_err(|_| format!("input {} is malformed", input_path.display()))?;
-    dbg!(graph.graph.0.len());
+    // dbg!(graph.graph.0.len());
 
     let mut in_deg: HashMap<Instantiation, u64> = HashMap::new();
     for (_, tgts) in &graph.graph.0 {
@@ -356,16 +431,15 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         }
     }
     let max_in_deg = in_deg.iter().fold(1, |acc, (_, n)| if *n > acc { *n } else { acc });
-    dbg!(max_in_deg);
+    let mut count_by_in_deg = Vec::new();
+    count_by_in_deg.push(0);
     for i in 0..max_in_deg {
-        let in_degree = i + 1;
         let num_nodes =
             in_deg.iter().fold(0, |acc, (_, n)| if *n == i + 1 { acc + 1 } else { acc });
-        dbg!(in_degree, num_nodes);
+        count_by_in_deg.push(num_nodes);
     }
     let (pgraph, _) = convert_to_petgraph(&graph);
-    let cyclic = is_cyclic_directed(&pgraph);
-    dbg!(cyclic);
+    let is_cyclic = is_cyclic_directed(&pgraph);
 
     let input_graph = graph
         .graph
@@ -386,8 +460,6 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         .collect();
     let roots: Vec<Instantiation> =
         pruned_graph.iter().map(|x| x.0).filter(|x| !all_tgts.contains(*x)).cloned().collect();
-
-    dbg!(roots.len());
 
     // let simple_graph = make_graph(pruned_graph);
 
@@ -420,7 +492,6 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
     );
     let dummy_root = ("root".to_string(), 0);
     module_merged_graph.insert(dummy_root, top_mods);
-    dbg!(total_insts);
 
     let module_blames: Vec<_> = {
         let mut module_blames = compute_module_blames(&module_merged_graph, &module_list);
@@ -462,5 +533,12 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         file_path: file_stem.to_str().unwrap().to_string(),
         function: graph.function,
         module_blames,
+        info: ProcessFileOutputInfo {
+            is_cyclic,
+            max_in_deg,
+            count_by_in_deg,
+            roots: roots.len() as u64,
+            total_insts,
+        },
     })
 }

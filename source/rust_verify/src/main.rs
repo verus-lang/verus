@@ -272,7 +272,7 @@ pub fn main() {
                                 "time" : t,
                                 "function-breakdown" : smt_function_breakdown.get_mut(m).expect("Module should exist").iter().map(|(f, t)| {
                                     serde_json::json!({
-                                        "function" : vir::ast_util::friendly_fun_name_crate_relative(m, f),
+                                        "function" : vir::ast_util::fun_as_friendly_rust_name(f),
                                         "time" : t
                                     })
                                  }).collect::<Vec<serde_json::Value>>()
