@@ -130,8 +130,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
 
     let source_file = record::find_source_file(&args);
 
-    #[cfg(feature = "record-history")]
-    let record_history_project_dirs = {
+    let record_history_project_dirs: Option<std::path::PathBuf> = {
         let source_file = source_file.as_ref()?;
         let project_dir = source_file
             .exists()
@@ -143,20 +142,29 @@ fn run() -> Result<std::process::ExitStatus, String> {
         };
         let history_dir = project_dir.join(".record-history");
         if history_dir.exists() {
-            if !history_dir.is_dir() {
-                return Err(format!(
-                    ".record-history ({}) is not a directory",
-                    history_dir.display()
-                ));
+            #[cfg(feature = "record-history")]
+            {
+                if !history_dir.is_dir() {
+                    return Err(format!(
+                        ".record-history ({}) is not a directory",
+                        history_dir.display()
+                    ));
+                }
+                Some((project_dir, history_dir))
             }
-            Some((project_dir, history_dir))
+            #[cfg(not(feature = "record-history"))]
+            {
+                warning(&format!(
+                    "this project {} opted in to history recording via {}, but Verus was compiled without --features record-history and thus will not be recording history",
+                    project_dir.display(),
+                    history_dir.display(),
+                ));
+                None
+            }
         } else {
             None
         }
     };
-
-    #[cfg(not(feature = "record-history"))]
-    let record_history_project_dirs: Option<std::path::PathBuf> = None;
 
     if record || record_history_project_dirs.is_some() {
         fn ensure_arg(args: &mut Vec<String>, arg: String) {
