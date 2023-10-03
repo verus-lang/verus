@@ -384,7 +384,7 @@ impl Context {
 
         validity
     }
-    
+
     pub fn check_valid_used(&self) -> bool {
         self.check_valid_used
     }

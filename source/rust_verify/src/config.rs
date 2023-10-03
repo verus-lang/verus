@@ -253,9 +253,17 @@ pub fn parse_args_with_imports(
         OPT_PROFILE,
         "Collect and report prover performance data when resource limits are hit",
     );
-    opts.optflag("", OPT_SPINOFF_ALL, "Always spinoff individual functions to separate z3 instances");
+    opts.optflag(
+        "",
+        OPT_SPINOFF_ALL,
+        "Always spinoff individual functions to separate z3 instances",
+    );
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
-    opts.optflag("", OPT_CAPTURE_PROFILES, "Always collect prover performance data, but don't generate output reports");
+    opts.optflag(
+        "",
+        OPT_CAPTURE_PROFILES,
+        "Always collect prover performance data, but don't generate output reports",
+    );
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("", OPT_NO_SOLVER_VERSION_CHECK, "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)");
     opts.optopt(
@@ -421,7 +429,7 @@ pub fn parse_args_with_imports(
             };
             matches.opt_present(OPT_PROFILE_ALL)
         },
-        capture_profiles : {
+        capture_profiles: {
             if matches.opt_present(OPT_CAPTURE_PROFILES) {
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --capture-profiles are mutually exclusive".to_string())

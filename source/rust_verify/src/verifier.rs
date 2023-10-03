@@ -34,7 +34,7 @@ use vir::context::GlobalCtx;
 use crate::buckets::{Bucket, BucketId};
 use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos, path_to_string};
+use vir::def::{path_to_string, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -1131,24 +1131,25 @@ impl Verifier {
                             || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
                             || *profile_rerun
                             || self.args.spinoff_all;
-                        let profile_file_name =
-                            if *profile_rerun || ((self.args.profile_all  || self.args.capture_profiles) && do_spinoff) {
-                                let solver_log_dir = self.ensure_solver_log_dir()?;
-                                let profile_file_name = self.log_file_name(
-                                    &solver_log_dir,
-                                    Some(bucket_id),
-                                    Self::log_fine_name_suffix(
-                                        is_recommend,
-                                        Some((&(function.x.name).path, spinoff_context_counter)),
-                                        self.expand_flag,
-                                        crate::config::PROFILE_FILE_SUFFIX,
-                                    )
-                                    .as_str(),
-                                );
-                                Some(profile_file_name)
-                            } else {
-                                None
-                            };
+                        let profile_file_name = if *profile_rerun
+                            || ((self.args.profile_all || self.args.capture_profiles) && do_spinoff)
+                        {
+                            let solver_log_dir = self.ensure_solver_log_dir()?;
+                            let profile_file_name = self.log_file_name(
+                                &solver_log_dir,
+                                Some(bucket_id),
+                                Self::log_fine_name_suffix(
+                                    is_recommend,
+                                    Some((&(function.x.name).path, spinoff_context_counter)),
+                                    self.expand_flag,
+                                    crate::config::PROFILE_FILE_SUFFIX,
+                                )
+                                .as_str(),
+                            );
+                            Some(profile_file_name)
+                        } else {
+                            None
+                        };
                         // dbg!(&profile_file_name);
 
                         let query_air_context = if do_spinoff {
@@ -1179,10 +1180,13 @@ impl Verifier {
                             &mut air_context
                         };
                         let iter_curr_smt_time = query_air_context.get_time().1;
-                        let (RunCommandQueriesResult {
-                            invalidity: command_invalidity,
-                            timed_out: command_timed_out,
-                        }, not_skipped) = self.run_commands_queries(
+                        let (
+                            RunCommandQueriesResult {
+                                invalidity: command_invalidity,
+                                timed_out: command_timed_out,
+                            },
+                            not_skipped,
+                        ) = self.run_commands_queries(
                             reporter,
                             source_map,
                             (!profile_rerun).then(|| level),
@@ -1250,9 +1254,11 @@ impl Verifier {
                     }
 
                     // collect the smt run time from this command into the function duration
-                    let func_time = self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
+                    let func_time =
+                        self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
                     // dbg!(&function.x.name.path);
-                    *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) += func_curr_smt_time;
+                    *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) +=
+                        func_curr_smt_time;
 
                     if matches!(query_op, QueryOp::Body(Style::Normal)) {
                         if (any_invalid && !self.args.no_auto_recommends_check)
@@ -1288,7 +1294,8 @@ impl Verifier {
             }
         }
         // if spinning off all, the regular profile loop inside has already profiled everything
-        if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all) {
+        if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
+        {
             let profiler =
                 Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
             write_instantiation_graph(
@@ -1914,10 +1921,7 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
                     if entry.path().is_file() {
                         std::fs::remove_file(entry.path()).map_err(|err| {
                             io_vir_err(
-                                format!(
-                                    "could not remove file {}",
-                                    entry.path().display()
-                                ),
+                                format!("could not remove file {}", entry.path().display()),
                                 err,
                             )
                         })?;
@@ -1925,10 +1929,7 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
                 }
             }
         } else {
-            return Err(error(format!(
-                "{} exists and is not a directory",
-                dir.display()
-            )));
+            return Err(error(format!("{} exists and is not a directory", dir.display())));
         }
     })
 }

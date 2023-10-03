@@ -187,7 +187,9 @@ pub fn main() {
             .func_times
             .iter()
             .filter(|(k, _)| k.function().is_none())
-            .map(|(k, v)| (k.module(), v.iter().map(|(f, t)| (f, t.as_millis())).collect::<Vec<_>>()))
+            .map(|(k, v)| {
+                (k.module(), v.iter().map(|(f, t)| (f, t.as_millis())).collect::<Vec<_>>())
+            })
             .collect::<std::collections::HashMap<_, _>>();
 
         let mut air_times = verifier
