@@ -172,8 +172,11 @@ fn run() -> Result<std::process::ExitStatus, String> {
 
     #[cfg(feature = "record-history")]
     if record_history_project_dirs.is_some() && is_terminal::is_terminal(&std::io::stderr()) {
-        if !args.iter().find(|x| x.starts_with("--color")).is_some() {
+        if !args.iter().any(|x| x.starts_with("--color")) {
             args.push("--color=always".to_owned());
+        } else if let Some(pos) = args.iter().position(|x| x == "--color=auto") {
+            args.remove(pos);
+            args.insert(pos, "--color=always".into());
         }
     }
 
@@ -295,7 +298,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
         #[cfg(feature = "record-history")]
         record_history::print_verification_results(record, &verus_full_stdout);
 
-        let toml_value = match record::error_report_toml_string(
+        let toml_value = match record::error_report_toml_value(
             original_args,
             z3_version_output,
             verus_full_stdout,

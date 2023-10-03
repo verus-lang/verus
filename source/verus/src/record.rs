@@ -55,7 +55,7 @@ pub fn temp_dep_file_from_source_file(file: &PathBuf) -> Result<std::ffi::OsStri
     Ok(dep_file.to_owned())
 }
 
-pub fn error_report_toml_string(
+pub fn error_report_toml_value(
     args: Vec<String>,
     z3_version_output: Option<std::process::Output>,
     verus_stdout: Vec<u8>,

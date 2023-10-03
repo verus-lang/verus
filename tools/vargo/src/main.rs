@@ -170,17 +170,15 @@ fn filter_features(
     feature_args: &Vec<String>,
     accepted: std::collections::HashSet<&'static str>,
 ) -> Vec<String> {
-    let mut feature_args: Vec<_> = feature_args
+    let feature_args: Vec<_> = feature_args
         .iter()
+        .flat_map(|x| x.split(",").map(|x| x.to_owned()).collect::<Vec<_>>())
         .filter(|a| accepted.contains(a.as_str()))
-        .cloned()
         .collect();
-    if feature_args.len() > 0 {
-        feature_args.insert(0, "--features".to_owned());
-    } else {
-        feature_args.clear();
-    }
     feature_args
+        .into_iter()
+        .flat_map(|f| vec!["--features".to_owned(), f])
+        .collect()
 }
 
 fn run() -> Result<(), String> {
@@ -776,8 +774,6 @@ fn run() -> Result<(), String> {
             };
 
             for p in packages {
-                // || y.as_str() == "-F"
-                // || y.as_str() == "--features"
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
                     let feature_args =

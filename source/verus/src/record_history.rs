@@ -145,7 +145,7 @@ pub fn record_history_commit(
                 .map_err(|x| format!("Could not encode TOML value with error message: {}", x))?;
 
             let report_filename = {
-                use chrono::{prelude::*, DateTime};
+                use chrono::prelude::*;
                 let local: DateTime<Local> = Local::now();
                 let formatted = local.format("%Y-%m-%d-%H-%M-%S-%3f");
                 formatted.to_string() + ".toml"
