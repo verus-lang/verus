@@ -1587,6 +1587,10 @@ impl Verifier {
             // merge the verifier and global contexts
             for worker in workers {
                 let res = worker.join().unwrap();
+                workers_finished.push(res);
+            }
+
+            for res in workers_finished {
                 match res {
                     Ok((verifier, res)) => {
                         for r in res {
