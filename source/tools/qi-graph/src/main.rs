@@ -21,7 +21,7 @@ fn main() {
 
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
-    opts.optflag("d", "output-dir", "output directory");
+    opts.optopt("d", "output-dir", "output directory", "DIRECTORY");
     opts.optflag("a", "all", "process all graph files in a directory");
 
     let matches = match opts.parse(&args[1..]) {
