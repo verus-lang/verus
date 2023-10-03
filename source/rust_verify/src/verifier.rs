@@ -1451,6 +1451,7 @@ impl Verifier {
 
             // create the worker threads
             let mut workers = Vec::new();
+            let mut workers_finished = Vec::new();
             for _tid in 0..self.num_threads {
                 // we create a clone of the verifier here to pass each thread its own local
                 // copy as we modify fields in the verifier struct. later, we merge the results
@@ -1563,6 +1564,19 @@ impl Verifier {
                         num_done = num_done + 1;
                     }
                 }
+
+                let mut workers_running = Vec::with_capacity(workers.len());
+                for worker in workers.into_iter() {
+                    if worker.is_finished() {
+                        match worker.join() {
+                            Ok(finished) => workers_finished.push(finished),
+                            Err(_) => panic!("worker thread panicked"),
+                        }
+                    } else {
+                        workers_running.push(worker);
+                    }
+                }
+                workers = workers_running;
 
                 if num_done == bucket_ids.len() {
                     break;
