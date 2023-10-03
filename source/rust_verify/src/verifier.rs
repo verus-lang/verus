@@ -2159,6 +2159,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                             for msg in &msgs {
                                 reporter.report(&msg.clone().to_any());
                             }
+                            reporter.report(&note_bare("This error was found in Verus pass: ownership checking of tracked code").to_any());
                             return;
                         }
                     }
