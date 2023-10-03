@@ -153,22 +153,32 @@ fn convert_to_petgraph(
     }
     (pgraph, node_map)
 }
-// string: Module name
-// u64: uniue identifier
+#[derive(PartialEq, Eq, Debug, Clone)]
+enum MergePolicy {
+    QuantifierName,
+    Module,
+}
+// string: merged name
+// u64: unique identifier
 fn merge_sibling_nodes(
     src_graph: &HashMap<Instantiation, HashMap<Instantiation, u64>>,
     insts: &Vec<Instantiation>,
-    module_graph: &mut HashMap<(String, u64), HashMap<(String, u64), u64>>,
-    module_list: &mut HashSet<String>,
+    output_graph: &mut HashMap<(String, u64), HashMap<(String, u64), u64>>,
+    output_list: &mut HashSet<String>,
     id_counter: &mut u64,
+    merge_rule: &MergePolicy
 ) -> (HashMap<(String, u64), u64>, u64) {
     let mut groups = HashMap::new();
     for inst in insts.iter() {
-        let module = inst.quantifier.module.clone();
-        if let Some(mod_name) = module.clone() {
-            module_list.insert(mod_name);
+        let node_name = if matches!(merge_rule, MergePolicy::Module) {
+            inst.quantifier.module.clone()
+        } else {
+            Some(inst.quantifier.qid.clone())
+        };
+        if let Some(name) = node_name.clone() {
+            output_list.insert(name);
         }
-        groups.entry(module.clone()).or_insert(Vec::new()).push(inst.clone());
+        groups.entry(node_name.clone()).or_insert(Vec::new()).push(inst.clone());
     }
 
     let mut result = HashMap::new();
@@ -197,11 +207,12 @@ fn merge_sibling_nodes(
         let (edges, total) = merge_sibling_nodes(
             src_graph,
             &group_children.iter().cloned().collect(),
-            module_graph,
-            module_list,
+            output_graph,
+            output_list,
             id_counter,
+            merge_rule
         );
-        module_graph.insert(cur_id.clone(), edges);
+        output_graph.insert(cur_id.clone(), edges);
 
         result.insert(cur_id, nodes.len() as u64 + total);
         children_total += nodes.len() as u64;
@@ -246,6 +257,22 @@ fn compute_module_blames(
         blames.push((module.clone(), blame));
     }
     blames
+}
+
+
+fn make_graph<T, S>(base_graph: HashMap<T, HashMap<T, S>>) -> Graph<T, S> 
+where 
+    T : Eq + std::hash::Hash, S : Eq + std::hash::Hash
+{
+    Graph(
+        base_graph
+        .into_iter()
+        .map(|(src, edges)| {
+            (src, { edges.into_iter().map(|(dst, count)| (count, dst)).collect() })
+        })
+        .collect(),
+    )
+    
 }
 
 fn run(input_path: &Path, output_dir: &Path, all: bool) -> Result<(), String> {
@@ -340,27 +367,6 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
     let cyclic = is_cyclic_directed(&pgraph);
     dbg!(cyclic);
 
-    // let mut simple_graph: HashMap<Quantifier, HashMap<Quantifier, u64>> = HashMap::new();
-    // for (src, dsts) in graph.graph.0 {
-    //     let new_src = simple_graph.entry(src.quantifier.clone()).or_insert(HashMap::new());
-    //     for (_edge, dst) in dsts {
-    //         *new_src.entry(dst.quantifier.clone()).or_insert(0) += 1;
-    //     }
-    // }
-    //
-    // let pruned_graph = prune_by_predicate(&simple_graph, &|src: &Quantifier| {
-    //     src.kind != QuantifierKind::Internal
-    // });
-
-    // let simple_graph: Graph<Quantifier, u64> = Graph(
-    //     pruned_graph
-    //         .into_iter()
-    //         .map(|(src, edges)| {
-    //             (src, { edges.into_iter().map(|(dst, count)| (count, dst)).collect() })
-    //         })
-    //         .collect(),
-    // );
-
     let input_graph = graph
         .graph
         .0
@@ -383,14 +389,22 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
 
     dbg!(roots.len());
 
-    // let simple_graph: Graph<Instantiation, u64> = Graph(
-    //     pruned_graph
-    //         .into_iter()
-    //         .map(|(src, edges)| {
-    //             (src, { edges.into_iter().map(|(dst, count)| (count, dst)).collect() })
-    //         })
-    //         .collect(),
-    // );
+    // let simple_graph = make_graph(pruned_graph);
+
+    let mut unique_id = 0u64;
+    let mut quantifier_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
+        HashMap::new();
+    let mut quantifier_list = HashSet::new();
+    let (top_quants, _) = merge_sibling_nodes(
+        &pruned_graph,
+        &roots,
+        &mut quantifier_merged_graph,
+        &mut quantifier_list,
+        &mut unique_id,
+        &MergePolicy::QuantifierName
+    );
+    let dummy_root = ("root".to_string(), 0);
+    quantifier_merged_graph.insert(dummy_root, top_quants);
 
     let mut unique_id = 0u64;
     let mut module_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
@@ -402,6 +416,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         &mut module_merged_graph,
         &mut module_list,
         &mut unique_id,
+        &MergePolicy::Module
     );
     let dummy_root = ("root".to_string(), 0);
     module_merged_graph.insert(dummy_root, top_mods);
@@ -417,14 +432,11 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
             .collect()
     };
 
-    let simple_graph: Graph<(String, u64), u64> = Graph(
-        module_merged_graph
-            .into_iter()
-            .map(|(src, edges)| {
-                (src, { edges.into_iter().map(|(dst, count)| (count, dst)).collect() })
-            })
-            .collect(),
-    );
+
+    let quant_graph = make_graph(quantifier_merged_graph);
+
+    let simple_graph = make_graph(module_merged_graph);
+
 
     let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
@@ -436,6 +448,13 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         |e| Some(format!("{}", (*e as f64 / total_insts as f64) * 100.0)),
         // |e| Some(format!("{}", e)),
     )?;
+
+    quant_graph.to_dot_file(
+        &output_dir.join(Path::new(file_stem).with_extension("quant.dot")),
+        |(modname, id)| format!("{} ({})", modname, id),
+        |e| Some(format!("{}", (*e as f64 / total_insts as f64) * 100.0)),
+    )?;
+
 
     Ok(ProcessFileOutput {
         bucket_name: graph.bucket_name,
