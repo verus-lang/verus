@@ -298,12 +298,12 @@ impl PointsToRaw {
     #[verifier(external_body)]
     pub proof fn into_typed<V>(tracked self) -> (tracked points_to: PointsTo<V>)
         requires
+            is_sized::<V>(),
             self@.size === size_of::<V>(),
             self@.pptr % align_of::<V>() as int === 0,
         ensures
             points_to@.pptr === self@.pptr,
             points_to@.value === None,
-            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -311,12 +311,12 @@ impl PointsToRaw {
     #[verifier(external_body)]
     pub proof fn borrow_typed<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
         requires
+            is_sized::<V>(),
             self@.size === size_of::<V>(),
             self@.pptr % align_of::<V>() as int == 0,
         ensures
             points_to@.pptr === self@.pptr,
             points_to@.value === None,
-            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -418,11 +418,11 @@ impl DeallocRaw {
     #[verifier(external_body)]
     pub proof fn into_typed<V>(tracked self) -> (tracked dealloc: Dealloc<V>)
         requires
+            is_sized::<V>(),
             self@.size === size_of::<V>(),
             self@.align === align_of::<V>(),
         ensures
             dealloc@.pptr === self@.pptr,
-            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -430,23 +430,21 @@ impl DeallocRaw {
     #[verifier(external_body)]
     pub proof fn borrow_typed<V>(tracked &self) -> (tracked dealloc: &Dealloc<V>)
         requires
+            is_sized::<V>(),
             self@.size === size_of::<V>(),
             self@.align === align_of::<V>(),
         ensures
             dealloc@.pptr === self@.pptr,
-            is_sized::<V>(),
     {
         unimplemented!();
     }
 }
 
-// TODO this currently doesn't work without `external`,
-// because of some temporary Verus trait limitations.
-// In the meantime, just use Copy.
-
-#[verifier(external)]
 impl<A> Clone for PPtr<A> {
-    fn clone(&self) -> Self {
+    #[verifier(external_body)]
+    fn clone(&self) -> (s: Self)
+        ensures s == *self,
+    {
         PPtr { uptr: self.uptr }
     }
 }
@@ -500,14 +498,10 @@ impl<V> PPtr<V> {
             pt.2@@ === (DeallocData{ pptr: pt.0.id() }),
         opens_invariants none
     {
-        // TODO abort on unwrap-failure
-        let p = PPtr {
-            uptr: alloc::alloc::Global.allocate(Layout::new::<V>()).unwrap().as_ptr() as *mut V,
-        };
-
-        // See explanation about exposing pointers, above
-        let _exposed_addr = p.uptr as usize;
-
+        let layout = Layout::new::<V>();
+        let size = layout.size();
+        let align = layout.align();
+        let (p, _, _) = PPtr::<V>::alloc(size, align);
         (p, Tracked::assume_new(|| unreachable!()), Tracked::assume_new(|| unreachable!()))
     }
 
@@ -522,7 +516,10 @@ impl<V> PPtr<V> {
             pt.0.id() % align as int == 0,
         opens_invariants none
     {
-        let layout = unsafe { Layout::from_size_align_unchecked(size, align) };
+        // Add padding (this is to prevent the user from being able to "combine" allocations)
+        // Constructing the layout object might fail if the allocation becomes too big.
+        // The 'add' can't overflow, since we already know (size, align) is a valid layout.
+        let layout = Layout::from_size_align(size + align, align).unwrap();
         let p = PPtr {
             uptr: alloc::alloc::Global.allocate(layout).unwrap().as_ptr() as *mut V,
         };
@@ -651,6 +648,11 @@ impl<V> PPtr<V> {
     {
         unsafe {
             let nn = core::ptr::NonNull::new_unchecked(self.uptr as *mut u8);
+            let layout = alloc::alloc::Layout::for_value(&*self.uptr);
+            let size = layout.size();
+            let align = layout.align();
+            // Add the padding to match what we did in 'alloc'
+            let layout = Layout::from_size_align_unchecked(size + align, align);
             alloc::alloc::Global.deallocate(nn, alloc::alloc::Layout::for_value(&*self.uptr));
         }
     }
@@ -674,7 +676,8 @@ impl<V> PPtr<V> {
         unsafe {
             // Since we have the Dealloc object, we know this is a valid layout
             // and that it's safe to call 'deallocate'
-            let layout = Layout::from_size_align_unchecked(size, align);
+            // Remember to add the padding, like in `alloc`
+            let layout = Layout::from_size_align_unchecked(size + align, align);
             let nn = core::ptr::NonNull::new_unchecked(self.uptr as *mut u8);
             alloc::alloc::Global.deallocate(nn, alloc::alloc::Layout::for_value(&*self.uptr));
         }
