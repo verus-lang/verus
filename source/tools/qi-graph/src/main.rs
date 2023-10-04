@@ -317,24 +317,38 @@ fn run(
     }
 
     // let all_functions = module_data.values().flat_map(|x| x.iter().map(|y| y.function.as_ref().unwrap().clone())).collect::<Vec<String>>();
+    //
+    struct TimeData {
+        module_times: HashMap<String, u64>,
+        function_times: HashMap<String, u64>,
+    }
 
     fn module_blames_datum(
         datum: ProcessFileOutput,
         times: Option<&HashMap<String, u64>>,
     ) -> serde_json::Value {
-        let data = serde_json::Value::Array(datum.module_blames.into_iter().map(|(module, fraction)|
-            serde_json::json!({"module": module, "fraction": fraction})
-        ).collect());
+        let data = serde_json::Value::Array(
+            datum
+                .module_blames
+                .into_iter()
+                .map(|(module, fraction)| {
+                    serde_json::json!({
+                        "module": module,
+                        "fraction": fraction,
+                    })
+                })
+                .collect(),
+        );
         let mut value: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
         value.insert("bucket_name".to_owned(), datum.bucket_name.into());
         value.insert("module".to_owned(), datum.module.into());
         value.insert("function".to_owned(), datum.function.clone().into());
         value.insert("file_path".to_owned(), datum.file_path.into());
         value.insert("module_blames".to_owned(), data);
-        if let Some((times, function)) =
+        if let Some((function_times, function)) =
             datum.function.and_then(|function| times.map(|times| (times, function)))
         {
-            value.insert("time".to_owned(), times.get(&function).cloned().into());
+            value.insert("time".to_owned(), function_times.get(&function).cloned().into());
         }
         serde_json::Value::Object(value)
     }
@@ -351,28 +365,31 @@ fn run(
             .ok_or(format!("unexpected json in {}", time_data.display()))?
             .take();
         std::mem::drop(time_data_json);
-        let module_times: Vec<TimeDataModule> = serde_json::from_value(module_times_json)
+        let times: Vec<TimeDataModule> = serde_json::from_value(module_times_json)
             .map_err(|x| format!("unexpected json in {}: {}", time_data.display(), x))?;
-        let function_times = {
+        let time_data = {
             let mut function_times = HashMap::new();
-            for TimeDataFunction { function, time } in
-                module_times.into_iter().flat_map(|m| m.function_breakdown.into_iter())
-            {
-                assert!(function_times.insert(function, time).is_none());
+            let mut module_times = HashMap::new();
+            for module in times {
+                assert!(module_times.insert(module.module, module.time).is_none());
+                for TimeDataFunction { function, time } in module.function_breakdown {
+                    assert!(function_times.insert(function, time).is_none());
+                }
             }
-            function_times
+            TimeData { function_times, module_times }
         };
         serde_json::Value::Array(module_data.into_iter().map(|(module, data)| {
             serde_json::json!({
                 "module": module,
-                "module_blames_data": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, Some(&function_times))).collect()),
+                "time": time_data.module_times.get(&module).cloned(),
+                "functions": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, Some(&time_data.function_times))).collect()),
             })
         }).collect())
     } else {
         serde_json::Value::Array(module_data.into_iter().map(|(module, data)| {
             serde_json::json!({
                 "module": module,
-                "module_blames_data": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, None)).collect()),
+                "functions": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, None)).collect()),
             })
         }).collect())
     };
