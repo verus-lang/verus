@@ -263,7 +263,7 @@ fn trusted_clone() -> TokenStream {
         #[verifier::returns(proof)] /* vattr */
         pub fn clone(#[verifier::proof] &self) -> Self {
             ensures(|s: Self| ::builtin::equal(*self, s));
-            ::std::unimplemented!();
+            ::core::unimplemented!();
         }
     };
 }
@@ -352,7 +352,7 @@ fn token_struct_stream(
             #[verus::internal(open)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verifier::spec]
-            pub fn view(self) -> #token_data_ty { ::std::unimplemented!() }
+            pub fn view(self) -> #token_data_ty { ::core::unimplemented!() }
 
             #impl_token_stream
         }
@@ -1099,7 +1099,7 @@ pub fn exchange_stream(
             #req_stream
             #ens_stream
             #extra_deps
-            ::std::unimplemented!();
+            ::core::unimplemented!();
         }
     });
 }
@@ -1389,7 +1389,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verus::internal(verus_macro)]
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
-                pub fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                pub fn #fn_name(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
                     ::builtin::imply(b,
                         token_opt.is_Some()
                         && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
@@ -1401,7 +1401,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier::inline] /* vattr */
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
-                pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
                     && ::builtin::imply(!b, token_opt.is_None())
                 }
@@ -1532,7 +1532,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         && ::builtin::equal(s.view().key, self.view().key)
                         && ::builtin::equal(s.view().count, self.view().count + other.view().count)
                     );
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
 
                 #[cfg(verus_keep_ghost_body)]
@@ -1555,7 +1555,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             self.view().count.spec_sub(i)
                         )
                     });
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
             }
         }
@@ -1572,7 +1572,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         ::builtin::equal(s.view().instance, self.view().instance)
                         && ::builtin::equal(s.view().count, self.view().count + other.view().count)
                     );
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
 
                 #[cfg(verus_keep_ghost_body)]
@@ -1593,7 +1593,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             self.view().count.spec_sub(i)
                         )
                     });
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
             }
         }
@@ -1610,7 +1610,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         ::builtin::equal(s.view().instance, self.view().instance)
                         && ::builtin::equal(s.view().count, i)
                     );
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
             }
         }
