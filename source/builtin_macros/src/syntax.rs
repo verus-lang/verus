@@ -839,7 +839,7 @@ impl Visitor {
             };
             if let Some((name, vis)) = erase_fn {
                 *item = Item::Verbatim(quote_spanned! {
-                    span => #[allow(unused_imports)] #vis use core::primitive::bool as #name;
+                    span => #[allow(unused_imports)] #vis fn #name() { unimplemented!() }
                 });
             }
         }

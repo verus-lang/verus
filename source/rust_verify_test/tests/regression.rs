@@ -920,3 +920,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
+        use state_machines_macros::state_machine;
+
+        state_machine!{ MachineWithProof {
+        fields {
+            pub x: int,
+        }
+
+        // If the `pub` access specifier is added then the error message goes away
+        proof fn truey()
+            ensures true
+        {
+            assume(false);
+        }
+        } }
+    } => Ok(())
+}
