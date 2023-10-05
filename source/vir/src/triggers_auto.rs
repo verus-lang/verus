@@ -297,7 +297,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     }
                     _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
                 },
-                CallFun::CheckTermination(_) => panic!("internal error: CheckTermination"),
+                CallFun::Recursive(_) => panic!("internal error: CheckTermination"),
                 CallFun::InternalFun(_) => {
                     (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                 }

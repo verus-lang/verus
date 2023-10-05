@@ -1516,7 +1516,7 @@ pub(crate) fn expr_to_stm_opt(
             return Err(error(&expr.span, "header expression not allowed here"));
         }
         ExprX::AssertAssume { is_assume: false, expr: e } => {
-            if state.checking_spec_preconditions(ctx) {
+            if state.checking_recommends(ctx) {
                 let (mut stms, exp) = expr_to_stm_or_error(ctx, state, e)?;
                 let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
                 stms.push(stm);

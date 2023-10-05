@@ -786,10 +786,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
         }
-        (ExpX::Call(f @ (CallFun::Fun(..) | CallFun::CheckTermination(_)), typs, args), false) => {
+        (ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args), false) => {
             let x_name = match f {
                 CallFun::Fun(x, _) => x.clone(),
-                CallFun::CheckTermination(x) => crate::def::prefix_recursive_fun(&x),
+                CallFun::Recursive(x) => crate::def::prefix_recursive_fun(&x),
                 _ => panic!(),
             };
             let name = suffix_global_id(&fun_to_air_ident(&x_name));

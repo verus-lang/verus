@@ -11,7 +11,7 @@ use crate::def::{
     suffix_typ_param_id, suffix_typ_param_ids, unique_local, CommandsWithContext, SnapPos, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
-use crate::messages::{Message, MessageLabel, Span};
+use crate::messages::{error, Message, MessageLabel, Span};
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
@@ -163,7 +163,7 @@ fn func_body_to_air(
 
     // Rewrite recursive calls to use fuel
     let (is_recursive, body_exp, scc_rep) =
-        crate::recursion::check_termination_exp1(ctx, function, &body_exp)?;
+        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(ctx, function, &body_exp)?;
 
     // Check termination and/or recommends
     let mut check_state = crate::ast_to_sst::State::new(diagnostics);
@@ -216,11 +216,20 @@ fn func_body_to_air(
         vec![]
     };
     if let Some(fun) = &function.x.decrease_by {
-        // TODO: check that there are no return expressions, loops, or non-terminating calls in decrease_by
         check_state.view_as_spec = false;
         if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
-            proof_body
-                .push(decrease_by_fun.x.body.as_ref().expect("decreases_by has body").clone());
+            let decrease_by_fun_body =
+                decrease_by_fun.x.body.as_ref().expect("decreases_by has body").clone();
+            ast_visitor::expr_visitor_check(&decrease_by_fun_body, &mut |_scope_map, expr| {
+                match &expr.x {
+                    crate::ast::ExprX::Return(_) => Err(error(
+                        &expr.span,
+                        "explicit returns are not allowed in decreases_by function",
+                    )),
+                    _ => Ok(()),
+                }
+            })?;
+            proof_body.push(decrease_by_fun_body);
         } else {
             assert!(not_verifying_owning_bucket);
         }
@@ -243,7 +252,7 @@ fn func_body_to_air(
     )?;
     check_state.finalize();
 
-    let termination_commands = crate::recursion::check_termination_exp2(
+    let termination_commands = crate::recursion::check_termination_commands(
         ctx,
         diagnostics,
         &check_state.fun_ssts,

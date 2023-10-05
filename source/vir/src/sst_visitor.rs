@@ -490,7 +490,7 @@ where
                     let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
                     CallFun::Fun(f.clone(), Some((r.clone(), Arc::new(ts?))))
                 }
-                CallFun::CheckTermination(..) | CallFun::InternalFun(..) => fun.clone(),
+                CallFun::Recursive(..) | CallFun::InternalFun(..) => fun.clone(),
             };
             let typs: Result<Vec<Typ>, VirErr> = typs.iter().map(|t| ft(env, t)).collect();
             ok_exp(ExpX::Call(fun.clone(), Arc::new(typs?), fs(env, es)?))

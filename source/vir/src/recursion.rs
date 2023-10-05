@@ -3,6 +3,7 @@ use crate::ast::{
     IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
+use crate::ast_util::typ_to_diagnostic_str;
 use crate::context::Ctx;
 use crate::def::{
     decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
@@ -82,25 +83,28 @@ fn height_typ(ctxt: &Ctxt, exp: &Exp) -> Typ {
     }
 }
 
-fn exp_for_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {
+fn exp_for_decrease(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
-        TypX::Int(_) => exp.clone(),
-        TypX::Datatype(..) => {
-            if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
-                exp.clone()
-            } else {
-                let op = UnaryOpr::Box(exp.typ.clone());
-                let argx = ExpX::UnaryOpr(op, exp.clone());
-                let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
-                SpannedTyped::new(&exp.span, &typ, argx)
-            }
-        }
-        // TODO: non-panic error message
-        _ => panic!("internal error: unsupported type for decreases {:?}", exp.typ),
+        TypX::Int(_) => Ok(exp.clone()),
+        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
+            exp.clone()
+        } else {
+            let op = UnaryOpr::Box(exp.typ.clone());
+            let argx = ExpX::UnaryOpr(op, exp.clone());
+            let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
+            SpannedTyped::new(&exp.span, &typ, argx)
+        }),
+        _ => Err(error(
+            &exp.span,
+            format!(
+                "internal error: unsupported type for decreases {}",
+                typ_to_diagnostic_str(&exp.typ)
+            ),
+        )),
     }
 }
 
-fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
+fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Result<Exp, VirErr> {
     // When calling a function with more decreases clauses,
     // it's good enough to be equal on the shared decreases clauses
     // and to ignore the extra decreases clauses.
@@ -114,7 +118,7 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
         let decreases_at_entry =
             SpannedTyped::new(&exp.span, &height_typ(ctxt, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
-        let args = vec![exp_for_decrease(ctxt, exp), decreases_at_entry, dec_exp];
+        let args = vec![exp_for_decrease(ctxt, exp)?, decreases_at_entry, dec_exp];
         let call = ExpX::Call(
             if height_is_int(&exp.typ) {
                 CallFun::InternalFun(InternalFun::CheckDecreaseInt)
@@ -126,7 +130,7 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
         );
         dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
     }
-    dec_exp
+    Ok(dec_exp)
 }
 
 fn check_decrease_call(
@@ -177,14 +181,18 @@ fn check_decrease_call(
         );
         decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
     }
-    Ok(check_decrease(ctxt, span, &decreases_exps))
+    check_decrease(ctxt, span, &decreases_exps)
 }
 
 pub(crate) fn fun_is_recursive(ctx: &Ctx, name: &Fun) -> bool {
     ctx.global.func_call_graph.node_is_in_cycle(&Node::Fun(name.clone()))
 }
 
-fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<LocalDecl>, Vec<Stm>) {
+fn mk_decreases_at_entry(
+    ctxt: &Ctxt,
+    span: &Span,
+    exps: &Vec<Exp>,
+) -> Result<(Vec<LocalDecl>, Vec<Stm>), VirErr> {
     let mut decls: Vec<LocalDecl> = Vec::new();
     let mut stm_assigns: Vec<Stm> = Vec::new();
     for (i, exp) in exps.iter().enumerate() {
@@ -202,17 +210,16 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
                     dest: crate::ast_to_sst::var_loc_exp(&span, &typ, uniq_ident),
                     is_init: true,
                 },
-                rhs: exp_for_decrease(ctxt, exp),
+                rhs: exp_for_decrease(ctxt, exp)?,
             },
         );
         decls.push(decl);
         stm_assigns.push(stm_assign);
     }
-    (decls, stm_assigns)
+    Ok((decls, stm_assigns))
 }
 
-// TODO: rename this
-pub(crate) fn check_termination_exp1(
+pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &Function,
     body: &Exp,
@@ -241,8 +248,7 @@ pub(crate) fn check_termination_exp1(
             let varx = ExpX::Var(unique_local(&str_ident(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
-            let callx =
-                ExpX::Call(CallFun::CheckTermination(x.clone()), typs.clone(), Arc::new(args));
+            let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));
             SpannedTyped::new(&exp.span, &exp.typ, callx)
         }
         _ => exp.clone(),
@@ -251,8 +257,7 @@ pub(crate) fn check_termination_exp1(
     Ok((true, body, scc_rep))
 }
 
-// TODO: rename this
-pub(crate) fn check_termination_exp2(
+pub(crate) fn check_termination_commands(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
@@ -269,7 +274,7 @@ pub(crate) fn check_termination_exp2(
     let (ctxt, decreases_exps, stm) =
         check_termination(ctx, diagnostics, fun_ssts, function, body)?;
 
-    let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
+    let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps)?;
     stm_assigns.push(proof_body);
     stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
@@ -369,7 +374,7 @@ pub(crate) fn check_termination_stm(
     let (ctxt, decreases_exps, stm) =
         check_termination(ctx, diagnostics, fun_ssts, function, body)?;
 
-    let (decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exps);
+    let (decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exps)?;
     stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
     Ok((decls, stm_block))

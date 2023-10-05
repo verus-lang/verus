@@ -1399,7 +1399,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
-        Call(CallFun::CheckTermination(_), _, _) => ok,
+        Call(CallFun::Recursive(_), _, _) => ok,
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();

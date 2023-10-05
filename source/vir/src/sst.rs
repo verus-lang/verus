@@ -52,8 +52,7 @@ pub enum InternalFun {
 pub enum CallFun {
     // static/method Fun, plus an optional resolved Fun for methods
     Fun(Fun, Option<(Fun, Typs)>),
-    // TODO: is this misnamed?  it seems to be used for recursive calls via fuel, not checking termination
-    CheckTermination(Fun),
+    Recursive(Fun),
     InternalFun(InternalFun),
 }
 
