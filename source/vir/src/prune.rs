@@ -9,6 +9,7 @@ use crate::ast::{
     FunctionKind, Ident, Krate, KrateX, Mode, Path, Stmt, Trait, TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
+use crate::ast_visitor::VisitorScopeMap;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
@@ -255,7 +256,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     reach_bound_trait(ctxt, state, path);
                 }
             }
-            let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
+            let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
                 // note: the visitor automatically reaches e.typ
                 match &e.x {
                     ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _) => {
@@ -284,8 +285,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 Ok(e.clone())
             };
-            let fs = |_: &mut State, _: &mut ScopeMap<Ident, Typ>, s: &Stmt| Ok(vec![s.clone()]);
-            let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+            let fs = |_: &mut State, _: &mut VisitorScopeMap, s: &Stmt| Ok(vec![s.clone()]);
+            let mut map: VisitorScopeMap = ScopeMap::new();
             crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
                 .unwrap();
             let methods = reached_methods(ctxt, state.reached_types.iter().map(|t| (t, &f)));

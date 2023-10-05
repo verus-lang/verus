@@ -1,8 +1,9 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBounds, Ident,
-    Krate, Mode, Path, SpannedTyped, Typ, TypX, Typs, VirErr, WellKnownItem,
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBounds, Krate,
+    Mode, Path, SpannedTyped, TypX, Typs, VirErr, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
+use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::{error, Span};
@@ -90,7 +91,7 @@ pub fn demote_foreign_traits(
             *function = Spanned::new(function.span.clone(), functionx);
         }
 
-        let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+        let mut map: VisitorScopeMap = ScopeMap::new();
         *function = crate::ast_visitor::map_function_visitor_env(
             &function,
             &mut map,
