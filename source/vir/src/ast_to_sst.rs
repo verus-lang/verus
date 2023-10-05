@@ -1321,10 +1321,10 @@ fn expr_to_stm_opt(
             Ok((check_stms, ReturnValue::Some(e)))
         }
         ExprX::Closure(params, body) => {
+            state.disable_recommends += 1;
             let check_stms = check_pure_expr_bind(ctx, state, params, body)?;
             // Note: to avoid false alarms, we don't check recommends inside closures
             // (since there's no precondition on the closure parameters)
-            state.disable_recommends += 1;
             state.push_scope();
             state.declare_binders(params);
             // Use expr_to_pure_exp_skip_checks,
