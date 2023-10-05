@@ -894,3 +894,29 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] inside_of_ghost_processed_as_ghost_issue815 verus_code! {
+        spec fn stuff_spec() -> bool { true }
+
+        #[verifier::when_used_as_spec(stuff_spec)]
+        fn stuff() -> bool { true }
+
+        // Test to check if properly determine ghostness withing a Ghost(...) expression
+
+        fn test() {
+            // at the time of writing,
+            // when_used_as_spec is processed via the is_ghost flag in rust_to_vir
+
+            let x: Ghost<bool> = Ghost(stuff());
+            assert(x@ == true);
+        }
+
+        fn test2() {
+            // Likewise, ghostness determines whether the following command
+            // has a hard overflow-check (in ghost mode, it shouldn't)
+
+            let x: Ghost<u8> = Ghost(add(200u8, 200u8));
+        }
+    } => Ok(())
+}
