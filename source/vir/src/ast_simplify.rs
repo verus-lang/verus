@@ -11,6 +11,7 @@ use crate::ast::{
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
 use crate::ast_util::{conjoin, disjoin, if_then_else, wrap_in_trigger};
+use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
 use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
 use crate::messages::error;
@@ -769,7 +770,7 @@ fn simplify_function(
     }
 
     let function = Spanned::new(function.span.clone(), functionx);
-    let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+    let mut map: VisitorScopeMap = ScopeMap::new();
     crate::ast_visitor::map_function_visitor_env(
         &function,
         &mut map,

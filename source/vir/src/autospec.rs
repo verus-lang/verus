@@ -1,7 +1,7 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, Expr, ExprX, Fun, Function, Ident, Krate, KrateX, SpannedTyped, Typ,
-    VirErr,
+    AutospecUsage, CallTarget, Expr, ExprX, Fun, Function, Krate, KrateX, SpannedTyped, VirErr,
 };
+use crate::ast_visitor::VisitorScopeMap;
 use crate::util::vec_map_result;
 pub use air::ast_util::{ident_binder, str_ident};
 use air::scope_map::ScopeMap;
@@ -39,7 +39,7 @@ fn simplify_function(
     func_map: &HashMap<Fun, Function>,
     function: &Function,
 ) -> Result<Function, VirErr> {
-    let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+    let mut map: VisitorScopeMap = ScopeMap::new();
     crate::ast_visitor::map_function_visitor_env(
         &function,
         &mut map,
