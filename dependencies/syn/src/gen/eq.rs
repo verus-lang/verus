@@ -1255,7 +1255,9 @@ impl PartialEq for ItemConst {
         self.attrs == other.attrs && self.vis == other.vis
             && self.publish == other.publish && self.mode == other.mode
             && self.ident == other.ident && self.ty == other.ty
-            && self.expr == other.expr
+            && self.ensures == other.ensures && self.eq_token == other.eq_token
+            && self.block == other.block && self.expr == other.expr
+            && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]

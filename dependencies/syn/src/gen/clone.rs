@@ -1289,7 +1289,9 @@ impl Clone for ItemConst {
             ident: self.ident.clone(),
             colon_token: self.colon_token.clone(),
             ty: self.ty.clone(),
+            ensures: self.ensures.clone(),
             eq_token: self.eq_token.clone(),
+            block: self.block.clone(),
             expr: self.expr.clone(),
             semi_token: self.semi_token.clone(),
         }

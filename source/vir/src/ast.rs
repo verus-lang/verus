@@ -601,7 +601,7 @@ pub enum ExprX {
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(Ident, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
-    ConstVar(Fun),
+    ConstVar(Fun, AutospecUsage),
     /// Mutable reference (location)
     Loc(Expr),
     /// Call to a function passing some expression arguments

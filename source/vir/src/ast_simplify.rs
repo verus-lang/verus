@@ -259,14 +259,14 @@ fn simplify_one_expr(
                 _ => Ok(expr.clone()),
             }
         }
-        ExprX::ConstVar(x) => {
+        ExprX::ConstVar(x, autospec) => {
             let call = ExprX::Call(
                 CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
                     Arc::new(vec![]),
-                    AutospecUsage::Final,
+                    *autospec,
                 ),
                 Arc::new(vec![]),
             );

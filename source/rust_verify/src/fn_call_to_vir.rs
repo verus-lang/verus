@@ -1350,6 +1350,8 @@ fn extract_ensures<'tcx>(
             if typs.len() == 1 && xs.len() == 1 {
                 let id_typ = Some((Arc::new(xs[0].clone()), typs[0].clone()));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
+            } else if typs.len() == 0 && xs.len() == 0 {
+                Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
             } else {
                 err_span(expr.span, "expected 1 parameter in closure")
             }

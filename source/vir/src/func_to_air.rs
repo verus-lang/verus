@@ -727,9 +727,9 @@ pub fn func_def_to_air(
     phase: FuncDefPhase,
     checking_spec_preconditions: bool,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
-    let erasure_mode = match (function.x.mode, function.x.is_const) {
-        (Mode::Spec, true) => Mode::Exec,
-        (mode, _) => mode,
+    let erasure_mode = match (function.x.mode, function.x.ret.x.mode, function.x.is_const) {
+        (_, Mode::Exec, true) => Mode::Exec,
+        (mode, _, _) => mode,
     };
     match (phase, erasure_mode, checking_spec_preconditions, &function.x.body) {
         (_, _, _, None)
@@ -946,26 +946,17 @@ fn map_expr_rename_vars(
     e: &Arc<SpannedTyped<crate::ast::ExprX>>,
     req_ens_e_rename: &HashMap<Arc<String>, Arc<String>>,
 ) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Message> {
-    ast_visitor::map_expr_visitor_env(
-        e,
-        &mut air::scope_map::ScopeMap::new(),
-        &mut (),
-        &|_state, _, expr| {
-            use crate::ast::ExprX;
-            Ok(match &expr.x {
-                ExprX::Var(i) => {
-                    expr.new_x(ExprX::Var(req_ens_e_rename.get(i).unwrap_or(i).clone()))
-                }
-                ExprX::VarLoc(i) => {
-                    expr.new_x(ExprX::VarLoc(req_ens_e_rename.get(i).unwrap_or(i).clone()))
-                }
-                ExprX::VarAt(i, at) => {
-                    expr.new_x(ExprX::VarAt(req_ens_e_rename.get(i).unwrap_or(i).clone(), *at))
-                }
-                _ => expr.clone(),
-            })
-        },
-        &|_state, _, stmt| Ok(vec![stmt.clone()]),
-        &|_state, typ| Ok(typ.clone()),
-    )
+    ast_visitor::map_expr_visitor(e, &|expr| {
+        use crate::ast::ExprX;
+        Ok(match &expr.x {
+            ExprX::Var(i) => expr.new_x(ExprX::Var(req_ens_e_rename.get(i).unwrap_or(i).clone())),
+            ExprX::VarLoc(i) => {
+                expr.new_x(ExprX::VarLoc(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+            }
+            ExprX::VarAt(i, at) => {
+                expr.new_x(ExprX::VarAt(req_ens_e_rename.get(i).unwrap_or(i).clone(), *at))
+            }
+            _ => expr.clone(),
+        })
+    })
 }

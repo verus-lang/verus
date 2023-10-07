@@ -163,7 +163,7 @@ fn check_one_expr(
     disallow_private_access: Option<(&Option<Path>, &str)>,
 ) -> Result<(), VirErr> {
     match &expr.x {
-        ExprX::ConstVar(x) => {
+        ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
         ExprX::Call(CallTarget::Fun(_, x, _, _, _), args) => {

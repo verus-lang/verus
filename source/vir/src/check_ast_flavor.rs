@@ -6,7 +6,7 @@ pub use air::ast_util::{ident_binder, str_ident};
 
 fn check_expr_simplified(_scope_map: &VisitorScopeMap, expr: &Expr) -> Result<(), ()> {
     match expr.x {
-        ExprX::ConstVar(_)
+        ExprX::ConstVar(..)
         | ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _)
         | ExprX::Tuple(_)
         | ExprX::Match(..) => Err(()),
