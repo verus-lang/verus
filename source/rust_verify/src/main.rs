@@ -1,6 +1,9 @@
 #![feature(rustc_private)]
 
-use rust_verify::util::{verus_build_info, VerusBuildProfile};
+use rust_verify::{
+    driver::is_verifying_entire_crate,
+    util::{verus_build_info, VerusBuildProfile},
+};
 
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
@@ -373,6 +376,7 @@ pub fn main() {
                 serde_json::json!({
                     "verified": verifier.count_verified,
                     "errors": verifier.count_errors,
+                    "is-verifying-entire-crate": is_verifying_entire_crate(&verifier),
                 })
                 .as_object_mut()
                 .unwrap(),
