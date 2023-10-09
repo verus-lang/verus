@@ -55,12 +55,14 @@ pub fn temp_dep_file_from_source_file(file: &PathBuf) -> Result<std::ffi::OsStri
     Ok(dep_file.to_owned())
 }
 
-pub fn error_report_toml_string(
+pub fn error_report_toml_value(
     args: Vec<String>,
     z3_version_output: Option<std::process::Output>,
-    verus_output: std::process::Output,
+    verus_stdout: Vec<u8>,
+    verus_stderr: Vec<u8>,
     verus_duration: Duration,
-) -> Result<String, String> {
+    exit_status: Option<i32>,
+) -> Result<toml::Value, String> {
     let z3_version: Option<toml::Value> = if let Some(z3_version_output) = z3_version_output {
         let mut z3_version = Map::new();
         let stdout_str = str::from_utf8(&z3_version_output.stdout)
@@ -81,7 +83,7 @@ pub fn error_report_toml_string(
 
     let verus_time = verus_duration.as_secs_f64();
 
-    let stdout_string = String::from_utf8_lossy(&verus_output.stdout).to_string();
+    let stdout_string = String::from_utf8_lossy(&verus_stdout).to_string();
 
     let stdout_json: Option<serde_json::Value> =
         match serde_json::from_str::<serde_json::Value>(&stdout_string) {
@@ -138,20 +140,18 @@ pub fn error_report_toml_string(
         }
     });
 
-    let stderr = String::from_utf8_lossy(&verus_output.stderr).to_string();
+    let stderr = String::from_utf8_lossy(&verus_stderr).to_string();
 
-    let toml_string = toml::to_string(&create_toml(
+    Ok(create_toml(
         args,
         z3_version,
         version_info,
+        exit_status,
         verification_result,
         verus_time,
         stdout_toml,
         stderr,
     ))
-    .map_err(|x| format!("Could not encode TOML value with error message: {}", x))?;
-
-    Ok(toml_string)
 }
 
 // Creates a toml file and writes relevant information to this file, including
@@ -160,6 +160,7 @@ fn create_toml(
     mut args: Vec<String>,
     z3_version: Option<toml::Value>,
     verus_version: Option<toml::Value>,
+    exit_status: Option<i32>,
     verification_results: Option<toml::Value>,
     verus_time: f64,
     stdout: Option<toml::Value>,
@@ -181,6 +182,9 @@ fn create_toml(
     time.insert("verus-time".to_string(), Value::Float(verus_time));
 
     let mut output = Map::new();
+    if let Some(exit_status) = exit_status {
+        output.insert("exit-code".to_owned(), Value::Integer(exit_status as i64));
+    }
     if let Some(stdout) = stdout {
         output.insert("stdout".to_string(), stdout);
     }
@@ -202,29 +206,19 @@ fn create_toml(
     Value::Table(map)
 }
 
-// grab all the files (dependencies + toml) to write the zip archive
-pub fn write_zip_for(
+// parse the .d file and returns a vector of files names required to generate the crate
+pub fn get_dependencies(
     dep_file_name: &std::ffi::OsString,
-    error_report_contents: String,
-) -> Result<String, String> {
-    let dep_path = PathBuf::from(dep_file_name);
-    if !dep_path.exists() {
+) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    let dep_file_path = PathBuf::from(dep_file_name);
+    if !dep_file_path.exists() {
         Err(format!(
-            "file {} does not exist in zip_zetup, {}",
+            "internal error: file {} does not exist in zip_setup",
             dep_file_name.to_string_lossy(),
-            yansi::Paint::red("INTERNAL ERROR").bold()
         ))?;
     }
 
-    let (prefix, deps) = get_dependencies(&dep_path)?;
-    let zip_file_name = write_zip_archive(prefix, deps, error_report_contents)?;
-
-    Ok(zip_file_name)
-}
-
-// parse the .d file and returns a vector of files names required to generate the crate
-fn get_dependencies(dep_file_path: &std::path::Path) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let file = File::open(dep_file_path)
+    let file = File::open(&dep_file_path)
         .map_err(|x| format!("{}, dependency file name: {:?}", x, dep_file_path))?;
     let mut reader = BufReader::new(file);
     let mut dependencies = String::new();
@@ -261,7 +255,7 @@ fn get_dependencies(dep_file_path: &std::path::Path) -> Result<(PathBuf, Vec<Pat
 //                    (in this context, each file is a dependency of the input)
 //
 // Returns:    The name of the created zip file
-fn write_zip_archive(
+pub fn write_zip_archive(
     prefix: PathBuf,
     deps: Vec<PathBuf>,
     error_report_contents: String,
