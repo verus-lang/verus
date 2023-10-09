@@ -269,6 +269,7 @@ pub fn module_name(module: &vir::ast::Path) -> String {
 struct RunCommandQueriesResult {
     invalidity: bool,
     timed_out: bool,
+    not_skipped: bool,
 }
 
 impl std::ops::Add for RunCommandQueriesResult {
@@ -278,6 +279,7 @@ impl std::ops::Add for RunCommandQueriesResult {
         RunCommandQueriesResult {
             invalidity: self.invalidity || rhs.invalidity,
             timed_out: self.timed_out || rhs.timed_out,
+            not_skipped: self.not_skipped || rhs.not_skipped,
         }
     }
 }
@@ -487,7 +489,9 @@ impl Verifier {
 
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
-    /// Returns true if there was at least one Invalid resulting in an error.
+    /// invalidity is true if there was at least one Invalid resulting in an error.
+    /// timed_out is true if there was at least one time out
+    /// not_skipped is true if the performed command was a CheckValid() request
     ///
     /// If `level` is None, do not report errors.
     fn check_result_validity(
@@ -665,7 +669,11 @@ impl Verifier {
             air_context.finish_query();
         }
 
-        RunCommandQueriesResult { invalidity, timed_out }
+        RunCommandQueriesResult {
+            invalidity,
+            timed_out,
+            not_skipped: matches!(**command, CommandX::CheckValid(_)),
+        }
     }
 
     fn run_commands(
@@ -695,7 +703,10 @@ impl Verifier {
         }
     }
 
-    // The second element of the tuple is true if the query was _not_ skipped.
+    /// Returns the status of running the provided queries
+    /// invalidity: whether the command returned invalid or not
+    /// timed_out: whether the command timed out or not
+    /// not_skipped : whether a nontrivial validity check was performed or not
     fn run_commands_queries(
         &mut self,
         reporter: &impl air::messages::Diagnostics,
@@ -709,14 +720,19 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-    ) -> (RunCommandQueriesResult, bool) {
+    ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
         if !includes_function {
-            return (RunCommandQueriesResult { invalidity: false, timed_out: false }, false);
+            return RunCommandQueriesResult {
+                invalidity: false,
+                timed_out: false,
+                not_skipped: false,
+            };
         }
 
-        let mut result = RunCommandQueriesResult { invalidity: false, timed_out: false };
+        let mut result =
+            RunCommandQueriesResult { invalidity: false, timed_out: false, not_skipped: false };
         let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
         if commands.len() > 0 {
@@ -741,7 +757,7 @@ impl Verifier {
                 );
         }
 
-        (result, true)
+        result
     }
 
     fn log_fine_name_suffix(
@@ -1147,13 +1163,11 @@ impl Verifier {
                             &mut air_context
                         };
                         let iter_curr_smt_time = query_air_context.get_time().1;
-                        let (
-                            RunCommandQueriesResult {
-                                invalidity: command_invalidity,
-                                timed_out: command_timed_out,
-                            },
-                            not_skipped,
-                        ) = self.run_commands_queries(
+                        let RunCommandQueriesResult {
+                            invalidity: command_invalidity,
+                            timed_out: command_timed_out,
+                            not_skipped: command_not_skipped,
+                        } = self.run_commands_queries(
                             reporter,
                             source_map,
                             (!profile_rerun).then(|| level),
@@ -1176,7 +1190,7 @@ impl Verifier {
                         any_invalid |= command_invalidity;
 
                         if let Some(profile_file_name) = profile_file_name {
-                            if not_skipped && query_air_context.check_valid_used() {
+                            if command_not_skipped && query_air_context.check_valid_used() {
                                 assert!(profile_file_name.exists());
 
                                 let current_profile_description =
