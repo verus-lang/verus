@@ -171,12 +171,16 @@ pub fn main() {
         }
     }
     if profile_all {
-        let profiler = Profiler::new(
+        match Profiler::parse(
             message_interface.clone(),
             std::path::Path::new(PROVER_LOG_FILE),
+            None,
+            true,
             &reporter,
-        );
-        profiler.print_raw_stats(&reporter);
+        ) {
+            Ok(profiler) => profiler.print_raw_stats(&reporter),
+            Err(err) => eprintln!("profile: failed to parse z3 trace: {}", err),
+        }
     }
     println!("Verification results:: {} verified, {} errors", count_verified, count_errors);
 }

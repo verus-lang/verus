@@ -16,14 +16,28 @@ pub struct Profiler {
     //log_path: String,
     quantifier_stats: Vec<QuantCost>,
 }
+#[derive(Debug)]
+pub enum ProfilerError {
+    InvalidTrace(String),
+}
+
+impl std::fmt::Display for ProfilerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProfilerError::InvalidTrace(e) => write!(f, "invalid trace: {}", e),
+        }
+    }
+}
 
 impl Profiler {
     /// Instantiate a new (singleton) profiler
-    pub fn new(
+    pub fn parse(
         message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
         filename: &std::path::Path,
+        description: Option<&str>,
+        progress_bar: bool,
         diagnostics: &impl Diagnostics,
-    ) -> Self {
+    ) -> Result<Self, ProfilerError> {
         let path = filename;
 
         // Count the number of lines
@@ -39,19 +53,32 @@ impl Profiler {
         let mut model_config = ModelConfig::default();
         model_config.parser_config.skip_z3_version_check = true;
         model_config.parser_config.ignore_invalid_lines = true;
+        model_config.parser_config.show_progress_bar = progress_bar;
         model_config.skip_log_consistency_checks = true;
         model_config.log_internal_term_equalities = false;
         model_config.log_term_equalities = false;
         let mut model = Model::new(model_config);
-        diagnostics.report(&message_interface.bare(MessageLevel::Note, "Analyzing prover log..."));
+        if let Some(description) = description {
+            diagnostics.report_now(&message_interface.bare(
+                MessageLevel::Note,
+                &format!("Analyzing prover log for {} ...", description),
+            ));
+        }
         let _ = model
             .process(
                 Some(path.to_str().expect("invalid profile file path").to_owned()),
                 file,
                 line_count,
             )
-            .expect("Error processing prover trace");
-        diagnostics.report(&message_interface.bare(MessageLevel::Note, "... analysis complete\n"));
+            .map_err(|e| ProfilerError::InvalidTrace(e.to_string()))?;
+        if let Some(description) = description {
+            diagnostics.report_now(
+                &message_interface.bare(
+                    MessageLevel::Note,
+                    &format!("Log analysis complete for {}", description),
+                ),
+            );
+        }
 
         // Analyze the quantifer costs
         let quant_costs = model.quant_costs();
@@ -62,7 +89,7 @@ impl Profiler {
         user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
         user_quant_costs.reverse();
 
-        Profiler { message_interface, quantifier_stats: user_quant_costs }
+        Ok(Profiler { message_interface, quantifier_stats: user_quant_costs })
     }
 
     pub fn quant_count(&self) -> usize {
