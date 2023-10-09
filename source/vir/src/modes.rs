@@ -432,7 +432,7 @@ fn check_expr_handle_mut_arg(
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             return Ok((mode, Some(x_mode)));
         }
-        ExprX::ConstVar(x) => {
+        ExprX::ConstVar(x, _) => {
             let function = match typing.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);

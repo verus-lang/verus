@@ -996,8 +996,15 @@ pub(crate) fn check_item_const<'tcx>(
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    let name = Arc::new(FunX { path });
-    let mode = get_mode(Mode::Exec, attrs);
+    let name = Arc::new(FunX { path: path.clone() });
+    let mode_opt = crate::attributes::get_mode_opt(attrs);
+    let (func_mode, body_mode, ret_mode) = match mode_opt {
+        // By default, a const is dual-use as spec and exec,
+        // where the function is considered spec but the return value and body are exec:
+        None => (Mode::Spec, Mode::Exec, Mode::Exec),
+        // Otherwise, a const is a single-mode function:
+        Some(m) => (m, m, m),
+    };
     let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     if vattrs.external_fn_specification {
@@ -1011,27 +1018,46 @@ pub(crate) fn check_item_const<'tcx>(
         return Ok(());
     }
     let body = find_body(ctxt, body_id);
-    let vir_body = body_to_vir(ctxt, id, body_id, body, mode, vattrs.external_body)?;
+    let mut vir_body = body_to_vir(ctxt, id, body_id, body, body_mode, vattrs.external_body)?;
+    let header = vir::headers::read_header(&mut vir_body)?;
+    if header.require.len() + header.recommend.len() > 0 {
+        return err_span(span, "consts cannot have requires/recommends");
+    }
+    if ret_mode == Mode::Spec && header.ensure.len() > 0 {
+        return err_span(span, "spec functions cannot have ensures");
+    }
 
     let ret_name = Arc::new(RETURN_VALUE.to_string());
     let ret = ctxt.spanned_new(
         span,
-        ParamX { name: ret_name, typ: typ.clone(), mode, is_mut: false, unwrapped_info: None },
+        ParamX {
+            name: ret_name,
+            typ: typ.clone(),
+            mode: ret_mode,
+            is_mut: false,
+            unwrapped_info: None,
+        },
     );
+    let autospec = vattrs.autospec.clone().map(|method_name| {
+        let path = autospec_fun(&path, method_name.clone());
+        Arc::new(FunX { path })
+    });
+    let mut fattrs: FunctionAttrsX = Default::default();
+    fattrs.autospec = autospec;
     let func = FunctionX {
-        name,
+        name: name.clone(),
         proxy: None,
         kind: FunctionKind::Static,
         visibility,
         owning_module: Some(module_path.clone()),
-        mode: Mode::Spec, // the function has mode spec; the mode attribute goes into ret.x.mode
+        mode: func_mode,
         fuel,
         typ_params: Arc::new(vec![]),
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
         ret,
         require: Arc::new(vec![]),
-        ensure: Arc::new(vec![]),
+        ensure: header.const_ensures(&name),
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
@@ -1039,7 +1065,7 @@ pub(crate) fn check_item_const<'tcx>(
         mask_spec: MaskSpec::NoSpec,
         is_const: true,
         publish: get_publish(&vattrs).0,
-        attrs: Default::default(),
+        attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
     };

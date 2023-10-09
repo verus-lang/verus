@@ -9,16 +9,21 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<Expr, VirErr> {
+    let new_tgt = |tgt: &Fun, autospec_usage: AutospecUsage| match autospec_usage {
+        AutospecUsage::IfMarked => match &functions[tgt].x.attrs.autospec {
+            None => tgt.clone(),
+            Some(new_tgt) => new_tgt.clone(),
+        },
+        AutospecUsage::Final => tgt.clone(),
+    };
     match &expr.x {
+        ExprX::ConstVar(tgt, autospec_usage) => {
+            let tgt = new_tgt(tgt, *autospec_usage);
+            let var = ExprX::ConstVar(tgt, AutospecUsage::Final);
+            Ok(SpannedTyped::new(&expr.span, &expr.typ, var))
+        }
         ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
-            let tgt = match *autospec_usage {
-                AutospecUsage::IfMarked => match &functions[tgt].x.attrs.autospec {
-                    None => tgt,
-                    Some(new_tgt) => new_tgt,
-                },
-                AutospecUsage::Final => tgt,
-            };
-
+            let tgt = new_tgt(tgt, *autospec_usage);
             let call = ExprX::Call(
                 CallTarget::Fun(
                     kind.clone(),

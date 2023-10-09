@@ -1016,7 +1016,7 @@ impl Printer {
         }
     }
 
-    fn small_block(&mut self, block: &Block, attrs: &[Attribute]) {
+    pub(crate) fn small_block(&mut self, block: &Block, attrs: &[Attribute]) {
         self.word("{");
         if attr::has_inner(attrs) || !block.stmts.is_empty() {
             self.space();

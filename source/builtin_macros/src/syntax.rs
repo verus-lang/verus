@@ -2222,6 +2222,35 @@ impl VisitMut for Visitor {
             &mut con.publish,
             &mut con.mode,
         );
+        let ensures = self.take_ghost(&mut con.ensures);
+        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+            self.inside_ghost += 1;
+            let mut stmts: Vec<Stmt> = Vec::new();
+            if attrs.len() > 0 {
+                let err = "outer attributes only allowed on function's ensures";
+                let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+            } else if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                // Use a closure in the ensures to avoid circular const definition.
+                // Note: we can't use con.ident as the closure pattern,
+                // because Rust would treat this as a const path pattern.
+                // So we use a 0-parameter closure.
+                stmts.push(stmt_with_semi!(token.span => ::builtin::ensures(|| [#exprs])));
+            }
+            let mut block = std::mem::take(&mut con.block).expect("const-with-ensures block");
+            block.stmts.splice(0..0, stmts);
+            con.block = Some(block);
+            self.inside_ghost -= 1;
+        }
+        if let Some(block) = std::mem::take(&mut con.block) {
+            let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
+            con.expr = Some(Box::new(Expr::Block(expr_block)));
+            con.eq_token = Some(syn_verus::token::Eq { spans: [con.const_token.span] });
+            con.semi_token = Some(Semi { spans: [con.const_token.span] });
+        }
         visit_item_const_mut(self, con);
     }
 

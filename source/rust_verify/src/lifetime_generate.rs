@@ -1390,7 +1390,10 @@ fn erase_const<'tcx>(
         let body_exp = if external_body {
             Box::new((body.value.span, ExpX::Panic))
         } else {
-            erase_expr(ctxt, state, false, &body.value).expect("const body")
+            state.enclosing_fun_id = Some(id);
+            let body_exp = erase_expr(ctxt, state, false, &body.value).expect("const body");
+            state.enclosing_fun_id = None;
+            body_exp
         };
         // Turn const decl into fn decl so we can use the non-const ExpX::Op in the body:
         let decl = FunDecl {

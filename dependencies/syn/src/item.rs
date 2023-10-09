@@ -110,9 +110,11 @@ ast_struct! {
         pub ident: Ident,
         pub colon_token: Token![:],
         pub ty: Box<Type>,
-        pub eq_token: Token![=],
-        pub expr: Box<Expr>,
-        pub semi_token: Token![;],
+        pub ensures: Option<Ensures>,
+        pub eq_token: Option<Token![=]>,
+        pub block: Option<Box<Block>>,
+        pub expr: Option<Box<Expr>>,
+        pub semi_token: Option<Token![;]>,
     }
 }
 
@@ -1106,9 +1108,26 @@ pub mod parsing {
                     };
                     let colon_token = input.parse()?;
                     let ty = input.parse()?;
+                    let ensures: Option<Ensures> = input.parse()?;
                     if input.peek(Token![;]) {
                         input.parse::<Token![;]>()?;
                         Ok(Item::Verbatim(verbatim::between(begin, input)))
+                    } else if ensures.is_none() {
+                        Ok(Item::Const(ItemConst {
+                            attrs: Vec::new(),
+                            vis,
+                            publish,
+                            mode,
+                            const_token,
+                            ident,
+                            colon_token,
+                            ty,
+                            ensures,
+                            eq_token: Some(input.parse()?),
+                            expr: Some(input.parse()?),
+                            block: None,
+                            semi_token: Some(input.parse()?),
+                        }))
                     } else {
                         Ok(Item::Const(ItemConst {
                             attrs: Vec::new(),
@@ -1119,9 +1138,11 @@ pub mod parsing {
                             ident,
                             colon_token,
                             ty,
-                            eq_token: input.parse()?,
-                            expr: input.parse()?,
-                            semi_token: input.parse()?,
+                            ensures,
+                            eq_token: None,
+                            expr: None,
+                            block: Some(input.parse()?),
+                            semi_token: None,
                         }))
                     }
                 } else {
@@ -1469,26 +1490,55 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for ItemConst {
         fn parse(input: ParseStream) -> Result<Self> {
-            Ok(ItemConst {
-                attrs: input.call(Attribute::parse_outer)?,
-                vis: input.parse()?,
-                publish: input.parse()?,
-                mode: input.parse()?,
-                const_token: input.parse()?,
-                ident: {
-                    let lookahead = input.lookahead1();
-                    if lookahead.peek(Ident) || lookahead.peek(Token![_]) {
-                        input.call(Ident::parse_any)?
-                    } else {
-                        return Err(lookahead.error());
-                    }
-                },
-                colon_token: input.parse()?,
-                ty: input.parse()?,
-                eq_token: input.parse()?,
-                expr: input.parse()?,
-                semi_token: input.parse()?,
-            })
+            let attrs = input.call(Attribute::parse_outer)?;
+            let vis = input.parse()?;
+            let publish = input.parse()?;
+            let mode = input.parse()?;
+            let const_token = input.parse()?;
+            let ident = {
+                let lookahead = input.lookahead1();
+                if lookahead.peek(Ident) || lookahead.peek(Token![_]) {
+                    input.call(Ident::parse_any)?
+                } else {
+                    return Err(lookahead.error());
+                }
+            };
+            let colon_token = input.parse()?;
+            let ty = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            if ensures.is_none() {
+                Ok(ItemConst {
+                    attrs,
+                    vis,
+                    publish,
+                    mode,
+                    const_token,
+                    ident,
+                    colon_token,
+                    ty,
+                    ensures,
+                    eq_token: Some(input.parse()?),
+                    expr: Some(input.parse()?),
+                    block: None,
+                    semi_token: Some(input.parse()?),
+                })
+            } else {
+                Ok(ItemConst {
+                    attrs,
+                    vis,
+                    publish,
+                    mode,
+                    const_token,
+                    ident,
+                    colon_token,
+                    ty,
+                    ensures,
+                    eq_token: None,
+                    expr: None,
+                    block: Some(input.parse()?),
+                    semi_token: None,
+                })
+            }
         }
     }
 
@@ -2937,7 +2987,9 @@ mod printing {
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
             self.ty.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
             self.eq_token.to_tokens(tokens);
+            self.block.to_tokens(tokens);
             self.expr.to_tokens(tokens);
             self.semi_token.to_tokens(tokens);
         }

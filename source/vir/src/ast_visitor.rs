@@ -610,7 +610,7 @@ where
         ExprX::Var(x) => ExprX::Var(x.clone()),
         ExprX::VarLoc(x) => ExprX::VarLoc(x.clone()),
         ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
-        ExprX::ConstVar(x) => ExprX::ConstVar(x.clone()),
+        ExprX::ConstVar(x, a) => ExprX::ConstVar(x.clone(), *a),
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Call(target, es) => {
             let target = match target {
@@ -911,6 +911,20 @@ where
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)
+}
+
+pub(crate) fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
+where
+    FE: Fn(&Expr) -> Result<Expr, VirErr>,
+{
+    map_expr_visitor_env(
+        expr,
+        &mut air::scope_map::ScopeMap::new(),
+        &mut (),
+        &|_state, _, expr| fe(expr),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+    )
 }
 
 pub(crate) fn map_stmt_visitor_env<E, FE, FS, FT>(
