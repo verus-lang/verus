@@ -9,7 +9,7 @@ use vir::ast::{Fun, Function, Krate, Mode, VirErr};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
-use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{CommandsWithContext, SnapPos};
 use vir::func_to_air::SstMap;
 use vir::messages::Message;
 use vir::recursion::Node;
@@ -256,18 +256,8 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             self.ctx.fun = None;
 
             if !not_verifying_owning_bucket {
-                // TODO this should be unnecessary; recursion.rs turns a
-                // CommandsWithContextX into a Commands, only for us to turn it
-                // back into CommandsWithContextX. We should pass the CommandsWithContextX
-                // all the way through in order to e.g. support nonlinear_arith in decreases_by
-                let commands = Arc::new(vec![Arc::new(CommandsWithContextX {
-                    span: function.span.clone(),
-                    desc: "termination proof".to_string(),
-                    commands: check_commands,
-                    prover_choice: vir::def::ProverChoice::DefaultProver,
-                    skip_recommends: false,
-                })]);
                 let snap_map = vec![];
+                let commands = Arc::new(check_commands);
                 query_ops.push(Op::query(QueryOp::SpecTermination, commands, snap_map, &function));
             }
 

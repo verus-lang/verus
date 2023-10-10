@@ -131,7 +131,7 @@ fn func_body_to_air(
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     decl_commands: &mut Vec<Command>,
-    check_commands: &mut Vec<Command>,
+    check_commands: &mut Vec<CommandsWithContext>,
     function: &Function,
     body: &crate::ast::Expr,
     not_verifying_owning_bucket: bool,
@@ -598,9 +598,9 @@ pub fn func_axioms_to_air(
     function: &Function,
     public_body: bool,
     not_verifying_owning_bucket: bool,
-) -> Result<(Commands, Commands, SstMap), VirErr> {
+) -> Result<(Commands, Vec<CommandsWithContext>, SstMap), VirErr> {
     let mut decl_commands: Vec<Command> = Vec::new();
-    let mut check_commands: Vec<Command> = Vec::new();
+    let mut check_commands: Vec<CommandsWithContext> = Vec::new();
     let mut new_fun_ssts = fun_ssts;
     let is_singular = function.x.attrs.integer_ring;
     match function.x.mode {
@@ -624,7 +624,7 @@ pub fn func_axioms_to_air(
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we just need to supply a body axiom
                 // for the existing trait method declaration function, so we can return here.
-                return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
+                return Ok((Arc::new(decl_commands), check_commands, new_fun_ssts));
             }
 
             let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
@@ -668,7 +668,7 @@ pub fn func_axioms_to_air(
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we inherit the trait requires/ensures,
                 // so we can just return here.
-                return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
+                return Ok((Arc::new(decl_commands), check_commands, new_fun_ssts));
             }
             if let Some((params, req_ens)) = &function.x.broadcast_forall {
                 let span = &function.span;
@@ -711,7 +711,7 @@ pub fn func_axioms_to_air(
             }
         }
     }
-    Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts))
+    Ok((Arc::new(decl_commands), check_commands, new_fun_ssts))
 }
 
 pub enum FuncDefPhase {

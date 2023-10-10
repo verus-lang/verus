@@ -7,7 +7,8 @@ use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, suffix_rename, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
+    decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
+    FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::messages::{error, Span};
@@ -19,7 +20,7 @@ use crate::sst::{
 use crate::sst_to_air::PostConditionKind;
 use crate::sst_visitor::{exp_rename_vars, exp_visitor_check, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
-use air::ast::{Binder, Commands};
+use air::ast::Binder;
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
@@ -359,9 +360,9 @@ pub(crate) fn check_termination_exp(
     body: &Exp,
     proof_body: Vec<Stm>,
     uses_decreases_by: bool,
-) -> Result<(bool, Commands, Exp), VirErr> {
+) -> Result<(bool, Vec<CommandsWithContext>, Exp), VirErr> {
     if !fun_is_recursive(ctx, &function.x.name) {
-        return Ok((false, Arc::new(vec![]), body.clone()));
+        return Ok((false, vec![], body.clone()));
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
@@ -413,9 +414,6 @@ pub(crate) fn check_termination_exp(
             PostConditionKind::DecreasesImplicitLemma
         },
     )?;
-
-    assert_eq!(commands.len(), 1);
-    let commands = commands.into_iter().next().unwrap().commands.clone();
 
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
