@@ -2530,9 +2530,11 @@ where
         ident: f.fold_ident(node.ident),
         colon_token: Token![:](tokens_helper(f, &node.colon_token.spans)),
         ty: Box::new(f.fold_type(*node.ty)),
-        eq_token: Token![=](tokens_helper(f, &node.eq_token.spans)),
-        expr: Box::new(f.fold_expr(*node.expr)),
-        semi_token: Token![;](tokens_helper(f, &node.semi_token.spans)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        eq_token: (node.eq_token).map(|it| Token![=](tokens_helper(f, &it.spans))),
+        block: (node.block).map(|it| Box::new(f.fold_block(*it))),
+        expr: (node.expr).map(|it| Box::new(f.fold_expr(*it))),
+        semi_token: (node.semi_token).map(|it| Token![;](tokens_helper(f, &it.spans))),
     }
 }
 #[cfg(feature = "full")]

@@ -1359,7 +1359,9 @@ impl PartialEq for ItemStatic {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis
             && self.mutability == other.mutability && self.ident == other.ident
-            && self.ty == other.ty && self.expr == other.expr
+            && self.ty == other.ty && self.ensures == other.ensures
+            && self.eq_token == other.eq_token && self.block == other.block
+            && self.expr == other.expr && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]

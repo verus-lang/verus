@@ -940,6 +940,10 @@ fn expr_to_stm_opt(
             let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
             Ok((vec![], ReturnValue::Some(e)))
         }
+        ExprX::StaticVar(x) => {
+            let e = mk_exp(ExpX::StaticVar(x.clone()));
+            Ok((vec![], ReturnValue::Some(e)))
+        }
         ExprX::VarLoc(x) => {
             let unique_id = state.get_var_unique_id(&x);
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::VarLoc(unique_id)))))

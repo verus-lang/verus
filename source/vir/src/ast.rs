@@ -602,6 +602,8 @@ pub enum ExprX {
     VarAt(Ident, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
     ConstVar(Fun, AutospecUsage),
+    /// Use of a static variable.
+    StaticVar(Fun),
     /// Mutable reference (location)
     Loc(Expr),
     /// Call to a function passing some expression arguments
@@ -860,11 +862,8 @@ pub struct FunctionX {
     pub broadcast_forall: Option<(Params, Expr)>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
-    /// is_const == true means that this function is actually a const declaration;
-    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
-    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
-    /// and the body is restricted to a subset of expressions that are spec-safe.
-    pub is_const: bool,
+    /// Allows the item to be a const declaration or static
+    pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private
     /// even though the function is public, the bool indicates false = opaque, true = visible
     /// the body is public
@@ -876,6 +875,28 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
+pub enum ItemKind {
+    Function,
+    /// This function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    Const,
+    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
+    /// The main difference is what happens when you reference the static or const.
+    /// For a const, it's as if you call the function every time you reference it.
+    /// For a static, it's as if you call the function once at the beginning of the program.
+    /// The difference is most obvious when the item of a type that is not Copy.
+    /// For example, if a const/static has type PCell, then:
+    ///  - If it's a const, it will get a different id() every time it is referenced from code
+    ///  - If it's a static, every use will have the same id()
+    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
+    /// so they can only be deterministic, right? But for something like cell, the 'id'
+    /// (the nondeterministic part) is purely ghost.
+    Static,
 }
 
 /// Single field in a variant

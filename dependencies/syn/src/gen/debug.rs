@@ -2018,7 +2018,9 @@ impl Debug for ItemStatic {
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
         formatter.field("ty", &self.ty);
+        formatter.field("ensures", &self.ensures);
         formatter.field("eq_token", &self.eq_token);
+        formatter.field("block", &self.block);
         formatter.field("expr", &self.expr);
         formatter.field("semi_token", &self.semi_token);
         formatter.finish()

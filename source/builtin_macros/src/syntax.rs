@@ -14,17 +14,18 @@ use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
     visit_impl_item_method_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
-    visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut, VisitMut,
+    visit_item_static_mut, visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut,
+    VisitMut,
 };
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItem, ImplItemMethod, Invariant,
     InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments,
-    PathSegment, Publish, Recommends, Requires, ReturnType, Signature, SignatureDecreases,
-    SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp,
-    Visibility,
+    ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path,
+    PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature,
+    SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type,
+    TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -484,7 +485,47 @@ impl Visitor {
         stmts
     }
 
-    fn visit_const(
+    pub fn desugar_const_or_static(
+        &mut self,
+        con_ensures: &mut Option<Ensures>,
+        con_block: &mut Option<Box<Block>>,
+        con_expr: &mut Option<Box<Expr>>,
+        con_eq_token: &mut Option<Token![=]>,
+        con_semi_token: &mut Option<Token![;]>,
+        con_span: Span,
+    ) {
+        let ensures = self.take_ghost(con_ensures);
+        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+            self.inside_ghost += 1;
+            let mut stmts: Vec<Stmt> = Vec::new();
+            if attrs.len() > 0 {
+                let err = "outer attributes only allowed on function's ensures";
+                let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+            } else if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                // Use a closure in the ensures to avoid circular const definition.
+                // Note: we can't use con.ident as the closure pattern,
+                // because Rust would treat this as a const path pattern.
+                // So we use a 0-parameter closure.
+                stmts.push(stmt_with_semi!(token.span => ::builtin::ensures(|| [#exprs])));
+            }
+            let mut block = std::mem::take(con_block).expect("const-with-ensures block");
+            block.stmts.splice(0..0, stmts);
+            *con_block = Some(block);
+            self.inside_ghost -= 1;
+        }
+        if let Some(block) = std::mem::take(con_block) {
+            let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
+            *con_expr = Some(Box::new(Expr::Block(expr_block)));
+            *con_eq_token = Some(syn_verus::token::Eq { spans: [con_span] });
+            *con_semi_token = Some(Semi { spans: [con_span] });
+        }
+    }
+
+    fn visit_const_or_static(
         &mut self,
         span: proc_macro2::Span,
         attrs: &mut Vec<Attribute>,
@@ -2215,43 +2256,41 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
-        self.visit_const(
+        self.visit_const_or_static(
             con.const_token.span,
             &mut con.attrs,
             Some(&con.vis),
             &mut con.publish,
             &mut con.mode,
         );
-        let ensures = self.take_ghost(&mut con.ensures);
-        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
-            self.inside_ghost += 1;
-            let mut stmts: Vec<Stmt> = Vec::new();
-            if attrs.len() > 0 {
-                let err = "outer attributes only allowed on function's ensures";
-                let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
-            } else if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
-                // Use a closure in the ensures to avoid circular const definition.
-                // Note: we can't use con.ident as the closure pattern,
-                // because Rust would treat this as a const path pattern.
-                // So we use a 0-parameter closure.
-                stmts.push(stmt_with_semi!(token.span => ::builtin::ensures(|| [#exprs])));
-            }
-            let mut block = std::mem::take(&mut con.block).expect("const-with-ensures block");
-            block.stmts.splice(0..0, stmts);
-            con.block = Some(block);
-            self.inside_ghost -= 1;
-        }
-        if let Some(block) = std::mem::take(&mut con.block) {
-            let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
-            con.expr = Some(Box::new(Expr::Block(expr_block)));
-            con.eq_token = Some(syn_verus::token::Eq { spans: [con.const_token.span] });
-            con.semi_token = Some(Semi { spans: [con.const_token.span] });
-        }
+        self.desugar_const_or_static(
+            &mut con.ensures,
+            &mut con.block,
+            &mut con.expr,
+            &mut con.eq_token,
+            &mut con.semi_token,
+            con.const_token.span,
+        );
         visit_item_const_mut(self, con);
+    }
+
+    fn visit_item_static_mut(&mut self, sta: &mut ItemStatic) {
+        self.visit_const_or_static(
+            sta.static_token.span,
+            &mut sta.attrs,
+            Some(&sta.vis),
+            &mut Publish::Default,
+            &mut FnMode::Default,
+        );
+        self.desugar_const_or_static(
+            &mut sta.ensures,
+            &mut sta.block,
+            &mut sta.expr,
+            &mut sta.eq_token,
+            &mut sta.semi_token,
+            sta.static_token.span,
+        );
+        visit_item_static_mut(self, sta);
     }
 
     fn visit_field_mut(&mut self, field: &mut Field) {

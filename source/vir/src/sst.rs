@@ -62,6 +62,7 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
+    StaticVar(Fun),
     VarLoc(UniqueIdent),
     VarAt(UniqueIdent, VarAt),
     Loc(Exp),

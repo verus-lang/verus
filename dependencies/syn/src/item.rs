@@ -256,9 +256,11 @@ ast_struct! {
         pub ident: Ident,
         pub colon_token: Token![:],
         pub ty: Box<Type>,
-        pub eq_token: Token![=],
-        pub expr: Box<Expr>,
-        pub semi_token: Token![;],
+        pub ensures: Option<Ensures>,
+        pub eq_token: Option<Token![=]>,
+        pub block: Option<Box<Block>>,
+        pub expr: Option<Box<Expr>>,
+        pub semi_token: Option<Token![;]>,
     }
 }
 
@@ -1064,9 +1066,25 @@ pub mod parsing {
                 } else {
                     let colon_token = input.parse()?;
                     let ty = input.parse()?;
+                    let ensures: Option<Ensures> = input.parse()?;
                     if input.peek(Token![;]) {
                         input.parse::<Token![;]>()?;
                         Ok(Item::Verbatim(verbatim::between(begin, input)))
+                    } else if ensures.is_none() {
+                        Ok(Item::Static(ItemStatic {
+                            attrs: Vec::new(),
+                            vis,
+                            static_token,
+                            mutability,
+                            ident,
+                            colon_token,
+                            ty,
+                            ensures,
+                            eq_token: Some(input.parse()?),
+                            expr: Some(input.parse()?),
+                            block: None,
+                            semi_token: Some(input.parse()?),
+                        }))
                     } else {
                         Ok(Item::Static(ItemStatic {
                             attrs: Vec::new(),
@@ -1076,9 +1094,11 @@ pub mod parsing {
                             ident,
                             colon_token,
                             ty,
-                            eq_token: input.parse()?,
-                            expr: input.parse()?,
-                            semi_token: input.parse()?,
+                            ensures,
+                            eq_token: None,
+                            expr: None,
+                            block: Some(input.parse()?),
+                            semi_token: None,
                         }))
                     }
                 }
@@ -1472,18 +1492,45 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for ItemStatic {
         fn parse(input: ParseStream) -> Result<Self> {
-            Ok(ItemStatic {
-                attrs: input.call(Attribute::parse_outer)?,
-                vis: input.parse()?,
-                static_token: input.parse()?,
-                mutability: input.parse()?,
-                ident: input.parse()?,
-                colon_token: input.parse()?,
-                ty: input.parse()?,
-                eq_token: input.parse()?,
-                expr: input.parse()?,
-                semi_token: input.parse()?,
-            })
+            let attrs = input.call(Attribute::parse_outer)?;
+            let vis = input.parse()?;
+            let static_token = input.parse()?;
+            let mutability = input.parse()?;
+            let ident = input.parse()?;
+            let colon_token = input.parse()?;
+            let ty = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            if ensures.is_none() {
+                Ok(ItemStatic {
+                    attrs,
+                    vis,
+                    static_token,
+                    mutability,
+                    ident,
+                    colon_token,
+                    ty,
+                    ensures,
+                    eq_token: Some(input.parse()?),
+                    expr: Some(input.parse()?),
+                    block: None,
+                    semi_token: Some(input.parse()?),
+                })
+            } else {
+                Ok(ItemStatic {
+                    attrs,
+                    vis,
+                    static_token,
+                    mutability,
+                    ident,
+                    colon_token,
+                    ty,
+                    ensures,
+                    eq_token: None,
+                    expr: None,
+                    block: Some(input.parse()?),
+                    semi_token: None,
+                })
+            }
         }
     }
 
@@ -2970,7 +3017,9 @@ mod printing {
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
             self.ty.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
             self.eq_token.to_tokens(tokens);
+            self.block.to_tokens(tokens);
             self.expr.to_tokens(tokens);
             self.semi_token.to_tokens(tokens);
         }

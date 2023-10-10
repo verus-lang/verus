@@ -2816,9 +2816,21 @@ where
     v.visit_ident_mut(&mut node.ident);
     tokens_helper(v, &mut node.colon_token.spans);
     v.visit_type_mut(&mut *node.ty);
-    tokens_helper(v, &mut node.eq_token.spans);
-    v.visit_expr_mut(&mut *node.expr);
-    tokens_helper(v, &mut node.semi_token.spans);
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.eq_token {
+        tokens_helper(v, &mut it.spans);
+    }
+    if let Some(it) = &mut node.block {
+        v.visit_block_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.expr {
+        v.visit_expr_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.semi_token {
+        tokens_helper(v, &mut it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_struct_mut<V>(v: &mut V, node: &mut ItemStruct)

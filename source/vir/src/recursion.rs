@@ -193,6 +193,7 @@ fn terminates(
         | ExpX::Var(..)
         | ExpX::VarAt(..)
         | ExpX::VarLoc(..)
+        | ExpX::StaticVar(..)
         | ExpX::Old(..)
         | ExpX::NullaryOpr(..) => Ok(bool_exp(ExpX::Const(Constant::Bool(true)))),
         ExpX::Loc(e) => r(e),

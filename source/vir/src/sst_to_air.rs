@@ -11,7 +11,7 @@ use crate::context::Ctx;
 use crate::def::{
     fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
     new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
+    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, static_name,
     suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
     suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident, CommandsWithContext,
     CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE,
@@ -781,6 +781,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ExprMode::BodyPre => string_var(&suffix_local_unique_id(x)),
         },
+        (ExpX::StaticVar(f), false) => string_var(&static_name(f)),
         (ExpX::Loc(e0), false) => exp_to_expr(ctx, e0, expr_ctxt)?,
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))

@@ -321,6 +321,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarAt(x.clone(), *at))
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
+        ExprX::StaticVar(_) => expr.clone(),
         ExprX::Call(target, exprs) => match target {
             CallTarget::Fun(_, name, _, _, _) => {
                 let function = &ctx.func_map[name].x;
@@ -762,7 +763,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease_by,
         broadcast_forall,
         mask_spec,
-        is_const,
+        item_kind,
         publish,
         attrs,
         body,
@@ -909,7 +910,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease_by: decrease_by.clone(),
         broadcast_forall,
         mask_spec,
-        is_const: *is_const,
+        item_kind: *item_kind,
         publish: *publish,
         attrs: attrs.clone(),
         body,
