@@ -63,11 +63,22 @@ fn warning(msg: &str) {
 }
 
 fn run() -> Result<std::process::ExitStatus, String> {
-    let (mut args, record) = {
+    #[allow(unused_variables)] // unpretty_arg is unused if --features record-history is disabled
+    let (mut args, record, unpretty_arg) = {
         let mut args = std::env::args().into_iter();
         let _bin = args.next().expect("executable in args");
         let mut all_args: Vec<_> = args.collect();
         let mut record = false;
+        let mut unpretty_arg = false;
+        for i in 0..all_args.len() {
+            if all_args[i] == "-Z"
+                && all_args.get(i + 1).map(|x| x.starts_with("unpretty")).unwrap_or(false)
+            {
+                unpretty_arg = true;
+            } else if all_args[i].starts_with("-Zunpretty") {
+                unpretty_arg = true;
+            }
+        }
         all_args.retain(|arg| match arg.as_str() {
             "--record" => {
                 record = true;
@@ -75,8 +86,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
             }
             _ => true,
         });
-
-        (all_args, record)
+        (all_args, record, unpretty_arg)
     };
 
     let current_exe = std::env::current_exe().ok().and_then(|c| {
@@ -130,7 +140,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
 
     let source_file = record::find_source_file(&args);
 
-    let record_history_project_dirs: Option<std::path::PathBuf> = {
+    let record_history_project_dirs: Option<(std::path::PathBuf, std::path::PathBuf)> = {
         let source_file = source_file.as_ref()?;
         let project_dir = source_file
             .exists()
@@ -144,13 +154,20 @@ fn run() -> Result<std::process::ExitStatus, String> {
         if history_dir.exists() {
             #[cfg(feature = "record-history")]
             {
-                if !history_dir.is_dir() {
-                    return Err(format!(
-                        ".record-history ({}) is not a directory",
-                        history_dir.display()
-                    ));
+                if unpretty_arg {
+                    warning(
+                        "a `-Z unpretty` argument was specified, which is incompatible with history recording; disabling hisotry recording for this session",
+                    );
+                    None
+                } else {
+                    if !history_dir.is_dir() {
+                        return Err(format!(
+                            ".record-history ({}) is not a directory",
+                            history_dir.display()
+                        ));
+                    }
+                    Some((project_dir, history_dir))
                 }
-                Some((project_dir, history_dir))
             }
             #[cfg(not(feature = "record-history"))]
             {
