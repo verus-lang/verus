@@ -150,3 +150,94 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] spec_dual_mode_unsupported verus_code! {
+        static E: u64 = 0;
+    } => Err(e) => assert_vir_error_msg(e, "explicitly mark the static as `exec`")
+}
+
+test_verify_one_file! {
+    #[test] reference_static_from_proof_unsupported verus_code! {
+        exec static E: u64 = 0;
+
+        proof fn stuff() {
+            let x = E;
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] reference_static_from_spec_unsupported verus_code! {
+        exec static E: u64 = 0;
+
+        // It might be feasible to support this, because although the value of `E`
+        // is the result of an exec computation, it *is* fixed.
+        // However, it would require us to be careful about cyclicity checking.
+
+        spec fn stuff() -> u64 {
+            E
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] reference_static_from_dual_mode_const_unsupported verus_code! {
+        exec static E: u64 = 0;
+
+        const s: u64 = E;
+    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] reference_static_from_proof_block_double_move verus_code! {
+        struct X { }
+
+        exec static E: X = X{};
+
+        fn stuff() {
+            proof {
+                let tracked x = E;
+                let tracked y = E;
+            }
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] statics_get_type_invariants verus_code! {
+        exec static E: u64 = 0;
+
+        fn stuff() {
+            let j = E;
+            assert(j >= 0);
+            assert(j <= 0xffff_ffff_ffff_ffff);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] statics_recurse2 verus_code! {
+        exec static E: u64 ensures false {
+            proof { let x = F; }
+            0
+        }
+        exec static F: u64 ensures false {
+            proof { let x = E; }
+            0
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] const_recurse2 verus_code! {
+        exec const E: u64 ensures false {
+            proof { let x = F; }
+            0
+        }
+        exec const F: u64 ensures false {
+            proof { let x = E; }
+            0
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode exec")
+}

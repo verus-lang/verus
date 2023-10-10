@@ -440,24 +440,25 @@ fn check_expr_handle_mut_arg(
                 }
                 Some(f) => f.clone(),
             };
+            let kind = if matches!(&expr.x, ExprX::ConstVar(..)) { "const" } else { "static" };
             if typing.check_ghost_blocks {
                 if function.x.mode == Mode::Exec && typing.block_ghostness != Ghost::Exec {
                     return Err(error(
                         &expr.span,
-                        format!("cannot read const with mode {}", function.x.mode),
+                        format!("cannot read {} with mode {}", kind, function.x.mode),
                     ));
                 }
                 if function.x.ret.x.mode != Mode::Exec && typing.block_ghostness == Ghost::Exec {
                     return Err(error(
                         &expr.span,
-                        format!("cannot read const with mode {}", function.x.mode),
+                        format!("cannot read {} with mode {}", kind, function.x.mode),
                     ));
                 }
             }
             if !mode_le(outer_mode, function.x.mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot read const with mode {}", function.x.mode),
+                    format!("cannot read {} with mode {}", kind, function.x.mode),
                 ));
             }
             let mode = function.x.ret.x.mode;
