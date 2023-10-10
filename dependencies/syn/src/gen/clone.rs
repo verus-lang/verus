@@ -1416,6 +1416,8 @@ impl Clone for ItemStatic {
         ItemStatic {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            publish: self.publish.clone(),
+            mode: self.mode.clone(),
             static_token: self.static_token.clone(),
             mutability: self.mutability.clone(),
             ident: self.ident.clone(),

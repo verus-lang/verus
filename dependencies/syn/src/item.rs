@@ -251,6 +251,8 @@ ast_struct! {
     pub struct ItemStatic {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub publish: Publish,
+        pub mode: FnMode,
         pub static_token: Token![static],
         pub mutability: Option<Token![mut]>,
         pub ident: Ident,
@@ -1055,6 +1057,8 @@ pub mod parsing {
                 input.parse().map(Item::Use)
             } else if lookahead.peek(Token![static]) {
                 let vis = input.parse()?;
+                let publish = input.parse()?;
+                let mode = input.parse()?;
                 let static_token = input.parse()?;
                 let mutability = input.parse()?;
                 let ident = input.parse()?;
@@ -1074,6 +1078,8 @@ pub mod parsing {
                         Ok(Item::Static(ItemStatic {
                             attrs: Vec::new(),
                             vis,
+                            publish,
+                            mode,
                             static_token,
                             mutability,
                             ident,
@@ -1089,6 +1095,8 @@ pub mod parsing {
                         Ok(Item::Static(ItemStatic {
                             attrs: Vec::new(),
                             vis,
+                            publish,
+                            mode,
                             static_token,
                             mutability,
                             ident,
@@ -1494,6 +1502,8 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
             let vis = input.parse()?;
+            let publish = input.parse()?;
+            let mode = input.parse()?;
             let static_token = input.parse()?;
             let mutability = input.parse()?;
             let ident = input.parse()?;
@@ -1504,6 +1514,8 @@ pub mod parsing {
                 Ok(ItemStatic {
                     attrs,
                     vis,
+                    publish,
+                    mode,
                     static_token,
                     mutability,
                     ident,
@@ -1519,6 +1531,8 @@ pub mod parsing {
                 Ok(ItemStatic {
                     attrs,
                     vis,
+                    publish,
+                    mode,
                     static_token,
                     mutability,
                     ident,
@@ -3012,6 +3026,8 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.publish.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.static_token.to_tokens(tokens);
             self.mutability.to_tokens(tokens);
             self.ident.to_tokens(tokens);

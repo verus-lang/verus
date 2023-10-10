@@ -1869,6 +1869,8 @@ impl Hash for ItemStatic {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.publish.hash(state);
+        self.mode.hash(state);
         self.mutability.hash(state);
         self.ident.hash(state);
         self.ty.hash(state);

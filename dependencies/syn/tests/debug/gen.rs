@@ -3647,6 +3647,8 @@ impl Debug for Lite<syn::Item> {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
                 formatter.field("vis", Lite(&_val.vis));
+                formatter.field("publish", Lite(&_val.publish));
+                formatter.field("mode", Lite(&_val.mode));
                 if let Some(val) = &_val.mutability {
                     #[derive(RefCast)]
                     #[repr(transparent)]
@@ -4229,6 +4231,8 @@ impl Debug for Lite<syn::ItemStatic> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("publish", Lite(&_val.publish));
+        formatter.field("mode", Lite(&_val.mode));
         if let Some(val) = &_val.mutability {
             #[derive(RefCast)]
             #[repr(transparent)]

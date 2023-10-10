@@ -2279,8 +2279,8 @@ impl VisitMut for Visitor {
             sta.static_token.span,
             &mut sta.attrs,
             Some(&sta.vis),
-            &mut Publish::Default,
-            &mut FnMode::Default,
+            &mut sta.publish,
+            &mut sta.mode,
         );
         self.desugar_const_or_static(
             &mut sta.ensures,

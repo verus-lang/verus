@@ -2525,6 +2525,8 @@ where
     ItemStatic {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        publish: f.fold_publish(node.publish),
+        mode: f.fold_fn_mode(node.mode),
         static_token: Token![static](tokens_helper(f, &node.static_token.span)),
         mutability: (node.mutability).map(|it| Token![mut](tokens_helper(f, &it.span))),
         ident: f.fold_ident(node.ident),

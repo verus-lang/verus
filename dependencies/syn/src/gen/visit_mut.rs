@@ -2809,6 +2809,8 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.static_token.span);
     if let Some(it) = &mut node.mutability {
         tokens_helper(v, &mut it.span);

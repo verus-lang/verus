@@ -2013,6 +2013,8 @@ impl Debug for ItemStatic {
         let mut formatter = formatter.debug_struct("ItemStatic");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("static_token", &self.static_token);
         formatter.field("mutability", &self.mutability);
         formatter.field("ident", &self.ident);

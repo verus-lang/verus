@@ -1077,7 +1077,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         params: Arc::new(vec![]),
         ret,
         require: Arc::new(vec![]),
-        ensure: header.const_ensures(&name),
+        ensure: header.const_static_ensures(&name, is_static),
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,

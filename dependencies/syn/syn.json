@@ -3586,6 +3586,12 @@
         "vis": {
           "syn": "Visibility"
         },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
+        },
         "static_token": {
           "token": "Static"
         },

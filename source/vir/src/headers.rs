@@ -247,12 +247,16 @@ impl Header {
         Arc::new(invs)
     }
 
-    pub fn const_ensures(&self, const_name: &Fun) -> Exprs {
+    pub fn const_static_ensures(&self, const_name: &Fun, is_static: bool) -> Exprs {
         let f = |expr: &Expr| {
             Ok(match &expr.x {
                 // const decl ensures clauses can refer to the const's "return value"
                 // using the name of the const (which is a ConstVar to the const):
-                ExprX::ConstVar(fun, _) if fun == const_name => {
+                ExprX::ConstVar(fun, _) if fun == const_name && !is_static => {
+                    expr.new_x(ExprX::Var(Arc::new(crate::def::RETURN_VALUE.to_string())))
+                }
+                // likewise for static
+                ExprX::StaticVar(fun) if fun == const_name && is_static => {
                     expr.new_x(ExprX::Var(Arc::new(crate::def::RETURN_VALUE.to_string())))
                 }
                 _ => expr.clone(),
