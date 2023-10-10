@@ -941,7 +941,7 @@ fn erase_expr<'tcx>(
                         mk_exp(ExpX::Op(vec![], typ))
                     }
                 }
-                Res::Def(DefKind::Const, id) => {
+                Res::Def(DefKind::Const, id) | Res::Def(DefKind::Static(_), id) => {
                     if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                         None
                     } else {
@@ -1358,7 +1358,7 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
     }
 }
 
-fn erase_const<'tcx>(
+fn erase_const_or_static<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
     state: &mut State,
@@ -2214,7 +2214,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::ForeignMod { .. } => {}
                         ItemKind::Macro(..) => {}
                         ItemKind::TyAlias(..) => {}
-                        ItemKind::Static(..) => {}
                         ItemKind::GlobalAsm(..) => {}
                         ItemKind::Struct(_s, _generics) => {
                             state.reach_datatype(&ctxt, id);
@@ -2222,8 +2221,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::Enum(_e, _generics) => {
                             state.reach_datatype(&ctxt, id);
                         }
-                        ItemKind::Const(_ty, body_id) => {
-                            erase_const(
+                        ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, _, body_id) => {
+                            erase_const_or_static(
                                 krate,
                                 &mut ctxt,
                                 &mut state,

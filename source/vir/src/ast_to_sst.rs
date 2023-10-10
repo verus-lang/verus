@@ -25,6 +25,7 @@ use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders};
 use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
+use indexmap::IndexSet;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -70,6 +71,8 @@ pub(crate) struct State<'a> {
     pub diagnostics: &'a (dyn Diagnostics + 'a),
     // If inside a closure
     containing_closure: Option<ClosureState>,
+    // Statics that are referenced (not counting statics in loops)
+    pub statics: IndexSet<Fun>,
 }
 
 #[derive(Clone)]
@@ -131,6 +134,7 @@ impl<'a> State<'a> {
             fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
             diagnostics,
             containing_closure: None,
+            statics: IndexSet::new(),
         }
     }
 
@@ -941,6 +945,7 @@ fn expr_to_stm_opt(
             Ok((vec![], ReturnValue::Some(e)))
         }
         ExprX::StaticVar(x) => {
+            state.statics.insert(x.clone());
             let e = mk_exp(ExpX::StaticVar(x.clone()));
             Ok((vec![], ReturnValue::Some(e)))
         }

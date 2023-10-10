@@ -109,3 +109,44 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_use_const_twice verus_code! {
+        // This behavior is important if X represents a Cell, for example
+
+        #[verifier::external_body]
+        struct X { }
+
+        #[verifier::external_body]
+        const fn x() -> X { X{} }
+
+        exec const E: X = x();
+
+        fn test1() {
+            // think of 'E' as equivalent to 'x()'. Different calls might
+            // return different values. (At least if x contains ghost content)
+            let a = E;
+            let b = E;
+            assert(a == b); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_use_static_twice verus_code! {
+        #[verifier::external_body]
+        struct X { }
+
+        #[verifier::external_body]
+        const fn x() -> X { X{} }
+
+        exec static E: X = x();
+
+        fn test1() {
+            // These are 'the same' E
+            let a = &E;
+            let b = &E;
+            assert(a == b);
+        }
+    } => Ok(())
+}

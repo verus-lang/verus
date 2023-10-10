@@ -944,6 +944,7 @@ pub fn func_def_to_air(
                 function.x.attrs.nonlinear,
                 dest,
                 PostConditionKind::Ensures,
+                &state.statics.iter().cloned().collect(),
             )?;
 
             state.finalize();

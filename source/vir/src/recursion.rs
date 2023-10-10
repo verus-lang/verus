@@ -414,6 +414,7 @@ pub(crate) fn check_termination_exp(
         } else {
             PostConditionKind::DecreasesImplicitLemma
         },
+        &vec![],
     )?;
 
     // New body: substitute rec%f(args, fuel) for f(args)
