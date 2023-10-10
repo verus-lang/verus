@@ -71,6 +71,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test1_fails7 verus_code! {
+        exec const E: u64 ensures true { 1 }
+        fn test1() {
+            proof { let x = E; }
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] test1_fails8 verus_code! {
+        exec const E: u64 ensures true { 1 }
+        proof fn test1() {
+            let x = E;
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] test1_fails9 verus_code! {
+        spec const S: u64 = 1;
+        fn test1() {
+            let x = S;
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
     #[test] test_used_as_spec verus_code! {
         spec const SPEC_E: u64 = 7;
         #[verifier::when_used_as_spec(SPEC_E)]
