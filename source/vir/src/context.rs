@@ -200,11 +200,9 @@ impl GlobalCtx {
         }
         for f in &krate.functions {
             // Heuristic: add all external_body functions first.
-            // This is currently needed because:
-            // - external_body broadcast_forall functions are currently implicitly imported
-            // - open_atomic_invariant_begin/open_local_invariant_begin/open_invariant_end
-            //   are implicitly imported
-            // In the future, these might become less important; we could relax this heuristic
+            // This is currently needed because external_body broadcast_forall functions
+            // are currently implicitly imported.
+            // In the future, this might become less important; we could remove this heuristic.
             if f.x.body.is_none() {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
@@ -213,8 +211,25 @@ impl GlobalCtx {
             // Heuristic: put trait impls first, because functions don't necessarily have
             // explicit dependencies on all the trait impls when they are implicitly
             // used to satisfy broadcast_forall trait bounds.
-            // (Otherwise, we'd need the programmer to put declarations in order,
-            // is in Coq or F*.)
+            // (This arises because unlike in Coq or F*, Rust programs don't define a
+            // total ordering on declarations, and the call graph only provides a partial order.)
+            // test_broadcast_forall2 in rust_verify_test/tests/traits.rs is one (contrived) example
+            // that would fail without this heuristic.
+            // A simpler example would be a broadcast_forall function with a type parameter
+            // "A: View", and someone might rely on this broadcast_forall, instantiating A with
+            // some struct S that implements View, but without actually calling any View methods
+            // on S:
+            //   trait View { spec fn view(...) -> ...; }
+            //   struct S;
+            //   impl View for S { ... }
+            //   #[verifier::broadcast_forall] fn b<A: View>(a: A) ensures foo(a) { ... }
+            //   fn test(s: S) { assert(foo(s)); }
+            // Here, there are no explicit dependencies in the call graph that force
+            // TraitImpl for S: View to appear before "test" in the generated AIR code.
+            // If the TraitImpl axiom for S: View appeared after test,
+            // then test might fail because the broadcast_forall b for s isn't enabled
+            // without S: View.  The programmer would have to provide some explicit ordering,
+            // such as using s.view() in test so that test depends on S: View, to fix this.
             func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
         }
         for f in &krate.functions {
