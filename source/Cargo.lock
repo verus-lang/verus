@@ -1544,7 +1544,7 @@ checksum = "62bb4feee49fdd9f707ef802e22365a35de4b7b299de4763d44bfea899442ff9"
 [[package]]
 name = "smt2parser"
 version = "0.6.1"
-source = "git+https://github.com/verus-lang/smt2utils.git?rev=dd5232dc515154bd06e0f51710926a4cdb17affa#dd5232dc515154bd06e0f51710926a4cdb17affa"
+source = "git+https://github.com/verus-lang/smt2utils.git?rev=ec4c894d04d7cd39c9a8aa1eda51db71cc54fe61#ec4c894d04d7cd39c9a8aa1eda51db71cc54fe61"
 dependencies = [
  "fst",
  "itertools",
@@ -2242,7 +2242,7 @@ checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
 [[package]]
 name = "z3tracer"
 version = "0.11.2"
-source = "git+https://github.com/verus-lang/smt2utils.git?rev=dd5232dc515154bd06e0f51710926a4cdb17affa#dd5232dc515154bd06e0f51710926a4cdb17affa"
+source = "git+https://github.com/verus-lang/smt2utils.git?rev=ec4c894d04d7cd39c9a8aa1eda51db71cc54fe61#ec4c894d04d7cd39c9a8aa1eda51db71cc54fe61"
 dependencies = [
  "indicatif",
  "once_cell",
