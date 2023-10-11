@@ -331,9 +331,10 @@ fn run(
             datum
                 .module_blames
                 .into_iter()
-                .map(|(module, fraction)| {
+                .map(|ModuleBlames { module, count, fraction }| {
                     serde_json::json!({
                         "module": module,
+                        "count": count,
                         "fraction": fraction,
                     })
                 })
@@ -344,6 +345,7 @@ fn run(
         value.insert("module".to_owned(), datum.module.into());
         value.insert("function".to_owned(), datum.function.clone().into());
         value.insert("file_path".to_owned(), datum.file_path.into());
+        value.insert("total_instantiation_count".to_owned(), datum.info.total_insts.into());
         value.insert("module_blames".to_owned(), data);
         if let Some((function_times, function)) =
             datum.function.and_then(|function| times.map(|times| (times, function)))
@@ -421,12 +423,18 @@ struct ProcessFileOutputInfo {
     total_insts: u64,
 }
 
+struct ModuleBlames {
+    module: String,
+    count: u64,
+    fraction: f64,
+}
+
 struct ProcessFileOutput {
     bucket_name: String,
     module: String,
     file_path: String,
     function: Option<String>,
-    module_blames: Vec<(String, f64)>,
+    module_blames: Vec<ModuleBlames>,
     #[allow(dead_code)]
     info: ProcessFileOutputInfo,
 }
@@ -515,7 +523,11 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         module_blames
             .into_iter()
             .rev()
-            .map(|(module, cnt)| (module, cnt as f64 / total_insts as f64))
+            .map(|(module, cnt)| ModuleBlames {
+                module,
+                count: cnt,
+                fraction: cnt as f64 / total_insts as f64,
+            })
             .collect()
     };
 
@@ -530,14 +542,14 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         |(modname, id)| format!("{} ({})", modname, id),
         // |n| format!("{} ({}, {})", n.quantifier.qid, n.id.0, n.id.1), // for pruned graph
         // |n| n.qid.clone(), // for quantifier graph
-        |e| Some(format!("{}", (*e as f64 / total_insts as f64) * 100.0)),
+        |e| Some(format!("{:.2}", (*e as f64 / total_insts as f64) * 100.0)),
         // |e| Some(format!("{}", e)),
     )?;
 
     quant_graph.to_dot_file(
         &output_dir.join(Path::new(file_stem).with_extension("quant.dot")),
         |(modname, id)| format!("{} ({})", modname, id),
-        |e| Some(format!("{}", (*e as f64 / total_insts as f64) * 100.0)),
+        |e| Some(format!("{:.2}", (*e as f64 / total_insts as f64) * 100.0)),
     )?;
 
     Ok(ProcessFileOutput {
