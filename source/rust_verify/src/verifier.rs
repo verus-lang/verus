@@ -1091,7 +1091,7 @@ impl Verifier {
                         QueryOp::Body(Style::RecommendsChecked) => MessageLevel::Warning,
                         QueryOp::Body(Style::Expanded) => MessageLevel::Note,
                     };
-                    let function = &op.function;
+                    let function = &op.get_function();
                     let is_recommend = query_op.is_recommend();
                     self.expand_flag = query_op.is_expanded();
 

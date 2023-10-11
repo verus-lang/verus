@@ -199,6 +199,25 @@ impl GlobalCtx {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
         for f in &krate.functions {
+            // Heuristic: add all external_body functions first.
+            // This is currently needed because:
+            // - external_body broadcast_forall functions are currently implicitly imported
+            // - open_atomic_invariant_begin/open_local_invariant_begin/open_invariant_end
+            //   are implicitly imported
+            // In the future, these might become less important; we could relax this heuristic
+            if f.x.body.is_none() {
+                func_call_graph.add_node(Node::Fun(f.x.name.clone()));
+            }
+        }
+        for t in &krate.trait_impls {
+            // Heuristic: put trait impls first, because functions don't necessarily have
+            // explicit dependencies on all the trait impls when they are implicitly
+            // used to satisfy broadcast_forall trait bounds.
+            // (Otherwise, we'd need the programmer to put declarations in order,
+            // is in Coq or F*.)
+            func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
+        }
+        for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, f)?;

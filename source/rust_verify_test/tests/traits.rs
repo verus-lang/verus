@@ -2345,3 +2345,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] trait_bound_delayed verus_code! {
+        trait T { proof fn q() ensures false; }
+
+        spec fn f<A>(i: int) -> bool { false }
+
+        #[verifier::external_body]
+        #[verifier::broadcast_forall]
+        proof fn p<A: T>(i: int)
+            ensures f::<A>(i)
+        {
+        }
+
+        struct S;
+        impl T for S {
+            proof fn q() {
+                assert(f::<S>(7)); // FAILS
+                // fails because we can't use the broadcast_forall with A = S
+                // until after S: T has been established,
+                // which can't happen until after S::q has been proven.
+            }
+        }
+
+        proof fn test() {
+            S::q();
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
