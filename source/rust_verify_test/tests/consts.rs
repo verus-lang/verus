@@ -241,3 +241,13 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode exec")
 }
+
+test_verify_one_file! {
+    #[test] return_static_lifetime verus_code! {
+        exec static x: u8 = 0;
+
+        fn stuff() -> &'static u8 {
+            &x
+        }
+    } => Ok(())
+}

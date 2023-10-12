@@ -150,7 +150,6 @@ impl<V> PCell<V> {
               pcell_opt![ self.id() => Option::Some(v) ],
         opens_invariants none
     {
-
         unsafe {
             *(self.ucell.get()) = MaybeUninit::new(v);
         }

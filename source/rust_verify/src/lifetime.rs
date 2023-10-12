@@ -171,6 +171,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 fn op<A, B>(a: A) -> B { panic!() }
+fn static_ref<T>(t: T) -> &'static T { panic!() }
 struct Tracked<A> { a: PhantomData<A> }
 impl<A> Tracked<A> {
     pub fn get(self) -> A { panic!() }

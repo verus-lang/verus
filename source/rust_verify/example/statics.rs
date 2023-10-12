@@ -1,7 +1,11 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
+
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*, invariant::*, prelude::*, cell::*};
+use vstd::prelude::*;
+use vstd::cell::*;
+use vstd::atomic_ghost::*;
+use vstd::*;
 
 use std::sync::atomic::*;
 
