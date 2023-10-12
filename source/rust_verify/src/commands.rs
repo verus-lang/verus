@@ -73,8 +73,12 @@ pub struct OpGenerator<'a, D: Diagnostics> {
     func_map: HashMap<Fun, (Function, Visibility)>,
     trait_impl_map: HashMap<Path, TraitImpl>,
 
-    current_queue: VecDeque<Op>,
     scc_idx: usize,
+}
+
+pub struct FunctionOpGenerator<'a: 'b, 'b, D: Diagnostics> {
+    op_generator: &'b mut OpGenerator<'a, D>,
+    current_queue: VecDeque<Op>,
 }
 
 impl<'a, D: Diagnostics> OpGenerator<'a, D> {
@@ -118,78 +122,34 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             bucket,
             reporter,
             sst_map: UpdateCell::new(HashMap::new()),
-            current_queue: VecDeque::new(),
             scc_idx: 0,
         }
     }
 
-    pub fn next(&mut self) -> Result<Option<Op>, VirErr> {
-        let op_opt = self._next()?;
-        if let Some(op) = &op_opt {
-            if matches!(op.kind, OpKind::Query { .. }) {
-                assert!(self.bucket.contains(&op.get_function().x.name));
-            }
-        }
-        Ok(op_opt)
-    }
-
-    fn _next(&mut self) -> Result<Option<Op>, VirErr> {
-        loop {
-            if !self.current_queue.is_empty() {
-                let op = self.current_queue.pop_front();
-                return Ok(op);
-            } else {
-                // Iterate through each SCC
-                if self.scc_idx < self.ctx.global.func_call_sccs.len() {
-                    self.current_queue = VecDeque::from(self.handle_scc_component(
-                        self.ctx.global.func_call_sccs[self.scc_idx].clone(),
-                    )?);
-                    self.scc_idx += 1;
-                } else {
-                    return Ok(None);
-                }
-            }
+    pub fn next<'b>(&'b mut self) -> Result<Option<FunctionOpGenerator<'a, 'b, D>>, VirErr>
+    where
+        'a: 'b,
+    {
+        // Iterate through each SCC
+        if self.scc_idx < self.ctx.global.func_call_sccs.len() {
+            let current_queue = VecDeque::from(
+                self.handle_scc_component(self.ctx.global.func_call_sccs[self.scc_idx].clone())?,
+            );
+            self.scc_idx += 1;
+            Ok(Some(FunctionOpGenerator { op_generator: self, current_queue }))
+        } else {
+            Ok(None)
         }
     }
 
-    pub fn retry_with_recommends(&mut self, op: &Op, from_error: bool) -> Result<(), VirErr> {
-        let ops = self.handle_proof_body_recommends(op.get_function(), from_error)?;
-        self.append_to_front_of_queue(ops);
-        Ok(())
-    }
-
-    pub fn retry_with_expand_errors(
+    fn handle_proof_body_normal_for_proof_and_exec(
         &mut self,
-        op: &Op,
-        expand_targets: Vec<Message>,
-    ) -> Result<(), VirErr> {
-        let ops = self.handle_proof_body_expand(op.get_function(), expand_targets)?;
-        self.append_to_front_of_queue(ops);
-        Ok(())
-    }
-
-    pub fn retry_with_profile(
-        &mut self,
-        query_op: QueryOp,
-        commands_with_context_list: Arc<Vec<CommandsWithContext>>,
-        snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
-        function: &Function,
-    ) {
-        let op = Op {
-            kind: OpKind::Query {
-                query_op,
-                commands_with_context_list,
-                snap_map,
-                profile_rerun: true,
-            },
-            function: Some(function.clone()),
-        };
-        self.current_queue.push_back(op);
-    }
-
-    fn append_to_front_of_queue(&mut self, ops: Vec<Op>) {
-        for op in ops.into_iter().rev() {
-            self.current_queue.push_front(op);
+        function: Function,
+    ) -> Result<Vec<Op>, VirErr> {
+        if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
+            Ok(vec![])
+        } else {
+            self.handle_proof_body(function, Style::Normal, None)
         }
     }
 
@@ -297,37 +257,6 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         Ok((ops, post_ops))
     }
 
-    fn handle_proof_body_normal_for_proof_and_exec(
-        &mut self,
-        function: Function,
-    ) -> Result<Vec<Op>, VirErr> {
-        if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
-            Ok(vec![])
-        } else {
-            self.handle_proof_body(function, Style::Normal, None)
-        }
-    }
-
-    fn handle_proof_body_expand(
-        &mut self,
-        function: Function,
-        expand_targets: Vec<Message>,
-    ) -> Result<Vec<Op>, VirErr> {
-        self.handle_proof_body(function, Style::Expanded, Some(expand_targets))
-    }
-
-    fn handle_proof_body_recommends(
-        &mut self,
-        function: Function,
-        from_error: bool,
-    ) -> Result<Vec<Op>, VirErr> {
-        self.handle_proof_body(
-            function,
-            if from_error { Style::RecommendsFollowupFromError } else { Style::RecommendsChecked },
-            None,
-        )
-    }
-
     fn handle_proof_body(
         &mut self,
         function: Function,
@@ -373,6 +302,83 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         self.ctx.expand_flag = false;
 
         Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function)])
+    }
+}
+
+impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
+    pub fn next(&mut self) -> Option<Op> {
+        let op_opt = self.current_queue.pop_front();
+        if let Some(op) = &op_opt {
+            if matches!(op.kind, OpKind::Query { .. }) {
+                assert!(self.op_generator.bucket.contains(&op.get_function().x.name));
+            }
+        }
+        op_opt
+    }
+
+    pub fn ctx(&self) -> &vir::context::Ctx {
+        &self.op_generator.ctx
+    }
+
+    pub fn retry_with_recommends(&mut self, op: &Op, from_error: bool) -> Result<(), VirErr> {
+        let ops = self.handle_proof_body_recommends(op.get_function().clone(), from_error)?;
+        self.append_to_front_of_queue(ops);
+        Ok(())
+    }
+
+    pub fn retry_with_expand_errors(
+        &mut self,
+        op: &Op,
+        expand_targets: Vec<Message>,
+    ) -> Result<(), VirErr> {
+        let ops = self.handle_proof_body_expand(op.get_function().clone(), expand_targets)?;
+        self.append_to_front_of_queue(ops);
+        Ok(())
+    }
+
+    pub fn retry_with_profile(
+        &mut self,
+        query_op: QueryOp,
+        commands_with_context_list: Arc<Vec<CommandsWithContext>>,
+        snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
+        function: &Function,
+    ) {
+        let op = Op {
+            kind: OpKind::Query {
+                query_op,
+                commands_with_context_list,
+                snap_map,
+                profile_rerun: true,
+            },
+            function: Some(function.clone()),
+        };
+        self.current_queue.push_back(op);
+    }
+
+    fn append_to_front_of_queue(&mut self, ops: Vec<Op>) {
+        for op in ops.into_iter().rev() {
+            self.current_queue.push_front(op);
+        }
+    }
+
+    fn handle_proof_body_expand(
+        &mut self,
+        function: Function,
+        expand_targets: Vec<Message>,
+    ) -> Result<Vec<Op>, VirErr> {
+        self.op_generator.handle_proof_body(function, Style::Expanded, Some(expand_targets))
+    }
+
+    fn handle_proof_body_recommends(
+        &mut self,
+        function: Function,
+        from_error: bool,
+    ) -> Result<Vec<Op>, VirErr> {
+        self.op_generator.handle_proof_body(
+            function,
+            if from_error { Style::RecommendsFollowupFromError } else { Style::RecommendsChecked },
+            None,
+        )
     }
 }
 
