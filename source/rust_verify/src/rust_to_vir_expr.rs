@@ -1398,6 +1398,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
                     mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
                 }
+                Res::Def(DefKind::Static(Mutability::Not), id) => {
+                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let fun = FunX { path };
+                    mk_expr(ExprX::StaticVar(Arc::new(fun)))
+                }
                 Res::Def(DefKind::Fn | DefKind::AssocFn, _) => {
                     unsupported_err!(expr.span, "using functions as values");
                 }

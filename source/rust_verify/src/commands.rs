@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::Visibility;
-use vir::ast::{Fun, Function, Krate, Mode, VirErr};
+use vir::ast::{Fun, Function, ItemKind, Krate, Mode, VirErr};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
@@ -279,7 +279,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         &mut self,
         function: Function,
     ) -> Result<Vec<Op>, VirErr> {
-        if function.x.mode == Mode::Spec && !function.x.is_const {
+        if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
             Ok(vec![])
         } else {
             self.handle_proof_body(function, Style::Normal, None)
@@ -338,7 +338,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             sst_map,
             &function,
             // TODO revisit if we still need FuncDefPhase
-            if function.x.mode == Mode::Spec && !function.x.is_const {
+            if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
                 vir::func_to_air::FuncDefPhase::CheckingSpecs
             } else {
                 vir::func_to_air::FuncDefPhase::CheckingProofExec

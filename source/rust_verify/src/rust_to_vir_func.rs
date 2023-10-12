@@ -24,7 +24,7 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, MaskSpec, Mode, ParamX,
     SpannedTyped, Typ, TypDecoration, TypX, VirErr,
 };
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -790,7 +790,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease_by: header.decrease_by,
         broadcast_forall: None,
         mask_spec: header.invariant_mask,
-        is_const: false,
+        item_kind: ItemKind::Function,
         publish,
         attrs: Arc::new(fattrs),
         body: body_with_mut_redecls,
@@ -984,7 +984,7 @@ pub(crate) fn get_external_def_id<'tcx>(
     }
 }
 
-pub(crate) fn check_item_const<'tcx>(
+pub(crate) fn check_item_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     span: Span,
@@ -994,16 +994,36 @@ pub(crate) fn check_item_const<'tcx>(
     attrs: &[Attribute],
     typ: &Typ,
     body_id: &BodyId,
+    is_static: bool,
 ) -> Result<(), VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = Arc::new(FunX { path: path.clone() });
     let mode_opt = crate::attributes::get_mode_opt(attrs);
-    let (func_mode, body_mode, ret_mode) = match mode_opt {
-        // By default, a const is dual-use as spec and exec,
-        // where the function is considered spec but the return value and body are exec:
-        None => (Mode::Spec, Mode::Exec, Mode::Exec),
-        // Otherwise, a const is a single-mode function:
-        Some(m) => (m, m, m),
+    let (func_mode, body_mode, ret_mode) = if is_static {
+        // All statics are exec
+        // For consistency with const, require the user to mark it 'exec' explicitly
+        match mode_opt {
+            None => {
+                return err_span(
+                    span,
+                    "explicitly mark the static as `exec` and use an `ensures` clause",
+                );
+            }
+            Some(m) => {
+                if m != Mode::Exec {
+                    return err_span(span, "a static item can only have mode `exec`");
+                }
+            }
+        }
+        (Mode::Exec, Mode::Exec, Mode::Exec)
+    } else {
+        match mode_opt {
+            // By default, a const is dual-use as spec and exec,
+            // where the function is considered spec but the return value and body are exec:
+            None => (Mode::Spec, Mode::Exec, Mode::Exec),
+            // Otherwise, a const is a single-mode function:
+            Some(m) => (m, m, m),
+        }
     };
     let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
@@ -1057,13 +1077,13 @@ pub(crate) fn check_item_const<'tcx>(
         params: Arc::new(vec![]),
         ret,
         require: Arc::new(vec![]),
-        ensure: header.const_ensures(&name),
+        ensure: header.const_static_ensures(&name, is_static),
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
         broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
-        is_const: true,
+        item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         publish: get_publish(&vattrs).0,
         attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
@@ -1169,7 +1189,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
-        is_const: false,
+        item_kind: ItemKind::Function,
         publish: None,
         attrs: Default::default(),
         body: None,

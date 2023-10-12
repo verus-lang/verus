@@ -1,13 +1,13 @@
 use crate::ast::{
-    Fun, Function, FunctionKind, Ident, Idents, Mode, Param, ParamX, Params, SpannedTyped, Typ,
-    TypX, Typs, VirErr,
+    Fun, Function, FunctionKind, Ident, Idents, ItemKind, Mode, Param, ParamX, Params,
+    SpannedTyped, Typ, TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
 use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
-    prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
+    prefix_recursive_fun, prefix_requires, static_name, suffix_global_id, suffix_local_stmt_id,
     suffix_typ_param_id, suffix_typ_param_ids, unique_local, CommandsWithContext, SnapPos, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
@@ -577,6 +577,16 @@ pub fn func_decl_to_air(
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
     }
 
+    if matches!(function.x.item_kind, ItemKind::Static) {
+        // Declare static%foo, which represents the result of 'foo()' when executed
+        // at the beginning of a program (here, `foo` is a 'static' item which we
+        // represent as 0-argument function)
+        decl_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
+            static_name(&function.x.name),
+            typ_to_air(ctx, &function.x.ret.x.typ),
+        )))));
+    }
+
     Ok(Arc::new(decl_commands))
 }
 
@@ -727,8 +737,8 @@ pub fn func_def_to_air(
     phase: FuncDefPhase,
     checking_spec_preconditions: bool,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
-    let erasure_mode = match (function.x.mode, function.x.ret.x.mode, function.x.is_const) {
-        (_, Mode::Exec, true) => Mode::Exec,
+    let erasure_mode = match (function.x.mode, function.x.ret.x.mode, function.x.item_kind) {
+        (_, Mode::Exec, ItemKind::Const) => Mode::Exec,
         (mode, _, _) => mode,
     };
     match (phase, erasure_mode, checking_spec_preconditions, &function.x.body) {
@@ -934,6 +944,7 @@ pub fn func_def_to_air(
                 function.x.attrs.nonlinear,
                 dest,
                 PostConditionKind::Ensures,
+                &state.statics.iter().cloned().collect(),
             )?;
 
             state.finalize();

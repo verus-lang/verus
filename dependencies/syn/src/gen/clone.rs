@@ -1416,12 +1416,16 @@ impl Clone for ItemStatic {
         ItemStatic {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            publish: self.publish.clone(),
+            mode: self.mode.clone(),
             static_token: self.static_token.clone(),
             mutability: self.mutability.clone(),
             ident: self.ident.clone(),
             colon_token: self.colon_token.clone(),
             ty: self.ty.clone(),
+            ensures: self.ensures.clone(),
             eq_token: self.eq_token.clone(),
+            block: self.block.clone(),
             expr: self.expr.clone(),
             semi_token: self.semi_token.clone(),
         }

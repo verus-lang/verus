@@ -951,6 +951,19 @@ fn erase_expr<'tcx>(
                         return mk_exp(ExpX::Call(fun_exp, vec![], vec![]));
                     }
                 }
+                Res::Def(DefKind::Static(_), id) => {
+                    if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                        None
+                    } else {
+                        let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+                        let fun_name = Arc::new(FunX { path: vir_path });
+                        let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
+                        let e = mk_exp1(ExpX::Call(fun_exp, vec![], vec![]));
+                        // The function we emit to represent the static returns a
+                        // &'static reference. So we need to deref here
+                        mk_exp(ExpX::Deref(e))
+                    }
+                }
                 Res::Def(DefKind::ConstParam, id) => {
                     let local_id = id.as_local().expect("ConstParam local");
                     let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
@@ -1358,7 +1371,7 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
     }
 }
 
-fn erase_const<'tcx>(
+fn erase_const_or_static<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
     state: &mut State,
@@ -1366,6 +1379,7 @@ fn erase_const<'tcx>(
     id: DefId,
     external_body: bool,
     body_id: &BodyId,
+    is_static: bool,
 ) {
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     if let Some(s) = path.segments.last() {
@@ -1395,6 +1409,30 @@ fn erase_const<'tcx>(
             state.enclosing_fun_id = None;
             body_exp
         };
+
+        let mut return_typ = typ;
+        let body_span = body.value.span;
+        let mut body = Box::new((body_span, ExpX::Block(vec![], Some(body_exp))));
+
+        if is_static {
+            // For static `static x: T` we change it to
+            // fn x() -> &'static T {
+            //     static_ref(body)
+            // }
+
+            let target = Box::new((
+                body_span,
+                ExpX::Var(Id::new(IdKind::Builtin, 0, "static_ref".to_string())),
+            ));
+            body = Box::new((body_span, ExpX::Call(target, vec![return_typ.clone()], vec![body])));
+            body = Box::new((body_span, ExpX::Block(vec![], Some(body))));
+            return_typ = Box::new(TypX::Ref(
+                return_typ,
+                Some(Id::new(IdKind::Builtin, 0, "'static".to_string())),
+                Mutability::Not,
+            ));
+        }
+
         // Turn const decl into fn decl so we can use the non-const ExpX::Op in the body:
         let decl = FunDecl {
             sig_span: span,
@@ -1403,8 +1441,8 @@ fn erase_const<'tcx>(
             generic_params: vec![],
             generic_bounds: vec![],
             params: vec![],
-            ret: Some((None, typ)),
-            body: Box::new((body.value.span, ExpX::Block(vec![], Some(body_exp)))),
+            ret: Some((None, return_typ)),
+            body: body,
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
@@ -2214,7 +2252,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::ForeignMod { .. } => {}
                         ItemKind::Macro(..) => {}
                         ItemKind::TyAlias(..) => {}
-                        ItemKind::Static(..) => {}
                         ItemKind::GlobalAsm(..) => {}
                         ItemKind::Struct(_s, _generics) => {
                             state.reach_datatype(&ctxt, id);
@@ -2222,8 +2259,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::Enum(_e, _generics) => {
                             state.reach_datatype(&ctxt, id);
                         }
-                        ItemKind::Const(_ty, body_id) => {
-                            erase_const(
+                        ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, _, body_id) => {
+                            erase_const_or_static(
                                 krate,
                                 &mut ctxt,
                                 &mut state,
@@ -2231,6 +2268,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 id,
                                 vattrs.external_body,
                                 body_id,
+                                matches!(&item.kind, ItemKind::Static(..)),
                             );
                         }
                         ItemKind::Fn(sig, _generics, body_id) => {

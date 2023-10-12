@@ -47,6 +47,7 @@ enum App {
     Other(u64),
     VarAt(UniqueIdent, VarAt),
     BitOp(BitOpName),
+    StaticVar(Fun),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -97,6 +98,9 @@ impl std::fmt::Debug for TermX {
             }
             TermX::App(App::BitOp(bop), _) => {
                 write!(f, "BitOp: {:?}", bop)
+            }
+            TermX::App(App::StaticVar(fun), _) => {
+                write!(f, "StaticVar: {:?}", fun)
             }
         }
     }
@@ -264,6 +268,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::VarLoc(..) | ExpX::Loc(..) => panic!("unexpected Loc/VarLoc in quantifier"),
         ExpX::VarAt(x, _) => {
             (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
+        }
+        ExpX::StaticVar(x) => {
+            (true, Arc::new(TermX::App(App::StaticVar(x.clone()), Arc::new(vec![]))))
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {

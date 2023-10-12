@@ -86,6 +86,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_static_fail verus_code! {
+        exec static C: u8 = 255 + 1 /* FAILS */;
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] test_literal_out_of_range verus_code! {
         const C: u8 = 256 - 1;
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")

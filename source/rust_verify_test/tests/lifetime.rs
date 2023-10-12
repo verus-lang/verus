@@ -545,3 +545,14 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] tracked_static_ref_checks_outlives verus_code! {
+        pub struct X { }
+        pub proof fn test<'a>(tracked x: &'a X) {
+            // Make sure we disallow this (otherwise we would be able to upgrade
+            // a reference &'a to &'static)
+            let y = vstd::modes::tracked_static_ref(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "borrowed data escapes outside of function")
+}
