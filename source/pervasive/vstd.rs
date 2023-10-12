@@ -10,9 +10,6 @@
 #![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
-#![feature(const_mut_refs)]
-#![feature(const_refs_to_cell)]
-
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 
 #[cfg(feature = "alloc")]

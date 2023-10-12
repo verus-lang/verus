@@ -132,7 +132,16 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub const fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
+    pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
+    {
+        let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
+        (p, Tracked::assume_new())
+    }
+
+    #[inline(always)]
+    #[verifier(external_body)]
+    pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm)@ ===
               pcell_opt![ self.id() => Option::None ],
@@ -220,14 +229,16 @@ impl<V> PCell<V> {
         self.take(Tracked(&mut perm))
     }
 
-    #[inline(always)]
-    pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
-        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
-    {
-        let (p, Tracked(mut t)) = Self::empty();
-        p.put(Tracked(&mut t), v);
-        (p, Tracked(t))
-    }
+    // TODO this should replace the external_body implementation of `new` above;
+    // however it requires unstable features: const_mut_refs and const_refs_to_cell
+    //#[inline(always)]
+    //pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+    //    ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
+    //{
+    //    let (p, Tracked(mut t)) = Self::empty();
+    //    p.put(Tracked(&mut t), v);
+    //    (p, Tracked(t))
+    //}
 }
 
 impl<V: Copy> PCell<V> {
