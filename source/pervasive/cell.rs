@@ -122,7 +122,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+    pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures pt.1@@ ===
             pcell_opt![ pt.0.id() => Option::None ],
     {
@@ -132,7 +132,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
+    pub const fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm)@ ===
               pcell_opt![ self.id() => Option::None ],
@@ -221,7 +221,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    pub fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+    pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
     {
         let (p, Tracked(mut t)) = Self::empty();
