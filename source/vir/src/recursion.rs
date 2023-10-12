@@ -481,6 +481,16 @@ pub(crate) fn check_termination_stm(
                 Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
             Ok(stm_block)
         }
+        StmX::Fuel(callee, fuel) if *fuel >= 1 => {
+            let f2 = &ctx.func_map[callee];
+            if f2.x.attrs.broadcast_forall && is_recursive_call(&ctxt, callee, &None) {
+                // This isn't needed for soundness, since the broadcast_forall axiom isn't
+                // declared until after this SCC, but we might as well signal an error,
+                // since this reveal will have no effect.
+                return Err(error(&s.span, "cannot recursively reveal broadcast_forall"));
+            }
+            Ok(s.clone())
+        }
         _ => Ok(s.clone()),
     })?;
     let (decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exps);
@@ -566,6 +576,13 @@ pub(crate) fn expand_call_graph(
 
                 // f --> f2
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
+            }
+            ExprX::Fuel(callee, fuel) if *fuel >= 1 => {
+                let f2 = &func_map[callee];
+                if f2.x.attrs.broadcast_forall {
+                    // f --> f2
+                    call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
+                }
             }
             _ => {}
         }

@@ -363,8 +363,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let Some(fs) = ctxt.all_functions_in_each_module.get(&m) {
                 for f in fs {
                     let function = &ctxt.function_map[f];
-                    if function.x.attrs.broadcast_forall {
+                    if function.x.attrs.broadcast_forall && function.x.body.is_none() {
                         // If we reach m, we reach all broadcast_forall functions in m
+                        // TODO: remove this and rely on explicit reaching of broadcast_forall
                         reach_function(ctxt, state, f);
                     }
                 }
