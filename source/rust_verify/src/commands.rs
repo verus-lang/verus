@@ -338,7 +338,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             sst_map,
             &function,
             // TODO revisit if we still need FuncDefPhase
-            if function.x.mode == Mode::Spec && matches!(function.x.item_kind, ItemKind::Const) {
+            if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
                 vir::func_to_air::FuncDefPhase::CheckingSpecs
             } else {
                 vir::func_to_air::FuncDefPhase::CheckingProofExec
