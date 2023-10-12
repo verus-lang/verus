@@ -42,6 +42,7 @@ pub struct InstantiationGraph {
     pub module: String,
     pub function: Option<String>,
     pub quantifiers: HashSet<Quantifier>,
+    pub instantiations: HashSet<Instantiation>,
     pub graph: Graph<Instantiation, ()>,
 }
 

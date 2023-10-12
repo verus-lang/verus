@@ -340,13 +340,28 @@ fn run(
                 })
                 .collect(),
         );
+        let raw_counts_data = serde_json::Value::Array(
+            datum
+                .raw_counts_by_module
+                .into_iter()
+                .map(|ModuleBlames { module, count, fraction }| {
+                    serde_json::json!({
+                        "module": module,
+                        "count": count,
+                        "fraction": fraction,
+                    })
+                })
+                .collect(),
+        );
         let mut value: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
         value.insert("bucket_name".to_owned(), datum.bucket_name.into());
         value.insert("module".to_owned(), datum.module.into());
         value.insert("function".to_owned(), datum.function.clone().into());
         value.insert("file_path".to_owned(), datum.file_path.into());
         value.insert("total_instantiation_count".to_owned(), datum.info.total_insts.into());
+        value.insert("total_instantiation_count_old".to_owned(), datum.info.total_insts_old.into());
         value.insert("module_blames".to_owned(), data);
+        value.insert("raw_counts_by_module".to_owned(), raw_counts_data);
         if let Some((function_times, function)) =
             datum.function.and_then(|function| times.map(|times| (times, function)))
         {
@@ -420,6 +435,7 @@ struct ProcessFileOutputInfo {
     max_in_deg: u64,
     count_by_in_deg: Vec<u64>,
     roots: u64,
+    total_insts_old: u64,
     total_insts: u64,
 }
 
@@ -435,6 +451,7 @@ struct ProcessFileOutput {
     file_path: String,
     function: Option<String>,
     module_blames: Vec<ModuleBlames>,
+    raw_counts_by_module: Vec<ModuleBlames>,
     #[allow(dead_code)]
     info: ProcessFileOutputInfo,
 }
@@ -486,6 +503,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         pruned_graph.iter().map(|x| x.0).filter(|x| !all_tgts.contains(*x)).cloned().collect();
 
     // let simple_graph = make_graph(pruned_graph);
+    let total_insts = graph.instantiations.iter().count() as u64;
 
     let mut unique_id = 0u64;
     let mut quantifier_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
@@ -506,7 +524,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
     let mut module_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
         HashMap::new();
     let mut module_list = HashSet::new();
-    let (top_mods, total_insts) = merge_sibling_nodes(
+    let (top_mods, total_insts_old) = merge_sibling_nodes(
         &pruned_graph,
         &roots,
         &mut module_merged_graph,
@@ -535,6 +553,26 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
 
     let simple_graph = make_graph(module_merged_graph);
 
+    let raw_counts_by_module = {
+        let mut raw_counts_by_module: HashMap<_, u64> = HashMap::new();
+        for module in graph.instantiations.iter().filter_map(|x| x.quantifier.module.clone()) {
+            *raw_counts_by_module.entry(module).or_default() += 1;
+        }
+        let total_raw_count: u64 = raw_counts_by_module.values().sum();
+        let mut raw_counts_by_module: Vec<ModuleBlames> = raw_counts_by_module
+            .into_iter()
+            .map(|(modname, e)| ModuleBlames {
+                module: modname,
+                count: e,
+                fraction: e as f64 / total_raw_count as f64,
+            })
+            .collect();
+        raw_counts_by_module.sort_unstable_by_key(
+            |ModuleBlames { module: _, count, fraction: _ }| std::cmp::Reverse(*count),
+        );
+        raw_counts_by_module
+    };
+
     let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
     simple_graph.to_dot_file(
@@ -552,17 +590,22 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         |e| Some(format!("{:.2}", (*e as f64 / total_insts as f64) * 100.0)),
     )?;
 
+    let raw_count_count_dbg: u64 = raw_counts_by_module.iter().map(|b| b.count).sum();
+    dbg!(&total_insts, &raw_count_count_dbg);
+
     Ok(ProcessFileOutput {
         bucket_name: graph.bucket_name,
         module: graph.module,
         file_path: file_stem.to_str().unwrap().to_string(),
         function: graph.function,
         module_blames,
+        raw_counts_by_module,
         info: ProcessFileOutputInfo {
             is_cyclic,
             max_in_deg,
             count_by_in_deg,
             roots: roots.len() as u64,
+            total_insts_old,
             total_insts,
         },
     })

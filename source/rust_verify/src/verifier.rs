@@ -2055,12 +2055,14 @@ fn write_instantiation_graph(
             graph_src.insert(((), instantiations[tgt].clone()));
         }
     }
+    let instantiations: HashSet<Instantiation> = instantiations.values().cloned().collect();
     let quantifiers = quantifiers.into_values().collect();
     let instantiation_graph = InstantiationGraph {
         bucket_name: bucket_id.to_log_string(),
         module: module_name(bucket_id.module()),
         function: op.map(|op| fun_as_friendly_rust_name(&op.function.x.name)),
         quantifiers,
+        instantiations,
         graph: Graph(graph),
     };
     let file_name = profile_file_name.with_extension("graph");

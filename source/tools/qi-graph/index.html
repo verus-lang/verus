@@ -125,11 +125,11 @@
         }
 
         const module_blames = d["module_blames"];
-        module_blames.sort((a, b) => a.module_depth - b.module_depth);
+        // module_blames.sort((a, b) => a.module_depth - b.module_depth);
 
-        {
+        function plotblames(module_blames, color) {
           const margin = { top: 10, right: 10, bottom: 20, left: 200 },
-                width = 400 - margin.left - margin.right,
+                width = 320 - margin.left - margin.right,
                 height = module_blames.length * 10;
 
           const div = chartContainer.append("div")
@@ -172,8 +172,18 @@
               .attr("height", y.bandwidth())
               .attr("x", 0)
               .attr("width", d => x(d.fraction))
-              .attr("fill", "orange"); // d => `rgb(0, 0, ${d.module_depth * 50})`); 
+              .attr("fill", color); // d => `rgb(0, 0, ${d.module_depth * 50})`); 
         }
+
+        plotblames(module_blames, "orange");
+
+        const raw_counts_by_module = d["raw_counts_by_module"].map(d => {
+            d["fraction"] = d["fraction"] / 100.0
+            return d;
+        })
+        // raw_counts_by_module.sort((a, b) => a.module_depth - b.module_depth);
+
+        plotblames(raw_counts_by_module, "blue");
       });
     });
   }
