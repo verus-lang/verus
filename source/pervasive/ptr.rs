@@ -720,4 +720,34 @@ impl<V> PPtr<V> {
     }
 }
 
+// Manipulating the contents in a PointsToRaw
+
+impl PPtr<u8> {
+    #[verifier::external_body]
+    fn copy_nonoverlapping(&self, dst: PPtr<u8>, count: usize, perm_src: &PointsToRaw, perm_dst: &mut PointsToRaw)
+        requires perm_src.contains_range(self.id(), count as int),
+            old(perm_dst).contains_range(dst.id(), count as int),
+        ensures
+            perm_dst@ == old(perm_dst)@.union_prefer_right(
+                perm_src@.restrict(set_int_range(self.id(), self.id() + count)))
+    {
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.uptr, dst.uptr, count)
+        }
+    }
+
+    #[verifier::external_body]
+    fn write_bytes(&self, val: u8, count: usize, perm: &mut PointsToRaw)
+        requires old(perm).contains_range(self.id(), count as int),
+        ensures
+            perm@ == old(perm)@.union_prefer_right(
+                Map::new(|addr| set_int_range(self.id(), self.id() + count).contains(addr),
+                    |addr| val))
+    {
+        unsafe {
+            core::ptr::write_bytes::<u8>(self.uptr, val, count);
+        }
+    }
+}
+
 }
