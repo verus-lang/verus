@@ -939,3 +939,11 @@ test_verify_one_file! {
         } }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] lifetime_generate_trait_lifetime_arg verus_code! {
+        trait T<'a> { type X; }
+        struct S { }
+        impl<'a> T<'a> for S { type X = u8; }
+    } => Ok(())
+}
