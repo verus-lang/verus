@@ -11,6 +11,7 @@ use crate::pervasive::*;
 use crate::modes::*;
 use crate::prelude::*;
 use crate::layout::*;
+use crate::set_lib::set_int_range;
 
 verus!{
 
@@ -196,11 +197,6 @@ pub tracked struct PointsToRaw {
     no_copy: NoCopy,
 }
 
-pub ghost struct PointsToRawData {
-    pub pptr: int,
-    pub size: nat,
-}
-
 #[verifier(external_body)]
 pub tracked struct Dealloc<#[verifier(strictly_positive)] V> {
     phantom: marker::PhantomData<V>,
@@ -251,8 +247,7 @@ impl<V> PointsTo<V> {
         requires
             self@.value.is_None(),
         ensures
-            points_to_raw@.pptr === self@.pptr,
-            points_to_raw@.size === size_of::<V>(),
+            points_to_raw.is_range(self@.pptr, size_of::<V>() as int),
             is_sized::<V>(),
     {
         unimplemented!();
@@ -263,8 +258,7 @@ impl<V> PointsTo<V> {
         requires
             self@.value.is_None(),
         ensures
-            points_to_raw@.pptr === self@.pptr,
-            points_to_raw@.size === size_of::<V>(),
+            points_to_raw.is_range(self@.pptr, size_of::<V>() as int),
             is_sized::<V>(),
     {
         unimplemented!();
@@ -272,50 +266,62 @@ impl<V> PointsTo<V> {
 }
 
 impl PointsToRaw {
-    pub spec fn view(self) -> PointsToRawData;
+    pub spec fn view(self) -> Map<int, u8>;
+
+    pub open spec fn contains_range(self, start: int, len: int) -> bool {
+        set_int_range(start, start + len).subset_of(self@.dom())
+    }
+
+    pub open spec fn is_range(self, start: int, len: int) -> bool {
+        set_int_range(start, start + len) == self@.dom()
+    }
+
+    pub open spec fn spec_index(self, i: int) -> u8 {
+        self@[i]
+    }
 
     #[verifier(external_body)]
     pub proof fn is_nonnull(tracked &self)
-        ensures self@.pptr != 0,
+        ensures !self@.dom().contains(0)
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
     pub proof fn is_in_bounds(tracked &self)
-        ensures (self@.pptr as usize) as int == self@.pptr,
-            ((self@.pptr + self@.size) as usize) as int == self@.pptr + self@.size
+        ensures forall |i: int| self@.dom().contains(i) ==> 0 < i <= usize::MAX,
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
     pub proof fn empty() -> (tracked points_to_raw: Self)
+        ensures points_to_raw@ == Map::<int, u8>::empty(),
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
-    pub proof fn into_typed<V>(tracked self) -> (tracked points_to: PointsTo<V>)
+    pub proof fn into_typed<V>(tracked self, start: int) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
-            self@.size === size_of::<V>(),
-            self@.pptr % align_of::<V>() as int === 0,
+            start % align_of::<V>() as int == 0,
+            self.is_range(start, size_of::<V>() as int),
         ensures
-            points_to@.pptr === self@.pptr,
+            points_to@.pptr === start,
             points_to@.value === None,
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
-    pub proof fn borrow_typed<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
+    pub proof fn borrow_typed<V>(tracked &self, start: int) -> (tracked points_to: &PointsTo<V>)
         requires
             is_sized::<V>(),
-            self@.size === size_of::<V>(),
-            self@.pptr % align_of::<V>() as int == 0,
+            start % align_of::<V>() as int == 0,
+            self.contains_range(start, size_of::<V>() as int),
         ensures
-            points_to@.pptr === self@.pptr,
+            points_to@.pptr === start,
             points_to@.value === None,
     {
         unimplemented!();
@@ -323,48 +329,40 @@ impl PointsToRaw {
 
     #[verifier(external_body)]
     pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
-        requires
-            self@.pptr + self@.size == other@.pptr,
         ensures
-            joined@.pptr == self@.pptr,
-            joined@.size == self@.size + other@.size
+            self@.dom().disjoint(other@.dom()),
+            joined@ == self@.union_prefer_right(other@),
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
     pub proof fn borrow_join<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
-        requires
-            self@.pptr + self@.size == other@.pptr,
         ensures
-            joined@.pptr == self@.pptr,
-            joined@.size == self@.size + other@.size
+            (forall |i| #![trigger self@.dom().contains(i), other@.dom().contains(i)]
+                self@.dom().contains(i) && other@.dom().contains(i) ==> self@[i] == other@[i]),
+            joined@ == self@.union_prefer_right(other@),
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
-    pub proof fn split(tracked self, len1: int) -> (tracked res: (Self, Self))
+    pub proof fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
         requires
-            len1 <= self@.size
+            range.subset_of(self@.dom()),
         ensures
-            res.0@.pptr == self@.pptr,
-            res.0@.size == len1,
-            res.1@.pptr == self@.pptr + len1,
-            res.1@.size == self@.size - len1,
+            res.0@ == self@.restrict(range),
+            res.1@ == self@.remove_keys(range),
     {
         unimplemented!();
     }
             
     #[verifier(external_body)]
-    pub proof fn borrow_split(tracked &self, len1: int) -> (tracked res: (&Self, &Self))
+    pub proof fn borrow_subset(tracked &self, range: Set<int>) -> (tracked res: &Self)
         requires
-            len1 <= self@.size
+            range.subset_of(self@.dom()),
         ensures
-            res.0@.pptr == self@.pptr,
-            res.0@.size == len1,
-            res.1@.pptr == self@.pptr + len1,
-            res.1@.size == self@.size - len1,
+            res@ == self@.restrict(range),
     {
         unimplemented!();
     }
@@ -511,7 +509,7 @@ impl<V> PPtr<V> {
         requires
             valid_layout(size, align),
         ensures
-            pt.1@@ === (PointsToRawData{ pptr: pt.0.id(), size: size as nat }),
+            pt.1@.is_range(size as int, align as int),
             pt.2@@ === (DeallocRawData{ pptr: pt.0.id(), size: size as nat, align: align as nat }),
             pt.0.id() % align as int == 0,
         opens_invariants none
@@ -666,8 +664,7 @@ impl<V> PPtr<V> {
         Tracked(dealloc): Tracked<DeallocRaw>
     )
         requires
-            perm@.pptr === self.id(),
-            perm@.size === size as nat,
+            perm.is_range(self.id(), size as int),
             dealloc@.pptr === self.id(),
             dealloc@.size === size as nat,
             dealloc@.align === align as nat,
