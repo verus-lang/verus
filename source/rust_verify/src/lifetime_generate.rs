@@ -395,7 +395,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 }
                 _ => state.datatype_name(&path),
             };
-            Box::new(TypX::Datatype(datatype_name, typ_args))
+            Box::new(TypX::Datatype(datatype_name, Vec::new(), typ_args))
         }
         TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
             // Note: even if rust_to_vir_base decides to normalize t,
@@ -416,7 +416,8 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                         let t = erase_ty(ctxt, state, &ty);
                         trait_typ_args.push(t);
                     }
-                    let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    let trait_as_datatype =
+                        Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
                     Box::new(TypX::Projection { self_typ, trait_as_datatype, name })
                 }
                 _ => panic!("unexpected TyKind::Alias"),
@@ -1094,7 +1095,7 @@ fn erase_expr<'tcx>(
                 let variant_opt =
                     if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
                 let spread = spread.map(|e| erase_expr(ctxt, state, expect_spec, e).expect("expr"));
-                let typ_args = if let box TypX::Datatype(_, typ_args) = expr_typ(state) {
+                let typ_args = if let box TypX::Datatype(_, _, typ_args) = expr_typ(state) {
                     typ_args
                 } else {
                     panic!("unexpected struct expression type")
@@ -1525,7 +1526,7 @@ fn erase_mir_generics<'tcx>(
                     let trait_typ_args =
                         substs.types().skip(1).map(|ty| erase_ty(ctxt, state, &ty)).collect();
                     let trait_path = state.trait_name(&trait_path);
-                    let datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    let datatype = Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
                     Some(Bound::Trait(datatype))
                 } else {
                     None
@@ -1931,13 +1932,20 @@ fn erase_impl<'tcx>(
                         &mut typ_params,
                         &mut generic_bounds,
                     );
+                    let mut trait_lifetime_args: Vec<Id> = Vec::new();
+                    for region in trait_ref.0.substs.regions() {
+                        if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
+                            trait_lifetime_args.push(id);
+                        }
+                    }
                     let generic_params =
                         lifetimes.into_iter().chain(typ_params.into_iter()).collect();
                     let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
                     let self_typ = erase_ty(ctxt, state, &self_ty);
                     let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id()).skip_binder();
                     let typ = erase_ty(ctxt, state, &ty);
-                    let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    let trait_as_datatype =
+                        Box::new(TypX::Datatype(trait_path, trait_lifetime_args, trait_typ_args));
                     let assoc = AssocTypeImpl {
                         generic_params,
                         generic_bounds,
