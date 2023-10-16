@@ -947,3 +947,14 @@ test_verify_one_file! {
         impl<'a> T<'a> for S { type X = u8; }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] lifetime_generate_trait_lifetime_arg_unsupported verus_code! {
+        trait T<'a> { type X; }
+        struct S { }
+        impl<'a> T<'a> for S { type X = u8; }
+        proof fn test1(x: <S as T>::X) {
+            assert(x < 256);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "does not yet support the following Rust feature: projection type")
+}
