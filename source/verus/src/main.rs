@@ -131,17 +131,15 @@ fn run() -> Result<std::process::ExitStatus, String> {
         }
     };
 
-    let z3_version_output = record
-        .then_some(())
-        .and_then(|()| z3_path)
-        .and_then(|ref z3_path| record::get_z3_version(z3_path));
-
     let original_args = args.clone();
 
     let source_file = record::find_source_file(&args);
 
-    let record_history_project_dirs: Option<(std::path::PathBuf, std::path::PathBuf)> = {
-        let source_file = source_file.as_ref()?;
+    let record_history_project_dirs: Option<(std::path::PathBuf, std::path::PathBuf)> = if let Ok(
+        source_file,
+    ) =
+        source_file.as_ref()
+    {
         let project_dir = source_file
             .exists()
             .then(|| ())
@@ -181,6 +179,8 @@ fn run() -> Result<std::process::ExitStatus, String> {
         } else {
             None
         }
+    } else {
+        None
     };
 
     if record || record_history_project_dirs.is_some() {
@@ -223,6 +223,11 @@ fn run() -> Result<std::process::ExitStatus, String> {
             }
         }
     } else {
+        let z3_version_output = record
+            .then_some(())
+            .and_then(|()| z3_path)
+            .and_then(|ref z3_path| record::get_z3_version(z3_path));
+
         let source_file = source_file?;
 
         let temp_dep_file = record::temp_dep_file_from_source_file(&source_file)?;
