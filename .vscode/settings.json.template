@@ -4,7 +4,7 @@
     "rust-analyzer.cargo.features": ["record-history"],
     "rust-analyzer.cargo.extraEnv": {
         "RUSTC_BOOTSTRAP": "1",
-        "RUSTFLAGS": "--cfg proc_macro_span --cfg verus_keep_ghost"
+        "RUSTFLAGS": "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations"
     },
     "rust-analyzer.runnableEnv": {
         "RUSTC_BOOTSTRAP": "1"
