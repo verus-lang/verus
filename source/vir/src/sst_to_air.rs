@@ -786,10 +786,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
         }
-        (ExpX::Call(f @ (CallFun::Fun(..) | CallFun::CheckTermination(_)), typs, args), false) => {
+        (ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args), false) => {
             let x_name = match f {
                 CallFun::Fun(x, _) => x.clone(),
-                CallFun::CheckTermination(x) => crate::def::prefix_recursive_fun(&x),
+                CallFun::Recursive(x) => crate::def::prefix_recursive_fun(&x),
                 _ => panic!(),
             };
             let name = suffix_global_id(&fun_to_air_ident(&x_name));
@@ -1643,6 +1643,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let func = &ctx.func_map[fun];
             if func.x.require.len() > 0
                 && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
+                // don't check recommends during decreases checking; these are separate passes:
+                && !ctx.checking_spec_decreases()
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();

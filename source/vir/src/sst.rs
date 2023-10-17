@@ -52,7 +52,7 @@ pub enum InternalFun {
 pub enum CallFun {
     // static/method Fun, plus an optional resolved Fun for methods
     Fun(Fun, Option<(Fun, Typs)>),
-    CheckTermination(Fun),
+    Recursive(Fun),
     InternalFun(InternalFun),
 }
 
