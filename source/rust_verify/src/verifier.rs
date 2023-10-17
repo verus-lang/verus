@@ -614,7 +614,7 @@ impl Verifier {
                             self.expand_targets.push(error.clone());
                         }
 
-                        if self.args.debug {
+                        if self.args.debugger {
                             if let Some(source_map) = source_map {
                                 let mut debugger =
                                     Debugger::new(air_model, assign_map, snap_map, source_map);
@@ -787,14 +787,14 @@ impl Verifier {
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = air::context::Context::new(message_interface.clone());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
-        air_context.set_debug(self.args.debug);
+        air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
             air_context.set_profile_with_logfile_name(
                 profile_file_name.to_str().expect("invalid prover log path").to_owned(),
             );
         }
 
-        if self.args.log_all || self.args.log_air_initial {
+        if self.args.log_all || self.args.log_args.log_air_initial {
             let file = self.create_log_file(
                 Some(bucket_id),
                 Self::log_fine_name_suffix(
@@ -807,7 +807,7 @@ impl Verifier {
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
-        if self.args.log_all || self.args.log_air_final {
+        if self.args.log_all || self.args.log_args.log_air_final {
             let file = self.create_log_file(
                 Some(bucket_id),
                 Self::log_fine_name_suffix(
@@ -820,7 +820,7 @@ impl Verifier {
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
-        if self.args.log_all || self.args.log_smt {
+        if self.args.log_all || self.args.log_args.log_smt {
             let file = self.create_log_file(
                 Some(bucket_id),
                 Self::log_fine_name_suffix(
@@ -1360,13 +1360,13 @@ impl Verifier {
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
-            self.args.debug,
+            self.args.debugger,
         )?;
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
-        if self.args.log_all || self.args.log_vir_poly {
+        if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &poly_krate, &self.args.vir_log_option);
+            vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
         }
 
         let (time_smt_init, time_smt_run) =
@@ -1405,12 +1405,13 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let interpreter_log_file =
-            Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_interpreter {
+        let interpreter_log_file = Arc::new(std::sync::Mutex::new(
+            if self.args.log_all || self.args.log_args.log_interpreter {
                 Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None
-            }));
+            },
+        ));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
@@ -1422,9 +1423,9 @@ impl Verifier {
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
-        if self.args.log_all || self.args.log_vir_simple {
+        if self.args.log_all || self.args.log_args.log_vir_simple {
             let mut file = self.create_log_file(None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &krate, &self.args.vir_log_option);
+            vir::printer::write_krate(&mut file, &krate, &self.args.log_args.vir_log_option);
         }
 
         #[cfg(debug_assertions)]
@@ -1485,7 +1486,7 @@ impl Verifier {
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
                 // give each bucket its own log file
                 let interpreter_log_file = Arc::new(std::sync::Mutex::new(
-                    if self.args.log_all || self.args.log_vir_simple {
+                    if self.args.log_all || self.args.log_args.log_vir_simple {
                         Some(self.create_log_file(
                             Some(bucket_id),
                             crate::config::INTERPRETER_FILE_SUFFIX,
@@ -1688,7 +1689,7 @@ impl Verifier {
         }
 
         // Log/display triggers
-        if self.args.log_all || self.args.log_triggers {
+        if self.args.log_all || self.args.log_args.log_triggers {
             let mut file = self.create_log_file(None, crate::config::TRIGGERS_FILE_SUFFIX)?;
             let chosen_triggers = global_ctx.get_chosen_triggers();
             for triggers in chosen_triggers {
@@ -1871,11 +1872,11 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
 
-        if self.args.log_all || self.args.log_vir {
+        if self.args.log_all || self.args.log_args.log_vir {
             let mut file = self
                 .create_log_file(None, crate::config::VIR_FILE_SUFFIX)
                 .map_err(map_err_diagnostics)?;
-            vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
+            vir::printer::write_krate(&mut file, &vir_crate, &self.args.log_args.vir_log_option);
         }
         let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
@@ -2063,7 +2064,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     Ok(vec![])
                 } else {
                     let log_lifetime =
-                        self.verifier.args.log_all || self.verifier.args.log_lifetime;
+                        self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
                     let lifetime_log_file = if log_lifetime {
                         let file = self
                             .verifier
