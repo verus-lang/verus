@@ -1207,17 +1207,18 @@ impl Verifier {
                                     reporter,
                                 ) {
                                     Ok(profiler) => {
-                                        write_instantiation_graph(
-                                            &bucket_id,
-                                            Some(&op),
-                                            &opgen.ctx.func_map,
-                                            &profiler,
-                                            &opgen.ctx.global.qid_map.borrow(),
-                                            profile_file_name,
-                                        );
-                                        // if capture profiles was passed, silence the report
-                                        // as we are only interested in the graph/profile data
                                         if !self.args.capture_profiles {
+                                            write_instantiation_graph(
+                                                &bucket_id,
+                                                Some(&op),
+                                                &opgen.ctx.func_map,
+                                                &profiler,
+                                                &opgen.ctx.global.qid_map.borrow(),
+                                                profile_file_name,
+                                            );
+                                        } else {
+                                            // if capture profiles was passed, silence the report
+                                            // as we are only interested in the graph/profile data
                                             reporter.report(
                                                 &note_bare(format!(
                                                     "Profile statistics for {}",
@@ -1307,15 +1308,16 @@ impl Verifier {
                     reporter,
                 ) {
                     Ok(profiler) => {
-                        write_instantiation_graph(
-                            &bucket_id,
-                            None,
-                            &opgen.ctx.func_map,
-                            &profiler,
-                            &opgen.ctx.global.qid_map.borrow(),
-                            profile_all_file_name,
-                        );
-                        if !self.args.capture_profiles {
+                        if self.args.capture_profiles {
+                            write_instantiation_graph(
+                                &bucket_id,
+                                None,
+                                &opgen.ctx.func_map,
+                                &profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                                profile_all_file_name,
+                            );
+                        } else {
                             reporter.report(
                                 &note_bare(format!(
                                     "Profile statistics for {}",
