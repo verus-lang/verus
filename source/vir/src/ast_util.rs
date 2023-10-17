@@ -1,8 +1,8 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX, GenericBound,
-    GenericBoundX, Ident, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
-    TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, Variant, Variants, VirErr,
-    Visibility,
+    GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path, PathX, Quant,
+    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, Variant, Variants,
+    VirErr, Visibility,
 };
 use crate::messages::{error, Span};
 use crate::prelude::ArchWordBits;
@@ -603,5 +603,15 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::StrSlice => format!("StrSlice"),
         TypX::Char => format!("char"),
+    }
+}
+
+impl ItemKind {
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            ItemKind::Function => "function",
+            ItemKind::Const => "const item",
+            ItemKind::Static => "static item",
+        }
     }
 }

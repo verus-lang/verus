@@ -150,6 +150,7 @@ impl !Send for IsThread { }
 
 // TODO: remove this when !Sync, !Send are supported by stable Rust
 #[cfg(not(verus_keep_ghost))]
+#[verifier(external_body)]
 pub tracked struct IsThread { _no_send_sync: core::marker::PhantomData<*const ()> }
 
 impl IsThread {

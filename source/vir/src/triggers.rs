@@ -214,6 +214,7 @@ fn check_trigger_expr(
         &mut scope_map,
         &mut |exp, _scope_map| match &exp.x {
             ExpX::Const(_) => Ok(()),
+            ExpX::StaticVar(_) => Ok(()),
             ExpX::CallLambda(_, _, args) => check_trigger_expr_args(state, true, args),
             ExpX::Ctor(_, _, bs) => {
                 for b in bs.iter() {

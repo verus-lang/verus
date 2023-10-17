@@ -322,7 +322,7 @@ test_verify_one_file! {
         proof fn foo() {
             reveal_with_fuel(is_true, 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a function with a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a spec function with a decreases clause")
 }
 
 test_verify_one_file_with_options! {
@@ -893,4 +893,68 @@ test_verify_one_file! {
             assert forall |i| #![trigger f(a[i])] f(a[i]) by { } // <== error
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] inside_of_ghost_processed_as_ghost_issue815 verus_code! {
+        spec fn stuff_spec() -> bool { true }
+
+        #[verifier::when_used_as_spec(stuff_spec)]
+        fn stuff() -> bool { true }
+
+        // Test to check if properly determine ghostness withing a Ghost(...) expression
+
+        fn test() {
+            // at the time of writing,
+            // when_used_as_spec is processed via the is_ghost flag in rust_to_vir
+
+            let x: Ghost<bool> = Ghost(stuff());
+            assert(x@ == true);
+        }
+
+        fn test2() {
+            // Likewise, ghostness determines whether the following command
+            // has a hard overflow-check (in ghost mode, it shouldn't)
+
+            let x: Ghost<u8> = Ghost(add(200u8, 200u8));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
+        use state_machines_macros::state_machine;
+
+        state_machine!{ MachineWithProof {
+        fields {
+            pub x: int,
+        }
+
+        // If the `pub` access specifier is added then the error message goes away
+        proof fn truey()
+            ensures true
+        {
+            assume(false);
+        }
+        } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_generate_trait_lifetime_arg verus_code! {
+        trait T<'a> { type X; }
+        struct S { }
+        impl<'a> T<'a> for S { type X = u8; }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_generate_trait_lifetime_arg_unsupported verus_code! {
+        trait T<'a> { type X; }
+        struct S { }
+        impl<'a> T<'a> for S { type X = u8; }
+        proof fn test1(x: <S as T>::X) {
+            assert(x < 256);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "does not yet support the following Rust feature: projection type")
 }

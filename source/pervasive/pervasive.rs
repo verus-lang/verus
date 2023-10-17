@@ -284,3 +284,44 @@ macro_rules! assert_by_contradiction_internal {
 /// # Macro Expansion (TODO)
 
 pub use builtin_macros::struct_with_invariants;
+
+verus!{
+
+use crate::view::View;
+
+#[cfg(feature = "alloc")]
+#[verifier::external]
+pub trait VecAdditionalExecFns<T> {
+    fn set(&mut self, i: usize, value: T);
+    fn set_and_swap(&mut self, i: usize, value: &mut T);
+}
+
+#[cfg(feature = "alloc")]
+impl<T> VecAdditionalExecFns<T> for Vec<T> {
+    /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
+
+    #[verifier::external_body]
+    fn set(&mut self, i: usize, value: T)
+        requires
+            i < old(self).len(),
+        ensures
+            self@ == old(self)@.update(i as int, value),
+    {
+        self[i] = value;
+    }
+
+    /// Replacement for `swap(&mut self[i], &mut value)` (which Verus does not support for technical reasons)
+
+    #[verifier::external_body]
+    fn set_and_swap(&mut self, i: usize, value: &mut T)
+        requires
+            i < old(self).len(),
+        ensures
+            self@ == old(self)@.update(i as int, *old(value)),
+            *value == old(self)@.index(i as int)
+    {
+        core::mem::swap(&mut self[i], value);
+    }
+}
+
+}

@@ -24,7 +24,7 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, KrateX, MaskSpec, Mode, ParamX,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, MaskSpec, Mode, ParamX,
     SpannedTyped, Typ, TypDecoration, TypX, VirErr,
 };
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -790,7 +790,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease_by: header.decrease_by,
         broadcast_forall: None,
         mask_spec: header.invariant_mask,
-        is_const: false,
+        item_kind: ItemKind::Function,
         publish,
         attrs: Arc::new(fattrs),
         body: body_with_mut_redecls,
@@ -984,7 +984,7 @@ pub(crate) fn get_external_def_id<'tcx>(
     }
 }
 
-pub(crate) fn check_item_const<'tcx>(
+pub(crate) fn check_item_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     span: Span,
@@ -994,10 +994,37 @@ pub(crate) fn check_item_const<'tcx>(
     attrs: &[Attribute],
     typ: &Typ,
     body_id: &BodyId,
+    is_static: bool,
 ) -> Result<(), VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    let name = Arc::new(FunX { path });
-    let mode = get_mode(Mode::Exec, attrs);
+    let name = Arc::new(FunX { path: path.clone() });
+    let mode_opt = crate::attributes::get_mode_opt(attrs);
+    let (func_mode, body_mode, ret_mode) = if is_static {
+        // All statics are exec
+        // For consistency with const, require the user to mark it 'exec' explicitly
+        match mode_opt {
+            None => {
+                return err_span(
+                    span,
+                    "explicitly mark the static as `exec` and use an `ensures` clause",
+                );
+            }
+            Some(m) => {
+                if m != Mode::Exec {
+                    return err_span(span, "a static item can only have mode `exec`");
+                }
+            }
+        }
+        (Mode::Exec, Mode::Exec, Mode::Exec)
+    } else {
+        match mode_opt {
+            // By default, a const is dual-use as spec and exec,
+            // where the function is considered spec but the return value and body are exec:
+            None => (Mode::Spec, Mode::Exec, Mode::Exec),
+            // Otherwise, a const is a single-mode function:
+            Some(m) => (m, m, m),
+        }
+    };
     let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     if vattrs.external_fn_specification {
@@ -1011,35 +1038,54 @@ pub(crate) fn check_item_const<'tcx>(
         return Ok(());
     }
     let body = find_body(ctxt, body_id);
-    let vir_body = body_to_vir(ctxt, id, body_id, body, mode, vattrs.external_body)?;
+    let mut vir_body = body_to_vir(ctxt, id, body_id, body, body_mode, vattrs.external_body)?;
+    let header = vir::headers::read_header(&mut vir_body)?;
+    if header.require.len() + header.recommend.len() > 0 {
+        return err_span(span, "consts cannot have requires/recommends");
+    }
+    if ret_mode == Mode::Spec && header.ensure.len() > 0 {
+        return err_span(span, "spec functions cannot have ensures");
+    }
 
     let ret_name = Arc::new(RETURN_VALUE.to_string());
     let ret = ctxt.spanned_new(
         span,
-        ParamX { name: ret_name, typ: typ.clone(), mode, is_mut: false, unwrapped_info: None },
+        ParamX {
+            name: ret_name,
+            typ: typ.clone(),
+            mode: ret_mode,
+            is_mut: false,
+            unwrapped_info: None,
+        },
     );
+    let autospec = vattrs.autospec.clone().map(|method_name| {
+        let path = autospec_fun(&path, method_name.clone());
+        Arc::new(FunX { path })
+    });
+    let mut fattrs: FunctionAttrsX = Default::default();
+    fattrs.autospec = autospec;
     let func = FunctionX {
-        name,
+        name: name.clone(),
         proxy: None,
         kind: FunctionKind::Static,
         visibility,
         owning_module: Some(module_path.clone()),
-        mode: Mode::Spec, // the function has mode spec; the mode attribute goes into ret.x.mode
+        mode: func_mode,
         fuel,
         typ_params: Arc::new(vec![]),
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
         ret,
         require: Arc::new(vec![]),
-        ensure: Arc::new(vec![]),
+        ensure: header.const_static_ensures(&name, is_static),
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
         broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
-        is_const: true,
+        item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         publish: get_publish(&vattrs).0,
-        attrs: Default::default(),
+        attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
     };
@@ -1059,6 +1105,20 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     idents: &[Ident],
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let name = Arc::new(FunX { path });
+
+    if vattrs.external_fn_specification {
+        return err_span(span, "`external_fn_specification` attribute not supported here");
+    }
+    if vattrs.external {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
+        return Ok(());
+    }
+
     let mode = get_mode(Mode::Exec, attrs);
 
     let fn_sig = ctxt.tcx.fn_sig(id);
@@ -1075,16 +1135,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
-
-    if vattrs.external_fn_specification {
-        return err_span(
-            span,
-            "`external_fn_specification` attribute not supported on foreign items",
-        );
-    }
 
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
@@ -1105,8 +1157,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         );
         vir_params.push(vir_param);
     }
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    let name = Arc::new(FunX { path });
     let params = Arc::new(vir_params);
     let (ret_typ, ret_mode) = match ret_typ_mode {
         None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
@@ -1139,7 +1189,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
-        is_const: false,
+        item_kind: ItemKind::Function,
         publish: None,
         attrs: Default::default(),
         body: None,

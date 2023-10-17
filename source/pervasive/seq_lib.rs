@@ -215,25 +215,37 @@ impl<A> Seq<A> {
                 Self::push_distributes_over_add(a.filter(pred), b.drop_last().filter(pred), b.last());
             }
         } else {
-            Self::add_empty(a, b);
-            Self::add_empty(a.filter(pred), b.filter(pred));
+            Self::add_empty_right(a, b);
+            Self::add_empty_right(a.filter(pred), b.filter(pred));
         }
     }
 
-    pub proof fn add_empty(a: Self, b: Self)
-    requires
-        b.len() == 0,
-    ensures
-        a+b == a,
+    #[verifier(broadcast_forall)]
+    pub proof fn add_empty_left(a: Self, b: Self)
+        requires
+            a.len() == 0,
+        ensures
+            a + b == b,
     {
-        assert_seqs_equal!(a+b, a);
+        assert(a + b =~= b);
     }
 
-    pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
-    ensures
-        (a+b).push(elt) == a+b.push(elt),
+    #[verifier(broadcast_forall)]
+    pub proof fn add_empty_right(a: Self, b: Self)
+        requires
+            b.len() == 0,
+        ensures
+            a + b == a,
     {
-        assert_seqs_equal!((a+b).push(elt), a+b.push(elt));
+        assert(a + b =~= a);
+    }
+
+    #[verifier(broadcast_forall)]
+    pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
+        ensures
+            (a + b).push(elt) == a + b.push(elt),
+    {
+        assert((a + b).push(elt) =~= a + b.push(elt));
     }
 
     #[verifier(external_body)]
@@ -246,28 +258,6 @@ impl<A> Seq<A> {
     // need to be axioms!
 //        assert forall |a:Self, b:Self, pred:FnSpec(A)->bool| (a+b).filter(pred) == a.filter(pred) + b.filter(pred) by {
 //            Self::filter_distributes_over_add(a, b, pred);
-//        }
-    }
-
-    #[verifier(external_body)]
-    #[verifier(broadcast_forall)]
-    pub proof fn add_empty_broacast(a:Self, b:Self)
-    ensures
-        b.len()==0 ==> a+b == a
-    {
-//        assert forall |a:Self, b:Self| b.len()==0 implies a+b == a {
-//            add_empty(a, b);
-//        }
-    }
-
-    #[verifier(external_body)]
-    #[verifier(broadcast_forall)]
-    pub proof fn push_distributes_over_add_broacast(a:Self, b:Self, elt: A)
-    ensures
-        (a+b).push(elt) == a+b.push(elt),
-    {
-//        assert forall |a:Self, b:Self, elt: A| (a+b).push(elt) == a+b.push(elt) {
-//            push_distributes_over_add(a, b, elt);
 //        }
     }
 
@@ -959,8 +949,8 @@ impl<A> Seq<Seq<A>>{
         ensures
             self.len() == 1 ==> self.flatten() == self.first(),
     {
-        if self.len() == 1
-        {
+        reveal(Seq::add_empty_right);
+        if self.len() == 1 {
             assert(self.flatten() =~= self.first().add(self.drop_first().flatten()));
         }
     }
@@ -1015,8 +1005,9 @@ impl<A> Seq<Seq<A>>{
         decreases
             self.len(),
     {
-        if self.len() == 0 {}
-        else {
+        reveal(Seq::add_empty_right);
+        reveal(Seq::push_distributes_over_add);
+        if self.len() != 0 {
             self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
             seq![self.last()].lemma_flatten_one_element();
             lemma_flatten_concat(self.drop_last(), seq![self.last()]);

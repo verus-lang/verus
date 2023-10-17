@@ -71,10 +71,14 @@ impl ToString for TypX {
                 buf.push(')');
                 buf
             }
-            TypX::Datatype(path, args) => {
+            TypX::Datatype(path, lifetimes, args) => {
                 let mut buf = path.to_string();
-                if args.len() > 0 {
+                if (lifetimes.len() + args.len()) > 0 {
                     buf.push('<');
+                    for lifetime in lifetimes {
+                        buf += &lifetime.to_string();
+                        buf += ", ";
+                    }
                     for arg in args {
                         buf += &arg.to_string();
                         buf += ", ";

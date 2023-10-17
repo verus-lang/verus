@@ -2639,9 +2639,21 @@ where
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);
     v.visit_type(&*node.ty);
-    tokens_helper(v, &node.eq_token.spans);
-    v.visit_expr(&*node.expr);
-    tokens_helper(v, &node.semi_token.spans);
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.eq_token {
+        tokens_helper(v, &it.spans);
+    }
+    if let Some(it) = &node.block {
+        v.visit_block(&**it);
+    }
+    if let Some(it) = &node.expr {
+        v.visit_expr(&**it);
+    }
+    if let Some(it) = &node.semi_token {
+        tokens_helper(v, &it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_enum<'ast, V>(v: &mut V, node: &'ast ItemEnum)
@@ -2800,6 +2812,8 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.static_token.span);
     if let Some(it) = &node.mutability {
         tokens_helper(v, &it.span);
@@ -2807,9 +2821,21 @@ where
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);
     v.visit_type(&*node.ty);
-    tokens_helper(v, &node.eq_token.spans);
-    v.visit_expr(&*node.expr);
-    tokens_helper(v, &node.semi_token.spans);
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.eq_token {
+        tokens_helper(v, &it.spans);
+    }
+    if let Some(it) = &node.block {
+        v.visit_block(&**it);
+    }
+    if let Some(it) = &node.expr {
+        v.visit_expr(&**it);
+    }
+    if let Some(it) = &node.semi_token {
+        tokens_helper(v, &it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_struct<'ast, V>(v: &mut V, node: &'ast ItemStruct)

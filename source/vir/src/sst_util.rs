@@ -103,6 +103,7 @@ fn subst_exp_rec(
     match &exp.x {
         ExpX::Const(..)
         | ExpX::Loc(..)
+        | ExpX::StaticVar(..)
         | ExpX::Old(..)
         | ExpX::Call(..)
         | ExpX::CallLambda(..)
@@ -278,8 +279,9 @@ impl ExpX {
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
+            StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(CallFun::Fun(fun, _) | CallFun::CheckTermination(fun), _, exps) => {
+            Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }

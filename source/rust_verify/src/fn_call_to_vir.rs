@@ -731,11 +731,12 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             unsupported_err_unless!(args_len == 1, expr.span, "expected Ghost/Tracked", &args);
             let arg = &args[0];
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
-            let vir_arg = vir_args[0].clone();
             if get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
                 == Some(GhostBlockAttr::Wrapper)
             {
+                let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
+                let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+                let vir_arg = vir_args[0].clone();
                 match (compilable_opr, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
                     (CompilableOprItem::GhostExec, Some(GhostBlockAttr::GhostWrapped)) => {
                         let exprx = ExprX::Ghost {
@@ -758,6 +759,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
                 }
             } else {
+                let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+                let vir_arg = vir_args[0].clone();
                 if matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::GhostExec)) {
                     let op = UnaryOp::CoerceMode {
                         op_mode: Mode::Exec,
@@ -1347,6 +1350,8 @@ fn extract_ensures<'tcx>(
             if typs.len() == 1 && xs.len() == 1 {
                 let id_typ = Some((Arc::new(xs[0].clone()), typs[0].clone()));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
+            } else if typs.len() == 0 && xs.len() == 0 {
+                Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
             } else {
                 err_span(expr.span, "expected 1 parameter in closure")
             }

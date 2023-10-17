@@ -5,14 +5,18 @@ use crate::ast::Typs;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr,
-    Function, FunctionKind, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
+    PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
 use crate::ast_util::{conjoin, disjoin, if_then_else, wrap_in_trigger};
+use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
-use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
+use crate::def::{
+    prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
+};
 use crate::messages::error;
 use crate::messages::Span;
 use crate::util::vec_map_result;
@@ -220,17 +224,50 @@ fn pattern_to_exprs_rec(
 // that is, if node A is the parent of children B and C,
 // then simplify_one_expr is called first on B and C, and then on A
 
-fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
+fn simplify_one_expr(
+    ctx: &GlobalCtx,
+    state: &mut State,
+    scope_map: &VisitorScopeMap,
+    expr: &Expr,
+) -> Result<Expr, VirErr> {
     use crate::ast::CallTargetKind;
     match &expr.x {
-        ExprX::ConstVar(x) => {
+        ExprX::VarLoc(x) => {
+            // If we try to mutate `x`, check that `x` is actually marked mut.
+            // This is *usually* caught by rustc for us, during our lifetime checking phase.
+            // However, there are a few cases to watch out for:
+            //
+            //  1. The user provides --no-lifetime. (We still need need to do the check
+            //     because the AIR encoding later on will rely on mutability-ness being
+            //     well-formed. This isn't *really* necessary, since --no-lifetime is
+            //     unsound anyway and doesn't really have any guarantees - but doing
+            //     this check is nicer than an AIR type error down the line.)
+            //
+            //  2. If the user does as @-assignment, `x@ = ...` where `t: Ghost<T>`.
+            //     This is a special Verus thing so we have to do the check ourselves.
+            //     (issue #424)
+            //
+            // It would usually make more sense to have this in well_formed.rs, but
+            // in the majority of cases, it's nicer to have rustc catch the error
+            // for its better diagnostics. So the check is here in ast_simplify,
+            // which comes after our lifetime checking pass.
+            match scope_map.get(x) {
+                None => Err(error(&expr.span, "Verus Internal Error: cannot find this variable")),
+                Some(entry) if !entry.is_mut && entry.init => {
+                    let name = user_local_name(x);
+                    Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
+                }
+                _ => Ok(expr.clone()),
+            }
+        }
+        ExprX::ConstVar(x, autospec) => {
             let call = ExprX::Call(
                 CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
                     Arc::new(vec![]),
-                    AutospecUsage::Final,
+                    *autospec,
                 ),
                 Arc::new(vec![]),
             );
@@ -753,7 +790,8 @@ fn simplify_function(
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
     if functionx.typ_params.len() == 0
         && functionx.params.len() == 0
-        && !functionx.is_const
+        && !matches!(functionx.item_kind, ItemKind::Const)
+        && !matches!(functionx.item_kind, ItemKind::Static)
         && !functionx.attrs.broadcast_forall
         && !is_trait_impl
     {
@@ -769,12 +807,12 @@ fn simplify_function(
     }
 
     let function = Spanned::new(function.span.clone(), functionx);
-    let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+    let mut map: VisitorScopeMap = ScopeMap::new();
     crate::ast_visitor::map_function_visitor_env(
         &function,
         &mut map,
         state,
-        &|state, _, expr| simplify_one_expr(ctx, state, expr),
+        &|state, map, expr| simplify_one_expr(ctx, state, map, expr),
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
     )

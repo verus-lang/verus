@@ -19,6 +19,12 @@ pub trait OptionAdditionalFns<T> : Sized {
             self.is_Some(),
         ensures
             t == self.get_Some_0();
+
+    proof fn tracked_borrow(tracked &self) -> (tracked t: &T)
+        requires
+            self.is_Some(),
+        ensures
+            t == self.get_Some_0();
 }
 
 impl<T> OptionAdditionalFns<T> for Option<T> {
@@ -38,6 +44,13 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
+        match self {
+            Option::Some(t) => t,
+            Option::None => proof_from_false(),
+        }
+    }
+
+    proof fn tracked_borrow(tracked &self) -> (tracked t: &T) {
         match self {
             Option::Some(t) => t,
             Option::None => proof_from_false(),

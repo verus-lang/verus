@@ -480,3 +480,79 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_no_lifetime_mut_check ["--no-lifetime"] => verus_code! {
+        fn takesmut(x: &mut u32) { }
+
+        fn test() {
+            let x: u32 = 5;
+            takesmut(&mut x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` is not marked mutable")
+}
+
+test_verify_one_file! {
+    #[test] test_ghost_at_assignment_mut_check_issue424 verus_code! {
+        fn foo() {
+            let a: Ghost<nat> = Ghost(3);
+            proof {
+                a@ = 4;
+            }
+            assert(a@ == 4);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
+}
+
+// TODO Currently this causes a panic. However, it definitely needs to error,
+// so we should fix the test and un-ignore it.
+
+test_verify_one_file! {
+    #[ignore] #[test] test_ghost_at_assignment_double_assignment verus_code! {
+        fn foo() {
+            let a: Ghost<nat>;
+            proof {
+                a@ = 4;
+                a@ = 7;
+            }
+            assert(a@ == 4);
+            assert(a@ == 7);
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
+}
+
+test_verify_one_file! {
+    #[test] assign_twice verus_code! {
+        fn test() {
+            let x: u8;
+            x = 5;
+            x = 7;
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign twice to immutable variable `x`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] assign_twice_no_lifetime ["--no-lifetime"] => verus_code! {
+        // It's fine to accept this because --no-lifetime means we don't
+        // have any real guarantees. It would also be fine to error here.
+        fn test() {
+            let x: u8;
+            x = 5;
+            x = 7;
+            assert(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_static_ref_checks_outlives verus_code! {
+        pub struct X { }
+        pub proof fn test<'a>(tracked x: &'a X) {
+            // Make sure we disallow this (otherwise we would be able to upgrade
+            // a reference &'a to &'static)
+            let y = vstd::modes::tracked_static_ref(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "borrowed data escapes outside of function")
+}

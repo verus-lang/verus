@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
-    FunctionKind, Ident, InvAtomicity, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern, PatternX,
-    Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
+    FunctionKind, Ident, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
+    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{get_field, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -432,7 +432,7 @@ fn check_expr_handle_mut_arg(
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             return Ok((mode, Some(x_mode)));
         }
-        ExprX::ConstVar(x) => {
+        ExprX::ConstVar(x, _) | ExprX::StaticVar(x) => {
             let function = match typing.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -440,6 +440,27 @@ fn check_expr_handle_mut_arg(
                 }
                 Some(f) => f.clone(),
             };
+            let kind = if matches!(&expr.x, ExprX::ConstVar(..)) { "const" } else { "static" };
+            if typing.check_ghost_blocks {
+                if function.x.mode == Mode::Exec && typing.block_ghostness != Ghost::Exec {
+                    return Err(error(
+                        &expr.span,
+                        format!("cannot read {} with mode {}", kind, function.x.mode),
+                    ));
+                }
+                if function.x.ret.x.mode != Mode::Exec && typing.block_ghostness == Ghost::Exec {
+                    return Err(error(
+                        &expr.span,
+                        format!("cannot read {} with mode {}", kind, function.x.mode),
+                    ));
+                }
+            }
+            if !mode_le(outer_mode, function.x.mode) {
+                return Err(error(
+                    &expr.span,
+                    format!("cannot read {} with mode {}", kind, function.x.mode),
+                ));
+            }
             let mode = function.x.ret.x.mode;
             let mode = if typing.check_ghost_blocks {
                 typing.block_ghostness.join_mode(mode)
@@ -1196,7 +1217,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 
     if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;
-        if !function.x.is_const && !mode_le(function.x.mode, ret_mode) {
+        if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(
                 &function.span,
                 format!("return type cannot have mode {}", ret_mode),

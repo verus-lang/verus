@@ -395,7 +395,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 }
                 _ => state.datatype_name(&path),
             };
-            Box::new(TypX::Datatype(datatype_name, typ_args))
+            Box::new(TypX::Datatype(datatype_name, Vec::new(), typ_args))
         }
         TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
             // Note: even if rust_to_vir_base decides to normalize t,
@@ -416,7 +416,8 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                         let t = erase_ty(ctxt, state, &ty);
                         trait_typ_args.push(t);
                     }
-                    let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    let trait_as_datatype =
+                        Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
                     Box::new(TypX::Projection { self_typ, trait_as_datatype, name })
                 }
                 _ => panic!("unexpected TyKind::Alias"),
@@ -951,6 +952,19 @@ fn erase_expr<'tcx>(
                         return mk_exp(ExpX::Call(fun_exp, vec![], vec![]));
                     }
                 }
+                Res::Def(DefKind::Static(_), id) => {
+                    if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                        None
+                    } else {
+                        let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+                        let fun_name = Arc::new(FunX { path: vir_path });
+                        let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
+                        let e = mk_exp1(ExpX::Call(fun_exp, vec![], vec![]));
+                        // The function we emit to represent the static returns a
+                        // &'static reference. So we need to deref here
+                        mk_exp(ExpX::Deref(e))
+                    }
+                }
                 Res::Def(DefKind::ConstParam, id) => {
                     let local_id = id.as_local().expect("ConstParam local");
                     let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
@@ -1081,7 +1095,7 @@ fn erase_expr<'tcx>(
                 let variant_opt =
                     if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
                 let spread = spread.map(|e| erase_expr(ctxt, state, expect_spec, e).expect("expr"));
-                let typ_args = if let box TypX::Datatype(_, typ_args) = expr_typ(state) {
+                let typ_args = if let box TypX::Datatype(_, _, typ_args) = expr_typ(state) {
                     typ_args
                 } else {
                     panic!("unexpected struct expression type")
@@ -1358,7 +1372,7 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
     }
 }
 
-fn erase_const<'tcx>(
+fn erase_const_or_static<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
     state: &mut State,
@@ -1366,6 +1380,7 @@ fn erase_const<'tcx>(
     id: DefId,
     external_body: bool,
     body_id: &BodyId,
+    is_static: bool,
 ) {
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     if let Some(s) = path.segments.last() {
@@ -1390,8 +1405,35 @@ fn erase_const<'tcx>(
         let body_exp = if external_body {
             Box::new((body.value.span, ExpX::Panic))
         } else {
-            erase_expr(ctxt, state, false, &body.value).expect("const body")
+            state.enclosing_fun_id = Some(id);
+            let body_exp = erase_expr(ctxt, state, false, &body.value).expect("const body");
+            state.enclosing_fun_id = None;
+            body_exp
         };
+
+        let mut return_typ = typ;
+        let body_span = body.value.span;
+        let mut body = Box::new((body_span, ExpX::Block(vec![], Some(body_exp))));
+
+        if is_static {
+            // For static `static x: T` we change it to
+            // fn x() -> &'static T {
+            //     static_ref(body)
+            // }
+
+            let target = Box::new((
+                body_span,
+                ExpX::Var(Id::new(IdKind::Builtin, 0, "static_ref".to_string())),
+            ));
+            body = Box::new((body_span, ExpX::Call(target, vec![return_typ.clone()], vec![body])));
+            body = Box::new((body_span, ExpX::Block(vec![], Some(body))));
+            return_typ = Box::new(TypX::Ref(
+                return_typ,
+                Some(Id::new(IdKind::Builtin, 0, "'static".to_string())),
+                Mutability::Not,
+            ));
+        }
+
         // Turn const decl into fn decl so we can use the non-const ExpX::Op in the body:
         let decl = FunDecl {
             sig_span: span,
@@ -1400,8 +1442,8 @@ fn erase_const<'tcx>(
             generic_params: vec![],
             generic_bounds: vec![],
             params: vec![],
-            ret: Some((None, typ)),
-            body: Box::new((body.value.span, ExpX::Block(vec![], Some(body_exp)))),
+            ret: Some((None, return_typ)),
+            body: body,
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
@@ -1484,7 +1526,7 @@ fn erase_mir_generics<'tcx>(
                     let trait_typ_args =
                         substs.types().skip(1).map(|ty| erase_ty(ctxt, state, &ty)).collect();
                     let trait_path = state.trait_name(&trait_path);
-                    let datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    let datatype = Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
                     Some(Bound::Trait(datatype))
                 } else {
                     None
@@ -1890,13 +1932,20 @@ fn erase_impl<'tcx>(
                         &mut typ_params,
                         &mut generic_bounds,
                     );
+                    let mut trait_lifetime_args: Vec<Id> = Vec::new();
+                    for region in trait_ref.0.substs.regions() {
+                        if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
+                            trait_lifetime_args.push(id);
+                        }
+                    }
                     let generic_params =
                         lifetimes.into_iter().chain(typ_params.into_iter()).collect();
                     let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
                     let self_typ = erase_ty(ctxt, state, &self_ty);
                     let ty = ctxt.tcx.type_of(impl_item.owner_id.to_def_id()).skip_binder();
                     let typ = erase_ty(ctxt, state, &ty);
-                    let trait_as_datatype = Box::new(TypX::Datatype(trait_path, trait_typ_args));
+                    let trait_as_datatype =
+                        Box::new(TypX::Datatype(trait_path, trait_lifetime_args, trait_typ_args));
                     let assoc = AssocTypeImpl {
                         generic_params,
                         generic_bounds,
@@ -2211,7 +2260,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::ForeignMod { .. } => {}
                         ItemKind::Macro(..) => {}
                         ItemKind::TyAlias(..) => {}
-                        ItemKind::Static(..) => {}
                         ItemKind::GlobalAsm(..) => {}
                         ItemKind::Struct(_s, _generics) => {
                             state.reach_datatype(&ctxt, id);
@@ -2219,8 +2267,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::Enum(_e, _generics) => {
                             state.reach_datatype(&ctxt, id);
                         }
-                        ItemKind::Const(_ty, body_id) => {
-                            erase_const(
+                        ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, _, body_id) => {
+                            erase_const_or_static(
                                 krate,
                                 &mut ctxt,
                                 &mut state,
@@ -2228,6 +2276,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 id,
                                 vattrs.external_body,
                                 body_id,
+                                matches!(&item.kind, ItemKind::Static(..)),
                             );
                         }
                         ItemKind::Fn(sig, _generics, body_id) => {

@@ -246,6 +246,29 @@ impl Header {
         Self::add_invariants(&mut invs, &self.ensure, LoopInvariantKind::Ensures);
         Arc::new(invs)
     }
+
+    pub fn const_static_ensures(&self, const_name: &Fun, is_static: bool) -> Exprs {
+        let f = |expr: &Expr| {
+            Ok(match &expr.x {
+                // const decl ensures clauses can refer to the const's "return value"
+                // using the name of the const (which is a ConstVar to the const):
+                ExprX::ConstVar(fun, _) if fun == const_name && !is_static => {
+                    expr.new_x(ExprX::Var(Arc::new(crate::def::RETURN_VALUE.to_string())))
+                }
+                // likewise for static
+                ExprX::StaticVar(fun) if fun == const_name && is_static => {
+                    expr.new_x(ExprX::Var(Arc::new(crate::def::RETURN_VALUE.to_string())))
+                }
+                _ => expr.clone(),
+            })
+        };
+        Arc::new(
+            self.ensure
+                .iter()
+                .map(|e| crate::ast_visitor::map_expr_visitor(e, &f).unwrap())
+                .collect(),
+        )
+    }
 }
 
 fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function, VirErr> {
@@ -268,7 +291,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         decrease_by,
         broadcast_forall: _,
         mask_spec,
-        is_const: _,
+        item_kind: _,
         publish: _,
         attrs: _,
         body: _,

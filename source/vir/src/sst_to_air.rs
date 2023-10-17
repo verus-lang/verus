@@ -11,7 +11,7 @@ use crate::context::Ctx;
 use crate::def::{
     fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
     new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
+    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, static_name,
     suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
     suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident, CommandsWithContext,
     CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE,
@@ -790,14 +790,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ExprMode::BodyPre => string_var(&suffix_local_unique_id(x)),
         },
+        (ExpX::StaticVar(f), false) => string_var(&static_name(f)),
         (ExpX::Loc(e0), false) => exp_to_expr(ctx, e0, expr_ctxt)?,
         (ExpX::Old(span, x), false) => {
             Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
         }
-        (ExpX::Call(f @ (CallFun::Fun(..) | CallFun::CheckTermination(_)), typs, args), false) => {
+        (ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args), false) => {
             let x_name = match f {
                 CallFun::Fun(x, _) => x.clone(),
-                CallFun::CheckTermination(x) => crate::def::prefix_recursive_fun(&x),
+                CallFun::Recursive(x) => crate::def::prefix_recursive_fun(&x),
                 _ => panic!(),
             };
             let name = suffix_global_id(&fun_to_air_ident(&x_name));
@@ -1431,6 +1432,7 @@ struct State {
     mask: MaskSet,         // set of invariants that are allowed to be opened
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
+    static_prelude: Vec<Stmt>,
 }
 
 impl State {
@@ -1650,6 +1652,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let func = &ctx.func_map[fun];
             if func.x.require.len() > 0
                 && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
+                // don't check recommends during decreases checking; these are separate passes:
+                && !ctx.checking_spec_decreases()
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
@@ -2106,7 +2110,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 None
             };
 
-            let mut air_body: Vec<Stmt> = Vec::new();
+            let mut air_body: Vec<Stmt> = state.static_prelude.clone();
 
             /*
             Generate a separate SMT query for the loop body.
@@ -2416,6 +2420,20 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
     local.push(Arc::new(DeclX::Axiom(fuel_expr)));
 }
 
+fn mk_static_prelude(ctx: &Ctx, statics: &Vec<Fun>) -> Vec<Stmt> {
+    statics
+        .iter()
+        .filter(|f| ctx.funcs_with_ensure_predicate.contains(&**f))
+        .map(|f| {
+            let f_ens = prefix_ensures(&fun_to_air_ident(&f));
+            let f_static = string_var(&static_name(f));
+            let ens_args = vec![f_static];
+            let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
+            Arc::new(StmtX::Assume(e_ens))
+        })
+        .collect()
+}
+
 pub(crate) fn body_stm_to_air(
     ctx: &Ctx,
     func_span: &Span,
@@ -2435,6 +2453,7 @@ pub(crate) fn body_stm_to_air(
     is_nonlinear: bool,
     dest: Option<UniqueIdent>,
     post_condition_kind: PostConditionKind,
+    statics: &Vec<Fun>,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -2525,6 +2544,7 @@ pub(crate) fn body_stm_to_air(
             kind: post_condition_kind,
         },
         loop_infos: Vec::new(),
+        static_prelude: mk_static_prelude(ctx, statics),
     };
 
     let mut _modified = IndexSet::new();
@@ -2541,6 +2561,9 @@ pub(crate) fn body_stm_to_air(
 
     if has_mut_params {
         stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+    }
+    if state.static_prelude.len() > 0 {
+        stmts.splice(0..0, state.static_prelude.clone());
     }
 
     if ctx.debug {

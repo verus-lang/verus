@@ -1069,11 +1069,11 @@ mod printing {
             }
             self.paren_token.surround(tokens, |tokens| {
                 self.path.to_tokens(tokens);
+                if let Some((comma_token, expr)) = &self.fuel {
+                    comma_token.to_tokens(tokens);
+                    expr.to_tokens(tokens);
+                }
             });
-            if let Some((fuel_token, expr)) = &self.fuel {
-                fuel_token.to_tokens(tokens);
-                expr.to_tokens(tokens);
-            }
         }
     }
 

@@ -51,11 +51,14 @@ pub struct GlobalCtx {
 }
 
 // Context for verifying one function
+#[derive(Debug)]
 pub struct FunctionCtx {
     // false normally, true if we're just checking spec preconditions
     pub checking_spec_preconditions: bool,
     // false normally, true if we're just checking spec preconditions for a non-spec function
     pub checking_spec_preconditions_for_non_spec: bool,
+    // false normally, true if we're just checking decreases of recursive spec function
+    pub checking_spec_decreases: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
     // used to create quantifier identifiers and for checking_spec_preconditions
@@ -101,6 +104,13 @@ impl Ctx {
     pub fn checking_spec_preconditions_for_non_spec(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_spec_preconditions_for_non_spec: true, .. }) => true,
+            _ => false,
+        }
+    }
+
+    pub fn checking_spec_decreases(&self) -> bool {
+        match self.fun {
+            Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
             _ => false,
         }
     }
@@ -197,6 +207,40 @@ impl GlobalCtx {
         let mut func_call_graph: Graph<Node> = Graph::new();
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
+        }
+        for f in &krate.functions {
+            // Heuristic: add all external_body functions first.
+            // This is currently needed because external_body broadcast_forall functions
+            // are currently implicitly imported.
+            // In the future, this might become less important; we could remove this heuristic.
+            if f.x.body.is_none() {
+                func_call_graph.add_node(Node::Fun(f.x.name.clone()));
+            }
+        }
+        for t in &krate.trait_impls {
+            // Heuristic: put trait impls first, because functions don't necessarily have
+            // explicit dependencies on all the trait impls when they are implicitly
+            // used to satisfy broadcast_forall trait bounds.
+            // (This arises because unlike in Coq or F*, Rust programs don't define a
+            // total ordering on declarations, and the call graph only provides a partial order.)
+            // test_broadcast_forall2 in rust_verify_test/tests/traits.rs is one (contrived) example
+            // that would fail without this heuristic.
+            // A simpler example would be a broadcast_forall function with a type parameter
+            // "A: View", and someone might rely on this broadcast_forall, instantiating A with
+            // some struct S that implements View, but without actually calling any View methods
+            // on S:
+            //   trait View { spec fn view(...) -> ...; }
+            //   struct S;
+            //   impl View for S { ... }
+            //   #[verifier::broadcast_forall] fn b<A: View>(a: A) ensures foo(a) { ... }
+            //   fn test(s: S) { assert(foo(s)); }
+            // Here, there are no explicit dependencies in the call graph that force
+            // TraitImpl for S: View to appear before "test" in the generated AIR code.
+            // If the TraitImpl axiom for S: View appeared after test,
+            // then test might fail because the broadcast_forall b for s isn't enabled
+            // without S: View.  The programmer would have to provide some explicit ordering,
+            // such as using s.view() in test so that test depends on S: View, to fix this.
+            func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
         }
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
@@ -355,8 +399,8 @@ impl Ctx {
         let mut ids: Vec<air::ast::Expr> = Vec::new();
         let mut commands: Vec<Command> = Vec::new();
         for function in &self.functions {
-            match (function.x.mode, function.x.body.as_ref()) {
-                (Mode::Spec, Some(_)) => {
+            match (function.x.mode, function.x.body.as_ref(), function.x.attrs.broadcast_forall) {
+                (Mode::Spec, Some(_), false) | (Mode::Proof, Some(_), true) => {
                     let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&function.x.name));
                     ids.push(air::ast_util::ident_var(&id));
                     let typ_fuel_id = str_typ(&FUEL_ID);

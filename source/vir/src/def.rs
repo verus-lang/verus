@@ -60,6 +60,7 @@ const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const PREFIX_STATIC: &str = "static%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -712,4 +713,8 @@ pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
             Arc::new("exec_nonstatic_call".to_string()),
         ]),
     })
+}
+
+pub fn static_name(fun: &Fun) -> Ident {
+    Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
 }
