@@ -178,10 +178,8 @@ pub fn parse_args_with_imports(
     const OPT_TRIGGERS_SELECTIVE: &str = "triggers-selective";
     const OPT_TRIGGERS: &str = "triggers";
     const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
-    const OPT_SPINOFF_ALL: &str = "spinoff-all";
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
-    const OPT_CAPTURE_PROFILES: &str = "capture-profiles";
     const OPT_COMPILE: &str = "compile";
     const OPT_VERSION: &str = "version";
     const OPT_RECORD: &str = "record";
@@ -192,6 +190,8 @@ pub fn parse_args_with_imports(
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const EXTENDED_DEBUG: &str = "debug";
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
+    const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
+    const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -199,6 +199,8 @@ pub fn parse_args_with_imports(
             EXTENDED_NO_SOLVER_VERSION_CHECK,
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
         ),
+        (EXTENDED_SPINOFF_ALL, "Always spinoff individual functions to separate z3 instances"),
+        (EXTENDED_CAPTURE_PROFILES, "Always collect prover performance data, but don't generate output reports"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -282,17 +284,7 @@ pub fn parse_args_with_imports(
         OPT_PROFILE,
         "Collect and report prover performance data when resource limits are hit",
     );
-    opts.optflag(
-        "",
-        OPT_SPINOFF_ALL,
-        "Always spinoff individual functions to separate z3 instances",
-    );
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
-    opts.optflag(
-        "",
-        OPT_CAPTURE_PROFILES,
-        "Always collect prover performance data, but don't generate output reports",
-    );
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optopt(
         "",
@@ -494,14 +486,14 @@ pub fn parse_args_with_imports(
             matches.opt_present(OPT_PROFILE_ALL)
         },
         capture_profiles: {
-            if matches.opt_present(OPT_CAPTURE_PROFILES) {
+            if extended.get(EXTENDED_CAPTURE_PROFILES).is_some() {
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --capture-profiles are mutually exclusive".to_string())
                 }
             };
-            matches.opt_present(OPT_CAPTURE_PROFILES)
+            extended.get(EXTENDED_CAPTURE_PROFILES).is_some()
         },
-        spinoff_all: matches.opt_present(OPT_SPINOFF_ALL),
+        spinoff_all: extended.get(EXTENDED_SPINOFF_ALL).is_some(),
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !extended.get(EXTENDED_NO_SOLVER_VERSION_CHECK).is_some(),
