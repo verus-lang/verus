@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::Visibility;
-use vir::ast::{Fun, Function, ItemKind, Krate, Mode, VirErr};
+use vir::ast::{Fun, Function, ItemKind, Krate, Mode, Path, TraitImpl, VirErr};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
@@ -20,6 +20,7 @@ pub enum ContextOp {
     SpecDefinition,
     ReqEns,
     Broadcast,
+    TraitImpl,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -59,22 +60,21 @@ pub enum OpKind {
 #[derive(Clone)]
 pub struct Op {
     pub kind: OpKind,
-    /// Function the op is associated with.
-    pub function: Function,
+    /// Function the op is associated with (always Some for Query kind).
+    pub function: Option<Function>,
 }
 
 pub struct OpGenerator<'a, D: Diagnostics> {
     pub ctx: &'a mut vir::context::Ctx,
-    krate: Krate,
     bucket: Bucket,
     reporter: &'a D,
 
     sst_map: SstMap,
     func_map: HashMap<Fun, (Function, Visibility)>,
+    trait_impl_map: HashMap<Path, TraitImpl>,
 
     current_queue: VecDeque<Op>,
     scc_idx: usize,
-    fun_idx: usize,
 }
 
 impl<'a, D: Diagnostics> OpGenerator<'a, D> {
@@ -105,16 +105,21 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             func_map.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
+        let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
+        for imp in &krate.trait_impls {
+            assert!(!trait_impl_map.contains_key(&imp.x.impl_path));
+            trait_impl_map.insert(imp.x.impl_path.clone(), imp.clone());
+        }
+
         OpGenerator {
             ctx,
-            krate: krate.clone(),
             func_map,
+            trait_impl_map,
             bucket,
             reporter,
             sst_map: UpdateCell::new(HashMap::new()),
             current_queue: VecDeque::new(),
             scc_idx: 0,
-            fun_idx: 0,
         }
     }
 
@@ -122,7 +127,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         let op_opt = self._next()?;
         if let Some(op) = &op_opt {
             if matches!(op.kind, OpKind::Query { .. }) {
-                assert!(self.bucket.contains(&op.function.x.name));
+                assert!(self.bucket.contains(&op.get_function().x.name));
             }
         }
         Ok(op_opt)
@@ -134,21 +139,12 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 let op = self.current_queue.pop_front();
                 return Ok(op);
             } else {
-                // Iterate through each SCC and do spec stuff,
-                // Then iterate through every function and prove its body
-                // if necessary.
-                // TODO this ordering needs a revisit
+                // Iterate through each SCC
                 if self.scc_idx < self.ctx.global.func_call_sccs.len() {
-                    self.current_queue = VecDeque::from(self.handle_specs_scc_component(
+                    self.current_queue = VecDeque::from(self.handle_scc_component(
                         self.ctx.global.func_call_sccs[self.scc_idx].clone(),
                     )?);
                     self.scc_idx += 1;
-                } else if self.fun_idx < self.krate.functions.len() {
-                    self.current_queue =
-                        VecDeque::from(self.handle_proof_body_normal_for_proof_and_exec(
-                            self.krate.functions[self.fun_idx].clone(),
-                        )?);
-                    self.fun_idx += 1;
                 } else {
                     return Ok(None);
                 }
@@ -157,7 +153,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
     }
 
     pub fn retry_with_recommends(&mut self, op: &Op, from_error: bool) -> Result<(), VirErr> {
-        let ops = self.handle_proof_body_recommends(op.function.clone(), from_error)?;
+        let ops = self.handle_proof_body_recommends(op.get_function(), from_error)?;
         self.append_to_front_of_queue(ops);
         Ok(())
     }
@@ -167,7 +163,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         op: &Op,
         expand_targets: Vec<Message>,
     ) -> Result<(), VirErr> {
-        let ops = self.handle_proof_body_expand(op.function.clone(), expand_targets)?;
+        let ops = self.handle_proof_body_expand(op.get_function(), expand_targets)?;
         self.append_to_front_of_queue(ops);
         Ok(())
     }
@@ -186,7 +182,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 snap_map,
                 profile_rerun: true,
             },
-            function: function.clone(),
+            function: Some(function.clone()),
         };
         self.current_queue.push_back(op);
     }
@@ -197,8 +193,35 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         }
     }
 
-    fn handle_specs_scc_component(&mut self, scc_rep: Node) -> Result<Vec<Op>, VirErr> {
-        let scc_nodes = self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep);
+    fn handle_scc_component(&mut self, scc_rep: Node) -> Result<Vec<Op>, VirErr> {
+        let (mut ops, post_ops) = self.handle_specs_scc_component(&scc_rep)?;
+
+        for node in self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
+            if let Node::Fun(f) = node {
+                if let Some((f, _)) = self.func_map.get(&f) {
+                    let f_ops = self.handle_proof_body_normal_for_proof_and_exec(f.clone())?;
+                    ops.extend(f_ops);
+                }
+            }
+        }
+
+        // Some axioms (broadcast_forall, spec definitions, trait implementations)
+        // are only sound at the end of the SCC, after obligations have been satisfied:
+        ops.extend(post_ops);
+        for node in self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
+            if let Node::TraitImpl(impl_path) = node {
+                if let Some(imp) = self.trait_impl_map.get(&impl_path) {
+                    let cmds = vir::traits::trait_impl_to_air(&self.ctx, imp);
+                    ops.push(Op::context(ContextOp::TraitImpl, cmds, None));
+                }
+            }
+        }
+
+        Ok(ops)
+    }
+
+    fn handle_specs_scc_component(&mut self, scc_rep: &Node) -> Result<(Vec<Op>, Vec<Op>), VirErr> {
+        let scc_nodes = self.ctx.global.func_call_graph.get_scc_nodes(scc_rep);
         let mut scc_fun_nodes: Vec<Fun> = Vec::new();
         for node in scc_nodes.into_iter() {
             match node {
@@ -228,7 +251,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             )?;
             self.ctx.fun = None;
 
-            pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, &function));
+            pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
         }
 
         for f in scc_fun_nodes.iter() {
@@ -266,13 +289,12 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             } else {
                 ContextOp::SpecDefinition
             };
-            post_ops.push(Op::context(op_kind, decl_commands, &function));
+            post_ops.push(Op::context(op_kind, decl_commands, Some(function.clone())));
         }
 
         let mut ops = pre_ops;
         ops.append(&mut query_ops);
-        ops.append(&mut post_ops);
-        Ok(ops)
+        Ok((ops, post_ops))
     }
 
     fn handle_proof_body_normal_for_proof_and_exec(
@@ -382,6 +404,7 @@ impl Op {
             OpKind::Context(ContextOp::SpecDefinition, _) => "Function-Axioms".into(),
             OpKind::Context(ContextOp::ReqEns, _) => "Function-Specs".into(),
             OpKind::Context(ContextOp::Broadcast, _) => "Broadcast".into(),
+            OpKind::Context(ContextOp::TraitImpl, _) => return "Trait-Impl-Axiom".to_string(),
             OpKind::Query { query_op: QueryOp::SpecTermination, profile_rerun, .. } => {
                 append_profile_rerun("Spec-Termination", *profile_rerun)
             }
@@ -398,7 +421,7 @@ impl Op {
                 append_profile_rerun("Function-Expand-Errors", *profile_rerun)
             }
         };
-        format!("{:} {:}", prefix, fun_as_friendly_rust_name(&self.function.x.name))
+        format!("{:} {:}", prefix, fun_as_friendly_rust_name(&self.get_function().x.name))
     }
 
     /// Intended for Query ops, so the driver can describe queries to the user
@@ -426,8 +449,16 @@ impl Op {
         }
     }
 
-    pub fn context(context_op: ContextOp, commands: Arc<Vec<Command>>, f: &Function) -> Self {
-        Op { kind: OpKind::Context(context_op, commands), function: f.clone() }
+    pub fn get_function(&self) -> Function {
+        self.function.clone().expect("function")
+    }
+
+    pub fn context(
+        context_op: ContextOp,
+        commands: Arc<Vec<Command>>,
+        f: Option<Function>,
+    ) -> Self {
+        Op { kind: OpKind::Context(context_op, commands), function: f }
     }
 
     pub fn query(
@@ -443,7 +474,7 @@ impl Op {
                 snap_map: Arc::new(snap_map),
                 profile_rerun: false,
             },
-            function: f.clone(),
+            function: Some(f.clone()),
         }
     }
 }

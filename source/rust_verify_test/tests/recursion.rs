@@ -599,11 +599,7 @@ test_verify_one_file! {
                 dec1((j - 1) as nat);
             }
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
-        assert_eq!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some(), true);
-        assert_eq!(err.errors[1].message, "recursive function must have a decreases clause");
-    }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
