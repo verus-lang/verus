@@ -251,3 +251,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] pub_exec_const verus_code! {
+        // https://github.com/verus-lang/verus/issues/858
+        const fn foo() -> u64 {
+            0
+        }
+
+        pub exec const FOO: u64 = foo();
+    } => Ok(())
+}

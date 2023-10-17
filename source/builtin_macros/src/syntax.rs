@@ -537,12 +537,13 @@ impl Visitor {
             attrs.push(mk_verus_attr(span, quote! { verus_macro }));
         }
 
-        let publish_attrs = match (vis, &publish) {
-            (Some(Visibility::Inherited), _) => vec![],
-            (_, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
-            (_, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
-            (_, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { open })],
-            (_, Publish::OpenRestricted(_)) => {
+        let publish_attrs = match (&mode, vis, &publish) {
+            (FnMode::Exec(_) | FnMode::Proof(_), _, _) => vec![],
+            (_, Some(Visibility::Inherited), _) => vec![],
+            (_, _, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
+            (_, _, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
+            (_, _, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { open })],
+            (_, _, Publish::OpenRestricted(_)) => {
                 unimplemented!("TODO: support open(...)")
             }
         };
