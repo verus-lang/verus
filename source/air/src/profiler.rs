@@ -2,8 +2,8 @@
 
 use crate::messages::{Diagnostics, MessageLevel};
 use std::collections::HashSet;
-use std::io::BufRead;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::io::BufRead;
 use z3tracer::model::QuantCost;
 use z3tracer::syntax::{MatchedTerm, QiFrame, QiKey};
 use z3tracer::{Model, ModelConfig};

@@ -200,7 +200,10 @@ pub fn parse_args_with_imports(
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
         ),
         (EXTENDED_SPINOFF_ALL, "Always spinoff individual functions to separate z3 instances"),
-        (EXTENDED_CAPTURE_PROFILES, "Always collect prover performance data, but don't generate output reports"),
+        (
+            EXTENDED_CAPTURE_PROFILES,
+            "Always collect prover performance data, but don't generate output reports",
+        ),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
