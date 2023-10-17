@@ -1,17 +1,17 @@
 use crate::ast::{
-    Fun, Function, FunctionKind, Ident, Idents, Mode, Param, ParamX, Params, SpannedTyped, Typ,
-    TypX, Typs, VirErr,
+    Fun, Function, FunctionKind, Ident, Idents, ItemKind, Mode, Param, ParamX, Params,
+    SpannedTyped, Typ, TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
 use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
-    prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
+    prefix_recursive_fun, prefix_requires, static_name, suffix_global_id, suffix_local_stmt_id,
     suffix_typ_param_id, suffix_typ_param_ids, unique_local, CommandsWithContext, SnapPos, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
-use crate::messages::{error_with_label, Message, MessageLabel, Span};
+use crate::messages::{error, Message, MessageLabel, Span};
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
@@ -159,86 +159,107 @@ fn func_body_to_air(
     };
     assert!(!state.fun_ssts.borrow().contains_key(&function.x.name));
     state.fun_ssts.borrow_mut().insert(function.x.name.clone(), info);
+    state.finalize();
 
-    let mut decrease_by_stms: Vec<Stm> = Vec::new();
+    // Rewrite recursive calls to use fuel
+    let (is_recursive, body_exp, scc_rep) =
+        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(ctx, function, &body_exp)?;
+
+    // Check termination and/or recommends
+    let mut check_state = crate::ast_to_sst::State::new(diagnostics);
+    // don't check recommends during decreases checking; these are separate passes:
+    check_state.disable_recommends = 1;
+    check_state.declare_params(&pars);
+    check_state.view_as_spec = true;
+    check_state.fun_ssts = state.fun_ssts;
+    check_state.check_spec_decreases = Some((function.x.name.clone(), scc_rep));
+    let check_body_stm =
+        crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
+    let check_body_stm = check_state.finalize_stm(
+        ctx,
+        diagnostics,
+        &check_state.fun_ssts,
+        &check_body_stm,
+        // TODO: when ensures are supported, they should be added here for splitting:
+        &Arc::new(vec![]),
+        &Arc::new(vec![]),
+        None,
+    )?;
+
+    let mut proof_body: Vec<crate::ast::Expr> = Vec::new();
     let def_reqs = if let Some(req) = &function.x.decrease_when {
         // "when" means the function is only defined if the requirements hold,
         // including trait bound requirements
-        let mut def_reqs = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
-        let (check_stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, req)?;
-        let exp = state.finalize_exp(ctx, &state.fun_ssts, &exp)?;
-        for check_stm in check_stms.iter() {
-            let check_stm = state.finalize_stm(
-                ctx,
-                diagnostics,
-                &state.fun_ssts,
-                &check_stm,
-                &Arc::new(vec![]),
-                &Arc::new(vec![]),
-                None,
-            )?;
-            decrease_by_stms.push(check_stm);
+
+        // first, set up proof_body
+        let mut reqs = crate::traits::trait_bounds_to_ast(ctx, &req.span, &function.x.typ_bounds);
+        reqs.push(req.clone());
+        for expr in reqs {
+            let assumex = crate::ast::ExprX::AssertAssume { is_assume: true, expr: expr.clone() };
+            proof_body.push(SpannedTyped::new(
+                &req.span,
+                &Arc::new(TypX::Tuple(Arc::new(vec![]))),
+                assumex,
+            ));
         }
+        proof_body.push(req.clone()); // check spec preconditions
+
+        // next, define def_reqs for the quuantified axioms
+        let mut def_reqs = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
+        // Skip checks because we check decrease_when below
+        let exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut check_state, req)?;
+        let exp = check_state.finalize_exp(ctx, &check_state.fun_ssts, &exp)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
-        decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
         def_reqs.push(expr);
         def_reqs
     } else {
         vec![]
     };
     if let Some(fun) = &function.x.decrease_by {
-        state.view_as_spec = false;
+        check_state.view_as_spec = false;
         if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
-            let body_stm = crate::ast_to_sst::expr_to_one_stm_with_post(
-                &ctx,
-                &mut state,
-                decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
-            )?;
-            let body_stm = state.finalize_stm(
-                ctx,
-                diagnostics,
-                &state.fun_ssts,
-                &body_stm,
-                // note: these arguments are just for splitting, and (unless we support
-                // special splitting for decrease_by lemmas) they shouldn't matter.
-                // passing in an empty vec![] will cause splitting to just skip over this
-                &Arc::new(vec![]),
-                &Arc::new(vec![]),
-                None,
-            )?;
-
-            decrease_by_stms.push(body_stm);
+            let decrease_by_fun_body =
+                decrease_by_fun.x.body.as_ref().expect("decreases_by has body").clone();
+            ast_visitor::expr_visitor_check(&decrease_by_fun_body, &mut |_scope_map, expr| {
+                match &expr.x {
+                    crate::ast::ExprX::Return(_) => Err(error(
+                        &expr.span,
+                        "explicit returns are not allowed in decreases_by function",
+                    )),
+                    _ => Ok(()),
+                }
+            })?;
+            proof_body.push(decrease_by_fun_body);
         } else {
             assert!(not_verifying_owning_bucket);
         }
-    } else {
-        let base_error = error_with_label(
-            &body_exp.span,
-            "could not prove termination".to_string(),
-            "of this function body".to_string(),
-        );
-
-        // In this case, the user hasn't provided a proof body, so we just need to make
-        // our own trivial proof body. A trivial proof body is just a single
-        // Return statement.
-        // check_termination_exp will set the "ensures clause" to be the
-        // termination conditions.
-        decrease_by_stms.push(Spanned::new(
-            body_exp.span.clone(),
-            StmX::Return { base_error, ret_exp: None, inside_body: false },
-        ));
     }
-    state.finalize();
-
-    // Check termination
-    let (is_recursive, termination_commands, body_exp) = crate::recursion::check_termination_exp(
+    let mut proof_body_stms: Vec<Stm> = Vec::new();
+    for expr in proof_body {
+        let (mut stms, exp) = crate::ast_to_sst::expr_to_stm_opt(ctx, &mut check_state, &expr)?;
+        assert!(!matches!(exp, crate::ast_to_sst::ReturnValue::Never));
+        proof_body_stms.append(&mut stms);
+    }
+    let proof_body_stm = crate::ast_to_sst::stms_to_one_stm(&body.span, proof_body_stms);
+    let proof_body_stm = check_state.finalize_stm(
         ctx,
         diagnostics,
-        &state.fun_ssts,
+        &check_state.fun_ssts,
+        &proof_body_stm,
+        &Arc::new(vec![]),
+        &Arc::new(vec![]),
+        None,
+    )?;
+    check_state.finalize();
+
+    let termination_commands = crate::recursion::check_termination_commands(
+        ctx,
+        diagnostics,
+        &check_state.fun_ssts,
         function,
-        state.local_decls,
-        &body_exp,
-        decrease_by_stms,
+        check_state.local_decls,
+        proof_body_stm,
+        &check_body_stm,
         function.x.decrease_by.is_some(),
     )?;
     check_commands.extend(termination_commands.iter().cloned());
@@ -327,7 +348,7 @@ fn func_body_to_air(
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
     let def_axiom = Arc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
-    Ok(state.fun_ssts)
+    Ok(check_state.fun_ssts)
 }
 
 pub fn req_ens_to_air(
@@ -577,6 +598,16 @@ pub fn func_decl_to_air(
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
     }
 
+    if matches!(function.x.item_kind, ItemKind::Static) {
+        // Declare static%foo, which represents the result of 'foo()' when executed
+        // at the beginning of a program (here, `foo` is a 'static' item which we
+        // represent as 0-argument function)
+        decl_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
+            static_name(&function.x.name),
+            typ_to_air(ctx, &function.x.ret.x.typ),
+        )))));
+    }
+
     Ok(Arc::new(decl_commands))
 }
 
@@ -735,8 +766,8 @@ pub fn func_def_to_air(
     phase: FuncDefPhase,
     checking_spec_preconditions: bool,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
-    let erasure_mode = match (function.x.mode, function.x.ret.x.mode, function.x.is_const) {
-        (_, Mode::Exec, true) => Mode::Exec,
+    let erasure_mode = match (function.x.mode, function.x.ret.x.mode, function.x.item_kind) {
+        (_, Mode::Exec, ItemKind::Const) => Mode::Exec,
         (mode, _, _) => mode,
     };
     match (phase, erasure_mode, checking_spec_preconditions, &function.x.body) {
@@ -942,6 +973,7 @@ pub fn func_def_to_air(
                 function.x.attrs.nonlinear,
                 dest,
                 PostConditionKind::Ensures,
+                &state.statics.iter().cloned().collect(),
             )?;
 
             state.finalize();

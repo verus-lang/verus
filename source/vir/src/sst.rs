@@ -52,7 +52,7 @@ pub enum InternalFun {
 pub enum CallFun {
     // static/method Fun, plus an optional resolved Fun for methods
     Fun(Fun, Option<(Fun, Typs)>),
-    CheckTermination(Fun),
+    Recursive(Fun),
     InternalFun(InternalFun),
 }
 
@@ -62,6 +62,7 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
+    StaticVar(Fun),
     VarLoc(UniqueIdent),
     VarAt(UniqueIdent, VarAt),
     Loc(Exp),

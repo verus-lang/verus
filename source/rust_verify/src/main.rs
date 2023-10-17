@@ -1,9 +1,6 @@
 #![feature(rustc_private)]
 
-use rust_verify::{
-    driver::is_verifying_entire_crate,
-    util::{verus_build_info, VerusBuildProfile},
-};
+use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
 extern crate rustc_driver; // TODO(main_new) can we remove this?
 
@@ -159,6 +156,15 @@ pub fn main() {
         smt_run_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v).sum();
 
+        let mut smt_function_breakdown = verifier
+            .func_times
+            .iter()
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| {
+                (k.module(), v.iter().map(|(f, t)| (f, t.as_millis())).collect::<Vec<_>>())
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+
         let mut air_times = verifier
             .bucket_times
             .iter()
@@ -231,7 +237,7 @@ pub fn main() {
                     }
                 },
                 "total-verify": total_verify,
-                "total-verify-module-times" : verify_times.iter().take(3).map(|(m, t)| {
+                "total-verify-module-times" : verify_times.iter().map(|(m, t)| {
                     serde_json::json!({
                         "module" : rust_verify::verifier::module_name(m),
                         "time" : t
@@ -239,7 +245,7 @@ pub fn main() {
                 }).collect::<Vec<serde_json::Value>>(),
                 "air": {
                     "total": total_air,
-                    "module-times" : air_times.iter().take(3).map(|(m, t)| {
+                    "module-times" : air_times.iter().map(|(m, t)| {
                         serde_json::json!({
                             "module" : rust_verify::verifier::module_name(m),
                             "time" : t
@@ -253,17 +259,23 @@ pub fn main() {
                     serde_json::json!({
                         "total": (total_smt_init + total_smt_run),
                         "smt-init": total_smt_init,
-                        "smt-init-module-times" : smt_init_times.iter().take(3).map(|(m, t)| {
+                        "smt-init-module-times" : smt_init_times.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                         "smt-run": total_smt_run,
-                        "smt-init-module-times" : smt_run_times.iter().take(3).map(|(m, t)| {
+                        "smt-run-module-times" : smt_run_times.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
-                                "time" : t
+                                "time" : t,
+                                "function-breakdown" : smt_function_breakdown.get_mut(m).expect("Module should exist").iter().map(|(f, t)| {
+                                    serde_json::json!({
+                                        "function" : vir::ast_util::fun_as_friendly_rust_name(f),
+                                        "time" : t
+                                    })
+                                 }).collect::<Vec<serde_json::Value>>()
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                     }),
@@ -376,7 +388,7 @@ pub fn main() {
                 serde_json::json!({
                     "verified": verifier.count_verified,
                     "errors": verifier.count_errors,
-                    "is-verifying-entire-crate": is_verifying_entire_crate(&verifier),
+                    "is-verifying-entire-crate": rust_verify::driver::is_verifying_entire_crate(&verifier),
                 })
                 .as_object_mut()
                 .unwrap(),

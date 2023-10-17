@@ -1869,10 +1869,16 @@ impl Hash for ItemStatic {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.publish.hash(state);
+        self.mode.hash(state);
         self.mutability.hash(state);
         self.ident.hash(state);
         self.ty.hash(state);
+        self.ensures.hash(state);
+        self.eq_token.hash(state);
+        self.block.hash(state);
         self.expr.hash(state);
+        self.semi_token.hash(state);
     }
 }
 #[cfg(feature = "full")]

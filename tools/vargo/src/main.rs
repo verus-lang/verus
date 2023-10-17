@@ -60,6 +60,8 @@ impl PartialOrd for Fingerprint {
     }
 }
 
+const RUST_FLAGS: &str = "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations";
+
 fn main() {
     match run() {
         Ok(()) => (),
@@ -573,7 +575,7 @@ fn run() -> Result<(), String> {
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
-                    .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
+                    .env("RUSTFLAGS", RUST_FLAGS)
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -648,7 +650,7 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
-                    .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
+                    .env("RUSTFLAGS", RUST_FLAGS)
                     .env("CARGO", current_exe)
                     .args(&new_args);
                 log_command(&cargo, verbose);
@@ -661,7 +663,7 @@ fn run() -> Result<(), String> {
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
-                    .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
+                    .env("RUSTFLAGS", RUST_FLAGS)
                     .args(&new_args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -675,7 +677,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
-                .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
+                .env("RUSTFLAGS", RUST_FLAGS)
                 .args(&args);
             log_command(&cargo, verbose);
             cargo
@@ -694,7 +696,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
-                .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
+                .env("RUSTFLAGS", RUST_FLAGS)
                 .args(args);
             log_command(&cargo, verbose);
             let status = cargo
@@ -727,7 +729,7 @@ fn run() -> Result<(), String> {
                     let mut cmd = cmd
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
-                        .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
+                        .env("RUSTFLAGS", RUST_FLAGS)
                         .arg("build")
                         .arg("-p")
                         .arg(target);
@@ -911,7 +913,7 @@ fn run() -> Result<(), String> {
                         let mut vstd_build = vstd_build
                             .env("RUSTC_BOOTSTRAP", "1")
                             .env("VERUS_IN_VARGO", "1")
-                            .env("RUSTFLAGS", "--cfg proc_macro_span --cfg verus_keep_ghost")
+                            .env("RUSTFLAGS", RUST_FLAGS)
                             .arg("run")
                             .arg("-p")
                             .arg("vstd_build")

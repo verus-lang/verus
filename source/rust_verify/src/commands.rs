@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::Visibility;
-use vir::ast::{Fun, Function, Krate, Mode, Path, TraitImpl, VirErr};
+use vir::ast::{Fun, Function, ItemKind, Krate, Mode, Path, TraitImpl, VirErr};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
@@ -261,7 +261,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 continue;
             };
 
-            self.ctx.fun = mk_fun_ctx(&function, false);
+            self.ctx.fun = mk_fun_ctx_dec(&function, true, true);
             let not_verifying_owning_bucket = !self.bucket.contains(&function.x.name);
 
             let mut sst_map = UpdateCell::new(HashMap::new());
@@ -301,7 +301,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         &mut self,
         function: Function,
     ) -> Result<Vec<Op>, VirErr> {
-        if function.x.mode == Mode::Spec && !function.x.is_const {
+        if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
             Ok(vec![])
         } else {
             self.handle_proof_body(function, Style::Normal, None)
@@ -360,7 +360,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             sst_map,
             &function,
             // TODO revisit if we still need FuncDefPhase
-            if function.x.mode == Mode::Spec && !function.x.is_const {
+            if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
                 vir::func_to_air::FuncDefPhase::CheckingSpecs
             } else {
                 vir::func_to_air::FuncDefPhase::CheckingProofExec
@@ -376,14 +376,23 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
     }
 }
 
-pub fn mk_fun_ctx(f: &Function, checking_spec_preconditions: bool) -> Option<FunctionCtx> {
+pub fn mk_fun_ctx_dec(
+    f: &Function,
+    checking_spec_preconditions: bool,
+    checking_spec_decreases: bool,
+) -> Option<FunctionCtx> {
     Some(vir::context::FunctionCtx {
         checking_spec_preconditions,
         checking_spec_preconditions_for_non_spec: checking_spec_preconditions
             && f.x.mode != Mode::Spec,
+        checking_spec_decreases,
         module_for_chosen_triggers: f.x.owning_module.clone(),
         current_fun: f.x.name.clone(),
     })
+}
+
+pub fn mk_fun_ctx(f: &Function, checking_spec_preconditions: bool) -> Option<FunctionCtx> {
+    mk_fun_ctx_dec(f, checking_spec_preconditions, false)
 }
 
 impl Op {

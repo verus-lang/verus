@@ -15,7 +15,7 @@ use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 
 use vir::messages::{
-    message, note, note_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
+    message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
 };
 
 use num_format::{Locale, ToFormattedString};
@@ -34,7 +34,7 @@ use vir::context::GlobalCtx;
 use crate::buckets::{Bucket, BucketId};
 use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{path_to_string, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -221,6 +221,8 @@ pub struct Verifier {
     pub time_hir: Duration,
     /// execution times for each bucket run in parallel
     pub bucket_times: HashMap<BucketId, BucketStats>,
+    /// smt runtimes for each function per bucket
+    pub func_times: HashMap<BucketId, HashMap<Fun, Duration>>,
 
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
@@ -267,6 +269,7 @@ pub fn module_name(module: &vir::ast::Path) -> String {
 struct RunCommandQueriesResult {
     invalidity: bool,
     timed_out: bool,
+    not_skipped: bool,
 }
 
 impl std::ops::Add for RunCommandQueriesResult {
@@ -276,6 +279,7 @@ impl std::ops::Add for RunCommandQueriesResult {
         RunCommandQueriesResult {
             invalidity: self.invalidity || rhs.invalidity,
             timed_out: self.timed_out || rhs.timed_out,
+            not_skipped: self.not_skipped || rhs.not_skipped,
         }
     }
 }
@@ -297,6 +301,7 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
 
             bucket_times: HashMap::new(),
+            func_times: HashMap::new(),
 
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
@@ -328,6 +333,7 @@ impl Verifier {
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_times: HashMap::new(),
+            func_times: HashMap::new(),
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
@@ -348,6 +354,7 @@ impl Verifier {
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_times.extend(other.bucket_times);
+        self.func_times.extend(other.func_times);
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -362,6 +369,7 @@ impl Verifier {
                 dir_path.clone()
             } else {
                 let dir = std::path::PathBuf::from(crate::config::SOLVER_LOG_DIR.to_string());
+                delete_dir_if_exists_and_is_dir(&dir)?;
                 std::fs::create_dir_all(&dir).map_err(|err| {
                     io_vir_err(format!("could not create directory {}", dir.display()), err)
                 })?;
@@ -387,33 +395,7 @@ impl Verifier {
                 } else {
                     crate::config::LOG_DIR.to_string()
                 });
-                if dir.exists() {
-                    if dir.is_dir() {
-                        let entries = std::fs::read_dir(&dir).map_err(|err| {
-                            io_vir_err(format!("could not read directory {}", dir.display()), err)
-                        })?;
-                        for entry in entries {
-                            if let Ok(entry) = entry {
-                                if entry.path().is_file() {
-                                    std::fs::remove_file(entry.path()).map_err(|err| {
-                                        io_vir_err(
-                                            format!(
-                                                "could not remove file {}",
-                                                entry.path().display()
-                                            ),
-                                            err,
-                                        )
-                                    })?;
-                                }
-                            }
-                        }
-                    } else {
-                        return Err(error(format!(
-                            "{} exists and is not a directory",
-                            dir.display()
-                        )));
-                    }
-                }
+                delete_dir_if_exists_and_is_dir(&dir)?;
                 std::fs::create_dir_all(&dir).map_err(|err| {
                     io_vir_err(format!("could not create directory {}", dir.display()), err)
                 })?;
@@ -491,7 +473,10 @@ impl Verifier {
             // Summarize the triggers it used
             let triggers = &bnd_info.trigs;
             for trigger in triggers.iter() {
-                msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
+                // HACK: we do not have span info for the builtin crate
+                if !trigger.iter().any(|t| t.span.as_string.contains("builtin")) {
+                    msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
+                }
             }
             msg = msg.secondary_label(
                 &bnd_info.span,
@@ -504,7 +489,9 @@ impl Verifier {
 
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
-    /// Returns true if there was at least one Invalid resulting in an error.
+    /// invalidity is true if there was at least one Invalid resulting in an error.
+    /// timed_out is true if there was at least one time out
+    /// not_skipped is true if the performed command was a CheckValid() request
     ///
     /// If `level` is None, do not report errors.
     fn check_result_validity(
@@ -627,7 +614,7 @@ impl Verifier {
                             self.expand_targets.push(error.clone());
                         }
 
-                        if self.args.debug {
+                        if self.args.debugger {
                             if let Some(source_map) = source_map {
                                 let mut debugger =
                                     Debugger::new(air_model, assign_map, snap_map, source_map);
@@ -682,7 +669,11 @@ impl Verifier {
             air_context.finish_query();
         }
 
-        RunCommandQueriesResult { invalidity, timed_out }
+        RunCommandQueriesResult {
+            invalidity,
+            timed_out,
+            not_skipped: matches!(**command, CommandX::CheckValid(_)),
+        }
     }
 
     fn run_commands(
@@ -712,7 +703,10 @@ impl Verifier {
         }
     }
 
-    /// Returns true if there was at least one Invalid resulting in an error.
+    /// Returns the status of running the provided queries
+    /// invalidity: whether the command returned invalid or not
+    /// timed_out: whether the command timed out or not
+    /// not_skipped : whether a nontrivial validity check was performed or not
     fn run_commands_queries(
         &mut self,
         reporter: &impl air::messages::Diagnostics,
@@ -730,10 +724,15 @@ impl Verifier {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
         if !includes_function {
-            return RunCommandQueriesResult { invalidity: false, timed_out: false };
+            return RunCommandQueriesResult {
+                invalidity: false,
+                timed_out: false,
+                not_skipped: false,
+            };
         }
 
-        let mut result = RunCommandQueriesResult { invalidity: false, timed_out: false };
+        let mut result =
+            RunCommandQueriesResult { invalidity: false, timed_out: false, not_skipped: false };
         let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
         if commands.len() > 0 {
@@ -769,7 +768,7 @@ impl Verifier {
     ) -> String {
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         let count_msg = query_function_path_counter
-            .map(|(_, ref c)| format!("_{:02}", c))
+            .map(|(n, ref c)| format!("{}_{:02}", path_to_string(n), c))
             .unwrap_or("".to_string());
         let expand_msg = if expand_flag { "_expand" } else { "" };
 
@@ -788,14 +787,14 @@ impl Verifier {
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = air::context::Context::new(message_interface.clone());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
-        air_context.set_debug(self.args.debug);
+        air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
             air_context.set_profile_with_logfile_name(
                 profile_file_name.to_str().expect("invalid prover log path").to_owned(),
             );
         }
 
-        if self.args.log_all || self.args.log_air_initial {
+        if self.args.log_all || self.args.log_args.log_air_initial {
             let file = self.create_log_file(
                 Some(bucket_id),
                 Self::log_fine_name_suffix(
@@ -808,7 +807,7 @@ impl Verifier {
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
-        if self.args.log_all || self.args.log_air_final {
+        if self.args.log_all || self.args.log_args.log_air_final {
             let file = self.create_log_file(
                 Some(bucket_id),
                 Self::log_fine_name_suffix(
@@ -821,7 +820,7 @@ impl Verifier {
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
-        if self.args.log_all || self.args.log_smt {
+        if self.args.log_all || self.args.log_args.log_smt {
             let file = self.create_log_file(
                 Some(bucket_id),
                 Self::log_fine_name_suffix(
@@ -971,6 +970,7 @@ impl Verifier {
                 Self::log_fine_name_suffix(false, None, false, crate::config::PROFILE_FILE_SUFFIX)
                     .as_str(),
             );
+            assert!(!profile_file_name.exists());
             Some(profile_file_name)
         } else {
             None
@@ -1099,6 +1099,7 @@ impl Verifier {
 
                     let mut any_invalid = false;
                     self.expand_targets = vec![];
+                    let mut func_curr_smt_time = Duration::ZERO;
                     for cmds in commands_with_context_list.iter() {
                         if is_recommend && cmds.skip_recommends {
                             continue;
@@ -1128,6 +1129,7 @@ impl Verifier {
                                     )
                                     .as_str(),
                                 );
+                                assert!(!profile_file_name.exists());
                                 Some(profile_file_name)
                             } else {
                                 None
@@ -1160,10 +1162,11 @@ impl Verifier {
                         } else {
                             &mut air_context
                         };
-
+                        let iter_curr_smt_time = query_air_context.get_time().1;
                         let RunCommandQueriesResult {
                             invalidity: command_invalidity,
                             timed_out: command_timed_out,
+                            not_skipped: command_not_skipped,
                         } = self.run_commands_queries(
                             reporter,
                             source_map,
@@ -1177,6 +1180,7 @@ impl Verifier {
                             &op.to_air_comment(),
                             None,
                         );
+                        func_curr_smt_time += query_air_context.get_time().1 - iter_curr_smt_time;
                         if do_spinoff {
                             let (time_smt_init, time_smt_run) = query_air_context.get_time();
                             spunoff_time_smt_init += time_smt_init;
@@ -1186,23 +1190,45 @@ impl Verifier {
                         any_invalid |= command_invalidity;
 
                         if let Some(profile_file_name) = profile_file_name {
-                            let profiler = Profiler::new(
-                                message_interface.clone(),
-                                &profile_file_name,
-                                reporter,
-                            );
-                            reporter.report(
-                                &note_bare(format!(
-                                    "Profile statistics for {}",
-                                    fun_as_friendly_rust_name(&function.x.name)
-                                ))
-                                .to_any(),
-                            );
-                            self.print_profile_stats(
-                                reporter,
-                                profiler,
-                                &opgen.ctx.global.qid_map.borrow(),
-                            );
+                            if command_not_skipped && query_air_context.check_valid_used() {
+                                assert!(profile_file_name.exists());
+
+                                let current_profile_description =
+                                    op.to_friendly_desc().map(|x| x + " ").unwrap_or("".into())
+                                        + &fun_as_friendly_rust_name(&function.x.name);
+
+                                match Profiler::parse(
+                                    message_interface.clone(),
+                                    &profile_file_name,
+                                    Some(&current_profile_description),
+                                    self.args.profile || self.args.profile_all,
+                                    reporter,
+                                ) {
+                                    Ok(profiler) => {
+                                        reporter.report(
+                                            &note_bare(format!(
+                                                "Profile statistics for {}",
+                                                fun_as_friendly_rust_name(&function.x.name)
+                                            ))
+                                            .to_any(),
+                                        );
+                                        self.print_profile_stats(
+                                            reporter,
+                                            profiler,
+                                            &opgen.ctx.global.qid_map.borrow(),
+                                        );
+                                    }
+                                    Err(err) => {
+                                        reporter.report_now(
+                                            &warning_bare(format!(
+                                                "Failed parsing profile file for {}: {}",
+                                                current_profile_description, err
+                                            ))
+                                            .to_any(),
+                                        );
+                                    }
+                                }
+                            }
                         } else {
                             if command_timed_out && self.args.profile {
                                 opgen.retry_with_profile(
@@ -1214,6 +1240,13 @@ impl Verifier {
                             }
                         }
                     }
+
+                    // collect the smt run time from this command into the function duration
+                    let func_time =
+                        self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
+                    // dbg!(&function.x.name.path);
+                    *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) +=
+                        func_curr_smt_time;
 
                     if matches!(query_op, QueryOp::Body(Style::Normal)) {
                         if (any_invalid && !self.args.no_auto_recommends_check)
@@ -1249,13 +1282,40 @@ impl Verifier {
             }
         }
         if let Some(profile_all_file_name) = profile_all_file_name {
-            let profiler =
-                Profiler::new(message_interface.clone(), &profile_all_file_name, reporter);
-            reporter.report(
-                &note_bare(format!("Profile statistics for {}", bucket_id.friendly_name()))
-                    .to_any(),
-            );
-            self.print_profile_stats(reporter, profiler, &opgen.ctx.global.qid_map.borrow());
+            if air_context.check_valid_used() {
+                match Profiler::parse(
+                    message_interface.clone(),
+                    &profile_all_file_name,
+                    Some(&bucket_id.friendly_name()),
+                    self.args.profile || self.args.profile_all,
+                    reporter,
+                ) {
+                    Ok(profiler) => {
+                        reporter.report(
+                            &note_bare(format!(
+                                "Profile statistics for {}",
+                                bucket_id.friendly_name()
+                            ))
+                            .to_any(),
+                        );
+                        self.print_profile_stats(
+                            reporter,
+                            profiler,
+                            &opgen.ctx.global.qid_map.borrow(),
+                        );
+                    }
+                    Err(err) => {
+                        reporter.report_now(
+                            &warning_bare(format!(
+                                "Failed parsing profile file for {}: {}",
+                                bucket_id.friendly_name(),
+                                err
+                            ))
+                            .to_any(),
+                        );
+                    }
+                }
+            }
         }
 
         ctx.fun = None;
@@ -1300,13 +1360,13 @@ impl Verifier {
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
-            self.args.debug,
+            self.args.debugger,
         )?;
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
-        if self.args.log_all || self.args.log_vir_poly {
+        if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &poly_krate, &self.args.vir_log_option);
+            vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
         }
 
         let (time_smt_init, time_smt_run) =
@@ -1345,12 +1405,13 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let interpreter_log_file =
-            Arc::new(std::sync::Mutex::new(if self.args.log_all || self.args.log_interpreter {
+        let interpreter_log_file = Arc::new(std::sync::Mutex::new(
+            if self.args.log_all || self.args.log_args.log_interpreter {
                 Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
             } else {
                 None
-            }));
+            },
+        ));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
@@ -1362,9 +1423,9 @@ impl Verifier {
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
-        if self.args.log_all || self.args.log_vir_simple {
+        if self.args.log_all || self.args.log_args.log_vir_simple {
             let mut file = self.create_log_file(None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &krate, &self.args.vir_log_option);
+            vir::printer::write_krate(&mut file, &krate, &self.args.log_args.vir_log_option);
         }
 
         #[cfg(debug_assertions)]
@@ -1425,7 +1486,7 @@ impl Verifier {
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
                 // give each bucket its own log file
                 let interpreter_log_file = Arc::new(std::sync::Mutex::new(
-                    if self.args.log_all || self.args.log_vir_simple {
+                    if self.args.log_all || self.args.log_args.log_vir_simple {
                         Some(self.create_log_file(
                             Some(bucket_id),
                             crate::config::INTERPRETER_FILE_SUFFIX,
@@ -1628,7 +1689,7 @@ impl Verifier {
         }
 
         // Log/display triggers
-        if self.args.log_all || self.args.log_triggers {
+        if self.args.log_all || self.args.log_args.log_triggers {
             let mut file = self.create_log_file(None, crate::config::TRIGGERS_FILE_SUFFIX)?;
             let chosen_triggers = global_ctx.get_chosen_triggers();
             for triggers in chosen_triggers {
@@ -1811,11 +1872,11 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
 
-        if self.args.log_all || self.args.log_vir {
+        if self.args.log_all || self.args.log_args.log_vir {
             let mut file = self
                 .create_log_file(None, crate::config::VIR_FILE_SUFFIX)
                 .map_err(map_err_diagnostics)?;
-            vir::printer::write_krate(&mut file, &vir_crate, &self.args.vir_log_option);
+            vir::printer::write_krate(&mut file, &vir_crate, &self.args.log_args.vir_log_option);
         }
         let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
@@ -1869,6 +1930,30 @@ impl Verifier {
 
         Ok(true)
     }
+}
+
+fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirErr> {
+    Ok(if dir.exists() {
+        if dir.is_dir() {
+            let entries = std::fs::read_dir(dir).map_err(|err| {
+                io_vir_err(format!("could not read directory {}", dir.display()), err)
+            })?;
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    if entry.path().is_file() {
+                        std::fs::remove_file(entry.path()).map_err(|err| {
+                            io_vir_err(
+                                format!("could not remove file {}", entry.path().display()),
+                                err,
+                            )
+                        })?;
+                    }
+                }
+            }
+        } else {
+            return Err(error(format!("{} exists and is not a directory", dir.display())));
+        }
+    })
 }
 
 // TODO: move the callbacks into a different file, like driver.rs
@@ -1979,7 +2064,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     Ok(vec![])
                 } else {
                     let log_lifetime =
-                        self.verifier.args.log_all || self.verifier.args.log_lifetime;
+                        self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
                     let lifetime_log_file = if log_lifetime {
                         let file = self
                             .verifier

@@ -1096,12 +1096,11 @@ test_verify_one_file! {
             decreases_when(i >= 0);
             decreases_by(check_arith_sum);
 
-            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+            if i == 0 { 0 } else { i + arith_sum(i - 1) } // FAILS
         }
 
         #[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
-            // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1322,7 +1321,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] decreases_by_lemma_with_return_stmt_checks_postcondition verus_code! {
+    #[test] decreases_by_lemma_with_return_stmt_fails verus_code! {
         spec fn some_fun(i: nat) -> nat
             decreases i
         {
@@ -1338,6 +1337,42 @@ test_verify_one_file! {
             } else {
                 return; // FAILS
             }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] decreases_by_lemma_with_loop_fails verus_code! {
+        spec fn some_fun(i: nat) -> nat
+            decreases i
+        {
+            decreases_by(decby_lemma);
+
+            some_fun((i - 1) as nat)
+        }
+
+        #[verifier(decreases_by)]
+        proof fn decby_lemma(i: nat)
+        {
+            while true { }
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot use while in proof or spec mode")
+}
+
+test_verify_one_file! {
+    #[test] decreases_by_lemma_with_assert_false_fails verus_code! {
+        spec fn some_fun(i: nat) -> nat
+            decreases i
+        {
+            decreases_by(decby_lemma);
+
+            some_fun((i - 1) as nat)
+        }
+
+        #[verifier(decreases_by)]
+        proof fn decby_lemma(i: nat)
+        {
+            assert(false); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -1754,6 +1789,23 @@ test_verify_one_file! {
             }
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+// We now also allow decreases inside choose|x| body,
+// on the grounds that you could rewrite this as let f = |x| body; choose|x| f(x)
+// and decreases is already allowed in |x| body.
+test_verify_one_file! {
+    #[test] decreases_inside_choose verus_code! {
+        spec fn f(n: int) -> bool
+            decreases n
+        {
+            if n > 0 {
+                0 == choose|i: int| f(i) // FAILS
+            } else {
+                false
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {

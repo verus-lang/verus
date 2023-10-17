@@ -262,7 +262,8 @@ where
                 | ExprX::Var(_)
                 | ExprX::VarLoc(_)
                 | ExprX::VarAt(_, _)
-                | ExprX::ConstVar(..) => (),
+                | ExprX::ConstVar(..)
+                | ExprX::StaticVar(..) => (),
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
@@ -530,7 +531,7 @@ where
         decrease_by: _,
         broadcast_forall,
         mask_spec,
-        is_const: _,
+        item_kind: _,
         publish: _,
         attrs: _,
         body,
@@ -611,6 +612,7 @@ where
         ExprX::VarLoc(x) => ExprX::VarLoc(x.clone()),
         ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
         ExprX::ConstVar(x, a) => ExprX::ConstVar(x.clone(), *a),
+        ExprX::StaticVar(x) => ExprX::StaticVar(x.clone()),
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Call(target, es) => {
             let target = match target {
@@ -1030,7 +1032,7 @@ where
         decrease_by,
         broadcast_forall,
         mask_spec,
-        is_const,
+        item_kind,
         publish,
         attrs,
         body,
@@ -1096,7 +1098,7 @@ where
     };
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
-    let is_const = *is_const;
+    let item_kind = *item_kind;
     let publish = *publish;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
@@ -1133,7 +1135,7 @@ where
         decrease_by,
         broadcast_forall,
         mask_spec,
-        is_const,
+        item_kind,
         publish,
         attrs,
         body,
