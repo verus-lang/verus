@@ -339,19 +339,19 @@ fn check_one_expr(
         }
         ExprX::Fuel(f, fuel) => {
             let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
-            if f.x.mode != Mode::Spec {
+            if f.x.mode != Mode::Spec && !f.x.attrs.broadcast_forall {
                 return Err(error(
                     &expr.span,
                     &format!(
-                        "reveal/fuel statements require a spec-mode function, got {:}-mode function",
+                        "reveal/fuel statements require a spec-mode function or broadcast_forall function, got {:}-mode function",
                         f.x.mode
                     ),
                 ));
             }
-            if f.x.decrease.is_empty() && *fuel > 1 {
+            if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decrease.is_empty()) {
                 return Err(error(
                     &expr.span,
-                    "reveal_with_fuel statements require a function with a decreases clause",
+                    "reveal_with_fuel statements require a spec function with a decreases clause",
                 ));
             }
         }
@@ -532,12 +532,6 @@ fn check_function(
                     "broadcast_forall function must have spec parameters",
                 ));
             }
-        }
-        if function.x.body.is_some() {
-            return Err(error(
-                &function.span,
-                "broadcast_forall function must be declared as external_body",
-            ));
         }
     }
 

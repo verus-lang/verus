@@ -399,8 +399,8 @@ impl Ctx {
         let mut ids: Vec<air::ast::Expr> = Vec::new();
         let mut commands: Vec<Command> = Vec::new();
         for function in &self.functions {
-            match (function.x.mode, function.x.body.as_ref()) {
-                (Mode::Spec, Some(_)) => {
+            match (function.x.mode, function.x.body.as_ref(), function.x.attrs.broadcast_forall) {
+                (Mode::Spec, Some(_), false) | (Mode::Proof, Some(_), true) => {
                     let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&function.x.name));
                     ids.push(air::ast_util::ident_var(&id));
                     let typ_fuel_id = str_typ(&FUEL_ID);

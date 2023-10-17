@@ -322,7 +322,7 @@ test_verify_one_file! {
         proof fn foo() {
             reveal_with_fuel(is_true, 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a function with a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a spec function with a decreases clause")
 }
 
 test_verify_one_file_with_options! {
