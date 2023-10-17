@@ -3,12 +3,9 @@
 use crate::messages::{Diagnostics, MessageLevel};
 use std::collections::HashSet;
 use std::io::BufRead;
-// use std::io::Write;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-// use sise::Node;
 use z3tracer::model::QuantCost;
 use z3tracer::syntax::{MatchedTerm, QiFrame, QiKey};
-// use z3tracer::model::QuantCause;
 use z3tracer::{Model, ModelConfig};
 
 pub const PROVER_LOG_FILE: &str = "verus-prover-trace.log";
@@ -21,7 +18,6 @@ pub struct Profiler {
     message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
     //log_path: String,
     quantifier_stats: Vec<QuantCost>,
-    // pub quantifier_causes: Vec<QuantCause>,
     instantiation_graph: InstantiationGraph,
 }
 
@@ -106,16 +102,7 @@ impl Profiler {
         user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
         user_quant_costs.reverse();
 
-        // let quant_causes = model.quant_causes();
-        // let mut user_quant_causes = quant_causes
-        //     .into_iter()
-        //     .filter(|cost| cost.quant.starts_with(USER_QUANT_PREFIX))
-        //     .collect::<Vec<_>>();
-        // user_quant_causes.sort_by_key(|qc| qc.instantiations);
-        // user_quant_causes.reverse();
-
         Ok(Profiler { message_interface, quantifier_stats: user_quant_costs, instantiation_graph })
-        // Profiler { message_interface, quantifier_stats: user_quant_costs, quantifier_causes : user_quant_causes }
     }
 
     pub fn instantiation_graph(&self) -> &InstantiationGraph {

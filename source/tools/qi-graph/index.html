@@ -29,7 +29,7 @@
 <script>
   function plot(data) {
     const max_smt_module_time = d3.max(data, d => d["time"]);
-    
+
     data.sort((a, b) => b.time - a.time);
 
     data.forEach((m, _i) => {
