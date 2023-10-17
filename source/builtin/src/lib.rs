@@ -362,7 +362,7 @@ impl<A> Ghost<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub fn assume_new() -> Self {
+    pub const fn assume_new() -> Self {
         Ghost { phantom: PhantomData }
     }
 
@@ -404,7 +404,7 @@ impl<A> Tracked<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub fn assume_new() -> Self {
+    pub const fn assume_new() -> Self {
         Tracked { phantom: PhantomData }
     }
 

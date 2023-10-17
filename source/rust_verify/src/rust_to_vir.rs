@@ -21,8 +21,8 @@ use crate::{err_unless, unsupported_err, unsupported_err_unless};
 use rustc_ast::IsAuto;
 use rustc_hir::{
     AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
-    ItemKind, MaybeOwner, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn, TraitItem,
-    TraitItemKind, TraitRef, Unsafety,
+    ItemKind, MaybeOwner, Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn,
+    TraitItem, TraitItemKind, TraitRef, Unsafety,
 };
 
 use std::collections::HashMap;
@@ -424,7 +424,7 @@ fn check_item<'tcx>(
         {
             return Ok(());
         }
-        ItemKind::Const(_ty, body_id) => {
+        ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, Mutability::Not, body_id) => {
             let def_id = body_id.hir_id.owner.to_def_id();
             let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
             if path
@@ -444,7 +444,7 @@ fn check_item<'tcx>(
             let vir_ty =
                 mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
 
-            crate::rust_to_vir_func::check_item_const(
+            crate::rust_to_vir_func::check_item_const_or_static(
                 ctxt,
                 vir,
                 item.span,
@@ -454,7 +454,14 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 &vir_ty,
                 body_id,
+                matches!(item.kind, ItemKind::Static(_, _, _)),
             )?;
+        }
+        ItemKind::Static(_ty, Mutability::Mut, _body_id) => {
+            if vattrs.external {
+                return Ok(());
+            }
+            unsupported_err!(item.span, "static mut");
         }
         ItemKind::Macro(_, _) => {}
         ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {

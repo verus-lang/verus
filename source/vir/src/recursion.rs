@@ -1,10 +1,9 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, CallTarget, Constant, ExprX, Fun, Function, FunctionKind,
-    GenericBoundX, IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    VirErr,
+    AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
+    IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
-use crate::ast_util::QUANT_FORALL;
+use crate::ast_util::typ_to_diagnostic_str;
 use crate::context::Ctx;
 use crate::def::{
     decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
@@ -18,12 +17,11 @@ use crate::sst::{
     UniqueIdent,
 };
 use crate::sst_to_air::PostConditionKind;
-use crate::sst_visitor::{exp_rename_vars, exp_visitor_check, map_exp_visitor, map_stm_visitor};
+use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast::Binder;
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::messages::Diagnostics;
-use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -43,7 +41,11 @@ struct Ctxt<'a> {
     ctx: &'a Ctx,
 }
 
-fn get_callee(ctx: &Ctx, target: &Fun, resolved_method: &Option<(Fun, Typs)>) -> Option<Fun> {
+pub(crate) fn get_callee(
+    ctx: &Ctx,
+    target: &Fun,
+    resolved_method: &Option<(Fun, Typs)>,
+) -> Option<Fun> {
     let fun = &ctx.func_map[target];
     if let FunctionKind::TraitMethodDecl { .. } = &fun.x.kind {
         resolved_method.clone().map(|(x, _)| x)
@@ -81,25 +83,28 @@ fn height_typ(ctxt: &Ctxt, exp: &Exp) -> Typ {
     }
 }
 
-fn exp_for_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {
+fn exp_for_decrease(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
-        TypX::Int(_) => exp.clone(),
-        TypX::Datatype(..) => {
-            if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
-                exp.clone()
-            } else {
-                let op = UnaryOpr::Box(exp.typ.clone());
-                let argx = ExpX::UnaryOpr(op, exp.clone());
-                let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
-                SpannedTyped::new(&exp.span, &typ, argx)
-            }
-        }
-        // TODO: non-panic error message
-        _ => panic!("internal error: unsupported type for decreases {:?}", exp.typ),
+        TypX::Int(_) => Ok(exp.clone()),
+        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
+            exp.clone()
+        } else {
+            let op = UnaryOpr::Box(exp.typ.clone());
+            let argx = ExpX::UnaryOpr(op, exp.clone());
+            let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
+            SpannedTyped::new(&exp.span, &typ, argx)
+        }),
+        _ => Err(error(
+            &exp.span,
+            format!(
+                "internal error: unsupported type for decreases {}",
+                typ_to_diagnostic_str(&exp.typ)
+            ),
+        )),
     }
 }
 
-fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
+fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Result<Exp, VirErr> {
     // When calling a function with more decreases clauses,
     // it's good enough to be equal on the shared decreases clauses
     // and to ignore the extra decreases clauses.
@@ -113,7 +118,7 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
         let decreases_at_entry =
             SpannedTyped::new(&exp.span, &height_typ(ctxt, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
-        let args = vec![exp_for_decrease(ctxt, exp), decreases_at_entry, dec_exp];
+        let args = vec![exp_for_decrease(ctxt, exp)?, decreases_at_entry, dec_exp];
         let call = ExpX::Call(
             if height_is_int(&exp.typ) {
                 CallFun::InternalFun(InternalFun::CheckDecreaseInt)
@@ -125,7 +130,7 @@ fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
         );
         dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
     }
-    dec_exp
+    Ok(dec_exp)
 }
 
 fn check_decrease_call(
@@ -176,141 +181,18 @@ fn check_decrease_call(
         );
         decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
     }
-    Ok(check_decrease(ctxt, span, &decreases_exps))
-}
-
-// Check that exp terminates
-fn terminates(
-    ctxt: &Ctxt,
-    diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
-    exp: &Exp,
-) -> Result<Exp, VirErr> {
-    let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
-    let r = |e: &Exp| terminates(ctxt, diagnostics, fun_ssts, e);
-    match &exp.x {
-        ExpX::Const(_)
-        | ExpX::Var(..)
-        | ExpX::VarAt(..)
-        | ExpX::VarLoc(..)
-        | ExpX::Old(..)
-        | ExpX::NullaryOpr(..) => Ok(bool_exp(ExpX::Const(Constant::Bool(true)))),
-        ExpX::Loc(e) => r(e),
-        ExpX::Call(CallFun::Fun(x, resolved_method), _targs, args) => {
-            let mut e = if is_recursive_call(ctxt, x, resolved_method) {
-                check_decrease_call(
-                    ctxt,
-                    diagnostics,
-                    fun_ssts,
-                    &exp.span,
-                    x,
-                    resolved_method,
-                    args,
-                )?
-            } else {
-                bool_exp(ExpX::Const(Constant::Bool(true)))
-            };
-            for arg in args.iter().rev() {
-                let e_arg = r(arg)?;
-                e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
-            }
-            Ok(e)
-        }
-        ExpX::Call(CallFun::CheckTermination(_), _, _) => {
-            panic!("internal error: CheckTermination")
-        }
-        ExpX::Call(CallFun::InternalFun(_func), _tys, args) => {
-            let mut e = bool_exp(ExpX::Const(Constant::Bool(true)));
-            for arg in args.iter().rev() {
-                let e_arg = r(arg)?;
-                e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
-            }
-            Ok(e)
-        }
-        ExpX::CallLambda(_, f, args) => {
-            let mut e = r(f)?;
-            for arg in args.iter().rev() {
-                let e_arg = r(arg)?;
-                e = bool_exp(ExpX::Binary(BinaryOp::And, e_arg, e));
-            }
-            Ok(e)
-        }
-        ExpX::Ctor(_path, _ident, binders) => {
-            let mut e = bool_exp(ExpX::Const(Constant::Bool(true)));
-            for binder in binders.iter().rev() {
-                let e_binder = r(&binder.a)?;
-                e = bool_exp(ExpX::Binary(BinaryOp::And, e_binder, e));
-            }
-            Ok(e)
-        }
-        ExpX::Unary(_, e1) => r(e1),
-        ExpX::UnaryOpr(_, e1) => r(e1),
-        ExpX::Binary(BinaryOp::And, e1, e2) | ExpX::Binary(BinaryOp::Implies, e1, e2) => {
-            let t_e1 = r(e1)?;
-            let t_e2 = r(e2)?;
-            let imply = bool_exp(ExpX::Binary(BinaryOp::Implies, e1.clone(), t_e2));
-            Ok(bool_exp(ExpX::Binary(BinaryOp::And, t_e1, imply)))
-        }
-        ExpX::Binary(BinaryOp::Or, e1, e2) => {
-            let t_e1 = r(e1)?;
-            let t_e2 = r(e2)?;
-            let not = bool_exp(ExpX::Unary(UnaryOp::Not, e1.clone()));
-            let imply = bool_exp(ExpX::Binary(BinaryOp::Implies, not, t_e2));
-            Ok(bool_exp(ExpX::Binary(BinaryOp::And, t_e1, imply)))
-        }
-        ExpX::Binary(_, e1, e2) | ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
-            let e1 = r(e1)?;
-            let e2 = r(e2)?;
-            Ok(bool_exp(ExpX::Binary(BinaryOp::And, e1, e2)))
-        }
-        ExpX::If(e1, e2, e3) => {
-            let t_e1 = r(e1)?;
-            let t_e2 = r(e2)?;
-            let t_e3 = r(e3)?;
-            let e_if = bool_exp(ExpX::If(e1.clone(), t_e2, t_e3));
-            Ok(bool_exp(ExpX::Binary(BinaryOp::And, t_e1, e_if)))
-        }
-        ExpX::WithTriggers(_triggers, body) => r(body),
-        ExpX::Bind(bnd, e1) => {
-            let t_e1 = r(e1)?;
-            match &bnd.x {
-                BndX::Let(binders) => {
-                    let mut e_bind = bool_exp(ExpX::Bind(
-                        Spanned::new(bnd.span.clone(), BndX::Let(binders.clone())),
-                        t_e1,
-                    ));
-                    for binder in binders.iter().rev() {
-                        let e_binder = r(&binder.a)?;
-                        e_bind = bool_exp(ExpX::Binary(BinaryOp::And, e_binder, e_bind));
-                    }
-                    Ok(e_bind)
-                }
-                BndX::Quant(_, binders, triggers) | BndX::Lambda(binders, triggers) => {
-                    Ok(bool_exp(ExpX::Bind(
-                        Spanned::new(
-                            bnd.span.clone(),
-                            BndX::Quant(QUANT_FORALL, binders.clone(), triggers.clone()),
-                        ),
-                        t_e1,
-                    )))
-                }
-                BndX::Choose(..) => {
-                    disallow_recursion_exp(ctxt, e1)?;
-                    Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
-                }
-            }
-        }
-        ExpX::Interp(_) => {
-            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
-        }
-    }
+    check_decrease(ctxt, span, &decreases_exps)
 }
 
 pub(crate) fn fun_is_recursive(ctx: &Ctx, name: &Fun) -> bool {
     ctx.global.func_call_graph.node_is_in_cycle(&Node::Fun(name.clone()))
 }
 
-fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<LocalDecl>, Vec<Stm>) {
+fn mk_decreases_at_entry(
+    ctxt: &Ctxt,
+    span: &Span,
+    exps: &Vec<Exp>,
+) -> Result<(Vec<LocalDecl>, Vec<Stm>), VirErr> {
     let mut decls: Vec<LocalDecl> = Vec::new();
     let mut stm_assigns: Vec<Stm> = Vec::new();
     for (i, exp) in exps.iter().enumerate() {
@@ -328,63 +210,73 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
                     dest: crate::ast_to_sst::var_loc_exp(&span, &typ, uniq_ident),
                     is_init: true,
                 },
-                rhs: exp_for_decrease(ctxt, exp),
+                rhs: exp_for_decrease(ctxt, exp)?,
             },
         );
         decls.push(decl);
         stm_assigns.push(stm_assign);
     }
-    (decls, stm_assigns)
+    Ok((decls, stm_assigns))
 }
 
-// REVIEW: for simplicity, we completely disallow recursive calls from inside closures.
-// It's possible that we could be allow some recursion.
-fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
-    let mut scope_map = ScopeMap::new();
-    exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
-        ExpX::Call(CallFun::Fun(x, resolved_method), _targs, _)
-            if is_recursive_call(ctxt, x, resolved_method) =>
-        {
-            Err(error(&exp.span, "recursion not allowed here"))
-        }
-        _ => Ok(()),
-    })
-}
-
-pub(crate) fn check_termination_exp(
+pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
     function: &Function,
-    mut local_decls: Vec<LocalDecl>,
     body: &Exp,
-    proof_body: Vec<Stm>,
-    uses_decreases_by: bool,
-) -> Result<(bool, Vec<CommandsWithContext>, Exp), VirErr> {
+) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
+    let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     if !fun_is_recursive(ctx, &function.x.name) {
-        return Ok((false, vec![], body.clone()));
+        return Ok((false, body.clone(), scc_rep));
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
         return Err(error(&function.span, "recursive function must have a decreases clause"));
     }
+    let ctxt = Ctxt {
+        recursive_function_name: function.x.name.clone(),
+        num_decreases,
+        scc_rep: scc_rep.clone(),
+        ctx,
+    };
 
-    // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
-    let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp_skip_checks(
-            ctx,
-            diagnostics,
-            fun_ssts,
-            &params_to_pars(&function.x.params, true),
-            e,
-        )
-    })?;
-    let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
-    let ctxt =
-        Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
-    let check = terminates(&ctxt, diagnostics, fun_ssts, &body)?;
-    let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
-    stm_assigns.extend(proof_body.clone());
+    // New body: substitute rec%f(args, fuel) for f(args)
+    let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
+        ExpX::Call(CallFun::Fun(x, resolved_method), typs, args)
+            if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
+        {
+            let mut args = (**args).clone();
+            let varx = ExpX::Var(unique_local(&str_ident(FUEL_PARAM)));
+            let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
+            args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
+            let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));
+            SpannedTyped::new(&exp.span, &exp.typ, callx)
+        }
+        _ => exp.clone(),
+    });
+
+    Ok((true, body, scc_rep))
+}
+
+pub(crate) fn check_termination_commands(
+    ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
+    fun_ssts: &SstMap,
+    function: &Function,
+    mut local_decls: Vec<LocalDecl>,
+    proof_body: Stm,
+    body: &Stm,
+    uses_decreases_by: bool,
+) -> Result<Vec<CommandsWithContext>, VirErr> {
+    if !fun_is_recursive(ctx, &function.x.name) {
+        return Ok(vec![]);
+    }
+
+    let (ctxt, decreases_exps, stm) =
+        check_termination(ctx, diagnostics, fun_ssts, function, body)?;
+
+    let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps)?;
+    stm_assigns.push(proof_body);
+    stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
 
     // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
@@ -399,7 +291,7 @@ pub(crate) fn check_termination_exp(
         &Arc::new(local_decls),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &Arc::new(vec![check]),
+        &Arc::new(vec![]),
         &Arc::new(vec![]),
         &MaskSpec::NoSpec,
         function.x.mode,
@@ -413,37 +305,19 @@ pub(crate) fn check_termination_exp(
         } else {
             PostConditionKind::DecreasesImplicitLemma
         },
+        &vec![],
     )?;
 
-    // New body: substitute rec%f(args, fuel) for f(args)
-    let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
-        ExpX::Call(CallFun::Fun(x, resolved_method), typs, args)
-            if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
-        {
-            let mut args = (**args).clone();
-            let varx = ExpX::Var(unique_local(&str_ident(FUEL_PARAM)));
-            let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
-            args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
-            let callx =
-                ExpX::Call(CallFun::CheckTermination(x.clone()), typs.clone(), Arc::new(args));
-            SpannedTyped::new(&exp.span, &exp.typ, callx)
-        }
-        _ => exp.clone(),
-    });
-
-    Ok((true, commands, body))
+    Ok(commands)
 }
 
-pub(crate) fn check_termination_stm(
-    ctx: &Ctx,
+fn check_termination<'a>(
+    ctx: &'a Ctx,
     diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     function: &Function,
     body: &Stm,
-) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
-    if !fun_is_recursive(ctx, &function.x.name) {
-        return Ok((vec![], body.clone()));
-    }
+) -> Result<(Ctxt<'a>, Vec<Exp>, Stm), VirErr> {
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
         return Err(error(&function.span, "recursive function must have a decreases clause"));
@@ -483,7 +357,24 @@ pub(crate) fn check_termination_stm(
         }
         _ => Ok(s.clone()),
     })?;
-    let (decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exps);
+    Ok((ctxt, decreases_exps, stm))
+}
+
+pub(crate) fn check_termination_stm(
+    ctx: &Ctx,
+    diagnostics: &impl Diagnostics,
+    fun_ssts: &SstMap,
+    function: &Function,
+    body: &Stm,
+) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
+    if !fun_is_recursive(ctx, &function.x.name) {
+        return Ok((vec![], body.clone()));
+    }
+
+    let (ctxt, decreases_exps, stm) =
+        check_termination(ctx, diagnostics, fun_ssts, function, body)?;
+
+    let (decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exps)?;
     stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
     Ok((decls, stm_block))

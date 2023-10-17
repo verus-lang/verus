@@ -147,7 +147,7 @@ fn check_path_and_get_function<'a>(
 
     if let Some((source_module, reason)) = disallow_private_access {
         if !is_visible_to_opt(&f.x.visibility, source_module) {
-            let kind = if f.x.is_const { "const" } else { "function" };
+            let kind = f.x.item_kind.to_string();
             let msg = format!("in {reason:}, cannot refer to private {kind:}");
             return Err(error(&span, msg));
         }

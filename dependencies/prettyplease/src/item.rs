@@ -210,7 +210,12 @@ impl Printer {
         self.ty(&item.ty);
         self.word(" = ");
         self.neverbreak();
-        self.expr(&item.expr);
+        if let Some(expr) = &item.expr {
+            self.expr(expr);
+        }
+        if let Some(block) = &item.block {
+            self.small_block(block, &[]);
+        }
         self.word(";");
         self.end();
         self.hardbreak();

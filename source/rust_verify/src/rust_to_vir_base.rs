@@ -536,9 +536,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let infcx = tcx.infer_ctxt().ignoring_regions().build();
             let cause = rustc_infer::traits::ObligationCause::dummy();
             let at = infcx.at(&cause, param_env);
-            let norm = at.normalize(*ty);
-            if norm.value != *ty {
-                return t_rec(&norm.value);
+            let resolved_ty = infcx.resolve_vars_if_possible(*ty);
+            if !rustc_middle::ty::TypeVisitableExt::has_escaping_bound_vars(&resolved_ty) {
+                let norm = at.normalize(*ty);
+                if norm.value != *ty {
+                    return t_rec(&norm.value);
+                }
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);

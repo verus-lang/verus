@@ -25,6 +25,7 @@ use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders};
 use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
+use indexmap::IndexSet;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -42,6 +43,8 @@ pub(crate) struct State<'a> {
     // View exec/proof code as spec
     // (used for is_const functions, which are viewable both as spec and exec)
     pub(crate) view_as_spec: bool,
+    // If Some((f, scc_rep)), translate recursive calls in f's SCC into StmX::Call
+    pub(crate) check_spec_decreases: Option<(Fun, crate::recursion::Node)>,
     // Counter to generate temporary variables
     next_var: u64,
     // Collect all local variable declarations
@@ -63,17 +66,19 @@ pub(crate) struct State<'a> {
     // and no Stms instead, so we make a second pass to generate this.
     only_generate_pure_exp: u64,
     // If > 0, disable checking recommends
-    disable_recommends: u64,
+    pub(crate) disable_recommends: u64,
     // Mapping from a function's name to the SST version of its body.  Used by the interpreter.
     pub fun_ssts: SstMap,
     // Diagnostic output
     pub diagnostics: &'a (dyn Diagnostics + 'a),
     // If inside a closure
     containing_closure: Option<ClosureState>,
+    // Statics that are referenced (not counting statics in loops)
+    pub statics: IndexSet<Fun>,
 }
 
 #[derive(Clone)]
-enum ReturnValue {
+pub(crate) enum ReturnValue {
     Some(Exp),
     ImplicitUnit(Span),
     Never,
@@ -121,6 +126,7 @@ impl<'a> State<'a> {
         rename_map.push_scope(true);
         State {
             view_as_spec: false,
+            check_spec_decreases: None,
             next_var: 0,
             local_decls: Vec::new(),
             rename_map,
@@ -131,6 +137,7 @@ impl<'a> State<'a> {
             fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
             diagnostics,
             containing_closure: None,
+            statics: IndexSet::new(),
         }
     }
 
@@ -343,6 +350,27 @@ impl<'a> State<'a> {
         self.checking_spec_preconditions(ctx) && self.disable_recommends == 0
     }
 
+    fn checking_spec_decreases(
+        &self,
+        ctx: &Ctx,
+        target: &Fun,
+        resolved_method: &Option<(Fun, Typs)>,
+    ) -> bool {
+        if ctx.checking_spec_decreases() && self.only_generate_pure_exp == 0 {
+            if let Some((recursive_function_name, scc_rep)) = &self.check_spec_decreases {
+                if let Some(callee) = crate::recursion::get_callee(ctx, target, resolved_method) {
+                    return &callee == recursive_function_name
+                        || &ctx
+                            .global
+                            .func_call_graph
+                            .get_scc_rep(&crate::recursion::Node::Fun(callee.clone()))
+                            == scc_rep;
+                }
+            }
+        }
+        false
+    }
+
     fn checking_bounds_for_mode(&self, ctx: &Ctx, mode: Mode) -> bool {
         if self.view_as_spec {
             return false;
@@ -376,9 +404,16 @@ pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Functio
     }
 }
 
-fn function_can_be_exp(ctx: &Ctx, state: &State, expr: &Expr, path: &Fun) -> Result<bool, VirErr> {
+fn function_can_be_exp(
+    ctx: &Ctx,
+    state: &State,
+    expr: &Expr,
+    path: &Fun,
+    resolved_method: &Option<(Fun, Typs)>,
+) -> Result<bool, VirErr> {
     let fun = get_function(ctx, &expr.span, path)?;
     match fun.x.mode {
+        Mode::Spec if state.checking_spec_decreases(ctx, path, resolved_method) => Ok(false),
         Mode::Spec => Ok(!state.checking_recommends(ctx) || fun.x.require.len() == 0),
         Mode::Proof | Mode::Exec => Ok(false),
     }
@@ -530,8 +565,8 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(_, x, _, _, _), _)
-            if !function_can_be_exp(ctx, state, expr, x)? =>
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _)
+            if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
         {
             expr_get_call(ctx, state, expr)
         }
@@ -926,7 +961,7 @@ fn if_to_stm(
 ///  * Unit - for the implicit unit case
 ///  * Never - the expression can never return (e.g., after a return value or break)
 
-fn expr_to_stm_opt(
+pub(crate) fn expr_to_stm_opt(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
@@ -938,6 +973,11 @@ fn expr_to_stm_opt(
             let unique_id = state.get_var_unique_id(&x);
             let e = mk_exp(ExpX::Var(unique_id));
             let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
+            Ok((vec![], ReturnValue::Some(e)))
+        }
+        ExprX::StaticVar(x) => {
+            state.statics.insert(x.clone());
+            let e = mk_exp(ExpX::StaticVar(x.clone()));
             Ok((vec![], ReturnValue::Some(e)))
         }
         ExprX::VarLoc(x) => {
@@ -1071,7 +1111,7 @@ fn expr_to_stm_opt(
                     mut stms,
                     ReturnedCall::Call { fun: x, resolved_method, typs, has_return: ret, args },
                 ) => {
-                    if function_can_be_exp(ctx, state, expr, &x)? {
+                    if function_can_be_exp(ctx, state, expr, &x, &resolved_method)? {
                         // ExpX::Call
                         let call = ExpX::Call(
                             CallFun::Fun(x.clone(), resolved_method.clone()),
@@ -1097,7 +1137,9 @@ fn expr_to_stm_opt(
                             args.clone(),
                             Some(dest),
                         )?);
-                        if state.checking_recommends(ctx) {
+                        if state.checking_recommends(ctx)
+                            || state.checking_spec_decreases(ctx, &x, &resolved_method)
+                        {
                             let fun = get_function(ctx, &expr.span, &x)?;
                             if fun.x.mode == Mode::Spec {
                                 // for recommends, we need a StmX::Call for the recommends
@@ -1474,7 +1516,7 @@ fn expr_to_stm_opt(
             return Err(error(&expr.span, "header expression not allowed here"));
         }
         ExprX::AssertAssume { is_assume: false, expr: e } => {
-            if state.checking_spec_preconditions(ctx) {
+            if state.checking_recommends(ctx) {
                 let (mut stms, exp) = expr_to_stm_or_error(ctx, state, e)?;
                 let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
                 stms.push(stm);

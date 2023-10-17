@@ -51,11 +51,14 @@ pub struct GlobalCtx {
 }
 
 // Context for verifying one function
+#[derive(Debug)]
 pub struct FunctionCtx {
     // false normally, true if we're just checking spec preconditions
     pub checking_spec_preconditions: bool,
     // false normally, true if we're just checking spec preconditions for a non-spec function
     pub checking_spec_preconditions_for_non_spec: bool,
+    // false normally, true if we're just checking decreases of recursive spec function
+    pub checking_spec_decreases: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
     // used to create quantifier identifiers and for checking_spec_preconditions
@@ -101,6 +104,13 @@ impl Ctx {
     pub fn checking_spec_preconditions_for_non_spec(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_spec_preconditions_for_non_spec: true, .. }) => true,
+            _ => false,
+        }
+    }
+
+    pub fn checking_spec_decreases(&self) -> bool {
+        match self.fun {
+            Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
             _ => false,
         }
     }

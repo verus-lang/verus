@@ -40,7 +40,7 @@ pub(crate) enum TypX {
     Slice(Typ),
     Array(Typ, Typ),
     Tuple(Vec<Typ>),
-    Datatype(Id, Vec<Typ>),
+    Datatype(Id, Vec<Id>, Vec<Typ>),
     Projection {
         self_typ: Typ,
         // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
