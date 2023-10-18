@@ -12,6 +12,7 @@ members = [
   "state_machines_macros",
   "verusdoc",
   "vstd_build",
+  "tools/tool_facade",
   "tools/qi-graph",
   "tools/line_count",
 ]

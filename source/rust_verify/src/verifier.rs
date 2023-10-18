@@ -1993,7 +1993,7 @@ fn write_instantiation_graph(
     profile_file_name: std::path::PathBuf,
 ) {
     let air::profiler::InstantiationGraph { edges, nodes, names } = profiler.instantiation_graph();
-    use qi_graph::*;
+    use tool_facade::*;
     let name_strs: HashSet<String> = names.values().cloned().collect();
     let quantifiers: HashMap<String, Quantifier> = name_strs
         .iter()

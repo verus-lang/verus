@@ -6,7 +6,7 @@ use std::{
 };
 
 use getopts::Options;
-use qi_graph::{Graph, Instantiation, InstantiationGraph};
+use tool_facade::{Graph, Instantiation, InstantiationGraph};
 // use qi_graph::Quantifier;
 
 use petgraph::algo::is_cyclic_directed;
