@@ -471,7 +471,7 @@ impl Verifier {
             let mut msg = note_bare(note);
 
             // Summarize the triggers it used
-            let triggers = &bnd_info.trigs;
+            let triggers = &bnd_info.user.as_ref().unwrap().trigs;
             for trigger in triggers.iter() {
                 // HACK: we do not have span info for the builtin crate
                 if !trigger.iter().any(|t| t.span.as_string.contains("builtin")) {
@@ -479,7 +479,7 @@ impl Verifier {
                 }
             }
             msg = msg.secondary_label(
-                &bnd_info.span,
+                &bnd_info.user.as_ref().unwrap().span,
                 "Triggers selected for this quantifier".to_string(),
             );
 
@@ -575,7 +575,7 @@ impl Verifier {
                         invalidity = true;
                     }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
-                    if !self.args.profile && !self.args.profile_all {
+                    if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     if let Some(level) = level {
@@ -962,7 +962,8 @@ impl Verifier {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         assert!(!(self.args.profile && self.args.profile_all));
-        let profile_all_file_name = if self.args.profile_all {
+        assert!(!(self.args.profile && self.args.capture_profiles));
+        let profile_all_file_name = if self.args.profile_all || self.args.capture_profiles {
             let solver_log_dir = self.ensure_solver_log_dir()?;
             let profile_file_name = self.log_file_name(
                 &solver_log_dir,
@@ -1113,27 +1114,28 @@ impl Verifier {
                         let mut spinoff_z3_context;
                         let do_spinoff = (cmds.prover_choice == vir::def::ProverChoice::Nonlinear)
                             || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
-                            || *profile_rerun;
-
-                        let profile_file_name =
-                            if *profile_rerun || (self.args.profile_all && do_spinoff) {
-                                let solver_log_dir = self.ensure_solver_log_dir()?;
-                                let profile_file_name = self.log_file_name(
-                                    &solver_log_dir,
-                                    Some(bucket_id),
-                                    Self::log_fine_name_suffix(
-                                        is_recommend,
-                                        Some((&(function.x.name).path, spinoff_context_counter)),
-                                        self.expand_flag,
-                                        crate::config::PROFILE_FILE_SUFFIX,
-                                    )
-                                    .as_str(),
-                                );
-                                assert!(!profile_file_name.exists());
-                                Some(profile_file_name)
-                            } else {
-                                None
-                            };
+                            || *profile_rerun
+                            || self.args.spinoff_all;
+                        let profile_file_name = if *profile_rerun
+                            || ((self.args.profile_all || self.args.capture_profiles) && do_spinoff)
+                        {
+                            let solver_log_dir = self.ensure_solver_log_dir()?;
+                            let profile_file_name = self.log_file_name(
+                                &solver_log_dir,
+                                Some(bucket_id),
+                                Self::log_fine_name_suffix(
+                                    is_recommend,
+                                    Some((&(function.x.name).path, spinoff_context_counter)),
+                                    self.expand_flag,
+                                    crate::config::PROFILE_FILE_SUFFIX,
+                                )
+                                .as_str(),
+                            );
+                            assert!(!profile_file_name.exists());
+                            Some(profile_file_name)
+                        } else {
+                            None
+                        };
 
                         let query_air_context = if do_spinoff {
                             spinoff_z3_context = self.new_air_context_with_bucket_context(
@@ -1205,18 +1207,31 @@ impl Verifier {
                                     reporter,
                                 ) {
                                     Ok(profiler) => {
-                                        reporter.report(
-                                            &note_bare(format!(
-                                                "Profile statistics for {}",
-                                                fun_as_friendly_rust_name(&function.x.name)
-                                            ))
-                                            .to_any(),
-                                        );
-                                        self.print_profile_stats(
-                                            reporter,
-                                            profiler,
-                                            &opgen.ctx.global.qid_map.borrow(),
-                                        );
+                                        if !self.args.capture_profiles {
+                                            write_instantiation_graph(
+                                                &bucket_id,
+                                                Some(&op),
+                                                &opgen.ctx.func_map,
+                                                &profiler,
+                                                &opgen.ctx.global.qid_map.borrow(),
+                                                profile_file_name,
+                                            );
+                                        } else {
+                                            // if capture profiles was passed, silence the report
+                                            // as we are only interested in the graph/profile data
+                                            reporter.report(
+                                                &note_bare(format!(
+                                                    "Profile statistics for {}",
+                                                    fun_as_friendly_rust_name(&function.x.name)
+                                                ))
+                                                .to_any(),
+                                            );
+                                            self.print_profile_stats(
+                                                reporter,
+                                                profiler,
+                                                &opgen.ctx.global.qid_map.borrow(),
+                                            );
+                                        }
                                     }
                                     Err(err) => {
                                         reporter.report_now(
@@ -1281,7 +1296,9 @@ impl Verifier {
                 }
             }
         }
-        if let Some(profile_all_file_name) = profile_all_file_name {
+        // if spinning off all, the regular profile loop inside has already profiled everything
+        if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
+        {
             if air_context.check_valid_used() {
                 match Profiler::parse(
                     message_interface.clone(),
@@ -1291,18 +1308,29 @@ impl Verifier {
                     reporter,
                 ) {
                     Ok(profiler) => {
-                        reporter.report(
-                            &note_bare(format!(
-                                "Profile statistics for {}",
-                                bucket_id.friendly_name()
-                            ))
-                            .to_any(),
-                        );
-                        self.print_profile_stats(
-                            reporter,
-                            profiler,
-                            &opgen.ctx.global.qid_map.borrow(),
-                        );
+                        if self.args.capture_profiles {
+                            write_instantiation_graph(
+                                &bucket_id,
+                                None,
+                                &opgen.ctx.func_map,
+                                &profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                                profile_all_file_name,
+                            );
+                        } else {
+                            reporter.report(
+                                &note_bare(format!(
+                                    "Profile statistics for {}",
+                                    bucket_id.friendly_name()
+                                ))
+                                .to_any(),
+                            );
+                            self.print_profile_stats(
+                                reporter,
+                                profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                            );
+                        }
                     }
                     Err(err) => {
                         reporter.report_now(
@@ -1954,6 +1982,78 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
             return Err(error(format!("{} exists and is not a directory", dir.display())));
         }
     })
+}
+
+fn write_instantiation_graph(
+    bucket_id: &BucketId,
+    op: Option<&Op>,
+    func_map: &HashMap<Fun, vir::ast::Function>,
+    profiler: &Profiler,
+    qid_map: &HashMap<String, vir::sst::BndInfo>,
+    profile_file_name: std::path::PathBuf,
+) {
+    let air::profiler::InstantiationGraph { edges, nodes, names } = profiler.instantiation_graph();
+    use tool_facade::*;
+    let name_strs: HashSet<String> = names.values().cloned().collect();
+    let quantifiers: HashMap<String, Quantifier> = name_strs
+        .iter()
+        .map(|n| {
+            let bnd_info = qid_map.get(n);
+            let kind = if n.starts_with(air::profiler::USER_QUANT_PREFIX) {
+                QuantifierKind::User(UserQuantifier {
+                    span: bnd_info.as_ref().unwrap().user.as_ref().unwrap().span.as_string.clone(),
+                })
+            } else {
+                QuantifierKind::Internal
+            };
+            (
+                n.clone(),
+                std::rc::Rc::new(QuantifierX {
+                    qid: n.clone(),
+                    module: bnd_info.map(|b| {
+                        module_name(
+                            &func_map[&b.fun].x.owning_module.as_ref().expect("owning module"),
+                        )
+                    }),
+                    kind,
+                }),
+            )
+        })
+        .collect();
+    let instantiations: HashMap<(u64, usize), Instantiation> = nodes
+        .iter()
+        .map(|n| {
+            (
+                n.clone(),
+                std::rc::Rc::new(InstantiationX {
+                    quantifier: quantifiers[&names[n]].clone(),
+                    id: *n,
+                }),
+            )
+        })
+        .collect();
+    let mut graph: HashMap<Instantiation, HashSet<((), Instantiation)>> = HashMap::new();
+    for (src, tgts) in edges {
+        let graph_src = graph.entry(instantiations[src].clone()).or_insert(HashSet::new());
+        for tgt in tgts {
+            graph_src.insert(((), instantiations[tgt].clone()));
+        }
+    }
+    let instantiations: HashSet<Instantiation> = instantiations.values().cloned().collect();
+    let quantifiers = quantifiers.into_values().collect();
+    let instantiation_graph = InstantiationGraph {
+        bucket_name: bucket_id.to_log_string(),
+        module: module_name(bucket_id.module()),
+        function: op.map(|op| fun_as_friendly_rust_name(&op.get_function().x.name)),
+        quantifiers,
+        instantiations,
+        graph: Graph(graph),
+    };
+    let file_name = profile_file_name.with_extension("graph");
+    let mut f = File::create(&file_name)
+        .expect(&format!("failed to open instantiation graph file {}", file_name.display()));
+    bincode::serialize_into(&mut f, &instantiation_graph)
+        .expect("failed to write instantiation graph");
 }
 
 // TODO: move the callbacks into a different file, like driver.rs

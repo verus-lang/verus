@@ -24,7 +24,8 @@ use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
-    BndInfo, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX, UniqueIdent,
+    BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX,
+    UniqueIdent,
 };
 use crate::sst_util::{subst_exp, subst_stm};
 use crate::sst_vars::{get_loc_var, AssignMap};
@@ -722,7 +723,15 @@ fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
             exp.x
         ),
     };
-    let bnd_info = BndInfo { span: exp.span.clone(), trigs: trigs.clone() };
+    let bnd_info = BndInfo {
+        fun: ctx
+            .fun
+            .as_ref()
+            .expect("expressions are expected to be within a function")
+            .current_fun
+            .clone(),
+        user: Some(BndInfoUser { span: exp.span.clone(), trigs: trigs.clone() }),
+    };
     ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
     Some(Arc::new(qid))
 }
@@ -2403,7 +2412,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let fun_name = fun_as_friendly_rust_name(
             &ctx.fun.as_ref().expect("Missing a current function value").current_fun,
         );
-        let qid = new_internal_qid(format!("{}_nondefault_fuel", fun_name));
+        let qid = new_internal_qid(ctx, format!("{}_nondefault_fuel", fun_name), false);
         let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers, qid));
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
         mk_bind_expr(&bind, &or)
