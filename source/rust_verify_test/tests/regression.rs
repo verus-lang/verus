@@ -958,3 +958,54 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "does not yet support the following Rust feature: projection type")
 }
+
+test_verify_one_file! {
+    // tests a scenario (temporarily) addressed by 81100927
+    // > As a temporary patch, order spec functions early in call graph
+    #[test] axiom_ordering_patched verus_code! {
+        mod m2 {
+            use vstd::prelude::*;
+
+            pub trait B<T: View> {
+                spec fn b1(t: T) -> bool;
+
+                spec fn b2(t: T::V) -> bool;
+
+                proof fn b_proof(t: T) requires Self::b1(t), ensures Self::b2(t@);
+            }
+
+        }
+
+        mod m3 {
+            use vstd::prelude::*;
+
+            pub struct C {}
+
+            impl crate::m2::B<crate::m0::MyBool> for C {
+                open spec fn b1(t: crate::m0::MyBool) -> bool { t.0 }
+
+                open spec fn b2(t: bool) -> bool { t }
+
+                proof fn b_proof(t: crate::m0::MyBool) {
+                    let v = t@; // removing this line makes the `ensures Self::b2(t@)` postcondition fail
+                }
+            }
+        }
+
+        mod m0 {
+            pub struct MyBool(pub bool);
+        }
+
+        mod m1 {
+            use vstd::prelude::*;
+
+            impl View for crate::m0::MyBool {
+                type V = bool;
+
+                open spec fn view(&self) -> bool { self.0 }
+            }
+
+            pub open spec fn aa<T: View>(t: T) -> T::V { t@ }
+        }
+    } => Ok(())
+}
