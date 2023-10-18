@@ -217,6 +217,14 @@ impl GlobalCtx {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
         }
+        for f in &krate.functions {
+            // HACK: put spec functions early, because the call graph is currently missing some
+            // dependencies that should explicitly force these functions to appear early.
+            // TODO: add these dependencies to the call graph.
+            if f.x.mode == Mode::Spec {
+                func_call_graph.add_node(Node::Fun(f.x.name.clone()));
+            }
+        }
         for t in &krate.trait_impls {
             // Heuristic: put trait impls first, because functions don't necessarily have
             // explicit dependencies on all the trait impls when they are implicitly
