@@ -552,16 +552,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_associated_type_with_bound_387_discussioncomment_6179829 verus_code! {
-        pub trait T { }
-
-        pub trait U {
-            type S: T;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support associated types with trait bounds")
-}
-
-test_verify_one_file! {
     #[test] test_empty_recommends_387_discussioncomment_5670055 verus_code! {
         pub open spec fn foo() -> bool
           recommends

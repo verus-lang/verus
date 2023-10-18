@@ -1960,7 +1960,7 @@ fn erase_trait_methods<'tcx>(
                     body_id,
                 );
             }
-            TraitItemKind::Type([], None) => {}
+            TraitItemKind::Type(_, None) => {}
             _ => panic!("unexpected trait item"),
         }
     }

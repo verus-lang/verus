@@ -948,6 +948,7 @@ pub struct TraitX {
     pub typ_params: TypPositives,
     pub typ_bounds: GenericBounds,
     pub assoc_typs: Arc<Vec<Ident>>,
+    pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
 }
 
@@ -963,6 +964,8 @@ pub struct AssocTypeImplX {
     pub trait_path: Path,
     pub trait_typ_args: Typs,
     pub typ: Typ,
+    /// Paths of the impls that are used to satisfy the bounds on the associated type
+    pub impl_paths: ImplPaths,
 }
 
 pub type TraitImpl = Arc<Spanned<TraitImplX>>;

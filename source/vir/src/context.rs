@@ -252,9 +252,11 @@ impl GlobalCtx {
             // such as using s.view() in test so that test depends on S: View, to fix this.
             func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
         }
+
         for t in &krate.trait_impls {
             crate::recursive_types::add_trait_impl_to_graph(&mut func_call_graph, t);
         }
+
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
