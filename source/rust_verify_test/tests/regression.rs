@@ -987,7 +987,7 @@ test_verify_one_file! {
                 open spec fn b2(t: bool) -> bool { t }
 
                 proof fn b_proof(t: crate::m0::MyBool) {
-                    let v = t@; // removing this line makes the `ensures Self::b2(t@)` postcondition fail
+                    // let v = t@; // this line was necessary to make this proof pass before the patch
                 }
             }
         }
@@ -996,6 +996,7 @@ test_verify_one_file! {
             pub struct MyBool(pub bool);
         }
 
+        // this module has to come last to trigger the incompleteness
         mod m1 {
             use vstd::prelude::*;
 
