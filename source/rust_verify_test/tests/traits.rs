@@ -2375,3 +2375,74 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_833_0 verus_code! {
+        mod m1 {
+            pub trait MyView {
+                type V;
+            }
+        }
+
+        mod m2 {
+            pub trait ViewOption {
+                type X;
+            }
+
+            struct A<T>(T);
+
+            impl<T: crate::m1::MyView> ViewOption for A<T>
+            {
+                type X = A<T::V>;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound verus_code! {
+        trait A {
+            type B;
+        }
+
+        exec fn foo<T: A>(b: T::B) {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_724 verus_code! {
+        use vstd::prelude::*;
+
+        exec fn foo<T: View>(c : T::V)
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_833_1 verus_code! {
+        use vstd::prelude::*;
+
+        pub trait ViewOption {
+            type X;
+        }
+
+        impl<T:View> ViewOption for Option<T>
+        {
+            type X = Option<T::V>;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_848 verus_code! {
+        use vstd::prelude::*;
+
+        pub trait TView { }
+
+        pub trait B<T>
+            where T: View, T::V: TView {
+        }
+    } => Ok(())
+}

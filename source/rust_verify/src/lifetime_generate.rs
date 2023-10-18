@@ -406,6 +406,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             match (trait_def, t.substs.try_as_type_list()) {
                 (Some(trait_def), Some(typs)) if typs.len() >= 1 => {
                     let trait_path_vir = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def);
+                    erase_trait(ctxt, state, trait_def);
                     assert!(state.trait_decl_set.contains(&trait_path_vir));
                     let trait_path = state.trait_name(&trait_path_vir);
                     let mut typs_iter = typs.iter();
@@ -1518,6 +1519,7 @@ fn erase_mir_generics<'tcx>(
             (PredicateKind::Clause(Clause::Trait(pred)), bound_vars) => {
                 let typ = erase_ty(ctxt, state, &pred.trait_ref.substs[0].expect_ty());
                 let id = pred.trait_ref.def_id;
+                erase_trait(ctxt, state, id);
                 let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
                 let bound = if Some(id) == ctxt.tcx.lang_items().copy_trait() {
                     Some(Bound::Copy)
@@ -1578,7 +1580,6 @@ fn erase_mir_generics<'tcx>(
             }
             (PredicateKind::Clause(Clause::ConstArgHasType(..)), &[]) => {}
             _ => {
-                dbg!(pred.kind());
                 panic!("unexpected bound")
             }
         }
@@ -1787,42 +1788,46 @@ fn erase_fn<'tcx>(
     );
 }
 
-fn erase_trait<'tcx>(
-    _krate: &'tcx Crate<'tcx>,
-    ctxt: &mut Context<'tcx>,
-    state: &mut State,
-    trait_id: DefId,
-    trait_items: &[TraitItemRef],
-) {
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_id);
-    let name = state.trait_name(&path);
-    let mut lifetimes: Vec<GenericParam> = Vec::new();
-    let mut typ_params: Vec<GenericParam> = Vec::new();
-    let mut generic_bounds: Vec<GenericBound> = Vec::new();
-    erase_mir_generics(
-        ctxt,
-        state,
-        trait_id,
-        false,
-        &mut lifetimes,
-        &mut typ_params,
-        &mut generic_bounds,
-    );
-    typ_params.remove(0); // remove Self type parameter
-    let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
+    if !state.reached.insert((None, trait_id)) {
+        return;
+    }
+    // HACK: we cannot yet handle FnOnce::Output
+    if let Some(fn_once) = ctxt.tcx.lang_items().fn_once_trait() {
+        if trait_id == fn_once {
+            return;
+        }
+    }
     let mut assoc_typs: Vec<Id> = Vec::new();
-    for trait_item_ref in trait_items {
-        let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
-        let TraitItem { ident, kind, .. } = trait_item;
-        match kind {
-            TraitItemKind::Type([], None) => {
-                assoc_typs.push(state.typ_param(ident.to_string(), None));
+    let assoc_items = ctxt.tcx.associated_items(trait_id);
+    for assoc_item in assoc_items.in_definition_order() {
+        match assoc_item.kind {
+            rustc_middle::ty::AssocKind::Const => {}
+            rustc_middle::ty::AssocKind::Fn => {}
+            rustc_middle::ty::AssocKind::Type => {
+                assoc_typs.push(state.typ_param(assoc_item.name.to_ident_string(), None));
             }
-            _ => {}
         }
     }
     // We only need traits with associated type declarations.
     if assoc_typs.len() > 0 {
+        let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_id);
+        let name = state.trait_name(&path);
+        let mut lifetimes: Vec<GenericParam> = Vec::new();
+        let mut typ_params: Vec<GenericParam> = Vec::new();
+        let mut generic_bounds: Vec<GenericBound> = Vec::new();
+        erase_mir_generics(
+            ctxt,
+            state,
+            trait_id,
+            false,
+            &mut lifetimes,
+            &mut typ_params,
+            &mut generic_bounds,
+        );
+        typ_params.remove(0); // remove Self type parameter
+        let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+
         let decl = TraitDecl { name, generic_params, generic_bounds, assoc_typs };
         state.trait_decl_set.insert(path.clone());
         state.trait_decls.push(decl);
@@ -1865,6 +1870,7 @@ fn erase_trait_methods<'tcx>(
     }
 }
 
+// REVIEW: we should consider associated type impls for external crates too
 fn erase_impl<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
@@ -1907,6 +1913,7 @@ fn erase_impl<'tcx>(
                     (&impl_item.kind, &impll.of_trait)
                 {
                     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
+                    erase_trait(&ctxt, state, trait_ref.skip_binder().def_id);
                     let name = state.typ_param(&impl_item.ident.to_string(), None);
                     let trait_path_vir =
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
@@ -2229,12 +2236,12 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         Unsafety::Normal,
                         _trait_generics,
                         _bounds,
-                        trait_items,
+                        _trait_items,
                     ) => {
                         // We only need traits with associated type declarations.
                         // Process traits early so we can see which traits we need.
                         let id = item.owner_id.to_def_id();
-                        erase_trait(krate, &mut ctxt, &mut state, id, trait_items);
+                        erase_trait(&ctxt, &mut state, id);
                     }
                     _ => {}
                 },
