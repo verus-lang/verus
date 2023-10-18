@@ -23,6 +23,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_unsupported_2 verus_code! {
+        trait T1<A: T2<Self> + ?Sized> {}
+        trait T2<A: T1<Self> + ?Sized> {}
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
     #[test] test_supported_3 verus_code! {
         trait T1 {}
         struct S2<A: T1> {
@@ -72,18 +79,6 @@ test_verify_one_file! {
             s.f(10);
         }
     } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_not_yet_supported_11 verus_code! {
-        trait T {
-            spec fn f(&self) -> bool;
-        }
-
-        trait S : T {
-            spec fn g(&self) -> bool;
-        }
-    } => Err(err) => assert_vir_error_msg(err, ": trait generic bounds")
 }
 
 test_verify_one_file! {
@@ -662,6 +657,261 @@ test_verify_one_file! {
         impl T for TT { type X = S<TT>; }
 
         spec fn arbitrary<A>() -> A;
+        spec fn foo(n: nat) -> S<TT>
+            decreases n
+        {
+            if n > 0 {
+                S(foo((n - 1) as nat))
+            } else {
+                arbitrary()
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_7 verus_code! {
+        trait T { type X; }
+        trait U { type Y; }
+        struct P<W: T>(<W as T>::X);
+        struct Q<W: U>(<W as U>::Y);
+        struct TT { }
+        struct UU { }
+        impl T for TT { type X = Q<UU>; }
+        impl U for UU { type Y = P<TT>; }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] test_termination_bounds_1 verus_code! {
+        trait T {
+            spec fn f(&self) -> bool;
+        }
+
+        trait U: T {
+        }
+
+        spec fn rec<A: U>(x: &A) -> bool {
+            x.f()
+        }
+
+        struct S {}
+
+        impl T for S {
+            spec fn f(&self) -> bool {
+                rec(self)
+            }
+        }
+
+        impl U for S {
+        }
+
+        proof fn test() {
+            let s = S {};
+            s.f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_bounds_1b verus_code! {
+        trait T<A> {
+            spec fn f() -> int;
+        }
+
+        trait U<A>: T<A> {
+        }
+
+        struct S<B>(B);
+        impl<A> T<A> for S<A> {
+            spec fn f() -> int {
+                h() + 1
+            }
+        }
+
+        impl<A> U<A> for S<A> {
+        }
+
+        spec fn g<X, Y: U<X>>() -> int {
+            Y::f() + 1
+        }
+
+        spec fn h() -> int {
+            g::<bool, S<bool>>() + 1
+        }
+
+        proof fn test()
+            ensures false
+        {
+            assert(h() == g::<bool, S<bool>>() + 1);
+            assert(h() == h() + 3);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_bounds_2 verus_code! {
+        trait T {
+            spec fn f<A: U>(&self, x: &A);
+        }
+
+        trait U: T {
+        }
+
+        struct S {}
+
+        impl T for S {
+            spec fn f<A: U>(&self, x: &A) {
+                x.f(x)
+            }
+        }
+
+        impl U for S {
+        }
+
+        proof fn test() {
+            let s = S {};
+            s.f(&s);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
+}
+
+test_verify_one_file! {
+    #[test] test_termination_bounds_3 verus_code! {
+        trait T {
+            spec fn f(&self);
+        }
+
+        trait U {
+            spec fn g(&self);
+        }
+
+        struct S {}
+
+        impl T for S where S: U {
+            spec fn f(&self) {
+                self.g()
+            }
+        }
+
+        impl U for S {
+            spec fn g(&self) {
+                self.f()
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_bounds_unsupported_0 verus_code! {
+        trait T {
+            fn f(&self, x: &Self, n: u64);
+        }
+        trait U {
+            fn g(&self, x: &Self, n: u64);
+        }
+        struct S {}
+        impl T for S where S: U {
+            fn f(&self, x: &Self, n: u64)
+                decreases n
+            {
+                if n > 0 {
+                    self.g(x, n - 1);
+                    x.g(self, n - 1);
+                }
+            }
+        }
+        impl U for S {
+            fn g(&self, x: &Self, n: u64)
+                decreases n
+            {
+                if n > 0 {
+                    self.f(x, n - 1);
+                    x.f(self, n - 1);
+                }
+            }
+        }
+    } => Err(err) => {
+        // TODO: we could make the recursion rules more precise to allow decreases checking in this example
+        assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_termination_4_bounds_unsupported_1 verus_code! {
+        trait T {
+            fn f(&self, n: u64);
+        }
+        trait U: T {
+            fn g(&self, n: u64);
+        }
+        struct S {}
+        impl T for S {
+            fn f(&self, n: u64)
+                decreases n
+            {
+                h(self, n - 1); // FAILS
+            }
+        }
+        impl U for S {
+            fn g(&self, n: u64)
+                decreases n
+            {
+                self.f(n - 1); // FAILS
+            }
+        }
+        fn h(x: &S, n: u64) {
+            if 0 < n {
+                x.g(n - 1);
+            }
+        }
+    } => Err(err) => {
+        // TODO: we could make the recursion rules more precise to allow decreases checking in this example
+        assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition");
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_fail_1 verus_code! {
+        trait Z { }
+        trait T { type X: Z; }
+        struct Q<A: T>(A::X);
+        struct R;
+        impl T for R { type X = S; }
+        struct S(FnSpec(Q<R>) -> int);
+        impl Z for S { }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_fail_2 verus_code! {
+        trait Z { type Y; }
+        trait T { type X: Z; }
+        struct Q<A: T>(<<A as T>::X as Z>::Y);
+        struct R;
+        impl T for R { type X = S; }
+        struct S(FnSpec(Q<R>) -> int);
+        impl Z for S {
+            type Y = S;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_fail_3 verus_code! {
+        trait Z { type Y; }
+        trait T { type X: Z; }
+
+        struct S<W: T>(<<W as T>::X as Z>::Y);
+
+        struct ZZ { }
+        impl Z for ZZ { type Y = S<TT>; }
+
+        struct TT { }
+        impl T for TT { type X = ZZ; }
+
+        spec fn arbitrary<A>() -> A;
+
         spec fn foo(n: nat) -> S<TT>
             decreases n
         {
@@ -2463,6 +2713,43 @@ test_verify_one_file! {
 
         pub trait B<T>
             where T: View, T::V: TView {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_self_bound verus_code! {
+        trait A {
+            spec fn a(&self) -> bool;
+
+            proof fn foo(&self)
+                ensures self.a();
+        }
+
+        trait B: A {
+            spec fn b(&self) -> bool;
+
+            proof fn bar(&self)
+                ensures (self.a() == self.b()) ==> self.b();
+        }
+
+        impl A for bool {
+            spec fn a(&self) -> bool { true }
+
+            proof fn foo(&self) { }
+        }
+
+        impl B for bool {
+            spec fn b(&self) -> bool { self.a() || false }
+
+            proof fn bar(&self) { }
+        }
+
+        proof fn gen<T: B>(t: T)
+            requires t.b() == t.a()
+        {
+            t.foo();
+            assert(t.b());
         }
     } => Ok(())
 }

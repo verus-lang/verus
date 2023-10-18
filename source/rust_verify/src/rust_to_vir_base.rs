@@ -857,6 +857,93 @@ pub(crate) fn param_ty_to_vir_name(param: &rustc_middle::ty::ParamTy) -> String 
     }
 }
 
+pub(crate) fn process_predicate_bounds<'tcx, 'a>(
+    tcx: TyCtxt<'tcx>,
+    param_env_src: DefId,
+    verus_items: &crate::verus_items::VerusItems,
+    predicates: impl Iterator<Item = &'a (rustc_middle::ty::Clause<'tcx>, Span)>,
+) -> Result<Vec<vir::ast::GenericBound>, VirErr>
+where
+    'tcx: 'a,
+{
+    let mut bounds: Vec<vir::ast::GenericBound> = Vec::new();
+    for (predicate, span) in predicates {
+        // REVIEW: rustc docs say that skip_binder is "dangerous"
+        match predicate.kind().skip_binder() {
+            ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
+                // can ignore lifetime bounds
+            }
+            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
+                let substs = trait_ref.args;
+
+                // For a bound like `T: SomeTrait<X, Y, Z>`, then:
+                // T should be index 0,
+                // X, Y, Z, should be the rest
+                // The SomeTrait is given by the def_id
+
+                // Note: I _think_ rustc organizes it this way because
+                // T, X, Y, Z are actually all handled symmetrically
+                // in the formal theory of Rust's traits;
+                // i.e., the `Self` of a trait is actually the same as any of the other
+                // type parameters, it's just special in the notation for convenience.
+                //
+                // Right now Verus only allows `Self` (in the example, `T`) to be a type param,
+                // and it doesn't have full support for the other type params, so we special
+                // case it here.
+
+                let trait_def_id = trait_ref.def_id;
+
+                if Some(trait_def_id) == tcx.lang_items().fn_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
+                {
+                    // Ignore Fn bounds
+                    continue;
+                }
+
+                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
+                let generic_bound = check_generic_bound(
+                    tcx,
+                    verus_items,
+                    param_env_src,
+                    *span,
+                    trait_def_id,
+                    &trait_params,
+                )?;
+                if let Some(bound) = generic_bound {
+                    bounds.push(bound);
+                }
+            }
+            ClauseKind::Projection(pred) => {
+                let item_def_id = pred.projection_ty.def_id;
+                // The trait bound `F: Fn(A) -> B`
+                // is really more like a trait bound `F: Fn<A, Output=B>`
+                // The trait bounds that use = are called projections.
+                // When Rust sees a trait bound like this, it actually creates *two*
+                // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
+                //
+                // We don't handle projections in general right now, but we skip
+                // over them to support Fns
+                // (What Verus actually cares about is the builtin 'FnWithSpecification'
+                // trait which Fn/FnMut/FnOnce all get automatically.)
+
+                if Some(item_def_id) == tcx.lang_items().fn_once_output() {
+                    // Do nothing
+                } else {
+                    return err_span(*span, "Verus does yet not support this type of bound");
+                }
+            }
+            ClauseKind::ConstArgHasType(..) => {
+                // Do nothing
+            }
+            _ => {
+                return err_span(*span, "Verus does yet not support this type of bound");
+            }
+        }
+    }
+    Ok(bounds)
+}
+
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -902,84 +989,10 @@ pub(crate) fn check_generics_bounds<'tcx>(
         .collect();
 
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::AcceptRecursiveType)> = Vec::new();
-    let mut bounds: Vec<vir::ast::GenericBound> = Vec::new();
 
     // Process all trait bounds.
     let predicates = tcx.predicates_of(def_id);
-    for (predicate, span) in predicates.predicates.iter() {
-        // REVIEW: rustc docs say that skip_binder is "dangerous"
-        match predicate.kind().skip_binder() {
-            ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
-                // can ignore lifetime bounds
-            }
-            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
-                let substs = trait_ref.args;
-
-                // For a bound like `T: SomeTrait<X, Y, Z>`, then:
-                // T should be index 0,
-                // X, Y, Z, should be the rest
-                // The SomeTrait is given by the def_id
-
-                // Note: I _think_ rustc organizes it this way because
-                // T, X, Y, Z are actually all handled symmetrically
-                // in the formal theory of Rust's traits;
-                // i.e., the `Self` of a trait is actually the same as any of the other
-                // type parameters, it's just special in the notation for convenience.
-                //
-                // Right now Verus only allows `Self` (in the example, `T`) to be a type param,
-                // and it doesn't have full support for the other type params, so we special
-                // case it here.
-
-                let trait_def_id = trait_ref.def_id;
-
-                if Some(trait_def_id) == tcx.lang_items().fn_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
-                {
-                    // Ignore Fn bounds
-                    continue;
-                }
-
-                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
-                let generic_bound = check_generic_bound(
-                    tcx,
-                    verus_items,
-                    def_id,
-                    *span,
-                    trait_def_id,
-                    &trait_params,
-                )?;
-                if let Some(bound) = generic_bound {
-                    bounds.push(bound);
-                }
-            }
-            ClauseKind::Projection(pred) => {
-                let item_def_id = pred.projection_ty.def_id;
-                // The trait bound `F: Fn(A) -> B`
-                // is really more like a trait bound `F: Fn<A, Output=B>`
-                // The trait bounds that use = are called projections.
-                // When Rust sees a trait bound like this, it actually creates *two*
-                // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
-                //
-                // We don't handle projections in general right now, but we skip
-                // over them to support Fns
-                // (What Verus actually cares about is the builtin 'FnWithSpecification'
-                // trait which Fn/FnMut/FnOnce all get automatically.)
-
-                if Some(item_def_id) == tcx.lang_items().fn_once_output() {
-                    // Do nothing
-                } else {
-                    return err_span(*span, "Verus does yet not support this type of bound");
-                }
-            }
-            ClauseKind::ConstArgHasType(..) => {
-                // Do nothing
-            }
-            _ => {
-                return err_span(*span, "Verus does yet not support this type of bound");
-            }
-        }
-    }
+    let bounds = process_predicate_bounds(tcx, def_id, verus_items, predicates.predicates.iter())?;
 
     // In traits, the first type param is Self. This is handled specially,
     // so we skip it here.

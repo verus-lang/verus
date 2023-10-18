@@ -270,8 +270,14 @@ pub(crate) fn build_datatype_graph(krate: &Krate) -> Graph<TypNode> {
     }
 
     for a in &krate.assoc_type_impls {
+        let src = TypNode::TraitImpl(a.x.impl_path.clone());
+        for impl_path in a.x.impl_paths.iter() {
+            let dst = TypNode::TraitImpl(impl_path.clone());
+            type_graph.add_edge(src.clone(), dst);
+        }
+
         let mut ft = |type_graph: &mut Graph<TypNode>, typ: &Typ| {
-            add_one_type_to_graph(type_graph, &TypNode::TraitImpl(a.x.impl_path.clone()), typ);
+            add_one_type_to_graph(type_graph, &src, typ);
             Ok(typ.clone())
         };
         crate::ast_visitor::map_assoc_type_impl_visitor_env(a, &mut type_graph, &mut ft).unwrap();
@@ -480,7 +486,7 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
     let t_path = &trt.x.name;
     let t_node = Node::Trait(t_path.clone());
-    for bound in trt.x.typ_bounds.iter() {
+    for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
         let GenericBoundX::Trait(u_path, _) = &**bound;
         assert_ne!(t_path, u_path);
         let u_node = Node::Trait(u_path.clone());
@@ -586,6 +592,40 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   - T --> U
     // This also ensures that whenever A is used in f and g,
     // the dictionary a: Dictionary_U<A> is available.
+
+    // To handle bounds on Self like this:
+    //   trait T: U {
+    //     fn f(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // We can store a Dictionary_U inside Dictionary_T:
+    //   struct Dictionary_T<Self> {
+    //     a: Dictionary_U<Self>,
+    //     f: Fn(x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge, like for bounds on trait parameters:
+    //   - T --> U
+    // This also ensures that whenever Self is used in f and g,
+    // the dictionary a: Dictionary_U<Self> is available.
+
+    // To handle bounds on associated types:
+    //   trait T {
+    //     type Y: U;
+    //     fn f(x: Self, y: Y) -> bool;
+    //     fn g(x: Self, y: Y) -> Self { requires(f(x, y)); };
+    //   }
+    // We can store a Dictionary_U inside Dictionary_T:
+    //   struct Dictionary_T<Self> {
+    //     Y: Type, // an F* Type0
+    //     a: Dictionary_U<Y>,
+    //     f: Fn(x: Self, y: Y) -> bool,
+    //     g: Fn(x: Self, y: Y) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge, like for bounds on trait parameters:
+    //   - T --> U
+    // This also ensures that whenever Y is used in f and g,
+    // the dictionary a: Dictionary_U<Y> is available.
 
     // For bounds on datatype parameters like this:
     //   struct D<A: U> {
