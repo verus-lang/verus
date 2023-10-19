@@ -53,7 +53,6 @@ pub(crate) fn func_bind_trig(
     params: &Pars,
     trig_exprs: &Vec<Expr>,
     add_fuel: bool,
-    record_qid: bool,
 ) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
     for typ_param in typ_params.iter() {
@@ -74,7 +73,7 @@ pub(crate) fn func_bind_trig(
     }
     let trigger: Trigger = Arc::new(trig_exprs.clone());
     let triggers: Triggers = Arc::new(vec![trigger]);
-    let qid = new_internal_qid(ctx, name, record_qid);
+    let qid = new_internal_qid(ctx, name);
     Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), triggers, qid))
 }
 
@@ -86,9 +85,8 @@ pub(crate) fn func_bind(
     params: &Pars,
     trig_expr: &Expr,
     add_fuel: bool,
-    record_qid: bool,
 ) -> Bind {
-    func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel, record_qid)
+    func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel)
 }
 
 // arguments for function call f(typ_args, params)
@@ -125,10 +123,7 @@ fn func_def_quant(
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
     let f_imply = mk_implies(&mk_and(pre), &f_eq);
-    Ok(mk_bind_expr(
-        &func_bind(ctx, name.to_string(), typ_params, params, &f_app, false, true),
-        &f_imply,
-    ))
+    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
 fn func_body_to_air(
@@ -327,10 +322,8 @@ fn func_body_to_air(
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
         let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
-        let bind_zero =
-            func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true, true);
-        let bind_body =
-            func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true, true);
+        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true);
+        let bind_body = func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true);
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
@@ -693,7 +686,6 @@ pub fn func_axioms_to_air(
                         &params_to_pars(&function.x.params, false),
                         &f_app,
                         false,
-                        true,
                     ),
                     &mk_implies(&mk_and(&f_pre), &post),
                 );

@@ -2412,7 +2412,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let fun_name = fun_as_friendly_rust_name(
             &ctx.fun.as_ref().expect("Missing a current function value").current_fun,
         );
-        let qid = new_internal_qid(ctx, format!("{}_nondefault_fuel", fun_name), false);
+        let qid = new_internal_qid(ctx, format!("{}_nondefault_fuel", fun_name));
         let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers, qid));
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
         mk_bind_expr(&bind, &or)

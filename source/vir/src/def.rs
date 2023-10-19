@@ -515,23 +515,15 @@ pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
 }
 
 // Generate a unique internal quantifier ID
-pub fn new_internal_qid(ctx: &crate::context::Ctx, name: String, record: bool) -> Option<Ident> {
+pub fn new_internal_qid(ctx: &crate::context::Ctx, name: String) -> Option<Ident> {
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars
     let name = str::replace(&name, ":", "_");
     let name = str::replace(&name, "%", "__");
     let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
 
-    if record {
-        let bnd_info = crate::sst::BndInfo {
-            fun: ctx
-                .fun
-                .as_ref()
-                .expect("expressions are expected to be within a function")
-                .current_fun
-                .clone(),
-            user: None,
-        };
+    if let Some(fun) = ctx.fun.as_ref() {
+        let bnd_info = crate::sst::BndInfo { fun: fun.current_fun.clone(), user: None };
         ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
     }
 
