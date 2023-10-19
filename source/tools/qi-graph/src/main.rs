@@ -14,6 +14,45 @@ use petgraph::graph::NodeIndex;
 use petgraph::Graph as PGraph;
 // use petgraph::visit::DfsPostOrder;
 // use petgraph::Direction;
+trait ToDot<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::hash::Hash> {
+    fn to_dot_file(&self, path: &Path, node_name: impl Fn(&N) -> String, edge_label: impl Fn(&E) -> Option<String>) -> Result<(), String>;
+}
+
+impl<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::hash::Hash> ToDot<N,E> for Graph<N, E> {
+    fn to_dot_file(
+        &self,
+        path: &Path,
+        node_name: impl Fn(&N) -> String,
+        edge_label: impl Fn(&E) -> Option<String>,
+    ) -> Result<(), String> {
+        let Graph(edges) = self;
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(path).expect("couldn't create dot file");
+        fn io_err_string<V>(o: Result<V, std::io::Error>) -> Result<V, String> {
+            o.map_err(|err| format!("i/o failed: {}", err))
+        }
+
+        io_err_string(writeln!(&mut file, "digraph M {{"))?;
+        io_err_string(writeln!(&mut file, "  rankdir=LR;"))?;
+        for (src, src_edges) in edges.iter() {
+            for (edge, tgt) in src_edges {
+                io_err_string(write!(
+                    &mut file,
+                    "  \"{}\" -> \"{}\" ",
+                    node_name(src),
+                    node_name(tgt)
+                ))?;
+                if let Some(lbl) = edge_label(edge) {
+                    io_err_string(write!(&mut file, "[ label = \"{}\" ]", lbl))?;
+                }
+                io_err_string(writeln!(&mut file, ";"))?;
+            }
+        }
+        io_err_string(writeln!(&mut file, "}}"))?;
+        Ok(())
+    }
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
