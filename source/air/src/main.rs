@@ -177,6 +177,7 @@ pub fn main() {
             None,
             true,
             &reporter,
+            false,
         ) {
             Ok(profiler) => profiler.print_raw_stats(&reporter),
             Err(err) => eprintln!("profile: failed to parse z3 trace: {}", err),

@@ -2,7 +2,6 @@ use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
-use crate::profiler::write_instantiation_graph;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
 use crate::util::error;
@@ -1253,20 +1252,21 @@ impl Verifier {
                                         Some(&current_profile_description),
                                         self.args.profile || self.args.profile_all,
                                         reporter,
+                                        self.args.capture_profiles,
                                     ) {
                                         Ok(profiler) => {
-                                            if !self.args.capture_profiles {
-                                                write_instantiation_graph(
+                                            if self.args.capture_profiles {
+                                                // if capture profiles was passed, silence the report
+                                                // as we are only interested in the graph/profile data
+                                                crate::profiler::write_instantiation_graph(
                                                     &bucket_id,
                                                     Some(&op),
                                                     &function_opgen.ctx().func_map,
-                                                    &profiler,
+                                                    profiler.instantiation_graph().unwrap(),
                                                     &function_opgen.ctx().global.qid_map.borrow(),
                                                     profile_file_name,
                                                 );
                                             } else {
-                                                // if capture profiles was passed, silence the report
-                                                // as we are only interested in the graph/profile data
                                                 reporter.report(
                                                     &note_bare(format!(
                                                         "Profile statistics for {}",
@@ -1357,14 +1357,17 @@ impl Verifier {
                     Some(&bucket_id.friendly_name()),
                     self.args.profile || self.args.profile_all,
                     reporter,
+                    self.args.capture_profiles,
                 ) {
                     Ok(profiler) => {
                         if self.args.capture_profiles {
-                            write_instantiation_graph(
+                            // if capture profiles was passed, silence the report
+                            // as we are only interested in the graph/profile data
+                            crate::profiler::write_instantiation_graph(
                                 &bucket_id,
                                 None,
                                 &opgen.ctx.func_map,
-                                &profiler,
+                                profiler.instantiation_graph().unwrap(),
                                 &opgen.ctx.global.qid_map.borrow(),
                                 profile_all_file_name,
                             );

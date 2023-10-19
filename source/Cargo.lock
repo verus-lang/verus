@@ -1927,6 +1927,7 @@ dependencies = [
 name = "tool_facade"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "serde",
 ]
 

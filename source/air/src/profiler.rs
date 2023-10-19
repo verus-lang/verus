@@ -18,7 +18,7 @@ pub struct Profiler {
     message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
     //log_path: String,
     quantifier_stats: Vec<QuantCost>,
-    instantiation_graph: InstantiationGraph,
+    instantiation_graph: Option<InstantiationGraph>,
 }
 
 pub struct InstantiationGraph {
@@ -48,6 +48,7 @@ impl Profiler {
         description: Option<&str>,
         progress_bar: bool,
         diagnostics: &impl Diagnostics,
+        compute_instantiation_graph: bool,
     ) -> Result<Self, ProfilerError> {
         let path = filename;
 
@@ -91,7 +92,8 @@ impl Profiler {
             );
         }
 
-        let instantiation_graph = Self::make_instantiation_graph(&model);
+        let instantiation_graph =
+            compute_instantiation_graph.then(|| Self::make_instantiation_graph(&model));
 
         // Analyze the quantifer costs
         let quant_costs = model.quant_costs();
@@ -105,8 +107,8 @@ impl Profiler {
         Ok(Profiler { message_interface, quantifier_stats: user_quant_costs, instantiation_graph })
     }
 
-    pub fn instantiation_graph(&self) -> &InstantiationGraph {
-        &self.instantiation_graph
+    pub fn instantiation_graph(&self) -> Option<&InstantiationGraph> {
+        self.instantiation_graph.as_ref()
     }
 
     fn make_instantiation_graph(model: &Model) -> InstantiationGraph {

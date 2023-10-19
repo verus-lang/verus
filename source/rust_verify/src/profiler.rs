@@ -1,4 +1,3 @@
-use air::profiler::Profiler;
 use vir::{ast::Fun, ast_util::fun_as_friendly_rust_name};
 
 use crate::buckets::BucketId;
@@ -14,11 +13,11 @@ pub fn write_instantiation_graph(
     bucket_id: &BucketId,
     op: Option<&Op>,
     func_map: &HashMap<Fun, vir::ast::Function>,
-    profiler: &Profiler,
+    instantiation_graph: &air::profiler::InstantiationGraph,
     qid_map: &HashMap<String, vir::sst::BndInfo>,
     profile_file_name: std::path::PathBuf,
 ) {
-    let air::profiler::InstantiationGraph { edges, nodes, names } = profiler.instantiation_graph();
+    let air::profiler::InstantiationGraph { edges, nodes, names } = instantiation_graph;
     use tool_facade::*;
     let name_strs: HashSet<String> = names.values().cloned().collect();
     let quantifiers: HashMap<String, Quantifier> = name_strs
@@ -76,8 +75,7 @@ pub fn write_instantiation_graph(
         graph: Graph(graph),
     };
     let file_name = profile_file_name.with_extension("graph");
-    let mut f = File::create(&file_name)
+    let f = File::create(&file_name)
         .expect(&format!("failed to open instantiation graph file {}", file_name.display()));
-    bincode::serialize_into(&mut f, &instantiation_graph)
-        .expect("failed to write instantiation graph");
+    instantiation_graph.serialize(f).expect("failed to write instantiation graph");
 }
