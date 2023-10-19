@@ -7,13 +7,10 @@ use std::{
 
 use getopts::Options;
 use tool_facade::{Graph, Instantiation, InstantiationGraph};
-// use qi_graph::Quantifier;
 
 use petgraph::algo::is_cyclic_directed;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph as PGraph;
-// use petgraph::visit::DfsPostOrder;
-// use petgraph::Direction;
 trait ToDot<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::hash::Hash> {
     fn to_dot_file(&self, path: &Path, node_name: impl Fn(&N) -> String, edge_label: impl Fn(&E) -> Option<String>) -> Result<(), String>;
 }
@@ -355,22 +352,20 @@ fn run(
         module_data.entry(output.module.clone()).or_insert(Vec::new()).push(output);
     }
 
-    // let all_functions = module_data.values().flat_map(|x| x.iter().map(|y| y.function.as_ref().unwrap().clone())).collect::<Vec<String>>();
-    //
     struct TimeData {
         module_times: HashMap<String, u64>,
         function_times: HashMap<String, u64>,
     }
 
-    fn module_blames_datum(
+    fn blames_datum(
         datum: ProcessFileOutput,
         times: Option<&HashMap<String, u64>>,
     ) -> serde_json::Value {
-        let data = serde_json::Value::Array(
+        let module_data = serde_json::Value::Array(
             datum
-                .module_blames
+                .module_blames.blames
                 .into_iter()
-                .map(|ModuleBlames { module, count, fraction }| {
+                .map(|Blames { identifier: module, count, fraction }| {
                     serde_json::json!({
                         "module": module,
                         "count": count,
@@ -379,13 +374,39 @@ fn run(
                 })
                 .collect(),
         );
-        let raw_counts_data = serde_json::Value::Array(
+        let module_raw_counts_data = serde_json::Value::Array(
             datum
-                .raw_counts_by_module
+                .module_blames.raw_counts_by_identifier
                 .into_iter()
-                .map(|ModuleBlames { module, count, fraction }| {
+                .map(|Blames { identifier: module, count, fraction }| {
                     serde_json::json!({
                         "module": module,
+                        "count": count,
+                        "fraction": fraction,
+                    })
+                })
+                .collect(),
+        );
+        let quant_data = serde_json::Value::Array(
+            datum
+                .quant_blames.blames
+                .into_iter()
+                .map(|Blames { identifier: qid, count, fraction }| {
+                    serde_json::json!({
+                        "quantifier": qid,
+                        "count": count,
+                        "fraction": fraction,
+                    })
+                })
+                .collect(),
+        );
+        let quant_raw_counts_data = serde_json::Value::Array(
+            datum
+                .quant_blames.raw_counts_by_identifier
+                .into_iter()
+                .map(|Blames { identifier: qid, count, fraction }| {
+                    serde_json::json!({
+                        "quantifier": qid,
                         "count": count,
                         "fraction": fraction,
                     })
@@ -399,8 +420,10 @@ fn run(
         value.insert("file_path".to_owned(), datum.file_path.into());
         value.insert("total_instantiation_count".to_owned(), datum.info.total_insts.into());
         value.insert("total_instantiation_count_old".to_owned(), datum.info.total_insts_old.into());
-        value.insert("module_blames".to_owned(), data);
-        value.insert("raw_counts_by_module".to_owned(), raw_counts_data);
+        value.insert("module_blames".to_owned(), module_data);
+        value.insert("raw_counts_by_module".to_owned(), module_raw_counts_data);
+        value.insert("quantifier_blames".to_owned(), quant_data);
+        value.insert("raw_counts_by_quantifier".to_owned(), quant_raw_counts_data);
         if let Some((function_times, function)) =
             datum.function.and_then(|function| times.map(|times| (times, function)))
         {
@@ -438,14 +461,14 @@ fn run(
             serde_json::json!({
                 "module": module,
                 "time": time_data.module_times.get(&module).cloned(),
-                "functions": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, Some(&time_data.function_times))).collect()),
+                "functions": serde_json::Value::Array(data.into_iter().map(|x| blames_datum(x, Some(&time_data.function_times))).collect()),
             })
         }).collect())
     } else {
         serde_json::Value::Array(module_data.into_iter().map(|(module, data)| {
             serde_json::json!({
                 "module": module,
-                "functions": serde_json::Value::Array(data.into_iter().map(|x| module_blames_datum(x, None)).collect()),
+                "functions": serde_json::Value::Array(data.into_iter().map(|x| blames_datum(x, None)).collect()),
             })
         }).collect())
     };
@@ -478,10 +501,15 @@ struct ProcessFileOutputInfo {
     total_insts: u64,
 }
 
-struct ModuleBlames {
-    module: String,
+struct Blames {
+    identifier: String,
     count: u64,
     fraction: f64,
+}
+
+struct BlameResult {
+   blames : Vec<Blames>,
+   raw_counts_by_identifier : Vec<Blames>, 
 }
 
 struct ProcessFileOutput {
@@ -489,21 +517,20 @@ struct ProcessFileOutput {
     module: String,
     file_path: String,
     function: Option<String>,
-    module_blames: Vec<ModuleBlames>,
-    raw_counts_by_module: Vec<ModuleBlames>,
+    module_blames: BlameResult,
+    quant_blames: BlameResult,
     #[allow(dead_code)]
     info: ProcessFileOutputInfo,
 }
 
 fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutput, String> {
-    // dbg!(&input_path);
 
     let bytes = std::fs::read(input_path)
         .map_err(|_e| format!("failed to read file {}", input_path.display()))?;
     let graph: InstantiationGraph = bincode::deserialize(&bytes[..])
         .map_err(|_| format!("input {} is malformed", input_path.display()))?;
-    // dbg!(graph.graph.0.len());
 
+    // compute input graph diagnostics
     let mut in_deg: HashMap<Instantiation, u64> = HashMap::new();
     for (_, tgts) in &graph.graph.0 {
         for (_, tgt) in tgts {
@@ -541,95 +568,88 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
     let roots: Vec<Instantiation> =
         pruned_graph.iter().map(|x| x.0).filter(|x| !all_tgts.contains(*x)).cloned().collect();
 
-    // let simple_graph = make_graph(pruned_graph);
     let total_insts = graph.instantiations.iter().count() as u64;
-
-    let mut unique_id = 0u64;
-    let mut quantifier_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
-        HashMap::new();
-    let mut quantifier_list = HashSet::new();
-    let (top_quants, _) = merge_sibling_nodes(
-        &pruned_graph,
-        &roots,
-        &mut quantifier_merged_graph,
-        &mut quantifier_list,
-        &mut unique_id,
-        &MergePolicy::QuantifierName,
-    );
-    let dummy_root = ("root".to_string(), 0);
-    quantifier_merged_graph.insert(dummy_root, top_quants);
-
-    let mut unique_id = 0u64;
-    let mut module_merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
-        HashMap::new();
-    let mut module_list = HashSet::new();
-    let (top_mods, total_insts_old) = merge_sibling_nodes(
-        &pruned_graph,
-        &roots,
-        &mut module_merged_graph,
-        &mut module_list,
-        &mut unique_id,
-        &MergePolicy::Module,
-    );
-    let dummy_root = ("root".to_string(), 0);
-    module_merged_graph.insert(dummy_root, top_mods);
-
-    let module_blames: Vec<_> = {
-        let mut module_blames = compute_module_blames(&module_merged_graph, &module_list);
-        module_blames.sort_unstable_by_key(|(_, cnt)| *cnt);
-        module_blames
-            .into_iter()
-            .rev()
-            .map(|(module, cnt)| ModuleBlames {
-                module,
-                count: cnt,
-                fraction: cnt as f64 / total_insts as f64,
-            })
-            .collect()
-    };
-
-    let quant_graph = make_graph(quantifier_merged_graph);
-
-    let simple_graph = make_graph(module_merged_graph);
-
-    let raw_counts_by_module = {
-        let mut raw_counts_by_module: HashMap<_, u64> = HashMap::new();
-        for module in graph.instantiations.iter().filter_map(|x| x.quantifier.module.clone()) {
-            *raw_counts_by_module.entry(module).or_default() += 1;
-        }
-        let total_raw_count: u64 = raw_counts_by_module.values().sum();
-        let mut raw_counts_by_module: Vec<ModuleBlames> = raw_counts_by_module
-            .into_iter()
-            .map(|(modname, e)| ModuleBlames {
-                module: modname,
-                count: e,
-                fraction: e as f64 / total_raw_count as f64,
-            })
-            .collect();
-        raw_counts_by_module.sort_unstable_by_key(
-            |ModuleBlames { module: _, count, fraction: _ }| std::cmp::Reverse(*count),
-        );
-        raw_counts_by_module
-    };
 
     let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
-    simple_graph.to_dot_file(
-        &output_dir.join(Path::new(file_stem).with_extension("dot")),
-        |(modname, id)| format!("{} ({})", modname, id),
-        // |n| format!("{} ({}, {})", n.quantifier.qid, n.id.0, n.id.1), // for pruned graph
-        // |n| n.qid.clone(), // for quantifier graph
-        |e| Some(format!("{:.2}", (*e as f64 / total_insts as f64) * 100.0)),
-        // |e| Some(format!("{}", e)),
-    )?;
+    fn generate_dot_file_for_policy(file_stem: &OsStr, output_dir: &Path, input_graph : &HashMap<Instantiation, HashMap<Instantiation, u64>>, roots : &Vec<Instantiation>, merge_rule : &MergePolicy, total_insts: u64, instantiations : HashSet<Instantiation>, total_insts_old : &mut u64) 
+        -> Result<BlameResult, String> {
+        let mut unique_id = 0u64;
+        let mut merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
+            HashMap::new();
+        let mut full_list = HashSet::new();
+        let (top_identifiers, count) = merge_sibling_nodes(
+            input_graph,
+            roots,
+            &mut merged_graph,
+            &mut full_list,
+            &mut unique_id,
+            merge_rule,
+        );
+        *total_insts_old = count;
+        
+        let dummy_root = ("root".to_string(), 0);
+        merged_graph.insert(dummy_root, top_identifiers);
 
-    quant_graph.to_dot_file(
-        &output_dir.join(Path::new(file_stem).with_extension("quant.dot")),
-        |(modname, id)| format!("{} ({})", modname, id),
-        |e| Some(format!("{:.2}", (*e as f64 / total_insts as f64) * 100.0)),
-    )?;
+        
+        let blames: Vec<_> = {
+            let mut blames = compute_module_blames(&merged_graph, &full_list);
+            blames.sort_unstable_by_key(|(_, cnt)| *cnt);
+            blames
+                .into_iter()
+                .rev()
+                .map(|(module, cnt)| Blames {
+                    identifier: module,
+                    count: cnt,
+                    fraction: cnt as f64 / total_insts as f64,
+                })
+                .collect()
+        };
+        
+        let raw_counts_by_identifier = {
+            let mut raw_counts_by_identifier: HashMap<_, u64> = HashMap::new();
+            for identifier in instantiations.iter().filter_map(|x| x.quantifier.module.clone()) {
+                *raw_counts_by_identifier.entry(identifier).or_default() += 1;
+            }
+            let total_raw_count: u64 = raw_counts_by_identifier.values().sum();
+            let mut raw_counts_by_identifier: Vec<Blames> = raw_counts_by_identifier
+                .into_iter()
+                .map(|(modname, e)| Blames {
+                    identifier: modname,
+                    count: e,
+                    fraction: e as f64 / total_raw_count as f64,
+                })
+                .collect();
+            raw_counts_by_identifier.sort_unstable_by_key(
+                |Blames { identifier: _, count, fraction: _ }| std::cmp::Reverse(*count),
+            );
+            raw_counts_by_identifier
+        };
 
-    let raw_count_count_dbg: u64 = raw_counts_by_module.iter().map(|b| b.count).sum();
+        let final_graph = make_graph(merged_graph);
+        
+
+        let file_extension = match merge_rule {
+            MergePolicy::Module => "dot",
+            MergePolicy::QuantifierName => "quant.dot"
+        };
+
+        final_graph.to_dot_file(
+            &output_dir.join(Path::new(file_stem).with_extension(file_extension)),
+            |(identifier, id)| format!("{} ({})", identifier, id),
+            |e| Some(format!("{:.2}", (*e as f64 / total_insts as f64) * 100.0)),
+        )?;
+
+        Ok(BlameResult { blames, raw_counts_by_identifier })
+        
+    }
+
+    let mut total_insts_old = 0;
+    let module_blames = generate_dot_file_for_policy(file_stem, output_dir, &pruned_graph, &roots, &MergePolicy::Module, total_insts, graph.instantiations.clone(), &mut total_insts_old)?;
+    let mut res = 0;
+    let quant_blames = generate_dot_file_for_policy(file_stem, output_dir, &pruned_graph, &roots, &MergePolicy::QuantifierName, total_insts, graph.instantiations.clone(),  &mut res)?;
+
+    let raw_count_count_dbg: u64 = module_blames.raw_counts_by_identifier.iter().map(|b| b.count).sum();
     dbg!(&total_insts, &raw_count_count_dbg);
 
     Ok(ProcessFileOutput {
@@ -638,7 +658,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         file_path: file_stem.to_str().unwrap().to_string(),
         function: graph.function,
         module_blames,
-        raw_counts_by_module,
+        quant_blames,
         info: ProcessFileOutputInfo {
             is_cyclic,
             max_in_deg,
