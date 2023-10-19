@@ -563,7 +563,6 @@ pub enum AssertQueryMode {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Quant {
     pub quant: air::ast::Quant,
-    pub boxed_params: bool,
 }
 
 /// Computation mode for assert_by_compute

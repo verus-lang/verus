@@ -258,13 +258,9 @@ impl<A: ToDebugSNode + Clone> ToDebugSNode for Binder<A> {
 }
 
 impl ToDebugSNode for Quant {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        let Quant { quant, boxed_params } = self;
-        let nodes = vec![
-            Node::Atom(format!("{:?}", quant)),
-            Node::Atom(":boxed_params".to_string()),
-            boxed_params.to_node(opts),
-        ];
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        let Quant { quant } = self;
+        let nodes = vec![Node::Atom(format!("{:?}", quant))];
         Node::List(nodes)
     }
 }

@@ -500,6 +500,7 @@ impl Verifier {
         bucket_id: &BucketId,
         reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
+        diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
         level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
@@ -513,8 +514,18 @@ impl Verifier {
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
-                let msg =
+                let mut msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
+                if let Some(mut in_line_order) = diagnostics_to_report.take() {
+                    msg = msg
+                        + "\nreporting errors as they are discovered (they may not be in source order)";
+                    in_line_order.sort_by_key(|(m, _)| {
+                        m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
+                    });
+                    for (error, error_level) in in_line_order.into_iter() {
+                        reporter.report_as(&error.clone().to_any(), error_level);
+                    }
+                }
                 let msg = if counter % 5 == 0 { note(&context.0, msg) } else { note_bare(msg) };
                 reporter.report_now(&msg.to_any());
                 counter += 1;
@@ -605,7 +616,11 @@ impl Verifier {
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
                         if !self.expand_flag || vir::split_expression::is_split_error(&error) {
-                            reporter.report_as(&error.clone().to_any(), level);
+                            if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
+                                collected.push((error.clone(), level));
+                            } else {
+                                reporter.report_as(&error.clone().to_any(), level);
+                            }
                         }
                     }
 
@@ -658,6 +673,7 @@ impl Verifier {
                 }
             }
         }
+
         if level == Some(MessageLevel::Error) && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
@@ -713,6 +729,7 @@ impl Verifier {
         reporter: &impl air::messages::Diagnostics,
         source_map: Option<&SourceMap>,
         level: Option<MessageLevel>,
+        diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
@@ -748,6 +765,7 @@ impl Verifier {
                     bucket_id,
                     reporter,
                     source_map,
+                    diagnostics_to_report,
                     level,
                     air_context,
                     assign_map,
@@ -1073,225 +1091,256 @@ impl Verifier {
         let bucket = self.get_bucket(bucket_id);
         let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
         let mut all_context_ops = vec![];
-        while let Some(op) = opgen.next()? {
-            match &op.kind {
-                OpKind::Context(_context_op, commands) => {
-                    self.run_commands(
-                        bucket_id,
-                        reporter,
-                        &mut air_context,
-                        commands,
-                        &op.to_air_comment(),
-                    );
-                    all_context_ops.push(op);
+        while let Some(mut function_opgen) = opgen.next()? {
+            let diagnostics_to_report: std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>> =
+                std::cell::RefCell::new(Some(Vec::new()));
+            let mut flush_diagnostics_to_report = false;
+            loop {
+                let next_op = function_opgen.next();
+                if next_op.is_none() {
+                    flush_diagnostics_to_report = true;
                 }
-                OpKind::Query { query_op, commands_with_context_list, snap_map, profile_rerun } => {
-                    let level = match query_op {
-                        QueryOp::SpecTermination => MessageLevel::Error,
-                        QueryOp::Body(Style::Normal) => MessageLevel::Error,
-                        QueryOp::Body(Style::RecommendsFollowupFromError) => MessageLevel::Note,
-                        QueryOp::Body(Style::RecommendsChecked) => MessageLevel::Warning,
-                        QueryOp::Body(Style::Expanded) => MessageLevel::Note,
-                    };
-                    let function = &op.get_function();
-                    let is_recommend = query_op.is_recommend();
-                    self.expand_flag = query_op.is_expanded();
-
-                    let mut spinoff_context_counter = 1;
-
-                    let mut any_invalid = false;
-                    self.expand_targets = vec![];
-                    let mut func_curr_smt_time = Duration::ZERO;
-                    for cmds in commands_with_context_list.iter() {
-                        if is_recommend && cmds.skip_recommends {
-                            continue;
+                if flush_diagnostics_to_report {
+                    if let Some(mut in_line_order) = diagnostics_to_report.take() {
+                        in_line_order.sort_by_key(|(m, _)| {
+                            m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
+                        });
+                        for (message, level) in in_line_order {
+                            reporter.report_as(&message.clone().to_any(), level);
                         }
-                        if cmds.prover_choice == vir::def::ProverChoice::Singular {
-                            #[cfg(not(feature = "singular"))]
-                            panic!(
-                                "Found singular command when Verus is compiled without Singular feature"
-                            );
-                        }
-                        let mut spinoff_z3_context;
-                        let do_spinoff = (cmds.prover_choice == vir::def::ProverChoice::Nonlinear)
-                            || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
-                            || *profile_rerun
-                            || self.args.spinoff_all;
-                        let profile_file_name = if *profile_rerun
-                            || ((self.args.profile_all || self.args.capture_profiles) && do_spinoff)
-                        {
-                            let solver_log_dir = self.ensure_solver_log_dir()?;
-                            let profile_file_name = self.log_file_name(
-                                &solver_log_dir,
-                                Some(bucket_id),
-                                Self::log_fine_name_suffix(
-                                    is_recommend,
-                                    Some((&(function.x.name).path, spinoff_context_counter)),
-                                    self.expand_flag,
-                                    crate::config::PROFILE_FILE_SUFFIX,
-                                )
-                                .as_str(),
-                            );
-                            assert!(!profile_file_name.exists());
-                            Some(profile_file_name)
-                        } else {
-                            None
-                        };
-
-                        let query_air_context = if do_spinoff {
-                            spinoff_z3_context = self.new_air_context_with_bucket_context(
-                                message_interface.clone(),
-                                &opgen.ctx,
-                                reporter,
-                                bucket_id,
-                                &(function.x.name).path,
-                                datatype_commands.clone(),
-                                assoc_type_decl_commands.clone(),
-                                trait_commands.clone(),
-                                assoc_type_impl_commands.clone(),
-                                function_decl_commands.clone(),
-                                &all_context_ops,
-                                is_recommend,
-                                spinoff_context_counter,
-                                &cmds.span,
-                                profile_file_name.as_ref(),
-                            )?;
-                            // for bitvector, only one query, no push/pop
-                            if cmds.prover_choice == vir::def::ProverChoice::BitVector {
-                                spinoff_z3_context.disable_incremental_solving();
-                            }
-                            spinoff_context_counter += 1;
-                            &mut spinoff_z3_context
-                        } else {
-                            &mut air_context
-                        };
-                        let iter_curr_smt_time = query_air_context.get_time().1;
-                        let RunCommandQueriesResult {
-                            invalidity: command_invalidity,
-                            timed_out: command_timed_out,
-                            not_skipped: command_not_skipped,
-                        } = self.run_commands_queries(
-                            reporter,
-                            source_map,
-                            (!profile_rerun).then(|| level),
-                            query_air_context,
-                            cmds.clone(),
-                            &HashMap::new(),
-                            &snap_map,
+                    }
+                }
+                let Some(op) = next_op else { break; };
+                match &op.kind {
+                    OpKind::Context(_context_op, commands) => {
+                        self.run_commands(
                             bucket_id,
-                            &function.x.name,
+                            reporter,
+                            &mut air_context,
+                            commands,
                             &op.to_air_comment(),
-                            None,
                         );
-                        func_curr_smt_time += query_air_context.get_time().1 - iter_curr_smt_time;
-                        if do_spinoff {
-                            let (time_smt_init, time_smt_run) = query_air_context.get_time();
-                            spunoff_time_smt_init += time_smt_init;
-                            spunoff_time_smt_run += time_smt_run;
-                        }
+                        all_context_ops.push(op);
+                    }
+                    OpKind::Query {
+                        query_op,
+                        commands_with_context_list,
+                        snap_map,
+                        profile_rerun,
+                    } => {
+                        let level = match query_op {
+                            QueryOp::SpecTermination => MessageLevel::Error,
+                            QueryOp::Body(Style::Normal) => MessageLevel::Error,
+                            QueryOp::Body(Style::RecommendsFollowupFromError) => MessageLevel::Note,
+                            QueryOp::Body(Style::RecommendsChecked) => MessageLevel::Warning,
+                            QueryOp::Body(Style::Expanded) => MessageLevel::Note,
+                        };
+                        let function = &op.get_function();
+                        let is_recommend = query_op.is_recommend();
+                        self.expand_flag = query_op.is_expanded();
 
-                        any_invalid |= command_invalidity;
+                        let mut spinoff_context_counter = 1;
 
-                        if let Some(profile_file_name) = profile_file_name {
-                            if command_not_skipped && query_air_context.check_valid_used() {
-                                assert!(profile_file_name.exists());
+                        let mut any_invalid = false;
+                        self.expand_targets = vec![];
+                        let mut func_curr_smt_time = Duration::ZERO;
+                        for cmds in commands_with_context_list.iter() {
+                            if is_recommend && cmds.skip_recommends {
+                                continue;
+                            }
+                            if cmds.prover_choice == vir::def::ProverChoice::Singular {
+                                #[cfg(not(feature = "singular"))]
+                                panic!(
+                                    "Found singular command when Verus is compiled without Singular feature"
+                                );
+                            }
+                            let mut spinoff_z3_context;
+                            let do_spinoff = (cmds.prover_choice
+                                == vir::def::ProverChoice::Nonlinear)
+                                || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
+                                || *profile_rerun
+                                || self.args.spinoff_all;
 
-                                let current_profile_description =
-                                    op.to_friendly_desc().map(|x| x + " ").unwrap_or("".into())
-                                        + &fun_as_friendly_rust_name(&function.x.name);
+                            let profile_file_name = if *profile_rerun
+                                || ((self.args.profile_all || self.args.capture_profiles) && do_spinoff)
+                            {
+                                let solver_log_dir = self.ensure_solver_log_dir()?;
+                                let profile_file_name = self.log_file_name(
+                                    &solver_log_dir,
+                                    Some(bucket_id),
+                                    Self::log_fine_name_suffix(
+                                        is_recommend,
+                                        Some((&(function.x.name).path, spinoff_context_counter)),
+                                        self.expand_flag,
+                                        crate::config::PROFILE_FILE_SUFFIX,
+                                    )
+                                    .as_str(),
+                                );
+                                assert!(!profile_file_name.exists());
+                                Some(profile_file_name)
+                            } else {
+                                None
+                            };
 
-                                match Profiler::parse(
+                            let query_air_context = if do_spinoff {
+                                spinoff_z3_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
-                                    &profile_file_name,
-                                    Some(&current_profile_description),
-                                    self.args.profile || self.args.profile_all,
+                                    function_opgen.ctx(),
                                     reporter,
-                                ) {
-                                    Ok(profiler) => {
-                                        if !self.args.capture_profiles {
-                                            write_instantiation_graph(
-                                                &bucket_id,
-                                                Some(&op),
-                                                &opgen.ctx.func_map,
-                                                &profiler,
-                                                &opgen.ctx.global.qid_map.borrow(),
-                                                profile_file_name,
-                                            );
-                                        } else {
-                                            // if capture profiles was passed, silence the report
-                                            // as we are only interested in the graph/profile data
-                                            reporter.report(
-                                                &note_bare(format!(
-                                                    "Profile statistics for {}",
-                                                    fun_as_friendly_rust_name(&function.x.name)
+                                    bucket_id,
+                                    &(function.x.name).path,
+                                    datatype_commands.clone(),
+                                    assoc_type_decl_commands.clone(),
+                                    trait_commands.clone(),
+                                    assoc_type_impl_commands.clone(),
+                                    function_decl_commands.clone(),
+                                    &all_context_ops,
+                                    is_recommend,
+                                    spinoff_context_counter,
+                                    &cmds.span,
+                                    profile_file_name.as_ref(),
+                                )?;
+                                // for bitvector, only one query, no push/pop
+                                if cmds.prover_choice == vir::def::ProverChoice::BitVector {
+                                    spinoff_z3_context.disable_incremental_solving();
+                                }
+                                spinoff_context_counter += 1;
+                                &mut spinoff_z3_context
+                            } else {
+                                &mut air_context
+                            };
+                            let iter_curr_smt_time = query_air_context.get_time().1;
+                            let RunCommandQueriesResult {
+                                invalidity: command_invalidity,
+                                timed_out: command_timed_out,
+                                not_skipped: command_not_skipped,
+                            } = self.run_commands_queries(
+                                reporter,
+                                source_map,
+                                (!profile_rerun).then(|| level),
+                                &diagnostics_to_report,
+                                query_air_context,
+                                cmds.clone(),
+                                &HashMap::new(),
+                                &snap_map,
+                                bucket_id,
+                                &function.x.name,
+                                &op.to_air_comment(),
+                                None,
+                            );
+                            func_curr_smt_time +=
+                                query_air_context.get_time().1 - iter_curr_smt_time;
+                            if do_spinoff {
+                                let (time_smt_init, time_smt_run) = query_air_context.get_time();
+                                spunoff_time_smt_init += time_smt_init;
+                                spunoff_time_smt_run += time_smt_run;
+                            }
+
+                            any_invalid |= command_invalidity;
+
+                            if let Some(profile_file_name) = profile_file_name {
+                                if command_not_skipped && query_air_context.check_valid_used() {
+                                    assert!(profile_file_name.exists());
+
+                                    let current_profile_description =
+                                        op.to_friendly_desc().map(|x| x + " ").unwrap_or("".into())
+                                            + &fun_as_friendly_rust_name(&function.x.name);
+
+                                    match Profiler::parse(
+                                        message_interface.clone(),
+                                        &profile_file_name,
+                                        Some(&current_profile_description),
+                                        self.args.profile || self.args.profile_all,
+                                        reporter,
+                                    ) {
+                                        Ok(profiler) => {
+                                            if !self.args.capture_profiles {
+                                                write_instantiation_graph(
+                                                    &bucket_id,
+                                                    Some(&op),
+                                                    &function_opgen.ctx().func_map,
+                                                    &profiler,
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                    profile_file_name,
+                                                );
+                                            } else {
+                                                // if capture profiles was passed, silence the report
+                                                // as we are only interested in the graph/profile data
+                                                reporter.report(
+                                                    &note_bare(format!(
+                                                        "Profile statistics for {}",
+                                                        fun_as_friendly_rust_name(&function.x.name)
+                                                    ))
+                                                    .to_any(),
+                                                );
+                                                self.print_profile_stats(
+                                                    reporter,
+                                                    profiler,
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                );
+                                            }
+                                        }
+                                        Err(err) => {
+                                            reporter.report_now(
+                                                &warning_bare(format!(
+                                                    "Failed parsing profile file for {}: {}",
+                                                    current_profile_description, err
                                                 ))
                                                 .to_any(),
                                             );
-                                            self.print_profile_stats(
-                                                reporter,
-                                                profiler,
-                                                &opgen.ctx.global.qid_map.borrow(),
-                                            );
                                         }
                                     }
-                                    Err(err) => {
-                                        reporter.report_now(
-                                            &warning_bare(format!(
-                                                "Failed parsing profile file for {}: {}",
-                                                current_profile_description, err
-                                            ))
-                                            .to_any(),
-                                        );
-                                    }
+                                }
+                            } else {
+                                if command_timed_out && self.args.profile {
+                                    function_opgen.retry_with_profile(
+                                        query_op.clone(),
+                                        commands_with_context_list.clone(),
+                                        snap_map.clone(),
+                                        function,
+                                    );
+                                    flush_diagnostics_to_report = true;
                                 }
                             }
-                        } else {
-                            if command_timed_out && self.args.profile {
-                                opgen.retry_with_profile(
-                                    query_op.clone(),
-                                    commands_with_context_list.clone(),
-                                    snap_map.clone(),
-                                    function,
-                                );
+                        }
+
+                        // collect the smt run time from this command into the function duration
+                        let func_time =
+                            self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
+                        // dbg!(&function.x.name.path);
+                        *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) +=
+                            func_curr_smt_time;
+
+                        if matches!(query_op, QueryOp::Body(Style::Normal)) {
+                            if (any_invalid && !self.args.no_auto_recommends_check)
+                                || function.x.attrs.check_recommends
+                            {
+                                function_opgen.retry_with_recommends(&op, any_invalid)?;
+                            }
+
+                            if any_invalid && self.args.expand_errors {
+                                let expand_targets = self.expand_targets.drain(..).collect();
+                                function_opgen.retry_with_expand_errors(&op, expand_targets)?;
+                                flush_diagnostics_to_report = true;
                             }
                         }
-                    }
 
-                    // collect the smt run time from this command into the function duration
-                    let func_time =
-                        self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
-                    // dbg!(&function.x.name.path);
-                    *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) +=
-                        func_curr_smt_time;
+                        if matches!(query_op, QueryOp::SpecTermination) {
+                            if (any_invalid && !self.args.no_auto_recommends_check)
+                                || function.x.attrs.check_recommends
+                            {
+                                // Do recommends-checking for the body of the function.
+                                // This should always happen for spec(checked).
+                                //
+                                // Note: this is done as a response to the 'termination check'
+                                // because a failed termination check will trigger the
+                                // spec body check even if spec(checked) is not marked.
+                                // TODO the user probably expects us to also do a recommends-retry
+                                // or an expand-errors retry of the decreases-by lemma if
+                                // it exists.
 
-                    if matches!(query_op, QueryOp::Body(Style::Normal)) {
-                        if (any_invalid && !self.args.no_auto_recommends_check)
-                            || function.x.attrs.check_recommends
-                        {
-                            opgen.retry_with_recommends(&op, any_invalid)?;
-                        }
-
-                        if any_invalid && self.args.expand_errors {
-                            let expand_targets = self.expand_targets.drain(..).collect();
-                            opgen.retry_with_expand_errors(&op, expand_targets)?;
-                        }
-                    }
-
-                    if matches!(query_op, QueryOp::SpecTermination) {
-                        if (any_invalid && !self.args.no_auto_recommends_check)
-                            || function.x.attrs.check_recommends
-                        {
-                            // Do recommends-checking for the body of the function.
-                            // This should always happen for spec(checked).
-                            //
-                            // Note: this is done as a response to the 'termination check'
-                            // because a failed termination check will trigger the
-                            // spec body check even if spec(checked) is not marked.
-                            // TODO the user probably expects us to also do a recommends-retry
-                            // or an expand-errors retry of the decreases-by lemma if
-                            // it exists.
-
-                            opgen.retry_with_recommends(&op, any_invalid)?;
+                                function_opgen.retry_with_recommends(&op, any_invalid)?;
+                            }
                         }
                     }
                 }

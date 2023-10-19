@@ -1459,8 +1459,7 @@ pub(crate) fn expr_to_stm_opt(
             let e_choose = mk_exp(ExpX::Bind(bnd_choose, body_exp));
             let e_choose = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_choose));
             if state.checking_recommends(ctx) {
-                let quant =
-                    crate::ast::Quant { quant: air::ast::Quant::Exists, boxed_params: true };
+                let quant = crate::ast::Quant { quant: air::ast::Quant::Exists };
                 let bnd_exists =
                     Spanned::new(body.span.clone(), BndX::Quant(quant, params.clone(), trigs));
                 let e_exists = mk_exp(ExpX::Bind(bnd_exists, cond_exp.clone()));

@@ -107,7 +107,6 @@ pub(crate) enum SpecItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum QuantItem {
     Forall,
-    ForallArith,
     Exists,
 }
 
@@ -342,7 +341,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
         ("verus::builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),
-        ("verus::builtin::forall_arith",            VerusItem::Quant(QuantItem::ForallArith)),
 
         ("verus::builtin::extra_dependency",        VerusItem::Directive(DirectiveItem::ExtraDependency)),
         ("verus::builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
