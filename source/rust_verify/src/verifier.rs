@@ -37,7 +37,7 @@ use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{path_to_string, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
-const RLIMIT_PER_SECOND: u32 = 3000000;
+const RLIMIT_PER_SECOND: f32 = 3000000f32;
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
@@ -854,7 +854,7 @@ impl Verifier {
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
-        air_context.set_rlimit(self.args.rlimit.saturating_mul(RLIMIT_PER_SECOND));
+        air_context.set_rlimit((self.args.rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32);
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }

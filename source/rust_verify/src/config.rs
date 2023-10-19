@@ -2,7 +2,7 @@ use getopts::Options;
 use std::sync::Arc;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
-pub const DEFAULT_RLIMIT_SECS: u32 = 10;
+pub const DEFAULT_RLIMIT_SECS: f32 = 10f32;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ShowTriggers {
@@ -60,7 +60,7 @@ pub struct ArgsX {
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
-    pub rlimit: u32,
+    pub rlimit: f32,
     pub smt_options: Vec<(String, String)>,
     pub multiple_errors: u32,
     pub expand_errors: bool,
@@ -238,7 +238,7 @@ pub fn parse_args_with_imports(
         OPT_RLIMIT,
         format!("Set SMT resource limit (roughly in seconds). Default: {}.", DEFAULT_RLIMIT_SECS)
             .as_str(),
-        "INTEGER",
+        "FLOAT",
     );
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
     opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
@@ -405,7 +405,7 @@ pub fn parse_args_with_imports(
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
         rlimit: matches
-            .opt_get::<u32>(OPT_RLIMIT)
+            .opt_get::<f32>(OPT_RLIMIT)
             .unwrap_or_else(|_| error("expected integer after rlimit".to_string()))
             .unwrap_or(DEFAULT_RLIMIT_SECS),
         smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),

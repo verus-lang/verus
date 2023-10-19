@@ -44,7 +44,7 @@ pub struct GlobalCtx {
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub(crate) rlimit: u32,
+    pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) vstd_crate_name: Option<Ident>, // already an arc
     pub arch: ArchWordBits,
@@ -188,7 +188,7 @@ impl GlobalCtx {
     pub fn new(
         krate: &Krate,
         no_span: Span,
-        rlimit: u32,
+        rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
         arch: ArchWordBits,

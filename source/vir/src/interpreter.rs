@@ -1493,7 +1493,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 fn eval_expr_launch(
     exp: Exp,
     fun_ssts: &HashMap<Fun, SstInfo>,
-    rlimit: u32,
+    rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
@@ -1520,8 +1520,7 @@ fn eval_expr_launch(
         fun_calls: HashMap::new(),
     };
     // Don't run for too long
-    let max_iterations =
-        if rlimit == 0 { std::u64::MAX } else { rlimit as u64 * RLIMIT_MULTIPLIER };
+    let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
@@ -1616,7 +1615,7 @@ pub fn eval_expr(
     exp: &Exp,
     diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
-    rlimit: u32,
+    rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
