@@ -1162,7 +1162,8 @@ impl Verifier {
                                 || self.args.spinoff_all;
 
                             let profile_file_name = if *profile_rerun
-                                || ((self.args.profile_all || self.args.capture_profiles) && do_spinoff)
+                                || ((self.args.profile_all || self.args.capture_profiles)
+                                    && do_spinoff)
                             {
                                 let solver_log_dir = self.ensure_solver_log_dir()?;
                                 let profile_file_name = self.log_file_name(
