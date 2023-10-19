@@ -216,3 +216,170 @@ impl Profiler {
         self.quantifier_stats.iter()
     }
 }
+
+pub mod internal {
+    use std::collections::HashMap;
+    use std::io::BufRead;
+    use z3tracer::error::RawResult;
+    use z3tracer::syntax::*;
+
+    struct SimpleProfiler {
+        terms: std::collections::BTreeMap<Ident, Term>,
+        instantiations: HashMap<Ident, u64>,
+    }
+
+    impl z3tracer::parser::LogVisitor for &mut SimpleProfiler {
+        fn add_term(&mut self, ident: Ident, term: Term) -> RawResult<()> {
+            self.terms.insert(ident, term);
+            Ok(())
+        }
+
+        fn add_instantiation(
+            &mut self,
+            _key: QiKey,
+            frame: QiFrame,
+        ) -> z3tracer::error::RawResult<()> {
+            if let z3tracer::syntax::QiFrame::NewMatch { ref quantifier, .. } = frame {
+                *self.instantiations.entry(quantifier.to_owned()).or_insert(0) += 1;
+            }
+            Ok(())
+        }
+
+        fn start_instance(&mut self, _key: QiKey, _instance: QiInstance) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn end_instance(&mut self) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn add_equality(&mut self, _id: Ident, _eq: Equality) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn attach_meaning(&mut self, _id: Ident, _m: Meaning) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn attach_var_names(&mut self, _id: Ident, _names: Vec<VarName>) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn attach_enode(&mut self, _id: Ident, _generation: u64) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn tool_version(&mut self, _s1: String, _s2: String) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn begin_check(&mut self, _i: u64) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn assign(&mut self, _lit: Literal, _s: String) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn conflict(&mut self, _lits: Vec<Literal>, _s: String) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn push(&mut self, _level: u64) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn pop(&mut self, _num: u64, _current_level: u64) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn resolve_lit(&mut self, _i: u64, _lit: Literal) -> RawResult<()> {
+            Ok(())
+        }
+
+        fn resolve_process(&mut self, _lit: Literal) -> RawResult<()> {
+            Ok(())
+        }
+    }
+
+    const PARSER_CONFIG: z3tracer::parser::ParserConfig = z3tracer::parser::ParserConfig {
+        skip_z3_version_check: true,
+        ignore_invalid_lines: true,
+        show_progress_bar: false,
+    };
+
+    impl SimpleProfiler {
+        fn new() -> Self {
+            SimpleProfiler {
+                instantiations: HashMap::new(),
+                terms: std::collections::BTreeMap::new(),
+            }
+        }
+
+        /// Process some input.
+        fn process<R>(
+            &mut self,
+            path_name: Option<String>,
+            input: R,
+            line_count: usize,
+        ) -> Result<(), ()>
+        where
+            R: std::io::BufRead,
+        {
+            let lexer = z3tracer::lexer::Lexer::new(path_name, input, line_count);
+            z3tracer::parser::Parser::new(PARSER_CONFIG, lexer, self).parse().map_err(|_| ())
+        }
+
+        fn instantiations(&self) -> Vec<(String, u64, Vec<(String, u64)>)> {
+            let mut quantifier_counts = HashMap::new();
+            for (ident, count) in self.instantiations.iter() {
+                let quant_name = match &self.terms[&ident] {
+                    Term::Quant { name, .. } => name,
+                    Term::App { name, .. } => name,
+                    _ => panic!("Term for quantifier isn't a Quant"),
+                };
+                let (ref mut curr_count, ref mut ident_counts) =
+                    quantifier_counts.entry(quant_name.clone()).or_insert((0, HashMap::new()));
+                *curr_count += count;
+                *ident_counts.entry(ident).or_insert(0) += count;
+            }
+            let mut quantifier_counts: Vec<_> = quantifier_counts
+                .into_iter()
+                .map(|(qid, (count, icounts))| {
+                    (qid, count, {
+                        let mut icounts: Vec<(String, u64)> = icounts
+                            .into_iter()
+                            .map(|(id, icount)| (format!("{:?}", id), icount))
+                            .collect();
+                        icounts.sort_by_key(|(_, c)| u64::MAX - *c);
+                        icounts
+                    })
+                })
+                .collect();
+            quantifier_counts.sort_by_key(|(_, c, _)| u64::MAX - *c);
+            quantifier_counts
+        }
+    }
+
+    pub fn profile(path: &std::path::Path) -> Vec<(String, u64, Vec<(String, u64)>)> {
+        // Count the number of lines
+        let file = std::io::BufReader::new(
+            std::fs::File::open(path).expect("Failed to open prover trace log"),
+        );
+        let line_count = file.lines().count();
+
+        // Reset to actually parse the file
+        let file = std::io::BufReader::new(
+            std::fs::File::open(path).expect("Failed to open prover trace log"),
+        );
+
+        let mut profile = SimpleProfiler::new();
+        println!("Analyzing prover log...");
+        let _ = profile
+            .process(Some(path.display().to_string()), file, line_count)
+            .expect("Error processing prover trace");
+        println!("... analysis complete\n");
+
+        profile.instantiations()
+    }
+}

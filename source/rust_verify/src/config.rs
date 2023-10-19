@@ -74,6 +74,7 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
+    pub use_internal_profiler: bool,
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -192,6 +193,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
+    const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -203,6 +205,10 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_CAPTURE_PROFILES,
             "Always collect prover performance data, but don't generate output reports",
+        ),
+        (
+            EXTENDED_USE_INTERNAL_PROFILER,
+            "Use an internal profiler that shows internal quantifier instantiations",
         ),
     ];
 
@@ -497,6 +503,7 @@ pub fn parse_args_with_imports(
             extended.get(EXTENDED_CAPTURE_PROFILES).is_some()
         },
         spinoff_all: extended.get(EXTENDED_SPINOFF_ALL).is_some(),
+        use_internal_profiler: extended.get(EXTENDED_USE_INTERNAL_PROFILER).is_some(),
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !extended.get(EXTENDED_NO_SOLVER_VERSION_CHECK).is_some(),
