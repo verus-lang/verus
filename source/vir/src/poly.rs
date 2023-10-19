@@ -490,7 +490,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.push_scope(true);
             for binder in binders.iter() {
                 let native = natives.contains(&binder.name);
-                let typ = if native || !quant.boxed_params {
+                let typ = if native {
                     coerce_typ_to_native(ctx, &binder.a)
                 } else {
                     coerce_typ_to_poly(ctx, &binder.a)

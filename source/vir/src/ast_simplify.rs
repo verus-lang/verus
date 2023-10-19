@@ -681,7 +681,7 @@ fn exec_closure_spec_requires(
         ExprX::Binary(BinaryOp::Implies, reqs_body, closure_req_call.clone()),
     );
 
-    let forall = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+    let forall = Quant { quant: air::ast::Quant::Forall };
     let binders = Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ })]);
     let req_forall =
         SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, req_quant_body));
@@ -747,7 +747,7 @@ fn exec_closure_spec_ensures(
         ExprX::Binary(BinaryOp::Implies, closure_ens_call.clone(), enss_body),
     );
 
-    let forall = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+    let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =
         Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ }), ret.clone()]);
     let ens_forall =

@@ -175,14 +175,6 @@ pub fn exists<A>(_a: A) -> bool {
     unimplemented!();
 }
 
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::forall_arith"]
-#[verifier::spec]
-#[deprecated = "use forall instead"]
-pub fn forall_arith<A>(_a: A) -> bool {
-    unimplemented!();
-}
-
 // choose(|x: t| P(x))
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::choose"]

@@ -375,10 +375,10 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn_no_proof_args(bctx, expr);
             unsupported_err_unless!(args_len == 1, expr.span, "expected forall/exists", &args);
             let quant = match quant_item {
-                QuantItem::Forall | QuantItem::ForallArith => air::ast::Quant::Forall,
+                QuantItem::Forall => air::ast::Quant::Forall,
                 QuantItem::Exists => air::ast::Quant::Exists,
             };
-            let quant = Quant { quant, boxed_params: quant_item != &QuantItem::ForallArith };
+            let quant = Quant { quant };
             extract_quant(bctx, expr.span, quant, args[0])
         }
         VerusItem::Directive(directive_item) => match directive_item {

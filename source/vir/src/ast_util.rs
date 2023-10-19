@@ -109,7 +109,7 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
     typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
 }
 
-pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall };
 
 pub fn params_equal_opt(
     param1: &Param,
