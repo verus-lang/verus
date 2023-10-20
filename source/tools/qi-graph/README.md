@@ -1,6 +1,6 @@
 # Qi Graph Analysis
 
-This tool parses the serialized `.graph` data produced by the `tool-facade` crate.
+This tool parses the serialized `.graph` data produced by the `internals_interface` crate.
 The `.graph` file can be generated with `--capture-profiles`, which will place the `.graph` file in the `.verus-solver-log/` directory where you ran verus.
 
 
