@@ -471,7 +471,7 @@ impl Verifier {
             let mut msg = note_bare(note);
 
             // Summarize the triggers it used
-            let triggers = &bnd_info.trigs;
+            let triggers = &bnd_info.user.as_ref().unwrap().trigs;
             for trigger in triggers.iter() {
                 // HACK: we do not have span info for the builtin crate
                 if !trigger.iter().any(|t| t.span.as_string.contains("builtin")) {
@@ -479,7 +479,7 @@ impl Verifier {
                 }
             }
             msg = msg.secondary_label(
-                &bnd_info.span,
+                &bnd_info.user.as_ref().unwrap().span,
                 "Triggers selected for this quantifier".to_string(),
             );
 
@@ -586,7 +586,7 @@ impl Verifier {
                         invalidity = true;
                     }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
-                    if !self.args.profile && !self.args.profile_all {
+                    if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     if let Some(level) = level {
@@ -980,7 +980,8 @@ impl Verifier {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         assert!(!(self.args.profile && self.args.profile_all));
-        let profile_all_file_name = if self.args.profile_all {
+        assert!(!(self.args.profile && self.args.capture_profiles));
+        let profile_all_file_name = if self.args.profile_all || self.args.capture_profiles {
             let solver_log_dir = self.ensure_solver_log_dir()?;
             let profile_file_name = self.log_file_name(
                 &solver_log_dir,
@@ -1156,10 +1157,12 @@ impl Verifier {
                             let do_spinoff = (cmds.prover_choice
                                 == vir::def::ProverChoice::Nonlinear)
                                 || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
-                                || *profile_rerun;
+                                || *profile_rerun
+                                || self.args.spinoff_all;
 
                             let profile_file_name = if *profile_rerun
-                                || (self.args.profile_all && do_spinoff)
+                                || ((self.args.profile_all || self.args.capture_profiles)
+                                    && do_spinoff)
                             {
                                 let solver_log_dir = self.ensure_solver_log_dir()?;
                                 let profile_file_name = self.log_file_name(
@@ -1249,20 +1252,34 @@ impl Verifier {
                                         Some(&current_profile_description),
                                         self.args.profile || self.args.profile_all,
                                         reporter,
+                                        self.args.capture_profiles,
                                     ) {
                                         Ok(profiler) => {
-                                            reporter.report(
-                                                &note_bare(format!(
-                                                    "Profile statistics for {}",
-                                                    fun_as_friendly_rust_name(&function.x.name)
-                                                ))
-                                                .to_any(),
-                                            );
-                                            self.print_profile_stats(
-                                                reporter,
-                                                profiler,
-                                                &function_opgen.ctx().global.qid_map.borrow(),
-                                            );
+                                            if self.args.capture_profiles {
+                                                // if capture profiles was passed, silence the report
+                                                // as we are only interested in the graph/profile data
+                                                crate::profiler::write_instantiation_graph(
+                                                    &bucket_id,
+                                                    Some(&op),
+                                                    &function_opgen.ctx().func_map,
+                                                    profiler.instantiation_graph().unwrap(),
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                    profile_file_name,
+                                                );
+                                            } else {
+                                                reporter.report(
+                                                    &note_bare(format!(
+                                                        "Profile statistics for {}",
+                                                        fun_as_friendly_rust_name(&function.x.name)
+                                                    ))
+                                                    .to_any(),
+                                                );
+                                                self.print_profile_stats(
+                                                    reporter,
+                                                    profiler,
+                                                    &function_opgen.ctx().global.qid_map.borrow(),
+                                                );
+                                            }
                                         }
                                         Err(err) => {
                                             reporter.report_now(
@@ -1330,7 +1347,9 @@ impl Verifier {
                 }
             }
         }
-        if let Some(profile_all_file_name) = profile_all_file_name {
+        // if spinning off all, the regular profile loop inside has already profiled everything
+        if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
+        {
             if air_context.check_valid_used() {
                 match Profiler::parse(
                     message_interface.clone(),
@@ -1338,20 +1357,34 @@ impl Verifier {
                     Some(&bucket_id.friendly_name()),
                     self.args.profile || self.args.profile_all,
                     reporter,
+                    self.args.capture_profiles,
                 ) {
                     Ok(profiler) => {
-                        reporter.report(
-                            &note_bare(format!(
-                                "Profile statistics for {}",
-                                bucket_id.friendly_name()
-                            ))
-                            .to_any(),
-                        );
-                        self.print_profile_stats(
-                            reporter,
-                            profiler,
-                            &opgen.ctx.global.qid_map.borrow(),
-                        );
+                        if self.args.capture_profiles {
+                            // if capture profiles was passed, silence the report
+                            // as we are only interested in the graph/profile data
+                            crate::profiler::write_instantiation_graph(
+                                &bucket_id,
+                                None,
+                                &opgen.ctx.func_map,
+                                profiler.instantiation_graph().unwrap(),
+                                &opgen.ctx.global.qid_map.borrow(),
+                                profile_all_file_name,
+                            );
+                        } else {
+                            reporter.report(
+                                &note_bare(format!(
+                                    "Profile statistics for {}",
+                                    bucket_id.friendly_name()
+                                ))
+                                .to_any(),
+                            );
+                            self.print_profile_stats(
+                                reporter,
+                                profiler,
+                                &opgen.ctx.global.qid_map.borrow(),
+                            );
+                        }
                     }
                     Err(err) => {
                         reporter.report_now(
