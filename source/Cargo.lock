@@ -706,6 +706,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "internals_interface"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "serde",
+]
+
+[[package]]
 name = "is-terminal"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1389,6 +1397,7 @@ dependencies = [
  "air",
  "bincode",
  "getopts 0.2.21 (git+https://github.com/utaal/getopts.git?branch=parse-partial)",
+ "internals_interface",
  "num-bigint 0.4.4",
  "num-format",
  "regex",
@@ -1396,7 +1405,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sise",
- "tool_facade",
  "vir",
  "win32job",
 ]
@@ -1921,14 +1929,6 @@ dependencies = [
  "serde_spanned",
  "toml_datetime",
  "winnow",
-]
-
-[[package]]
-name = "tool_facade"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "serde",
 ]
 
 [[package]]

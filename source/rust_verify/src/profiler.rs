@@ -18,7 +18,7 @@ pub fn write_instantiation_graph(
     profile_file_name: std::path::PathBuf,
 ) {
     let air::profiler::InstantiationGraph { edges, nodes, names } = instantiation_graph;
-    use tool_facade::*;
+    use internals_interface::*;
     let name_strs: HashSet<String> = names.values().cloned().collect();
     let quantifiers: HashMap<String, Quantifier> = name_strs
         .iter()
