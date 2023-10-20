@@ -178,7 +178,7 @@
         plotblames(module_blames, "orange");
 
         const raw_counts_by_module = d["raw_counts_by_module"].map(d => {
-            d["fraction"] = d["fraction"] / 100.0
+            d["fraction"] = d["fraction"]
             return d;
         })
         // raw_counts_by_module.sort((a, b) => a.module_depth - b.module_depth);
