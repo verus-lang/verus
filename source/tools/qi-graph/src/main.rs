@@ -6,7 +6,7 @@ use std::{
 };
 
 use getopts::Options;
-use tool_facade::{Graph, Instantiation, InstantiationGraph};
+use internals_interface::{Graph, Instantiation, InstantiationGraph};
 
 use petgraph::algo::is_cyclic_directed;
 use petgraph::graph::NodeIndex;

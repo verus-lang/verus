@@ -1259,10 +1259,10 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "getopts 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "internals_interface",
  "petgraph",
  "serde",
  "serde_json",
- "tool_facade",
 ]
 
 [[package]]

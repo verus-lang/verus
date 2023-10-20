@@ -11,4 +11,4 @@ bincode = "1.3"
 getopts = "*"
 petgraph = "0.5.1"
 serde_json = { version = "1", features = ["preserve_order"] }
-tool_facade = { path = "../tool_facade" }
+internals_interface = { path = "../internals_interface" }
