@@ -12,10 +12,17 @@ use petgraph::algo::is_cyclic_directed;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph as PGraph;
 trait ToDot<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::hash::Hash> {
-    fn to_dot_file(&self, path: &Path, node_name: impl Fn(&N) -> String, edge_label: impl Fn(&E) -> Option<String>) -> Result<(), String>;
+    fn to_dot_file(
+        &self,
+        path: &Path,
+        node_name: impl Fn(&N) -> String,
+        edge_label: impl Fn(&E) -> Option<String>,
+    ) -> Result<(), String>;
 }
 
-impl<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::hash::Hash> ToDot<N,E> for Graph<N, E> {
+impl<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::hash::Hash> ToDot<N, E>
+    for Graph<N, E>
+{
     fn to_dot_file(
         &self,
         path: &Path,
@@ -363,7 +370,8 @@ fn run(
     ) -> serde_json::Value {
         let module_data = serde_json::Value::Array(
             datum
-                .module_blames.blames
+                .module_blames
+                .blames
                 .into_iter()
                 .map(|Blames { identifier: module, count, fraction }| {
                     serde_json::json!({
@@ -376,7 +384,8 @@ fn run(
         );
         let module_raw_counts_data = serde_json::Value::Array(
             datum
-                .module_blames.raw_counts_by_identifier
+                .module_blames
+                .raw_counts_by_identifier
                 .into_iter()
                 .map(|Blames { identifier: module, count, fraction }| {
                     serde_json::json!({
@@ -389,7 +398,8 @@ fn run(
         );
         let quant_data = serde_json::Value::Array(
             datum
-                .quant_blames.blames
+                .quant_blames
+                .blames
                 .into_iter()
                 .map(|Blames { identifier: qid, count, fraction }| {
                     serde_json::json!({
@@ -402,7 +412,8 @@ fn run(
         );
         let quant_raw_counts_data = serde_json::Value::Array(
             datum
-                .quant_blames.raw_counts_by_identifier
+                .quant_blames
+                .raw_counts_by_identifier
                 .into_iter()
                 .map(|Blames { identifier: qid, count, fraction }| {
                     serde_json::json!({
@@ -508,8 +519,8 @@ struct Blames {
 }
 
 struct BlameResult {
-   blames : Vec<Blames>,
-   raw_counts_by_identifier : Vec<Blames>, 
+    blames: Vec<Blames>,
+    raw_counts_by_identifier: Vec<Blames>,
 }
 
 struct ProcessFileOutput {
@@ -524,7 +535,6 @@ struct ProcessFileOutput {
 }
 
 fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutput, String> {
-
     let bytes = std::fs::read(input_path)
         .map_err(|_e| format!("failed to read file {}", input_path.display()))?;
     let graph: InstantiationGraph = bincode::deserialize(&bytes[..])
@@ -572,11 +582,18 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
 
     let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
-    fn generate_dot_file_for_policy(file_stem: &OsStr, output_dir: &Path, input_graph : &HashMap<Instantiation, HashMap<Instantiation, u64>>, roots : &Vec<Instantiation>, merge_rule : &MergePolicy, total_insts: u64, instantiations : HashSet<Instantiation>, total_insts_old : &mut u64) 
-        -> Result<BlameResult, String> {
+    fn generate_dot_file_for_policy(
+        file_stem: &OsStr,
+        output_dir: &Path,
+        input_graph: &HashMap<Instantiation, HashMap<Instantiation, u64>>,
+        roots: &Vec<Instantiation>,
+        merge_rule: &MergePolicy,
+        total_insts: u64,
+        instantiations: HashSet<Instantiation>,
+        total_insts_old: &mut u64,
+    ) -> Result<BlameResult, String> {
         let mut unique_id = 0u64;
-        let mut merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> =
-            HashMap::new();
+        let mut merged_graph: HashMap<(String, u64), HashMap<(String, u64), u64>> = HashMap::new();
         let mut full_list = HashSet::new();
         let (top_identifiers, count) = merge_sibling_nodes(
             input_graph,
@@ -587,11 +604,10 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
             merge_rule,
         );
         *total_insts_old = count;
-        
+
         let dummy_root = ("root".to_string(), 0);
         merged_graph.insert(dummy_root, top_identifiers);
 
-        
         let blames: Vec<_> = {
             let mut blames = compute_module_blames(&merged_graph, &full_list);
             blames.sort_unstable_by_key(|(_, cnt)| *cnt);
@@ -605,7 +621,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
                 })
                 .collect()
         };
-        
+
         let raw_counts_by_identifier = {
             let mut raw_counts_by_identifier: HashMap<_, u64> = HashMap::new();
             for identifier in instantiations.iter().filter_map(|x| x.quantifier.module.clone()) {
@@ -627,11 +643,10 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         };
 
         let final_graph = make_graph(merged_graph);
-        
 
         let file_extension = match merge_rule {
             MergePolicy::Module => "dot",
-            MergePolicy::QuantifierName => "quant.dot"
+            MergePolicy::QuantifierName => "quant.dot",
         };
 
         final_graph.to_dot_file(
@@ -641,15 +656,33 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
         )?;
 
         Ok(BlameResult { blames, raw_counts_by_identifier })
-        
     }
 
     let mut total_insts_old = 0;
-    let module_blames = generate_dot_file_for_policy(file_stem, output_dir, &pruned_graph, &roots, &MergePolicy::Module, total_insts, graph.instantiations.clone(), &mut total_insts_old)?;
+    let module_blames = generate_dot_file_for_policy(
+        file_stem,
+        output_dir,
+        &pruned_graph,
+        &roots,
+        &MergePolicy::Module,
+        total_insts,
+        graph.instantiations.clone(),
+        &mut total_insts_old,
+    )?;
     let mut res = 0;
-    let quant_blames = generate_dot_file_for_policy(file_stem, output_dir, &pruned_graph, &roots, &MergePolicy::QuantifierName, total_insts, graph.instantiations.clone(),  &mut res)?;
+    let quant_blames = generate_dot_file_for_policy(
+        file_stem,
+        output_dir,
+        &pruned_graph,
+        &roots,
+        &MergePolicy::QuantifierName,
+        total_insts,
+        graph.instantiations.clone(),
+        &mut res,
+    )?;
 
-    let raw_count_count_dbg: u64 = module_blames.raw_counts_by_identifier.iter().map(|b| b.count).sum();
+    let raw_count_count_dbg: u64 =
+        module_blames.raw_counts_by_identifier.iter().map(|b| b.count).sum();
     dbg!(&total_insts, &raw_count_count_dbg);
 
     Ok(ProcessFileOutput {
