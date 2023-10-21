@@ -6,9 +6,9 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    auto_deref_supported_for_ty, def_id_to_vir_path, def_id_to_vir_path_option, get_range,
-    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mid_ty_to_vir,
-    mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
+    auto_deref_supported_for_ty, def_id_to_vir_path, get_range, is_smt_arith, is_smt_equality,
+    local_to_var, mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node,
+    typ_of_node_expect_mut_ref,
 };
 use crate::spans::err_air_span;
 use crate::util::{
@@ -800,29 +800,6 @@ pub(crate) fn is_expr_typ_mut_ref<'tcx>(
             Ok(ExprModifier { deref_mut: true, ..modifier })
         }
         _ => Ok(modifier),
-    }
-}
-
-pub(crate) fn call_self_path(
-    tcx: TyCtxt,
-    verus_items: &verus_items::VerusItems,
-    types: &rustc_middle::ty::TypeckResults,
-    qpath: &QPath,
-) -> Option<vir::ast::Path> {
-    match qpath {
-        QPath::Resolved(_, _) => None,
-        QPath::LangItem(_, _, _) => None,
-        QPath::TypeRelative(ty, _) => match &ty.kind {
-            rustc_hir::TyKind::Path(qpath) => match types.qpath_res(&qpath, ty.hir_id) {
-                rustc_hir::def::Res::Def(_, def_id) => {
-                    def_id_to_vir_path_option(tcx, verus_items, def_id)
-                }
-                _ => None,
-            },
-            _ => {
-                panic!("failed to look up def_id for impl");
-            }
-        },
     }
 }
 

@@ -1010,3 +1010,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] tuple_impl_regression_869 verus_code! {
+        pub trait Tau {
+            fn foo() -> Self::T;
+
+            type T;
+        }
+        impl<A, B> Tau for (A, B) {
+            fn foo() -> bool { true }
+
+            type T = bool;
+        }
+        impl<A, B, C> Tau for (A, B, C) {
+            fn foo() -> bool { true }
+
+            type T = bool;
+        }
+
+        fn main() {
+            let c: <(u64, u64) as Tau>::T = <(u64, u64)>::foo();
+            let c: <(u64, u64, u64) as Tau>::T = <(u64, u64, u64)>::foo();
+        }
+    } => Ok(())
+}

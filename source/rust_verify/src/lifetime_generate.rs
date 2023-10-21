@@ -883,6 +883,26 @@ fn erase_inv_block<'tcx>(
     Box::new((span, ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, mid_body)))
 }
 
+fn call_self_path(ctxt: &Context, qpath: &rustc_hir::QPath) -> Option<vir::ast::Path> {
+    match qpath {
+        rustc_hir::QPath::Resolved(_, _) => None,
+        rustc_hir::QPath::LangItem(_, _, _) => None,
+        rustc_hir::QPath::TypeRelative(ty, _) => match &ty.kind {
+            rustc_hir::TyKind::Path(qpath) => match ctxt.types().qpath_res(&qpath, ty.hir_id) {
+                rustc_hir::def::Res::Def(_, def_id) => {
+                    crate::rust_to_vir_base::def_id_to_vir_path_option(
+                        ctxt.tcx,
+                        &ctxt.verus_items,
+                        def_id,
+                    )
+                }
+                _ => None,
+            },
+            _ => None,
+        },
+    }
+}
+
 fn erase_expr<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
@@ -1002,12 +1022,7 @@ fn erase_expr<'tcx>(
                 _ => false,
             };
             let (self_path, fn_def_id) = if let ExprKind::Path(qpath) = &e0.kind {
-                let self_path = crate::rust_to_vir_expr::call_self_path(
-                    ctxt.tcx,
-                    &ctxt.verus_items,
-                    ctxt.types(),
-                    qpath,
-                );
+                let self_path = call_self_path(ctxt, qpath);
                 let def = ctxt.types().qpath_res(&qpath, e0.hir_id);
                 if let Res::Def(_, fn_def_id) = def {
                     (self_path, Some(fn_def_id))
