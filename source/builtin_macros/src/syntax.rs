@@ -2741,6 +2741,12 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
         let l2 = s2.start();
         s1.source_file() == s2.source_file() && l1.eq(&l2)
     };
+    fn mk_joint_punct(t: Option<(char, proc_macro::Spacing, Span)>) -> TokenTree {
+        let (op, _, span) = t.unwrap();
+        let mut punct = Punct::new(op, Joint);
+        punct.set_span(span);
+        TokenTree::Punct(punct)
+    }
     for i in 0..(if tokens.len() >= 2 { tokens.len() - 2 } else { 0 }) {
         let t0 = pun(&tokens[i]);
         let t1 = pun(&tokens[i + 1]);
@@ -2760,10 +2766,32 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
             | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
             | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
                 if adjacent(s1, s2) {
-                    let (op, _, span) = t1.unwrap();
-                    let mut punct = Punct::new(op, Joint);
-                    punct.set_span(span);
-                    tokens[i + 1] = TokenTree::Punct(punct);
+                    tokens[i + 1] = mk_joint_punct(t1);
+                }
+            }
+            (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
+                if adjacent(s1, s2) {
+                    tokens[i] = mk_joint_punct(t0);
+                    tokens[i + 1] = mk_joint_punct(t1);
+                }
+            }
+            (
+                Some(('=', Alone, _)),
+                Some(('~', Alone, _)),
+                Some(('~', Alone, s2)),
+                Some(('=', Alone, s3)),
+            )
+            | (
+                Some(('!', Alone, _)),
+                Some(('~', Alone, _)),
+                Some(('~', Alone, s2)),
+                Some(('=', Alone, s3)),
+            ) => {
+                if adjacent(s2, s3) {
+                    tokens[i] = mk_joint_punct(t0);
+                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 2] = mk_joint_punct(t2);
                 }
             }
             _ => {}

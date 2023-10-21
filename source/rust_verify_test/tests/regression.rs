@@ -1035,3 +1035,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] nested_macros_regression_866 verus_code! {
+        use vstd::seq::seq;
+        macro_rules! temp {
+          () => {
+            verus! {
+              proof fn foo() {
+                assert(seq![1u64,2] =~= seq![1u64,2]);
+                assert(seq![1u64,2] =~~= seq![1u64,2]);
+
+                assert(false !~= true);
+                assert(false !~~= true);
+              }
+            }
+          };
+        }
+        temp!{}
+    } => Ok(())
+}
