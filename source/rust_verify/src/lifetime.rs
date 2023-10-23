@@ -175,6 +175,9 @@ fn static_ref<T>(t: T) -> &'static T { panic!() }
 fn tracked_new<T>(t: T) -> Tracked<T> { panic!() }
 fn tracked_exec_borrow<'a, T>(t: &'a T) -> &'a Tracked<T> { panic!() }
 fn clone<T>(t: &T) -> T { panic!() }
+fn rc_new<T>(t: T) -> std::rc::Rc<T> { panic!() }
+fn arc_new<T>(t: T) -> std::sync::Arc<T> { panic!() }
+fn box_new<T>(t: T) -> Box<T> { panic!() }
 struct Tracked<A> { a: PhantomData<A> }
 impl<A> Tracked<A> {
     pub fn get(self) -> A { panic!() }

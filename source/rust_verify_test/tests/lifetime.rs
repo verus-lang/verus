@@ -584,3 +584,46 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move out of `perm` because it is borrowed")
 }
+
+test_verify_one_file! {
+    #[test] rc_with_tracked_issue870 verus_code! {
+        use std::rc::Rc;
+
+        tracked struct X { }
+
+        fn test<'a>() -> Rc<Tracked<&'a X>> {
+            let tracked x = X { };
+            let y = Rc::new(Tracked(&x));
+            let z = y.clone();
+            z
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+}
+
+test_verify_one_file! {
+    #[test] arc_with_tracked_issue870 verus_code! {
+        use std::sync::Arc;
+
+        tracked struct X { }
+
+        fn test<'a>() -> Arc<Tracked<&'a X>> {
+            let tracked x = X { };
+            let y = Arc::new(Tracked(&x));
+            let z = y.clone();
+            z
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+}
+
+test_verify_one_file! {
+    #[test] box_with_tracked_issue870 verus_code! {
+        tracked struct X { }
+
+        fn test<'a>() -> Box<Tracked<&'a X>> {
+            let tracked x = X { };
+            let y = Box::new(Tracked(&x));
+            //let z = y.clone();
+            y
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+}

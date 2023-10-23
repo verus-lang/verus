@@ -10,7 +10,9 @@ use vir::modes::ErasureModes;
 pub enum CompilableOperator {
     IntIntrinsic,
     Implies,
-    SmartPtrNew,
+    RcNew,
+    ArcNew,
+    BoxNew,
     SmartPtrClone { is_method: bool },
     NewStrLit,
     GhostExec,

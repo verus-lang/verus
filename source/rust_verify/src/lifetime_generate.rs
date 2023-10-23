@@ -644,8 +644,11 @@ fn erase_call<'tcx>(
                 TrackedBorrowMut => Some((true, "borrow_mut")),
                 TrackedNew | TrackedExec => Some((false, "tracked_new")),
                 TrackedExecBorrow => Some((false, "tracked_exec_borrow")),
+                RcNew => Some((false, "rc_new")),
+                ArcNew => Some((false, "arc_new")),
+                BoxNew => Some((false, "box_new")),
                 GhostExec => None,
-                IntIntrinsic | Implies | SmartPtrNew | NewStrLit => None,
+                IntIntrinsic | Implies | NewStrLit => None,
             };
             if let Some((true, method)) = builtin_method {
                 assert!(receiver.is_some());

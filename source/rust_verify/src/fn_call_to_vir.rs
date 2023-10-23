@@ -77,8 +77,16 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     }
 
     match rust_item {
-        Some(RustItem::BoxNew | RustItem::RcNew | RustItem::ArcNew) => {
-            record_compilable_operator(bctx, expr, CompilableOperator::SmartPtrNew);
+        Some(RustItem::BoxNew) => {
+            record_compilable_operator(bctx, expr, CompilableOperator::BoxNew);
+            return mk_one_vir_arg(bctx, expr.span, &args);
+        }
+        Some(RustItem::RcNew) => {
+            record_compilable_operator(bctx, expr, CompilableOperator::RcNew);
+            return mk_one_vir_arg(bctx, expr.span, &args);
+        }
+        Some(RustItem::ArcNew) => {
+            record_compilable_operator(bctx, expr, CompilableOperator::ArcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
         Some(RustItem::Panic) => {
