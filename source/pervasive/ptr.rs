@@ -273,7 +273,7 @@ impl PointsToRaw {
     }
 
     pub open spec fn is_range(self, start: int, len: int) -> bool {
-        set_int_range(start, start + len) == self@.dom()
+        set_int_range(start, start + len) =~= self@.dom()
     }
 
     pub open spec fn spec_index(self, i: int) -> u8 {
