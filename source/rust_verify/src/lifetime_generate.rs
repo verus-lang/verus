@@ -659,8 +659,13 @@ fn erase_call<'tcx>(
             } else if let Some((false, func)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
-                let exp =
-                    erase_expr(ctxt, state, expect_spec, &args_slice[0]).expect("builtin method");
+                let exp_opt = erase_expr(ctxt, state, expect_spec, &args_slice[0]);
+                let exp = match exp_opt {
+                    Some(exp) => exp,
+                    None => {
+                        return None;
+                    }
+                };
                 let target =
                     mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
                 let typ_args = mk_typ_args(ctxt, state, node_substs);
