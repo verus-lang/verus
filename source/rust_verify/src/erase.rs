@@ -20,8 +20,6 @@ pub enum CompilableOperator {
     TrackedGet,
     TrackedBorrow,
     TrackedBorrowMut,
-    GhostSplitTuple,
-    TrackedSplitTuple,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).

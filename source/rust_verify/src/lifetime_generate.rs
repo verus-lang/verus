@@ -642,9 +642,10 @@ fn erase_call<'tcx>(
                 TrackedGet => Some((true, "get")),
                 TrackedBorrow => Some((true, "borrow")),
                 TrackedBorrowMut => Some((true, "borrow_mut")),
-                GhostExec | TrackedNew | TrackedExec | TrackedExecBorrow => None,
+                TrackedNew | TrackedExec => Some((false, "tracked_new")),
+                TrackedExecBorrow => Some((false, "tracked_exec_borrow")),
+                GhostExec => None,
                 IntIntrinsic | Implies | SmartPtrNew | NewStrLit => None,
-                GhostSplitTuple | TrackedSplitTuple => None,
             };
             if let Some((true, method)) = builtin_method {
                 assert!(receiver.is_some());
@@ -652,6 +653,15 @@ fn erase_call<'tcx>(
                 let Some(receiver) = receiver else { panic!() };
                 let exp = erase_expr(ctxt, state, expect_spec, &receiver).expect("builtin method");
                 mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
+            } else if let Some((false, func)) = builtin_method {
+                assert!(receiver.is_none());
+                assert!(args_slice.len() == 1);
+                let exp =
+                    erase_expr(ctxt, state, expect_spec, &args_slice[0]).expect("builtin method");
+                let target =
+                    mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
+                let typ_args = mk_typ_args(ctxt, state, node_substs);
+                mk_exp(ExpX::Call(target, typ_args, vec![exp]))
             } else if let GhostExec = op {
                 Some(erase_spec_exps_force(ctxt, state, expr, vec![]))
             } else {

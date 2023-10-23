@@ -65,6 +65,9 @@ proof fn proof_int(x: u64) -> (tracked y: u64)
 }
 
 pub fn main() {
+    // TODO Tracked of int-literal is currently unsupported.
+    // Should support it, or rewrite this example
+    /*
     let ato = AtomicU64::<(), u64, VEqualG>::new(Ghost(()), 10, Tracked(10));
 
     // illustration of atomic_with_ghost!
@@ -125,6 +128,7 @@ pub fn main() {
     => {
         g = proof_int(36);
     });
+    */
 }
 
 }

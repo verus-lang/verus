@@ -172,6 +172,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 fn op<A, B>(a: A) -> B { panic!() }
 fn static_ref<T>(t: T) -> &'static T { panic!() }
+fn tracked_new<T>(t: T) -> Tracked<T> { panic!() }
+fn tracked_exec_borrow<'a, T>(t: &'a T) -> &'a Tracked<T> { panic!() }
+fn clone<T>(t: &T) -> T { panic!() }
 struct Tracked<A> { a: PhantomData<A> }
 impl<A> Tracked<A> {
     pub fn get(self) -> A { panic!() }
