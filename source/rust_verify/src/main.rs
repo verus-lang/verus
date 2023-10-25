@@ -156,14 +156,25 @@ pub fn main() {
         smt_run_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v).sum();
 
-        let mut smt_function_breakdown = verifier
-            .func_times
-            .iter()
-            .filter(|(k, _)| k.function().is_none())
-            .map(|(k, v)| {
-                (k.module(), v.iter().map(|(f, t)| (f, t.as_millis())).collect::<Vec<_>>())
-            })
-            .collect::<std::collections::HashMap<_, _>>();
+        let mut smt_function_breakdown = {
+            let mod_fun_times: Vec<_> = verifier
+                .func_times
+                .iter()
+                .flat_map(|(k, v)| {
+                    v.iter()
+                        .map(|(f, t)| (k.module().clone(), (f.clone(), t.as_millis())))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            let mut per_module: std::collections::HashMap<
+                vir::ast::Path,
+                Vec<(vir::ast::Fun, u128)>,
+            > = std::collections::HashMap::new();
+            for (m, f_t) in mod_fun_times {
+                per_module.entry(m).or_insert(Vec::new()).push(f_t);
+            }
+            per_module
+        };
 
         let mut air_times = verifier
             .bucket_times
@@ -270,7 +281,7 @@ pub fn main() {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t,
-                                "function-breakdown" : smt_function_breakdown.get_mut(m).expect("Module should exist").iter().map(|(f, t)| {
+                                "function-breakdown" : smt_function_breakdown.get_mut(*m).expect("Module should exist").iter().map(|(f, t)| {
                                     serde_json::json!({
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
                                         "time" : t
