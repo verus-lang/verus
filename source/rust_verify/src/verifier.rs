@@ -1306,11 +1306,12 @@ impl Verifier {
                         }
 
                         // collect the smt run time from this command into the function duration
-                        let func_time =
-                            self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
-                        // dbg!(&function.x.name.path);
-                        *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) +=
-                            func_curr_smt_time;
+                        if commands_with_context_list.len() != 0 {
+                            let func_time =
+                                self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
+                            *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) +=
+                                func_curr_smt_time;
+                        }
 
                         if matches!(query_op, QueryOp::Body(Style::Normal)) {
                             if (any_invalid && !self.args.no_auto_recommends_check)
