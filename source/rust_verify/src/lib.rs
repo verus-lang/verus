@@ -28,6 +28,7 @@ extern crate rustc_span;
 extern crate rustc_trait_selection;
 extern crate smallvec;
 
+mod alternation_check;
 mod attributes;
 mod buckets;
 pub mod commands;
