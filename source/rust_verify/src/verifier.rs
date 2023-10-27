@@ -1,3 +1,4 @@
+use crate::alternation_check;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
@@ -1646,6 +1647,9 @@ impl Verifier {
             fndef_types,
             self.args.debugger,
         )?;
+
+        alternation_check::alternation_check(&ctx, krate)?;
+
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
