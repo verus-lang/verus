@@ -408,10 +408,15 @@ impl AssocTypeImplX {
 }
 
 fn datatypes_are_uninterpreted_sorts(state : &State, ctxt : &Ctxt, module : &Path) -> bool {
+    // dbg!(&state.reached_types);
     state.reached_types.iter().fold(true, |acc, dt| {
         let epr_type = match dt {
             // TODO: Finish the match cases?
-            ReachedType::Datatype(x) => !is_datatype_transparent(module, ctxt.datatype_map.get(x).expect("not in map")),
+            // TODO: hidden Int argument of the proof fns makes this fail
+            ReachedType::Datatype(x) => {
+                !is_datatype_transparent(module, ctxt.datatype_map.get(x).expect("not in map"))
+                || x == &crate::def::prefix_tuple_type(0)
+            },
             ReachedType::Bool => true,
             _ => false,
         };
