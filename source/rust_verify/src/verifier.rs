@@ -1,4 +1,4 @@
-use crate::alternation_check;
+use vir::alternation_check;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
