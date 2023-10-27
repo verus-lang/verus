@@ -29,14 +29,39 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, /* TODO: &mut graph ? */) -> 
                             crate::ast::CallTargetKind::Method(None) => None,
                         }) {
                             let f = &ctx.func_map[fun];
-                            if let Some(f_body) = &f.x.body {
-                                match build_graph_visit(ctx, f_body) {
-                                    Ok(_) => VisitorControlFlow::Return,
-                                    Err(err) => VisitorControlFlow::Stop(err),
+                            match f.x.mode {
+                                Mode::Spec => {
+                                    if let Some(f_body) = &f.x.body {
+                                        match build_graph_visit(ctx, f_body) {
+                                            Ok(_) => VisitorControlFlow::Return,
+                                            Err(err) => VisitorControlFlow::Stop(err),
+                                        }
+                                    } else {
+                                        VisitorControlFlow::Return
+                                    }
                                 }
-                            } else {
-                                VisitorControlFlow::Return
+                                Mode::Proof => {
+                                    // TODO update state or arguments to track polarity
+                                    for r in f.x.require.iter() {
+                                        match build_graph_visit(ctx, r) {
+                                            Ok(_) => (),
+                                            Err(err) => return VisitorControlFlow::Stop(err),
+                                        }
+                                    }
+                                    // TODO update state or arguments to track polarity
+                                    for e in f.x.ensure.iter() {
+                                        match build_graph_visit(ctx, e) {
+                                            Ok(_) => (),
+                                            Err(err) => return VisitorControlFlow::Stop(err),
+                                        }
+                                    }
+                                    VisitorControlFlow::Return
+                                }
+                                Mode::Exec => {
+                                    VisitorControlFlow::Stop(error(&expr.span, "exec calls are not supported in the EPR fragment"))
+                                }
                             }
+
                         } else {
                             VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
                         }
