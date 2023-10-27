@@ -389,6 +389,19 @@ impl AssocTypeImplX {
     }
 }
 
+fn datatypes_are_uninterpreted_sorts(state : &State, ctxt : &Ctxt, module : &Path) -> bool {
+    state.reached_types.iter().fold(true, |acc, dt| {
+        let epr_type = match dt {
+            // TODO: Finish the match cases?
+            ReachedType::Datatype(x) => !is_datatype_transparent(module, ctxt.datatype_map.get(x).expect("not in map")),
+            ReachedType::Bool => true,
+            _ => false,
+        };
+        acc && epr_type
+    })
+}
+
+
 pub fn prune_krate_for_module(
     krate: &Krate,
     module: &Path,
@@ -583,6 +596,10 @@ pub fn prune_krate_for_module(
         let assoc_typs = Arc::new(assoc_typs);
         traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
     }
+
+    let mod_name = &module.segments.last().unwrap();
+    let epr_check = datatypes_are_uninterpreted_sorts(&state, &ctxt, module);
+    dbg!(mod_name, epr_check);
 
     let kratex = KrateX {
         functions: functions
