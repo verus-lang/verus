@@ -803,13 +803,6 @@ pub(crate) fn is_expr_typ_mut_ref<'tcx>(
     }
 }
 
-pub(crate) fn expr_to_vir_for_mutref_arg<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    arg: &Expr<'tcx>,
-) -> Result<vir::ast::Expr, VirErr> {
-    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of: true })
-}
-
 pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,

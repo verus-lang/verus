@@ -1663,7 +1663,7 @@ fn mk_vir_args<'tcx>(
                 _ => false,
             };
             if is_mut_ref_param {
-                let expr = crate::rust_to_vir_expr::expr_to_vir_for_mutref_arg(bctx, arg)?;
+                let expr = expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of: true })?;
                 Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
                 expr_to_vir(
