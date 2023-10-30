@@ -1635,8 +1635,12 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
-            vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
+        let vir::prune::PruneKrateResult { pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types, types_are_uninterpreted } =
+            vir::prune::prune_krate_for_module(
+                &krate,
+                bucket_id.module(),
+                bucket_id.function(),
+            );
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1648,7 +1652,13 @@ impl Verifier {
             self.args.debugger,
         )?;
 
-        alternation_check::alternation_check(&ctx, krate)?;
+        if types_are_uninterpreted {
+            alternation_check::alternation_check(&ctx, krate, bucket_id.module().clone())?;
+        } else {
+            reporter.report_now(
+                &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name())).to_any(),
+            );
+        }
 
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {

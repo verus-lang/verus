@@ -4,7 +4,7 @@ use air::scope_map::ScopeMap;
 use ast_visitor::VisitorControlFlow;
 
 use crate::{
-    ast::{FunctionX, Krate, Mode, VirErr, Expr, Typ, TypX},
+    ast::{FunctionX, Krate, Mode, VirErr, Expr, Typ, TypX, Path},
     ast_visitor::{self, expr_visitor_dfs},
     context::Ctx,
     scc::Graph, messages::error, ast_util::path_as_friendly_rust_name
@@ -18,7 +18,14 @@ struct State {
     positive_polarity : bool,
     /// currently outstanding variables
     /// u64 keeps count so that we can decrement and not lose typs on returning
-    open_foralls : HashMap<String, u64>
+    /// tracks the arguments to a function we are inside to 
+    /// ensure the definition forall is accounted for:
+    /// i.e 
+    /// foo(x) { bar(x) && baz(x)} 
+    /// becomes 
+    /// forall x foo(x) <==> bar(x) && baz(x)
+    // open_foralls : HashMap<String, u64>,
+    func_arg_stack : Vec<HashMap<String, u64>>
 }
 
 impl State {
@@ -27,7 +34,8 @@ impl State {
             qa_graph : Graph::<String>::new(),
             // start at negative polarity as VC is negated
             positive_polarity : false,
-            open_foralls : HashMap::new(),
+            // open_foralls : HashMap::new(),
+            func_arg_stack : Vec::new(),
         }
     }
 }
@@ -35,12 +43,14 @@ impl State {
 fn param_type_name(typ : &Typ) -> String {
     match typ.as_ref() {
         TypX::Bool => "Bool".to_string(),
+        // TODO: Fix the proof fn Int typing issue
+        TypX::Int(..) => "Int".to_string(),
         TypX::Datatype(path,_ ,_) => path_as_friendly_rust_name(path),
         _ => panic!("Unsupported EPR Type")
     }
 }
 
-pub fn alternation_check(ctx: &Ctx, krate: &Krate, /* TODO: &mut graph ? */) -> Result<(), VirErr> {
+pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), VirErr> {
     fn build_graph_visit(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<(), VirErr> {
         use crate::ast::ExprX::*;
         expr_visitor_dfs::<VirErr, _>(expr, &mut ScopeMap::new(), &mut |scope_map, expr| match &expr.x {
@@ -74,25 +84,20 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, /* TODO: &mut graph ? */) -> 
                                     }
                                     // if it has a body, additional work to do before recursing
                                     if let Some(f_body) = &f.x.body {
-                                        // open foralls for its args
+                                        // add the arguments to the stack
                                         // TODO (if a function is inlined, this might not be necessary)
                                         // TODO (if an arg is not a quantified arg (i.e. a constant, does this still hold?))
-                                        // this is to ensure that the definition forall is accounted for:
-                                        // i.e 
-                                        // foo(x) { bar(x) && baz(x)} 
-                                        // becomes 
-                                        // forall x foo(x) <==> bar(x) && baz(x)
-                                        for (typ_name, count) in &param_nodes {
-                                            *state.open_foralls.entry(typ_name.clone()).or_insert(0) += count;
-                                        }
+                                        let curr_polarity = state.positive_polarity;
+                                        // TODO, double check with Oded
+                                        // reset polarity inside definition -- this is only a local property
+                                        state.positive_polarity = true;
+                                        state.func_arg_stack.push(param_nodes);
                                         match build_graph_visit(ctx, state, f_body) {
                                             Ok(_) => {
                                                 // remove the foralls we added for this definition
-                                                for (typ_name, count) in param_nodes {
-                                                    let cur_count = state.open_foralls.get_mut(&typ_name).expect("should already have entry");
-                                                    assert!(*cur_count >= count);
-                                                    *cur_count -= count;
-                                                }
+                                                let res = state.func_arg_stack.pop();
+                                                state.positive_polarity = curr_polarity;
+                                                assert!(res.is_some());
                                                 VisitorControlFlow::Return
                                             },
                                             Err(err) => VisitorControlFlow::Stop(err),
@@ -152,13 +157,17 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, /* TODO: &mut graph ? */) -> 
                     // forall case: add the new variables to open foralls, then recurse
                     for b in binders.iter() {
                         let typ_name = param_type_name(&b.a);
-                        *state.open_foralls.entry(typ_name.clone()).or_insert(0) += 1;
+                        if state.func_arg_stack.is_empty() {
+                            state.func_arg_stack.push(HashMap::new());
+                        }
+                        *state.func_arg_stack.last_mut().unwrap().entry(typ_name.clone()).or_insert(0) += 1;
+                        // *state.open_foralls.entry(typ_name.clone()).or_insert(0) += 1;
                     }
                     match build_graph_visit(ctx, state, e) {
                         Ok(_) => {
                             for b in binders.iter() {
                                 let typ_name = param_type_name(&b.a);
-                                let cur_count = state.open_foralls.get_mut(&typ_name).expect("should already have entry");
+                                let cur_count = state.func_arg_stack.last_mut().unwrap().get_mut(&typ_name).expect("should already have entry");
                                 assert!(*cur_count >= 1);
                                 *cur_count -= 1;
                             }
@@ -171,11 +180,14 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, /* TODO: &mut graph ? */) -> 
                     // exists case: check through open foralls for edges to add, then recurse
                     for b in binders.iter() {
                         let typ_name = param_type_name(&b.a);
-                        for (forall_name, count) in state.open_foralls.iter() {
-                            // empty ones remain in the map with 0 count
-                            if *count > 0 {
-                                state.qa_graph.add_edge(forall_name.clone(), typ_name.clone());
+                        if !state.func_arg_stack.is_empty() {
+                            for (forall_name, count) in state.func_arg_stack.last().unwrap().iter() {
+                                // empty ones remain in the map with 0 count
+                                if *count > 0 {
+                                    state.qa_graph.add_edge(forall_name.clone(), typ_name.clone());
+                                }
                             }
+
                         }
                     }
                     match build_graph_visit(ctx, state, e) {
@@ -225,14 +237,19 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, /* TODO: &mut graph ? */) -> 
         });
         Ok(())
     }
-    for f in krate.functions.iter().filter(|f| f.x.mode == Mode::Proof) {
-        let FunctionX { require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
-        // let Some(body) = body else { return Ok(()) };
+    for f in krate.functions.iter().filter(|f| f.x.mode == Mode::Proof && f.x.owning_module.as_ref().is_some_and(|m| m == &module)) {
+        let FunctionX { name, require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
+        let function_name = path_as_friendly_rust_name(&name.path);
+        dbg!(function_name);
+        let Some(body) = body else { continue; };
         let mut state = State::new();
         for expr in ensure.iter() {
+            // start at negative polarity as VC is flipped
             build_graph_visit(ctx, &mut state, expr)?;
+            state.qa_graph.compute_sccs();
+            let acyclic = state.qa_graph.sort_sccs().iter().fold(true, |acc, x| {acc && (state.qa_graph.get_scc_size(x) == 1)});
+            dbg!(acyclic);
         }
-        dbg!(state.qa_graph);
     }
     Ok(())
 }
