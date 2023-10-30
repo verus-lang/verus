@@ -114,6 +114,7 @@ pub closed spec fn spec_u32_from_le_bytes(s: Seq<u8>) -> u32
   (s[3] as u32) << 24
 }
 
+#[verifier::spinoff_prover]
 pub proof fn lemma_auto_spec_u32_to_from_le_bytes()
   ensures
     forall |x: u32|
