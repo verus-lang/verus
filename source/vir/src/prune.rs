@@ -86,6 +86,14 @@ struct State {
     lambda_types: HashSet<usize>,
 }
 
+pub struct PruneKrateResult {
+    pub pruned_krate: Krate, 
+    pub mono_abstract_datatypes: Vec<MonoTyp>,
+    pub lambda_types: Vec<usize>, 
+    pub reached_bound_traits: HashSet<Path>,
+    pub types_are_uninterpreted: bool,
+}
+
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
     match &**typ {
         TypX::Bool => ReachedType::Bool,
@@ -399,6 +407,7 @@ fn datatypes_are_uninterpreted_sorts(state : &State, ctxt : &Ctxt, module : &Pat
                 !is_datatype_transparent(module, ctxt.datatype_map.get(x).expect("not in map"))
                 || x == &crate::def::prefix_tuple_type(0)
             },
+            ReachedType::Int(..) => true,
             ReachedType::Bool => true,
             _ => false,
         };
@@ -412,7 +421,7 @@ pub fn prune_krate_for_module(
     module: &Path,
     fun: Option<&Fun>,
     vstd_crate_name: &Option<Ident>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>) {
+) -> PruneKrateResult {
     let is_root = |function: &Function| match fun {
         Some(f) => &function.x.name == f,
         None => match &function.x.owning_module {
@@ -602,9 +611,7 @@ pub fn prune_krate_for_module(
         traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
     }
 
-    let mod_name = &module.segments.last().unwrap();
     let epr_check = datatypes_are_uninterpreted_sorts(&state, &ctxt, module);
-    dbg!(mod_name, epr_check);
 
     let kratex = KrateX {
         functions: functions
@@ -639,5 +646,11 @@ pub fn prune_krate_for_module(
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
     let State { reached_bound_traits, .. } = state;
-    (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits)
+    PruneKrateResult {
+       pruned_krate:  Arc::new(kratex),
+       mono_abstract_datatypes,
+       lambda_types,
+       reached_bound_traits,
+       types_are_uninterpreted: epr_check,
+    }
 }
