@@ -68,32 +68,35 @@ impl UserFilter {
         Ok(UserFilter::Modules(modules))
     }
 
-    pub fn filter_module_ids(&self, module_ids: &Vec<Path>) -> Result<Vec<Path>, VirErr> {
+    pub fn filter_modules(
+        &self,
+        modules: &Vec<vir::ast::Module>,
+    ) -> Result<Vec<vir::ast::Module>, VirErr> {
         let mut remaining_modules: HashSet<&ModuleId> = match self {
             UserFilter::None => {
-                return Ok(module_ids.clone());
+                return Ok(modules.clone());
             }
             UserFilter::Modules(m) => m.iter().collect(),
             UserFilter::Function(m, _, _) => std::iter::once(m).collect(),
         };
 
-        let module_ids_to_verify = module_ids
+        let module_ids_to_verify = modules
             .iter()
             .filter(|m| {
                 // Return true if the ModuleId is in the remaining_modules set,
                 // and if so, remove it from the set.
-                remaining_modules.take(&module_id_of_path(m)).is_some()
+                remaining_modules.take(&module_id_of_path(&m.x.path)).is_some()
             })
             .cloned()
             .collect();
 
         // Check if any modules from the user's list didn't appear in the krate modules
         if let Some(mod_name) = remaining_modules.into_iter().next() {
-            let mut lines = module_ids
+            let mut lines = modules
                 .iter()
                 .filter_map(|m| {
-                    let name = module_name(m);
-                    (m.segments.len() > 0).then(|| format!("- {name}"))
+                    let name = module_name(&m.x.path);
+                    (m.x.path.segments.len() > 0).then(|| format!("- {name}"))
                 })
                 .collect::<Vec<_>>();
             lines.sort(); // Present the available modules in sorted order

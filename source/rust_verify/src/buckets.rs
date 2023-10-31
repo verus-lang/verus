@@ -85,9 +85,12 @@ impl Bucket {
 /// Arrange the given modules into buckets.
 /// Typically, this means 1 bucket per module;
 /// However, any functions marked 'spinoff_prover' get their own bucket.
-pub fn get_buckets(krate: &Krate, module_ids_to_verify: &Vec<Path>) -> Vec<(BucketId, Bucket)> {
+pub fn get_buckets(
+    krate: &Krate,
+    modules_to_verify: &Vec<vir::ast::Module>,
+) -> Vec<(BucketId, Bucket)> {
     let mut map: HashMap<BucketId, Vec<Fun>> = HashMap::new();
-    let module_set: HashSet<&Path> = module_ids_to_verify.iter().collect();
+    let module_set: HashSet<&Path> = modules_to_verify.iter().map(|m| &m.x.path).collect();
     for func in &krate.functions {
         if let Some(owning_module) = &func.x.owning_module {
             if module_set.contains(owning_module) {

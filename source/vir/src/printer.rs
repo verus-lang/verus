@@ -336,7 +336,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules,
         external_fns,
         external_types,
         path_as_rust_names: _,
@@ -373,8 +373,8 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts)))
             .expect("cannot write to vir write");
     }
-    for module_id in module_ids.iter() {
-        let module_id_node = nodes!(module_id {path_to_node(module_id)});
+    for module in modules.iter() {
+        let module_id_node = nodes!(module_id {path_to_node(&module.x.path)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&module_id_node))
             .expect("cannot write to vir write");
     }

@@ -23,7 +23,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules,
         external_fns,
         external_types,
         path_as_rust_names,
@@ -32,18 +32,18 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     let mut datatypes = datatypes.clone();
     let traits = traits.clone();
     let assoc_type_impls = assoc_type_impls.clone();
-    let mut module_ids = module_ids.clone();
+    let mut modules = modules.clone();
     let external_fns = external_fns.clone();
     let external_types = external_types.clone();
 
     // Stable sort to move children before parents, but otherwise leave children in order
-    module_ids.sort_by(|p1, p2| p2.segments.len().cmp(&p1.segments.len()));
+    modules.sort_by(|p1, p2| p2.x.path.segments.len().cmp(&p1.x.path.segments.len()));
 
     // Remember the module order:
     let mut module_order: HashMap<Option<Path>, usize> = HashMap::new();
     module_order.insert(None, 0);
-    for (i, path) in module_ids.iter().enumerate() {
-        module_order.insert(Some(path.clone()), i + 1);
+    for (i, m) in modules.iter().enumerate() {
+        module_order.insert(Some(m.x.path.clone()), i + 1);
     }
 
     // Sort the items by owning module:
@@ -60,7 +60,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         traits,
         trait_impls: trait_impls.clone(),
         assoc_type_impls,
-        module_ids,
+        modules,
         external_fns,
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
