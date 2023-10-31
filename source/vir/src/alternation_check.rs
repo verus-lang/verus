@@ -88,6 +88,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                         let curr_polarity = state.positive_polarity;
                                         // TODO, double check with Oded
                                         // reset polarity inside definition -- this is only a local property
+                                        // TODO : it should appear in both polarities, refactor
                                         state.positive_polarity = true;
                                         state.func_arg_stack.push(param_nodes);
                                         match build_graph_visit(ctx, state, f_body) {
@@ -104,7 +105,8 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                         VisitorControlFlow::Return
                                     }
                                 }
-                                // TODO: is this relevant at all? when will we see a proof fn inside spec code?
+                                // TODO: will see proofs in proof bodies, need to parse 
+                                // ensures and requires recursively
                                 Mode::Proof => {
                                     // TODO update state or arguments to track polarity
                                     for r in f.x.require.iter() {
@@ -199,6 +201,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             Choose { params, cond, body } => todo!(),
 
             // TODO: I think for everything that isn't negation, we can just peak inside
+            // TODO: Implication needs to have first argument flip polarity
             UnaryOpr(..) |
             Binary(..) |
             BinaryOpr(..) | 
@@ -242,7 +245,8 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         let FunctionX { name, require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
         let function_name = path_as_friendly_rust_name(&name.path);
         dbg!(function_name);
-        let Some(body) = body else { continue; };
+        // TODO: body needs to be recursively traversed for lemmas
+        // let Some(body) = body else { continue; };
         let mut state = State::new();
         // TODO: should we also check the requires and body?
         for expr in ensure.iter() {

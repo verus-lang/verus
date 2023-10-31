@@ -1446,13 +1446,20 @@ impl Verifier {
             reached_bound_traits,
             self.args.debugger,
         )?;
-
-        if types_are_uninterpreted {
-            alternation_check::alternation_check(&ctx, krate, bucket_id.module().clone())?;
-        } else {
-            reporter.report_now(
-                &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name())).to_any(),
-            );
+        let mut epr_check = false;
+        for module in &pruned_krate.modules {
+            if module.x.path == bucket_id.module().clone() && module.x.epr_check {
+                epr_check = true;
+            }
+        }
+        if epr_check {
+            if types_are_uninterpreted {
+                alternation_check::alternation_check(&ctx, krate, bucket_id.module().clone())?;
+            } else {
+                reporter.report_now(
+                    &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name())).to_any(),
+                );
+            }
         }
 
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
