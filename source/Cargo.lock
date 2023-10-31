@@ -1254,6 +1254,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "qi-graph"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "getopts 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "internals_interface",
+ "petgraph",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"

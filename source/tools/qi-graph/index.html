@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<head>
+  <title>Quantifier Instantiation Data</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    #main-container {
+      margin-top: 10px;
+    }
+    .module-container {
+    }
+    .chart-container {
+      margin-bottom: 10px;
+    }
+    .chart-inline {
+      display: inline-block;
+      vertical-align: top;
+    }
+    .chart-inline-middle {
+      display: inline-block;
+      vertical-align: top;
+    }
+  </style>
+</head>
+
+<input type="file" id="fileInput">
+<div id="main-container">
+</div>
+
+<script>
+  function plot(data) {
+    const max_smt_module_time = d3.max(data, d => d["time"]);
+
+    data.sort((a, b) => b.time - a.time);
+
+    data.forEach((m, _i) => {
+      const moduleContainer = d3.select("#main-container").append("div")
+        .attr("class", "module-container");
+      const details = moduleContainer.append("details");
+      const summary = details.append("summary");
+      summary.append("div").attr("class", "chart-inline-middle").html("module <b>" + m["module"] + "</b>");
+
+      {
+        const div = summary.append("div").attr("class", "chart-inline-middle");
+        const svg = div
+          .append("div")
+          .append("svg")
+          .attr("width", 300)
+          .attr("height", 30)
+          .append("g")
+          .attr("transform", "translate(20,0)");
+
+        const x = d3.scaleLinear()
+          .domain([0, max_smt_module_time])
+          .range([0, 260]);
+
+        svg.append("g")
+          .call(d3.axisBottom(x).ticks(4)).attr("transform", "translate(0,10)");
+
+        const bars_qi = svg.append("rect")
+          .attr("y", 0)
+          .attr("height", 10)
+          .attr("x", 0)
+          .attr("width", x(m["time"]))
+          .attr("fill", "blue");
+
+      }
+
+      const max_ti = d3.max(m["functions"], d => d["time"]);
+
+      const functions_data = m["functions"];
+      functions_data.sort((a, b) => b.time - a.time);
+
+      functions_data.forEach((d, _i) => {
+        const chartContainer = details.append("div")
+          .attr("class", "chart-container");
+
+        chartContainer.append("div").text(d["function"]);
+
+        {
+          const margin = { top: 30, right: 40, bottom: 2, left: 50 },
+            width = 400 - margin.left - margin.right,
+            height = 50 - margin.top - margin.bottom;
+
+          const div = chartContainer.append("div")
+            .attr("class", "chart-inline");
+
+
+          function plotPoint(name, maxv, fill) {
+            const svg = div
+              .append("div")
+              .append("svg")
+              .attr("width", width + margin.left + margin.right)
+              .attr("height", height + margin.top + margin.bottom)
+              .append("g")
+              .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const x = d3.scaleLinear()
+              .domain([0, maxv])
+              .range([0, width]);
+
+            const y = d3.scaleBand()
+              .domain([name])
+              .range([0, height])
+              .padding(0.1);
+
+            svg.append("g")
+              .call(d3.axisTop(x).ticks(5));
+
+            svg.append("g")
+              .call(d3.axisLeft(y));
+
+            const bars_qi = svg.selectAll(".bar-qi")
+              .data([name])
+              .enter().append("rect")
+              .attr("class", "bar-qi")
+              .attr("y", k => y(k))
+              .attr("height", y.bandwidth())
+              .attr("x", 0)
+              .attr("width", k => x(d[k]))
+              .attr("fill", fill);
+
+          }
+
+          plotPoint("time", max_ti, "blue");
+        }
+
+        const module_blames = d["module_blames"];
+        // module_blames.sort((a, b) => a.module_depth - b.module_depth);
+
+        function plotblames(module_blames, color) {
+          const margin = { top: 10, right: 10, bottom: 20, left: 200 },
+                width = 320 - margin.left - margin.right,
+                height = module_blames.length * 10;
+
+          const div = chartContainer.append("div")
+            .attr("class", "chart-inline");
+
+          const svg = div.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+          const x = d3.scaleLinear()
+                .domain([0, 1])
+                .range([0, width]);
+
+          const y = d3.scaleBand()
+                .domain(module_blames.map(d => d.module))
+                .range([0, height])
+                .padding(0.1);
+
+          const xAxis = d3.axisBottom(x).ticks(4);
+          const yAxis = d3.axisLeft(y);
+
+          svg.append("g")
+             .attr("transform", "translate(0," + height + ")")
+             .call(xAxis);
+
+          svg.append("g")
+             .call(yAxis)
+             .selectAll("text")
+               .text((d, i) => `${d}`);;
+
+          const bars = svg.selectAll(".bar")
+                .data(module_blames)
+                .enter().append("g");
+
+          bars.append("rect")
+              .attr("class", "bar")
+              .attr("y", d => y(d.module))
+              .attr("height", y.bandwidth())
+              .attr("x", 0)
+              .attr("width", d => x(d.fraction))
+              .attr("fill", color); // d => `rgb(0, 0, ${d.module_depth * 50})`); 
+        }
+
+        plotblames(module_blames, "orange");
+
+        const raw_counts_by_module = d["raw_counts_by_module"].map(d => {
+            d["fraction"] = d["fraction"]
+            return d;
+        })
+        // raw_counts_by_module.sort((a, b) => a.module_depth - b.module_depth);
+
+        plotblames(raw_counts_by_module, "blue");
+      });
+    });
+  }
+
+  document.getElementById('fileInput').addEventListener('change', function(event) {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.readAsText(file);
+      reader.onload = function(event) {
+        const data = JSON.parse(event.target.result);
+        plot(data);
+      }
+    }
+  });
+
+</script>
