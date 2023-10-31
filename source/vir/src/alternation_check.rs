@@ -43,8 +43,6 @@ impl State {
 fn param_type_name(typ : &Typ) -> String {
     match typ.as_ref() {
         TypX::Bool => "Bool".to_string(),
-        // TODO: Fix the proof fn Int typing issue
-        TypX::Int(..) => "Int".to_string(),
         TypX::Datatype(path,_ ,_) => path_as_friendly_rust_name(path),
         _ => panic!("Unsupported EPR Type")
     }
@@ -196,6 +194,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                     }
                 }
             },
+            // TODO: Check with Oded
             Closure(_, _) => todo!(),
             Choose { params, cond, body } => todo!(),
 
@@ -209,6 +208,8 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             Multi(..) |
             WithTriggers { .. } |
             Assign { .. } |
+            // TODO: Does the VC here introduce issues that we need to consider
+            // check with Oded
             AssertAssume { .. } |
             If(..) |
             Match(..) |
@@ -243,13 +244,15 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         dbg!(function_name);
         let Some(body) = body else { continue; };
         let mut state = State::new();
+        // TODO: should we also check the requires and body?
         for expr in ensure.iter() {
-            // start at negative polarity as VC is flipped
             build_graph_visit(ctx, &mut state, expr)?;
-            state.qa_graph.compute_sccs();
-            let acyclic = state.qa_graph.sort_sccs().iter().fold(true, |acc, x| {acc && (state.qa_graph.get_scc_size(x) == 1)});
-            dbg!(acyclic);
+            // reset polarity for flipped VC
+            state.positive_polarity = false;
         }
+        state.qa_graph.compute_sccs();
+        let acyclic = state.qa_graph.sort_sccs().iter().fold(true, |acc, x| {acc && (state.qa_graph.get_scc_size(x) == 1)});
+        dbg!(acyclic);
     }
     Ok(())
 }

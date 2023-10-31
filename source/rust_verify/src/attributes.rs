@@ -276,6 +276,8 @@ pub(crate) enum Attr {
     SizeOfGlobal,
     // Marks generated -> functions that are unsupported because a field appears in multiple variants
     InternalGetFieldManyVariants,
+    /// Marks a module to run through the EPR Checker
+    EPRCheck,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -656,6 +658,29 @@ pub(crate) fn get_publish(
         (Some(true), false) => (Some(true), true),
         (Some(true), true) => (Some(false), true),
     }
+}
+
+/// Attributes specified at the module level
+#[derive(Debug)]
+pub struct ModuleAttrs {
+   pub epr_check : bool, 
+}
+
+
+pub fn get_module_attrs(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<ModuleAttrs, VirErr> {
+    let mut ms = ModuleAttrs {
+        epr_check : false,
+    };
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::EPRCheck => ms.epr_check = true,
+            _ => {}
+        }
+    }
+    Ok(ms)
 }
 
 #[derive(Debug)]
