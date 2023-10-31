@@ -1062,7 +1062,7 @@ pub type Module = Arc<Spanned<ModuleX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct ModuleX {
     pub path: Path,
-    pub epr_check : bool,
+    pub epr_check: bool,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]

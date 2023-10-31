@@ -786,6 +786,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
 
     // Map each item to the module that contains it, or None if the module is external
     let mut item_to_module: HashMap<ItemId, Option<Path>> = HashMap::new();
+    let mut krate_seen = false;
     for (owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
@@ -814,12 +815,15 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                     };
                 }
                 OwnerNode::Crate(mod_) => {
-                    // let attrs = ctxt.tcx.hir().attrs(mod_.item_ids.)
+                    assert!(!krate_seen);
+                    krate_seen = true;
+                    let attrs = ctxt.tcx.hir().krate_attrs();
+                    let mattrs = get_module_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
                     let path =
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
                     vir.modules.push(ctxt.spanned_new(
                         mod_.spans.inner_span,
-                        vir::ast::ModuleX { path: path.clone(), epr_check : false },
+                        vir::ast::ModuleX { path: path.clone(), epr_check : mattrs.epr_check },
                     ));
                     item_to_module
                         .extend(mod_.item_ids.iter().map(move |ii| (*ii, Some(path.clone()))))
