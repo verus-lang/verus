@@ -97,6 +97,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
+        (TypX::Dummy, TypX::Dummy) => true,
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -115,6 +116,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::StrSlice, _) => false,
         (TypX::Char, _) => false,
         (TypX::FnDef(..), _) => false,
+        (TypX::Dummy, _) => true,
     }
 }
 
@@ -635,6 +637,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
+        TypX::Dummy => format!("DummyType"),
     }
 }
 

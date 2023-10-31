@@ -294,6 +294,7 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
+                Constant::Dummy => (format!("no_arg"), 99),
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),

@@ -289,9 +289,8 @@ fn simplify_one_expr(
             let is_trait_impl = matches!(kind, CallTargetKind::Method(..));
             let args = if typs.len() == 0 && args.len() == 0 && !is_trait_impl {
                 // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
-                let typ = Arc::new(TypX::Int(IntRange::Int));
-                use num_traits::Zero;
-                let argx = ExprX::Const(Constant::Int(num_bigint::BigInt::zero()));
+                let typ = Arc::new(TypX::Dummy);
+                let argx = ExprX::Const(Constant::Dummy);
                 let arg = SpannedTyped::new(&expr.span, &typ, argx);
                 Arc::new(vec![arg])
             } else {
@@ -913,7 +912,7 @@ fn simplify_function(
     {
         let paramx = crate::ast::ParamX {
             name: Arc::new(crate::def::DUMMY_PARAM.to_string()),
-            typ: Arc::new(TypX::Int(IntRange::Int)),
+            typ: Arc::new(TypX::Dummy),
             mode: Mode::Spec,
             is_mut: false,
             unwrapped_info: None,
