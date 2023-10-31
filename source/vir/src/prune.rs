@@ -405,12 +405,10 @@ fn datatypes_are_uninterpreted_sorts(state : &State, ctxt : &Ctxt, module : &Pat
     state.reached_types.iter().fold(true, |acc, dt| {
         let epr_type = match dt {
             // TODO: Finish the match cases?
-            // TODO: hidden Int argument of the proof fns makes this fail
             ReachedType::Datatype(x) => {
                 !is_datatype_transparent(module, ctxt.datatype_map.get(x).expect("not in map"))
                 || x == &crate::def::prefix_tuple_type(0)
             },
-            ReachedType::Int(..) => true,
             ReachedType::Bool => true,
             _ => false,
         };

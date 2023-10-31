@@ -988,7 +988,7 @@ pub type Module = Arc<Spanned<ModuleX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct ModuleX {
     pub path: Path,
-    // add attrs here
+    pub epr_check : bool,
 }
 
 /// An entire crate
