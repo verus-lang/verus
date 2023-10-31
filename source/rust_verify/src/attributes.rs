@@ -350,6 +350,7 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "inline" => v.push(Attr::Inline),
                 AttrTree::Fun(_, arg, None) if arg == "ext_equal" => v.push(Attr::ExtEqual),
+                AttrTree::Fun(_, arg, None) if arg == "epr_check" => v.push(Attr::EPRCheck),
                 AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
