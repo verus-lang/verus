@@ -682,7 +682,9 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                         // Shallowly visit just the top-level items (don't visit nested modules)
                         let path =
                             def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
-                        vir.module_ids.push(path.clone());
+                        vir.modules.push(
+                            ctxt.spanned_new(item.span, vir::ast::ModuleX { path: path.clone() }),
+                        );
                         let path = Some(path);
                         item_to_module
                             .extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
@@ -691,7 +693,10 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                 OwnerNode::Crate(mod_) => {
                     let path =
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
-                    vir.module_ids.push(path.clone());
+                    vir.modules.push(ctxt.spanned_new(
+                        mod_.spans.inner_span,
+                        vir::ast::ModuleX { path: path.clone() },
+                    ));
                     item_to_module
                         .extend(mod_.item_ids.iter().map(move |ii| (*ii, Some(path.clone()))))
                 }

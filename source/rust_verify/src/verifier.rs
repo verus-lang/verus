@@ -231,7 +231,7 @@ pub struct Verifier {
     crate_names: Option<Vec<String>>,
     vstd_crate_name: Option<Ident>,
     air_no_span: Option<vir::messages::Span>,
-    current_crate_module_ids: Option<Vec<vir::ast::Path>>,
+    current_crate_modules: Option<Vec<vir::ast::Module>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
@@ -309,7 +309,7 @@ impl Verifier {
             crate_names: None,
             vstd_crate_name: None,
             air_no_span: None,
-            current_crate_module_ids: None,
+            current_crate_modules: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
@@ -340,7 +340,7 @@ impl Verifier {
             crate_names: self.crate_names.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
-            current_crate_module_ids: self.current_crate_module_ids.clone(),
+            current_crate_modules: self.current_crate_modules.clone(),
             buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
             expand_targets: self.expand_targets.clone(),
@@ -1540,14 +1540,14 @@ impl Verifier {
         // the spinoff_prover attribute.
 
         let user_filter = self.user_filter.as_ref().unwrap();
-        let module_ids_to_verify: Vec<vir::ast::Path> = {
+        let modules_to_verify: Vec<vir::ast::Module> = {
             let current_crate_module_ids = self
-                .current_crate_module_ids
+                .current_crate_modules
                 .as_ref()
                 .expect("current_crate_module_ids should be initialized");
-            user_filter.filter_module_ids(current_crate_module_ids)?
+            user_filter.filter_modules(current_crate_module_ids)?
         };
-        let buckets = crate::buckets::get_buckets(&krate, &module_ids_to_verify);
+        let buckets = crate::buckets::get_buckets(&krate, &modules_to_verify);
         let buckets = user_filter.filter_buckets(buckets);
         let bucket_ids: Vec<BucketId> = buckets.iter().map(|p| p.0.clone()).collect();
         self.buckets = buckets.into_iter().collect();
@@ -1782,7 +1782,10 @@ impl Verifier {
         let chosen_triggers = global_ctx.get_chosen_triggers();
         let mut low_confidence_triggers = None;
         for chosen in chosen_triggers {
-            match (self.args.show_triggers, module_ids_to_verify.contains(&chosen.module)) {
+            match (
+                self.args.show_triggers,
+                modules_to_verify.iter().find(|m| &m.x.path == &chosen.module).is_some(),
+            ) {
                 (ShowTriggers::Selective, true) if chosen.low_confidence => {
                     report_chosen_triggers(&reporter, &chosen);
                     low_confidence_triggers = Some(chosen.span);
@@ -1932,7 +1935,7 @@ impl Verifier {
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt).map_err(map_err_diagnostics)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
-        self.current_crate_module_ids = Some(vir_crate.module_ids.clone());
+        self.current_crate_modules = Some(vir_crate.modules.clone());
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {

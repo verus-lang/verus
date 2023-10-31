@@ -606,7 +606,7 @@ pub fn prune_krate_for_module(
             .filter(|i| state.reached_trait_impls.contains(&i.x.impl_path))
             .cloned()
             .collect(),
-        module_ids: krate.module_ids.clone(),
+        modules: krate.modules.clone(),
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),

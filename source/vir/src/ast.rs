@@ -980,6 +980,13 @@ pub enum WellKnownItem {
     DropTrait,
 }
 
+pub type Module = Arc<Spanned<ModuleX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct ModuleX {
+    pub path: Path,
+    // add attrs here
+}
+
 /// An entire crate
 pub type Krate = Arc<KrateX>;
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -995,7 +1002,7 @@ pub struct KrateX {
     /// All associated type impls in the crate
     pub assoc_type_impls: Vec<AssocTypeImpl>,
     /// List of all modules in the crate
-    pub module_ids: Vec<Path>,
+    pub modules: Vec<Module>,
     /// List of all 'external' functions in the crate (only useful for diagnostics)
     pub external_fns: Vec<Fun>,
     /// List of all 'external' types in the crate (only useful for diagnostics)

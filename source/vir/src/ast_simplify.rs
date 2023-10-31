@@ -891,7 +891,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules: module_ids,
         external_fns,
         external_types,
         path_as_rust_names,
@@ -1001,7 +1001,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules: module_ids,
         external_fns,
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
@@ -1024,7 +1024,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         traits: Vec::new(),
         trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),
-        module_ids: Vec::new(),
+        modules: Vec::new(),
         external_fns: Vec::new(),
         external_types: Vec::new(),
         path_as_rust_names: Vec::new(),
@@ -1035,7 +1035,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.traits.extend(k.traits.clone());
         kratex.trait_impls.extend(k.trait_impls.clone());
         kratex.assoc_type_impls.extend(k.assoc_type_impls.clone());
-        kratex.module_ids.extend(k.module_ids.clone());
+        kratex.modules.extend(k.modules.clone());
         kratex.external_fns.extend(k.external_fns.clone());
         kratex.external_types.extend(k.external_types.clone());
         kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());
