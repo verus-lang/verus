@@ -188,6 +188,8 @@ pub enum TypX {
     Char,
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
+    /// Dummy argument type
+    Dummy,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -449,6 +451,8 @@ pub enum Constant {
     StrSlice(Arc<String>),
     // Hold unicode values here
     Char(char),
+    // Dummy argument
+    Dummy,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

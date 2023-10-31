@@ -83,6 +83,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let unbox_int = str_to_node(UNBOX_INT);
     let unbox_bool = str_to_node(UNBOX_BOOL);
 
+    #[allow(non_snake_case)]
+    let Dummy = str_to_node(DUMMY);
+    let dummy_arg = str_to_node(DUMMY_ARG);
+
+    let box_dummy = str_to_node(BOX_DUMMY);
+    let unbox_dummy = str_to_node(UNBOX_DUMMY);
+
     let box_strslice = str_to_node(BOX_STRSLICE);
     let unbox_strslice = str_to_node(UNBOX_STRSLICE);
 
@@ -137,6 +144,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
     let type_id_array = str_to_node(TYPE_ID_ARRAY);
     let type_id_slice = str_to_node(TYPE_ID_SLICE);
+    let type_id_dummy = str_to_node(TYPE_ID_DUMMY);
 
     nodes_vec!(
         // Fuel
@@ -155,6 +163,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
                 :skolemid skolem_prelude_fuel_defaults
             ))
         ))
+
+        // Dummy parameter sort for proof fns
+        (declare-sort [Dummy] 0)
+        (declare-fun [dummy_arg] () Dummy)
 
         // Chars
         (declare-sort [Char] 0)
@@ -180,6 +192,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [unbox_strslice] ([Poly]) [strslice])
         (declare-fun [box_char] ([Char]) [Poly])
         (declare-fun [unbox_char] ([Poly]) [Char])
+        (declare-fun [box_dummy] ([Dummy]) [Poly])
+        (declare-fun [unbox_dummy] ([Poly]) [Dummy])
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
@@ -189,6 +203,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
+        (declare-const [type_id_dummy] [typ])
         (declare-sort [decoration] 0)
         (declare-const [decorate_nil] [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])

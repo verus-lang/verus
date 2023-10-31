@@ -173,6 +173,7 @@ fn datatypes_invs(
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::Primitive(_, _) => {}
+                        TypX::Dummy => {}
                     }
                 }
             }

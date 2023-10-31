@@ -112,6 +112,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::StrSlice => ReachedType::StrSlice,
         TypX::Char => ReachedType::Char,
         TypX::Primitive(_, _) => ReachedType::Primitive,
+        TypX::Dummy => ReachedType::None,
     }
 }
 
@@ -198,9 +199,11 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
-        TypX::Tuple(_) | TypX::AnonymousClosure(..) | TypX::Air(_) => {
+        TypX::Tuple(_) | TypX::AnonymousClosure(..) => {
             panic!("unexpected TypX")
         }
+        TypX::Dummy => {}
+        TypX::Air(_) => panic!("unexpected TypX"),
         TypX::Decorate(_, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
         TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {

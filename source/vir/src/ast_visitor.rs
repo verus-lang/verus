@@ -56,7 +56,8 @@ where
                 | TypX::TypParam(_)
                 | TypX::TypeId
                 | TypX::ConstInt(_)
-                | TypX::Air(_) => (),
+                | TypX::Air(_)
+                | TypX::Dummy => (),
                 TypX::Tuple(ts) => {
                     for t in ts.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
@@ -113,7 +114,8 @@ where
         | TypX::TypParam(_)
         | TypX::TypeId
         | TypX::ConstInt(_)
-        | TypX::Air(_) => ft(env, typ),
+        | TypX::Air(_)
+        | TypX::Dummy => ft(env, typ),
         TypX::Tuple(ts) => {
             let ts = map_typs_visitor_env(ts, env, ft)?;
             ft(env, &Arc::new(TypX::Tuple(ts)))

@@ -15,8 +15,8 @@ use crate::def::{
     suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
     suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident, CommandsWithContext,
     CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE,
-    CHAR_TO_UNICODE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
-    I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
+    CHAR_TO_UNICODE, DUMMY_ARG, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM,
+    FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
     STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
     SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
@@ -144,6 +144,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Air(t) => t.clone(),
         TypX::StrSlice => str_typ(crate::def::STRSLICE),
         TypX::Char => str_typ(crate::def::CHAR),
+        TypX::Dummy => str_typ(crate::def::DUMMY),
     }
 }
 
@@ -273,6 +274,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
+        TypX::Dummy => mk_id(str_var(crate::def::TYPE_ID_DUMMY)),
     }
 }
 
@@ -365,11 +367,13 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) | TypX::TypeId => {
             None
         }
-        TypX::Tuple(_) | TypX::Air(_) => panic!("typ_invariant"),
+        TypX::Tuple(_) => panic!("typ_invariant"),
+        TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
         TypX::Primitive(_, _) => None,
+        TypX::Dummy => None,
     }
 }
 
@@ -421,6 +425,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
+        TypX::Dummy => Some(str_ident(crate::def::BOX_DUMMY)),
         TypX::StrSlice => Some(str_ident(crate::def::BOX_STRSLICE)),
         TypX::Char => Some(str_ident(crate::def::BOX_CHAR)),
     };
@@ -453,6 +458,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
+        TypX::Dummy => Some(str_ident(crate::def::UNBOX_DUMMY)),
         TypX::StrSlice => Some(str_ident(crate::def::UNBOX_STRSLICE)),
         TypX::Char => Some(str_ident(crate::def::UNBOX_CHAR)),
     };
@@ -571,6 +577,9 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
                 char_to_unicode_repr(*c).to_string(),
             ))))]),
         )),
+        crate::ast::Constant::Dummy => {
+            Arc::new(ExprX::Apply(str_ident(DUMMY_ARG), Arc::new(vec![])))
+        }
     }
 }
 

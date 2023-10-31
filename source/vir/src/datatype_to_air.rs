@@ -75,6 +75,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::StrSlice => false,
         TypX::Char => false,
         TypX::Primitive(_, _) => true,
+        TypX::Dummy => panic!("internal error: uses_ext_equal of Dummy"),
     }
 }
 

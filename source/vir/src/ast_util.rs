@@ -85,6 +85,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::StrSlice, TypX::StrSlice) => true,
         (TypX::Char, TypX::Char) => true,
+        (TypX::Dummy, TypX::Dummy) => true,
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -102,6 +103,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(_), _) => false,
         (TypX::StrSlice, _) => false,
         (TypX::Char, _) => false,
+        (TypX::Dummy, _) => true,
     }
 }
 
@@ -603,6 +605,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::StrSlice => format!("StrSlice"),
         TypX::Char => format!("char"),
+        TypX::Dummy => format!("DummyType"),
     }
 }
 
