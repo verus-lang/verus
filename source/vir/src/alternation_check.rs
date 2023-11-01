@@ -59,8 +59,7 @@ impl BuildState {
             open_foralls: HashMap::new(),
         }
     }
-    // TODO rename
-    fn next_func(&mut self, polarity : Polarity) {
+    fn reset_with(&mut self, polarity : Polarity) {
         self.expr_polarity = polarity;
         self.open_foralls = HashMap::new();
     }
@@ -308,7 +307,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         Ok(())
     }
     for f in krate.functions.iter().filter(|f| f.x.mode == Mode::Proof && f.x.owning_module.as_ref().is_some_and(|m| m == &module)) {
-        let FunctionX { name, require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
+        let FunctionX { name, params, require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
         let function_name = path_as_friendly_rust_name(&name.path);
         dbg!(function_name);
         // Pass 1: Collect all the functions mentioned
@@ -327,26 +326,26 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         let mut bstate = BuildState::new();
         for expr in ensure.iter() {
             // ensures start with negative polarity, as expression is negated
-            bstate.next_func(Polarity::Negative);
+            bstate.reset_with(Polarity::Negative);
             build_graph(ctx, &mut bstate, expr)?;
         }
         for expr in require.iter() {
             // requires start with positive polarity
-            bstate.next_func(Polarity::Positive);
+            bstate.reset_with(Polarity::Positive);
             build_graph(ctx, &mut bstate, expr)?;
         }
         for pf in &state.reached_proofs {
             let pf_func = &ctx.func_map[pf];
-            let FunctionX { require, ensure, mode, ..} = &pf_func.x;
+            let FunctionX { require, ensure, params, mode, ..} = &pf_func.x;
             // println!("Reached Proof: {}", path_as_friendly_rust_name(&pf_func.x.name.path));
             assert!(matches!(mode, Mode::Proof));
             // parse the ensures and requires of the reached proof
             for expr in ensure.iter() {
-                bstate.next_func(Polarity::Negative);
+                bstate.reset_with(Polarity::Positive);
                 build_graph(ctx, &mut bstate, expr)?;
             }
             for expr in require.iter() {
-                bstate.next_func(Polarity::Positive);
+                bstate.reset_with(Polarity::Negative);
                 build_graph(ctx, &mut bstate, expr)?;
             }
             
@@ -370,10 +369,10 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                     // track the number of new foralls for each argument type so we don't lose any
                     *param_types.entry(param_type).or_insert(0) += 1;
                 }
-                bstate.next_func(Polarity::Negative);
+                bstate.reset_with(Polarity::Negative);
                 bstate.open_foralls = param_types.clone();
                 build_graph(ctx, &mut bstate, &body)?;
-                bstate.next_func(Polarity::Positive);
+                bstate.reset_with(Polarity::Positive);
                 bstate.open_foralls = param_types.clone();
                 build_graph(ctx, &mut bstate, &body)?;
             }
