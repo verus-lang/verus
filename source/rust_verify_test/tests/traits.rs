@@ -655,6 +655,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[ignore] #[test] test_termination_5_fail_6 verus_code! {
+        trait T { type X; }
+        struct S<W: T>(<W as T>::X);
+        struct TT { }
+        impl T for TT { type X = S<TT>; }
+
+        spec fn arbitrary<A>() -> A;
+        spec fn foo(n: nat) -> S<TT>
+            decreases n
+        {
+            if n > 0 {
+                S(foo((n - 1) as nat))
+            } else {
+                arbitrary()
+            }
+        }
+    } => Err(_err) => todo!()
+}
+
+test_verify_one_file! {
     #[test] test_verify_1 verus_code! {
         trait T {
             fn f(&self)
