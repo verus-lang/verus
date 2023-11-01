@@ -7,5 +7,3 @@
 ## Status
 
 [[Status: currently supported Rust features]]
-
-[[Status: completed or abandoned feature requests]]
