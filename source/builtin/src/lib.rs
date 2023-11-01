@@ -354,7 +354,7 @@ impl<A> Ghost<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub const fn assume_new() -> Self {
+    pub const fn assume_new(_: fn() -> A) -> Self {
         Ghost { phantom: PhantomData }
     }
 
@@ -396,7 +396,7 @@ impl<A> Tracked<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub const fn assume_new() -> Self {
+    pub const fn assume_new(_: fn() -> A) -> Self {
         Tracked { phantom: PhantomData }
     }
 
@@ -444,14 +444,14 @@ impl<A> Copy for Ghost<A> {}
 #[rustc_diagnostic_item = "verus::builtin::ghost_exec"]
 #[verifier::external_body]
 pub fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
-    Ghost::assume_new()
+    Ghost::assume_new(|| unreachable!())
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::tracked_exec"]
 #[verifier::external_body]
 pub fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
-    Tracked::assume_new()
+    Tracked::assume_new(|| unreachable!())
 }
 
 #[cfg(verus_keep_ghost)]

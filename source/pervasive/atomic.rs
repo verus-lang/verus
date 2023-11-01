@@ -138,7 +138,7 @@ macro_rules! atomic_common_methods {
                 equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
         {
             let p = $at_ident { ato: <$rust_ty>::new(i) };
-            (p, Tracked::assume_new())
+            (p, Tracked::assume_new(|| unreachable!()))
         }
 
         #[inline(always)]
