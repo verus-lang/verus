@@ -13,13 +13,12 @@ use crate::{
 };
 
 struct CollectState {
-    reached_proofs: HashSet<Fun>,
     reached_spec_funcs: HashSet<Fun>,
 }
 
 impl CollectState {
     fn new() -> Self {
-        CollectState { reached_spec_funcs: HashSet::new(), reached_proofs: HashSet::new() }
+        CollectState { reached_spec_funcs: HashSet::new() }
     }
 }
 
@@ -75,6 +74,10 @@ impl BuildState {
             self.qa_graph.add_edge(param_node, ret_node.clone());
         }
     }
+
+    fn empty_foralls(&self) -> bool {
+        self.open_foralls.iter().all(|(_, count)| *count == 0)
+    }
 }
 
 fn param_type_name(typ: &Typ) -> String {
@@ -123,8 +126,6 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                     }
                                 }
                                 Mode::Proof => {
-                                    // track this proof as something we've seen
-                                    state.reached_proofs.insert(fun.clone());
                                     // parse ensures and requires recursively
                                     for r in f.x.require.iter() {
                                         match collect_functions(ctx, state, r) {
@@ -272,6 +273,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 crate::ast::BinaryOp::Eq(_) |
                 crate::ast::BinaryOp::Ne |
                 crate::ast::BinaryOp::Xor => {
+                    // TODO: Does Eq Mode matter?
                     if crate::ast_util::type_is_bool(&undecorate_typ(&left.typ)) {
                         let orig_polarity = state.expr_polarity;
                         match {
@@ -299,6 +301,62 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 },
                 _ => VisitorControlFlow::Recurse,
             }
+            Call(target, _) => match target {
+                crate::ast::CallTarget::Fun(call_target_kind, fun, _, impl_paths, _) => {
+                    if impl_paths.len() > 0 {
+                        VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
+                    } else {
+                        if let Some(fun) = match call_target_kind {
+                            crate::ast::CallTargetKind::Static => Some(fun),
+                            crate::ast::CallTargetKind::Method(Some((fun, _, impl_paths))) => {
+                                if impl_paths.len() > 0 {
+                                    None
+                                } else {
+                                    Some(fun)
+                                }
+                            }
+                            crate::ast::CallTargetKind::Method(None) => None,
+                        } {
+                            let f = &ctx.func_map[fun];
+                            match f.x.mode {
+                                // spec funcs aren't recursed on second pass
+                                Mode::Spec => VisitorControlFlow::Return,
+                                Mode::Proof => {
+                                    // should only be here when parsing the body of the lemma
+                                    // params for a proof function don't get encoded as additional quantifiers
+                                    // add the requires clause negatively, and the ensures positively
+                                    let orig_polarity = state.expr_polarity;
+                                    match f.x.ensure.iter().fold(Ok(()), |acc,expr| {
+                                        // shouldn't have any open foralls when invoking a lemma, afaik
+                                        assert!(state.empty_foralls());
+                                        state.reset_with(Polarity::Positive, None);
+                                        acc.and(build_graph(ctx, state, expr))
+                                    }).and(f.x.require.iter().fold(Ok(()), |acc,expr| {
+                                        // shouldn't have any open foralls when invoking a lemma, afaik
+                                        assert!(state.empty_foralls());
+                                        state.reset_with(Polarity::Negative, None);
+                                        acc.and(build_graph(ctx, state, expr))
+                                    })) {
+                                        Ok(_) => {
+                                            state.expr_polarity = orig_polarity;
+                                            VisitorControlFlow::Return
+                                        }
+                                        Err(err) => return VisitorControlFlow::Stop(err),
+                                    }
+                                }
+                                Mode::Exec => {
+                                    VisitorControlFlow::Stop(error(&expr.span, "exec calls are not supported in the EPR fragment"))
+                                }
+                            }
+
+                        } else {
+                            VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
+                        }
+                    }
+                }
+                crate::ast::CallTarget::FnSpec(_) |
+                crate::ast::CallTarget::BuiltinSpecFun(_, _) => VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
+            }
             // TODO: Will need to refactor the recursion so that the body is parsed on the second pass
             // as well so we can see the AssertAssume
             AssertAssume { .. } | // => {todo!()}
@@ -318,7 +376,6 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             Ghost { .. } |
             Block(..) => VisitorControlFlow::Recurse,
 
-            Call(..) | // calls are not recursed on in the second pass
             Const(_) |
             Var(_) |
             VarLoc(_) |
@@ -342,11 +399,17 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
     }
     // TODO: Exec functions rejected here?
     for f in krate.functions.iter().filter(|f| {
-        f.x.mode == Mode::Proof && f.x.owning_module.as_ref().is_some_and(|m| m == &module)
+        (f.x.mode == Mode::Proof || f.x.mode == Mode::Exec)
+            && f.x.owning_module.as_ref().is_some_and(|m| m == &module)
     }) {
-        let FunctionX { name, require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
-        let function_name = path_as_friendly_rust_name(&name.path);
-        dbg!(function_name);
+        let FunctionX {
+            name, require, ensure, decrease, body, broadcast_forall, attrs, mode, ..
+        } = &f.x;
+        if matches!(mode, Mode::Exec) {
+            return Err(error(&f.span, "Exec mode functions not supported in EPR Mode"));
+        }
+        // let function_name = path_as_friendly_rust_name(&name.path);
+        // dbg!(function_name);
         // Pass 1: Collect all the functions mentioned
         let mut state = CollectState::new();
         for expr in ensure.iter() {
@@ -359,7 +422,6 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             collect_functions(ctx, &mut state, expr)?;
         }
         // Pass 2: Build the "VC". Check for QA in ensures/requires
-        // TODO : open foralls for the proof fns...
         let mut bstate = BuildState::new();
         // params for a proof functions don't get encoded as additional quantifiers, so
         // don't need to specify init_params
@@ -373,21 +435,9 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             bstate.reset_with(Polarity::Positive, None);
             build_graph(ctx, &mut bstate, expr)?;
         }
-        for pf in &state.reached_proofs {
-            let pf_func = &ctx.func_map[pf];
-            let FunctionX { require, ensure, mode, .. } = &pf_func.x;
-            // params for a proof functions don't get encoded as additional quantifiers
-            // println!("Reached Proof: {}", path_as_friendly_rust_name(&pf_func.x.name.path));
-            assert!(matches!(mode, Mode::Proof));
-            // parse the ensures and requires of the reached proof
-            for expr in ensure.iter() {
-                bstate.reset_with(Polarity::Positive, None);
-                build_graph(ctx, &mut bstate, expr)?;
-            }
-            for expr in require.iter() {
-                bstate.reset_with(Polarity::Negative, None);
-                build_graph(ctx, &mut bstate, expr)?;
-            }
+        if let Some(expr) = body {
+            bstate.reset_with(Polarity::Positive, None);
+            build_graph(ctx, &mut bstate, expr)?;
         }
         for spec in &state.reached_spec_funcs {
             let spec_func = &ctx.func_map[spec];
@@ -415,12 +465,15 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             }
         }
         bstate.qa_graph.compute_sccs();
-        let acyclic = bstate
-            .qa_graph
-            .sort_sccs()
-            .iter()
-            .fold(true, |acc, x| acc && !(bstate.qa_graph.node_is_in_cycle(x)));
-        dbg!(acyclic);
+        let acyclic =
+            bstate.qa_graph.sort_sccs().iter().all(|x| !bstate.qa_graph.node_is_in_cycle(x));
+        // dbg!(acyclic);
+        if !acyclic {
+            return Err(error(
+                &f.span,
+                "Function not in EPR, quantifier alternation graph contains cycle",
+            ));
+        }
     }
     Ok(())
 }
