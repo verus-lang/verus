@@ -121,8 +121,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_array_literals_spec_fn_unsupported_2 verus_code! {
+        use vstd::array::*;
         exec fn test() {
             let ghost a = [3u64, 4, 5];
+            assert(a[1] == 4);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+    } => Ok(())
 }
