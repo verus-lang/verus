@@ -553,6 +553,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   use crate::rustc_middle::ty::DefIdTree;
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
+            if t.substs.iter().find(|x| x.as_type().is_none()).is_some() {
+                unsupported_err!(span, "projection type")
+            }
             match (trait_def, t.substs.into_type_list(tcx)) {
                 (Some(trait_def), typs) if typs.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
