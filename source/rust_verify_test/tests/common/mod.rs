@@ -251,6 +251,7 @@ pub fn run_verus(
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
     let mut verus_args = Vec::new();
+    let mut external_by_default = false;
     verus_args.push("--internal-test-mode".to_string());
 
     for option in options.iter() {
@@ -269,7 +270,7 @@ pub fn run_verus(
             verus_args.push("-o".to_string());
             verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "--external-by-default" {
-            verus_args.push(option.to_string());
+            external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
         } else if *option == "vstd" {
@@ -277,6 +278,9 @@ pub fn run_verus(
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
+    }
+    if !external_by_default {
+        verus_args.push("--no-external-by-default".to_string());
     }
 
     verus_args.extend(

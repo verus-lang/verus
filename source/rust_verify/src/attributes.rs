@@ -673,13 +673,13 @@ pub(crate) struct VerifierAttrs {
 impl VerifierAttrs {
     pub(crate) fn is_external(&self, cmd_line_args: &crate::config::Args) -> bool {
         self.external
-            || (cmd_line_args.external_by_default
-                && !self.verus_macro
-                && !self.external_body
-                && !self.external_fn_specification
-                && !self.external_type_specification
-                && !self.verify
-                && !self.sets_mode)
+            || !(cmd_line_args.no_external_by_default
+                || self.verus_macro
+                || self.external_body
+                || self.external_fn_specification
+                || self.external_type_specification
+                || self.verify
+                || self.sets_mode)
     }
 }
 
