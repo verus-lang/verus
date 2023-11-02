@@ -110,3 +110,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "use of moved value: `b`")
 }
+
+test_verify_one_file! {
+    #[test] test_array_literals_spec_fn_unsupported_1 verus_code! {
+        spec fn test() -> [u64; 3] {
+            [3, 4, 5]
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+}
+
+test_verify_one_file! {
+    #[test] test_array_literals_spec_fn_unsupported_2 verus_code! {
+        exec fn test() {
+            let ghost a = [3u64, 4, 5];
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+}
