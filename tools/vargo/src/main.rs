@@ -76,19 +76,20 @@ impl Toolchain {
     fn from_environment() -> Option<Self> {
         std::env::var("VARGO_TOOLCHAIN")
             .ok()
-            .map(|toolchain| {
+            .and_then(|toolchain| {
                 match toolchain.as_str() {
-                    "host" => Self::Host,
+                    "" => None,
+                    "host" => Some(Self::Host),
                     _ => {
                         // More relaxed than `rustup show active-toolchain`
                         let channel = toolchain.split('-').next()
                             .unwrap_or(&toolchain)
                             .to_string();
 
-                        Self::Rustup {
+                        Some(Self::Rustup {
                             toolchain,
                             channel,
-                        }
+                        })
                     }
                 }
             })
