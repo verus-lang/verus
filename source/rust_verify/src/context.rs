@@ -1,11 +1,11 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
-use air::ast::AstId;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::SpanData;
 use std::sync::Arc;
-use vir::ast::{Expr, Ident, InferMode, Mode, Pattern};
+use vir::ast::{Expr, Ident, Mode, Pattern};
+use vir::messages::AstId;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
@@ -30,7 +30,6 @@ pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
-    pub(crate) unique_id: std::cell::Cell<u64>,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) vstd_crate_name: Option<Ident>,
     pub(crate) arch: ArchContext,
@@ -49,12 +48,6 @@ pub(crate) struct BodyCtxt<'tcx> {
 }
 
 impl<'tcx> ContextX<'tcx> {
-    pub(crate) fn infer_mode(&self) -> InferMode {
-        let id = self.unique_id.get();
-        self.unique_id.set(id + 1);
-        id
-    }
-
     pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {
         self.verus_items.id_to_name.get(&def_id)
     }

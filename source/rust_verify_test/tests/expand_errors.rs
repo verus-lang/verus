@@ -20,7 +20,6 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(main_new) this is now emitting three separate diagnostics; should it be one?
     #[ignore] #[test] test2_expand_error ["--expand-errors"] => verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
@@ -31,14 +30,14 @@ test_verify_one_file_with_options! {
 
         spec fn is_good_integer_2(x: int) -> bool
         {
-            x >= 0 && x != 5            // EXPAND-ERRORS
+            x >= 0 && x != 5
         //  ^^^^^^^
         }
 
         spec fn is_good_message_2(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
-                Message::Move{x, y} => is_good_integer_2( (x as int)  - (y as int)),        // EXPAND-ERRORS
+                Message::Move{x, y} => is_good_integer_2( (x as int)  - (y as int)),
         //                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 Message::Write(b) => b,
             }
@@ -54,7 +53,7 @@ test_verify_one_file_with_options! {
             assert(is_good(x));             // EXPAND-ERRORS
             //^^^^^^ ^^^^^^^^^^
         }
-    } => Err(e) => assert_expand_fails(e, 4)
+    } => Err(e) => assert_expand_fails(e, 2)
 }
 
 test_verify_one_file_with_options! {
@@ -68,13 +67,14 @@ test_verify_one_file_with_options! {
 
         spec fn is_good_integer_3(x: int) -> bool
         {
-            x >= 0 && x != 5            // EXPAND-ERRORS
+            x >= 0 && x != 5
         //  ^^^^^^
         }
         spec fn is_good_message_3(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
-                Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),   // EXPAND-ERRORS
+            //  ^^^^^^^^^^^^^^^^ (TODO bad span due to match span)
+                Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),    // EXPAND-ERRORS
             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 Message::Write(b) => b,
             }
@@ -97,7 +97,7 @@ test_verify_one_file_with_options! {
             //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             assert(false);
         }
-    } => Err(e) => assert_expand_fails(e, 4)
+    } => Err(e) => assert_expand_fails(e, 3)
 }
 
 test_verify_one_file_with_options! {
@@ -111,14 +111,14 @@ test_verify_one_file_with_options! {
 
         spec fn is_good_integer_4(x: int) -> bool
         {
-            x >= 0 && x != 5                // EXPAND-ERRORS
+            x >= 0 && x != 5
         //            ^^^^^^
         }
 
         spec fn is_good_message_4(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
-                Message::Move{x, y} => is_good_integer_4( (x as int)  - (y as int)),        // EXPAND-ERRORS
+                Message::Move{x, y} => is_good_integer_4( (x as int)  - (y as int)),      // EXPAND-ERRORS
             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 Message::Write(b) => b,
             }
@@ -133,17 +133,16 @@ test_verify_one_file_with_options! {
             if !b {ret = Message::Move{x: 10, y: 5};}
             ret
         }
-    } => Err(e) => assert_expand_fails(e, 3)
+    } => Err(e) => assert_expand_fails(e, 2)
 }
 
 test_verify_one_file_with_options! {
-    // TODO(main_new) this is now emitting three separate diagnostics; should it be one?
     #[ignore] #[test] test5_expand_forall ["--expand-errors"] => verus_code! {
         use vstd::seq::*;
         spec fn seq_bounded_by_length(s1: Seq<int>) -> bool {
-            (forall|i:int| (0 <= i && i < s1.len())  ==>
+            (forall|i:int| (0 <= i && i < s1.len())  ==>   // EXPAND-ERRORS
                                                          (0 <= s1.index(i)
-                                                          && s1.index(i) < s1.len()))   // EXPAND-ERRORS
+                                                          && s1.index(i) < s1.len()))
         }
 
         proof fn test_expansion_forall()
@@ -160,17 +159,17 @@ test_verify_one_file_with_options! {
     // credit: (this example is copied from rust_verify/example/rw2022_scripts.rs, example C)
     #[test] test6_expand_forall ["--expand-errors"] => verus_code! {
         spec fn divides(factor: nat, candidate: nat) -> bool {
-            candidate % factor == 0             // EXPAND-ERRORS
+            candidate % factor == 0
         }
         spec fn is_prime(candidate: nat) -> bool {
             &&& 1 < candidate
-            &&& forall|factor: nat| 1 < factor && factor < candidate ==>
-                !divides(factor, candidate)     // EXPAND-ERRORS
+            &&& forall|factor: nat| 1 < factor && factor < candidate ==>    // EXPAND-ERRORS
+                !divides(factor, candidate)
         }
         proof fn test_trigger() {
             assert(is_prime(6));                // EXPAND-ERRORS
         }
-    } => Err(e) => assert_expand_fails(e, 3)
+    } => Err(e) => assert_expand_fails(e, 2)
 }
 
 test_verify_one_file_with_options! {
@@ -221,7 +220,7 @@ test_verify_one_file_with_options! {
         }
 
         #[verifier(opaque)]
-        spec fn is_good_integer_13(x: int) -> bool   // EXPAND-ERRORS
+        spec fn is_good_integer_13(x: int) -> bool
         {
             x >= 0 && x != 5
         }
@@ -243,5 +242,57 @@ test_verify_one_file_with_options! {
             reveal(is_good_message_13);
             good_msg
         }
-    } => Err(e) => assert_expand_fails(e, 3)
+    } => Err(e) => assert_expand_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test9_assume_conjunct ["--expand-errors"] => verus_code! {
+        spec fn p1(a: int) -> bool {
+            a == 1
+        }
+        spec fn p2(a: int) -> bool {
+            a == 2
+        }
+
+        spec fn p(a: int) -> bool {
+            &&& p1(a)
+            &&& p2(a) // EXPAND-ERRORS
+        }
+
+        proof fn test(a: int) {
+            assume(p1(a));
+            assert(p(a)); // EXPAND-ERRORS
+        }
+    } => Err(e) => assert_expand_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] test10_expand_forall_assume ["--expand-errors"] => verus_code! {
+        use vstd::seq::*;
+        spec fn no(i: int) -> bool {
+            false
+        }
+
+        spec fn seq_bounded_by_length(s1: Seq<int>) -> bool {
+            (forall|i:int| (0 <= i && i < s1.len()) ==> no(i) && (0 <= #[trigger] s1[i] < s1.len()))
+        }
+
+        spec fn long_seq(s1: Seq<int>) -> bool {
+            s1.len() > 20
+        }
+
+        spec fn seq_is_long_and_bounded_by_length(s1: Seq<int>) -> bool {
+            &&& seq_bounded_by_length(s1)
+            &&& long_seq(s1) // EXPAND-ERRORS
+        }
+
+        proof fn test_expansion_forall()
+        {
+            let mut ss = Seq::empty();
+            ss = ss.push(0);
+            ss = ss.push(10);
+            assume(seq_bounded_by_length(ss));
+            assert(seq_is_long_and_bounded_by_length(ss));  // EXPAND-ERRORS
+        }
+    } => Err(e) => assert_expand_fails(e, 2)
 }

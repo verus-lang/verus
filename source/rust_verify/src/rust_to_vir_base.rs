@@ -95,7 +95,7 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
             _ => {
                 // To handle cases like [T] which are not syntactically datatypes
                 // but converted into VIR datatypes.
-                let self_ty = tcx.type_of(owner_id.to_def_id());
+                let self_ty = tcx.type_of(owner_id.to_def_id()).skip_binder();
                 match self_ty.kind() {
                     TyKind::Slice(_) => Some(vir::def::slice_type()),
                     _ => None,
@@ -200,9 +200,30 @@ pub(crate) fn get_impl_paths<'tcx>(
     let mut impl_paths = Vec::new();
     let param_env = tcx.param_env(param_env_src);
     let preds = tcx.predicates_of(target_id);
+
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-    for inst_pred in preds.instantiate(tcx, node_substs).predicates {
+
+    // Note: a worklist of impl ids might be easier to implement.
+    // It would be nice simply because the number of impls is easily boundable.
+    //
+    // I'm not sure if it's sound, though. It might be possible for the same impl
+    // to show up multiple times, but with different predicates that result in different
+    // impls once you start nesting?
+    // So I'm implementing this with a predicate worklist to be safe.
+
+    let mut predicate_worklist: Vec<rustc_middle::ty::Predicate> =
+        preds.instantiate(tcx, node_substs).predicates;
+
+    let mut idx = 0;
+    while idx < predicate_worklist.len() {
+        if idx == 1000 {
+            panic!("get_impl_paths nesting depth exceeds 1000");
+        }
+
+        let inst_pred = &predicate_worklist[idx];
+        idx += 1;
+
         if let PredicateKind::Clause(Clause::Trait(_)) = inst_pred.kind().skip_binder() {
             let poly_trait_refs = inst_pred.kind().map_bound(|p| {
                 if let PredicateKind::Clause(Clause::Trait(tp)) = &p {
@@ -216,6 +237,13 @@ pub(crate) fn get_impl_paths<'tcx>(
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
                     impl_paths.push(impl_path);
+
+                    let preds = tcx.predicates_of(u.impl_def_id);
+                    for p in preds.instantiate(tcx, u.substs).predicates {
+                        if !predicate_worklist.contains(&p) {
+                            predicate_worklist.push(p);
+                        }
+                    }
                 }
             }
         }
@@ -508,9 +536,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let infcx = tcx.infer_ctxt().ignoring_regions().build();
             let cause = rustc_infer::traits::ObligationCause::dummy();
             let at = infcx.at(&cause, param_env);
-            let norm = at.normalize(*ty);
-            if norm.value != *ty {
-                return t_rec(&norm.value);
+            let resolved_ty = infcx.resolve_vars_if_possible(*ty);
+            if !rustc_middle::ty::TypeVisitableExt::has_escaping_bound_vars(&resolved_ty) {
+                let norm = at.normalize(*ty);
+                if norm.value != *ty {
+                    return t_rec(&norm.value);
+                }
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -552,6 +583,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
         TyKind::Generator(..) => unsupported_err!(span, "generator types"),
         TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
+        TyKind::GeneratorWitnessMIR(_, _) => unsupported_err!(span, "generator witness mir types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
@@ -680,7 +712,7 @@ pub(crate) fn implements_structural<'tcx>(
         .get(&VerusItem::Marker(crate::verus_items::MarkerItem::Structural))
         .expect("structural trait is not defined");
 
-    use crate::rustc_middle::ty::TypeVisitable;
+    use crate::rustc_middle::ty::TypeVisitableExt;
     let infcx = ctxt.tcx.infer_ctxt().build(); // TODO(main_new) correct?
     let ty = ctxt.tcx.erase_regions(ty);
     if ty.has_escaping_bound_vars() {
@@ -916,6 +948,9 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     return err_span(*span, "Verus does yet not support this type of bound");
                 }
             }
+            PredicateKind::Clause(Clause::ConstArgHasType(..)) => {
+                // Do nothing
+            }
             _ => {
                 return err_span(*span, "Verus does yet not support this type of bound");
             }
@@ -989,6 +1024,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             kind,
             def_id: _,
             colon_span: _,
+            source: _,
         } = hir_param;
 
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");

@@ -1031,3 +1031,60 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+const IS_SYNTAX_COMMON: &'static str = verus_code_str! {
+    enum ThisOrThat {
+        This(nat),
+        That { v: int },
+    }
+};
+
+test_verify_one_file! {
+    #[test] is_syntax_pass IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t is This),
+                ThisOrThat::That {..} => assert(t is That),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_valid_fail IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t is That), // FAILS
+                ThisOrThat::That {..} => assert(t is That),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_invalid IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat) {
+            assert(t is Unknown);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no variant `Unknown` for this datatype")
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_precedence IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat)
+            requires t is This,
+        {
+            assert(t is This != t is That);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_implies IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat)
+            requires t is This,
+        {
+            assert(t is This ==> true);
+        }
+    } => Ok(())
+}

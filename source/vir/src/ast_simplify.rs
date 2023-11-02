@@ -5,19 +5,23 @@ use crate::ast::Typs;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr,
-    Function, FunctionKind, Ident, IntRange, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
+    PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
-use crate::ast_util::{conjoin, disjoin, if_then_else};
-use crate::ast_util::{error, wrap_in_trigger};
+use crate::ast_util::{conjoin, disjoin, if_then_else, wrap_in_trigger};
+use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
-use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
+use crate::def::{
+    prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
+};
+use crate::messages::error;
+use crate::messages::Span;
 use crate::util::vec_map_result;
 use air::ast::BinderX;
 use air::ast::Binders;
-use air::ast::Span;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -220,17 +224,50 @@ fn pattern_to_exprs_rec(
 // that is, if node A is the parent of children B and C,
 // then simplify_one_expr is called first on B and C, and then on A
 
-fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
+fn simplify_one_expr(
+    ctx: &GlobalCtx,
+    state: &mut State,
+    scope_map: &VisitorScopeMap,
+    expr: &Expr,
+) -> Result<Expr, VirErr> {
     use crate::ast::CallTargetKind;
     match &expr.x {
-        ExprX::ConstVar(x) => {
+        ExprX::VarLoc(x) => {
+            // If we try to mutate `x`, check that `x` is actually marked mut.
+            // This is *usually* caught by rustc for us, during our lifetime checking phase.
+            // However, there are a few cases to watch out for:
+            //
+            //  1. The user provides --no-lifetime. (We still need need to do the check
+            //     because the AIR encoding later on will rely on mutability-ness being
+            //     well-formed. This isn't *really* necessary, since --no-lifetime is
+            //     unsound anyway and doesn't really have any guarantees - but doing
+            //     this check is nicer than an AIR type error down the line.)
+            //
+            //  2. If the user does as @-assignment, `x@ = ...` where `t: Ghost<T>`.
+            //     This is a special Verus thing so we have to do the check ourselves.
+            //     (issue #424)
+            //
+            // It would usually make more sense to have this in well_formed.rs, but
+            // in the majority of cases, it's nicer to have rustc catch the error
+            // for its better diagnostics. So the check is here in ast_simplify,
+            // which comes after our lifetime checking pass.
+            match scope_map.get(x) {
+                None => Err(error(&expr.span, "Verus Internal Error: cannot find this variable")),
+                Some(entry) if !entry.is_mut && entry.init => {
+                    let name = user_local_name(x);
+                    Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
+                }
+                _ => Ok(expr.clone()),
+            }
+        }
+        ExprX::ConstVar(x, autospec) => {
             let call = ExprX::Call(
                 CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
                     Arc::new(vec![]),
-                    AutospecUsage::Final,
+                    *autospec,
                 ),
                 Arc::new(vec![]),
             );
@@ -400,7 +437,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 };
                 Ok(if_expr)
             } else {
-                error(&expr.span, "not yet implemented: zero-arm match expressions")
+                Err(error(&expr.span, "not yet implemented: zero-arm match expressions"))
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
@@ -475,7 +512,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                         },
                     ))
                 }
-                _ => error(&lhs.span, "not yet implemented: lhs of compound assignment"),
+                _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),
             }
         }
         _ => Ok(expr.clone()),
@@ -502,7 +539,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
-            _ => error(&stmt.span, "let-pattern declaration must have an initializer"),
+            _ => Err(error(&stmt.span, "let-pattern declaration must have an initializer")),
         },
         StmtX::Decl { pattern, mode: _, init: Some(init) }
             if !matches!(pattern.x, PatternX::Var { .. }) =>
@@ -529,10 +566,10 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
         }
         TypX::TypParam(x) => {
             if !local.typ_params.contains(x) {
-                return error(
+                return Err(error(
                     &local.span,
                     format!("type parameter {} used before being declared", x),
-                );
+                ));
             }
             Ok(typ.clone())
         }
@@ -644,7 +681,7 @@ fn exec_closure_spec_requires(
         ExprX::Binary(BinaryOp::Implies, reqs_body, closure_req_call.clone()),
     );
 
-    let forall = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+    let forall = Quant { quant: air::ast::Quant::Forall };
     let binders = Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ })]);
     let req_forall =
         SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, req_quant_body));
@@ -710,7 +747,7 @@ fn exec_closure_spec_ensures(
         ExprX::Binary(BinaryOp::Implies, closure_ens_call.clone(), enss_body),
     );
 
-    let forall = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+    let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =
         Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ }), ret.clone()]);
     let ens_forall =
@@ -753,7 +790,8 @@ fn simplify_function(
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
     if functionx.typ_params.len() == 0
         && functionx.params.len() == 0
-        && !functionx.is_const
+        && !matches!(functionx.item_kind, ItemKind::Const)
+        && !matches!(functionx.item_kind, ItemKind::Static)
         && !functionx.attrs.broadcast_forall
         && !is_trait_impl
     {
@@ -769,12 +807,12 @@ fn simplify_function(
     }
 
     let function = Spanned::new(function.span.clone(), functionx);
-    let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+    let mut map: VisitorScopeMap = ScopeMap::new();
     crate::ast_visitor::map_function_visitor_env(
         &function,
         &mut map,
         state,
-        &|state, _, expr| simplify_one_expr(ctx, state, expr),
+        &|state, map, expr| simplify_one_expr(ctx, state, map, expr),
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
     )
@@ -853,7 +891,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules: module_ids,
         external_fns,
         external_types,
         path_as_rust_names,
@@ -963,7 +1001,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules: module_ids,
         external_fns,
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
@@ -971,7 +1009,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     *ctx = crate::context::GlobalCtx::new(
         &krate,
         ctx.no_span.clone(),
-        ctx.inferred_modes.as_ref().clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.vstd_crate_name.clone(),
@@ -987,7 +1024,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         traits: Vec::new(),
         trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),
-        module_ids: Vec::new(),
+        modules: Vec::new(),
         external_fns: Vec::new(),
         external_types: Vec::new(),
         path_as_rust_names: Vec::new(),
@@ -998,7 +1035,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.traits.extend(k.traits.clone());
         kratex.trait_impls.extend(k.trait_impls.clone());
         kratex.assoc_type_impls.extend(k.assoc_type_impls.clone());
-        kratex.module_ids.extend(k.module_ids.clone());
+        kratex.modules.extend(k.modules.clone());
         kratex.external_fns.extend(k.external_fns.clone());
         kratex.external_types.extend(k.external_types.clone());
         kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());

@@ -154,7 +154,7 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
             }
 
             let mut block_expr = Expr::Block(ExprBlock { attrs: vec![], label: None, block });
-            crate::syntax::rewrite_expr_node(false, true, &mut block_expr);
+            crate::syntax::rewrite_expr_node(crate::EraseGhost::Keep, true, &mut block_expr);
             if let Expr::Block(expr_block) = block_expr {
                 block = expr_block.block;
             } else {

@@ -376,11 +376,17 @@ impl Clone for Expr {
             #[cfg(feature = "full")]
             Expr::AssertForall(v0) => Expr::AssertForall(v0.clone()),
             #[cfg(feature = "full")]
+            Expr::RevealHide(v0) => Expr::RevealHide(v0.clone()),
+            #[cfg(feature = "full")]
             Expr::View(v0) => Expr::View(v0.clone()),
             #[cfg(feature = "full")]
             Expr::BigAnd(v0) => Expr::BigAnd(v0.clone()),
             #[cfg(feature = "full")]
             Expr::BigOr(v0) => Expr::BigOr(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Is(v0) => Expr::Is(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Has(v0) => Expr::Has(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -584,6 +590,17 @@ impl Clone for ExprGroup {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprHas {
+    fn clone(&self) -> Self {
+        ExprHas {
+            attrs: self.attrs.clone(),
+            lhs: self.lhs.clone(),
+            has_token: self.has_token.clone(),
+            rhs: self.rhs.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ExprIf {
@@ -606,6 +623,17 @@ impl Clone for ExprIndex {
             expr: self.expr.clone(),
             bracket_token: self.bracket_token.clone(),
             index: self.index.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprIs {
+    fn clone(&self) -> Self {
+        ExprIs {
+            attrs: self.attrs.clone(),
+            base: self.base.clone(),
+            is_token: self.is_token.clone(),
+            variant_ident: self.variant_ident.clone(),
         }
     }
 }
@@ -1261,7 +1289,9 @@ impl Clone for ItemConst {
             ident: self.ident.clone(),
             colon_token: self.colon_token.clone(),
             ty: self.ty.clone(),
+            ensures: self.ensures.clone(),
             eq_token: self.eq_token.clone(),
+            block: self.block.clone(),
             expr: self.expr.clone(),
             semi_token: self.semi_token.clone(),
         }
@@ -1386,12 +1416,16 @@ impl Clone for ItemStatic {
         ItemStatic {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            publish: self.publish.clone(),
+            mode: self.mode.clone(),
             static_token: self.static_token.clone(),
             mutability: self.mutability.clone(),
             ident: self.ident.clone(),
             colon_token: self.colon_token.clone(),
             ty: self.ty.clone(),
+            ensures: self.ensures.clone(),
             eq_token: self.eq_token.clone(),
+            block: self.block.clone(),
             expr: self.expr.clone(),
             semi_token: self.semi_token.clone(),
         }
@@ -2065,6 +2099,20 @@ impl Clone for ReturnType {
             ReturnType::Type(v0, v1, v2, v3) => {
                 ReturnType::Type(v0.clone(), v1.clone(), v2.clone(), v3.clone())
             }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for RevealHide {
+    fn clone(&self) -> Self {
+        RevealHide {
+            attrs: self.attrs.clone(),
+            reveal_token: self.reveal_token.clone(),
+            reveal_with_fuel_token: self.reveal_with_fuel_token.clone(),
+            hide_token: self.hide_token.clone(),
+            paren_token: self.paren_token.clone(),
+            path: self.path.clone(),
+            fuel: self.fuel.clone(),
         }
     }
 }

@@ -404,3 +404,23 @@ test_verify_one_file! {
         {}
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] bitvector_in_decreases_by verus_code! {
+        spec fn stuff(n: u64) -> int
+            decreases n
+              via stuff_dec
+        {
+            if n == 0 {
+                0
+            } else {
+                stuff(n >> 1) + 1
+            }
+        }
+
+        #[verifier::decreases_by]
+        proof fn stuff_dec(n: u64) {
+            assert((n > 0) ==> (n >> 1) < n) by(bit_vector);
+        }
+    } => Ok(())
+}

@@ -136,7 +136,7 @@ macro_rules! atomic_common_methods {
 
         #[inline(always)]
         #[verifier::external_body] /* vattr */
-        pub fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
+        pub const fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
             ensures
                 equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
         {

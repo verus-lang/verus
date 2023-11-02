@@ -2,6 +2,7 @@ pub mod core;
 pub mod num;
 pub mod result;
 pub mod option;
+pub mod atomic;
 
-#[cfg(not(feature = "no_global_allocator"))] 
+#[cfg(feature = "alloc")]
 pub mod vec;

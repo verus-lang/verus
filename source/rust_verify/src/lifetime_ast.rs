@@ -40,7 +40,7 @@ pub(crate) enum TypX {
     Slice(Typ),
     Array(Typ, Typ),
     Tuple(Vec<Typ>),
-    Datatype(Id, Vec<Typ>),
+    Datatype(Id, Vec<Id>, Vec<Typ>),
     Projection {
         self_typ: Typ,
         // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
@@ -119,14 +119,14 @@ pub(crate) enum Datatype {
     Enum(Vec<(Id, Fields)>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ClosureKind {
     Fn,
     FnMut,
     FnOnce,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Bound {
     Copy,
     Clone,
@@ -137,13 +137,14 @@ pub(crate) enum Bound {
 }
 
 // where typ: bound
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct GenericBound {
     pub(crate) typ: Typ,
+    pub(crate) bound_vars: Vec<Id>,
     pub(crate) bound: Bound,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct GenericParam {
     pub(crate) name: Id,
     pub(crate) const_typ: Option<Typ>,
@@ -157,14 +158,18 @@ pub(crate) struct TraitDecl {
     pub(crate) assoc_typs: Vec<Id>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(crate) struct AssocTypeImpl {
-    pub(crate) name: Id,
+    pub(crate) self_typ: Typ,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
-    pub(crate) self_typ: Typ,
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
     pub(crate) trait_as_datatype: Typ,
+}
+
+#[derive(Debug)]
+pub(crate) struct AssocTypeImplType {
+    pub(crate) name: Id,
     pub(crate) typ: Typ,
 }
 

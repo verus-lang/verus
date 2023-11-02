@@ -599,11 +599,7 @@ test_verify_one_file! {
                 dec1((j - 1) as nat);
             }
         }
-    } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
-        assert_eq!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some(), true);
-        assert_eq!(err.errors[1].message, "recursive function must have a decreases clause");
-    }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -1100,12 +1096,11 @@ test_verify_one_file! {
             decreases_when(i >= 0);
             decreases_by(check_arith_sum);
 
-            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+            if i == 0 { 0 } else { i + arith_sum(i - 1) } // FAILS
         }
 
         #[verifier(decreases_by)]
         proof fn check_arith_sum(i: int) {
-            // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1326,7 +1321,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] decreases_by_lemma_with_return_stmt_checks_postcondition verus_code! {
+    #[test] decreases_by_lemma_with_return_stmt_fails verus_code! {
         spec fn some_fun(i: nat) -> nat
             decreases i
         {
@@ -1342,6 +1337,42 @@ test_verify_one_file! {
             } else {
                 return; // FAILS
             }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] decreases_by_lemma_with_loop_fails verus_code! {
+        spec fn some_fun(i: nat) -> nat
+            decreases i
+        {
+            decreases_by(decby_lemma);
+
+            some_fun((i - 1) as nat)
+        }
+
+        #[verifier(decreases_by)]
+        proof fn decby_lemma(i: nat)
+        {
+            while true { }
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot use while in proof or spec mode")
+}
+
+test_verify_one_file! {
+    #[test] decreases_by_lemma_with_assert_false_fails verus_code! {
+        spec fn some_fun(i: nat) -> nat
+            decreases i
+        {
+            decreases_by(decby_lemma);
+
+            some_fun((i - 1) as nat)
+        }
+
+        #[verifier(decreases_by)]
+        proof fn decby_lemma(i: nat)
+        {
+            assert(false); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -1614,7 +1645,7 @@ test_verify_one_file! {
         }
 
         proof fn testing(l: Tree, r: Tree) {
-            let x = Tree::Node(box l, box r);
+            let x = Tree::Node(Box::new(l), Box::new(r));
 
             assert(l == *x.get_Node_0());
             assert(r == *x.get_Node_1());
@@ -1758,4 +1789,66 @@ test_verify_one_file! {
             }
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+// We now also allow decreases inside choose|x| body,
+// on the grounds that you could rewrite this as let f = |x| body; choose|x| f(x)
+// and decreases is already allowed in |x| body.
+test_verify_one_file! {
+    #[test] decreases_inside_choose verus_code! {
+        spec fn f(n: int) -> bool
+            decreases n
+        {
+            if n > 0 {
+                0 == choose|i: int| f(i) // FAILS
+            } else {
+                false
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] lemma_not_proved_by_impossible_fun verus_code! {
+        spec fn impossible_fun() -> bool
+            decreases 0int
+              via f_decreases
+        {
+            !impossible_fun()
+        }
+
+        #[verifier::decreases_by]
+        proof fn f_decreases() {
+            bad_lemma();
+        }
+
+        proof fn bad_lemma()
+            ensures false,
+        {
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] lemma_not_proved_by_impossible_fun2 verus_code! {
+        spec fn impossible_fun() -> bool
+            decreases 0int
+              via f_decreases
+        {
+            !impossible_fun()
+        }
+
+        #[verifier::decreases_by]
+        proof fn f_decreases() {
+            bad_lemma();
+        }
+
+        proof fn bad_lemma()
+            ensures false,
+        {
+            assert(impossible_fun() == !impossible_fun());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in decreases_by function")
 }

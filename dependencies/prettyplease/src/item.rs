@@ -3,12 +3,12 @@ use crate::iter::IterDelimited;
 use crate::INDENT;
 use proc_macro2::TokenStream;
 use syn_verus::{
-    Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic,
+    Fields, FnArg, FnArgKind, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic,
     ForeignItemType, ImplItem, ImplItemConst, ImplItemMacro, ImplItemMethod, ImplItemType, Item,
     ItemConst, ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2,
-    ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse,
-    Signature, Stmt, TraitItem, TraitItemConst, TraitItemMacro, TraitItemMethod, TraitItemType,
-    UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree,
+    ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Pat,
+    Receiver, Signature, Stmt, Type, TraitItem, TraitItemConst, TraitItemMacro, TraitItemMethod,
+    TraitItemType, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree,
 };
 
 impl Printer {
@@ -46,7 +46,12 @@ impl Printer {
         self.ty(&item.ty);
         self.word(" = ");
         self.neverbreak();
-        self.expr(&item.expr);
+        if let Some(expr) = &item.expr {
+            self.expr(expr);
+        }
+        if let Some(block) = &item.block {
+            self.small_block(block, &[]);
+        }
         self.word(";");
         self.end();
         self.hardbreak();
@@ -205,7 +210,12 @@ impl Printer {
         self.ty(&item.ty);
         self.word(" = ");
         self.neverbreak();
-        self.expr(&item.expr);
+        if let Some(expr) = &item.expr {
+            self.expr(expr);
+        }
+        if let Some(block) = &item.block {
+            self.small_block(block, &[]);
+        }
         self.word(";");
         self.end();
         self.hardbreak();
@@ -753,13 +763,11 @@ impl Printer {
         self.hardbreak();
     }
 
-    fn maybe_variadic(&mut self, _arg: &FnArg) -> bool {
-        unimplemented!();
-        /*
-        let pat_type = match arg {
-            FnArg::Typed(pat_type) => pat_type,
-            FnArg::Receiver(receiver) => {
-                self.receiver(receiver);
+    fn maybe_variadic(&mut self, arg: &FnArg) -> bool {
+        let pat_type = match &arg.kind {
+            FnArgKind::Typed(pat_type) => pat_type,
+            FnArgKind::Receiver(receiver) => {
+                self.receiver(&receiver);
                 return false;
             }
         };
@@ -771,16 +779,15 @@ impl Printer {
                         self.outer_attrs(&pat_type.attrs);
                         self.word("...");
                     }
-                    _ => self.pat_type(pat_type),
+                    _ => self.pat_type(&pat_type),
                 }
                 true
             }
             _ => {
-                self.pat_type(pat_type);
+                self.pat_type(&pat_type);
                 false
             }
         }
-        */
     }
 
     fn signature(&mut self, signature: &Signature) {
@@ -824,7 +831,6 @@ impl Printer {
         self.end();
     }
 
-    /*
     fn receiver(&mut self, receiver: &Receiver) {
         self.outer_attrs(&receiver.attrs);
         if let Some((_ampersand, lifetime)) = &receiver.reference {
@@ -839,5 +845,4 @@ impl Printer {
         }
         self.word("self");
     }
-    */
 }

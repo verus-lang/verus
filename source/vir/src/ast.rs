@@ -6,9 +6,8 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::Span;
+use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
-use air::messages::Message;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -37,7 +36,7 @@ pub struct PathX {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunX {
     /// Path of function
     pub path: Path,
@@ -61,10 +60,6 @@ pub enum Mode {
     /// Non-ghost (compiled code)
     Exec,
 }
-
-/// Mode that gets filled in by the mode checker.
-/// (A unique id marks the place that needs to be filled in.)
-pub type InferMode = u64;
 
 /// Describes integer types
 #[derive(
@@ -200,6 +195,7 @@ pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
     /// with no diagnostics printed
     AutoTrigger,
+    AllTriggers,
     /// Each trigger group is named by either Some integer, or the unnamed group None.
     /// (None is just another name; it is no different from an integer-named group.)
     /// Example: #[trigger] expr is translated into Trigger(None) applied to expr
@@ -373,9 +369,7 @@ pub enum BinaryOp {
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
-    /// (None for InferMode means always mode Spec)
-    /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
-    Arith(ArithOp, Option<InferMode>),
+    Arith(ArithOp, Mode),
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),
@@ -569,7 +563,6 @@ pub enum AssertQueryMode {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Quant {
     pub quant: air::ast::Quant,
-    pub boxed_params: bool,
 }
 
 /// Computation mode for assert_by_compute
@@ -607,7 +600,9 @@ pub enum ExprX {
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(Ident, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
-    ConstVar(Fun),
+    ConstVar(Fun, AutospecUsage),
+    /// Use of a static variable.
+    StaticVar(Fun),
     /// Mutable reference (location)
     Loc(Expr),
     /// Call to a function passing some expression arguments
@@ -656,6 +651,8 @@ pub enum ExprX {
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
+    /// Reveal a string
+    RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
@@ -664,6 +661,10 @@ pub enum ExprX {
     AssertAssume { is_assume: bool, expr: Expr },
     /// Assert-forall or assert-by statement
     AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Assertion discharged via computation
+    AssertCompute(Expr, ComputeMode),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
@@ -684,12 +685,6 @@ pub enum ExprX {
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
-    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
-    /// Assertion discharged via computation
-    AssertCompute(Expr, ComputeMode),
-    /// Reveal a string
-    RevealString(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -866,11 +861,8 @@ pub struct FunctionX {
     pub broadcast_forall: Option<(Params, Expr)>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
-    /// is_const == true means that this function is actually a const declaration;
-    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
-    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
-    /// and the body is restricted to a subset of expressions that are spec-safe.
-    pub is_const: bool,
+    /// Allows the item to be a const declaration or static
+    pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private
     /// even though the function is public, the bool indicates false = opaque, true = visible
     /// the body is public
@@ -882,6 +874,28 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
+pub enum ItemKind {
+    Function,
+    /// This function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    Const,
+    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
+    /// The main difference is what happens when you reference the static or const.
+    /// For a const, it's as if you call the function every time you reference it.
+    /// For a static, it's as if you call the function once at the beginning of the program.
+    /// The difference is most obvious when the item of a type that is not Copy.
+    /// For example, if a const/static has type PCell, then:
+    ///  - If it's a const, it will get a different id() every time it is referenced from code
+    ///  - If it's a static, every use will have the same id()
+    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
+    /// so they can only be deterministic, right? But for something like cell, the 'id'
+    /// (the nondeterministic part) is purely ghost.
+    Static,
 }
 
 /// Single field in a variant
@@ -966,6 +980,13 @@ pub enum WellKnownItem {
     DropTrait,
 }
 
+pub type Module = Arc<Spanned<ModuleX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct ModuleX {
+    pub path: Path,
+    // add attrs here
+}
+
 /// An entire crate
 pub type Krate = Arc<KrateX>;
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -981,7 +1002,7 @@ pub struct KrateX {
     /// All associated type impls in the crate
     pub assoc_type_impls: Vec<AssocTypeImpl>,
     /// List of all modules in the crate
-    pub module_ids: Vec<Path>,
+    pub modules: Vec<Module>,
     /// List of all 'external' functions in the crate (only useful for diagnostics)
     pub external_fns: Vec<Fun>,
     /// List of all 'external' types in the crate (only useful for diagnostics)

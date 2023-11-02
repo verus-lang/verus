@@ -6,7 +6,7 @@ pub use air::ast_util::{ident_binder, str_ident};
 
 fn check_expr_simplified(_scope_map: &VisitorScopeMap, expr: &Expr) -> Result<(), ()> {
     match expr.x {
-        ExprX::ConstVar(_)
+        ExprX::ConstVar(..)
         | ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _)
         | ExprX::Tuple(_)
         | ExprX::Match(..) => Err(()),
@@ -31,7 +31,7 @@ pub fn check_krate_simplified(krate: &Krate) {
         traits: _,
         trait_impls: _,
         assoc_type_impls: _,
-        module_ids: _,
+        modules: _,
         external_fns: _,
         external_types: _,
         path_as_rust_names: _,
@@ -117,7 +117,7 @@ pub fn check_krate(krate: &Krate) {
         traits: _,
         trait_impls: _,
         assoc_type_impls: _,
-        module_ids: _,
+        modules: _,
         external_fns: _,
         external_types: _,
         path_as_rust_names: _,

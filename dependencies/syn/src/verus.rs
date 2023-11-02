@@ -220,6 +220,18 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct RevealHide {
+        pub attrs: Vec<Attribute>,
+        pub reveal_token: Option<Token![reveal]>,
+        pub reveal_with_fuel_token: Option<Token![reveal_with_fuel]>,
+        pub hide_token: Option<Token![hide]>,
+        pub paren_token: token::Paren,
+        pub path: Box<ExprPath>,
+        pub fuel: Option<(Token![,], Box<Expr>)>,
+    }
+}
+
+ast_struct! {
     pub struct View {
         pub attrs: Vec<Attribute>,
         pub expr: Box<Expr>,
@@ -249,6 +261,24 @@ ast_struct! {
     pub struct BigOr {
         /// exprs.len() must be >= 1
         pub exprs: Vec<(Token![|||], Box<Expr>)>,
+    }
+}
+
+ast_struct! {
+    pub struct ExprIs {
+        pub attrs: Vec<Attribute>,
+        pub base: Box<Expr>,
+        pub is_token: Token![is],
+        pub variant_ident: Box<Ident>,
+    }
+}
+
+ast_struct! {
+    pub struct ExprHas {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub has_token: Token![has],
+        pub rhs: Box<Expr>,
     }
 }
 
@@ -719,7 +749,6 @@ pub mod parsing {
             let mut attrs = Vec::new();
             let assert_token: Token![assert] = input.parse()?;
             let forall_token: Token![forall] = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
             let or1_token: Token![|] = input.parse()?;
             let mut inputs = Punctuated::new();
             while !input.peek(Token![|]) {
@@ -742,6 +771,7 @@ pub mod parsing {
                 inputs.push_punct(comma);
             }
             let or2_token: Token![|] = input.parse()?;
+            attr::parsing::parse_inner(input, &mut attrs)?;
             let expr = input.parse()?;
             let implies = if input.peek(Token![implies]) {
                 let implies_token = input.parse()?;
@@ -766,10 +796,51 @@ pub mod parsing {
             })
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for RevealHide {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let lookahead = input.lookahead1();
+            let mut reveal_token = None;
+            let mut reveal_with_fuel_token = None;
+            let mut hide_token = None;
+            if lookahead.peek(Token![reveal]) {
+                reveal_token = input.parse()?;
+            } else if lookahead.peek(Token![reveal_with_fuel]) {
+                reveal_with_fuel_token = input.parse()?;
+            } else if lookahead.peek(Token![hide]) {
+                hide_token = input.parse()?;
+            } else {
+                return Err(lookahead.error());
+            }
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let path = content.parse()?;
+
+            let fuel = if reveal_with_fuel_token.is_some() && content.peek(Token![,]) {
+                Some((content.parse()?, content.parse()?))
+            } else {
+                None
+            };
+
+            Ok(RevealHide {
+                attrs,
+                reveal_token,
+                reveal_with_fuel_token,
+                hide_token,
+                paren_token,
+                path,
+                fuel,
+            })
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
 mod printing {
+    use crate::expr::printing::outer_attrs_to_tokens;
+
     use super::*;
     use proc_macro2::TokenStream;
     use quote::ToTokens;
@@ -987,6 +1058,26 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for RevealHide {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
+            if let Some(reveal_token) = &self.reveal_token {
+                reveal_token.to_tokens(tokens);
+            }
+            if let Some(reveal_with_fuel_token) = &self.reveal_with_fuel_token {
+                reveal_with_fuel_token.to_tokens(tokens);
+            }
+            self.paren_token.surround(tokens, |tokens| {
+                self.path.to_tokens(tokens);
+                if let Some((comma_token, expr)) = &self.fuel {
+                    comma_token.to_tokens(tokens);
+                    expr.to_tokens(tokens);
+                }
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for View {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
@@ -1023,6 +1114,26 @@ mod printing {
                 prefix.to_tokens(tokens);
                 expr.to_tokens(tokens);
             }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprIs {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.base.to_tokens(tokens);
+            self.is_token.to_tokens(tokens);
+            self.variant_ident.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprHas {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.has_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
         }
     }
 }

@@ -294,3 +294,50 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
 }
+
+test_verify_one_file! {
+    #[test] atomic_trait_disallowed_issue754 verus_code!{
+        trait Tr {
+            #[verifier(atomic)]
+            fn stuff();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "'atomic' not supported for trait functions")
+}
+
+test_verify_one_file! {
+    #[test] atomic_trait_allowed2_issue754 verus_code!{
+        trait Tr {
+            fn stuff();
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            #[verifier(atomic)]
+            fn stuff();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "'atomic' not supported for trait functions")
+}
+
+test_verify_one_file! {
+    #[test] atomic_recursion1 verus_code!{
+        #[verifier(atomic)]
+        fn stuff() {
+            stuff();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+}
+
+test_verify_one_file! {
+    #[test] atomic_recursion2 verus_code!{
+        #[verifier(atomic)]
+        fn stuff1() {
+            stuff2();
+        }
+
+        #[verifier(atomic)]
+        fn stuff2() {
+            stuff1();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+}

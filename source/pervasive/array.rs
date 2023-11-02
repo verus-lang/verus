@@ -10,13 +10,28 @@ pub trait ArrayAdditionalSpecFns<T> {
    spec fn spec_index(&self, i: int) -> T;
 }
 
-impl<T> ArrayAdditionalSpecFns<T> for [T] {
+#[verifier::external]
+pub trait ArrayAdditionalExecFns<T> {
+   fn set(&mut self, idx: usize, t: T);
+}
+
+impl<T, const N: usize> ArrayAdditionalSpecFns<T> for [T; N] {
     spec fn view(&self) -> Seq<T>;
 
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
     }
+}
+
+impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
+   #[verifier::external_body]
+   fn set(&mut self, idx: usize, t: T)
+      requires 0 <= idx < N,
+      ensures self@ == old(self)@.update(idx as int, t)
+   {
+      self[idx] = t;
+   }
 }
 
 #[verifier(external_body)]
@@ -26,5 +41,13 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
 {
     &ar[i]
 }
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
+    ensures (#[trigger] ar@.len()) == N,
+{
+}
+
 
 }

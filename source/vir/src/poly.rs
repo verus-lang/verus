@@ -228,7 +228,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_poly(_ctx, t))),
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
-        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstInt(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -321,6 +321,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarAt(x.clone(), *at))
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
+        ExprX::StaticVar(_) => expr.clone(),
         ExprX::Call(target, exprs) => match target {
             CallTarget::Fun(_, name, _, _, _) => {
                 let function = &ctx.func_map[name].x;
@@ -489,7 +490,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.push_scope(true);
             for binder in binders.iter() {
                 let native = natives.contains(&binder.name);
-                let typ = if native || !quant.boxed_params {
+                let typ = if native {
                     coerce_typ_to_native(ctx, &binder.a)
                 } else {
                     coerce_typ_to_poly(ctx, &binder.a)
@@ -762,7 +763,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease_by,
         broadcast_forall,
         mask_spec,
-        is_const,
+        item_kind,
         publish,
         attrs,
         body,
@@ -780,7 +781,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let is_trait = !matches!(kind, FunctionKind::Static);
 
     // Return type is left native (except for trait methods)
-    let ret_typ = if is_trait && function.x.has_return() {
+    let ret_typ = if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
         coerce_typ_to_poly(ctx, &ret.x.typ)
     } else {
         coerce_typ_to_native(ctx, &ret.x.typ)
@@ -838,7 +839,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     };
 
     let body = if let Some(body) = body {
-        if is_trait && function.x.has_return() {
+        if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
             Some(coerce_expr_to_poly(ctx, &poly_expr(ctx, &mut state, body)))
         } else {
             Some(coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, body)))
@@ -909,7 +910,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease_by: decrease_by.clone(),
         broadcast_forall,
         mask_spec,
-        is_const: *is_const,
+        item_kind: *item_kind,
         publish: *publish,
         attrs: attrs.clone(),
         body,
@@ -945,7 +946,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules: module_ids,
         external_fns,
         external_types,
         path_as_rust_names,
@@ -956,7 +957,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         traits: traits.clone(),
         trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| poly_assoc_type_impl(ctx, a)).collect(),
-        module_ids: module_ids.clone(),
+        modules: module_ids.clone(),
         external_fns: external_fns.clone(),
         external_types: external_types.clone(),
         path_as_rust_names: path_as_rust_names.clone(),

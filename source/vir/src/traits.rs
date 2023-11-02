@@ -1,12 +1,14 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBounds, Ident,
-    Krate, Mode, Path, SpannedTyped, Typ, TypX, Typs, VirErr, WellKnownItem,
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBounds, Krate,
+    Mode, Path, SpannedTyped, TraitImpl, TypX, Typs, VirErr, WellKnownItem,
 };
-use crate::ast_util::{error, path_as_friendly_rust_name};
+use crate::ast_util::path_as_friendly_rust_name;
+use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
+use crate::messages::{error, Span};
 use crate::sst_to_air::typ_to_ids;
-use air::ast::{Command, CommandX, Commands, DeclX, Span};
+use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -55,17 +57,17 @@ pub fn demote_foreign_traits(
             } else {
                 if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
                     if !function.x.require.is_empty() {
-                        return error(
+                        return Err(error(
                             &function.span,
                             "requires are not allowed on the implementation for Drop",
-                        );
+                        ));
                     }
                     if !matches!(&function.x.mask_spec, crate::ast::MaskSpec::InvariantOpens(es) if es.len() == 0)
                     {
-                        return error(
+                        return Err(error(
                             &function.span,
                             "the implementation for Drop must be marked opens_invariants none",
-                        );
+                        ));
                     }
                 }
                 check_modes(function, &function.span)?;
@@ -78,10 +80,10 @@ pub fn demote_foreign_traits(
             let our_trait = traits.contains(trait_path);
             let mut functionx = function.x.clone();
             if our_trait {
-                return error(
+                return Err(error(
                     &function.x.proxy.as_ref().unwrap().span,
                     "external_fn_specification can only be used on trait functions when the trait itself is external",
-                );
+                ));
             } else {
                 check_modes(function, &function.x.proxy.as_ref().unwrap().span)?;
                 functionx.kind = FunctionKind::Static;
@@ -89,7 +91,7 @@ pub fn demote_foreign_traits(
             *function = Spanned::new(function.span.clone(), functionx);
         }
 
-        let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+        let mut map: VisitorScopeMap = ScopeMap::new();
         *function = crate::ast_visitor::map_function_visitor_env(
             &function,
             &mut map,
@@ -105,21 +107,21 @@ pub fn demote_foreign_traits(
 
 fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
     if function.x.mode != Mode::Exec {
-        return error(span, "function for external trait must have mode 'exec'");
+        return Err(error(span, "function for external trait must have mode 'exec'"));
     }
     for param in function.x.params.iter() {
         if param.x.mode != Mode::Exec {
-            return error(
+            return Err(error(
                 span,
                 "function for external trait must have all parameters have mode 'exec'",
-            );
+            ));
         }
     }
     if function.x.ret.x.mode != Mode::Exec {
-        return error(
+        return Err(error(
             span,
             "function for external trait must have all parameters have mode 'exec'",
-        );
+        ));
     }
     Ok(())
 }
@@ -234,44 +236,39 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
             commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
         }
     }
+    Arc::new(commands)
+}
 
-    // Axioms for bounds predicates (based on trait impls)
-    for imp in krate.trait_impls.iter() {
-        assert!(ctx.bound_traits.contains(&imp.x.trait_path));
-        // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
-        // Example:
-        //   trait T1 {}
-        //   trait T2<A> {}
-        //   impl<A: T1> T2<Set<A>> for S<Seq<A>>
-        // -->
-        //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
-        let tr_bound = if let Some(tr_bound) =
-            trait_bound_to_air(ctx, &imp.x.trait_path, &imp.x.trait_typ_args)
-        {
+pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
+    // Axiom for bounds predicates (based on trait impls)
+    assert!(ctx.bound_traits.contains(&imp.x.trait_path));
+    // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
+    // Example:
+    //   trait T1 {}
+    //   trait T2<A> {}
+    //   impl<A: T1> T2<Set<A>> for S<Seq<A>>
+    // -->
+    //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
+    let tr_bound =
+        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &imp.x.trait_typ_args) {
             tr_bound
         } else {
-            continue;
+            return Arc::new(vec![]);
         };
-        let name = format!(
-            "{}_{}",
-            path_as_friendly_rust_name(&imp.x.impl_path),
-            crate::def::QID_TRAIT_IMPL
-        );
-        let trigs = vec![tr_bound.clone()];
-        let bind = crate::func_to_air::func_bind_trig(
-            ctx,
-            name,
-            &imp.x.typ_params,
-            &Arc::new(vec![]),
-            &trigs,
-            false,
-        );
-        let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
-        let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
-        let forall = mk_bind_expr(&bind, &imply);
-        let axiom = Arc::new(DeclX::Axiom(forall));
-        commands.push(Arc::new(CommandX::Global(axiom)));
-    }
-
-    Arc::new(commands)
+    let name =
+        format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
+    let trigs = vec![tr_bound.clone()];
+    let bind = crate::func_to_air::func_bind_trig(
+        ctx,
+        name,
+        &imp.x.typ_params,
+        &Arc::new(vec![]),
+        &trigs,
+        false,
+    );
+    let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
+    let forall = mk_bind_expr(&bind, &imply);
+    let axiom = Arc::new(DeclX::Axiom(forall));
+    Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }

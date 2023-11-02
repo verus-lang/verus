@@ -396,11 +396,17 @@ impl PartialEq for Expr {
             #[cfg(feature = "full")]
             (Expr::AssertForall(self0), Expr::AssertForall(other0)) => self0 == other0,
             #[cfg(feature = "full")]
+            (Expr::RevealHide(self0), Expr::RevealHide(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
             (Expr::View(self0), Expr::View(other0)) => self0 == other0,
             #[cfg(feature = "full")]
             (Expr::BigAnd(self0), Expr::BigAnd(other0)) => self0 == other0,
             #[cfg(feature = "full")]
             (Expr::BigOr(self0), Expr::BigOr(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::Is(self0), Expr::Is(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::Has(self0), Expr::Has(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -575,6 +581,14 @@ impl PartialEq for ExprGroup {
         self.attrs == other.attrs && self.expr == other.expr
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ExprHas {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ExprHas {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.lhs == other.lhs && self.rhs == other.rhs
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ExprIf {}
@@ -595,6 +609,15 @@ impl Eq for ExprIndex {}
 impl PartialEq for ExprIndex {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.expr == other.expr && self.index == other.index
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ExprIs {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ExprIs {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.base == other.base
+            && self.variant_ident == other.variant_ident
     }
 }
 #[cfg(feature = "full")]
@@ -1232,7 +1255,9 @@ impl PartialEq for ItemConst {
         self.attrs == other.attrs && self.vis == other.vis
             && self.publish == other.publish && self.mode == other.mode
             && self.ident == other.ident && self.ty == other.ty
-            && self.expr == other.expr
+            && self.ensures == other.ensures && self.eq_token == other.eq_token
+            && self.block == other.block && self.expr == other.expr
+            && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]
@@ -1333,8 +1358,11 @@ impl Eq for ItemStatic {}
 impl PartialEq for ItemStatic {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis
+            && self.publish == other.publish && self.mode == other.mode
             && self.mutability == other.mutability && self.ident == other.ident
-            && self.ty == other.ty && self.expr == other.expr
+            && self.ty == other.ty && self.ensures == other.ensures
+            && self.eq_token == other.eq_token && self.block == other.block
+            && self.expr == other.expr && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]
@@ -1994,6 +2022,17 @@ impl PartialEq for ReturnType {
             ) => self1 == other1 && self2 == other2 && self3 == other3,
             _ => false,
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for RevealHide {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for RevealHide {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.reveal_token == other.reveal_token
+            && self.reveal_with_fuel_token == other.reveal_with_fuel_token
+            && self.hide_token == other.hide_token && self.path == other.path
+            && self.fuel == other.fuel
     }
 }
 #[cfg(feature = "full")]

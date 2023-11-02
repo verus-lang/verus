@@ -4,9 +4,10 @@ use crate::ast::{
 };
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
+use crate::messages::Span;
 use crate::prelude::ArchWordBits;
 use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Ident, Span};
+use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -102,6 +103,7 @@ fn subst_exp_rec(
     match &exp.x {
         ExpX::Const(..)
         | ExpX::Loc(..)
+        | ExpX::StaticVar(..)
         | ExpX::Old(..)
         | ExpX::Call(..)
         | ExpX::CallLambda(..)
@@ -277,8 +279,9 @@ impl ExpX {
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
+            StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
             Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(CallFun::Fun(fun, _) | CallFun::CheckTermination(fun), _, exps) => {
+            Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
                 let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }

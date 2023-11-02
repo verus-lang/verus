@@ -1,7 +1,8 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::messages::Span;
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
-use air::ast::{Commands, Ident, Span};
+use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -59,6 +60,7 @@ const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const PREFIX_STATIC: &str = "static%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -513,12 +515,18 @@ pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
 }
 
 // Generate a unique internal quantifier ID
-pub fn new_internal_qid(name: String) -> Option<Ident> {
+pub fn new_internal_qid(ctx: &crate::context::Ctx, name: String) -> Option<Ident> {
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars
     let name = str::replace(&name, ":", "_");
     let name = str::replace(&name, "%", "__");
     let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
+
+    if let Some(fun) = ctx.fun.as_ref() {
+        let bnd_info = crate::sst::BndInfo { fun: fun.current_fun.clone(), user: None };
+        ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+    }
+
     Some(Arc::new(qid))
 }
 
@@ -566,13 +574,13 @@ impl<X: Debug> Debug for Spanned<X> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverChoice {
     DefaultProver,
-    Spinoff,
+    Nonlinear,
     BitVector,
     Singular,
 }
 
 pub struct CommandsWithContextX {
-    pub span: air::ast::Span,
+    pub span: crate::messages::Span,
     pub desc: String,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
@@ -605,22 +613,6 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
         InvAtomicity::NonAtomic => Arc::new("LocalInvariant".to_string()),
     }
 }
-
-// TODO unused?
-// TODO pub fn datatype_invariant_path(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Path {
-// TODO     Arc::new(PathX {
-// TODO         krate: vstd_crate_name.clone(),
-// TODO         segments: Arc::new(if vstd_crate_name.is_some() {
-// TODO             vec![Arc::new("invariant".to_string()), atomicity_type_name(atomicity)]
-// TODO         } else {
-// TODO             vec![
-// TODO                 Arc::new("pervasive".to_string()),
-// TODO                 Arc::new("invariant".to_string()),
-// TODO                 atomicity_type_name(atomicity),
-// TODO             ]
-// TODO         }),
-// TODO     })
-// TODO }
 
 pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
@@ -713,4 +705,8 @@ pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
             Arc::new("exec_nonstatic_call".to_string()),
         ]),
     })
+}
+
+pub fn static_name(fun: &Fun) -> Ident {
+    Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
 }

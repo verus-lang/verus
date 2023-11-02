@@ -8,6 +8,7 @@ use crate::pervasive::*;
 use crate::seq::*;
 #[allow(unused_imports)]
 use crate::set::Set;
+#[cfg(verus_keep_ghost)]
 use crate::set_lib::lemma_set_properties;
 #[allow(unused_imports)]
 use crate::multiset::Multiset;
@@ -167,7 +168,7 @@ impl<A> Seq<A> {
             self.filter(pred).len() <= self.len(),
         decreases self.len()
     {
-        reveal(Self::filter);
+        reveal(Seq::filter);
         let out = self.filter(pred);
         if 0 < self.len() {
             self.drop_last().filter_lemma(pred);
@@ -205,7 +206,7 @@ impl<A> Seq<A> {
         (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
     decreases b.len()
     {
-        reveal(Self::filter);
+        reveal(Seq::filter);
         if 0 < b.len()
         {
             Self::drop_last_distributes_over_add(a, b);
@@ -214,25 +215,37 @@ impl<A> Seq<A> {
                 Self::push_distributes_over_add(a.filter(pred), b.drop_last().filter(pred), b.last());
             }
         } else {
-            Self::add_empty(a, b);
-            Self::add_empty(a.filter(pred), b.filter(pred));
+            Self::add_empty_right(a, b);
+            Self::add_empty_right(a.filter(pred), b.filter(pred));
         }
     }
 
-    pub proof fn add_empty(a: Self, b: Self)
-    requires
-        b.len() == 0,
-    ensures
-        a+b == a,
+    #[verifier(broadcast_forall)]
+    pub proof fn add_empty_left(a: Self, b: Self)
+        requires
+            a.len() == 0,
+        ensures
+            a + b == b,
     {
-        assert_seqs_equal!(a+b, a);
+        assert(a + b =~= b);
     }
 
-    pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
-    ensures
-        (a+b).push(elt) == a+b.push(elt),
+    #[verifier(broadcast_forall)]
+    pub proof fn add_empty_right(a: Self, b: Self)
+        requires
+            b.len() == 0,
+        ensures
+            a + b == a,
     {
-        assert_seqs_equal!((a+b).push(elt), a+b.push(elt));
+        assert(a + b =~= a);
+    }
+
+    #[verifier(broadcast_forall)]
+    pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
+        ensures
+            (a + b).push(elt) == a + b.push(elt),
+    {
+        assert((a + b).push(elt) =~= a + b.push(elt));
     }
 
     #[verifier(external_body)]
@@ -245,28 +258,6 @@ impl<A> Seq<A> {
     // need to be axioms!
 //        assert forall |a:Self, b:Self, pred:FnSpec(A)->bool| (a+b).filter(pred) == a.filter(pred) + b.filter(pred) by {
 //            Self::filter_distributes_over_add(a, b, pred);
-//        }
-    }
-
-    #[verifier(external_body)]
-    #[verifier(broadcast_forall)]
-    pub proof fn add_empty_broacast(a:Self, b:Self)
-    ensures
-        b.len()==0 ==> a+b == a
-    {
-//        assert forall |a:Self, b:Self| b.len()==0 implies a+b == a {
-//            add_empty(a, b);
-//        }
-    }
-
-    #[verifier(external_body)]
-    #[verifier(broadcast_forall)]
-    pub proof fn push_distributes_over_add_broacast(a:Self, b:Self, elt: A)
-    ensures
-        (a+b).push(elt) == a+b.push(elt),
-    {
-//        assert forall |a:Self, b:Self, elt: A| (a+b).push(elt) == a+b.push(elt) {
-//            push_distributes_over_add(a, b, elt);
 //        }
     }
 
@@ -602,7 +593,7 @@ impl<A> Seq<A> {
           self.fold_left_alt(b, f),
         decreases k,
     {
-        reveal_with_fuel(Self::fold_left_alt::<B>, 2);
+        reveal_with_fuel(Seq::fold_left_alt, 2);
         if k == 1 {
             // trivial base case
         } else {
@@ -628,8 +619,8 @@ impl<A> Seq<A> {
         ensures self.fold_left(b, f) == self.fold_left_alt(b, f),
         decreases self.len(),
     {
-        reveal_with_fuel(Self::fold_left::<B>, 2);
-        reveal_with_fuel(Self::fold_left_alt::<B>, 2);
+        reveal_with_fuel(Seq::fold_left, 2);
+        reveal_with_fuel(Seq::fold_left_alt, 2);
         if self.len() <= 1 {
             // trivial base cases
         } else {
@@ -677,7 +668,7 @@ impl<A> Seq<A> {
           self.fold_right(f, b),
         decreases self.len(),
     {
-        reveal_with_fuel(Self::fold_right::<B>, 2);
+        reveal_with_fuel(Seq::fold_right, 2);
         if k == self.len() - 1 {
             // trivial base case
         } else {
@@ -702,8 +693,8 @@ impl<A> Seq<A> {
         ensures self.fold_right(f, b) == self.fold_right_alt(f, b),
         decreases self.len(),
     {
-        reveal_with_fuel(Self::fold_right::<B>, 2);
-        reveal_with_fuel(Self::fold_right_alt::<B>, 2);
+        reveal_with_fuel(Seq::fold_right, 2);
+        reveal_with_fuel(Seq::fold_right_alt, 2);
         if self.len() <= 1 {
             // trivial base cases
         } else {
@@ -958,8 +949,8 @@ impl<A> Seq<Seq<A>>{
         ensures
             self.len() == 1 ==> self.flatten() == self.first(),
     {
-        if self.len() == 1
-        {
+        reveal(Seq::add_empty_right);
+        if self.len() == 1 {
             assert(self.flatten() =~= self.first().add(self.drop_first().flatten()));
         }
     }
@@ -1014,8 +1005,9 @@ impl<A> Seq<Seq<A>>{
         decreases
             self.len(),
     {
-        if self.len() == 0 {}
-        else {
+        reveal(Seq::add_empty_right);
+        reveal(Seq::push_distributes_over_add);
+        if self.len() != 0 {
             self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
             seq![self.last()].lemma_flatten_one_element();
             lemma_flatten_concat(self.drop_last(), seq![self.last()]);

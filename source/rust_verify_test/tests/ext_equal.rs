@@ -219,8 +219,8 @@ test_verify_one_file! {
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
-            let x = List::Cons(s1, box List::Cons(s2, box List::Nil));
-            let y = List::Cons(s3, box List::Cons(s4, box List::Nil));
+            let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
+            let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
             assume(s1.len() == 1);
             assume(s2.len() == 1);
             assume(s3.len() == 1);
@@ -239,8 +239,8 @@ test_verify_one_file! {
         // omit #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
-            let x = List::Cons(s1, box List::Cons(s2, box List::Nil));
-            let y = List::Cons(s3, box List::Cons(s4, box List::Nil));
+            let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
+            let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
             assume(s1.len() == 1);
             assume(s2.len() == 1);
             assume(s3.len() == 1);
@@ -260,8 +260,8 @@ test_verify_one_file! {
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
-            let x = List::Cons(s1, box List::Cons(s2, box List::Nil));
-            let y = List::Cons(s3, box List::Cons(s4, box List::Nil));
+            let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
+            let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
             assume(s1.len() == 1);
             assume(s2.len() == 1);
             assume(s3.len() == 1);
@@ -280,8 +280,8 @@ test_verify_one_file! {
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
-            let x = List::Cons(s1, box List::Cons(s2, box List::Nil));
-            let y = List::Cons(s3, box List::Cons(s4, box List::Nil));
+            let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
+            let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
             assume(s1.len() == 1);
             assume(s2.len() == 1);
             assume(s3.len() == 1);
@@ -300,8 +300,8 @@ test_verify_one_file! {
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
-            let x = List::Cons(s1, box List::Cons(s2, box List::Nil));
-            let y = List::Cons(s3, box List::Cons(s4, box List::Nil));
+            let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
+            let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
             assume(s1.len() == 1);
             assume(s2.len() == 1);
             assume(s3.len() == 1);

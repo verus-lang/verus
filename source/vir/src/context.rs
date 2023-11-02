@@ -1,16 +1,17 @@
 use crate::ast::{
-    Datatype, Fun, Function, GenericBounds, Ident, InferMode, IntRange, Krate, Mode, Path, Trait,
-    TypX, Variants, VirErr,
+    Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path, Trait, TypX,
+    Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
+use crate::messages::{error, Span};
 use crate::poly::MonoTyp;
 use crate::prelude::ArchWordBits;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
-use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
+use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::str_typ;
 use num_bigint::BigUint;
 use std::cell::Cell;
@@ -43,22 +44,24 @@ pub struct GlobalCtx {
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub(crate) inferred_modes: Arc<HashMap<InferMode, Mode>>,
-    pub(crate) rlimit: u32,
+    pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) vstd_crate_name: Option<Ident>, // already an arc
     pub arch: ArchWordBits,
 }
 
 // Context for verifying one function
+#[derive(Debug)]
 pub struct FunctionCtx {
-    // false normally, true if we're just checking recommends
-    pub checking_recommends: bool,
-    // false normally, true if we're just checking recommends for a non-spec function
-    pub checking_recommends_for_non_spec: bool,
+    // false normally, true if we're just checking spec preconditions
+    pub checking_spec_preconditions: bool,
+    // false normally, true if we're just checking spec preconditions for a non-spec function
+    pub checking_spec_preconditions_for_non_spec: bool,
+    // false normally, true if we're just checking decreases of recursive spec function
+    pub checking_spec_decreases: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
-    // used to create quantifier identifiers and for checking_recommends
+    // used to create quantifier identifiers and for checking_spec_preconditions
     pub current_fun: Fun,
 }
 
@@ -87,20 +90,27 @@ pub struct Ctx {
     // proof debug purposes
     pub debug: bool,
     pub expand_flag: bool,
-    pub debug_expand_targets: Vec<air::messages::Message>,
+    pub debug_expand_targets: Vec<crate::messages::Message>,
 }
 
 impl Ctx {
-    pub fn checking_recommends(&self) -> bool {
+    pub fn checking_spec_preconditions(&self) -> bool {
         match self.fun {
-            Some(FunctionCtx { checking_recommends: true, .. }) => true,
+            Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             _ => false,
         }
     }
 
-    pub fn checking_recommends_for_non_spec(&self) -> bool {
+    pub fn checking_spec_preconditions_for_non_spec(&self) -> bool {
         match self.fun {
-            Some(FunctionCtx { checking_recommends_for_non_spec: true, .. }) => true,
+            Some(FunctionCtx { checking_spec_preconditions_for_non_spec: true, .. }) => true,
+            _ => false,
+        }
+    }
+
+    pub fn checking_spec_decreases(&self) -> bool {
+        match self.fun {
+            Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
             _ => false,
         }
     }
@@ -178,8 +188,7 @@ impl GlobalCtx {
     pub fn new(
         krate: &Krate,
         no_span: Span,
-        inferred_modes: HashMap<InferMode, Mode>,
-        rlimit: u32,
+        rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
         arch: ArchWordBits,
@@ -200,6 +209,48 @@ impl GlobalCtx {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
         for f in &krate.functions {
+            // Heuristic: add all external_body functions first.
+            // This is currently needed because external_body broadcast_forall functions
+            // are currently implicitly imported.
+            // In the future, this might become less important; we could remove this heuristic.
+            if f.x.body.is_none() {
+                func_call_graph.add_node(Node::Fun(f.x.name.clone()));
+            }
+        }
+        for f in &krate.functions {
+            // HACK: put spec functions early, because the call graph is currently missing some
+            // dependencies that should explicitly force these functions to appear early.
+            // TODO: add these dependencies to the call graph.
+            if f.x.mode == Mode::Spec {
+                func_call_graph.add_node(Node::Fun(f.x.name.clone()));
+            }
+        }
+        for t in &krate.trait_impls {
+            // Heuristic: put trait impls first, because functions don't necessarily have
+            // explicit dependencies on all the trait impls when they are implicitly
+            // used to satisfy broadcast_forall trait bounds.
+            // (This arises because unlike in Coq or F*, Rust programs don't define a
+            // total ordering on declarations, and the call graph only provides a partial order.)
+            // test_broadcast_forall2 in rust_verify_test/tests/traits.rs is one (contrived) example
+            // that would fail without this heuristic.
+            // A simpler example would be a broadcast_forall function with a type parameter
+            // "A: View", and someone might rely on this broadcast_forall, instantiating A with
+            // some struct S that implements View, but without actually calling any View methods
+            // on S:
+            //   trait View { spec fn view(...) -> ...; }
+            //   struct S;
+            //   impl View for S { ... }
+            //   #[verifier::broadcast_forall] fn b<A: View>(a: A) ensures foo(a) { ... }
+            //   fn test(s: S) { assert(foo(s)); }
+            // Here, there are no explicit dependencies in the call graph that force
+            // TraitImpl for S: View to appear before "test" in the generated AIR code.
+            // If the TraitImpl axiom for S: View appeared after test,
+            // then test might fail because the broadcast_forall b for s isn't enabled
+            // without S: View.  The programmer would have to provide some explicit ordering,
+            // such as using s.view() in test so that test depends on S: View, to fix this.
+            func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
+        }
+        for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, f)?;
@@ -214,12 +265,18 @@ impl GlobalCtx {
                     if f_node != g_node {
                         let g =
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
-                        return Err(air::messages::error(
-                            "found cyclic dependency in decreases_by function",
+                        return Err(crate::messages::error(
                             &f.span,
+                            "found cyclic dependency in decreases_by function",
                         )
                         .secondary_span(&g.unwrap().span));
                     }
+                }
+            }
+            if f.x.attrs.atomic {
+                let f_node = Node::Fun(f.x.name.clone());
+                if func_call_graph.node_is_in_cycle(&f_node) {
+                    return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
                 }
             }
         }
@@ -236,7 +293,6 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             qid_map,
-            inferred_modes: Arc::new(inferred_modes),
             rlimit,
             interpreter_log,
             vstd_crate_name,
@@ -258,7 +314,6 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
             qid_map,
-            inferred_modes: self.inferred_modes.clone(),
             rlimit: self.rlimit,
             interpreter_log,
             vstd_crate_name: self.vstd_crate_name.clone(),
@@ -339,7 +394,7 @@ impl Ctx {
 
     pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
         let nodes = crate::prelude::prelude_nodes(prelude_config);
-        air::parser::Parser::new()
+        air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")
     }
@@ -352,8 +407,8 @@ impl Ctx {
         let mut ids: Vec<air::ast::Expr> = Vec::new();
         let mut commands: Vec<Command> = Vec::new();
         for function in &self.functions {
-            match (function.x.mode, function.x.body.as_ref()) {
-                (Mode::Spec, Some(_)) => {
+            match (function.x.mode, function.x.body.as_ref(), function.x.attrs.broadcast_forall) {
+                (Mode::Spec, Some(_), false) | (Mode::Proof, Some(_), true) => {
                     let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&function.x.name));
                     ids.push(air::ast_util::ident_var(&id));
                     let typ_fuel_id = str_typ(&FUEL_ID);

@@ -3,6 +3,136 @@ use builtin::*;
 use builtin_macros::*;
 use crate::prelude::*;
 
+macro_rules! num_specs {
+    ($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr) => {
+        verus!{
+
+        // Unsigned ints (u8, u16, etc.)
+
+        // Put in separate module to avoid name collisions.
+        // Names don't matter - the user uses the stdlib functions.
+        mod $modname_u {
+            use super::*;
+
+            pub open spec fn wrapping_add(x: $uN, y: $uN) -> $uN {
+                if x + y > <$uN>::MAX {
+                    (x + y - $range) as $uN
+                } else {
+                    (x + y) as $uN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_add)]
+            pub fn ex_wrapping_add(x: $uN, y: $uN) -> (res: $uN)
+                ensures res == wrapping_add(x, y)
+            {
+                x.wrapping_add(y)
+            }
+
+            pub open spec fn wrapping_add_signed(x: $uN, y: $iN) -> $uN {
+                if x + y > <$uN>::MAX {
+                    (x + y - $range) as $uN
+                } else if x + y < 0 {
+                    (x + y + $range) as $uN
+                } else {
+                    (x + y) as $uN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_add_signed)]
+            pub fn ex_wrapping_add_signed(x: $uN, y: $iN) -> (res: $uN)
+                ensures res == wrapping_add_signed(x, y)
+            {
+                x.wrapping_add_signed(y)
+            }
+
+            pub open spec fn wrapping_sub(x: $uN, y: $uN) -> $uN {
+                if x - y < 0 {
+                    (x - y + $range) as $uN
+                } else {
+                    (x - y) as $uN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_sub)]
+            pub fn ex_wrapping_sub(x: $uN, y: $uN) -> (res: $uN)
+                ensures res == wrapping_sub(x, y)
+            {
+                x.wrapping_sub(y)
+            }
+        }
+
+        // Signed ints (i8, i16, etc.)
+
+        mod $modname_i {
+            use super::*;
+
+            pub open spec fn wrapping_add(x: $iN, y: $iN) -> $iN {
+                if x + y > <$iN>::MAX {
+                    (x + y - $range) as $iN
+                } else if x + y < <$iN>::MIN {
+                    (x + y + $range) as $iN
+                } else {
+                    (x + y) as $iN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_add)]
+            pub fn ex_wrapping_add(x: $iN, y: $iN) -> (res: $iN)
+                ensures res == wrapping_add(x, y)
+            {
+                x.wrapping_add(y)
+            }
+
+            pub open spec fn wrapping_add_unsigned(x: $iN, y: $uN) -> $iN {
+                if x + y > <$iN>::MAX {
+                    (x + y - $range) as $iN
+                } else {
+                    (x + y) as $iN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_add_unsigned)]
+            pub fn ex_wrapping_add_unsigned(x: $iN, y: $uN) -> (res: $iN)
+                ensures res == wrapping_add_unsigned(x, y)
+            {
+                x.wrapping_add_unsigned(y)
+            }
+
+            pub open spec fn wrapping_sub(x: $iN, y: $iN) -> $iN {
+                if x - y > <$iN>::MAX {
+                    (x - y - $range) as $iN
+                } else if x - y < <$iN>::MIN {
+                    (x - y + $range) as $iN
+                } else {
+                    (x - y) as $iN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_sub)]
+            pub fn ex_wrapping_sub(x: $iN, y: $iN) -> (res: $iN)
+                ensures res == wrapping_sub(x, y)
+            {
+                x.wrapping_sub(y)
+            }
+        }
+
+        }
+    }
+}
+
+num_specs!(u8, i8, u8_specs, i8_specs, 0x100);
+num_specs!(u16, i16, u16_specs, i16_specs, 0x1_0000);
+num_specs!(u32, i32, u32_specs, i32_specs, 0x1_0000_0000);
+num_specs!(u64, i64, u64_specs, i64_specs, 0x1_0000_0000_0000_0000);
+num_specs!(u128, i128, u128_specs, i128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000);
+
 verus!{
 
 // == u32 methods ==

@@ -195,6 +195,9 @@ pub trait Fold {
     fn fold_expr_group(&mut self, i: ExprGroup) -> ExprGroup {
         fold_expr_group(self, i)
     }
+    fn fold_expr_has(&mut self, i: ExprHas) -> ExprHas {
+        fold_expr_has(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_expr_if(&mut self, i: ExprIf) -> ExprIf {
         fold_expr_if(self, i)
@@ -202,6 +205,9 @@ pub trait Fold {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_expr_index(&mut self, i: ExprIndex) -> ExprIndex {
         fold_expr_index(self, i)
+    }
+    fn fold_expr_is(&mut self, i: ExprIs) -> ExprIs {
+        fold_expr_is(self, i)
     }
     #[cfg(feature = "full")]
     fn fold_expr_let(&mut self, i: ExprLet) -> ExprLet {
@@ -698,6 +704,9 @@ pub trait Fold {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_return_type(&mut self, i: ReturnType) -> ReturnType {
         fold_return_type(self, i)
+    }
+    fn fold_reveal_hide(&mut self, i: RevealHide) -> RevealHide {
+        fold_reveal_hide(self, i)
     }
     #[cfg(feature = "full")]
     fn fold_signature(&mut self, i: Signature) -> Signature {
@@ -1388,9 +1397,12 @@ where
         Expr::AssertForall(_binding_0) => {
             Expr::AssertForall(f.fold_assert_forall(_binding_0))
         }
+        Expr::RevealHide(_binding_0) => Expr::RevealHide(f.fold_reveal_hide(_binding_0)),
         Expr::View(_binding_0) => Expr::View(f.fold_view(_binding_0)),
         Expr::BigAnd(_binding_0) => Expr::BigAnd(f.fold_big_and(_binding_0)),
         Expr::BigOr(_binding_0) => Expr::BigOr(f.fold_big_or(_binding_0)),
+        Expr::Is(_binding_0) => Expr::Is(f.fold_expr_is(_binding_0)),
+        Expr::Has(_binding_0) => Expr::Has(f.fold_expr_has(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1594,6 +1606,17 @@ where
         expr: Box::new(f.fold_expr(*node.expr)),
     }
 }
+pub fn fold_expr_has<F>(f: &mut F, node: ExprHas) -> ExprHas
+where
+    F: Fold + ?Sized,
+{
+    ExprHas {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        lhs: Box::new(f.fold_expr(*node.lhs)),
+        has_token: Token![has](tokens_helper(f, &node.has_token.span)),
+        rhs: Box::new(f.fold_expr(*node.rhs)),
+    }
+}
 #[cfg(feature = "full")]
 pub fn fold_expr_if<F>(f: &mut F, node: ExprIf) -> ExprIf
 where
@@ -1621,6 +1644,17 @@ where
         expr: Box::new(f.fold_expr(*node.expr)),
         bracket_token: Bracket(tokens_helper(f, &node.bracket_token.span)),
         index: Box::new(f.fold_expr(*node.index)),
+    }
+}
+pub fn fold_expr_is<F>(f: &mut F, node: ExprIs) -> ExprIs
+where
+    F: Fold + ?Sized,
+{
+    ExprIs {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        base: Box::new(f.fold_expr(*node.base)),
+        is_token: Token![is](tokens_helper(f, &node.is_token.span)),
+        variant_ident: Box::new(f.fold_ident(*node.variant_ident)),
     }
 }
 #[cfg(feature = "full")]
@@ -2350,9 +2384,11 @@ where
         ident: f.fold_ident(node.ident),
         colon_token: Token![:](tokens_helper(f, &node.colon_token.spans)),
         ty: Box::new(f.fold_type(*node.ty)),
-        eq_token: Token![=](tokens_helper(f, &node.eq_token.spans)),
-        expr: Box::new(f.fold_expr(*node.expr)),
-        semi_token: Token![;](tokens_helper(f, &node.semi_token.spans)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        eq_token: (node.eq_token).map(|it| Token![=](tokens_helper(f, &it.spans))),
+        block: (node.block).map(|it| Box::new(f.fold_block(*it))),
+        expr: (node.expr).map(|it| Box::new(f.fold_expr(*it))),
+        semi_token: (node.semi_token).map(|it| Token![;](tokens_helper(f, &it.spans))),
     }
 }
 #[cfg(feature = "full")]
@@ -2489,14 +2525,18 @@ where
     ItemStatic {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        publish: f.fold_publish(node.publish),
+        mode: f.fold_fn_mode(node.mode),
         static_token: Token![static](tokens_helper(f, &node.static_token.span)),
         mutability: (node.mutability).map(|it| Token![mut](tokens_helper(f, &it.span))),
         ident: f.fold_ident(node.ident),
         colon_token: Token![:](tokens_helper(f, &node.colon_token.spans)),
         ty: Box::new(f.fold_type(*node.ty)),
-        eq_token: Token![=](tokens_helper(f, &node.eq_token.spans)),
-        expr: Box::new(f.fold_expr(*node.expr)),
-        semi_token: Token![;](tokens_helper(f, &node.semi_token.spans)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        eq_token: (node.eq_token).map(|it| Token![=](tokens_helper(f, &it.spans))),
+        block: (node.block).map(|it| Box::new(f.fold_block(*it))),
+        expr: (node.expr).map(|it| Box::new(f.fold_expr(*it))),
+        semi_token: (node.semi_token).map(|it| Token![;](tokens_helper(f, &it.spans))),
     }
 }
 #[cfg(feature = "full")]
@@ -3290,6 +3330,26 @@ where
                 Box::new(f.fold_type(*_binding_3)),
             )
         }
+    }
+}
+pub fn fold_reveal_hide<F>(f: &mut F, node: RevealHide) -> RevealHide
+where
+    F: Fold + ?Sized,
+{
+    RevealHide {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        reveal_token: (node.reveal_token)
+            .map(|it| Token![reveal](tokens_helper(f, &it.span))),
+        reveal_with_fuel_token: (node.reveal_with_fuel_token)
+            .map(|it| Token![reveal_with_fuel](tokens_helper(f, &it.span))),
+        hide_token: (node.hide_token).map(|it| Token![hide](tokens_helper(f, &it.span))),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        path: Box::new(f.fold_expr_path(*node.path)),
+        fuel: (node.fuel)
+            .map(|it| (
+                Token![,](tokens_helper(f, &(it).0.spans)),
+                Box::new(f.fold_expr(*(it).1)),
+            )),
     }
 }
 #[cfg(feature = "full")]

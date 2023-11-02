@@ -3,10 +3,17 @@
 //! as well as runtime functionality with specifications.
 //! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
 
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(unused_parens)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
-#![feature(core_intrinsics)]
+#![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 pub mod pervasive;
 pub mod array;
@@ -30,15 +37,16 @@ pub mod modes;
 pub mod multiset;
 pub mod function;
 pub mod state_machine_internal;
-#[cfg(not(feature = "non_std"))]
+#[cfg(feature = "std")]
 pub mod thread;
-#[cfg(not(feature = "no_global_allocator"))] 
+#[cfg(feature = "alloc")]
 pub mod ptr;
-#[cfg(not(feature = "no_global_allocator"))] 
 pub mod string;
-#[cfg(not(feature = "no_global_allocator"))] 
+#[cfg(feature = "alloc")]
 pub mod vec;
 pub mod view;
+
+#[cfg(verus_keep_ghost)]
 pub mod std_specs;
 pub mod relations;
 

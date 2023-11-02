@@ -1,4 +1,4 @@
-use air::ast::AstId;
+use vir::messages::AstId;
 
 use rustc_hir::HirId;
 use rustc_span::SpanData;
@@ -10,8 +10,10 @@ use vir::modes::ErasureModes;
 pub enum CompilableOperator {
     IntIntrinsic,
     Implies,
-    SmartPtrNew,
-    SmartPtrClone,
+    RcNew,
+    ArcNew,
+    BoxNew,
+    SmartPtrClone { is_method: bool },
     NewStrLit,
     GhostExec,
     TrackedNew,
@@ -20,8 +22,6 @@ pub enum CompilableOperator {
     TrackedGet,
     TrackedBorrow,
     TrackedBorrowMut,
-    GhostSplitTuple,
-    TrackedSplitTuple,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).

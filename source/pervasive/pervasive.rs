@@ -3,7 +3,7 @@ use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
 
-#[cfg(feature = "non_std")]
+#[cfg(not(feature = "std"))]
 macro_rules! println {
     ($($arg:tt)*) => {
     };
@@ -37,11 +37,12 @@ pub proof fn affirm(b: bool)
 // (Note that this function wouldn't even satisfy the borrow-checker if you tried to
 // use it with a `&F` or `&mut F`, but this doesn't matter since it's only used at VIR.)
 
+#[cfg(verus_keep_ghost)]
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
 #[verifier(external_body)]
 #[rustc_diagnostic_item = "verus::pervasive::pervasive::exec_nonstatic_call"]
-fn exec_nonstatic_call<Args: std::marker::Tuple, Output, F>(f: F, args: Args) -> (output: Output)
+fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -> (output: Output)
     where F: FnOnce<Args, Output=Output>
     requires f.requires(args)
     ensures f.ensures(args, output)
@@ -122,7 +123,7 @@ pub fn runtime_assert(b: bool)
 } // verus!
 
 #[inline(always)]
-#[verifier::external]
+#[cfg_attr(verus_keep_ghost, verifier::external)]
 fn runtime_assert_internal(b: bool) {
     assert!(b);
 }
@@ -283,3 +284,44 @@ macro_rules! assert_by_contradiction_internal {
 /// # Macro Expansion (TODO)
 
 pub use builtin_macros::struct_with_invariants;
+
+verus!{
+
+use crate::view::View;
+
+#[cfg(feature = "alloc")]
+#[verifier::external]
+pub trait VecAdditionalExecFns<T> {
+    fn set(&mut self, i: usize, value: T);
+    fn set_and_swap(&mut self, i: usize, value: &mut T);
+}
+
+#[cfg(feature = "alloc")]
+impl<T> VecAdditionalExecFns<T> for Vec<T> {
+    /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
+
+    #[verifier::external_body]
+    fn set(&mut self, i: usize, value: T)
+        requires
+            i < old(self).len(),
+        ensures
+            self@ == old(self)@.update(i as int, value),
+    {
+        self[i] = value;
+    }
+
+    /// Replacement for `swap(&mut self[i], &mut value)` (which Verus does not support for technical reasons)
+
+    #[verifier::external_body]
+    fn set_and_swap(&mut self, i: usize, value: &mut T)
+        requires
+            i < old(self).len(),
+        ensures
+            self@ == old(self)@.update(i as int, *old(value)),
+            *value == old(self)@.index(i as int)
+    {
+        core::mem::swap(&mut self[i], value);
+    }
+}
+
+}

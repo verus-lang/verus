@@ -14,7 +14,7 @@ test_verify_one_file! {
         struct S {}
         impl View for S {
             type V = u8;
-            spec fn view(&self) -> u8 { 7 }
+            closed spec fn view(&self) -> u8 { 7 }
         }
         fn test() {
             let mut v = Vec::new();
@@ -41,7 +41,7 @@ test_verify_one_file! {
         struct S {}
         impl View for S {
             type V = int;
-            spec fn view(&self) -> int { 7 }
+            closed spec fn view(&self) -> int { 7 }
         }
         fn test() {
             let mut v = Vec::new();

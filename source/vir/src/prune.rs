@@ -9,6 +9,7 @@ use crate::ast::{
     FunctionKind, Ident, Krate, KrateX, Mode, Path, Stmt, Trait, TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
+use crate::ast_visitor::VisitorScopeMap;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
@@ -255,7 +256,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     reach_bound_trait(ctxt, state, path);
                 }
             }
-            let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
+            let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
                 // note: the visitor automatically reaches e.typ
                 match &e.x {
                     ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _) => {
@@ -284,8 +285,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 Ok(e.clone())
             };
-            let fs = |_: &mut State, _: &mut ScopeMap<Ident, Typ>, s: &Stmt| Ok(vec![s.clone()]);
-            let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
+            let fs = |_: &mut State, _: &mut VisitorScopeMap, s: &Stmt| Ok(vec![s.clone()]);
+            let mut map: VisitorScopeMap = ScopeMap::new();
             crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
                 .unwrap();
             let methods = reached_methods(ctxt, state.reached_types.iter().map(|t| (t, &f)));
@@ -362,8 +363,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let Some(fs) = ctxt.all_functions_in_each_module.get(&m) {
                 for f in fs {
                     let function = &ctxt.function_map[f];
-                    if function.x.attrs.broadcast_forall {
+                    if function.x.attrs.broadcast_forall && function.x.body.is_none() {
                         // If we reach m, we reach all broadcast_forall functions in m
+                        // TODO: remove this and rely on explicit reaching of broadcast_forall
                         reach_function(ctxt, state, f);
                     }
                 }
@@ -390,8 +392,17 @@ impl AssocTypeImplX {
 pub fn prune_krate_for_module(
     krate: &Krate,
     module: &Path,
+    fun: Option<&Fun>,
     vstd_crate_name: &Option<Ident>,
 ) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>) {
+    let is_root = |function: &Function| match fun {
+        Some(f) => &function.x.name == f,
+        None => match &function.x.owning_module {
+            Some(m) => m == module,
+            None => false,
+        },
+    };
+
     let mut state: State = Default::default();
     state.reached_modules.insert(module.clone());
     state.worklist_modules.push(module.clone());
@@ -399,8 +410,8 @@ pub fn prune_krate_for_module(
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     for f in &krate.functions {
-        match (&f.x.owning_module, &f.x.body) {
-            (Some(path), Some(body)) if path == module => {
+        if is_root(f) {
+            if let Some(body) = &f.x.body {
                 crate::ast_visitor::expr_visitor_check::<(), _>(
                     body,
                     &mut |_scope_map, e: &Expr| {
@@ -415,7 +426,6 @@ pub fn prune_krate_for_module(
                 )
                 .expect("expr_visitor_check failed unexpectedly");
             }
-            _ => {}
         }
     }
 
@@ -425,15 +435,12 @@ pub fn prune_krate_for_module(
     let mut datatypes: Vec<Datatype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.functions {
-        match &f.x.owning_module {
-            Some(path) if path == module => {
-                // our function
-                functions.push(f.clone());
-                state.reached_functions.insert(f.x.name.clone());
-                state.worklist_functions.push(f.x.name.clone());
-                continue;
-            }
-            _ => {}
+        if is_root(f) {
+            // our function
+            functions.push(f.clone());
+            state.reached_functions.insert(f.x.name.clone());
+            state.worklist_functions.push(f.x.name.clone());
+            continue;
         }
         // Remove body if any of the following are true:
         // - function is not visible
@@ -599,7 +606,7 @@ pub fn prune_krate_for_module(
             .filter(|i| state.reached_trait_impls.contains(&i.x.impl_path))
             .cloned()
             .collect(),
-        module_ids: krate.module_ids.clone(),
+        modules: krate.modules.clone(),
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),

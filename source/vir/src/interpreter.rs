@@ -9,17 +9,17 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
     IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{error, path_as_vstd_name, undecorate_typ};
+use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::func_to_air::{SstInfo, SstMap};
+use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{warning, Diagnostics, Message};
+use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
-use num_bigint::{BigInt, Sign};
+use num_bigint::BigInt;
 use num_traits::identities::Zero;
-use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
+use num_traits::{Euclid, FromPrimitive, One, ToPrimitive};
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -504,43 +504,13 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
                 InterpExp::Closure(e, _ctx) => dohash!(2; hash_exp(e)),
             }
         }
+        StaticVar(f) => dohash!(16, f),
     }
 }
 
 /**********************
  * Utility functions  *
  **********************/
-
-// Based on Dafny's C# implementation:
-// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
-/// Proper Euclidean division on BigInt
-fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
-    // Note: Can be replaced with an inbuilt method on BigInts once
-    // https://github.com/rust-num/num-bigint/pull/245 is merged.
-    use Sign::*;
-    match (i1.sign(), i2.sign()) {
-        (Plus | NoSign, Plus | NoSign) => i1 / i2,
-        (Plus | NoSign, Minus) => -(i1 / (-i2)),
-        (Minus, Plus | NoSign) => -(((-i1) - BigInt::one()) / i2) - BigInt::one(),
-        (Minus, Minus) => (((-i1) - BigInt::one()) / (-i2)) + 1,
-    }
-}
-
-// Based on Dafny's C# implementation:
-// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
-/// Proper Euclidean mod on BigInt
-fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
-    // Note: Can be replaced with an inbuilt method on BigInts once
-    // https://github.com/rust-num/num-bigint/pull/245 is merged.
-    use Sign::*;
-    match i1.sign() {
-        Plus | NoSign => i1 % i2.abs(),
-        Minus => {
-            let c = (-i1) % i2.abs();
-            if c.is_zero() { BigInt::zero() } else { i2.abs() - c }
-        }
-    }
-}
 
 /// Truncate a u128 to a fixed width BigInt
 fn u128_to_fixed_width(u: u128, width: u32) -> BigInt {
@@ -824,7 +794,7 @@ fn eval_seq(
                             Const(Constant::Int(index)) => match BigInt::to_usize(index) {
                                 None => {
                                     let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
-                                    state.msgs.push(warning(msg, &exp.span));
+                                    state.msgs.push(warning(&exp.span, msg));
                                     ok_seq(&args[0], &s, &args[1..])
                                 }
                                 Some(index) => {
@@ -832,7 +802,7 @@ fn eval_seq(
                                         Ok(s[index].clone())
                                     } else {
                                         let msg = "Computation tried to index past the length of a sequence";
-                                        state.msgs.push(warning(msg, &exp.span));
+                                        state.msgs.push(warning(&exp.span, msg));
                                         ok_seq(&args[0], &s, &args[1..])
                                     }
                                 }
@@ -884,7 +854,7 @@ fn eval_seq(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        return error(&exp.span, "assert_by_compute timed out");
+        return Err(error(&exp.span, "assert_by_compute timed out"));
     }
     state.log(format!("{}Evaluating {:}", "\t".repeat(state.depth), exp));
     let ok = Ok(exp.clone());
@@ -972,7 +942,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 if !in_range(lower, upper) {
                                     let msg =
                                         "Computation clipped an integer that was out of range";
-                                    state.msgs.push(warning(msg, &exp.span));
+                                    state.msgs.push(warning(&exp.span, msg));
                                     ok.clone()
                                 } else {
                                     Ok(e.clone())
@@ -1002,7 +972,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower, upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
                                                 ok.clone()
                                             }
                                         }
@@ -1019,7 +989,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower(32), upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
                                                 ok.clone()
                                             }
                                         }
@@ -1221,14 +1191,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
-                                        int_new(euclidean_div(i1, i2))
+                                        int_new(i1.div_euclid(i2))
                                     }
                                 }
                                 EuclideanMod => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
-                                        int_new(euclidean_mod(i1, i2))
+                                        int_new(i1.rem_euclid(i2))
                                     }
                                 }
                             }
@@ -1429,7 +1399,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
-        Call(CallFun::CheckTermination(_), _, _) => ok,
+        Call(CallFun::Recursive(_), _, _) => ok,
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
@@ -1508,7 +1478,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
     };
     let res = r?;
     state.depth -= 1;
@@ -1523,7 +1493,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 fn eval_expr_launch(
     exp: Exp,
     fun_ssts: &HashMap<Fun, SstInfo>,
-    rlimit: u32,
+    rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
@@ -1550,8 +1520,7 @@ fn eval_expr_launch(
         fun_calls: HashMap::new(),
     };
     // Don't run for too long
-    let max_iterations =
-        if rlimit == 0 { std::u64::MAX } else { rlimit as u64 * RLIMIT_MULTIPLIER };
+    let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch };
     let res = eval_expr_internal(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
@@ -1559,7 +1528,7 @@ fn eval_expr_launch(
         log.replace(state.log.unwrap());
     }
     if let ExpX::Const(Constant::Bool(false)) = res.x {
-        error(&exp.span, "assert simplifies to false")
+        Err(error(&exp.span, "assert simplifies to false"))
     } else {
         match mode {
             // Send partial result to Z3
@@ -1594,48 +1563,48 @@ fn eval_expr_launch(
                                         let s = seq_to_sst(&e.span, inner_type.clone(), v);
                                         Ok(s)
                                     }
-                                    _ => error(
+                                    _ => Err(error(
                                         &e.span,
                                         format!(
                                             "Internal error: Expected to find a sequence type but found: {:?}",
                                             e.typ,
                                         ),
-                                    ),
+                                    )),
                                 }
                             }
-                            _ => error(
+                            _ => Err(error(
                                 &e.span,
                                 format!(
                                     "Internal error: Expected to find a sequence type but found: {:?}",
                                     e.typ
                                 ),
-                            ),
+                            )),
                         }
                     }
-                    ExpX::Interp(InterpExp::Closure(..)) => error(
+                    ExpX::Interp(InterpExp::Closure(..)) => Err(error(
                         &e.span,
                         "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
-                    ),
+                    )),
                     _ => Ok(e.clone()),
                 })?;
                 if exp.definitely_eq(&res) {
                     let msg =
                         format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
-                    state.msgs.push(warning(msg, &exp.span));
+                    state.msgs.push(warning(&exp.span, msg));
                 }
                 Ok((res, state.msgs))
             }
             // Proof must succeed purely through computation
             ComputeMode::ComputeOnly => match res.x {
                 ExpX::Const(Constant::Bool(true)) => Ok((res, state.msgs)),
-                _ => error(
+                _ => Err(error(
                     &exp.span,
                     &format!(
                         "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
                         res
                     )
                     .to_string(),
-                ),
+                )),
             },
         }
     }
@@ -1644,9 +1613,9 @@ fn eval_expr_launch(
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
     exp: &Exp,
-    diagnostics: &(impl Diagnostics + ?Sized),
+    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
-    rlimit: u32,
+    rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
@@ -1669,6 +1638,6 @@ pub fn eval_expr(
     });
     *log = taken_log;
     let (e, msgs) = res?;
-    msgs.iter().for_each(|m| diagnostics.report(m));
+    msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
     Ok(e)
 }

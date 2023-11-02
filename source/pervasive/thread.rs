@@ -139,11 +139,19 @@ pub struct ThreadId {
 
 /// Proof object that guarantees the owning thread has the given ThreadId.
 
+#[cfg(verus_keep_ghost)]
 #[verifier(external_body)]
 pub tracked struct IsThread { }
 
+#[cfg(verus_keep_ghost)]
 impl !Sync for IsThread { }
+#[cfg(verus_keep_ghost)]
 impl !Send for IsThread { }
+
+// TODO: remove this when !Sync, !Send are supported by stable Rust
+#[cfg(not(verus_keep_ghost))]
+#[verifier(external_body)]
+pub tracked struct IsThread { _no_send_sync: core::marker::PhantomData<*const ()> }
 
 impl IsThread {
     pub spec fn view(&self) -> ThreadId;
@@ -159,9 +167,13 @@ impl IsThread {
 
 #[verifier(external)]
 impl Clone for IsThread {
-    fn clone(&self) -> Self
-    {
+    #[cfg(verus_keep_ghost)]
+    fn clone(&self) -> Self {
         IsThread { }
+    }
+    #[cfg(not(verus_keep_ghost))]
+    fn clone(&self) -> Self {
+        IsThread { _no_send_sync: Default::default() }
     }
 }
 

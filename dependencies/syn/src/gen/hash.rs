@@ -648,18 +648,33 @@ impl Hash for Expr {
                 v0.hash(state);
             }
             #[cfg(feature = "full")]
-            Expr::View(v0) => {
+            Expr::RevealHide(v0) => {
                 state.write_u8(43u8);
                 v0.hash(state);
             }
             #[cfg(feature = "full")]
-            Expr::BigAnd(v0) => {
+            Expr::View(v0) => {
                 state.write_u8(44u8);
                 v0.hash(state);
             }
             #[cfg(feature = "full")]
-            Expr::BigOr(v0) => {
+            Expr::BigAnd(v0) => {
                 state.write_u8(45u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::BigOr(v0) => {
+                state.write_u8(46u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::Is(v0) => {
+                state.write_u8(47u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::Has(v0) => {
+                state.write_u8(48u8);
                 v0.hash(state);
             }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
@@ -865,6 +880,17 @@ impl Hash for ExprGroup {
         self.expr.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprHas {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.lhs.hash(state);
+        self.rhs.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ExprIf {
@@ -888,6 +914,17 @@ impl Hash for ExprIndex {
         self.attrs.hash(state);
         self.expr.hash(state);
         self.index.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprIs {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.base.hash(state);
+        self.variant_ident.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1706,7 +1743,11 @@ impl Hash for ItemConst {
         self.mode.hash(state);
         self.ident.hash(state);
         self.ty.hash(state);
+        self.ensures.hash(state);
+        self.eq_token.hash(state);
+        self.block.hash(state);
         self.expr.hash(state);
+        self.semi_token.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1828,10 +1869,16 @@ impl Hash for ItemStatic {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.publish.hash(state);
+        self.mode.hash(state);
         self.mutability.hash(state);
         self.ident.hash(state);
         self.ty.hash(state);
+        self.ensures.hash(state);
+        self.eq_token.hash(state);
+        self.block.hash(state);
         self.expr.hash(state);
+        self.semi_token.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -2647,6 +2694,20 @@ impl Hash for ReturnType {
                 v3.hash(state);
             }
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for RevealHide {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.reveal_token.hash(state);
+        self.reveal_with_fuel_token.hash(state);
+        self.hide_token.hash(state);
+        self.path.hash(state);
+        self.fuel.hash(state);
     }
 }
 #[cfg(feature = "full")]

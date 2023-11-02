@@ -12,16 +12,21 @@ use crate::ast::{
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
-use air::ast::{Binders, Ident, Span};
-use air::messages::Message;
+use crate::messages::{Message, Span};
+use air::ast::{Binders, Ident};
 use std::sync::Arc;
 
 pub type Trig = Exps;
 pub type Trigs = Arc<Vec<Trig>>;
 
-pub struct BndInfo {
+pub struct BndInfoUser {
     pub span: Span,
     pub trigs: Trigs,
+}
+
+pub struct BndInfo {
+    pub fun: Fun,
+    pub user: Option<BndInfoUser>,
 }
 
 pub type Bnd = Arc<Spanned<BndX>>;
@@ -52,7 +57,7 @@ pub enum InternalFun {
 pub enum CallFun {
     // static/method Fun, plus an optional resolved Fun for methods
     Fun(Fun, Option<(Fun, Typs)>),
-    CheckTermination(Fun),
+    Recursive(Fun),
     InternalFun(InternalFun),
 }
 
@@ -62,6 +67,7 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
+    StaticVar(Fun),
     VarLoc(UniqueIdent),
     VarAt(UniqueIdent, VarAt),
     Loc(Exp),
@@ -122,7 +128,7 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    // call to exec/proof function (or spec function for checking_recommends)
+    // call to exec/proof function (or spec function for checking_spec_preconditions)
     Call {
         fun: Fun,
         resolved_method: Option<(Fun, Typs)>,

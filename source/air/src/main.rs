@@ -1,7 +1,7 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
-use air::messages::{MessageLabel, Reporter};
-use air::profiler::Profiler;
+use air::messages::{AirMessage, AirMessageLabel, Reporter};
+use air::profiler::{Profiler, PROVER_LOG_FILE};
 use getopts::Options;
 use sise::Node;
 use std::fs::File;
@@ -76,6 +76,8 @@ pub fn main() {
         }
     };
 
+    let message_interface = std::sync::Arc::new(air::messages::AirMessageInterface {});
+
     // Open input file
     let in_filename = &matches.free[0];
     let mut in_bytes: Vec<u8> = Vec::new();
@@ -96,16 +98,18 @@ pub fn main() {
     };
 
     // Parse vector of Node to commands
-    let commands = air::parser::Parser::new().nodes_to_commands(&nodes).expect("parse error");
+    let commands = air::parser::Parser::new(message_interface.clone())
+        .nodes_to_commands(&nodes)
+        .expect("parse error");
 
     // Start AIR
-    let mut air_context = Context::new();
+    let mut air_context = Context::new(message_interface.clone());
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
-    let profile = matches.opt_present("profile");
-    air_context.set_profile(profile);
     let profile_all = matches.opt_present("profile_all");
-    air_context.set_profile_all(profile_all);
+    if profile_all {
+        air_context.set_profile_with_logfile_name(PROVER_LOG_FILE.into());
+    }
     let ignore_unexpected_smt = matches.opt_present("ignore-unexpected-smt");
     air_context.set_ignore_unexpected_smt(ignore_unexpected_smt);
 
@@ -128,7 +132,8 @@ pub fn main() {
     let mut count_verified = 0;
     let reporter = Reporter {};
     for command in commands.iter() {
-        let result = air_context.command(&reporter, &command, Default::default());
+        let result =
+            air_context.command(&*message_interface, &reporter, &command, Default::default());
         match result {
             ValidityResult::Valid => {
                 if let CommandX::CheckValid(_) = &**command {
@@ -140,18 +145,16 @@ pub fn main() {
             }
             ValidityResult::Invalid(_m, err) => {
                 count_errors += 1;
+                let err: &AirMessage =
+                    err.downcast_ref().expect("unexpected value in Any -> Message conversion");
                 println!("Error at {}", err.note);
-                for MessageLabel { note, .. } in &err.labels {
+                for AirMessageLabel { note, .. } in &err.labels {
                     println!("Additional error detail at {}", note);
                 }
             }
             ValidityResult::Canceled => {
                 count_errors += 1;
-                if profile {
-                    println!("Resource limit (rlimit) exceeded");
-                    let profiler = Profiler::new(&reporter);
-                    profiler.print_raw_stats(&reporter);
-                } else if !profile_all {
+                if !profile_all {
                     println!(
                         "Resource limit (rlimit) exceeded; consider rerunning with --profile for more details"
                     );
@@ -168,8 +171,17 @@ pub fn main() {
         }
     }
     if profile_all {
-        let profiler = Profiler::new(&reporter);
-        profiler.print_raw_stats(&reporter);
+        match Profiler::parse(
+            message_interface.clone(),
+            std::path::Path::new(PROVER_LOG_FILE),
+            None,
+            true,
+            &reporter,
+            false,
+        ) {
+            Ok(profiler) => profiler.print_raw_stats(&reporter),
+            Err(err) => eprintln!("profile: failed to parse z3 trace: {}", err),
+        }
     }
     println!("Verification results:: {} verified, {} errors", count_verified, count_errors);
 }

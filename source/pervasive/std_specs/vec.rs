@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use builtin::*;
-extern crate alloc;
 
 use alloc::vec::Vec;
 use core::option::Option;
@@ -35,39 +34,6 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
-    }
-}
-
-#[verifier::external]
-pub trait VecAdditionalExecFns<T> {
-    fn set(&mut self, i: usize, value: T);
-    fn set_and_swap(&mut self, i: usize, value: &mut T);
-}
-
-impl<T, A: Allocator> VecAdditionalExecFns<T> for Vec<T, A> {
-    /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
-
-    #[verifier::external_body]
-    fn set(&mut self, i: usize, value: T)
-        requires
-            i < old(self).len(),
-        ensures
-            self@ == old(self)@.update(i as int, value),
-    {
-        self[i] = value;
-    }
-
-    /// Replacement for `swap(&mut self[i], &mut value)` (which Verus does not support for technical reasons)
-
-    #[verifier::external_body]
-    fn set_and_swap(&mut self, i: usize, value: &mut T)
-        requires
-            i < old(self).len(),
-        ensures
-            self@ == old(self)@.update(i as int, *old(value)),
-            *value == old(self)@.index(i as int)
-    {
-        core::mem::swap(&mut self[i], value);
     }
 }
 
@@ -223,7 +189,7 @@ pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_vec_split_off<T, A: Allocator+ std::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
+pub fn ex_vec_split_off<T, A: Allocator+ core::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
     ensures
         vec@ == old(vec)@.subrange(0,at as int),
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),

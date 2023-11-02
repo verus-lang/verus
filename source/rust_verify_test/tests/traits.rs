@@ -655,6 +655,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[ignore] #[test] test_termination_5_fail_6 verus_code! {
+        trait T { type X; }
+        struct S<W: T>(<W as T>::X);
+        struct TT { }
+        impl T for TT { type X = S<TT>; }
+
+        spec fn arbitrary<A>() -> A;
+        spec fn foo(n: nat) -> S<TT>
+            decreases n
+        {
+            if n > 0 {
+                S(foo((n - 1) as nat))
+            } else {
+                arbitrary()
+            }
+        }
+    } => Err(_err) => todo!()
+}
+
+test_verify_one_file! {
     #[test] test_verify_1 verus_code! {
         trait T {
             fn f(&self)
@@ -1268,6 +1288,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_broadcast_forall_causes_cycle verus_code! {
+        mod M {
+            pub trait Tr {
+                spec fn f() -> bool;
+
+                proof fn bad() ensures false;
+            }
+
+            // note the external_body isn't necessary here
+            #[verifier::broadcast_forall]
+            #[verifier::external_body]
+            pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+                ensures #[trigger] T::f() == !T::f(),
+            {
+                T::bad();
+            }
+        }
+
+        use M::*;
+
+        struct X { }
+
+        impl Tr for X {
+            open spec fn f() -> bool
+            {
+                true
+            }
+
+            proof fn bad() {
+                other_bad();
+            }
+        }
+
+        pub proof fn other_bad()
+            ensures false,
+        {
+            // This can be used to trigger the 'proves_false_requiring_trait_bound' lemma.
+            // Therefore, it is important we draw a dependency edge from `other_bad` function
+            // to the `impl Tr for X` object.
+
+            let t = X::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
     #[test] test_decreases_trait_bound verus_code! {
         trait T {
             proof fn impossible()
@@ -1579,7 +1645,7 @@ test_verify_one_file! {
         }
 
         impl Key for KeyInt {
-            spec fn lt(self) -> bool { true }
+            closed spec fn lt(self) -> bool { true }
             proof fn zero_properties() {}
         }
     } => Ok(())
@@ -1883,7 +1949,7 @@ test_verify_one_file! {
     #[test] trait_fn_opaqueness verus_code! {
         trait Foo {
             #[verifier::opaque]
-            open spec fn foo(&self) -> bool;
+            spec fn foo(&self) -> bool;
         }
     } => Err(err) => assert_vir_error_msg(err, "opaque has no effect on a function without a body")
 }
@@ -2024,4 +2090,379 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] impl_of_non_private_trait_fn_must_be_open_or_closed_1_regression_382 verus_code! {
+        mod m1 {
+            pub trait SomeTrait {
+                spec fn foo(&self) -> bool;
+            }
+
+            struct SomeType { b: bool }
+
+            impl SomeTrait for SomeType {
+                spec fn foo(&self) -> bool {
+                    self.b
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
+}
+
+test_verify_one_file! {
+    #[test] impl_of_non_private_trait_fn_must_be_open_or_closed_2_regression_382 verus_code! {
+        mod m1 {
+            pub(super) trait SomeTrait {
+                spec fn foo(&self) -> bool;
+            }
+
+            struct SomeType { b: bool }
+
+            impl SomeTrait for SomeType {
+                spec fn foo(&self) -> bool {
+                    self.b
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
+}
+
+test_verify_one_file! {
+    #[test] disallow_open_on_trait_fn_decl verus_code! {
+        pub trait SomeTrait {
+            open spec fn foo(&self) -> bool;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait function declarations cannot be open or closed, as they don't have a body")
+}
+
+test_verify_one_file! {
+    #[test] require_open_closed_on_pub_crate verus_code! {
+        mod m1 {
+            use vstd::prelude::*;
+
+            pub(crate) trait T {
+                spec fn f() -> int;
+            }
+            pub(crate) struct S;
+            impl T for S {
+                spec fn f() -> int { 5 }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open/closed is required for implementations of non-private traits")
+}
+
+test_verify_one_file! {
+    #[test] trait_return_unit verus_code! {
+        struct S;
+
+        pub trait E<V> {
+            fn e(&self) -> V;
+        }
+
+        impl E<u64> for S {
+            fn e(&self) -> u64 {
+                7
+            }
+        }
+
+        impl E<()> for S {
+            fn e(&self) {
+                ()
+            }
+        }
+
+        pub trait View<V> {
+            spec fn view(&self) -> V;
+        }
+
+        impl View<int> for S {
+            closed spec fn view(&self) -> int {
+                7
+            }
+        }
+
+        // See https://github.com/verus-lang/verus/issues/682
+        impl View<()> for S {
+            closed spec fn view(&self) {
+                ()
+            }
+        }
+
+        pub trait T {
+            spec fn view(&self);
+        }
+
+        impl T for S {
+            closed spec fn view(&self) {
+                ()
+            }
+        }
+
+        proof fn test<A: View<()>>(a: A) {
+            a.view()
+        }
+
+        pub trait U {
+            fn ff(&self) ensures 2 + 2 == 4;
+        }
+
+        impl U for S {
+            fn ff(&self) {
+                assert(2 + 2 == 4);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] termination_fail_issue784 verus_code! {
+        enum Option<V> { Some(V), None }
+
+        trait Tr {
+            spec fn stuff() -> bool;
+        }
+
+        struct X { }
+
+        // impl&%0
+        impl Tr for X
+        {
+            spec fn stuff() -> bool {
+                alpaca()                                // (1)
+            }
+        }
+
+        spec fn alpaca() -> bool {
+            // depends on the bound `X: Tr`
+            // which depends on the above trait impl
+            // which in turn depends on `alpaca`
+            (P::<X> { t: Option::None }).orange()               // (2)
+        }
+
+        struct P<T> {
+            t: Option<T>,
+        }
+
+        trait Zr {
+            spec fn orange(&self) -> bool;
+        }
+
+        // impl&%1
+        impl<T: Tr> Zr for P<T> {
+            spec fn orange(&self) -> bool {
+                !T::stuff()                             // (3)
+            }
+        }
+
+        proof fn paradox() {
+            assert(alpaca() == !alpaca());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] termination_fail_issue784_bigger_impl_chain verus_code! {
+        // It appears we have a cycle, (1) -> (2) -> (4) -> (3) -> (1)
+        //
+        // However, (4), being generic, doesn't actually have a dependency on (3);
+        // likewise (3), being generic, doesn't depend on (1).
+        // Instead, the cycle shows up because the call at (2) relies on the
+        // trait implementation 'impl 0'. Thus we should end up
+        // with an edge (2) -> (1) and thus resulting in the cycle:
+        //
+        // (1) -> (2) -> (1)
+        //
+        // Also note that the dependence of (2) upon 'impl 0' is indirect.
+        // Specifically, it relies on `P<Q<X>>: Zr` obtained from 'impl 2'
+        // This in turn relies on `Q<X>: Yr` obtained from 'impl 1'
+        // And this in turn relies on `X: Tr` obtained from 'impl 0'.
+
+        enum Option<V> { Some(V), None }
+
+        trait Tr {
+            spec fn stuff() -> bool;
+        }
+
+        struct X { }
+
+        // impl 0
+        impl Tr for X
+        {
+            spec fn stuff() -> bool {
+                alpaca()                                   // (1)
+            }
+        }
+
+        spec fn alpaca() -> bool {
+            // depends on the bound `X: Tr`
+            // which depends on the above trait impl
+            // which in turn depends on `alpaca`
+            (P::<Q<X>> { t: Option::None }).orange()               // (2)
+        }
+
+        struct P<T> {
+            t: Option<T>,
+        }
+
+        struct Q<T> {
+            t: Option<T>,
+        }
+
+        trait Yr {
+            spec fn banana() -> bool;
+        }
+
+        trait Zr {
+            spec fn orange(&self) -> bool;
+        }
+
+        // impl 1
+        impl<T: Tr> Yr for Q<T> {
+            spec fn banana() -> bool {
+                !T::stuff()                               // (3)
+            }
+        }
+
+        // impl 2
+        impl<T: Yr> Zr for P<T> {
+            spec fn orange(&self) -> bool {
+                T::banana()                               // (4)
+            }
+        }
+
+        proof fn paradox() {
+            assert(alpaca() == !alpaca());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] trait_bound_query verus_code! {
+        // https://github.com/verus-lang/verus/issues/812
+        trait T {}
+
+        spec fn t<A>() -> bool { true }
+
+        #[verifier::external_body]
+        #[verifier::broadcast_forall]
+        proof fn axiom_f<A: T>()
+            ensures
+                #[trigger] t::<A>(),
+        {
+        }
+
+        struct S1;
+
+        impl T for S1 {}
+        fn test1() {
+            assert(t::<S1>());
+            let v1: u64 = 0;
+            let v2: u64 = 0;
+            assert(v1 * v2  >= 0) by(nonlinear_arith);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_bound_delayed verus_code! {
+        trait T { proof fn q() ensures false; }
+
+        spec fn f<A>(i: int) -> bool { false }
+
+        #[verifier::external_body]
+        #[verifier::broadcast_forall]
+        proof fn p<A: T>(i: int)
+            ensures f::<A>(i)
+        {
+        }
+
+        struct S;
+        impl T for S {
+            proof fn q() {
+                assert(f::<S>(7)); // FAILS
+                // fails because we can't use the broadcast_forall with A = S
+                // until after S: T has been established,
+                // which can't happen until after S::q has been proven.
+            }
+        }
+
+        proof fn test() {
+            S::q();
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_833_0 verus_code! {
+        mod m1 {
+            pub trait MyView {
+                type V;
+            }
+        }
+
+        mod m2 {
+            pub trait ViewOption {
+                type X;
+            }
+
+            struct A<T>(T);
+
+            impl<T: crate::m1::MyView> ViewOption for A<T>
+            {
+                type X = A<T::V>;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound verus_code! {
+        trait A {
+            type B;
+        }
+
+        exec fn foo<T: A>(b: T::B) {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_724 verus_code! {
+        use vstd::prelude::*;
+
+        exec fn foo<T: View>(c : T::V)
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_833_1 verus_code! {
+        use vstd::prelude::*;
+
+        pub trait ViewOption {
+            type X;
+        }
+
+        impl<T:View> ViewOption for Option<T>
+        {
+            type X = Option<T::V>;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_bound_regression_848 verus_code! {
+        use vstd::prelude::*;
+
+        pub trait TView { }
+
+        pub trait B<T>
+            where T: View, T::V: TView {
+        }
+    } => Ok(())
 }

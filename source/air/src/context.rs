@@ -1,23 +1,24 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
-use crate::messages::{Diagnostics, Message, MessageLabels};
+use crate::messages::{ArcDynMessage, Diagnostics};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
-use crate::profiler;
+
 use crate::scope_map::ScopeMap;
 use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
 use sise::Node;
+use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
-    pub(crate) error: Message,
+    pub(crate) error: ArcDynMessage,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
     pub(crate) disabled: bool,
@@ -25,7 +26,7 @@ pub(crate) struct AssertionInfo {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AxiomInfo {
-    pub(crate) labels: MessageLabels,
+    pub(crate) labels: Vec<Arc<dyn Any + Send + Sync>>,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
 }
@@ -33,7 +34,7 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Option<Model>, Message),
+    Invalid(Option<Model>, ArcDynMessage),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
@@ -60,6 +61,7 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
 }
 
 pub struct Context {
+    pub(crate) message_interface: Arc<dyn crate::messages::MessageInterface>,
     smt_process: Option<SmtProcess>,
     pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
     pub(crate) axiom_infos_count: u64,
@@ -71,25 +73,25 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
-    pub(crate) profile: bool,
-    pub(crate) profile_all: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
     pub(crate) air_middle_log: Emitter,
     pub(crate) air_final_log: Emitter,
     pub(crate) smt_log: Emitter,
-    pub singular_log: Option<std::fs::File>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
+    pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
+    pub(crate) check_valid_used: bool,
 }
 
 impl Context {
-    pub fn new() -> Context {
+    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>) -> Self {
         let mut context = Context {
+            message_interface: message_interface.clone(),
             smt_process: None,
             axiom_infos: ScopeMap::new(),
             axiom_infos_count: 0,
@@ -99,22 +101,25 @@ impl Context {
             choose_count: 0,
             apply_map: ScopeMap::new(),
             apply_count: 0,
-            typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
+            typing: Typing {
+                message_interface: message_interface.clone(),
+                decls: crate::scope_map::ScopeMap::new(),
+                snapshots: HashSet::new(),
+            },
             debug: false,
-            profile: false,
-            profile_all: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
-            air_initial_log: Emitter::new(false, false, None),
-            air_middle_log: Emitter::new(false, false, None),
-            air_final_log: Emitter::new(false, false, None),
-            smt_log: Emitter::new(true, true, None),
-            singular_log: None,
+            air_initial_log: Emitter::new(message_interface.clone(), false, false, None),
+            air_middle_log: Emitter::new(message_interface.clone(), false, false, None),
+            air_final_log: Emitter::new(message_interface.clone(), false, false, None),
+            smt_log: Emitter::new(message_interface.clone(), true, true, None),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
             expected_solver_version: None,
+            profile_logfile_name: None,
             disable_incremental_solving: false,
+            check_valid_used: false,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -156,22 +161,6 @@ impl Context {
         self.debug
     }
 
-    pub fn set_profile(&mut self, profile: bool) {
-        self.profile = profile;
-    }
-
-    pub fn get_profile(&self) -> bool {
-        self.profile
-    }
-
-    pub fn set_profile_all(&mut self, profile_all: bool) {
-        self.profile_all = profile_all;
-    }
-
-    pub fn get_profile_all(&self) -> bool {
-        self.profile_all
-    }
-
     pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
         self.ignore_unexpected_smt = ignore_unexpected_smt;
     }
@@ -182,6 +171,11 @@ impl Context {
 
     pub fn set_expected_solver_version(&mut self, version: String) {
         self.expected_solver_version = Some(version);
+    }
+
+    pub fn set_profile_with_logfile_name(&mut self, file_name: String) {
+        assert!(matches!(self.state, ContextState::NotStarted));
+        self.profile_logfile_name = Some(file_name);
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
@@ -303,11 +297,15 @@ impl Context {
     fn ensure_started(&mut self) {
         match self.state {
             ContextState::NotStarted => {
-                if self.profile || self.profile_all {
+                let profile_logfile_name = self.profile_logfile_name.clone();
+                if let Some(profile_logfile_name) = profile_logfile_name {
                     self.set_z3_param("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
-                    //self.set_z3_param("proof", "true");
-                    self.log_set_z3_param("trace_file_name", profiler::PROVER_LOG_FILE);
+                    // self.set_z3_param("proof", "true");
+
+                    // sise does not support backslashes in atoms, which appear in Windows paths
+                    let profile_logfile_name = profile_logfile_name.replace("\\", "/");
+                    self.log_set_z3_param("trace_file_name", &profile_logfile_name);
                 }
                 self.blank_line();
                 self.comment("AIR prelude");
@@ -358,6 +356,7 @@ impl Context {
 
     pub fn check_valid(
         &mut self,
+        message_interface: &dyn crate::messages::MessageInterface,
         diagnostics: &impl Diagnostics,
         query: &Query,
         query_context: QueryContext<'_, '_>,
@@ -370,7 +369,7 @@ impl Context {
         };
         let (query, snapshots, local_vars) = crate::var_to_const::lower_query(&query);
         self.air_middle_log.log_query(&query);
-        let query = crate::block_to_assert::lower_query(&query);
+        let query = crate::block_to_assert::lower_query(message_interface, &query);
         self.air_final_log.log_query(&query);
 
         let model = Model::new(snapshots, local_vars);
@@ -381,8 +380,13 @@ impl Context {
             model,
             query_context.report_long_running,
         );
+        self.check_valid_used = true;
 
         validity
+    }
+
+    pub fn check_valid_used(&self) -> bool {
+        self.check_valid_used
     }
 
     /// After receiving ValidityResult::Invalid, try to find another error.
@@ -396,14 +400,16 @@ impl Context {
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
-            crate::smt_verify::smt_check_assertion(
+            let res = crate::smt_verify::smt_check_assertion(
                 self,
                 diagnostics,
                 infos,
                 air_model,
                 only_check_earlier,
                 query_context.report_long_running,
-            )
+            );
+            self.check_valid_used = true;
+            res
         } else {
             panic!("check_valid_again expected query to be ValidityResult::Invalid");
         }
@@ -431,6 +437,7 @@ impl Context {
 
     pub fn command(
         &mut self,
+        message_interface: &dyn crate::messages::MessageInterface,
         diagnostics: &impl Diagnostics,
         command: &Command,
         query_context: QueryContext<'_, '_>,
@@ -455,7 +462,9 @@ impl Context {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) => self.check_valid(diagnostics, &query, query_context),
+            CommandX::CheckValid(query) => {
+                self.check_valid(message_interface, diagnostics, &query, query_context)
+            }
         }
     }
 }

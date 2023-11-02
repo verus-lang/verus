@@ -68,7 +68,7 @@ where
             }
             None => {
                 // For normal datatypes, this seems to work fine.
-                ctxt.tcx.type_of(field_def.did)
+                ctxt.tcx.type_of(field_def.did).skip_binder()
             }
         };
 
@@ -333,7 +333,7 @@ pub(crate) fn check_item_external<'tcx>(
     if fields_iter.next().is_some() {
         return err_span(span, "external_type_specification should look like `struct X(Type)`");
     }
-    let external_ty = ctxt.tcx.type_of(first_field.did);
+    let external_ty = ctxt.tcx.type_of(first_field.did).skip_binder();
     let (external_adt_def, substs_ref) = match external_ty.kind() {
         TyKind::Adt(adt_def, substs_ref) => (adt_def, substs_ref),
         _ => {

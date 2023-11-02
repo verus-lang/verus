@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 
 use core::{marker, mem, mem::MaybeUninit};
-extern crate alloc;
 
 use builtin::*;
 use builtin_macros::*;

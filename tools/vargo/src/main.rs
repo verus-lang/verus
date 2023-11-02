@@ -11,6 +11,11 @@ use filetime::FileTime as FFileTime;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+const VARGO_SOURCE_FILES: &[(&'static str, &'static [u8])] = &[
+    ("src/main.rs", include_bytes!("main.rs")),
+    ("src/util.rs", include_bytes!("util.rs")),
+];
+
 static VARGO_NEST: std::sync::RwLock<u64> = std::sync::RwLock::new(0);
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, Debug, Deserialize, Serialize)]
@@ -28,11 +33,34 @@ impl From<FFileTime> for FileTime {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
 struct Fingerprint {
     dependencies_mtime: FileTime,
     vstd_mtime: FileTime,
+    vstd_no_std: bool,
+    vstd_no_alloc: bool,
 }
+
+impl PartialOrd for Fingerprint {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.vstd_no_std != other.vstd_no_std || self.vstd_no_alloc != other.vstd_no_alloc {
+            None
+        } else {
+            use std::cmp::Ordering::*;
+            match (
+                self.dependencies_mtime.cmp(&other.dependencies_mtime),
+                self.vstd_mtime.cmp(&other.vstd_mtime),
+            ) {
+                (Less, Less) => Some(Less),
+                (Equal, Equal) => Some(Equal),
+                (Greater, Greater) => Some(Greater),
+                _ => None,
+            }
+        }
+    }
+}
+
+const RUST_FLAGS: &str = "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations";
 
 fn main() {
     match run() {
@@ -125,7 +153,7 @@ const VERUS_ROOT_FILE: &str = "verus-root";
 fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     for f in VSTD_FILES.iter() {
         let f = target_verus_dir.join(f);
-        if f.is_file() {
+        if f.is_file() && f.exists() {
             info(format!("removing {}", f.display()).as_str());
             std::fs::remove_file(&f)
                 .map_err(|x| format!("could not delete file {} ({x})", f.display()))?;
@@ -139,6 +167,21 @@ const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
 } else {
     "./z3"
 };
+
+fn filter_features(
+    feature_args: &Vec<String>,
+    accepted: std::collections::HashSet<&'static str>,
+) -> Vec<String> {
+    let feature_args: Vec<_> = feature_args
+        .iter()
+        .flat_map(|x| x.split(",").map(|x| x.to_owned()).collect::<Vec<_>>())
+        .filter(|a| accepted.contains(a.as_str()))
+        .collect();
+    feature_args
+        .into_iter()
+        .flat_map(|f| vec!["--features".to_owned(), f])
+        .collect()
+}
 
 fn run() -> Result<(), String> {
     let vargo_nest = {
@@ -168,6 +211,22 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let vstd_no_std = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-std")
+        .map(|p| args.remove(p))
+        .is_some();
+
+    let vstd_no_alloc = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-alloc")
+        .map(|p| args.remove(p))
+        .is_some();
+
+    if vstd_no_alloc && !vstd_no_std {
+        return Err(format!("--vstd-no-alloc requires --vstd-no-std"));
+    }
+
     let mut args_bucket = args.clone();
     let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
 
@@ -191,6 +250,19 @@ fn run() -> Result<(), String> {
         .map_err(|x| format!("could not parse Cargo.toml ({})\nrun vargo in `source`", x))?;
         (repo_root, rust_toolchain_toml)
     };
+    if vargo_nest == 0 {
+        let files = crate::util::vargo_file_contents(&repo_root.join("tools").join("vargo"));
+        let build_hash = &crate::util::hash_file_contents(VARGO_SOURCE_FILES.to_vec());
+        let cur_hash = &crate::util::hash_file_contents(
+            files.iter().map(|(f, n)| (f.as_str(), &n[..])).collect(),
+        );
+        if build_hash != cur_hash {
+            return Err(format!(
+                "vargo sources have changed since it was last built, please re-build vargo"
+            ));
+        }
+    }
+
     let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
         .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })
         .ok_or(
@@ -444,12 +516,14 @@ fn run() -> Result<(), String> {
     let target_verus_dir = {
         let parent_dir = std::path::PathBuf::from("target-verus");
         if !parent_dir.exists() {
+            info(&format!("creating {}", parent_dir.display()));
             std::fs::create_dir(&parent_dir)
                 .map_err(|x| format!("could not create target-verus directory ({})", x))?;
         }
         let target_verus_dir = parent_dir.join(if release { "release" } else { "debug" });
 
         if !target_verus_dir.exists() {
+            info(&format!("creating {}", target_verus_dir.display()));
             std::fs::create_dir(&target_verus_dir)
                 .map_err(|x| format!("could not create target-verus directory ({})", x))?;
         }
@@ -491,13 +565,17 @@ fn run() -> Result<(), String> {
                 .map_err(|x| format!("could not canonicalize target-verus directory ({})", x))?;
 
             if let (Task::Clean, Some("vstd")) = (task, package) {
-                clean_vstd(&target_verus_dir)
+                clean_vstd(&std::path::Path::new("target-verus").join("release"))?;
+                if !release {
+                    clean_vstd(&std::path::Path::new("target-verus").join("debug"))?;
+                }
+                Ok(())
             } else {
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
-                    .env("RUSTFLAGS", "--cfg proc_macro_span")
+                    .env("RUSTFLAGS", RUST_FLAGS)
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -513,8 +591,30 @@ fn run() -> Result<(), String> {
                             ));
                         }
 
-                        std::fs::remove_dir_all(&target_verus_dir)
-                            .map_err(|x| format!("could not remove target-verus directory ({})", x))
+                        let target_verus_release_dir =
+                            std::path::Path::new("target-verus").join("release");
+                        if target_verus_release_dir.is_dir() && target_verus_release_dir.exists() {
+                            info(
+                                format!("removing {}", target_verus_release_dir.display()).as_str(),
+                            );
+                            std::fs::remove_dir_all(target_verus_release_dir).map_err(|x| {
+                                format!("could not remove target-verus directory ({})", x)
+                            })?;
+                        }
+                        if !release {
+                            let target_verus_debug_dir =
+                                std::path::Path::new("target-verus").join("debug");
+                            if target_verus_debug_dir.is_dir() && target_verus_debug_dir.exists() {
+                                info(
+                                    format!("removing {}", target_verus_debug_dir.display())
+                                        .as_str(),
+                                );
+                                std::fs::remove_dir_all(target_verus_debug_dir).map_err(|x| {
+                                    format!("could not remove target-verus directory ({})", x)
+                                })?;
+                            }
+                        }
+                        Ok(())
                     }
                     _ => std::process::exit(status.code().unwrap_or(1)),
                 }
@@ -524,6 +624,21 @@ fn run() -> Result<(), String> {
             return Err(format!("`vargo test` must be run with a specific package"));
         }
         (Task::Test { nextest }, Some(_package), false) => {
+            let (feature_args, new_args): (Vec<_>, Vec<_>) =
+                args.iter().cloned().enumerate().partition(|(i, y)| {
+                    args.get(i - 1)
+                        .map(|x| x.as_str() == "-F" || x.as_str() == "--features")
+                        .unwrap_or(false)
+                        || y.as_str() == "-F"
+                        || y.as_str() == "--features"
+                });
+            let (feature_args, mut new_args): (Vec<_>, Vec<_>) = (
+                feature_args.into_iter().map(|(_, x)| x).collect(),
+                new_args.into_iter().map(|(_, x)| x).collect(),
+            );
+            let dashdash_pos = new_args.iter().position(|x| x == "--").expect("-- in args");
+            let feature_args = filter_features(&feature_args, ["singular"].into_iter().collect());
+            new_args.splice(dashdash_pos..dashdash_pos, feature_args);
             if nextest {
                 args.get(cmd_position + 1)
                     .and_then(|x| (x.as_str() == "run").then(|| ()))
@@ -535,9 +650,9 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
-                    .env("RUSTFLAGS", "--cfg proc_macro_span")
+                    .env("RUSTFLAGS", RUST_FLAGS)
                     .env("CARGO", current_exe)
-                    .args(&args);
+                    .args(&new_args);
                 log_command(&cargo, verbose);
                 let status = cargo
                     .status()
@@ -548,8 +663,8 @@ fn run() -> Result<(), String> {
                 let cargo = cargo
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
-                    .env("RUSTFLAGS", "--cfg proc_macro_span")
-                    .args(&args);
+                    .env("RUSTFLAGS", RUST_FLAGS)
+                    .args(&new_args);
                 log_command(&cargo, verbose);
                 let status = cargo
                     .status()
@@ -562,7 +677,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
-                .env("RUSTFLAGS", "--cfg proc_macro_span")
+                .env("RUSTFLAGS", RUST_FLAGS)
                 .args(&args);
             log_command(&cargo, verbose);
             cargo
@@ -581,7 +696,7 @@ fn run() -> Result<(), String> {
             let cargo = cargo
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
-                .env("RUSTFLAGS", "--cfg proc_macro_span")
+                .env("RUSTFLAGS", RUST_FLAGS)
                 .args(args);
             log_command(&cargo, verbose);
             let status = cargo
@@ -614,7 +729,7 @@ fn run() -> Result<(), String> {
                     let mut cmd = cmd
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
-                        .env("RUSTFLAGS", "--cfg proc_macro_span")
+                        .env("RUSTFLAGS", RUST_FLAGS)
                         .arg("build")
                         .arg("-p")
                         .arg(target);
@@ -644,7 +759,6 @@ fn run() -> Result<(), String> {
                 "state_machines_macros",
                 "vstd_build",
                 "verus",
-                "error_report",
             ];
 
             let build_vstd = {
@@ -664,6 +778,17 @@ fn run() -> Result<(), String> {
             for p in packages {
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
+                    let feature_args =
+                        filter_features(&feature_args, ["singular"].into_iter().collect());
+                    rust_verify_forward_args = cargo_forward_args
+                        .iter()
+                        .chain(feature_args.iter())
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    &rust_verify_forward_args
+                } else if p == &"verus" {
+                    let feature_args =
+                        filter_features(&feature_args, ["record-history"].into_iter().collect());
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())
@@ -685,7 +810,6 @@ fn run() -> Result<(), String> {
                 format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
-                format!("error_report{}", EXE),
             ]
             .into_iter()
             {
@@ -751,7 +875,7 @@ fn run() -> Result<(), String> {
                     .map_err(|x| format!("cannot read {} ({x:?})", fingerprint_path.display()))?;
                 let f = toml::from_str::<Fingerprint>(&s).map_err(|x| {
                     format!(
-                        "cannot parse {}, try `vargo clean` ({x})",
+                        "cannot parse {}, try `vargo clean -p vstd` (first), or `vargo clean` ({x})",
                         fingerprint_path.display()
                     )
                 })?;
@@ -776,10 +900,12 @@ fn run() -> Result<(), String> {
                     let current_fingerprint = Fingerprint {
                         dependencies_mtime,
                         vstd_mtime,
+                        vstd_no_std,
+                        vstd_no_alloc,
                     };
 
                     if stored_fingerprint
-                        .map(|s| current_fingerprint > s)
+                        .map(|s| !(current_fingerprint <= s))
                         .unwrap_or(true)
                     {
                         info("vstd outdated, rebuilding");
@@ -787,7 +913,7 @@ fn run() -> Result<(), String> {
                         let mut vstd_build = vstd_build
                             .env("RUSTC_BOOTSTRAP", "1")
                             .env("VERUS_IN_VARGO", "1")
-                            .env("RUSTFLAGS", "--cfg proc_macro_span")
+                            .env("RUSTFLAGS", RUST_FLAGS)
                             .arg("run")
                             .arg("-p")
                             .arg("vstd_build")
@@ -798,6 +924,12 @@ fn run() -> Result<(), String> {
                         }
                         if vstd_no_verify {
                             vstd_build = vstd_build.arg("--no-verify");
+                        }
+                        if vstd_no_std {
+                            vstd_build = vstd_build.arg("--no-std");
+                        }
+                        if vstd_no_alloc {
+                            vstd_build = vstd_build.arg("--no-alloc");
                         }
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");

@@ -15,7 +15,7 @@ pub fn attribute_is_variant(
         quote! {}
     } else {
         quote! {
-            #[verus::internal(publish)]
+            #[verus::internal(open)]
         }
     };
     let is_impls = s
@@ -39,6 +39,7 @@ pub fn attribute_is_variant(
                         let field_str = field_ident.to_string();
 
                         quote! {
+                            #[cfg(verus_keep_ghost)]
                             #[allow(non_snake_case)]
                             #[verus::internal(spec)]
                             #[verifier::inline]
@@ -61,6 +62,7 @@ pub fn attribute_is_variant(
                         );
 
                         quote! {
+                            #[cfg(verus_keep_ghost)]
                             #[allow(non_snake_case)]
                             #[verus::internal(spec)]
                             #[verifier::inline]
@@ -76,6 +78,7 @@ pub fn attribute_is_variant(
 
             quote! {
                 ::builtin_macros::verus! {
+                    #[cfg(verus_keep_ghost)]
                     #[allow(non_snake_case)]
                     #[verus::internal(spec)]
                     #[verifier::inline]
@@ -96,6 +99,7 @@ pub fn attribute_is_variant(
         #ast
 
         #[verus::internal(verus_macro)]
+        #[cfg(verus_keep_ghost)]
         #[automatically_derived]
         impl #impl_generics #struct_name #ty_generics #where_clause {
             #is_impls

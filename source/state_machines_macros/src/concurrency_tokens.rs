@@ -256,14 +256,14 @@ fn get_storage_type_tuple(sm: &SM) -> Type {
 /// currently runs into Verus limitations with deriving instances.
 fn trusted_clone() -> TokenStream {
     return quote! {
-        #[cfg(not(verus_macro_erase_ghost))]
+        #[cfg(verus_keep_ghost_body)]
         #[verus::internal(verus_macro)]
         #[verifier::proof]
         #[verifier::external_body] /* vattr */
         #[verifier::returns(proof)] /* vattr */
         pub fn clone(#[verifier::proof] &self) -> Self {
             ensures(|s: Self| ::builtin::equal(*self, s));
-            ::std::unimplemented!();
+            ::core::unimplemented!();
         }
     };
 }
@@ -347,12 +347,12 @@ fn token_struct_stream(
         }
 
         #impldecl {
-            #[cfg(not(verus_macro_erase_ghost))]
+            #[cfg(verus_keep_ghost_body)]
             #[verus::internal(verus_macro)]
-            #[verus::internal(publish)] /* vattr */
+            #[verus::internal(open)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verifier::spec]
-            pub fn view(self) -> #token_data_ty { ::std::unimplemented!() }
+            pub fn view(self) -> #token_data_ty { ::core::unimplemented!() }
 
             #impl_token_stream
         }
@@ -1090,7 +1090,7 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #[cfg(not(verus_macro_erase_ghost))]
+        #[cfg(verus_keep_ghost_body)]
         #[verus::internal(verus_macro)]
         #ret_value_mode
         #[verifier::external_body] /* vattr */
@@ -1099,7 +1099,7 @@ pub fn exchange_stream(
             #req_stream
             #ens_stream
             #extra_deps
-            ::std::unimplemented!();
+            ::core::unimplemented!();
         }
     });
 }
@@ -1290,19 +1290,19 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // Some(x)        Some(Token { instance: instance, value: x })
 
             quote! {
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::inline] /* vattr */
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, opt, instance)
                     && ::builtin::imply(opt.is_None(), token_opt.is_None())
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::imply(
@@ -1333,9 +1333,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // {x, y}         { x => { instance, x }, y => { instance, y } }
 
             quote! {
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|elem: #ty| {
@@ -1358,10 +1358,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     })
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::inline] /* vattr */
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), set)
@@ -1385,23 +1385,23 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // true           Some(Token { instance: instance })
 
             quote! {
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
-                pub fn #fn_name(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                pub fn #fn_name(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
                     ::builtin::imply(b,
                         token_opt.is_Some()
                         && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
                     )
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::inline] /* vattr */
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
-                pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::std::primitive::bool, instance: #inst_ty) -> bool {
+                pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
                     && ::builtin::imply(!b, token_opt.is_None())
                 }
@@ -1430,9 +1430,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    [k1 := Token { instance: instance, value: v2 }]...
 
             quote! {
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|key: #key|
@@ -1451,9 +1451,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::equal(token_map.dom(), m.dom())
@@ -1485,9 +1485,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // }
 
             quote! {
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
@@ -1501,9 +1501,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
-                #[verus::internal(publish)] /* vattr */
+                #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty| {
@@ -1520,7 +1520,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     })
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 #[verifier::returns(proof)] /* vattr */
@@ -1532,10 +1532,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         && ::builtin::equal(s.view().key, self.view().key)
                         && ::builtin::equal(s.view().count, self.view().count + other.view().count)
                     );
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
@@ -1555,13 +1555,13 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             self.view().count.spec_sub(i)
                         )
                     });
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
             }
         }
         ShardableType::Count => {
             quote! {
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 #[verifier::returns(proof)] /* vattr */
@@ -1572,10 +1572,10 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         ::builtin::equal(s.view().instance, self.view().instance)
                         && ::builtin::equal(s.view().count, self.view().count + other.view().count)
                     );
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
 
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
@@ -1593,13 +1593,13 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             self.view().count.spec_sub(i)
                         )
                     });
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
             }
         }
         ShardableType::PersistentCount => {
             quote! {
-                #[cfg(not(verus_macro_erase_ghost))]
+                #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
@@ -1610,7 +1610,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                         ::builtin::equal(s.view().instance, self.view().instance)
                         && ::builtin::equal(s.view().count, i)
                     );
-                    ::std::unimplemented!();
+                    ::core::unimplemented!();
                 }
             }
         }

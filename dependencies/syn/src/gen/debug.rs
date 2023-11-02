@@ -761,6 +761,12 @@ impl Debug for Expr {
                 formatter.finish()
             }
             #[cfg(feature = "full")]
+            Expr::RevealHide(v0) => {
+                let mut formatter = formatter.debug_tuple("RevealHide");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
             Expr::View(v0) => {
                 let mut formatter = formatter.debug_tuple("View");
                 formatter.field(v0);
@@ -775,6 +781,18 @@ impl Debug for Expr {
             #[cfg(feature = "full")]
             Expr::BigOr(v0) => {
                 let mut formatter = formatter.debug_tuple("BigOr");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::Is(v0) => {
+                let mut formatter = formatter.debug_tuple("Is");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::Has(v0) => {
+                let mut formatter = formatter.debug_tuple("Has");
                 formatter.field(v0);
                 formatter.finish()
             }
@@ -981,6 +999,17 @@ impl Debug for ExprGroup {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprHas {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprHas");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("lhs", &self.lhs);
+        formatter.field("has_token", &self.has_token);
+        formatter.field("rhs", &self.rhs);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ExprIf {
@@ -1003,6 +1032,17 @@ impl Debug for ExprIndex {
         formatter.field("expr", &self.expr);
         formatter.field("bracket_token", &self.bracket_token);
         formatter.field("index", &self.index);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprIs {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprIs");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("base", &self.base);
+        formatter.field("is_token", &self.is_token);
+        formatter.field("variant_ident", &self.variant_ident);
         formatter.finish()
     }
 }
@@ -1846,7 +1886,9 @@ impl Debug for ItemConst {
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
         formatter.field("ty", &self.ty);
+        formatter.field("ensures", &self.ensures);
         formatter.field("eq_token", &self.eq_token);
+        formatter.field("block", &self.block);
         formatter.field("expr", &self.expr);
         formatter.field("semi_token", &self.semi_token);
         formatter.finish()
@@ -1971,12 +2013,16 @@ impl Debug for ItemStatic {
         let mut formatter = formatter.debug_struct("ItemStatic");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("publish", &self.publish);
+        formatter.field("mode", &self.mode);
         formatter.field("static_token", &self.static_token);
         formatter.field("mutability", &self.mutability);
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
         formatter.field("ty", &self.ty);
+        formatter.field("ensures", &self.ensures);
         formatter.field("eq_token", &self.eq_token);
+        formatter.field("block", &self.block);
         formatter.field("expr", &self.expr);
         formatter.field("semi_token", &self.semi_token);
         formatter.finish()
@@ -2832,6 +2878,20 @@ impl Debug for ReturnType {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for RevealHide {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("RevealHide");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("reveal_token", &self.reveal_token);
+        formatter.field("reveal_with_fuel_token", &self.reveal_with_fuel_token);
+        formatter.field("hide_token", &self.hide_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("path", &self.path);
+        formatter.field("fuel", &self.fuel);
+        formatter.finish()
     }
 }
 #[cfg(feature = "full")]

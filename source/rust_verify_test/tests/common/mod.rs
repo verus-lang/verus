@@ -270,6 +270,8 @@ pub fn run_verus(
             verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "--external-by-default" {
             verus_args.push(option.to_string());
+        } else if *option == "--no-lifetime" {
+            verus_args.push("--no-lifetime".to_string());
         } else if *option == "vstd" {
             // ignore
         } else {
@@ -321,8 +323,22 @@ pub fn run_verus(
     }
 
     let mut child = std::process::Command::new(bin);
-    #[cfg(not(target_os = "windows"))]
-    let child = child.env("VERUS_Z3_PATH", "../z3");
+    child.env(
+        "VERUS_Z3_PATH",
+        std::env::var("VERUS_Z3_PATH")
+            .map(|p| {
+                let p = std::path::PathBuf::from(p);
+                (if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p })
+                    .into_os_string()
+            })
+            .unwrap_or({
+                if cfg!(target_os = "windows") {
+                    std::ffi::OsString::from("..\\z3.exe")
+                } else {
+                    std::ffi::OsString::from("../z3")
+                }
+            }),
+    );
     let child = child
         .args(&verus_args[..])
         .stdout(std::process::Stdio::piped())

@@ -322,7 +322,7 @@ test_verify_one_file! {
         proof fn foo() {
             reveal_with_fuel(is_true, 2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a function with a decreases clause")
+    } => Err(err) => assert_vir_error_msg(err, "reveal_with_fuel statements require a spec function with a decreases clause")
 }
 
 test_verify_one_file_with_options! {
@@ -483,7 +483,7 @@ test_verify_one_file! {
         pub type MyType<T> = FnSpec(T) -> bool;
 
         impl<T> Foo for MyType<T> {
-            spec fn foo(&self) -> bool {
+            open spec fn foo(&self) -> bool {
                 true
             }
         }
@@ -587,15 +587,16 @@ test_verify_one_file_with_options! {
     #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
         use vstd::set::*;
 
-        spec fn yes() -> bool { true }
+        spec fn maybe() -> bool;
 
-        spec fn both(s: Set<nat>) -> bool {
-            &&& yes()
-            &&& s.contains(0) // EXPAND-ERRORS
-        }
+        // spec fn yes() -> bool { true }
+        // spec fn both(s: Set<nat>) -> bool {
+        //     &&& maybe()
+        //     &&& s.contains(0) // EXPAND-ERRORS
+        // }
 
         proof fn test(s: Set<nat>) {
-            assert(both(s)); // EXPAND-ERRORS
+            assert(maybe()); // EXPAND-ERRORS
         }
     } => Err(err) => {
         assert!(err.expand_errors_notes[0].rendered.contains("this function is uninterpreted"));
@@ -608,7 +609,7 @@ test_verify_one_file_with_options! {
 
         mod X {
             pub trait T {
-                open spec fn foo(&self) -> bool; // EXPAND-ERRORS
+                spec fn foo(&self) -> bool; // EXPAND-ERRORS
             }
 
             impl T for super::Z {
@@ -752,5 +753,305 @@ test_verify_one_file! {
                 }
             };
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_reveal_type_args_regression_704 verus_code! {
+        trait X {}
+        impl X for int {}
+
+        #[verifier::opaque]
+        spec fn foo(x: impl X) -> bool {
+            true
+        }
+
+        proof fn test()
+        {
+            reveal(foo);
+
+            assert(foo(3int));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_lifetime_constructor_regression_768 verus_code! {
+        use vstd::prelude::*;
+        proof fn foo() {
+            let input: Option<u64> = None;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_generate_assoc_type_regression_769 verus_code! {
+        pub trait EA {
+            type I;
+            type O;
+        }
+
+        pub struct Empty {}
+
+        pub struct EAA {}
+
+        impl EA for EAA {
+            type I = Empty;
+            type O = Empty;
+        }
+
+        pub struct MC<E>(E);
+
+        pub struct M<E: EA> {
+            pub content: MC<E>,
+        }
+
+        enum A<X> {
+            Y(X),
+            Z,
+        }
+
+        proof fn foo() {
+            let input: A<M<EAA>> = A::Z;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zulip_rc_clone verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+
+        fn test(rc: Rc<Vec<u8>>) {
+            let rc2 = Rc::clone(&rc);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments_1 ["vstd"] => verus_code! {
+        struct X { v: u64 }
+
+        fn test<F: Fn(&X) -> bool>(f: F, x: X) -> bool
+            requires f.requires((&x,))
+        {
+            f(&x)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fn_with_ref_arguments ["vstd"] => verus_code! {
+        struct X { v: u64 }
+        struct Y { w: u64 }
+
+        fn test<F: Fn(&X, &Y) -> bool>(f: F, x: X, y: Y) -> bool
+            requires f.requires((&x, &y,))
+        {
+            f(&x, &y)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zulip_external_body_clone_regression_800_1 verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+        #[verifier(external_body)]
+        pub exec fn rc_clone(rc: &Rc<Vec<u8>>) -> (res: Rc<Vec<u8>>)
+            ensures (*rc)@ == (*res)@
+        {
+            Rc::clone(&rc)
+        }
+
+        pub exec fn blah(rc: Rc<Vec<u8>>) {
+            let tmp: Rc<Vec<u8>> = rc_clone(&rc);
+            assert((*rc)@ == tmp@); // assertion fails
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] zulip_external_body_clone_regression_800_2 verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+        pub exec fn blah(rc: Rc<Vec<u8>>) {
+            assert(rc@ == (*rc)@); // fails
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assert_forall_trigger_regression_824 verus_code! {
+        use vstd::seq::Seq;
+        pub open spec fn f(x: u32) -> bool;
+
+        proof fn test(a: Seq<u32>)
+            requires forall |i| #![trigger f(a[i])] f(a[i]),
+        {
+            // assert forall #![trigger f(a[i])] |i| f(a[i]) by { }
+            assert forall |i| #![trigger f(a[i])] f(a[i]) by { } // <== error
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] inside_of_ghost_processed_as_ghost_issue815 verus_code! {
+        spec fn stuff_spec() -> bool { true }
+
+        #[verifier::when_used_as_spec(stuff_spec)]
+        fn stuff() -> bool { true }
+
+        // Test to check if properly determine ghostness withing a Ghost(...) expression
+
+        fn test() {
+            // at the time of writing,
+            // when_used_as_spec is processed via the is_ghost flag in rust_to_vir
+
+            let x: Ghost<bool> = Ghost(stuff());
+            assert(x@ == true);
+        }
+
+        fn test2() {
+            // Likewise, ghostness determines whether the following command
+            // has a hard overflow-check (in ghost mode, it shouldn't)
+
+            let x: Ghost<u8> = Ghost(add(200u8, 200u8));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
+        use state_machines_macros::state_machine;
+
+        state_machine!{ MachineWithProof {
+        fields {
+            pub x: int,
+        }
+
+        // If the `pub` access specifier is added then the error message goes away
+        proof fn truey()
+            ensures true
+        {
+            assume(false);
+        }
+        } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_generate_trait_lifetime_arg verus_code! {
+        trait T<'a> { type X; }
+        struct S { }
+        impl<'a> T<'a> for S { type X = u8; }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_generate_trait_lifetime_arg_unsupported verus_code! {
+        trait T<'a> { type X; }
+        struct S { }
+        impl<'a> T<'a> for S { type X = u8; }
+        proof fn test1(x: <S as T>::X) {
+            assert(x < 256);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "does not yet support the following Rust feature: projection type")
+}
+
+test_verify_one_file! {
+    // tests a scenario (temporarily) addressed by 81100927
+    // > As a temporary patch, order spec functions early in call graph
+    #[test] axiom_ordering_patched verus_code! {
+        mod m2 {
+            use vstd::prelude::*;
+
+            pub trait B<T: View> {
+                spec fn b1(t: T) -> bool;
+
+                spec fn b2(t: T::V) -> bool;
+
+                proof fn b_proof(t: T) requires Self::b1(t), ensures Self::b2(t@);
+            }
+
+        }
+
+        mod m3 {
+            use vstd::prelude::*;
+
+            pub struct C {}
+
+            impl crate::m2::B<crate::m0::MyBool> for C {
+                open spec fn b1(t: crate::m0::MyBool) -> bool { t.0 }
+
+                open spec fn b2(t: bool) -> bool { t }
+
+                proof fn b_proof(t: crate::m0::MyBool) {
+                    // let v = t@; // this line was necessary to make this proof pass before the patch
+                }
+            }
+        }
+
+        mod m0 {
+            pub struct MyBool(pub bool);
+        }
+
+        // this module has to come last to trigger the incompleteness
+        mod m1 {
+            use vstd::prelude::*;
+
+            impl View for crate::m0::MyBool {
+                type V = bool;
+
+                open spec fn view(&self) -> bool { self.0 }
+            }
+
+            pub open spec fn aa<T: View>(t: T) -> T::V { t@ }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tuple_impl_regression_869 verus_code! {
+        pub trait Tau {
+            fn foo() -> Self::T;
+
+            type T;
+        }
+        impl<A, B> Tau for (A, B) {
+            fn foo() -> bool { true }
+
+            type T = bool;
+        }
+        impl<A, B, C> Tau for (A, B, C) {
+            fn foo() -> bool { true }
+
+            type T = bool;
+        }
+
+        fn main() {
+            let c: <(u64, u64) as Tau>::T = <(u64, u64)>::foo();
+            let c: <(u64, u64, u64) as Tau>::T = <(u64, u64, u64)>::foo();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nested_macros_regression_866 verus_code! {
+        use vstd::seq::seq;
+        macro_rules! temp {
+          () => {
+            verus! {
+              proof fn foo() {
+                assert(seq![1u64,2] =~= seq![1u64,2]);
+                assert(seq![1u64,2] =~~= seq![1u64,2]);
+
+                assert(false !~= true);
+                assert(false !~~= true);
+              }
+            }
+          };
+        }
+        temp!{}
     } => Ok(())
 }
