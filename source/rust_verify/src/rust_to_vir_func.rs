@@ -42,8 +42,7 @@ fn body_id_to_types<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: &BodyId,
 ) -> &'tcx rustc_middle::ty::TypeckResults<'tcx> {
-    let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner.def_id);
-    tcx.typeck_opt_const_arg(def)
+    tcx.typeck(id.hir_id.owner.def_id)
 }
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -966,12 +965,10 @@ pub(crate) fn get_external_def_id<'tcx>(
         let inst =
             rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
         if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
-                if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item {
-                    let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
-                    let kind = FunctionKind::ForeignTraitMethodImpl(trait_path);
-                    return Ok((did, kind));
-                }
+            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
+                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+                let kind = FunctionKind::ForeignTraitMethodImpl(trait_path);
+                return Ok((did, kind));
             }
         }
 

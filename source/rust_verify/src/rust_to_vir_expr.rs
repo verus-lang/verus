@@ -1260,6 +1260,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Raw, _, _) => {
             unsupported_err!(expr.span, format!("raw borrows"))
         }
+        ExprKind::OffsetOf(_container, _fields) => {
+            unsupported_err!(expr.span, format!("offset_of!()"))
+        }
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
                 let not_op = match (tc.expr_ty_adjusted(arg)).kind() {
