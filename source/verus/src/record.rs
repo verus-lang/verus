@@ -48,8 +48,7 @@ pub fn find_source_file(args: &Vec<String>) -> Result<PathBuf, String> {
 
 pub fn temp_dep_file_from_source_file(file: &PathBuf) -> Result<std::ffi::OsString, String> {
     let dep_file = file.with_extension("d");
-    let Some(dep_file) = dep_file.file_name()
-    else {
+    let Some(dep_file) = dep_file.file_name() else {
         return Err("invalid input file name for --record".into());
     };
     Ok(dep_file.to_owned())

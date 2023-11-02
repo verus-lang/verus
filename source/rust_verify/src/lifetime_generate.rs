@@ -17,8 +17,8 @@ use rustc_hir::{
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{
-    AdtDef, BoundRegionKind, BoundVariableKind, Clause, Const, GenericParamDefKind, PredicateKind,
-    RegionKind, Ty, TyCtxt, TyKind, TypeckResults, VariantDef,
+    AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericParamDefKind, RegionKind,
+    Ty, TyCtxt, TyKind, TypeckResults, VariantDef,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
@@ -232,8 +232,8 @@ fn add_copy_type(ctxt: &mut Context, state: &mut State, id: DefId) {
     // check for implementation of the form:
     //   impl<A1 ... An> Copy for S<A1 ... An>
     if let Some(trait_ref) = tcx.impl_trait_ref(id) {
-        if trait_ref.0.substs.len() == 1 {
-            if let GenericArgKind::Type(ty) = trait_ref.0.substs[0].unpack() {
+        if trait_ref.skip_binder().substs.len() == 1 {
+            if let GenericArgKind::Type(ty) = trait_ref.skip_binder().substs[0].unpack() {
                 if let TyKind::Adt(AdtDef(adt_def_data), args) = ty.kind() {
                     let did = adt_def_data.did;
                     let generics = tcx.generics_of(id);
@@ -255,9 +255,7 @@ fn add_copy_type(ctxt: &mut Context, state: &mut State, id: DefId) {
                         return;
                     }
                     for (pred, _) in tcx.predicates_of(id).predicates {
-                        if let Some(PredicateKind::Clause(Clause::Trait(p))) =
-                            pred.kind().no_bound_vars()
-                        {
+                        if let Some(ClauseKind::Trait(p)) = pred.kind().no_bound_vars() {
                             let pid = p.trait_ref.def_id;
                             // For now, only allowed predicates are Copy and Sized
                             if Some(pid) == copy {
@@ -1543,7 +1541,7 @@ fn erase_mir_generics<'tcx>(
     let mut fn_projections: HashMap<Typ, (Typ, Typ)> = HashMap::new();
     for (pred, _) in mir_predicates.predicates.iter() {
         match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
-            (PredicateKind::Clause(Clause::RegionOutlives(pred)), &[]) => {
+            (ClauseKind::RegionOutlives(pred), &[]) => {
                 let x = erase_hir_region(ctxt, state, &pred.0).expect("bound");
                 let typ = Box::new(TypX::TypParam(x));
                 let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
@@ -1551,14 +1549,14 @@ fn erase_mir_generics<'tcx>(
                     GenericBound { typ, bound_vars: vec![], bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
-            (PredicateKind::Clause(Clause::TypeOutlives(pred)), &[]) => {
+            (ClauseKind::TypeOutlives(pred), &[]) => {
                 let typ = erase_ty(ctxt, state, &pred.0);
                 let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
                 let generic_bound =
                     GenericBound { typ, bound_vars: vec![], bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
-            (PredicateKind::Clause(Clause::Trait(pred)), bound_vars) => {
+            (ClauseKind::Trait(pred), bound_vars) => {
                 let typ = erase_ty(ctxt, state, &pred.trait_ref.substs[0].expect_ty());
                 let id = pred.trait_ref.def_id;
                 erase_trait(ctxt, state, id);
@@ -1603,7 +1601,7 @@ fn erase_mir_generics<'tcx>(
                     fn_traits.push((typ, bound_vars, kind));
                 }
             }
-            (PredicateKind::Clause(Clause::Projection(pred)), bound_vars) => {
+            (ClauseKind::Projection(pred), bound_vars) => {
                 if Some(pred.projection_ty.def_id) == ctxt.tcx.lang_items().fn_once_output() {
                     assert!(pred.projection_ty.substs.len() == 2);
                     let typ = erase_ty(ctxt, state, &pred.projection_ty.substs[0].expect_ty());
@@ -1620,7 +1618,7 @@ fn erase_mir_generics<'tcx>(
                     assert!(bound_vars.is_empty());
                 }
             }
-            (PredicateKind::Clause(Clause::ConstArgHasType(..)), &[]) => {}
+            (ClauseKind::ConstArgHasType(..), &[]) => {}
             _ => {
                 panic!("unexpected bound")
             }
@@ -1881,7 +1879,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
                         let impl_name = state.typ_param(&assoc_item.name.to_string(), None);
 
                         let mut trait_typ_args: Vec<Typ> = Vec::new();
-                        for ty in trait_ref.0.substs.types().skip(1) {
+                        for ty in trait_ref.skip_binder().substs.types().skip(1) {
                             trait_typ_args.push(erase_ty(ctxt, state, &ty));
                         }
                         let mut lifetimes: Vec<GenericParam> = Vec::new();
@@ -1897,7 +1895,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
                             &mut generic_bounds,
                         );
                         let mut trait_lifetime_args: Vec<Id> = Vec::new();
-                        for region in trait_ref.0.substs.regions() {
+                        for region in trait_ref.skip_binder().substs.regions() {
                             if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
                                 trait_lifetime_args.push(id);
                             }
@@ -2398,6 +2396,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             bounds: _,
                             origin: OpaqueTyOrigin::AsyncFn(_),
                             in_trait: _,
+                            lifetime_mapping: _,
                         }) => {
                             continue;
                         }
