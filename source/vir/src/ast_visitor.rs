@@ -284,6 +284,11 @@ where
                         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                     }
                 }
+                ExprX::ArrayLiteral(es) => {
+                    for e in es.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                    }
+                }
                 ExprX::Ctor(_path, _ident, binders, update) => {
                     match update {
                         None => (),
@@ -653,6 +658,13 @@ where
                 exprs.push(map_expr_visitor_env(e, map, env, fe, fs, ft)?);
             }
             ExprX::Tuple(Arc::new(exprs))
+        }
+        ExprX::ArrayLiteral(es) => {
+            let mut exprs: Vec<Expr> = Vec::new();
+            for e in es.iter() {
+                exprs.push(map_expr_visitor_env(e, map, env, fe, fs, ft)?);
+            }
+            ExprX::ArrayLiteral(Arc::new(exprs))
         }
         ExprX::Ctor(path, ident, binders, update) => {
             let update = match update {

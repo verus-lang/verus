@@ -15,8 +15,8 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_conjoin, sst_int_literal, sst_le,
-    sst_lt,
+    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_array_len,
+    sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
@@ -1442,6 +1442,44 @@ pub(crate) fn expr_to_stm_opt(
             let v = mk_exp(ExpX::Var(uid));
 
             Ok((all_stms, ReturnValue::Some(v)))
+        }
+        ExprX::ArrayLiteral(elems) => {
+            let mut stms: Vec<Stm> = Vec::new();
+            let mut exps: Vec<Exp> = Vec::new();
+            for elem in elems.iter() {
+                let (mut stms0, e0) = expr_to_stm_opt(ctx, state, elem)?;
+                stms.append(&mut stms0);
+                let e0 = match e0.to_value() {
+                    Some(e) => e,
+                    None => {
+                        return Ok((stms, ReturnValue::Never));
+                    }
+                };
+                exps.push(e0);
+            }
+
+            let (tmp_ident, _tmp_exp) = state.next_temp(&expr.span, &expr.typ);
+            let uid = state.declare_new_var(&tmp_ident, &expr.typ, false, false);
+            let v = mk_exp(ExpX::Var(uid));
+
+            // assume v.len() == len
+            let len_eq = sst_equal(
+                &expr.span,
+                &sst_array_len(ctx, &expr.span, &v),
+                &sst_int_literal(&expr.span, elems.len() as i128),
+            );
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(len_eq)));
+            for (i, exp) in exps.into_iter().enumerate() {
+                // assume v[i] == exp
+                let elem_i_eq = sst_equal(
+                    &expr.span,
+                    &sst_array_index(ctx, &expr.span, &v, &sst_int_literal(&expr.span, i as i128)),
+                    &exp,
+                );
+                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(elem_i_eq)));
+            }
+
+            Ok((stms, ReturnValue::Some(v)))
         }
         ExprX::Choose { params, cond, body } => {
             let mut check_stms = check_pure_expr_bind(ctx, state, params, cond)?;

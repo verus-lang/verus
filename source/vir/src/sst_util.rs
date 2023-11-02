@@ -496,10 +496,71 @@ pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
+pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::Eq(Mode::Spec);
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
 pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
     SpannedTyped::new(
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::Const(crate::ast_util::const_int_from_i128(i)),
+    )
+}
+
+pub fn sst_array_index(ctx: &crate::context::Ctx, span: &Span, ar: &Exp, idx: &Exp) -> Exp {
+    let t = match &*ar.typ {
+        TypX::Boxed(t) => t,
+        _ => {
+            panic!("sst_array_index expected boxed Array type");
+        }
+    };
+    let (elem_ty, n_ty) = match &**t {
+        TypX::Primitive(crate::ast::Primitive::Array, typs) => (&typs[0], &typs[1]),
+        _ => {
+            panic!("sst_array_index expected boxed Array type");
+        }
+    };
+
+    let idx_boxed = SpannedTyped::new(
+        &idx.span,
+        &Arc::new(TypX::Boxed(idx.typ.clone())),
+        ExpX::UnaryOpr(UnaryOpr::Box(idx.typ.clone()), idx.clone()),
+    );
+
+    SpannedTyped::new(
+        span,
+        elem_ty,
+        ExpX::Call(
+            CallFun::Fun(crate::def::array_index_fun(&ctx.global.vstd_crate_name), None),
+            Arc::new(vec![elem_ty.clone(), n_ty.clone()]),
+            Arc::new(vec![ar.clone(), idx_boxed]),
+        ),
+    )
+}
+
+pub fn sst_array_len(ctx: &crate::context::Ctx, span: &Span, ar: &Exp) -> Exp {
+    let t = match &*ar.typ {
+        TypX::Boxed(t) => t,
+        _ => {
+            panic!("sst_array_index expected boxed Array type");
+        }
+    };
+    let (elem_ty, n_ty) = match &**t {
+        TypX::Primitive(crate::ast::Primitive::Array, typs) => (&typs[0], &typs[1]),
+        _ => {
+            panic!("sst_array_index expected boxed Array type");
+        }
+    };
+
+    SpannedTyped::new(
+        span,
+        elem_ty,
+        ExpX::Call(
+            CallFun::Fun(crate::def::array_len_fun(&ctx.global.vstd_crate_name), None),
+            Arc::new(vec![elem_ty.clone(), n_ty.clone()]),
+            Arc::new(vec![ar.clone()]),
+        ),
     )
 }

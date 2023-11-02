@@ -1155,6 +1155,18 @@ fn erase_expr<'tcx>(
                 mk_exp(ExpX::Tuple(args))
             }
         }
+        ExprKind::Array(exprs) => {
+            let mut args: Vec<Exp> = Vec::new();
+            if expect_spec {
+                let exps = exprs.iter().map(|e| erase_expr(ctxt, state, expect_spec, e)).collect();
+                erase_spec_exps(ctxt, state, expr, exps)
+            } else {
+                for e in exprs.iter() {
+                    args.push(erase_expr(ctxt, state, expect_spec, e).expect("expr"));
+                }
+                mk_exp(ExpX::Array(args))
+            }
+        }
         ExprKind::Cast(source, _) => {
             let source = erase_expr(ctxt, state, expect_spec, source);
             erase_spec_exps(ctxt, state, expr, vec![source])
