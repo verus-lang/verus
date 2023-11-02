@@ -159,6 +159,7 @@ const PRELUDE: &str = "\
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
+#![allow(unused_assignments)]
 #![allow(unreachable_patterns)]
 #![allow(unused_parens)]
 #![allow(unused_braces)]
