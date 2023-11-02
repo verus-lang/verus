@@ -91,24 +91,24 @@ impl air::messages::Diagnostics for Reporter<'_> {
         ) {
             diag.span = multispan;
             if let Some(help) = help {
-                diag.help(&**help);
+                diag.help(help.clone());
             }
             diag.emit();
         }
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note_without_error(&*msg.note),
+                self.compiler_diagnostics.struct_note_without_error(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_warn(&*msg.note),
+                self.compiler_diagnostics.struct_warn(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_err(&*msg.note),
+                self.compiler_diagnostics.struct_err(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
@@ -1144,7 +1144,9 @@ impl Verifier {
                         }
                     }
                 }
-                let Some(op) = next_op else { break; };
+                let Some(op) = next_op else {
+                    break;
+                };
                 match &op.kind {
                     OpKind::Context(_context_op, commands) => {
                         self.run_commands(
@@ -2179,7 +2181,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Err(err) => {
                     assert!(err.spans.len() == 0);
                     assert!(err.level == MessageLevel::Error);
-                    compiler.session().diagnostic().err(&*err.note);
+                    compiler.session().diagnostic().err(err.note.clone());
                     self.verifier.encountered_vir_error = true;
                     return;
                 }

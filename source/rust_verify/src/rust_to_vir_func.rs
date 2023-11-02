@@ -15,9 +15,8 @@ use rustc_hir::{
     def::Res, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
     MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
-use rustc_middle::ty::Predicate;
 use rustc_middle::ty::SubstsRef;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{Clause, TyCtxt};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -839,23 +838,23 @@ fn is_mut_ty<'tcx>(
 
 fn remove_destruct_trait_bounds_from_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
-    preds: &mut Vec<Predicate<'tcx>>,
+    preds: &mut Vec<Clause<'tcx>>,
 ) {
-    preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
-        rustc_middle::ty::PredicateKind::<'tcx>::Clause(
-            rustc_middle::ty::Clause::<'tcx>::Trait(tp),
-        ) => match crate::verus_items::def_id_to_stable_rust_path(tcx, tp.trait_ref.def_id) {
-            Some(s) => s != "core::marker::Destruct",
-            None => true,
-        },
+    preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
+        rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
+            match crate::verus_items::def_id_to_stable_rust_path(tcx, tp.trait_ref.def_id) {
+                Some(s) => s != "core::marker::Destruct",
+                None => true,
+            }
+        }
         _ => true,
     });
 }
 
 pub(crate) fn predicates_match<'tcx>(
     tcx: TyCtxt<'tcx>,
-    preds1: &Vec<Predicate<'tcx>>,
-    preds2: &Vec<Predicate<'tcx>>,
+    preds1: &Vec<Clause<'tcx>>,
+    preds2: &Vec<Clause<'tcx>>,
 ) -> bool {
     if preds1.len() != preds2.len() {
         return false;
@@ -891,7 +890,7 @@ fn all_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: rustc_span::def_id::DefId,
     substs: SubstsRef<'tcx>,
-) -> Vec<Predicate<'tcx>> {
+) -> Vec<Clause<'tcx>> {
     let preds = tcx.predicates_of(id);
     let preds = preds.instantiate(tcx, substs);
     preds.predicates

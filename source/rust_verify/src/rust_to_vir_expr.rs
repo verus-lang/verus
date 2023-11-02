@@ -27,7 +27,7 @@ use rustc_hir::{
     Local, LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
+    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
 use rustc_span::def_id::DefId;
@@ -930,7 +930,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 "dereferencing a pointer (here the dereference is implicit)"
             )
         }
-        Adjust::Pointer(PointerCast::Unsize) => {
+        Adjust::Pointer(PointerCoercion::Unsize) => {
             unsupported_err!(
                 expr.span,
                 "unsizing operation (e.g., implicit cast from array [T; N] to slice [T])"
@@ -1772,6 +1772,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Yield(..) => unsupported_err!(expr.span, format!("yield expressions")),
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
         ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),
+        ExprKind::Become(..) => unsupported_err!(expr.span, format!("Become expressions")),
     }
 }
 

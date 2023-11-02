@@ -29,20 +29,28 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
 
                                 (|| {
                                     let ExprKind::Block(stmts, expr) = old_body.value.kind else {
-                                        emit_invalid_error(); return;
+                                        emit_invalid_error();
+                                        return;
                                     };
                                     if expr.is_some() || stmts.stmts.len() != 0 {
                                         emit_invalid_error();
                                         return;
                                     };
                                     let Some(expr) = stmts.expr else {
-                                        emit_invalid_error(); return;
+                                        emit_invalid_error();
+                                        return;
                                     };
                                     let ExprKind::Call(callee, args) = expr.kind else {
-                                        emit_invalid_error(); return;
+                                        emit_invalid_error();
+                                        return;
                                     };
-                                    let ExprKind::Path(rustc_hir::QPath::Resolved(None, callee_res_path)) = callee.kind else {
-                                        emit_invalid_error(); return;
+                                    let ExprKind::Path(rustc_hir::QPath::Resolved(
+                                        None,
+                                        callee_res_path,
+                                    )) = callee.kind
+                                    else {
+                                        emit_invalid_error();
+                                        return;
                                     };
                                     // we'd normally use verus_items, but they are not available here
                                     if !tcx.is_diagnostic_item(
@@ -64,14 +72,22 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                             Some(ty),
                                             path,
                                         )) => {
-                                            let rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, ty_ppath)) = ty.kind else {
-                                                emit_invalid_error(); return;
+                                            let rustc_hir::TyKind::Path(
+                                                rustc_hir::QPath::Resolved(None, ty_ppath),
+                                            ) = ty.kind
+                                            else {
+                                                emit_invalid_error();
+                                                return;
                                             };
                                             (Some(ty_ppath.res), ResOrSymbol::Res(path.res))
                                         }
                                         ExprKind::Path(rustc_hir::QPath::TypeRelative(ty, ps)) => {
-                                            let rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, ty_ppath)) = ty.kind else {
-                                                emit_invalid_error(); return;
+                                            let rustc_hir::TyKind::Path(
+                                                rustc_hir::QPath::Resolved(None, ty_ppath),
+                                            ) = ty.kind
+                                            else {
+                                                emit_invalid_error();
+                                                return;
                                             };
 
                                             if let Some(invalid_ty_arg_span) =

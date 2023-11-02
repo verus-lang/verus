@@ -7,10 +7,10 @@ use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::GenericParamDefKind;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
-use rustc_middle::ty::{BoundConstness, Clause, ImplPolarity, PredicateKind, TraitPredicate};
+use rustc_middle::ty::{BoundConstness, ImplPolarity, TraitPredicate};
+use rustc_middle::ty::{ClauseKind, GenericParamDefKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
@@ -212,7 +212,7 @@ pub(crate) fn get_impl_paths<'tcx>(
     // impls once you start nesting?
     // So I'm implementing this with a predicate worklist to be safe.
 
-    let mut predicate_worklist: Vec<rustc_middle::ty::Predicate> =
+    let mut predicate_worklist: Vec<rustc_middle::ty::Clause> =
         preds.instantiate(tcx, node_substs).predicates;
 
     let mut idx = 0;
@@ -224,14 +224,21 @@ pub(crate) fn get_impl_paths<'tcx>(
         let inst_pred = &predicate_worklist[idx];
         idx += 1;
 
-        if let PredicateKind::Clause(Clause::Trait(_)) = inst_pred.kind().skip_binder() {
+        if let ClauseKind::Trait(_) = inst_pred.kind().skip_binder() {
             let poly_trait_refs = inst_pred.kind().map_bound(|p| {
-                if let PredicateKind::Clause(Clause::Trait(tp)) = &p {
-                    tp.trait_ref
-                } else {
-                    unreachable!()
-                }
+                if let ClauseKind::Trait(tp) = &p { tp.trait_ref } else { unreachable!() }
             });
+
+            // REVIEW: I tried tcx.erase_late_bound_regions(..) and similar, they didn't work
+            let delegate = rustc_middle::ty::fold::FnMutDelegate {
+                regions: &mut |_| tcx.lifetimes.re_erased,
+                types: &mut |b| panic!("unexpected bound ty in binder: {:?}", b),
+                consts: &mut |b, ty| panic!("unexpected bound ct in binder: {:?} {}", b, ty),
+            };
+            let poly_trait_refs =
+                tcx.replace_escaping_bound_vars_uncached(poly_trait_refs, delegate);
+            let poly_trait_refs = poly_trait_refs.skip_binder();
+
             let candidate = tcx.codegen_select_candidate((param_env, poly_trait_refs));
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
@@ -576,6 +583,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => {
             unsupported_err!(span, "opaque type")
         }
+        TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => {
+            unsupported_err!(span, "opaque type")
+        }
         TyKind::Char => (Arc::new(TypX::Char), false),
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
@@ -887,14 +897,14 @@ pub(crate) fn check_generics_bounds<'tcx>(
     for (predicate, span) in predicates.predicates.iter() {
         // REVIEW: rustc docs say that skip_binder is "dangerous"
         match predicate.kind().skip_binder() {
-            PredicateKind::Clause(Clause::RegionOutlives(_) | Clause::TypeOutlives(_)) => {
+            ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
                 // can ignore lifetime bounds
             }
-            PredicateKind::Clause(Clause::Trait(TraitPredicate {
+            ClauseKind::Trait(TraitPredicate {
                 trait_ref,
                 constness: BoundConstness::NotConst,
                 polarity: ImplPolarity::Positive,
-            })) => {
+            }) => {
                 let substs = trait_ref.substs;
 
                 // For a bound like `T: SomeTrait<X, Y, Z>`, then:
@@ -935,7 +945,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     bounds.push(bound);
                 }
             }
-            PredicateKind::Clause(Clause::Projection(pred)) => {
+            ClauseKind::Projection(pred) => {
                 let item_def_id = pred.projection_ty.def_id;
                 // The trait bound `F: Fn(A) -> B`
                 // is really more like a trait bound `F: Fn<A, Output=B>`
@@ -954,7 +964,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                     return err_span(*span, "Verus does yet not support this type of bound");
                 }
             }
-            PredicateKind::Clause(Clause::ConstArgHasType(..)) => {
+            ClauseKind::ConstArgHasType(..) => {
                 // Do nothing
             }
             _ => {

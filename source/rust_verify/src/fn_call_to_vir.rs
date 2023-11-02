@@ -421,11 +421,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                 {
                     unsupported_err!(expr.span, "invalid reveal", &args);
                 }
-                let Some(ExprKind::Path(QPath::Resolved(None, path))) = block.expr.as_ref().map(|x| &x.kind) else {
+                let Some(ExprKind::Path(QPath::Resolved(None, path))) =
+                    block.expr.as_ref().map(|x| &x.kind)
+                else {
                     unsupported_err!(expr.span, "invalid reveal", &args);
                 };
                 let id = {
-                    let Some(path_map) = &*crate::verifier::BODY_HIR_ID_TO_REVEAL_PATH_RES.read().expect("lock failed") else {
+                    let Some(path_map) = &*crate::verifier::BODY_HIR_ID_TO_REVEAL_PATH_RES
+                        .read()
+                        .expect("lock failed")
+                    else {
                         unsupported_err!(expr.span, "invalid reveal", &args);
                     };
                     let (ty_res, res) = &path_map[&path.res.def_id()];
@@ -493,7 +498,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, id);
 
                 // let fun = get_fn_path(bctx, &args[0])?;
-                let ExprX::Const(Constant::Int(i)) = &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x else {
+                let ExprX::Const(Constant::Int(i)) =
+                    &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x
+                else {
                     panic!("internal error: is_reveal_fuel");
                 };
                 let n = vir::ast_util::fuel_const_int_to_u32(
