@@ -1,4 +1,3 @@
-use vir::alternation_check;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
@@ -14,6 +13,7 @@ use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+use vir::alternation_check;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -1662,7 +1662,8 @@ impl Verifier {
                 alternation_check::alternation_check(&ctx, krate, bucket_id.module().clone())?;
             } else {
                 reporter.report_now(
-                    &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name())).to_any(),
+                    &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name()))
+                        .to_any(),
                 );
             }
         }

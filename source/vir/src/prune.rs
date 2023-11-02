@@ -88,9 +88,9 @@ struct State {
 }
 
 pub struct PruneKrateResult {
-    pub pruned_krate: Krate, 
+    pub pruned_krate: Krate,
     pub mono_abstract_datatypes: Vec<MonoTyp>,
-    pub lambda_types: Vec<usize>, 
+    pub lambda_types: Vec<usize>,
     pub reached_bound_traits: HashSet<Path>,
     pub fn_defs: Vec<Fun>,
     pub types_are_uninterpreted: bool,
@@ -419,22 +419,21 @@ impl AssocTypeImplX {
     }
 }
 
-fn datatypes_are_uninterpreted_sorts(state : &State, ctxt : &Ctxt, module : &Path) -> bool {
+fn datatypes_are_uninterpreted_sorts(state: &State, ctxt: &Ctxt, module: &Path) -> bool {
     // dbg!(&state.reached_types);
     state.reached_types.iter().fold(true, |acc, dt| {
         let epr_type = match dt {
             // TODO: Finish the match cases?
             ReachedType::Datatype(x) => {
                 !is_datatype_transparent(module, ctxt.datatype_map.get(x).expect("not in map"))
-                || x == &crate::def::prefix_tuple_type(0)
-            },
+                    || x == &crate::def::prefix_tuple_type(0)
+            }
             ReachedType::Bool => true,
             _ => false,
         };
         acc && epr_type
     })
 }
-
 
 pub fn prune_krate_for_module(
     krate: &Krate,

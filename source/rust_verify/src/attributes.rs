@@ -664,17 +664,14 @@ pub(crate) fn get_publish(
 /// Attributes specified at the module level
 #[derive(Debug)]
 pub struct ModuleAttrs {
-   pub epr_check : bool, 
+    pub epr_check: bool,
 }
-
 
 pub fn get_module_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
 ) -> Result<ModuleAttrs, VirErr> {
-    let mut ms = ModuleAttrs {
-        epr_check : false,
-    };
+    let mut ms = ModuleAttrs { epr_check: false };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::EPRCheck => ms.epr_check = true,
