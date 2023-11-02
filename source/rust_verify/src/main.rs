@@ -2,7 +2,8 @@
 
 use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
-extern crate rustc_driver; // TODO(main_new) can we remove this?
+extern crate rustc_driver;
+extern crate rustc_session;
 
 #[cfg(target_family = "windows")]
 fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
@@ -81,7 +82,9 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
-    rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+    let logger_handler =
+        rustc_session::EarlyErrorHandler::new(rustc_session::config::ErrorOutputType::default());
+    rustc_driver::init_env_logger(&logger_handler, "RUSTVERIFY_LOG");
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };

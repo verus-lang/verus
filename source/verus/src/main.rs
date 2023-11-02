@@ -96,15 +96,14 @@ fn run() -> Result<std::process::ExitStatus, String> {
     let parent = current_exe.and_then(|current| current.parent().map(std::path::PathBuf::from));
 
     let Some(verusroot_path) = parent.clone().and_then(|mut path| {
-            if path.join("verus-root").is_file() {
-                if !path.is_absolute() {
-                    path =
-                        std::env::current_dir().expect("working directory invalid").join(path);
-                }
-                Some(path)
-            } else {
-                None
+        if path.join("verus-root").is_file() {
+            if !path.is_absolute() {
+                path = std::env::current_dir().expect("working directory invalid").join(path);
             }
+            Some(path)
+        } else {
+            None
+        }
     }) else {
         eprintln!("error: did not find a valid verusroot");
         std::process::exit(128);

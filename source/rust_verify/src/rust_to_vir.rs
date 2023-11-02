@@ -275,7 +275,7 @@ fn check_item<'tcx>(
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
                 // We keep this full list, with the first element being the Self type X
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.0.substs.types() {
+                for ty in trait_ref.skip_binder().substs.types() {
                     types.push(mid_ty_to_vir(
                         ctxt.tcx,
                         &ctxt.verus_items,
@@ -630,6 +630,7 @@ fn check_item<'tcx>(
             bounds: _,
             origin: OpaqueTyOrigin::AsyncFn(_),
             in_trait: _,
+            lifetime_mapping: _,
         }) => {
             return Ok(());
         }
