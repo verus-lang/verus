@@ -6,7 +6,7 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
-use crate::attributes::{get_verifier_attrs, get_module_attrs};
+use crate::attributes::{get_module_attrs, get_verifier_attrs};
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
@@ -672,7 +672,8 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
                     let vattrs =
                         get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
-                    let mattrs = get_module_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    let mattrs =
+                        get_module_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
                     if vattrs.external {
                         // Recursively mark every item in the module external,
                         // even in nested modules
@@ -684,9 +685,10 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                         // Shallowly visit just the top-level items (don't visit nested modules)
                         let path =
                             def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
-                        vir.modules.push(
-                            ctxt.spanned_new(item.span, vir::ast::ModuleX { path: path.clone(), epr_check : mattrs.epr_check}),
-                        );
+                        vir.modules.push(ctxt.spanned_new(
+                            item.span,
+                            vir::ast::ModuleX { path: path.clone(), epr_check: mattrs.epr_check },
+                        ));
                         let path = Some(path);
                         item_to_module
                             .extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
@@ -696,12 +698,13 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                     assert!(!krate_seen);
                     krate_seen = true;
                     let attrs = ctxt.tcx.hir().krate_attrs();
-                    let mattrs = get_module_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    let mattrs =
+                        get_module_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
                     let path =
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
                     vir.modules.push(ctxt.spanned_new(
                         mod_.spans.inner_span,
-                        vir::ast::ModuleX { path: path.clone(), epr_check : mattrs.epr_check },
+                        vir::ast::ModuleX { path: path.clone(), epr_check: mattrs.epr_check },
                     ));
                     item_to_module
                         .extend(mod_.item_ids.iter().map(move |ii| (*ii, Some(path.clone()))))

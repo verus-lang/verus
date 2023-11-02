@@ -1,13 +1,15 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 use air::scope_map::ScopeMap;
 use ast_visitor::VisitorControlFlow;
 
 use crate::{
-    ast::{FunctionX, Fun, Krate, Mode, VirErr, Expr, Typ, TypX, Path, Params, Param},
+    ast::{Expr, Fun, FunctionX, Krate, Mode, Param, Params, Path, Typ, TypX, VirErr},
+    ast_util::{path_as_friendly_rust_name, undecorate_typ},
     ast_visitor::{self, expr_visitor_dfs},
     context::Ctx,
-    scc::Graph, messages::error, ast_util::path_as_friendly_rust_name
+    messages::error,
+    scc::Graph,
 };
 
 struct CollectState {
@@ -17,10 +19,7 @@ struct CollectState {
 
 impl CollectState {
     fn new() -> Self {
-        CollectState {
-            reached_spec_funcs: HashSet::new(),
-            reached_proofs: HashSet::new(),
-        }
+        CollectState { reached_spec_funcs: HashSet::new(), reached_proofs: HashSet::new() }
     }
 }
 
@@ -33,7 +32,7 @@ enum Polarity {
 }
 
 impl Polarity {
-    fn flip(p : Polarity) -> Polarity {
+    fn flip(p: Polarity) -> Polarity {
         match p {
             Polarity::Negative => Polarity::Positive,
             Polarity::Positive => Polarity::Negative,
@@ -43,9 +42,9 @@ impl Polarity {
 
 struct BuildState {
     /// the quantifier alternation graph that this pass is trying to build
-    qa_graph : Graph::<String>,
+    qa_graph: Graph<String>,
     /// current polarity of expression
-    expr_polarity : Polarity,
+    expr_polarity: Polarity,
     /// currently outstanding variables
     /// u64 keeps count so that we can decrement and not lose typs on returning
     open_foralls: HashMap<String, u64>,
@@ -53,33 +52,38 @@ struct BuildState {
 
 impl BuildState {
     fn new() -> Self {
-        BuildState { 
-            qa_graph : Graph::<String>::new(),
-            expr_polarity : Polarity::Negative,
+        BuildState {
+            qa_graph: Graph::<String>::new(),
+            expr_polarity: Polarity::Negative,
             open_foralls: HashMap::new(),
         }
     }
-    fn reset_with(&mut self, polarity : Polarity) {
+    fn reset_with(&mut self, polarity: Polarity, init_params: Option<HashMap<String, u64>>) {
         self.expr_polarity = polarity;
-        self.open_foralls = HashMap::new();
+        if let Some(params) = init_params {
+            self.open_foralls = params;
+        } else {
+            self.open_foralls = HashMap::new();
+        }
     }
 
-    fn add_function_edges(&mut self, params : &Params, ret : &Param) {
+    fn add_function_edges(&mut self, params: &Params, ret: &Param) {
         let ret_node = param_type_name(&ret.x.typ);
         for param in params.iter() {
             let param_node = param_type_name(&param.x.typ);
             // println!("Adding Func Edge: {} -> {}", &param_node, &ret_node);
             self.qa_graph.add_edge(param_node, ret_node.clone());
         }
-        
     }
 }
 
-fn param_type_name(typ : &Typ) -> String {
-    match typ.as_ref() {
+fn param_type_name(typ: &Typ) -> String {
+    // TODO: Check if there are other decorators here
+    // undecorate_typ
+    match &*undecorate_typ(typ) {
         TypX::Bool => "Bool".to_string(),
-        TypX::Datatype(path,_ ,_) => path_as_friendly_rust_name(path),
-        _ => panic!("Unsupported EPR Type")
+        TypX::Datatype(path, _, _) => path_as_friendly_rust_name(path),
+        _ => panic!("Unsupported EPR Type"),
     }
 }
 
@@ -154,7 +158,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             Choose { .. } |
             UnaryOpr(..) |
             Binary(..) |
-            BinaryOpr(..) | 
+            BinaryOpr(..) |
             Loc(..) |
             Tuple(..) |
             Ctor(..) |
@@ -207,7 +211,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 _ => VisitorControlFlow::Recurse,
             },
             Quant(op, binders, e) => {
-                let forall = (matches!(state.expr_polarity, Polarity::Positive) && matches!(op.quant, air::ast::Quant::Forall)) 
+                let forall = (matches!(state.expr_polarity, Polarity::Positive) && matches!(op.quant, air::ast::Quant::Forall))
                                 || (matches!(state.expr_polarity, Polarity::Negative) && matches!(op.quant, air::ast::Quant::Exists));
                 if forall {
                     // forall case: add the new variables to open foralls, then recurse
@@ -250,27 +254,57 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 crate::ast::BinaryOp::Implies => {
                     // left is explored at opposite polarity
                     let orig_polarity = state.expr_polarity;
-                    state.expr_polarity = Polarity::flip(orig_polarity);
-                    match build_graph(ctx, state, left) {
-                        Ok(_) => {
-                            assert!(state.expr_polarity == Polarity::flip(orig_polarity));
-                            // right is explored at same polarity
-                            state.expr_polarity = orig_polarity;
-                            match build_graph(ctx, state, right) {
-                                Ok(_) => VisitorControlFlow::Return,
-                                Err(err) => VisitorControlFlow::Stop(err),
-                            }
-                        },
+                    match {
+                        state.expr_polarity = Polarity::flip(orig_polarity);
+                        build_graph(ctx, state, left)
+                    }.and({
+                        assert!(state.expr_polarity == Polarity::flip(orig_polarity));
+                        // right is explored at same polarity
+                        state.expr_polarity = orig_polarity;
+                        build_graph(ctx, state, right)
+                    }) {
+                        Ok(_) => VisitorControlFlow::Return,
                         Err(err) => return VisitorControlFlow::Stop(err),
                     }
 
                 },
+                // these operators introduce both polarities
+                crate::ast::BinaryOp::Eq(_) |
+                crate::ast::BinaryOp::Ne |
+                crate::ast::BinaryOp::Xor => {
+                    if crate::ast_util::type_is_bool(&undecorate_typ(&left.typ)) {
+                        let orig_polarity = state.expr_polarity;
+                        match {
+                            state.expr_polarity = Polarity::Positive;
+                            build_graph(ctx, state, left)
+                        }.and({
+                            state.expr_polarity = Polarity::Negative;
+                            build_graph(ctx, state, left)
+                        }).and({
+                            state.expr_polarity = Polarity::Positive;
+                            build_graph(ctx, state, right)
+                        }).and({
+                            state.expr_polarity = Polarity::Negative;
+                            build_graph(ctx, state, right)
+                        }) {
+                            Ok(_) => {
+                                state.expr_polarity = orig_polarity;
+                                VisitorControlFlow::Return
+                            },
+                            Err(err) => VisitorControlFlow::Stop(err),
+                        }
+                    } else {
+                        VisitorControlFlow::Recurse
+                    }
+                },
                 _ => VisitorControlFlow::Recurse,
             }
+            // TODO: Will need to refactor the recursion so that the body is parsed on the second pass
+            // as well so we can see the AssertAssume
             AssertAssume { .. } | // => {todo!()}
             Choose { .. } |
             UnaryOpr(..) |
-            BinaryOpr(..) | 
+            BinaryOpr(..) |
             Loc(..) |
             Tuple(..) |
             Ctor(..) |
@@ -306,8 +340,11 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         });
         Ok(())
     }
-    for f in krate.functions.iter().filter(|f| f.x.mode == Mode::Proof && f.x.owning_module.as_ref().is_some_and(|m| m == &module)) {
-        let FunctionX { name, params, require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
+    // TODO: Exec functions rejected here?
+    for f in krate.functions.iter().filter(|f| {
+        f.x.mode == Mode::Proof && f.x.owning_module.as_ref().is_some_and(|m| m == &module)
+    }) {
+        let FunctionX { name, require, ensure, decrease, body, broadcast_forall, attrs, .. } = &f.x;
         let function_name = path_as_friendly_rust_name(&name.path);
         dbg!(function_name);
         // Pass 1: Collect all the functions mentioned
@@ -324,43 +361,45 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         // Pass 2: Build the "VC". Check for QA in ensures/requires
         // TODO : open foralls for the proof fns...
         let mut bstate = BuildState::new();
+        // params for a proof functions don't get encoded as additional quantifiers, so
+        // don't need to specify init_params
         for expr in ensure.iter() {
             // ensures start with negative polarity, as expression is negated
-            bstate.reset_with(Polarity::Negative);
+            bstate.reset_with(Polarity::Negative, None);
             build_graph(ctx, &mut bstate, expr)?;
         }
         for expr in require.iter() {
             // requires start with positive polarity
-            bstate.reset_with(Polarity::Positive);
+            bstate.reset_with(Polarity::Positive, None);
             build_graph(ctx, &mut bstate, expr)?;
         }
         for pf in &state.reached_proofs {
             let pf_func = &ctx.func_map[pf];
-            let FunctionX { require, ensure, params, mode, ..} = &pf_func.x;
+            let FunctionX { require, ensure, mode, .. } = &pf_func.x;
+            // params for a proof functions don't get encoded as additional quantifiers
             // println!("Reached Proof: {}", path_as_friendly_rust_name(&pf_func.x.name.path));
             assert!(matches!(mode, Mode::Proof));
             // parse the ensures and requires of the reached proof
             for expr in ensure.iter() {
-                bstate.reset_with(Polarity::Positive);
+                bstate.reset_with(Polarity::Positive, None);
                 build_graph(ctx, &mut bstate, expr)?;
             }
             for expr in require.iter() {
-                bstate.reset_with(Polarity::Negative);
+                bstate.reset_with(Polarity::Negative, None);
                 build_graph(ctx, &mut bstate, expr)?;
             }
-            
         }
         for spec in &state.reached_spec_funcs {
             let spec_func = &ctx.func_map[spec];
-            let FunctionX { mode, body, params, ret, ..} = &spec_func.x;
+            let FunctionX { mode, body, params, ret, .. } = &spec_func.x;
             // println!("Reached Spec Fn: {}", path_as_friendly_rust_name(&spec_func.x.name.path));
             assert!(matches!(mode, Mode::Spec));
             // add the edges for this functions args to the state
             bstate.add_function_edges(params, ret);
             // recurse on the body of this function to add the positive and negative QA edges to the VC
-            // i.e 
-            // foo(x) { bar(x) && baz(x)} 
-            // becomes 
+            // i.e
+            // foo(x) { bar(x) && baz(x)}
+            // becomes
             // forall x foo(x) <==> bar(x) && baz(x)
             if let Some(body) = body {
                 let mut param_types = HashMap::new();
@@ -369,17 +408,18 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                     // track the number of new foralls for each argument type so we don't lose any
                     *param_types.entry(param_type).or_insert(0) += 1;
                 }
-                bstate.reset_with(Polarity::Negative);
-                bstate.open_foralls = param_types.clone();
+                bstate.reset_with(Polarity::Negative, Some(param_types.clone()));
                 build_graph(ctx, &mut bstate, &body)?;
-                bstate.reset_with(Polarity::Positive);
-                bstate.open_foralls = param_types.clone();
+                bstate.reset_with(Polarity::Positive, Some(param_types.clone()));
                 build_graph(ctx, &mut bstate, &body)?;
             }
-
         }
         bstate.qa_graph.compute_sccs();
-        let acyclic = bstate.qa_graph.sort_sccs().iter().fold(true, |acc, x| {acc && (bstate.qa_graph.get_scc_size(x) == 1)});
+        let acyclic = bstate
+            .qa_graph
+            .sort_sccs()
+            .iter()
+            .fold(true, |acc, x| acc && !(bstate.qa_graph.node_is_in_cycle(x)));
         dbg!(acyclic);
     }
     Ok(())

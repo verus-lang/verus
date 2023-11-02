@@ -1,4 +1,3 @@
-use vir::alternation_check;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ArchContextX, ContextX, ErasureInfo};
@@ -14,6 +13,7 @@ use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+use vir::alternation_check;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -1430,13 +1430,18 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let vir::prune::PruneKrateResult { pruned_krate, mono_abstract_datatypes, lambda_types, reached_bound_traits, types_are_uninterpreted } =
-            vir::prune::prune_krate_for_module(
-                &krate,
-                bucket_id.module(),
-                bucket_id.function(),
-                &self.vstd_crate_name,
-            );
+        let vir::prune::PruneKrateResult {
+            pruned_krate,
+            mono_abstract_datatypes,
+            lambda_types,
+            reached_bound_traits,
+            types_are_uninterpreted,
+        } = vir::prune::prune_krate_for_module(
+            &krate,
+            bucket_id.module(),
+            bucket_id.function(),
+            &self.vstd_crate_name,
+        );
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1457,7 +1462,8 @@ impl Verifier {
                 alternation_check::alternation_check(&ctx, krate, bucket_id.module().clone())?;
             } else {
                 reporter.report_now(
-                    &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name())).to_any(),
+                    &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name()))
+                        .to_any(),
                 );
             }
         }
