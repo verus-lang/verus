@@ -357,10 +357,36 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 crate::ast::CallTarget::FnSpec(_) |
                 crate::ast::CallTarget::BuiltinSpecFun(_, _) => VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
             }
-            // TODO: Will need to refactor the recursion so that the body is parsed on the second pass
-            // as well so we can see the AssertAssume
-            AssertAssume { .. } | // => {todo!()}
-            Choose { .. } |
+            AssertAssume { is_assume, expr } => {
+                if *is_assume {
+                    // assume means the expression is treated as just a ensures, so recurse positively
+                    let orig_polarity = state.expr_polarity;
+                    state.expr_polarity = Polarity::Positive;
+                    match build_graph(ctx, state, expr) {
+                        Ok(_) => {
+                            state.expr_polarity = orig_polarity;
+                            VisitorControlFlow::Return
+                        }
+                        Err(err) => return VisitorControlFlow::Stop(err),
+                    }
+                } else {
+                    // assert means the expression is treated as both a require and ensure, so recurse both ways
+                    let orig_polarity = state.expr_polarity;
+                    match {
+                        state.expr_polarity = Polarity::flip(orig_polarity);
+                        build_graph(ctx, state, expr)
+                    }.and({
+                        assert!(state.expr_polarity == Polarity::flip(orig_polarity));
+                        state.expr_polarity = orig_polarity;
+                        build_graph(ctx, state, expr)
+                    }) {
+                        Ok(_) => VisitorControlFlow::Return,
+                        Err(err) => return VisitorControlFlow::Stop(err),
+                    }
+                }
+            }
+            Choose { .. } | // TODO
+            If(..) | // TODO
             UnaryOpr(..) |
             BinaryOpr(..) |
             Loc(..) |
@@ -369,7 +395,6 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             Multi(..) |
             WithTriggers { .. } |
             Assign { .. } |
-            If(..) |
             Match(..) |
             Loop { .. } |
             Return(..) |
@@ -403,8 +428,13 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             && f.x.owning_module.as_ref().is_some_and(|m| m == &module)
     }) {
         let FunctionX {
-            name, require, ensure, decrease, body, broadcast_forall, attrs, mode, ..
+            name, require, ensure, decrease, body, mode, ..
         } = &f.x;
+        // TODO: Can function attrs change something about EPR?
+        // TODO: Can broadcast forall for unrelated data change EPR fragment status?
+        if decrease.len() != 0 {
+            return Err(error(&f.span, "Recursion/decrease not supported in EPR Mode"));
+        }
         if matches!(mode, Mode::Exec) {
             return Err(error(&f.span, "Exec mode functions not supported in EPR Mode"));
         }
