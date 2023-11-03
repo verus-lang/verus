@@ -419,7 +419,6 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "Function not in EPR, quantifier alternation graph contains cycle")
 }
 
-
 test_verify_one_file! {
     #[test] assume_positive_only_fail TYPES_TEST_2.to_string() + verus_code_str! {
         #[verifier::epr_check]
