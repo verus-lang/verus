@@ -74,7 +74,8 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::StrSlice => false,
         TypX::Char => false,
-        TypX::Primitive(_, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Array, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
     }
 }
 
