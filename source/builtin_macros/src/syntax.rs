@@ -1574,6 +1574,24 @@ impl VisitMut for Visitor {
                 new_expr = Expr::Binary(bin);
             }
             *expr = new_expr;
+        } else if let Expr::Macro(macro_expr) = expr {
+            macro_expr
+                .mac
+                .path
+                .segments
+                .first_mut()
+                .map(|x|
+                     {
+                         let ident = x.ident.to_string();
+                         if is_inside_ghost &&
+                             (ident == "open_atomic_invariant"
+                              || ident == "open_local_invariant")
+                         {
+                             x.ident = Ident::new((ident + "_in_proof").as_str(), x.span());
+                             // macro_expr.mac.path.ident.ident = macro_expr.ident.ident + "_in_proof";
+                         }
+                     }
+                );
         }
 
         let do_replace = match &expr {
