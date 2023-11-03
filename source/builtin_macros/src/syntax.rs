@@ -2847,6 +2847,7 @@ pub(crate) fn proof_macro_exprs(
 
 pub(crate) fn inv_macro_exprs(
     erase_ghost: EraseGhost,
+    inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
@@ -2868,8 +2869,8 @@ pub(crate) fn inv_macro_exprs(
             MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
             _ => {}
         }
-        // After the first element, parse as 'exec' expression
-        visitor.inside_ghost = 0;
+        // After the first element, parse as 'exec' or `proof` expression based on the current context.
+        visitor.inside_ghost = if inside_ghost { 1u32 } else { 0u32 };
     }
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)

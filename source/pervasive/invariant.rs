@@ -325,7 +325,14 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_inv_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
+        ::builtin_macros::verus_exec_inv_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
+    };
+}
+
+#[macro_export]
+macro_rules! open_atomic_invariant_in_proof {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
     };
 }
 
@@ -345,6 +352,7 @@ macro_rules! open_atomic_invariant_internal {
 #[doc(hidden)]
 pub use open_atomic_invariant_internal;
 pub use open_atomic_invariant;
+pub use open_atomic_invariant_in_proof;
 
 /// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
 /// value within.
@@ -441,8 +449,16 @@ pub use open_atomic_invariant;
 #[macro_export]
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_inv_macro_exprs!(
+        ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_local_invariant_internal!($($tail)*))
+    };
+}
+
+
+#[macro_export]
+macro_rules! open_local_invariant_in_proof {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_local_invariant_internal!($($tail)*))
     };
 }
 
@@ -462,3 +478,4 @@ macro_rules! open_local_invariant_internal {
 #[doc(hidden)]
 pub use open_local_invariant_internal;
 pub use open_local_invariant;
+pub use open_local_invariant_in_proof;
