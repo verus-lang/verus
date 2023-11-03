@@ -49,10 +49,7 @@ struct BuildState {
 
 impl BuildState {
     fn new() -> Self {
-        BuildState {
-            qa_graph: Graph::<String>::new(),
-            open_foralls: HashMap::new(),
-        }
+        BuildState { qa_graph: Graph::<String>::new(), open_foralls: HashMap::new() }
     }
 
     fn add_function_edges(&mut self, params: &Params, ret: &Param) {
@@ -70,8 +67,7 @@ impl BuildState {
 }
 
 fn param_type_name(typ: &Typ) -> String {
-    // TODO: Check if there are other decorators here
-    // undecorate_typ
+    // TODO: support for FnSpec
     match &*undecorate_typ(typ) {
         TypX::Bool => "Bool".to_string(),
         TypX::Datatype(path, _, _) => path_as_friendly_rust_name(path),
@@ -184,7 +180,12 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         });
         Ok(())
     }
-    fn build_graph(ctx: &Ctx, state: &mut BuildState, polarity : Polarity, expr: &Expr) -> Result<(), VirErr> {
+    fn build_graph(
+        ctx: &Ctx,
+        state: &mut BuildState,
+        polarity: Polarity,
+        expr: &Expr,
+    ) -> Result<(), VirErr> {
         use crate::ast::ExprX::*;
         expr_visitor_dfs::<VirErr, _>(expr, &mut ScopeMap::new(), &mut |_, expr| match &expr.x {
             Unary(op, e) => match op {
@@ -343,8 +344,31 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                     }
                 }
             }
-            Choose { .. } | // TODO
-            If(..) | // TODO
+            If(cond, e1, e2) => {
+                // TODO: Diff between spec and proof If?
+                match {
+                    // cond is explored negatively for if
+                    build_graph(ctx, state, polarity.flip(), cond)
+                }.and({
+                    // e1 explored regularly
+                    build_graph(ctx, state, polarity, e1)
+                }).and({
+                    if let Some(e2) = e2 {
+                        {
+                            // cond explored regularly for else
+                            build_graph(ctx, state, polarity, cond)
+                        }.and({
+                            // e2 explored regularly
+                            build_graph(ctx, state, polarity, e2)
+                        })
+                    } else {
+                        Ok(())
+                    }
+                }) {
+                    Ok(_) => VisitorControlFlow::Return,
+                    Err(err) => return VisitorControlFlow::Stop(err),
+                }
+            }
             UnaryOpr(..) |
             BinaryOpr(..) |
             Loc(..) |
@@ -369,6 +393,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             Header(_) |
             BreakOrContinue { .. } => VisitorControlFlow::Return,
 
+            Choose { .. } | // TODO
             Closure(_, _) | // TODO: maybe supported down the line?
             NullaryOpr(..) |
             ExecClosure { .. } |
@@ -384,9 +409,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         (f.x.mode == Mode::Proof || f.x.mode == Mode::Exec)
             && f.x.owning_module.as_ref().is_some_and(|m| m == &module)
     }) {
-        let FunctionX {
-            name, require, ensure, decrease, body, mode, ..
-        } = &f.x;
+        let FunctionX { name, require, ensure, decrease, body, mode, .. } = &f.x;
         // TODO: Can function attrs change something about EPR? Yes! inline
         // TODO: Can broadcast forall for unrelated data change EPR fragment status?
         if decrease.len() != 0 {
