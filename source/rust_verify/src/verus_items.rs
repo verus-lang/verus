@@ -52,6 +52,8 @@ fn ty_to_stable_string_partial<'tcx>(
     })
 }
 
+/// NOTE: do not use this to determine if something is a well known / rust lang item
+/// use verus_items::get_rust_item instead
 pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<String> {
     let def_path = tcx.def_path(def_id);
     let mut segments: Vec<String> = Vec::with_capacity(def_path.data.len());
@@ -545,6 +547,7 @@ pub(crate) enum RustItem {
     AllocGlobal,
     TryTraitBranch,
     IntoIterFn,
+    Destruct,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -581,6 +584,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
+    }
+    if tcx.lang_items().destruct_trait() == Some(def_id) {
+        return Some(RustItem::Destruct);
     }
 
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);

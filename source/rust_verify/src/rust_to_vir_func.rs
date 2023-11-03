@@ -844,10 +844,10 @@ fn remove_destruct_trait_bounds_from_predicates<'tcx>(
     preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::PredicateKind::<'tcx>::Clause(
             rustc_middle::ty::Clause::<'tcx>::Trait(tp),
-        ) => match crate::verus_items::def_id_to_stable_rust_path(tcx, tp.trait_ref.def_id) {
-            Some(s) => s != "core::marker::Destruct",
-            None => true,
-        },
+        ) => {
+            let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
+            rust_item != Some(crate::verus_items::RustItem::Destruct)
+        }
         _ => true,
     });
 }
