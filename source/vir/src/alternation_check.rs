@@ -98,8 +98,12 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                             let f = &ctx.func_map[fun];
                             match f.x.mode {
                                 Mode::Spec => {
-                                    // we've seen this function; add it to our list
-                                    state.reached_spec_funcs.insert(fun.clone());
+                                    // if the function is inlined, don't add it to reached set. 
+                                    // Handled on second pass
+                                    if !f.x.attrs.inline {
+                                        // we've seen this function; add it to our list
+                                        state.reached_spec_funcs.insert(fun.clone());
+                                    }
                                     // if it has a body, recurse
                                     if let Some(f_body) = &f.x.body {
                                         match collect_functions(ctx, state, f_body) {
@@ -294,7 +298,24 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                             let f = &ctx.func_map[fun];
                             match f.x.mode {
                                 // spec funcs aren't recursed on second pass
-                                Mode::Spec => VisitorControlFlow::Return,
+                                Mode::Spec => {
+                                    if f.x.attrs.inline {
+                                        if let Some(body) = &f.x.body {
+                                            // TODO: Double check
+                                            // as we're inlining, the params don't contribute new foralls
+                                            // simply recurse into the body at the same polarity
+                                            match build_graph(ctx, state, polarity, body) {
+                                                Ok(_) => VisitorControlFlow::Return,
+                                                Err(err) => return VisitorControlFlow::Stop(err),
+                                            }
+                                        } else {
+                                            VisitorControlFlow::Return
+                                        }
+                                    } else {
+                                        // non-inline spec funcs aren't recursed on second pass
+                                        VisitorControlFlow::Return
+                                    }
+                                }
                                 Mode::Proof => {
                                     // should only be here when parsing the body of the lemma
                                     // params for a proof function don't get encoded as additional quantifiers
