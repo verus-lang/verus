@@ -120,8 +120,9 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 5)
 }
 
-test_verify_one_file_with_options! {
-    #[test] test_set_to_32 ["--arch-word-bits 32"] => verus_code! {
+test_verify_one_file! {
+    #[test] test_set_to_32 verus_code! {
+        global size_of usize == 4;
 
         fn test1() {  // ARCH-WORD-BITS-32
             assert(arch_word_bits() == 32);
@@ -144,8 +145,9 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file_with_options! {
-    #[test] test_set_to_64 ["--arch-word-bits 64"] => verus_code! {
+test_verify_one_file! {
+    #[test] test_set_to_64 verus_code! {
+        global size_of usize == 8;
 
         fn test1() {  // ARCH-WORD-BITS-64
             assert(arch_word_bits() == 64);

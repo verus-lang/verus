@@ -258,12 +258,6 @@ pub fn run_verus(
             verus_args.push("--expand-errors".to_string());
             verus_args.push("--multiple-errors".to_string());
             verus_args.push("2".to_string());
-        } else if *option == "--arch-word-bits 32" {
-            verus_args.push("--arch-word-bits".to_string());
-            verus_args.push("32".to_string());
-        } else if *option == "--arch-word-bits 64" {
-            verus_args.push("--arch-word-bits".to_string());
-            verus_args.push("64".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
             verus_args.push("-o".to_string());

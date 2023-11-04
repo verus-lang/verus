@@ -371,6 +371,9 @@ pub trait VisitMut {
     fn visit_generics_mut(&mut self, i: &mut Generics) {
         visit_generics_mut(self, i);
     }
+    fn visit_global_mut(&mut self, i: &mut Global) {
+        visit_global_mut(self, i);
+    }
     fn visit_ident_mut(&mut self, i: &mut Ident) {
         visit_ident_mut(self, i);
     }
@@ -2408,6 +2411,19 @@ where
         v.visit_where_clause_mut(it);
     }
 }
+pub fn visit_global_mut<V>(v: &mut V, node: &mut Global)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut node.global_token.span);
+    tokens_helper(v, &mut node.size_of_token.span);
+    v.visit_type_mut(&mut node.type_);
+    tokens_helper(v, &mut node.eq_token.spans);
+    v.visit_expr_lit_mut(&mut node.expr_lit);
+}
 pub fn visit_ident_mut<V>(v: &mut V, node: &mut Ident)
 where
     V: VisitMut + ?Sized,
@@ -2616,6 +2632,9 @@ where
         }
         Item::Verbatim(_binding_0) => {
             skip!(_binding_0);
+        }
+        Item::Global(_binding_0) => {
+            v.visit_global_mut(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),

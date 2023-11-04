@@ -895,6 +895,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_fns,
         external_types,
         path_as_rust_names,
+        arch,
     } = &**krate;
     let mut state = State::new();
 
@@ -1005,6 +1006,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_fns,
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
+        arch: arch.clone(),
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
@@ -1012,24 +1014,14 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.vstd_crate_name.clone(),
-        ctx.arch,
     )?;
     Ok(krate)
 }
 
 pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
-    let mut kratex = KrateX {
-        functions: Vec::new(),
-        datatypes: Vec::new(),
-        traits: Vec::new(),
-        trait_impls: Vec::new(),
-        assoc_type_impls: Vec::new(),
-        modules: Vec::new(),
-        external_fns: Vec::new(),
-        external_types: Vec::new(),
-        path_as_rust_names: Vec::new(),
-    };
-    for k in krates.into_iter() {
+    let mut krates = krates.into_iter();
+    let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
+    for k in krates {
         kratex.functions.extend(k.functions.clone());
         kratex.datatypes.extend(k.datatypes.clone());
         kratex.traits.extend(k.traits.clone());
@@ -1039,6 +1031,19 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.external_fns.extend(k.external_fns.clone());
         kratex.external_types.extend(k.external_types.clone());
         kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());
+        kratex.arch.word_bits = match (k.arch.word_bits, kratex.arch.word_bits) {
+            (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
+                if l != r {
+                    return Err(crate::messages::error_bare(
+                        "all crates must have compatible arch_word_bits (set via `global size_of usize`",
+                    ));
+                } else {
+                    crate::ast::ArchWordBits::Exactly(l)
+                }
+            }
+            (crate::ast::ArchWordBits::Either32Or64, other) => other,
+            (other, crate::ast::ArchWordBits::Either32Or64) => other,
+        };
     }
     Ok(Arc::new(kratex))
 }

@@ -614,6 +614,7 @@ pub fn prune_krate_for_module(
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),
+        arch: krate.arch.clone(),
     };
     let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
     lambda_types.sort();

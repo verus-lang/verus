@@ -1314,7 +1314,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Pervasive(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
-        | VerusItem::BuiltinTrait(_) => unreachable!(),
+        | VerusItem::BuiltinTrait(_)
+        | VerusItem::Global(_) => unreachable!(),
     }
 }
 

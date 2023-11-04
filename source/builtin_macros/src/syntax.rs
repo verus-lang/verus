@@ -20,9 +20,9 @@ use syn_verus::visit_mut::{
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
-    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItem, ImplItemMethod, Invariant,
-    InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path,
+    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemMethod,
+    Invariant, InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl,
+    ItemMod, ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path,
     PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature,
     SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type,
     TypeFnSpec, UnOp, Visibility,
@@ -883,6 +883,38 @@ impl Visitor {
                 *item = Item::Verbatim(quote_spanned! {
                     span => #[allow(unused_imports)] #vis fn #name() { unimplemented!() }
                 });
+            }
+        }
+        for item in items.iter_mut() {
+            if let Item::Global(global) = &item {
+                let Global {
+                    attrs: _,
+                    global_token: _,
+                    size_of_token: _,
+                    type_,
+                    eq_token: _,
+                    expr_lit,
+                } = global;
+                let span = item.span();
+                let static_assert = quote_spanned! { span =>
+                    if ::core::mem::size_of::<#type_>() != #expr_lit {
+                        panic!("does not have the expected size");
+                    }
+                };
+                if self.erase_ghost.erase() {
+                    *item = Item::Verbatim(
+                        quote_spanned! { span => #[verus::internal(size_of)] const _: () = {
+                            #static_assert
+                        }; },
+                    );
+                } else {
+                    *item = Item::Verbatim(
+                        quote_spanned! { span => #[verus::internal(size_of)] const _: () = {
+                            ::builtin::global_size_of::<#type_>(#expr_lit);
+                            #static_assert
+                        }; },
+                    );
+                }
             }
         }
     }

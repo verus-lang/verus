@@ -238,8 +238,10 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "possible bit shift underflow/overflow")
 }
 
-test_verify_one_file_with_options! {
-    #[test] bit_shift_overflow_arch32 ["--arch-word-bits 32"] => verus_code! {
+test_verify_one_file! {
+    #[test] bit_shift_overflow_arch32 verus_code! {
+        global size_of usize == 4;
+
         fn test_usize_overflow() {
             let x: usize = 0;
             let y: usize = 32;
@@ -256,8 +258,10 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_fails(e, 1)
 }
 
-test_verify_one_file_with_options! {
-    #[test] bit_shift_overflow_arch64 ["--arch-word-bits 64"] => verus_code! {
+test_verify_one_file! {
+    #[test] bit_shift_overflow_arch64 verus_code! {
+        global size_of usize == 8;
+
         fn test_usize_overflow() {
             let x: usize = 0;
             let y: usize = 64;

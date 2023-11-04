@@ -38,7 +38,7 @@ pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::a
     Arc::new(pathx)
 }
 
-fn body_id_to_types<'tcx>(
+pub(crate) fn body_id_to_types<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: &BodyId,
 ) -> &'tcx rustc_middle::ty::TypeckResults<'tcx> {
@@ -108,7 +108,7 @@ pub(crate) fn find_body_krate<'tcx>(
     panic!("Body not found");
 }
 
-fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
+pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     find_body_krate(ctxt.krate, body_id)
 }
 

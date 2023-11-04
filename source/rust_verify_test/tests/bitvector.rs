@@ -294,8 +294,10 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-test_verify_one_file_with_options! {
-    #[test] bit_vector_usize_as_32bit ["--arch-word-bits 32"] => verus_code! {
+test_verify_one_file! {
+    #[test] bit_vector_usize_as_32bit verus_code! {
+        global size_of usize == 4;
+
         proof fn test1(x: usize) {
             assert(x & x == x) by(bit_vector);
         }
@@ -327,8 +329,10 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-test_verify_one_file_with_options! {
-    #[test] bit_vector_usize_as_64bit ["--arch-word-bits 64"] => verus_code! {
+test_verify_one_file! {
+    #[test] bit_vector_usize_as_64bit verus_code! {
+        global size_of usize == 8;
+
         proof fn test1(x: usize) {
             assert(x & x == x) by(bit_vector);
         }

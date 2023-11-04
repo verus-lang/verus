@@ -56,7 +56,6 @@ pub struct ArgsX {
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
-    pub arch_word_bits: vir::prelude::ArchWordBits,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -135,7 +134,6 @@ pub fn parse_args_with_imports(
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
-    const OPT_ARCH_WORD_BITS: &str = "arch-word-bits";
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
@@ -244,7 +242,6 @@ pub fn parse_args_with_imports(
         OPT_NO_AUTO_RECOMMENDS_CHECK,
         "Do not automatically check recommends after verification failures",
     );
-    opts.optopt("", OPT_ARCH_WORD_BITS, "Size in bits for usize/isize: valid options are either '32', '64', or '32,64'. (default: 32,64)\nWARNING: this flag is a temporary workaround and will be removed in the near future", "BITS");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
     opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
@@ -401,21 +398,6 @@ pub fn parse_args_with_imports(
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
-        arch_word_bits: matches
-            .opt_str(OPT_ARCH_WORD_BITS)
-            .map(|bits| {
-                use vir::prelude::ArchWordBits;
-                match bits.as_str() {
-                    "32" => ArchWordBits::Exactly(32),
-                    "64" => ArchWordBits::Exactly(64),
-                    "32,64" => ArchWordBits::Either32Or64,
-                    _ => error(format!(
-                        "invalid {} option: it must be either '32', '64', or '32,64'",
-                        OPT_ARCH_WORD_BITS
-                    )),
-                }
-            })
-            .unwrap_or(vir::prelude::ArchWordBits::Either32Or64),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
