@@ -170,6 +170,22 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
+test_verify_one_file! {
+    #[test] test_set_to_both_fail_1 verus_code! {
+        global size_of usize == 8;
+        global size_of usize == 4;
+    } => Err(err) => assert_vir_error_msg(err, "the size of usize can only be set once per crate")
+}
+
+test_verify_one_file! {
+    #[test] test_set_to_both_fail_2 verus_code! {
+        global size_of usize == 8;
+        mod m3 {
+            global size_of usize == 4;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the size of usize can only be set once per crate")
+}
+
 // These intrinsics operate on nats so they should be disallowed in 'exec' mode:
 
 test_verify_one_file! {

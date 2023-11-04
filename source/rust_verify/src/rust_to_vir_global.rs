@@ -49,7 +49,14 @@ pub(crate) fn process_const_early<'tcx>(
 
         match &*ty {
             vir::ast::TypX::Int(IntRange::USize) => {
-                Arc::make_mut(ctxt).arch_word_bits = Some(match size {
+                let arch_word_bits = &mut Arc::make_mut(ctxt).arch_word_bits;
+                if arch_word_bits.is_some() {
+                    return crate::util::err_span(
+                        item.span,
+                        "the size of usize can only be set once per crate",
+                    );
+                }
+                *arch_word_bits = Some(match size {
                     4 | 8 => vir::ast::ArchWordBits::Exactly((size as u32) * 8),
                     _ => {
                         return crate::util::err_span(
