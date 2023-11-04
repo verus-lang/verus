@@ -186,6 +186,40 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "the size of usize can only be set once per crate")
 }
 
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_32_on_64_bit_compile ["--compile"] => verus_code! {
+        global size_of usize == 4;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected size"));
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_64_on_64_bit_compile ["--compile"] => verus_code! {
+        global size_of usize == 8;
+    } => Ok(())
+}
+
+#[cfg(target_pointer_width = "32")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_64_on_32_bit_compile ["--compile"] => verus_code! {
+        global size_of usize == 8;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected size"));
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_32_on_32_bit_compile ["--compile"] => verus_code! {
+        global size_of usize == 4;
+    } => Ok(())
+}
+
 // These intrinsics operate on nats so they should be disallowed in 'exec' mode:
 
 test_verify_one_file! {
