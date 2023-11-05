@@ -1112,6 +1112,11 @@
           {
             "syn": "ExprHas"
           }
+        ],
+        "GetField": [
+          {
+            "syn": "ExprGetField"
+          }
         ]
       },
       "exhaustive": false
@@ -1591,6 +1596,30 @@
         },
         "body": {
           "syn": "Block"
+        }
+      }
+    },
+    {
+      "ident": "ExprGetField",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "base": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "arrow_token": {
+          "token": "RArrow"
+        },
+        "member": {
+          "syn": "Member"
         }
       }
     },

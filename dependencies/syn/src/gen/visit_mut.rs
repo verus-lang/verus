@@ -194,6 +194,9 @@ pub trait VisitMut {
     fn visit_expr_for_loop_mut(&mut self, i: &mut ExprForLoop) {
         visit_expr_for_loop_mut(self, i);
     }
+    fn visit_expr_get_field_mut(&mut self, i: &mut ExprGetField) {
+        visit_expr_get_field_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_group_mut(&mut self, i: &mut ExprGroup) {
         visit_expr_group_mut(self, i);
@@ -1512,6 +1515,9 @@ where
         Expr::Has(_binding_0) => {
             v.visit_expr_has_mut(_binding_0);
         }
+        Expr::GetField(_binding_0) => {
+            v.visit_expr_get_field_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1754,6 +1760,17 @@ where
         v.visit_decreases_mut(it);
     }
     v.visit_block_mut(&mut node.body);
+}
+pub fn visit_expr_get_field_mut<V>(v: &mut V, node: &mut ExprGetField)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_expr_mut(&mut *node.base);
+    tokens_helper(v, &mut node.arrow_token.spans);
+    v.visit_member_mut(&mut node.member);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_group_mut<V>(v: &mut V, node: &mut ExprGroup)

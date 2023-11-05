@@ -235,6 +235,7 @@ ast_enum_of_structs! {
         BigOr(BigOr),
         Is(ExprIs),
         Has(ExprHas),
+        GetField(ExprGetField),
 
         // Not public API.
         //
@@ -864,7 +865,8 @@ impl Expr {
             | Expr::View(View { attrs, .. })
             | Expr::Is(ExprIs { attrs, .. })
             | Expr::Has(ExprHas { attrs, .. })
-            | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
+            | Expr::Yield(ExprYield { attrs, .. })
+            | Expr::GetField(ExprGetField { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
             Expr::BigOr(_) => Vec::new(),
@@ -1724,6 +1726,16 @@ pub(crate) mod parsing {
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse)?,
                 });
+            } else if input.peek(Token![->]) {
+                let arrow_token: Token![->] = input.parse()?;
+                let member: Member = input.parse()?;
+
+                e = Expr::GetField(ExprGetField {
+                    attrs: Vec::new(),
+                    base: Box::new(e),
+                    arrow_token,
+                    member,
+                });
             } else if input.peek(Token![.])
                 && !input.peek(Token![..])
                 && match e {
@@ -2270,7 +2282,7 @@ pub(crate) mod parsing {
             return parse_expr(input, expr, allow_struct, Precedence::Any);
         };
 
-        if input.peek(Token![.]) && !input.peek(Token![..]) || input.peek(Token![?]) {
+        if input.peek(Token![.]) && !input.peek(Token![..]) || input.peek(Token![?]) || input.peek(Token![->]) {
             expr = trailer_helper(input, expr)?;
 
             attrs.extend(expr.replace_attrs(Vec::new()));
@@ -2564,6 +2576,7 @@ pub(crate) mod parsing {
         ExprTuple, Tuple, "expected tuple expression",
         ExprType, Type, "expected type ascription expression",
         View, View, "expected view expression",
+        ExprGetField, GetField, "expected get field expression",
     }
 
     #[cfg(feature = "full")]
@@ -3196,13 +3209,17 @@ pub(crate) mod parsing {
     }
 
     fn check_cast(input: ParseStream) -> Result<()> {
-        let kind = if input.peek(Token![.]) && !input.peek(Token![..]) {
-            if input.peek2(token::Await) {
-                "`.await`"
-            } else if input.peek2(Ident) && (input.peek3(token::Paren) || input.peek3(Token![::])) {
-                "a method call"
+        let kind = if input.peek(Token![.]) && !input.peek(Token![..]) || input.peek(Token![->]) {
+            if input.peek(Token![.]) {
+                if input.peek2(token::Await) {
+                    "`.await`"
+                } else if input.peek2(Ident) && (input.peek3(token::Paren) || input.peek3(Token![::])) {
+                    "a method call"
+                } else {
+                    "a field access"
+                }
             } else {
-                "a field access"
+                "a get field access"
             }
         } else if input.peek(Token![?]) {
             "`?`"

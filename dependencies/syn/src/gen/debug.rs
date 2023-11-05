@@ -796,6 +796,12 @@ impl Debug for Expr {
                 formatter.field(v0);
                 formatter.finish()
             }
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => {
+                let mut formatter = formatter.debug_tuple("GetField");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -988,6 +994,17 @@ impl Debug for ExprForLoop {
         formatter.field("invariant", &self.invariant);
         formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprGetField {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprGetField");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("base", &self.base);
+        formatter.field("arrow_token", &self.arrow_token);
+        formatter.field("member", &self.member);
         formatter.finish()
     }
 }

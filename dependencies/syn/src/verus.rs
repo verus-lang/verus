@@ -326,6 +326,15 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct ExprGetField {
+        pub attrs: Vec<Attribute>,
+        pub base: Box<Expr>,
+        pub arrow_token: Token![->],
+        pub member: Member,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -1333,6 +1342,16 @@ mod printing {
             self.global_token.to_tokens(tokens);
             self.inner.to_tokens(tokens);
             self.semi.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprGetField {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.base.to_tokens(tokens);
+            self.arrow_token.to_tokens(tokens);
+            self.member.to_tokens(tokens);
         }
     }
 }

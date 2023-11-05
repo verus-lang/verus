@@ -677,6 +677,11 @@ impl Hash for Expr {
                 state.write_u8(48u8);
                 v0.hash(state);
             }
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => {
+                state.write_u8(49u8);
+                v0.hash(state);
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -870,6 +875,17 @@ impl Hash for ExprForLoop {
         self.invariant.hash(state);
         self.decreases.hash(state);
         self.body.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprGetField {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.base.hash(state);
+        self.member.hash(state);
     }
 }
 #[cfg(feature = "full")]

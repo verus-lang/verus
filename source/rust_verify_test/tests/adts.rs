@@ -1041,7 +1041,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-const IS_SYNTAX_COMMON: &'static str = verus_code_str! {
+const IS_GET_SYNTAX_COMMON: &'static str = verus_code_str! {
     enum ThisOrThat {
         This(nat),
         That { v: int },
@@ -1049,7 +1049,7 @@ const IS_SYNTAX_COMMON: &'static str = verus_code_str! {
 };
 
 test_verify_one_file! {
-    #[test] is_syntax_pass IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_pass IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat) {
             match t {
                 ThisOrThat::This(..) => assert(t is This),
@@ -1060,7 +1060,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_valid_fail IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_valid_fail IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat) {
             match t {
                 ThisOrThat::This(..) => assert(t is That), // FAILS
@@ -1071,7 +1071,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_invalid IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_invalid IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat) {
             assert(t is Unknown);
         }
@@ -1079,7 +1079,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_precedence IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_precedence IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat)
             requires t is This,
         {
@@ -1089,7 +1089,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_implies IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_implies IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat)
             requires t is This,
         {
@@ -1175,4 +1175,135 @@ test_verify_one_file! {
             assert(sfn(Foo::Bar(20, 30)).0 == 30); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_1 IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: ThisOrThat)
+            requires t is That && t->v == 3
+        {
+            match t {
+                ThisOrThat::This(_) => (),
+                ThisOrThat::That { v } => { assert(v == 3); }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_2_pass verus_code! {
+        tracked enum S<T> {
+            This(T),
+            That { v: int },
+            Other { t: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires ({
+                &&& t is That ==> t->v == 3
+                &&& t is This ==> t->0 == 2
+            })
+        {
+            match t {
+                S::This(a) => {
+                    assert(a == 2);
+                }
+                S::That { v } => {
+                    assert(v == 3);
+                }
+                _ => (),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_2_fail verus_code! {
+        tracked enum S<T> {
+            This(T),
+            That { v: int },
+            Other { t: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires ({
+                &&& t is That ==> t->v == 3
+                &&& t is This ==> t->0 == 2
+            })
+        {
+            match t {
+                S::This(a) => {
+                    assert(a == 3); // FAILS
+                }
+                _ => (),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_1 verus_code! {
+        tracked enum S {
+            This { v: int },
+            That { v: int },
+        }
+
+        proof fn test1(t: S)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => assert_vir_error_msg(err, "this field is present in multiple variants")
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_2 verus_code! {
+        tracked enum S {
+            This(int),
+            That(int),
+        }
+
+        proof fn test1(t: S)
+            requires t is That ==> t->0 == 3 { }
+    } => Err(err) => assert_vir_error_msg(err, "this field is present in multiple variants")
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_3 verus_code! {
+        tracked enum S<T> {
+            This { v: T },
+            That { v: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => assert_vir_error_msg(err, "this field is present in multiple variants")
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_4 verus_code! {
+        tracked enum S<T> {
+            This { v: nat },
+            That { v: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "no method named `arrow_v`");
+        assert!(err.warnings.iter().find(|w| w.message.contains("field `v` has inconsistent type or visibility in different variants")).is_some())
+    }
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_5 verus_code! {
+        #[allow(inconsistent_fields)]
+        tracked enum S<T> {
+            This { v: nat },
+            That { v: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "no method named `arrow_v`");
+        assert_eq!(err.warnings.len(), 0);
+    }
 }

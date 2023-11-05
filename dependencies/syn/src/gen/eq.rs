@@ -407,6 +407,8 @@ impl PartialEq for Expr {
             (Expr::Is(self0), Expr::Is(other0)) => self0 == other0,
             #[cfg(feature = "full")]
             (Expr::Has(self0), Expr::Has(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::GetField(self0), Expr::GetField(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -571,6 +573,15 @@ impl PartialEq for ExprForLoop {
             && self.expr_name == other.expr_name && self.expr == other.expr
             && self.invariant == other.invariant && self.decreases == other.decreases
             && self.body == other.body
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ExprGetField {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ExprGetField {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.base == other.base
+            && self.member == other.member
     }
 }
 #[cfg(feature = "full")]
