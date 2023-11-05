@@ -1307,3 +1307,86 @@ test_verify_one_file! {
         assert_eq!(err.warnings.len(), 0);
     }
 }
+
+const MATCHES_SYNTAX_COMMON: &str = verus_code_str! {
+    tracked enum S {
+        This(nat),
+        That { v: int },
+        Other { v: int },
+    }
+};
+
+test_verify_one_file! {
+    #[test] matches_syntax_1_pass MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: a } ==> a == 3
+                &&& t matches S::This(v) ==> v == 4
+            })
+        {
+            match t {
+                S::This(v) => assert(v == 4),
+                S::That { v: a } => assert(a == 3),
+                _ => (),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_1_fails MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: a } ==> a == 3
+                &&& t matches S::This(v) ==> v == 4
+            })
+        {
+            match t {
+                S::This(v) => assert(v == 3), // FAILS
+                _ => (),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+const MATCHES_PRECEDENCE_COMMON: &str = verus_code_str! {
+    tracked enum A {
+        A1 { v: nat },
+        A2 { v: nat },
+    }
+
+    enum B {
+        B1(A),
+        B2 { a: A },
+    }
+
+};
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_1 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test(b: B)
+            requires b matches B::B1(a) ==> a matches A::A1 { v } ==> v == 3,
+        {
+            match b {
+                B::B1(A::A1 { v }) => assert(v == 3),
+                _ => (),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_2 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test(b: B)
+            requires
+                b matches B::B1(a) ==> a matches A::A1 { v } ==> v == 3,
+                b matches B::B2 { a: x } ==> x matches A::A1 { v } ==> v == 3,
+        {
+            match b {
+                B::B1(A::A1 { v }) => assert(v == 3),
+                B::B2 { a: A::A1 { v } } => assert(v == 3),
+                _ => (),
+            }
+        }
+    } => Ok(())
+}

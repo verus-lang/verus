@@ -234,6 +234,9 @@ pub trait Visit<'ast> {
     fn visit_expr_match(&mut self, i: &'ast ExprMatch) {
         visit_expr_match(self, i);
     }
+    fn visit_expr_matches(&mut self, i: &'ast ExprMatches) {
+        visit_expr_matches(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_method_call(&mut self, i: &'ast ExprMethodCall) {
         visit_expr_method_call(self, i);
@@ -1514,6 +1517,9 @@ where
         Expr::Has(_binding_0) => {
             v.visit_expr_has(_binding_0);
         }
+        Expr::Matches(_binding_0) => {
+            v.visit_expr_matches(_binding_0);
+        }
         Expr::GetField(_binding_0) => {
             v.visit_expr_get_field(_binding_0);
         }
@@ -1905,6 +1911,19 @@ where
     for it in &node.arms {
         v.visit_arm(it);
     }
+}
+pub fn visit_expr_matches<'ast, V>(v: &mut V, node: &'ast ExprMatches)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.lhs);
+    tokens_helper(v, &node.matches_token.span);
+    full!(v.visit_pat(& node.pat));
+    tokens_helper(v, &node.implies_token.spans);
+    v.visit_expr(&*node.rhs);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_method_call<'ast, V>(v: &mut V, node: &'ast ExprMethodCall)

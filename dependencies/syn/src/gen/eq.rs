@@ -408,6 +408,8 @@ impl PartialEq for Expr {
             #[cfg(feature = "full")]
             (Expr::Has(self0), Expr::Has(other0)) => self0 == other0,
             #[cfg(feature = "full")]
+            (Expr::Matches(self0), Expr::Matches(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
             (Expr::GetField(self0), Expr::GetField(other0)) => self0 == other0,
             _ => false,
         }
@@ -685,6 +687,15 @@ impl Eq for ExprMatch {}
 impl PartialEq for ExprMatch {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.expr == other.expr && self.arms == other.arms
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ExprMatches {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ExprMatches {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.lhs == other.lhs && self.pat == other.pat
+            && self.rhs == other.rhs
     }
 }
 #[cfg(feature = "full")]

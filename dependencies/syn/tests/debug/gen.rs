@@ -1595,6 +1595,16 @@ impl Debug for Lite<syn::Expr> {
                 formatter.field("rhs", Lite(&_val.rhs));
                 formatter.finish()
             }
+            syn::Expr::Matches(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::Matches");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("lhs", Lite(&_val.lhs));
+                formatter.field("pat", Lite(&_val.pat));
+                formatter.field("rhs", Lite(&_val.rhs));
+                formatter.finish()
+            }
             syn::Expr::GetField(_val) => {
                 let mut formatter = formatter.debug_struct("Expr::GetField");
                 if !_val.attrs.is_empty() {
@@ -2223,6 +2233,19 @@ impl Debug for Lite<syn::ExprMatch> {
         if !_val.arms.is_empty() {
             formatter.field("arms", Lite(&_val.arms));
         }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprMatches> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ExprMatches");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("lhs", Lite(&_val.lhs));
+        formatter.field("pat", Lite(&_val.pat));
+        formatter.field("rhs", Lite(&_val.rhs));
         formatter.finish()
     }
 }
@@ -6815,7 +6838,7 @@ impl Debug for Lite<syn::Type> {
                 if let Some(val) = &_val.spec_fn_token {
                     #[derive(RefCast)]
                     #[repr(transparent)]
-                    struct Print(syn::token::FnSpec);
+                    struct Print(syn::token::SpecFn);
                     impl Debug for Print {
                         fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                             formatter.write_str("Some")?;
@@ -6933,7 +6956,7 @@ impl Debug for Lite<syn::TypeFnSpec> {
         if let Some(val) = &_val.spec_fn_token {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print(syn::token::FnSpec);
+            struct Print(syn::token::SpecFn);
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some")?;

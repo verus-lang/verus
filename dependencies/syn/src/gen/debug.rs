@@ -797,6 +797,12 @@ impl Debug for Expr {
                 formatter.finish()
             }
             #[cfg(feature = "full")]
+            Expr::Matches(v0) => {
+                let mut formatter = formatter.debug_tuple("Matches");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
             Expr::GetField(v0) => {
                 let mut formatter = formatter.debug_tuple("GetField");
                 formatter.field(v0);
@@ -1125,6 +1131,19 @@ impl Debug for ExprMatch {
         formatter.field("expr", &self.expr);
         formatter.field("brace_token", &self.brace_token);
         formatter.field("arms", &self.arms);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprMatches {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprMatches");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("lhs", &self.lhs);
+        formatter.field("matches_token", &self.matches_token);
+        formatter.field("pat", &self.pat);
+        formatter.field("implies_token", &self.implies_token);
+        formatter.field("rhs", &self.rhs);
         formatter.finish()
     }
 }

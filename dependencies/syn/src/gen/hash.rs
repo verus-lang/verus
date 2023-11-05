@@ -678,8 +678,13 @@ impl Hash for Expr {
                 v0.hash(state);
             }
             #[cfg(feature = "full")]
-            Expr::GetField(v0) => {
+            Expr::Matches(v0) => {
                 state.write_u8(49u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => {
+                state.write_u8(50u8);
                 v0.hash(state);
             }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
@@ -1006,6 +1011,18 @@ impl Hash for ExprMatch {
         self.attrs.hash(state);
         self.expr.hash(state);
         self.arms.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprMatches {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.lhs.hash(state);
+        self.pat.hash(state);
+        self.rhs.hash(state);
     }
 }
 #[cfg(feature = "full")]

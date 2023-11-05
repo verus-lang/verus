@@ -327,6 +327,17 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ExprMatches {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub matches_token: Token![matches],
+        pub pat: Pat,
+        pub implies_token: Token![==>],
+        pub rhs: Box<Expr>,
+    }
+}
+
+ast_struct! {
     pub struct ExprGetField {
         pub attrs: Vec<Attribute>,
         pub base: Box<Expr>,
@@ -1342,6 +1353,18 @@ mod printing {
             self.global_token.to_tokens(tokens);
             self.inner.to_tokens(tokens);
             self.semi.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprMatches {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.matches_token.to_tokens(tokens);
+            self.pat.to_tokens(tokens);
+            self.implies_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
         }
     }
 

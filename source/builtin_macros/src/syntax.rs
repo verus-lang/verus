@@ -2114,6 +2114,7 @@ impl VisitMut for Visitor {
             Expr::Is(..) => true,
             Expr::Has(..) => true,
             Expr::ForLoop(..) => true,
+            Expr::Matches(..) => true,
             Expr::GetField(..) => true,
             _ => false,
         };
@@ -2532,6 +2533,20 @@ impl VisitMut for Visitor {
                     let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                     let lhs = has.lhs;
                     *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+                }
+                Expr::Matches(matches) => {
+                    let span = matches.span();
+                    let syn_verus::ExprMatches {
+                        attrs: _,
+                        lhs,
+                        matches_token: _,
+                        pat,
+                        implies_token: _,
+                        rhs,
+                    } = matches;
+                    *expr = Expr::Verbatim(quote_spanned!(span => (
+                        (if let #pat = (#lhs) { #rhs } else { true })
+                    )));
                 }
                 Expr::GetField(gf) => {
                     let span = gf.span();

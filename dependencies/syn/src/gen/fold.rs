@@ -232,6 +232,9 @@ pub trait Fold {
     fn fold_expr_match(&mut self, i: ExprMatch) -> ExprMatch {
         fold_expr_match(self, i)
     }
+    fn fold_expr_matches(&mut self, i: ExprMatches) -> ExprMatches {
+        fold_expr_matches(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_expr_method_call(&mut self, i: ExprMethodCall) -> ExprMethodCall {
         fold_expr_method_call(self, i)
@@ -1424,6 +1427,7 @@ where
         Expr::BigOr(_binding_0) => Expr::BigOr(f.fold_big_or(_binding_0)),
         Expr::Is(_binding_0) => Expr::Is(f.fold_expr_is(_binding_0)),
         Expr::Has(_binding_0) => Expr::Has(f.fold_expr_has(_binding_0)),
+        Expr::Matches(_binding_0) => Expr::Matches(f.fold_expr_matches(_binding_0)),
         Expr::GetField(_binding_0) => Expr::GetField(f.fold_expr_get_field(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -1758,6 +1762,19 @@ where
         expr: Box::new(f.fold_expr(*node.expr)),
         brace_token: Brace(tokens_helper(f, &node.brace_token.span)),
         arms: FoldHelper::lift(node.arms, |it| f.fold_arm(it)),
+    }
+}
+pub fn fold_expr_matches<F>(f: &mut F, node: ExprMatches) -> ExprMatches
+where
+    F: Fold + ?Sized,
+{
+    ExprMatches {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        lhs: Box::new(f.fold_expr(*node.lhs)),
+        matches_token: Token![matches](tokens_helper(f, &node.matches_token.span)),
+        pat: full!(f.fold_pat(node.pat)),
+        implies_token: Token![==>](tokens_helper(f, &node.implies_token.spans)),
+        rhs: Box::new(f.fold_expr(*node.rhs)),
     }
 }
 #[cfg(feature = "full")]
@@ -3732,7 +3749,7 @@ where
         fn_spec_token: (node.fn_spec_token)
             .map(|it| Token![FnSpec](tokens_helper(f, &it.span))),
         spec_fn_token: (node.spec_fn_token)
-            .map(|it| Token![FnSpec](tokens_helper(f, &it.span))),
+            .map(|it| Token![SpecFn](tokens_helper(f, &it.span))),
         paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_bare_fn_arg(it)),
         output: f.fold_return_type(node.output),
