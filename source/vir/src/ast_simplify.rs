@@ -1031,18 +1031,24 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.external_fns.extend(k.external_fns.clone());
         kratex.external_types.extend(k.external_types.clone());
         kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());
-        kratex.arch.word_bits = match (k.arch.word_bits, kratex.arch.word_bits) {
-            (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
-                if l != r {
-                    return Err(crate::messages::error_bare(
-                        "all crates must have compatible arch_word_bits (set via `global size_of usize`",
-                    ));
-                } else {
-                    crate::ast::ArchWordBits::Exactly(l)
+        kratex.arch.word_bits = {
+            let word_bits = match (k.arch.word_bits, kratex.arch.word_bits) {
+                (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
+                    if l != r {
+                        return Err(crate::messages::error_bare(
+                            "all crates must have compatible arch_word_bits (set via `global size_of usize`",
+                        ));
+                    } else {
+                        crate::ast::ArchWordBits::Exactly(l)
+                    }
                 }
+                (crate::ast::ArchWordBits::Either32Or64, other)
+                | (other, crate::ast::ArchWordBits::Either32Or64) => other,
+            };
+            if let crate::ast::ArchWordBits::Exactly(e) = &word_bits {
+                assert!(*e == 32 || *e == 64);
             }
-            (crate::ast::ArchWordBits::Either32Or64, other) => other,
-            (other, crate::ast::ArchWordBits::Either32Or64) => other,
+            word_bits
         };
     }
     Ok(Arc::new(kratex))
