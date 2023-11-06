@@ -11,7 +11,7 @@ use crate::ast::{
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{array_index_fun, array_len_fun, fn_inv_name, fn_namespace_name, Spanned};
+use crate::def::{array_index_fun, fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -269,7 +269,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     }
                     ExprX::ArrayLiteral(..) => {
                         reach_function(ctxt, state, &array_index_fun(&ctxt.vstd_crate_name));
-                        reach_function(ctxt, state, &array_len_fun(&ctxt.vstd_crate_name));
                     }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce

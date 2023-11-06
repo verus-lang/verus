@@ -56,11 +56,4 @@ pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
     ar.view().index(i)
 }
 
-// Referenced by Verus' internal encoding for array literals
-#[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "vstd::array::array_len")]
-pub open spec fn array_len<T, const N: usize>(ar: &[T; N]) -> nat {
-    ar.view().len()
-}
-
 }

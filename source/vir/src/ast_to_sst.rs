@@ -15,8 +15,8 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_array_len,
-    sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt,
+    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_conjoin, sst_equal,
+    sst_has_type, sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
@@ -1462,13 +1462,10 @@ pub(crate) fn expr_to_stm_opt(
             let uid = state.declare_new_var(&tmp_ident, &expr.typ, false, false);
             let v = mk_exp(ExpX::Var(uid));
 
-            // assume v.len() == len
-            let len_eq = sst_equal(
-                &expr.span,
-                &sst_array_len(ctx, &expr.span, &v),
-                &sst_int_literal(&expr.span, elems.len() as i128),
-            );
-            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(len_eq)));
+            // assume the type invariant
+            // (this implies that v.len() == len because of a vstd axiom)
+            let has_typ = sst_has_type(&expr.span, &v, &expr.typ);
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
             for (i, exp) in exps.into_iter().enumerate() {
                 // assume v[i] == exp
                 let elem_i_eq = sst_equal(
