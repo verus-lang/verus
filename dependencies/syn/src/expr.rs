@@ -1521,7 +1521,7 @@ pub(crate) mod parsing {
                 let mut rhs = unary_expr(input, allow_struct)?;
                 loop {
                     let next = peek_precedence(input);
-                    if next >= Precedence::Assign {
+                    if next >= Precedence::Imply {
                         rhs = parse_expr(input, rhs, allow_struct, next)?;
                     } else {
                         break;

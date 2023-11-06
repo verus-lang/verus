@@ -1390,3 +1390,15 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_3 verus_code! {
+        enum E { A, B }
+        proof fn test1() {
+            assert((E::A matches E::B ==> true) <==> false); // FAILS
+        }
+        proof fn test2() {
+            assert(E::A matches E::B ==> true <==> false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
