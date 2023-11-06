@@ -371,6 +371,9 @@ pub trait Fold {
     fn fold_generics(&mut self, i: Generics) -> Generics {
         fold_generics(self, i)
     }
+    fn fold_global(&mut self, i: Global) -> Global {
+        fold_global(self, i)
+    }
     fn fold_ident(&mut self, i: Ident) -> Ident {
         fold_ident(self, i)
     }
@@ -2179,6 +2182,19 @@ where
         where_clause: (node.where_clause).map(|it| f.fold_where_clause(it)),
     }
 }
+pub fn fold_global<F>(f: &mut F, node: Global) -> Global
+where
+    F: Fold + ?Sized,
+{
+    Global {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        global_token: Token![global](tokens_helper(f, &node.global_token.span)),
+        size_of_token: Token![size_of](tokens_helper(f, &node.size_of_token.span)),
+        type_: f.fold_type(node.type_),
+        eq_token: Token![==](tokens_helper(f, &node.eq_token.spans)),
+        expr_lit: f.fold_expr_lit(node.expr_lit),
+    }
+}
 pub fn fold_ident<F>(f: &mut F, node: Ident) -> Ident
 where
     F: Fold + ?Sized,
@@ -2366,6 +2382,7 @@ where
         Item::Union(_binding_0) => Item::Union(f.fold_item_union(_binding_0)),
         Item::Use(_binding_0) => Item::Use(f.fold_item_use(_binding_0)),
         Item::Verbatim(_binding_0) => Item::Verbatim(_binding_0),
+        Item::Global(_binding_0) => Item::Global(f.fold_global(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }

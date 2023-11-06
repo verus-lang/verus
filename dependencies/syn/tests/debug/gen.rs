@@ -3037,6 +3037,18 @@ impl Debug for Lite<syn::Generics> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Global> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Global");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("type_", Lite(&_val.type_));
+        formatter.field("expr_lit", Lite(&_val.expr_lit));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ImplItem> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -3874,6 +3886,13 @@ impl Debug for Lite<syn::Item> {
                 formatter.write_str("(`")?;
                 Display::fmt(_val, formatter)?;
                 formatter.write_str("`)")?;
+                Ok(())
+            }
+            syn::Item::Global(_val) => {
+                formatter.write_str("Global")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
                 Ok(())
             }
             _ => unreachable!(),

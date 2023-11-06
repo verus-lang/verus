@@ -1099,6 +1099,15 @@ impl PartialEq for Generics {
             && self.gt_token == other.gt_token && self.where_clause == other.where_clause
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Global {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Global {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.type_ == other.type_
+            && self.expr_lit == other.expr_lit
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ImplItem {}
@@ -1241,6 +1250,7 @@ impl PartialEq for Item {
             (Item::Verbatim(self0), Item::Verbatim(other0)) => {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
+            (Item::Global(self0), Item::Global(other0)) => self0 == other0,
             _ => false,
         }
     }

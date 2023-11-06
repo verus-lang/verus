@@ -1294,3 +1294,10 @@ macro_rules! decreases_to {
         ::builtin_macros::verus_proof_macro_exprs!($crate::decreases_to_internal!($($x)*))
     };
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::global_size_of"]
+#[verifier::spec]
+pub const fn global_size_of<T>(_bytes: usize) {
+    unimplemented!()
+}

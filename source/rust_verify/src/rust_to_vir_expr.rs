@@ -173,8 +173,18 @@ pub(crate) fn check_lit_int(
             IntRange::Int | IntRange::Nat => Ok(()),
             IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => Ok(()),
             IntRange::I(n) if n - 1 < 128 && i < (1u128 << (n - 1)) + i_bump => Ok(()),
-            IntRange::USize if i < (1u128 << ctxt.arch.word_bits.min_bits()) => Ok(()),
-            IntRange::ISize if i < (1u128 << (ctxt.arch.word_bits.min_bits() - 1)) + i_bump => {
+            IntRange::USize
+                if i < (1u128
+                    << (ctxt.arch_word_bits.expect("unkown arch_word_bits").min_bits()
+                        as u128)) =>
+            {
+                Ok(())
+            }
+            IntRange::ISize
+                if i < (1u128
+                    << (ctxt.arch_word_bits.expect("unkown arch_word_bits").min_bits() - 1))
+                    + i_bump =>
+            {
                 Ok(())
             }
             _ => {

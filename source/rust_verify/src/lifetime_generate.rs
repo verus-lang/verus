@@ -2315,6 +2315,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, _, body_id) => {
+                            if vattrs.size_of_global {
+                                continue;
+                            }
                             erase_const_or_static(
                                 krate,
                                 &mut ctxt,

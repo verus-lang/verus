@@ -301,6 +301,11 @@ pub(crate) enum BuiltinTraitItem {
     FnWithSpecification,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum GlobalItem {
+    SizeOf,
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VerusItem {
     Spec(SpecItem),
@@ -319,6 +324,7 @@ pub(crate) enum VerusItem {
     BuiltinType(BuiltinTypeItem),
     BuiltinFunction(BuiltinFunctionItem),
     BuiltinTrait(BuiltinTraitItem),
+    Global(GlobalItem),
 }
 
 #[rustfmt::skip]
@@ -468,6 +474,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::FnWithSpecification::ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationEnsures)),
 
         ("verus::builtin::FnWithSpecification", VerusItem::BuiltinTrait(BuiltinTraitItem::FnWithSpecification)),
+        
+        ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
     ]
 }
 

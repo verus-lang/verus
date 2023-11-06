@@ -2840,6 +2840,34 @@
       }
     },
     {
+      "ident": "Global",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "global_token": {
+          "token": "Global"
+        },
+        "size_of_token": {
+          "token": "SizeOf"
+        },
+        "type_": {
+          "syn": "Type"
+        },
+        "eq_token": {
+          "token": "EqEq"
+        },
+        "expr_lit": {
+          "syn": "ExprLit"
+        }
+      }
+    },
+    {
       "ident": "ImplItem",
       "features": {
         "any": [
@@ -3199,6 +3227,11 @@
         "Verbatim": [
           {
             "proc_macro2": "TokenStream"
+          }
+        ],
+        "Global": [
+          {
+            "syn": "Global"
           }
         ]
       },
@@ -6653,6 +6686,7 @@
     "Forall": "forall",
     "Ge": ">=",
     "Ghost": "ghost",
+    "Global": "global",
     "Gt": ">",
     "Has": "has",
     "Hide": "hide",
@@ -6706,6 +6740,7 @@
     "ShlEq": "<<=",
     "Shr": ">>",
     "ShrEq": ">>=",
+    "SizeOf": "size_of",
     "Spec": "spec",
     "Star": "*",
     "Static": "static",

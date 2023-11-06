@@ -5,7 +5,6 @@ use crate::ast::{
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::prelude::ArchWordBits;
 use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
@@ -461,7 +460,7 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
 ///   - If the input type is `u8`, then it returns a constant `8`
 ///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
 
-pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &ArchWordBits) -> Exp {
+pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &crate::ast::ArchWordBits) -> Exp {
     let bitwidth = crate::ast_util::bitwidth_from_type(t)
         .expect("bitwidth_sst_from_typ expects bounded integer type");
     match bitwidth.to_exact(arch) {

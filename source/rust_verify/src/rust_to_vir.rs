@@ -427,6 +427,9 @@ fn check_item<'tcx>(
         ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, Mutability::Not, body_id) => {
             let def_id = body_id.hir_id.owner.to_def_id();
             let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+            if vattrs.size_of_global {
+                return Ok(()); // handled earlier
+            }
             if path
                 .segments
                 .iter()
@@ -659,7 +662,7 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 }
 
-pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
     let mut vir: KrateX = Default::default();
 
     // Map each item to the module that contains it, or None if the module is external
@@ -703,6 +706,22 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                 _ => (),
             }
         }
+    }
+    for (_, owner_opt) in ctxt.krate.owners.iter_enumerated() {
+        if let MaybeOwner::Owner(owner) = owner_opt {
+            match owner.node() {
+                OwnerNode::Item(item) => {
+                    crate::rust_to_vir_global::process_const_early(ctxt, item)?;
+                }
+                _ => (),
+            }
+        }
+    }
+    {
+        let ctxt = Arc::make_mut(ctxt);
+        let arch_word_bits = ctxt.arch_word_bits.unwrap_or(vir::ast::ArchWordBits::Either32Or64);
+        ctxt.arch_word_bits = Some(arch_word_bits);
+        vir.arch.word_bits = arch_word_bits;
     }
     for owner in ctxt.krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {

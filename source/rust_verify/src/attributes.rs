@@ -266,6 +266,8 @@ pub(crate) enum Attr {
     InternalRevealFn,
     // Marks trusted code
     Trusted,
+    // global size_of
+    SizeOfGlobal,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -522,6 +524,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "unwrapped_binding" => {
                         v.push(Attr::UnwrappedBinding)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "size_of" => v.push(Attr::SizeOfGlobal),
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -663,6 +666,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) unwrapped_binding: bool,
     pub(crate) internal_reveal_fn: bool,
     pub(crate) trusted: bool,
+    pub(crate) size_of_global: bool,
 }
 
 pub(crate) fn get_verifier_attrs(
@@ -700,6 +704,7 @@ pub(crate) fn get_verifier_attrs(
         unwrapped_binding: false,
         internal_reveal_fn: false,
         trusted: false,
+        size_of_global: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -743,6 +748,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::Trusted => vs.trusted = true,
+            Attr::SizeOfGlobal => vs.size_of_global = true,
             _ => {}
         }
     }

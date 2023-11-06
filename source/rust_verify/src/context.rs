@@ -19,22 +19,18 @@ pub struct ErasureInfo {
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
 
-pub type ArchContext = Arc<ArchContextX>;
-pub struct ArchContextX {
-    pub(crate) word_bits: vir::prelude::ArchWordBits,
-}
-
 pub type Context<'tcx> = Arc<ContextX<'tcx>>;
+#[derive(Clone)]
 pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) vstd_crate_name: Option<Ident>,
-    pub(crate) arch: ArchContext,
     pub(crate) verus_items: Arc<VerusItems>,
     pub(crate) diagnostics: std::rc::Rc<std::cell::RefCell<Vec<vir::ast::VirErrAs>>>,
     pub(crate) no_vstd: bool,
+    pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
 }
 
 #[derive(Clone)]

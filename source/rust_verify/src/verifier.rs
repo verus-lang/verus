@@ -1,6 +1,6 @@
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
-use crate::context::{ArchContextX, ContextX, ErasureInfo};
+use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
@@ -935,7 +935,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_file_name,
         )?;
 
@@ -1035,7 +1035,7 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
@@ -1579,7 +1579,6 @@ impl Verifier {
             self.args.rlimit,
             interpreter_log_file,
             self.vstd_crate_name.clone(),
-            self.args.arch_word_bits,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -1991,27 +1990,28 @@ impl Verifier {
         } else {
             None
         };
-        let ctxt = Arc::new(ContextX {
+        let mut ctxt = Arc::new(ContextX {
             tcx,
             krate: hir.krate(),
             erasure_info,
             spans: spans.clone(),
             vstd_crate_name: vstd_crate_name.clone(),
-            arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
             verus_items,
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
             no_vstd: self.args.no_vstd,
+            arch_word_bits: None,
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
+        let ctxt_diagnostics = ctxt.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (err, ctxt.diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt).map_err(map_err_diagnostics)?;
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
@@ -2021,12 +2021,12 @@ impl Verifier {
             crate_id: spans.local_crate.as_u64(),
             original_files: spans.local_files.clone(),
         };
-        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
-            .map_err(map_err_diagnostics)?;
 
         let user_filter =
             UserFilter::from_args(&self.args, &vir_crate).map_err(map_err_diagnostics)?;
         self.user_filter = Some(user_filter);
+
+        let mut current_vir_crate = vir_crate.clone();
 
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
@@ -2036,6 +2036,11 @@ impl Verifier {
         // because well_formed and modes checking look up definitions from libraries.)
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+
+        Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
+
+        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate)
+            .map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_args.log_vir {
             let mut file = self
