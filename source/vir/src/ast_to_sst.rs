@@ -1463,7 +1463,8 @@ pub(crate) fn expr_to_stm_opt(
             let v = mk_exp(ExpX::Var(uid));
 
             // assume the type invariant
-            // (this implies that v.len() == len because of a vstd axiom)
+            // (this implies that v.len() == len because of a vstd axiom,
+            // array_len_matches_n)
             let has_typ = sst_has_type(&expr.span, &v, &expr.typ);
             stms.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
             for (i, exp) in exps.into_iter().enumerate() {
