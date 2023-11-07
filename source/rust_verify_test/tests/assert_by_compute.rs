@@ -453,7 +453,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] arch_specific_handling_1_test_regression_380 verus_code! {
         // GitHub issue 380: we should make sure not to make incorrect assumptions on size of
-        // usize/isize when `--arch-word-bits` is not set.
+        // usize/isize when `size_of usize` is not set.
         fn test() {
             assert((1usize << 40usize) == 0usize) by (compute_only); // FAILS
         }
@@ -463,7 +463,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] arch_specific_handling_2_test_regression_380 verus_code! {
         // GitHub issue 380: we should make sure not to make incorrect assumptions on size of
-        // usize/isize when `--arch-word-bits` is not set.
+        // usize/isize when `size_of usize` is not set.
         //
         // Note that we should not be able to deduce `!= 0` here either.
         fn test() {
@@ -475,7 +475,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] arch_specific_handling_3_test_regression_380 verus_code! {
         // GitHub issue 380: we should make sure not to make incorrect assumptions on size of
-        // usize/isize when `--arch-word-bits` is not set.
+        // usize/isize when `size_of usize` is not set.
         //
         // Note that we still do know that it is either 32-bit or 64-bit, so we should still be able
         // to deduce things about values that remain consistent amongst the two.

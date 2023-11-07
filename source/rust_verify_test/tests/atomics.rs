@@ -92,6 +92,7 @@ test_verify_one_file! {
     #[test] assign_ok
     COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) -> u32 {
+            #[allow(unused_assignments)]
             let mut x: u32 = 5;
             open_atomic_invariant!(i.borrow() => inner => {
                 atomic_op();

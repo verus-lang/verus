@@ -710,3 +710,17 @@ pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
 pub fn static_name(fun: &Fun) -> Ident {
     Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
 }
+
+pub fn array_index_fun(vstd_crate_name: &Option<Ident>) -> Fun {
+    Arc::new(FunX { path: array_index_path(vstd_crate_name) })
+}
+
+pub fn array_index_path(vstd_crate_name: &Option<Ident>) -> Path {
+    Arc::new(PathX {
+        krate: vstd_crate_name.clone(),
+        segments: Arc::new(vec![
+            Arc::new("array".to_string()),
+            Arc::new("array_index".to_string()),
+        ]),
+    })
+}

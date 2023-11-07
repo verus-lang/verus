@@ -6,14 +6,14 @@ use serde::Deserialize;
 
 pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DiagnosticText {
     pub text: String,
     pub highlight_start: usize,
     pub highlight_end: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DiagnosticSpan {
     pub file_name: String,
     pub line_start: usize,
@@ -27,13 +27,13 @@ pub struct DiagnosticSpan {
     pub text: Vec<DiagnosticText>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DiagnosticCode {
     pub code: String,
     pub explanation: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Diagnostic {
     pub code: Option<DiagnosticCode>,
     pub message: String,
@@ -42,7 +42,7 @@ pub struct Diagnostic {
     pub rendered: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TestErr {
     pub errors: Vec<Diagnostic>,
     pub warnings: Vec<Diagnostic>,
@@ -259,12 +259,6 @@ pub fn run_verus(
             verus_args.push("--expand-errors".to_string());
             verus_args.push("--multiple-errors".to_string());
             verus_args.push("2".to_string());
-        } else if *option == "--arch-word-bits 32" {
-            verus_args.push("--arch-word-bits".to_string());
-            verus_args.push("32".to_string());
-        } else if *option == "--arch-word-bits 64" {
-            verus_args.push("--arch-word-bits".to_string());
-            verus_args.push("64".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
             verus_args.push("-o".to_string());

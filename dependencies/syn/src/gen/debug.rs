@@ -1620,6 +1620,19 @@ impl Debug for Generics {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Global {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Global");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("global_token", &self.global_token);
+        formatter.field("size_of_token", &self.size_of_token);
+        formatter.field("type_", &self.type_);
+        formatter.field("eq_token", &self.eq_token);
+        formatter.field("expr_lit", &self.expr_lit);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ImplItem {
@@ -1865,6 +1878,11 @@ impl Debug for Item {
             }
             Item::Verbatim(v0) => {
                 let mut formatter = formatter.debug_tuple("Verbatim");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Item::Global(v0) => {
+                let mut formatter = formatter.debug_tuple("Global");
                 formatter.field(v0);
                 formatter.finish()
             }

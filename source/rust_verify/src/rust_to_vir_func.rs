@@ -38,12 +38,11 @@ pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::a
     Arc::new(pathx)
 }
 
-fn body_id_to_types<'tcx>(
+pub(crate) fn body_id_to_types<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: &BodyId,
 ) -> &'tcx rustc_middle::ty::TypeckResults<'tcx> {
-    let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner.def_id);
-    tcx.typeck_opt_const_arg(def)
+    tcx.typeck(id.hir_id.owner.def_id)
 }
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -109,7 +108,7 @@ pub(crate) fn find_body_krate<'tcx>(
     panic!("Body not found");
 }
 
-fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
+pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     find_body_krate(ctxt.krate, body_id)
 }
 
@@ -845,10 +844,10 @@ fn remove_destruct_trait_bounds_from_predicates<'tcx>(
     preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::PredicateKind::<'tcx>::Clause(
             rustc_middle::ty::Clause::<'tcx>::Trait(tp),
-        ) => match crate::verus_items::def_id_to_stable_rust_path(tcx, tp.trait_ref.def_id) {
-            Some(s) => s != "core::marker::Destruct",
-            None => true,
-        },
+        ) => {
+            let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
+            rust_item != Some(crate::verus_items::RustItem::Destruct)
+        }
         _ => true,
     });
 }
@@ -966,12 +965,10 @@ pub(crate) fn get_external_def_id<'tcx>(
         let inst =
             rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
         if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
-                if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item {
-                    let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
-                    let kind = FunctionKind::ForeignTraitMethodImpl(trait_path);
-                    return Ok((did, kind));
-                }
+            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
+                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+                let kind = FunctionKind::ForeignTraitMethodImpl(trait_path);
+                return Ok((did, kind));
             }
         }
 

@@ -57,7 +57,6 @@ pub struct ArgsX {
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
-    pub arch_word_bits: vir::prelude::ArchWordBits,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -75,6 +74,7 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
+    pub use_internal_profiler: bool,
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -136,7 +136,6 @@ pub fn parse_args_with_imports(
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
-    const OPT_ARCH_WORD_BITS: &str = "arch-word-bits";
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
@@ -194,6 +193,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
+    const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -205,6 +205,10 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_CAPTURE_PROFILES,
             "Always collect prover performance data, but don't generate output reports",
+        ),
+        (
+            EXTENDED_USE_INTERNAL_PROFILER,
+            "Use an internal profiler that shows internal quantifier instantiations",
         ),
     ];
 
@@ -241,7 +245,6 @@ pub fn parse_args_with_imports(
         OPT_NO_AUTO_RECOMMENDS_CHECK,
         "Do not automatically check recommends after verification failures",
     );
-    opts.optopt("", OPT_ARCH_WORD_BITS, "Size in bits for usize/isize: valid options are either '32', '64', or '32,64'. (default: 32,64)\nWARNING: this flag is a temporary workaround and will be removed in the near future", "BITS");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
     opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
@@ -399,21 +402,6 @@ pub fn parse_args_with_imports(
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
-        arch_word_bits: matches
-            .opt_str(OPT_ARCH_WORD_BITS)
-            .map(|bits| {
-                use vir::prelude::ArchWordBits;
-                match bits.as_str() {
-                    "32" => ArchWordBits::Exactly(32),
-                    "64" => ArchWordBits::Exactly(64),
-                    "32,64" => ArchWordBits::Either32Or64,
-                    _ => error(format!(
-                        "invalid {} option: it must be either '32', '64', or '32,64'",
-                        OPT_ARCH_WORD_BITS
-                    )),
-                }
-            })
-            .unwrap_or(vir::prelude::ArchWordBits::Either32Or64),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
@@ -501,6 +489,7 @@ pub fn parse_args_with_imports(
             extended.get(EXTENDED_CAPTURE_PROFILES).is_some()
         },
         spinoff_all: extended.get(EXTENDED_SPINOFF_ALL).is_some(),
+        use_internal_profiler: extended.get(EXTENDED_USE_INTERNAL_PROFILER).is_some(),
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !extended.get(EXTENDED_NO_SOLVER_VERSION_CHECK).is_some(),

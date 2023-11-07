@@ -1055,3 +1055,55 @@ test_verify_one_file! {
         temp!{}
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] trait_proof_using_own_lemma verus_code! {
+        mod m1 {
+            use builtin_macros::*;
+            verus! {
+                #[verifier::external_body]
+                pub struct S { p: core::marker::PhantomData<()> }
+
+                pub spec fn p1(s: S) -> bool;
+                pub spec fn p2(s: S) -> bool;
+
+                pub proof fn p(s: S)
+                    requires p1(s),
+                    ensures p2(s) {
+
+                    assume(false);
+                }
+
+                pub trait A {
+                    proof fn two(s: S)
+                        requires p1(s),
+                        ensures p2(s);
+
+                    proof fn one()
+                        ensures forall|s: S| p1(s) ==> p2(s);
+                }
+            }
+        }
+
+        mod m2 {
+            use builtin_macros::*;
+            verus! {
+                use crate::m1::*;
+
+                struct X;
+
+                impl A for X {
+                    proof fn two(s: S) {
+                        Self::one();
+                    }
+
+                    proof fn one() {
+                        assert forall|s: S| p1(s) implies p2(s) by {
+                            p(s);
+                        }
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}

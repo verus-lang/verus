@@ -1,11 +1,10 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX, GenericBound,
-    GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, Variant, Variants,
-    VirErr, Visibility,
+    ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
+    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
+    PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
+    Variant, Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
-use crate::prelude::ArchWordBits;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders};

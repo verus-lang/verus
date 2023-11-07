@@ -1507,6 +1507,17 @@ impl Hash for Generics {
         self.where_clause.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Global {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.type_.hash(state);
+        self.expr_lit.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ImplItem {
@@ -1724,6 +1735,10 @@ impl Hash for Item {
             Item::Verbatim(v0) => {
                 state.write_u8(16u8);
                 TokenStreamHelper(v0).hash(state);
+            }
+            Item::Global(v0) => {
+                state.write_u8(17u8);
+                v0.hash(state);
             }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),

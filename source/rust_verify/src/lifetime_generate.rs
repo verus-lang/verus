@@ -404,8 +404,8 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             let assoc_item = ctxt.tcx.associated_item(t.def_id);
             let name = state.typ_param(assoc_item.name.to_string(), None);
             let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
-            match (trait_def, t.substs.try_as_type_list()) {
-                (Some(trait_def), Some(typs)) if typs.len() >= 1 => {
+            match (trait_def, t.substs.into_type_list(ctxt.tcx)) {
+                (Some(trait_def), typs) if typs.len() >= 1 => {
                     let trait_path_vir = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def);
                     erase_trait(ctxt, state, trait_def);
                     assert!(state.trait_decl_set.contains(&trait_path_vir));
@@ -726,12 +726,9 @@ fn erase_call<'tcx>(
                 normalized_substs,
             );
             if let Ok(Some(inst)) = inst {
-                if let rustc_middle::ty::InstanceDef::Item(item) = inst.def {
-                    if let rustc_middle::ty::WithOptConstParam { did, const_param_did: None } = item
-                    {
-                        node_substs = &inst.substs;
-                        fn_def_id = did;
-                    }
+                if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
+                    node_substs = &inst.substs;
+                    fn_def_id = did;
                 }
             }
 
@@ -1156,6 +1153,18 @@ fn erase_expr<'tcx>(
                 mk_exp(ExpX::Tuple(args))
             }
         }
+        ExprKind::Array(exprs) => {
+            let mut args: Vec<Exp> = Vec::new();
+            if expect_spec {
+                let exps = exprs.iter().map(|e| erase_expr(ctxt, state, expect_spec, e)).collect();
+                erase_spec_exps(ctxt, state, expr, exps)
+            } else {
+                for e in exprs.iter() {
+                    args.push(erase_expr(ctxt, state, expect_spec, e).expect("expr"));
+                }
+                mk_exp(ExpX::Array(args))
+            }
+        }
         ExprKind::Cast(source, _) => {
             let source = erase_expr(ctxt, state, expect_spec, source);
             erase_spec_exps(ctxt, state, expr, vec![source])
@@ -1428,8 +1437,7 @@ fn erase_const_or_static<'tcx>(
         if f_vir.x.mode == Mode::Spec && f_vir.x.ret.x.mode == Mode::Spec {
             return;
         }
-        let def = rustc_middle::ty::WithOptConstParam::unknown(body_id.hir_id.owner.def_id);
-        let types = ctxt.tcx.typeck_opt_const_arg(def);
+        let types = ctxt.tcx.typeck(body_id.hir_id.owner.def_id);
         ctxt.types_opt = Some(types);
         ctxt.ret_spec = Some(f_vir.x.ret.x.mode == Mode::Spec);
 
@@ -1653,8 +1661,7 @@ fn erase_fn_common<'tcx>(
             return;
         }
         if let Some(body_id) = body_id {
-            let def = rustc_middle::ty::WithOptConstParam::unknown(body_id.hir_id.owner.def_id);
-            let types = ctxt.tcx.typeck_opt_const_arg(def);
+            let types = ctxt.tcx.typeck(body_id.hir_id.owner.def_id);
             ctxt.types_opt = Some(types);
             ctxt.ret_spec = Some(f_vir.x.ret.x.mode == Mode::Spec);
         }
@@ -2317,7 +2324,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, _, body_id) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                            if vattrs.size_of_global || vattrs.is_external(&ctxt.cmd_line_args) {
                                 continue;
                             }
                             erase_const_or_static(

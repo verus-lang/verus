@@ -240,7 +240,7 @@ impl<V> PPtr<V> {
         // See explanation about exposing pointers, above
         let _exposed_addr = p.uptr as usize;
 
-        (p, Tracked::assume_new())
+        (p, Tracked::assume_new(|| unreachable!()))
     }
 
     /// Clones the pointer.

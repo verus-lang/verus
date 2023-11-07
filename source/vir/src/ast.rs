@@ -642,6 +642,8 @@ pub enum ExprX {
         /// can assume about a closure object after it is created.
         external_spec: Option<(Ident, Expr)>,
     },
+    /// Array literal (can also be used for sequence literals in the future)
+    ArrayLiteral(Exprs),
     /// Choose specification values satisfying a condition, compute body
     Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
@@ -987,6 +989,38 @@ pub struct ModuleX {
     // add attrs here
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
+pub enum ArchWordBits {
+    Either32Or64,
+    Exactly(u32),
+}
+
+impl ArchWordBits {
+    pub fn min_bits(&self) -> u32 {
+        match self {
+            ArchWordBits::Either32Or64 => 32,
+            ArchWordBits::Exactly(v) => *v,
+        }
+    }
+    pub fn num_bits(&self) -> Option<u32> {
+        match self {
+            ArchWordBits::Either32Or64 => None,
+            ArchWordBits::Exactly(v) => Some(*v),
+        }
+    }
+}
+
+impl Default for ArchWordBits {
+    fn default() -> Self {
+        ArchWordBits::Either32Or64
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct Arch {
+    pub word_bits: ArchWordBits,
+}
+
 /// An entire crate
 pub type Krate = Arc<KrateX>;
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -1009,4 +1043,6 @@ pub struct KrateX {
     pub external_types: Vec<Path>,
     /// Map rustc-based internal paths to friendlier names for error messages
     pub path_as_rust_names: Vec<(Path, String)>,
+    /// Arch info
+    pub arch: Arch,
 }

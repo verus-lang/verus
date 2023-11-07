@@ -128,6 +128,7 @@ pub(crate) fn run_with_erase_macro_compile(
     let allow = &[
         "unused_imports",
         "unused_variables",
+        "unused_assignments",
         "unreachable_patterns",
         "unused_parens",
         "unused_braces",

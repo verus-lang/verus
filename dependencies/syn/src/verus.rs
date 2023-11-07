@@ -282,6 +282,17 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct Global {
+        pub attrs: Vec<Attribute>,
+        pub global_token: Token![global],
+        pub size_of_token: Token![size_of],
+        pub type_: Type,
+        pub eq_token: Token![==],
+        pub expr_lit: ExprLit,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -835,6 +846,28 @@ pub mod parsing {
             })
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Global {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let global_token: Token![global] = input.parse()?;
+            let size_of_token: Token![size_of] = input.parse()?;
+            let type_: Type = input.parse()?;
+            let eq_token: Token![==] = input.parse()?;
+            let expr_lit: ExprLit = input.parse()?;
+            let _: Token![;] = input.parse()?;
+            
+            Ok(Global {
+                attrs,
+                global_token,
+                size_of_token,
+                type_,
+                eq_token,
+                expr_lit,
+            })
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
@@ -1134,6 +1167,18 @@ mod printing {
             self.lhs.to_tokens(tokens);
             self.has_token.to_tokens(tokens);
             self.rhs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Global {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.global_token.to_tokens(tokens);
+            self.size_of_token.to_tokens(tokens);
+            self.type_.to_tokens(tokens);
+            self.eq_token.to_tokens(tokens);
+            self.expr_lit.to_tokens(tokens);
         }
     }
 }

@@ -52,6 +52,8 @@ fn ty_to_stable_string_partial<'tcx>(
     })
 }
 
+/// NOTE: do not use this to determine if something is a well known / rust lang item
+/// use verus_items::get_rust_item instead
 pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<String> {
     let def_path = tcx.def_path(def_id);
     let mut segments: Vec<String> = Vec::with_capacity(def_path.data.len());
@@ -299,6 +301,11 @@ pub(crate) enum BuiltinTraitItem {
     FnWithSpecification,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum GlobalItem {
+    SizeOf,
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VerusItem {
     Spec(SpecItem),
@@ -317,6 +324,7 @@ pub(crate) enum VerusItem {
     BuiltinType(BuiltinTypeItem),
     BuiltinFunction(BuiltinFunctionItem),
     BuiltinTrait(BuiltinTraitItem),
+    Global(GlobalItem),
 }
 
 #[rustfmt::skip]
@@ -466,6 +474,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::FnWithSpecification::ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationEnsures)),
 
         ("verus::builtin::FnWithSpecification", VerusItem::BuiltinTrait(BuiltinTraitItem::FnWithSpecification)),
+        
+        ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
     ]
 }
 
@@ -545,6 +555,7 @@ pub(crate) enum RustItem {
     AllocGlobal,
     TryTraitBranch,
     IntoIterFn,
+    Destruct,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -581,6 +592,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
+    }
+    if tcx.lang_items().destruct_trait() == Some(def_id) {
+        return Some(RustItem::Destruct);
     }
 
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);

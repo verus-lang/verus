@@ -1119,6 +1119,19 @@ impl Clone for Generics {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Global {
+    fn clone(&self) -> Self {
+        Global {
+            attrs: self.attrs.clone(),
+            global_token: self.global_token.clone(),
+            size_of_token: self.size_of_token.clone(),
+            type_: self.type_.clone(),
+            eq_token: self.eq_token.clone(),
+            expr_lit: self.expr_lit.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ImplItem {
@@ -1271,6 +1284,7 @@ impl Clone for Item {
             Item::Union(v0) => Item::Union(v0.clone()),
             Item::Use(v0) => Item::Use(v0.clone()),
             Item::Verbatim(v0) => Item::Verbatim(v0.clone()),
+            Item::Global(v0) => Item::Global(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }

@@ -572,7 +572,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Spec)
         }
-        ExprX::Tuple(es) => {
+        ExprX::Tuple(es) | ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;
             Ok(modes.into_iter().fold(outer_mode, mode_join))
         }

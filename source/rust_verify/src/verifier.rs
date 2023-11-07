@@ -1,6 +1,6 @@
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
-use crate::context::{ArchContextX, ContextX, ErasureInfo};
+use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::spans::{SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
@@ -91,24 +91,24 @@ impl air::messages::Diagnostics for Reporter<'_> {
         ) {
             diag.span = multispan;
             if let Some(help) = help {
-                diag.help(help);
+                diag.help(&**help);
             }
             diag.emit();
         }
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note_without_error(&msg.note),
+                self.compiler_diagnostics.struct_note_without_error(&*msg.note),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_warn(&msg.note),
+                self.compiler_diagnostics.struct_warn(&*msg.note),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_err(&msg.note),
+                self.compiler_diagnostics.struct_err(&*msg.note),
                 multispan,
                 &msg.help,
             ),
@@ -484,6 +484,41 @@ impl Verifier {
             );
 
             diagnostics.report(&msg.to_any());
+        }
+    }
+
+    fn print_internal_profile_stats(
+        &self,
+        diagnostics: &impl air::messages::Diagnostics,
+        profile: Vec<(String, u64, Vec<(String, u64)>)>,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
+    ) {
+        let max = 50;
+        for (index, (name, count, identcounts)) in profile.iter().take(max).enumerate() {
+            let index = index + 1;
+            // Report the quantifier
+            if let Some(bnd_info) = qid_map.get(name) {
+                let mut msg =
+                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
+                for (ident, count) in identcounts {
+                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
+                }
+
+                let mut msg = note_bare(msg);
+                if let Some(span) = bnd_info.user.as_ref().map(|u| &u.span) {
+                    msg = msg.primary_span(span);
+                }
+                diagnostics.report(&msg.to_any());
+            } else {
+                let mut msg =
+                    format!("{:2}. Quantifier {}, instantiations: {}\n", index, name, count);
+                for (ident, count) in identcounts {
+                    msg += format!("    at: {}, instantiations: {}\n", ident, count).as_str();
+                }
+
+                let msg = note_bare(msg);
+                diagnostics.report(&msg.to_any());
+            }
         }
     }
 
@@ -900,7 +935,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_file_name,
         )?;
 
@@ -1000,7 +1035,7 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
@@ -1246,50 +1281,77 @@ impl Verifier {
                                         op.to_friendly_desc().map(|x| x + " ").unwrap_or("".into())
                                             + &fun_as_friendly_rust_name(&function.x.name);
 
-                                    match Profiler::parse(
-                                        message_interface.clone(),
-                                        &profile_file_name,
-                                        Some(&current_profile_description),
-                                        self.args.profile || self.args.profile_all,
-                                        reporter,
-                                        self.args.capture_profiles,
-                                    ) {
-                                        Ok(profiler) => {
-                                            if self.args.capture_profiles {
-                                                // if capture profiles was passed, silence the report
-                                                // as we are only interested in the graph/profile data
-                                                crate::profiler::write_instantiation_graph(
-                                                    &bucket_id,
-                                                    Some(&op),
-                                                    &function_opgen.ctx().func_map,
-                                                    profiler.instantiation_graph().unwrap(),
-                                                    &function_opgen.ctx().global.qid_map.borrow(),
-                                                    profile_file_name,
-                                                );
-                                            } else {
-                                                reporter.report(
-                                                    &note_bare(format!(
-                                                        "Profile statistics for {}",
-                                                        fun_as_friendly_rust_name(&function.x.name)
+                                    if !self.args.use_internal_profiler {
+                                        match Profiler::parse(
+                                            message_interface.clone(),
+                                            &profile_file_name,
+                                            Some(&current_profile_description),
+                                            self.args.profile || self.args.profile_all,
+                                            reporter,
+                                            self.args.capture_profiles,
+                                        ) {
+                                            Ok(profiler) => {
+                                                if self.args.capture_profiles {
+                                                    // if capture profiles was passed, silence the report
+                                                    // as we are only interested in the graph/profile data
+                                                    crate::profiler::write_instantiation_graph(
+                                                        &bucket_id,
+                                                        Some(&op),
+                                                        &function_opgen.ctx().func_map,
+                                                        profiler.instantiation_graph().unwrap(),
+                                                        &function_opgen
+                                                            .ctx()
+                                                            .global
+                                                            .qid_map
+                                                            .borrow(),
+                                                        profile_file_name,
+                                                    );
+                                                } else {
+                                                    reporter.report(
+                                                        &note_bare(format!(
+                                                            "Profile statistics for {}",
+                                                            fun_as_friendly_rust_name(
+                                                                &function.x.name
+                                                            )
+                                                        ))
+                                                        .to_any(),
+                                                    );
+                                                    self.print_profile_stats(
+                                                        reporter,
+                                                        profiler,
+                                                        &function_opgen
+                                                            .ctx()
+                                                            .global
+                                                            .qid_map
+                                                            .borrow(),
+                                                    );
+                                                }
+                                            }
+                                            Err(err) => {
+                                                reporter.report_now(
+                                                    &warning_bare(format!(
+                                                        "Failed parsing profile file for {}: {}",
+                                                        current_profile_description, err
                                                     ))
                                                     .to_any(),
                                                 );
-                                                self.print_profile_stats(
-                                                    reporter,
-                                                    profiler,
-                                                    &function_opgen.ctx().global.qid_map.borrow(),
-                                                );
                                             }
                                         }
-                                        Err(err) => {
-                                            reporter.report_now(
-                                                &warning_bare(format!(
-                                                    "Failed parsing profile file for {}: {}",
-                                                    current_profile_description, err
-                                                ))
-                                                .to_any(),
-                                            );
-                                        }
+                                    } else {
+                                        reporter.report(
+                                            &note_bare(format!(
+                                                "Internal profile statistics for {}",
+                                                fun_as_friendly_rust_name(&function.x.name)
+                                            ))
+                                            .to_any(),
+                                        );
+                                        let profiler =
+                                            air::profiler::internal::profile(&profile_file_name);
+                                        self.print_internal_profile_stats(
+                                            reporter,
+                                            profiler,
+                                            &function_opgen.ctx().global.qid_map.borrow(),
+                                        );
                                     }
                                 }
                             } else {
@@ -1352,51 +1414,67 @@ impl Verifier {
         if let (Some(profile_all_file_name), false) = (profile_all_file_name, self.args.spinoff_all)
         {
             if air_context.check_valid_used() {
-                match Profiler::parse(
-                    message_interface.clone(),
-                    &profile_all_file_name,
-                    Some(&bucket_id.friendly_name()),
-                    self.args.profile || self.args.profile_all,
-                    reporter,
-                    self.args.capture_profiles,
-                ) {
-                    Ok(profiler) => {
-                        if self.args.capture_profiles {
-                            // if capture profiles was passed, silence the report
-                            // as we are only interested in the graph/profile data
-                            crate::profiler::write_instantiation_graph(
-                                &bucket_id,
-                                None,
-                                &opgen.ctx.func_map,
-                                profiler.instantiation_graph().unwrap(),
-                                &opgen.ctx.global.qid_map.borrow(),
-                                profile_all_file_name,
-                            );
-                        } else {
-                            reporter.report(
-                                &note_bare(format!(
-                                    "Profile statistics for {}",
-                                    bucket_id.friendly_name()
+                if !self.args.use_internal_profiler {
+                    match Profiler::parse(
+                        message_interface.clone(),
+                        &profile_all_file_name,
+                        Some(&bucket_id.friendly_name()),
+                        self.args.profile || self.args.profile_all,
+                        reporter,
+                        self.args.capture_profiles,
+                    ) {
+                        Ok(profiler) => {
+                            if self.args.capture_profiles {
+                                // if capture profiles was passed, silence the report
+                                // as we are only interested in the graph/profile data
+                                crate::profiler::write_instantiation_graph(
+                                    &bucket_id,
+                                    None,
+                                    &opgen.ctx.func_map,
+                                    profiler.instantiation_graph().unwrap(),
+                                    &opgen.ctx.global.qid_map.borrow(),
+                                    profile_all_file_name,
+                                );
+                            } else {
+                                reporter.report(
+                                    &note_bare(format!(
+                                        "Profile statistics for {}",
+                                        bucket_id.friendly_name()
+                                    ))
+                                    .to_any(),
+                                );
+                                self.print_profile_stats(
+                                    reporter,
+                                    profiler,
+                                    &opgen.ctx.global.qid_map.borrow(),
+                                );
+                            }
+                        }
+                        Err(err) => {
+                            reporter.report_now(
+                                &warning_bare(format!(
+                                    "Failed parsing profile file for {}: {}",
+                                    bucket_id.friendly_name(),
+                                    err
                                 ))
                                 .to_any(),
                             );
-                            self.print_profile_stats(
-                                reporter,
-                                profiler,
-                                &opgen.ctx.global.qid_map.borrow(),
-                            );
                         }
                     }
-                    Err(err) => {
-                        reporter.report_now(
-                            &warning_bare(format!(
-                                "Failed parsing profile file for {}: {}",
-                                bucket_id.friendly_name(),
-                                err
-                            ))
-                            .to_any(),
-                        );
-                    }
+                } else {
+                    reporter.report(
+                        &note_bare(format!(
+                            "Internal profile statistics for {}",
+                            bucket_id.friendly_name()
+                        ))
+                        .to_any(),
+                    );
+                    let profiler = air::profiler::internal::profile(&profile_all_file_name);
+                    self.print_internal_profile_stats(
+                        reporter,
+                        profiler,
+                        &opgen.ctx.global.qid_map.borrow(),
+                    );
                 }
             }
         }
@@ -1459,7 +1537,7 @@ impl Verifier {
 
         let time_verify_end = Instant::now();
 
-        let mut time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
+        let time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
         time_bucket.time_smt_init = time_smt_init;
         time_bucket.time_smt_run = time_smt_run;
         time_bucket.time_verify = time_verify_end - time_verify_start;
@@ -1501,7 +1579,6 @@ impl Verifier {
             self.args.rlimit,
             interpreter_log_file,
             self.vstd_crate_name.clone(),
-            self.args.arch_word_bits,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -1913,42 +1990,44 @@ impl Verifier {
         } else {
             None
         };
-        let ctxt = Arc::new(ContextX {
+        let mut ctxt = Arc::new(ContextX {
             cmd_line_args: self.args.clone(),
             tcx,
             krate: hir.krate(),
             erasure_info,
             spans: spans.clone(),
             vstd_crate_name: vstd_crate_name.clone(),
-            arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
             verus_items,
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+            no_vstd: self.args.no_vstd,
+            arch_word_bits: None,
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
+        let ctxt_diagnostics = ctxt.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (err, ctxt.diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt).map_err(map_err_diagnostics)?;
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
-            crate_id: spans.local_crate.to_u64(),
+            crate_id: spans.local_crate.as_u64(),
             original_files: spans.local_files.clone(),
         };
-        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
-            .map_err(map_err_diagnostics)?;
 
         let user_filter =
             UserFilter::from_args(&self.args, &vir_crate).map_err(map_err_diagnostics)?;
         self.user_filter = Some(user_filter);
+
+        let mut current_vir_crate = vir_crate.clone();
 
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
@@ -1958,6 +2037,11 @@ impl Verifier {
         // because well_formed and modes checking look up definitions from libraries.)
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+
+        Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
+
+        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate)
+            .map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_args.log_vir {
             let mut file = self
@@ -2101,7 +2185,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Err(err) => {
                     assert!(err.spans.len() == 0);
                     assert!(err.level == MessageLevel::Error);
-                    compiler.session().diagnostic().err(&err.note);
+                    compiler.session().diagnostic().err(&*err.note);
                     self.verifier.encountered_vir_error = true;
                     return;
                 }

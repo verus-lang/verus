@@ -11,7 +11,7 @@ use crate::ast::{
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
+use crate::def::{array_index_fun, fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -266,6 +266,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         if let crate::ast::CallTargetKind::Method(Some((resolved, _, _))) = kind {
                             reach_function(ctxt, state, resolved);
                         }
+                    }
+                    ExprX::ArrayLiteral(..) => {
+                        reach_function(ctxt, state, &array_index_fun(&ctxt.vstd_crate_name));
                     }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
@@ -610,6 +613,7 @@ pub fn prune_krate_for_module(
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),
+        arch: krate.arch.clone(),
     };
     let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
     lambda_types.sort();

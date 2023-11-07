@@ -309,6 +309,7 @@ test_verify_one_file! {
     #[test] test_decl_init_let_pass verus_code! {
         fn test1() {
             let x: u64;
+            #[allow(unused_assignments)]
             x = 23;
         }
     } => Ok(())
