@@ -724,14 +724,3 @@ pub fn array_index_path(vstd_crate_name: &Option<Ident>) -> Path {
         ]),
     })
 }
-
-pub fn array_len_fun(vstd_crate_name: &Option<Ident>) -> Fun {
-    Arc::new(FunX { path: array_len_path(vstd_crate_name) })
-}
-
-pub fn array_len_path(vstd_crate_name: &Option<Ident>) -> Path {
-    Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_len".to_string())]),
-    })
-}

@@ -808,6 +808,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ident_apply(&name, &exprs)
         }
+        (ExpX::Call(CallFun::InternalFun(InternalFun::HasType), typs, args), false) => {
+            assert!(typs.len() == 1);
+            assert!(args.len() == 1);
+            expr_has_type(&exp_to_expr(ctx, &args[0], expr_ctxt)?, &typ_to_ids(&typs[0])[1])
+        }
         (ExpX::Call(CallFun::InternalFun(func), typs, args), false) => {
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
@@ -831,6 +836,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
+                    InternalFun::HasType => unreachable!(),
                 },
                 Arc::new(exprs),
             ))

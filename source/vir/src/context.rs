@@ -1,6 +1,6 @@
 use crate::ast::{
     ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path,
-    Trait, TypX, Variants, VirErr,
+    Primitive, Trait, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -172,7 +172,10 @@ fn datatypes_invs(
                         TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) => {}
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
-                        TypX::Primitive(_, _) => {}
+                        TypX::Primitive(Primitive::Array, _) => {
+                            roots.insert(container_path.clone());
+                        }
+                        TypX::Primitive(Primitive::Slice, _) => {}
                     }
                 }
             }

@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -539,27 +539,14 @@ pub fn sst_array_index(ctx: &crate::context::Ctx, span: &Span, ar: &Exp, idx: &E
     )
 }
 
-pub fn sst_array_len(ctx: &crate::context::Ctx, span: &Span, ar: &Exp) -> Exp {
-    let t = match &*ar.typ {
-        TypX::Boxed(t) => t,
-        _ => {
-            panic!("sst_array_index expected boxed Array type");
-        }
-    };
-    let (elem_ty, n_ty) = match &**t {
-        TypX::Primitive(crate::ast::Primitive::Array, typs) => (&typs[0], &typs[1]),
-        _ => {
-            panic!("sst_array_index expected boxed Array type");
-        }
-    };
-
+pub fn sst_has_type(span: &Span, e: &Exp, typ: &Typ) -> Exp {
     SpannedTyped::new(
         span,
-        elem_ty,
+        &Arc::new(TypX::Bool),
         ExpX::Call(
-            CallFun::Fun(crate::def::array_len_fun(&ctx.global.vstd_crate_name), None),
-            Arc::new(vec![elem_ty.clone(), n_ty.clone()]),
-            Arc::new(vec![ar.clone()]),
+            CallFun::InternalFun(InternalFun::HasType),
+            Arc::new(vec![typ.clone()]),
+            Arc::new(vec![e.clone()]),
         ),
     )
 }

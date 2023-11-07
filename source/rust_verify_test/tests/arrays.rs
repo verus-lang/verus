@@ -46,6 +46,25 @@ test_verify_one_file! {
         fn test8(ar: [u8; 20]) {
             let y = ar[20]; // FAILS
         }
+
+        struct S {
+            ar: [usize; 4],
+        }
+
+        fn test9(s: &mut S) {
+            let mut ar = s.ar;
+            ar.set(0, 42);
+            assert(ar[0] == 42);
+        }
+
+        fn test10() {
+            let mut ar = [0, 0];
+            assert(ar[0] == 0);
+            ar.set(0, 42);
+            assert(ar[0] == 42);
+            assert(ar[1] == 0);
+        }
+
     } => Err(err) => assert_fails(err, 3)
 }
 
