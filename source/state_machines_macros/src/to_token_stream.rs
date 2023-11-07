@@ -169,15 +169,15 @@ fn generic_components_for_fn(generics: &Option<Generics>) -> (TokenStream, Token
 
 pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
     match generics {
-        None => quote! { #[verus::internal(verus_macro)] impl #self_ty },
+        None => quote! { impl #self_ty },
         Some(gen) => {
             if gen.params.len() > 0 {
                 let params = &gen.params;
                 let where_clause = &gen.where_clause;
-                quote! { #[verus::internal(verus_macro)] impl<#params> #self_ty #where_clause }
+                quote! { impl<#params> #self_ty #where_clause }
             } else {
                 let where_clause = &gen.where_clause;
-                quote! { #[verus::internal(verus_macro)] impl #self_ty #where_clause }
+                quote! { impl #self_ty #where_clause }
             }
         }
     }
@@ -246,7 +246,6 @@ pub fn output_primary_stuff(
         .collect();
 
     let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
-        #[verus::internal(verus_macro)]
         pub struct State #gen {
             #(#fields),*
         }
@@ -390,17 +389,7 @@ pub fn output_primary_stuff(
     let mut show_stream = TokenStream::new();
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, false);
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, true);
-    if sm.init_label.is_some() {
-        root_stream.extend(quote! {
-            #[verus::internal(verus_macro)]
-        });
-    }
     sm.init_label.to_tokens(root_stream);
-    if sm.transition_label.is_some() {
-        root_stream.extend(quote! {
-            #[verus::internal(verus_macro)]
-        });
-    }
     sm.transition_label.to_tokens(root_stream);
     root_stream.extend(quote! {
         pub mod show {
@@ -551,7 +540,6 @@ fn output_step_datatype(
     root_stream.extend(quote! {
         #[allow(non_camel_case_types)]
         #[::builtin_macros::is_variant]
-        #[verus::internal(verus_macro)]
         pub enum #type_ident#generics {
             #(#variants,)*
             // We add this extra variant with the self_ty in order to avoid

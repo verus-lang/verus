@@ -9,7 +9,6 @@ use vstd::cell::*;
 use state_machines_macros::tokenized_state_machine;
 
 // TODO make T generic
-#[verifier::verify]
 pub struct T {
     t: u8,
 }

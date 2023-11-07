@@ -2334,7 +2334,6 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_enum_mut(&mut self, item: &mut ItemEnum) {
-        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
         visit_item_enum_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
@@ -2342,7 +2341,6 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
-        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
         visit_item_struct_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
@@ -2422,7 +2420,6 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_mod_mut(&mut self, item: &mut ItemMod) {
-        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
         if let Some((_, items)) = &mut item.content {
             self.visit_items_prefilter(items);
         }
@@ -2431,14 +2428,12 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
-        imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         self.filter_attrs(&mut imp.attrs);
         syn_verus::visit_mut::visit_item_impl_mut(self, imp);
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
-        tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
         self.visit_trait_items_prefilter(&mut tr.items);
         self.filter_attrs(&mut tr.attrs);
         syn_verus::visit_mut::visit_item_trait_mut(self, tr);

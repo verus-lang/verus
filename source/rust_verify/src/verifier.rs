@@ -1991,7 +1991,6 @@ impl Verifier {
             None
         };
         let mut ctxt = Arc::new(ContextX {
-            cmd_line_args: self.args.clone(),
             tcx,
             krate: hir.krate(),
             erasure_info,
@@ -2252,7 +2251,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         None
                     };
                     crate::lifetime::check_tracked_lifetimes(
-                        self.verifier.args.clone(),
                         tcx,
                         verus_items,
                         &spans,

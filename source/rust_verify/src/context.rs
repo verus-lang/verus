@@ -22,7 +22,6 @@ type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
 pub type Context<'tcx> = Arc<ContextX<'tcx>>;
 #[derive(Clone)]
 pub struct ContextX<'tcx> {
-    pub(crate) cmd_line_args: crate::config::Args,
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
