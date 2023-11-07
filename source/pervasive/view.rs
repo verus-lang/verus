@@ -52,8 +52,10 @@ impl<A: View> View for alloc::sync::Arc<A> {
 
 macro_rules! declare_identity_view {
     ($t:ty) => {
+        #[cfg_attr(verus_keep_ghost, verifier::verify)]
         impl View for $t {
             type V = $t;
+
             #[cfg(verus_keep_ghost)]
             #[verus::internal(spec)]
             #[verus::internal(open)]
@@ -82,6 +84,7 @@ declare_identity_view!(isize);
 
 macro_rules! declare_tuple_view {
     ([$($n:tt)*], [$($a:ident)*]) => {
+        #[cfg_attr(verus_keep_ghost, verifier::verify)]
         impl<$($a: View, )*> View for ($($a, )*) {
             type V = ($($a::V, )*);
             #[cfg(verus_keep_ghost)]

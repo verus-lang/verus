@@ -1107,3 +1107,66 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] panic_external_by_default_regression893 verus_code! {
+        use vstd::prelude::*;
+
+        pub enum Message { A, B, }
+
+        pub enum SingleMessage {
+            Message {
+                seqno: nat,
+                other: nat,
+            },
+            Other,
+        }
+
+        pub struct Packet {
+            pub msg: SingleMessage,
+            pub other: nat,
+        }
+
+        pub struct CPacket {
+            pub msg: CSingleMessage,
+            pub other: u64,
+        }
+
+        impl CPacket {
+            pub open spec fn view(self) -> Packet {
+                Packet { msg: self.msg@, other: self.other@ as nat }
+            }
+        }
+
+        pub enum CSingleMessage {
+            Message { seqno: u64, other: u64 },
+            Other,
+        }
+
+        impl CSingleMessage {
+            pub open spec fn view(self) -> SingleMessage {
+                arbitrary()
+            }
+        }
+
+        struct HostState {
+            received_packet: Option<CPacket>,
+        }
+
+        impl HostState {
+            fn host_model_next_get_request(&mut self) -> (sent_packets: Vec<CPacket>) {
+                assume(self.received_packet.is_some());
+                let cpacket: &CPacket = &self.received_packet.as_ref().unwrap();
+                let ghost pkt: Packet = cpacket@;
+                match &cpacket.msg {
+                    CSingleMessage::Message{ seqno, .. } => {
+                        let ghost received_request: nat = seqno@ as nat;
+                    }
+                    _ => (),
+                }
+                assume(false); unreached()
+            }
+        }
+
+    } => Ok(())
+}
