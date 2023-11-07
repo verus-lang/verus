@@ -12,6 +12,18 @@ use crate::map::Map;
 verus! {
 
 impl<K, V> Map<K, V> {
+    
+    /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
+    #[verifier(inline)]
+    pub open spec fn is_full(self) -> bool {
+        self.dom().is_full()
+    }
+     
+    /// Is `true` if called by an "empty" map, i.e., a map containing no elements and has length 0
+    #[verifier(inline)]
+    pub open spec fn is_empty(self) -> (b: bool) {
+        self.dom().is_empty()
+    }
 
     /// Returns true if the key `k` is in the domain of `self`.
 
