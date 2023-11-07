@@ -122,8 +122,19 @@ impl<V> Multiset<V> {
     /// that is, if for each value `v`, the number of occurences in the left
     /// is at most the number of occurences in the right.
 
-    pub open spec fn le(self, m2: Self) -> bool {
+    pub open spec fn subset_of(self, m2: Self) -> bool {
         forall |v: V| self.count(v) <= m2.count(v)
+    }
+
+    #[verifier(inline)]
+    #[deprecated = "use m1.subset_of(m2) or m1 <= m2 instead"]
+    pub open spec fn le(self, m2: Self) -> bool {
+        self.subset_of(m2)
+    }
+
+    #[verifier(inline)]
+    pub open spec fn spec_le(self, m2: Self) -> bool {
+        self.subset_of(m2)
     }
 
     /// DEPRECATED: use =~= or =~~= instead.
@@ -321,7 +332,7 @@ pub proof fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_len_sub<V>(m1: Multiset<V>, m2: Multiset<V>)
-    requires m2.le(m1)
+    requires m2.subset_of(m1)
     ensures (#[trigger] m1.sub(m2).len()) == m1.len() - m2.len(),
 {}
 

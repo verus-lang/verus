@@ -70,9 +70,22 @@ impl<K, V> Map<K, V> {
     /// );
     /// ```
 
-    pub open spec fn le(self, m2: Self) -> bool {
+    pub open spec fn submap_of(self, m2: Self) -> bool {
         forall|k: K| #[trigger] self.dom().contains(k) ==>
             #[trigger] m2.dom().contains(k) && self[k] == m2[k]
+    }
+
+    #[verifier(inline)]
+    pub open spec fn spec_le(self, m2: Self) -> bool {
+        self.submap_of(m2)
+    }
+
+    /// Deprecated synonym for `submap_of`
+
+    #[verifier(inline)]
+    #[deprecated = "use m1.submap_of(m2) or m1 <= m2 instead"]
+    pub open spec fn le(self, m2: Self) -> bool {
+        self.submap_of(m2)
     }
 
     /// Gives the union of two maps, defined as:
