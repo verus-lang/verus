@@ -78,13 +78,6 @@ impl<A> Set<A> {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
 
-    /// Synonym for subset_of that harmonizes with Map.
-
-    #[verifier(inline)]
-    pub open spec fn le(self, s2: Set<A>) -> bool {
-        self.subset_of(s2)
-    }
-
     #[verifier(inline)]
     pub open spec fn spec_le(self, s2: Set<A>) -> bool {
         self.subset_of(s2)
