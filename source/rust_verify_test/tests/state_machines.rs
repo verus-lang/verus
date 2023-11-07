@@ -3587,8 +3587,8 @@ test_verify_one_file! {
 
             ==> {
 
-            &&& Multiset::singleton(10).le(pre.mset)
-            &&& Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            &&& Multiset::singleton(10).subset_of(pre.mset)
+            &&& Multiset::singleton(11).subset_of(pre.mset.sub(Multiset::singleton(10)))
 
             &&& (pre.storage_opt === Option::Some(13)
 
@@ -3621,8 +3621,8 @@ test_verify_one_file! {
             &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
             &&& post.map === pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
 
-            &&& Multiset::singleton(10).le(pre.mset)
-            &&& Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            &&& Multiset::singleton(10).subset_of(pre.mset)
+            &&& Multiset::singleton(11).subset_of(pre.mset.sub(Multiset::singleton(10)))
             &&& post.mset ===
                 pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
 

@@ -796,7 +796,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             }),
 
             ShardableType::Multiset(_) => Expr::Verbatim(quote! {
-                (#e).le(#cur)
+                (#e).subset_of(#cur)
             }),
 
             ShardableType::Set(_) | ShardableType::PersistentSet(_) => Expr::Verbatim(quote! {
