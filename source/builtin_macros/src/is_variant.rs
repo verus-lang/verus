@@ -98,6 +98,7 @@ pub fn attribute_is_variant(
     quote! {
         #ast
 
+        #[verus::internal(verus_macro)]
         #[cfg(verus_keep_ghost)]
         #[automatically_derived]
         impl #impl_generics #struct_name #ty_generics #where_clause {

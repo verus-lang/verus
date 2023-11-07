@@ -199,6 +199,8 @@ pub(crate) enum Attr {
     ExternalBody,
     // don't parse function; function can't be called directly from verified code
     External,
+    // opposite of External; verify item even if it's declared without VerusMacro
+    Verify,
     // hide body (from all modules) until revealed
     Opaque,
     // publish body?
@@ -329,6 +331,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
+                AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "publish" => {
                     report_deprecated("publish");
@@ -638,6 +641,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
     pub(crate) external: bool,
+    pub(crate) verify: bool,
     pub(crate) opaque: bool,
     pub(crate) publish: Option<bool>,
     pub(crate) opaque_outside_module: bool,
@@ -664,9 +668,23 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) unwrapped_binding: bool,
+    pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
     pub(crate) trusted: bool,
     pub(crate) size_of_global: bool,
+}
+
+impl VerifierAttrs {
+    pub(crate) fn is_external(&self, cmd_line_args: &crate::config::Args) -> bool {
+        self.external
+            || !(cmd_line_args.no_external_by_default
+                || self.verus_macro
+                || self.external_body
+                || self.external_fn_specification
+                || self.external_type_specification
+                || self.verify
+                || self.sets_mode)
+    }
 }
 
 pub(crate) fn get_verifier_attrs(
@@ -677,6 +695,7 @@ pub(crate) fn get_verifier_attrs(
         verus_macro: false,
         external_body: false,
         external: false,
+        verify: false,
         opaque: false,
         publish: None,
         opaque_outside_module: false,
@@ -702,6 +721,7 @@ pub(crate) fn get_verifier_attrs(
         external_fn_specification: false,
         external_type_specification: false,
         unwrapped_binding: false,
+        sets_mode: false,
         internal_reveal_fn: false,
         trusted: false,
         size_of_global: false,
@@ -711,6 +731,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
+            Attr::Verify => vs.verify = true,
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::ExternalTypeSpecification => vs.external_type_specification = true,
             Attr::Opaque => vs.opaque = true,
@@ -746,10 +767,25 @@ pub(crate) fn get_verifier_attrs(
             Attr::Memoize => vs.memoize = true,
             Attr::Truncate => vs.truncate = true,
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
+            Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,
             _ => {}
+        }
+    }
+    if attrs.len() > 0 {
+        let span = attrs[0].span;
+        let mismatches = vec![
+            ("inside verus macro", "`verify`", vs.verus_macro, vs.verify),
+            ("`external`", "`verify`", vs.external, vs.verify),
+            ("`external_body`", "`verify`", vs.external_body, vs.verify),
+            ("`external_body`", "`external`", vs.external_body, vs.external),
+        ];
+        for (msg1, msg2, flag1, flag2) in mismatches {
+            if flag1 && flag2 {
+                return err_span(span, format!("item cannot be both {msg1} and {msg2}",));
+            }
         }
     }
     Ok(vs)
