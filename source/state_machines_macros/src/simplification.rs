@@ -792,7 +792,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             ShardableType::Map(_, _)
             | ShardableType::PersistentMap(_, _)
             | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
-                (#e).le(#cur)
+                (#e).submap_of(#cur)
             }),
 
             ShardableType::Multiset(_) => Expr::Verbatim(quote! {
