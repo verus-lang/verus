@@ -1937,12 +1937,9 @@
         "pat": {
           "syn": "Pat"
         },
-        "implies_token": {
-          "token": "Imply"
-        },
-        "rhs": {
-          "box": {
-            "syn": "Expr"
+        "op_expr": {
+          "option": {
+            "syn": "MatchesOpExpr"
           }
         }
       }
@@ -4361,6 +4358,41 @@
             "group": "Bracket"
           }
         ]
+      }
+    },
+    {
+      "ident": "MatchesOpExpr",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "op_token": {
+          "syn": "MatchesOpToken"
+        },
+        "rhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "MatchesOpToken",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Implies": [
+          {
+            "token": "Imply"
+          }
+        ],
+        "AndAnd": [
+          {
+            "token": "AndAnd"
+          }
+        ],
+        "BigAnd": []
       }
     },
     {

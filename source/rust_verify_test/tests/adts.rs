@@ -1349,6 +1349,53 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] matches_syntax_2 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: _ }
+            })
+        {
+            assert(t is That);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_3 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                && t matches S::That { v: a }
+                && a == 3
+            })
+        {
+            assert(t is That);
+            assert(match t {
+                S::That { v } => v == 3,
+                _ => false,
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_4 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: a }
+                &&& a > 3
+                &&& a < 5
+            })
+        {
+            assert(t is That);
+            assert(match t {
+                S::That { v } => v == 4,
+                _ => false,
+            });
+        }
+    } => Ok(())
+}
+
 const MATCHES_PRECEDENCE_COMMON: &str = verus_code_str! {
     tracked enum A {
         A1 { v: nat },
@@ -1401,4 +1448,26 @@ test_verify_one_file! {
             assert(E::A matches E::B ==> true <==> false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_4 verus_code! {
+        enum E { A, B }
+        proof fn test1() {
+            // TODO support this?
+            assert(false && E::A matches E::A ==> true);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "matches using ==> is currently not allowed on the right-hand-side of && and || (use parentheses)")
+}
+
+test_verify_one_file! {
+    #[test] parsing_fail_1 verus_code! {
+        enum E { A, B }
+        proof fn a() {
+            assert({
+                E::A matches E::A
+                &&& true
+            })
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in &&&, a matches expression needs to be prefixed with &&&")
 }

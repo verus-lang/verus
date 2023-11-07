@@ -725,8 +725,7 @@ impl Clone for ExprMatches {
             lhs: self.lhs.clone(),
             matches_token: self.matches_token.clone(),
             pat: self.pat.clone(),
-            implies_token: self.implies_token.clone(),
-            rhs: self.rhs.clone(),
+            op_expr: self.op_expr.clone(),
         }
     }
 }
@@ -1692,6 +1691,25 @@ impl Clone for MacroDelimiter {
             MacroDelimiter::Paren(v0) => MacroDelimiter::Paren(v0.clone()),
             MacroDelimiter::Brace(v0) => MacroDelimiter::Brace(v0.clone()),
             MacroDelimiter::Bracket(v0) => MacroDelimiter::Bracket(v0.clone()),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for MatchesOpExpr {
+    fn clone(&self) -> Self {
+        MatchesOpExpr {
+            op_token: self.op_token.clone(),
+            rhs: self.rhs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for MatchesOpToken {
+    fn clone(&self) -> Self {
+        match self {
+            MatchesOpToken::Implies(v0) => MatchesOpToken::Implies(v0.clone()),
+            MatchesOpToken::AndAnd(v0) => MatchesOpToken::AndAnd(v0.clone()),
+            MatchesOpToken::BigAnd => MatchesOpToken::BigAnd,
         }
     }
 }

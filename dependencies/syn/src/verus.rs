@@ -291,6 +291,21 @@ ast_struct! {
     }
 }
 
+ast_enum! {
+    pub enum MatchesOpToken {
+        Implies(Token![==>]),
+        AndAnd(Token![&&]),
+        BigAnd,
+    }
+}
+
+ast_struct! {
+    pub struct MatchesOpExpr {
+        pub op_token: MatchesOpToken,
+        pub rhs: Box<Expr>,
+    }
+}
+
 ast_struct! {
     pub struct GlobalSizeOf {
         pub size_of_token: Token![size_of],
@@ -332,8 +347,7 @@ ast_struct! {
         pub lhs: Box<Expr>,
         pub matches_token: Token![matches],
         pub pat: Pat,
-        pub implies_token: Token![==>],
-        pub rhs: Box<Expr>,
+        pub op_expr: Option<MatchesOpExpr>,
     }
 }
 
@@ -1363,8 +1377,14 @@ mod printing {
             self.lhs.to_tokens(tokens);
             self.matches_token.to_tokens(tokens);
             self.pat.to_tokens(tokens);
-            self.implies_token.to_tokens(tokens);
-            self.rhs.to_tokens(tokens);
+            if let Some(MatchesOpExpr { op_token, rhs }) = &self.op_expr {
+                match op_token {
+                    MatchesOpToken::Implies(t) => t.to_tokens(tokens),
+                    MatchesOpToken::AndAnd(t) => t.to_tokens(tokens),
+                    MatchesOpToken::BigAnd => (),
+                }
+                rhs.to_tokens(tokens);
+            }
         }
     }
 
@@ -1393,21 +1413,95 @@ pub(crate) fn disallow_prefix_binop(input: crate::parse::ParseStream) -> crate::
 }
 
 #[cfg(feature = "full")]
+pub(crate) fn parse_matches(
+    input: crate::parse::ParseStream,
+    lhs: Expr,
+    allow_struct: expr::parsing::AllowStruct,
+    big_and: bool,
+) -> Result<Expr> {
+    let matches_token: Token![matches] = input.parse()?;
+    let pat = input.parse()?;
+
+    let op_expr = if input.peek(Token![&&&]) {
+        if big_and {
+            let attrs = input.call(expr::parsing::expr_attrs)?;
+            let Some(rhs) = parse_prefix_binop(input, &attrs, true)? else {
+                return Err(input.error("expected &&&"));
+            };
+            Some(MatchesOpExpr {
+                op_token: MatchesOpToken::BigAnd,
+                rhs: Box::new(rhs),
+            })
+        } else {
+            return Err(input.error("in &&&, a matches expression needs to be prefixed with &&&"));
+        }
+    } else if input.peek(Token![==>]) || input.peek(Token![&&]) {
+        let op_token = if input.peek(Token![==>]) {
+            MatchesOpToken::Implies(input.parse()?)
+        } else if input.peek(Token![&&]) {
+            MatchesOpToken::AndAnd(input.parse()?)
+        } else {
+            unreachable!()
+        };
+        let mut rhs = expr::parsing::unary_expr(input, allow_struct)?;
+        loop {
+            let next = expr::parsing::peek_precedence(input);
+            if next >= expr::parsing::Precedence::Imply {
+                rhs = expr::parsing::parse_expr(input, rhs, allow_struct, next)?;
+            } else {
+                break;
+            }
+        }
+        Some(MatchesOpExpr {
+            op_token,
+            rhs: Box::new(rhs),
+        })
+    } else {
+        None
+    };
+
+    Ok(Expr::Matches(ExprMatches {
+        attrs: Vec::new(),
+        lhs: Box::new(lhs),
+        matches_token,
+        pat,
+        op_expr,
+    }))
+}
+
+#[cfg(feature = "full")]
 pub(crate) fn parse_prefix_binop(
     input: crate::parse::ParseStream,
     attrs: &Vec<Attribute>,
+    big_and_only: bool,
 ) -> Result<Option<Expr>> {
+    use crate::expr::parsing::AllowStruct;
+
     if input.peek(Token![&&&]) {
         if attrs.len() != 0 {
             return Err(input.error("`&&&` cannot have attributes"));
         }
         let mut exprs: Vec<(Token![&&&], Box<Expr>)> = Vec::new();
         while let Ok(token) = input.parse() {
-            let expr: Expr = input.parse()?;
+            let lhs = expr::parsing::unary_expr(input, AllowStruct(true))?;
+            let expr: Expr = if input.peek(Token![matches]) {
+                let attrs = input.call(expr::parsing::expr_attrs)?;
+                let mut expr = parse_matches(input, lhs, AllowStruct(true), true)?;
+                expr.replace_attrs(attrs);
+                expr
+            } else {
+                expr::parsing::parse_expr(
+                    input,
+                    lhs,
+                    AllowStruct(true),
+                    expr::parsing::Precedence::Any,
+                )?
+            };
+
             exprs.push((token, Box::new(expr)));
         }
         Ok(Some(Expr::BigAnd(BigAnd { exprs })))
-    } else if input.peek(Token![|||]) {
+    } else if !big_and_only && input.peek(Token![|||]) {
         if attrs.len() != 0 {
             return Err(input.error("`|||` cannot have attributes"));
         }

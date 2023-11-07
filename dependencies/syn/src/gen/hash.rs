@@ -1022,7 +1022,7 @@ impl Hash for ExprMatches {
         self.attrs.hash(state);
         self.lhs.hash(state);
         self.pat.hash(state);
-        self.rhs.hash(state);
+        self.op_expr.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -2187,6 +2187,35 @@ impl Hash for MacroDelimiter {
                 state.write_u8(1u8);
             }
             MacroDelimiter::Bracket(_) => {
+                state.write_u8(2u8);
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for MatchesOpExpr {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.op_token.hash(state);
+        self.rhs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for MatchesOpToken {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            MatchesOpToken::Implies(_) => {
+                state.write_u8(0u8);
+            }
+            MatchesOpToken::AndAnd(_) => {
+                state.write_u8(1u8);
+            }
+            MatchesOpToken::BigAnd => {
                 state.write_u8(2u8);
             }
         }

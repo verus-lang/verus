@@ -18,6 +18,9 @@ use syn_verus::visit_mut::{
     visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
     visit_specification_mut, visit_trait_item_method_mut, VisitMut,
 };
+use syn_verus::ExprMatches;
+use syn_verus::MatchesOpExpr;
+use syn_verus::MatchesOpToken;
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
@@ -1792,12 +1795,40 @@ enum ExtractQuantTriggersFound {
     None,
 }
 
+// For
+// assert(false && E::A matches E::A ==> true);
+// to preserve && precedence it would turn into
+//     if let E::A = E::A { false && true ==> true } else { false && false ==> true }
+//
+//     assert(v == 4 && x matches E::A { v } ==> v == 4);
+//
+//     if let E::A { v } = x { v == 4 && true ==> true } else { v == 4 && false ==> true }
+//
+// For
+//     assert(true || E::A matches E::A ==> true);
+// to preserve || precedence it would turn into
+//     if let E::A = E::A { true } else { false || false ==> true }
+
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
         if self.chain_operators(expr) {
             return;
         } else if self.closure_quant_operators(expr) {
             return;
+        }
+
+        if let Expr::Binary(ExprBinary { right, .. }) = &expr {
+            if let Expr::Matches(ExprMatches {
+                op_expr: Some(MatchesOpExpr { op_token, .. }),
+                ..
+            }) = &**right
+            {
+                if matches!(op_token, MatchesOpToken::Implies(_)) {
+                    *expr = Expr::Verbatim(
+                        quote_spanned! { expr.span() => compile_error!("matches using ==> is currently not allowed on the right-hand-side of && and || (use parentheses)") },
+                    );
+                }
+            }
         }
 
         let is_inside_bitvector = match &expr {
@@ -2539,17 +2570,32 @@ impl VisitMut for Visitor {
                 }
                 Expr::Matches(matches) => {
                     let span = matches.span();
-                    let syn_verus::ExprMatches {
-                        attrs: _,
-                        lhs,
-                        matches_token: _,
-                        pat,
-                        implies_token: _,
-                        rhs,
-                    } = matches;
-                    *expr = Expr::Verbatim(quote_spanned!(span => (
-                        (if let #pat = (#lhs) { #rhs } else { true })
-                    )));
+                    let syn_verus::ExprMatches { attrs: _, lhs, matches_token: _, pat, op_expr } =
+                        matches;
+                    if let Some(op_expr) = op_expr {
+                        let MatchesOpExpr { op_token, rhs } = op_expr;
+                        match op_token {
+                            MatchesOpToken::Implies(_) => {
+                                *expr = Expr::Verbatim(quote_spanned!(span => (
+                                    (if let #pat = (#lhs) { #rhs } else { true })
+                                )));
+                            }
+                            MatchesOpToken::AndAnd(_) => {
+                                *expr = Expr::Verbatim(quote_spanned!(span => (
+                                    (if let #pat = (#lhs) { #rhs } else { false })
+                                )));
+                            }
+                            MatchesOpToken::BigAnd => {
+                                *expr = Expr::Verbatim(quote_spanned!(span => (
+                                    (if let #pat = (#lhs) { #rhs } else { false })
+                                )));
+                            }
+                        }
+                    } else {
+                        *expr = Expr::Verbatim(quote_spanned!(span => (
+                            (if let #pat = (#lhs) { true } else { false })
+                        )));
+                    }
                 }
                 Expr::GetField(gf) => {
                     let span = gf.span();

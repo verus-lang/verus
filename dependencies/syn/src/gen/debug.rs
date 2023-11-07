@@ -1142,8 +1142,7 @@ impl Debug for ExprMatches {
         formatter.field("lhs", &self.lhs);
         formatter.field("matches_token", &self.matches_token);
         formatter.field("pat", &self.pat);
-        formatter.field("implies_token", &self.implies_token);
-        formatter.field("rhs", &self.rhs);
+        formatter.field("op_expr", &self.op_expr);
         formatter.finish()
     }
 }
@@ -2357,6 +2356,33 @@ impl Debug for MacroDelimiter {
                 formatter.field(v0);
                 formatter.finish()
             }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for MatchesOpExpr {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("MatchesOpExpr");
+        formatter.field("op_token", &self.op_token);
+        formatter.field("rhs", &self.rhs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for MatchesOpToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MatchesOpToken::Implies(v0) => {
+                let mut formatter = formatter.debug_tuple("Implies");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            MatchesOpToken::AndAnd(v0) => {
+                let mut formatter = formatter.debug_tuple("AndAnd");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            MatchesOpToken::BigAnd => formatter.write_str("BigAnd"),
         }
     }
 }

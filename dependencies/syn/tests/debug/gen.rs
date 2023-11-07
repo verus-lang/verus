@@ -1602,7 +1602,22 @@ impl Debug for Lite<syn::Expr> {
                 }
                 formatter.field("lhs", Lite(&_val.lhs));
                 formatter.field("pat", Lite(&_val.pat));
-                formatter.field("rhs", Lite(&_val.rhs));
+                if let Some(val) = &_val.op_expr {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::MatchesOpExpr);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("op_expr", Print::ref_cast(val));
+                }
                 formatter.finish()
             }
             syn::Expr::GetField(_val) => {
@@ -2245,7 +2260,22 @@ impl Debug for Lite<syn::ExprMatches> {
         }
         formatter.field("lhs", Lite(&_val.lhs));
         formatter.field("pat", Lite(&_val.pat));
-        formatter.field("rhs", Lite(&_val.rhs));
+        if let Some(val) = &_val.op_expr {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::MatchesOpExpr);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("op_expr", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -4892,6 +4922,31 @@ impl Debug for Lite<syn::MacroDelimiter> {
                 formatter.write_str("Bracket")?;
                 Ok(())
             }
+        }
+    }
+}
+impl Debug for Lite<syn::MatchesOpExpr> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("MatchesOpExpr");
+        formatter.field("op_token", Lite(&_val.op_token));
+        formatter.field("rhs", Lite(&_val.rhs));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::MatchesOpToken> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::MatchesOpToken::Implies(_val) => {
+                formatter.write_str("Implies")?;
+                Ok(())
+            }
+            syn::MatchesOpToken::AndAnd(_val) => {
+                formatter.write_str("AndAnd")?;
+                Ok(())
+            }
+            syn::MatchesOpToken::BigAnd => formatter.write_str("BigAnd"),
         }
     }
 }

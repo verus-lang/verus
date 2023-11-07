@@ -1157,9 +1157,9 @@ pub(crate) mod parsing {
     //
     // Struct literals are ambiguous in certain positions
     // https://github.com/rust-lang/rfcs/pull/92
-    pub struct AllowStruct(bool);
+    pub struct AllowStruct(pub(crate) bool);
 
-    enum Precedence {
+    pub(crate) enum Precedence {
         Any,
         Assign,
         Range,
@@ -1377,7 +1377,7 @@ pub(crate) mod parsing {
     }
 
     #[cfg(feature = "full")]
-    fn parse_expr(
+    pub(crate) fn parse_expr(
         input: ParseStream,
         mut lhs: Expr,
         allow_struct: AllowStruct,
@@ -1515,26 +1515,7 @@ pub(crate) mod parsing {
                     rhs: Box::new(rhs),
                 });
             } else if Precedence::HasIsMatches >= base && input.peek(Token![matches]) {
-                let matches_token: Token![matches] = input.parse()?;
-                let pat = input.parse()?;
-                let implies_token = input.parse()?;
-                let mut rhs = unary_expr(input, allow_struct)?;
-                loop {
-                    let next = peek_precedence(input);
-                    if next >= Precedence::Imply {
-                        rhs = parse_expr(input, rhs, allow_struct, next)?;
-                    } else {
-                        break;
-                    }
-                }
-                lhs = Expr::Matches(ExprMatches {
-                    attrs: Vec::new(),
-                    lhs: Box::new(lhs),
-                    matches_token,
-                    pat,
-                    implies_token,
-                    rhs: Box::new(rhs),
-                });
+                lhs = verus::parse_matches(input, lhs, allow_struct, false)?;
             } else {
                 break;
             }
@@ -1602,7 +1583,7 @@ pub(crate) mod parsing {
         Ok(lhs)
     }
 
-    fn peek_precedence(input: ParseStream) -> Precedence {
+    pub(crate) fn peek_precedence(input: ParseStream) -> Precedence {
         if input.peek(Token![&&&]) || input.peek(Token![|||]) {
             return Precedence::Any;
         }
@@ -1630,7 +1611,7 @@ pub(crate) mod parsing {
     }
 
     #[cfg(feature = "full")]
-    fn expr_attrs(input: ParseStream) -> Result<Vec<Attribute>> {
+    pub(crate) fn expr_attrs(input: ParseStream) -> Result<Vec<Attribute>> {
         let mut attrs = Vec::new();
         loop {
             if input.peek(token::Group) {
@@ -1658,7 +1639,7 @@ pub(crate) mod parsing {
     // &mut <trailer>
     // box <trailer>
     #[cfg(feature = "full")]
-    fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
+    pub(crate) fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
         let begin = input.fork();
         let attrs = input.call(expr_attrs)?;
         crate::verus::disallow_prefix_binop(input)?;
@@ -2246,7 +2227,7 @@ pub(crate) mod parsing {
     #[cfg(feature = "full")]
     pub(crate) fn expr_early_block(input: ParseStream) -> Result<Expr> {
         let attrs = input.call(expr_attrs)?;
-        let prefix_binop = verus::parse_prefix_binop(input, &attrs)?;
+        let prefix_binop = verus::parse_prefix_binop(input, &attrs, false)?;
         if let Some(expr) = prefix_binop {
             return Ok(expr);
         }

@@ -558,6 +558,12 @@ pub trait Fold {
     fn fold_macro_delimiter(&mut self, i: MacroDelimiter) -> MacroDelimiter {
         fold_macro_delimiter(self, i)
     }
+    fn fold_matches_op_expr(&mut self, i: MatchesOpExpr) -> MatchesOpExpr {
+        fold_matches_op_expr(self, i)
+    }
+    fn fold_matches_op_token(&mut self, i: MatchesOpToken) -> MatchesOpToken {
+        fold_matches_op_token(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_member(&mut self, i: Member) -> Member {
         fold_member(self, i)
@@ -1773,8 +1779,7 @@ where
         lhs: Box::new(f.fold_expr(*node.lhs)),
         matches_token: Token![matches](tokens_helper(f, &node.matches_token.span)),
         pat: full!(f.fold_pat(node.pat)),
-        implies_token: Token![==>](tokens_helper(f, &node.implies_token.spans)),
-        rhs: Box::new(f.fold_expr(*node.rhs)),
+        op_expr: (node.op_expr).map(|it| f.fold_matches_op_expr(it)),
     }
 }
 #[cfg(feature = "full")]
@@ -2923,6 +2928,29 @@ where
         MacroDelimiter::Bracket(_binding_0) => {
             MacroDelimiter::Bracket(Bracket(tokens_helper(f, &_binding_0.span)))
         }
+    }
+}
+pub fn fold_matches_op_expr<F>(f: &mut F, node: MatchesOpExpr) -> MatchesOpExpr
+where
+    F: Fold + ?Sized,
+{
+    MatchesOpExpr {
+        op_token: f.fold_matches_op_token(node.op_token),
+        rhs: Box::new(f.fold_expr(*node.rhs)),
+    }
+}
+pub fn fold_matches_op_token<F>(f: &mut F, node: MatchesOpToken) -> MatchesOpToken
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        MatchesOpToken::Implies(_binding_0) => {
+            MatchesOpToken::Implies(Token![==>](tokens_helper(f, &_binding_0.spans)))
+        }
+        MatchesOpToken::AndAnd(_binding_0) => {
+            MatchesOpToken::AndAnd(Token![&&](tokens_helper(f, &_binding_0.spans)))
+        }
+        MatchesOpToken::BigAnd => MatchesOpToken::BigAnd,
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
