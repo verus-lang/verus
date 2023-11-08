@@ -2,13 +2,13 @@ use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
-use crate::spans::{SpanContext, SpanContextX};
+use crate::spans::{from_raw_span, SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::{ArcDynMessage, Diagnostics};
+use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
@@ -34,10 +34,21 @@ use vir::context::GlobalCtx;
 use crate::buckets::{Bucket, BucketId};
 use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{path_to_string, CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{
+    path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
+};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: f32 = 3000000f32;
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub(crate) struct ProgressBarId(usize, usize);
+
+trait Diagnostics: air::messages::Diagnostics {
+    fn use_progress_bars(&self) -> bool;
+    fn add_progress_bar(&self, msg: CommandContext) -> ProgressBarId;
+    fn complete_progress_bar(&self, pid: ProgressBarId);
+}
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
@@ -132,8 +143,22 @@ impl air::messages::Diagnostics for Reporter<'_> {
     }
 }
 
+impl Diagnostics for Reporter<'_> {
+    fn use_progress_bars(&self) -> bool {
+        false
+    }
+    fn add_progress_bar(&self, _: CommandContext) -> ProgressBarId {
+        panic!("progress bars not supported in single-threaded Reporter");
+    }
+    fn complete_progress_bar(&self, _: ProgressBarId) {
+        panic!("progress bars not supported in single-threaded Reporter");
+    }
+}
+
 /// A reporter message that is being collected by the main thread
 pub(crate) enum ReporterMessage {
+    ReportLongRunning(ProgressBarId, CommandContext),
+    FinishLongRunning(ProgressBarId),
     Message(usize, Message, MessageLevel, bool),
     // Debugger(),
     Done(usize),
@@ -143,11 +168,12 @@ pub(crate) enum ReporterMessage {
 pub(crate) struct QueuedReporter {
     bucket_id: usize,
     queue: std::sync::mpsc::Sender<ReporterMessage>,
+    next_bucket_progress_bar_id: std::cell::RefCell<usize>,
 }
 
 impl QueuedReporter {
     pub(crate) fn new(bucket_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
-        Self { bucket_id, queue }
+        Self { bucket_id, queue, next_bucket_progress_bar_id: Default::default() }
     }
 
     pub(crate) fn done(&self) {
@@ -182,6 +208,28 @@ impl air::messages::Diagnostics for QueuedReporter {
         let air_msg: &MessageX =
             msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
         self.report_as_now(msg, air_msg.level)
+    }
+}
+
+impl Diagnostics for QueuedReporter {
+    fn use_progress_bars(&self) -> bool {
+        true
+    }
+
+    fn add_progress_bar(&self, pb: CommandContext) -> ProgressBarId {
+        let mut next_bucket_progress_bar_id = self.next_bucket_progress_bar_id.borrow_mut();
+        let pid = ProgressBarId(self.bucket_id, *next_bucket_progress_bar_id);
+        self.queue
+            .send(ReporterMessage::ReportLongRunning(pid, pb))
+            .expect("could not send the message!");
+        *next_bucket_progress_bar_id += 1;
+        pid
+    }
+
+    fn complete_progress_bar(&self, f: ProgressBarId) {
+        self.queue
+            .send(ReporterMessage::FinishLongRunning(f))
+            .expect("could not send the message!");
     }
 }
 
@@ -532,7 +580,7 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         bucket_id: &BucketId,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
         diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
         level: Option<MessageLevel>,
@@ -540,30 +588,53 @@ impl Verifier {
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
-        context: &(&vir::messages::Span, &str),
+        context: &CommandContext,
         is_singular: bool,
     ) -> RunCommandQueriesResult {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let report_long_running = || {
-            let mut counter = 0;
-            let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
-                let mut msg =
-                    format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                if let Some(mut in_line_order) = diagnostics_to_report.take() {
-                    msg = msg
-                        + "\nreporting errors as they are discovered (they may not be in source order)";
-                    in_line_order.sort_by_key(|(m, _)| {
-                        m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
-                    });
-                    for (error, error_level) in in_line_order.into_iter() {
-                        reporter.report_as(&error.clone().to_any(), error_level);
+            let mut progress_bar_id = None;
+            let report_fn: Box<dyn FnMut(std::time::Duration, bool) -> ()> = Box::new(
+                move |elapsed, completed| {
+                    if !completed {
+                        let mut msg = format!(
+                            "{} has been running for {} seconds",
+                            context.desc,
+                            elapsed.as_secs()
+                        );
+                        if reporter.use_progress_bars() {
+                            progress_bar_id = Some(reporter.add_progress_bar(context.clone()));
+                        }
+                        if let Some(mut in_line_order) = diagnostics_to_report.take() {
+                            msg = msg
+                                + "\nreporting errors as they are discovered (they may not be in source order)";
+                            in_line_order.sort_by_key(|(m, _)| {
+                                m.spans
+                                    .get(0)
+                                    .and_then(|s| crate::spans::from_raw_span(&s.raw_span))
+                            });
+                            for (error, error_level) in in_line_order.into_iter() {
+                                reporter.report_as(&error.clone().to_any(), error_level);
+                            }
+                        }
+                        let msg = note(&context.span, msg);
+                        reporter.report_now(&msg.to_any());
+                    } else {
+                        if reporter.use_progress_bars() {
+                            reporter.complete_progress_bar(progress_bar_id.take().unwrap());
+                        } else {
+                            let msg = format!(
+                                "{} finished in {} seconds",
+                                context.desc,
+                                elapsed.as_secs()
+                            );
+                            let msg = note(&context.span, msg);
+                            reporter.report_now(&msg.to_any());
+                        }
                     }
-                }
-                let msg = if counter % 5 == 0 { note(&context.0, msg) } else { note_bare(msg) };
-                reporter.report_now(&msg.to_any());
-                counter += 1;
-            });
+                },
+            );
             (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
@@ -580,7 +651,7 @@ impl Verifier {
             crate::singular::check_singular_valid(
                 air_context,
                 &command,
-                context.0,
+                &context.span,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
             )
         };
@@ -620,12 +691,12 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
+                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     if let Some(level) = level {
-                        reporter.report(&message(level, msg, &context.0).to_any());
+                        reporter.report(&message(level, msg, &context.span).to_any());
                     }
                     // need to report that we need to rerun from this function (into spinoff)
                     // so that we can run the profiler on an isolated file on the second pass
@@ -673,7 +744,7 @@ impl Verifier {
                                 reporter.report(&message(
                                     MessageLevel::Warning,
                                     "no source map available for debugger. Try running single threaded.",
-                                    &context.0,
+                                    &context.span,
                                 ).to_any());
                             }
                         }
@@ -711,9 +782,9 @@ impl Verifier {
         if level == Some(MessageLevel::Error) && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
-                context.1
+                context.desc
             );
-            reporter.report(&note(context.0, msg).to_any());
+            reporter.report(&note(&context.span, msg).to_any());
         }
 
         if is_check_valid && !is_singular {
@@ -760,7 +831,7 @@ impl Verifier {
     /// not_skipped : whether a nontrivial validity check was performed or not
     fn run_commands_queries(
         &mut self,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
         level: Option<MessageLevel>,
         diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
@@ -785,14 +856,14 @@ impl Verifier {
 
         let mut result =
             RunCommandQueriesResult { invalidity: false, timed_out: false, not_skipped: false };
-        let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
+        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
+        let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
-            air_context.comment(&span.as_string);
+            air_context.comment(&context.span.as_string);
         }
-        let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
             result = result
                 + self.check_result_validity(
@@ -805,7 +876,7 @@ impl Verifier {
                     assign_map,
                     snap_map,
                     &command,
-                    &(span, &desc),
+                    &context,
                     *prover_choice == vir::def::ProverChoice::Singular,
                 );
         }
@@ -1006,7 +1077,7 @@ impl Verifier {
     // Verify a single bucket
     fn verify_bucket(
         &mut self,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
@@ -1234,7 +1305,7 @@ impl Verifier {
                                     &all_context_ops,
                                     is_recommend,
                                     spinoff_context_counter,
-                                    &cmds.span,
+                                    &cmds.context.span,
                                     profile_file_name.as_ref(),
                                 )?;
                                 // for bitvector, only one query, no push/pop
@@ -1490,7 +1561,7 @@ impl Verifier {
 
     fn verify_bucket_outer(
         &mut self,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
@@ -1712,6 +1783,11 @@ impl Verifier {
                 workers.push(worker);
             }
 
+            let multi_progress = indicatif::MultiProgress::with_draw_target(
+                indicatif::ProgressDrawTarget::stderr_with_hz(2),
+            );
+            let mut progress_bars = HashMap::new();
+
             // start handling messages, we keep track of the current active bucket for which we
             // print messages immediately, while buffering other messages from the other buckets
             let mut active_bucket = None;
@@ -1724,14 +1800,14 @@ impl Verifier {
                         if now {
                             // if the message should be reported immediately, do so
                             // this is used for printing notices for long running queries
-                            reporter.report_as(&msg.to_any(), level);
+                            multi_progress.suspend(|| reporter.report_as(&msg.to_any(), level));
                             continue;
                         }
 
                         if let Some(m) = active_bucket {
                             // if it's the active bucket, print the message
                             if id == m {
-                                reporter.report_as(&msg.to_any(), level);
+                                multi_progress.suspend(|| reporter.report_as(&msg.to_any(), level));
                             } else {
                                 let msgs = messages.get_mut(id).expect("message id out of range");
                                 msgs.1.push((msg, level));
@@ -1740,7 +1816,7 @@ impl Verifier {
                             // no active bucket, print this message and set the bucket as the
                             // active one
                             active_bucket = Some(id);
-                            reporter.report_as(&msg.to_any(), level);
+                            multi_progress.suspend(|| reporter.report_as(&msg.to_any(), level));
                         }
                     }
                     ReporterMessage::Done(id) => {
@@ -1774,7 +1850,8 @@ impl Verifier {
                                 }
                                 // drain and print all messages of the bucket
                                 for (msg, level) in msgs.1.drain(..) {
-                                    reporter.report_as(&msg.to_any(), level);
+                                    multi_progress
+                                        .suspend(|| reporter.report_as(&msg.to_any(), level));
                                 }
                                 // if the bucket wasn't done, make it active and handle next message
                                 if !msgs.0 {
@@ -1785,6 +1862,56 @@ impl Verifier {
                         }
 
                         num_done = num_done + 1;
+                    }
+                    ReporterMessage::ReportLongRunning(pid, context) => {
+                        let pb = multi_progress.insert_from_back(
+                            0,
+                            indicatif::ProgressBar::new_spinner()
+                                .with_elapsed(Duration::from_millis(2000)),
+                        );
+                        pb.enable_steady_tick(std::time::Duration::from_millis(120));
+                        let progress_style =
+                            indicatif::ProgressStyle::with_template("{prefix} {elapsed}\n{msg}")
+                                .expect("invalid progress style");
+                        pb.set_style(progress_style);
+                        let CommandContext { fun, span, desc } = &context;
+                        let span = from_raw_span(&span.raw_span).expect("valid span");
+                        let span_str = source_map.span_to_diagnostic_string(span);
+                        pb.set_prefix(format!(
+                            "{} {} {} {} {}",
+                            console::style("•").red(),
+                            span_str,
+                            console::style("has been").bold(),
+                            console::style("running").bold().red(),
+                            console::style("for").bold()
+                        ));
+                        pb.set_message(format!(
+                            "  ⌝ {} {} {}",
+                            desc,
+                            console::style("for").bold(),
+                            fun_as_friendly_rust_name(&fun)
+                        ));
+                        progress_bars.insert(pid, (context, pb));
+                    }
+                    ReporterMessage::FinishLongRunning(pid) => {
+                        let (context, pb) = progress_bars.get_mut(&pid).unwrap();
+                        let CommandContext { fun, span, desc } = &context;
+                        let span = from_raw_span(&span.raw_span).expect("valid span");
+                        let span_str = source_map.span_to_diagnostic_string(span);
+                        pb.set_prefix(format!(
+                            "{} {} {} {} {}",
+                            console::style("✔").blue(),
+                            span_str,
+                            console::style("has").bold(),
+                            console::style("finished").bold().blue(),
+                            console::style("in").bold()
+                        ));
+                        pb.finish_with_message(format!(
+                            "  ⌝ {} {} {}",
+                            desc,
+                            console::style("for").bold(),
+                            fun_as_friendly_rust_name(&fun)
+                        ));
                     }
                 }
 

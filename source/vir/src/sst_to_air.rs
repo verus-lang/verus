@@ -1896,6 +1896,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 AssertQueryMode::NonLinear => {
                     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
                     state.commands.push(CommandsWithContextX::new(
+                        ctx.fun
+                            .as_ref()
+                            .expect("asserts are expected to be in a function")
+                            .current_fun
+                            .clone(),
                         stm.span.clone(),
                         "assert_nonlinear_by".to_string(),
                         Arc::new(vec![
@@ -1942,6 +1947,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut bv_commands = mk_bitvector_option();
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             state.commands.push(CommandsWithContextX::new(
+                ctx.fun
+                    .as_ref()
+                    .expect("asserts are expected to be in a function")
+                    .current_fun
+                    .clone(),
                 stm.span.clone(),
                 "assert_bitvector_by".to_string(),
                 Arc::new(bv_commands),
@@ -2203,13 +2213,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
 
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(Arc::new(CommandsWithContextX {
-                span: stm.span.clone(),
-                desc: "while loop".to_string(),
-                commands: Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
-                prover_choice: ProverChoice::DefaultProver,
-                skip_recommends: false,
-            }));
+            state.commands.push(CommandsWithContextX::new(
+                ctx.fun
+                    .as_ref()
+                    .expect("asserts are expected to be in a function")
+                    .current_fun
+                    .clone(),
+                stm.span.clone(),
+                "while loop".to_string(),
+                Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
+                ProverChoice::DefaultProver,
+                false,
+            ));
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -2644,6 +2659,7 @@ pub(crate) fn body_stm_to_air(
         let singular_command = Arc::new(CommandX::CheckValid(query));
 
         state.commands.push(CommandsWithContextX::new(
+            ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
             func_span.clone(),
             "Singular check valid".to_string(),
             Arc::new(vec![singular_command]),
@@ -2662,6 +2678,7 @@ pub(crate) fn body_stm_to_air(
             vec![Arc::new(CommandX::CheckValid(query))]
         };
         state.commands.push(CommandsWithContextX::new(
+            ctx.fun.as_ref().expect("function expected here").current_fun.clone(),
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),

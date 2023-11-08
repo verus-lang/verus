@@ -579,9 +579,26 @@ pub enum ProverChoice {
     Singular,
 }
 
-pub struct CommandsWithContextX {
+#[derive(Clone)]
+pub struct CommandContext {
+    pub fun: Fun,
     pub span: crate::messages::Span,
     pub desc: String,
+}
+
+impl CommandContext {
+    pub fn with_desc_prefix(&self, prefix: Option<&str>) -> Self {
+        let CommandContext { fun, span, desc } = self;
+        CommandContext {
+            fun: fun.clone(),
+            span: span.clone(),
+            desc: prefix.unwrap_or("").to_string() + desc,
+        }
+    }
+}
+
+pub struct CommandsWithContextX {
+    pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
@@ -589,6 +606,7 @@ pub struct CommandsWithContextX {
 
 impl CommandsWithContextX {
     pub fn new(
+        fun: Fun,
         span: Span,
         desc: String,
         commands: Commands,
@@ -596,11 +614,10 @@ impl CommandsWithContextX {
         skip_recommends: bool,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
-            span: span,
-            desc: desc,
-            commands: commands,
-            prover_choice: prover_choice,
-            skip_recommends: skip_recommends,
+            context: CommandContext { fun, span, desc },
+            commands,
+            prover_choice,
+            skip_recommends,
         })
     }
 }
