@@ -203,6 +203,7 @@ fn check_positive_uses(
                 check_positive_uses(global, local, t_polarity, t)?;
             }
             for impl_path in impl_paths.iter() {
+                // REVIEW: this check isn't actually about polarity; should it be somewhere else?
                 let impl_node = TypNode::TraitImpl(impl_path.clone());
                 if global.type_graph.in_same_scc(&impl_node, &my_node) {
                     let scc_rep = global.type_graph.get_scc_rep(&my_node);
@@ -331,6 +332,15 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
 
     let type_sccs = global.type_graph.sort_sccs();
     for scc in &type_sccs {
+        for node in &global.type_graph.get_scc_nodes(scc) {
+            match node {
+                TypNode::TraitImpl(_) if global.type_graph.node_is_in_cycle(node) => {
+                    return Err(type_scc_error(krate, node, &global.type_graph.get_scc_nodes(scc)));
+                }
+                _ => {}
+            }
+        }
+
         let mut converged = false;
         loop {
             let count = datatypes_well_founded.len();
@@ -470,6 +480,7 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
     let t_node = Node::Trait(trt.x.name.clone());
     for bound in trt.x.typ_bounds.iter() {
+        // TODO: remove the Self: T bound, because there's no need for a T --> T edge.
         let GenericBoundX::Trait(u_path, _) = &**bound;
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);
@@ -575,11 +586,14 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
         let count = scc_nodes.len();
         for node in scc_nodes.iter() {
             match node {
+                // handled by decreases checking:
                 Node::Fun(_) => {}
-                _ if count == 1 => {}
-                _ => {
+                // TODO: get rid of T --> T edges, drop this special case:
+                Node::Trait(_) if count == 1 => {}
+                _ if ctx.func_call_graph.node_is_in_cycle(node) => {
                     return Err(scc_error(krate, node, &scc_nodes));
                 }
+                _ => {}
             }
         }
     }

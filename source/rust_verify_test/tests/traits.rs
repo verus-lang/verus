@@ -655,7 +655,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_termination_5_fail_6 verus_code! {
+    #[test] test_termination_5_fail_6 verus_code! {
         trait T { type X; }
         struct S<W: T>(<W as T>::X);
         struct TT { }
@@ -671,7 +671,7 @@ test_verify_one_file! {
                 arbitrary()
             }
         }
-    } => Err(_err) => todo!()
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
 test_verify_one_file! {

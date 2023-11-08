@@ -186,11 +186,5 @@ test_verify_one_file! {
         trait T { type X; }
         struct S(<Self as T>::X) where Self: T;
         impl T for S { type X = u8; }
-        proof fn test1(s: S) {
-            assert(s.0 < 256);
-        }
-        proof fn test2(s: S) {
-            assert(s.0 < 255); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
