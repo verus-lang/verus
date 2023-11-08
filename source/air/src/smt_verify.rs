@@ -107,7 +107,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 }
 
 pub type ReportLongRunning<'a> =
-    (std::time::Duration, Box<dyn FnMut(std::time::Duration) -> () + 'a>);
+    (std::time::Duration, Box<dyn FnMut(std::time::Duration, bool) -> () + 'a>);
 
 const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
 
@@ -192,15 +192,15 @@ pub(crate) fn smt_check_assertion<'ctx>(
     // Run SMT solver
     let smt_run_start_time = std::time::Instant::now();
     let smt_data = context.smt_log.take_pipe_data();
-    let mut commands_handle = context.get_smt_process().send_commands_async(smt_data);
-    let smt_output = if let Some((report_interval, report_fn)) = report_long_running {
-        loop {
-            match commands_handle.wait_timeout(*report_interval) {
-                Ok(smt_output) => break smt_output,
-                Err(handle) => {
-                    report_fn(smt_run_start_time.elapsed());
-                    commands_handle = handle;
-                }
+    let commands_handle = context.get_smt_process().send_commands_async(smt_data);
+    let smt_output = if let Some((report_threshold, report_fn)) = report_long_running {
+        match commands_handle.wait_timeout(*report_threshold) {
+            Ok(smt_output) => smt_output,
+            Err(handle) => {
+                report_fn(smt_run_start_time.elapsed(), false);
+                let smt_output = handle.wait();
+                report_fn(smt_run_start_time.elapsed(), true);
+                smt_output
             }
         }
     } else {
