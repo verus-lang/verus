@@ -13,7 +13,7 @@ use rustc_hir::{
     AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
     ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
     OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, Stmt, StmtKind, TraitFn, TraitItem,
-    TraitItemKind, TraitItemRef, TraitRef, UnOp, Unsafety,
+    TraitItemKind, TraitItemRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{

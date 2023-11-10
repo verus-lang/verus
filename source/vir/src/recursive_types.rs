@@ -478,10 +478,11 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     // For
     //   trait T<...> where ...: U1(...), ..., ...: Un(...)
     // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
-    let t_node = Node::Trait(trt.x.name.clone());
+    let t_path = &trt.x.name;
+    let t_node = Node::Trait(t_path.clone());
     for bound in trt.x.typ_bounds.iter() {
-        // TODO: remove the Self: T bound, because there's no need for a T --> T edge.
         let GenericBoundX::Trait(u_path, _) = &**bound;
+        assert_ne!(t_path, u_path);
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);
     }
@@ -583,13 +584,10 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
 
     for scc in ctx.func_call_sccs.iter() {
         let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
-        let count = scc_nodes.len();
         for node in scc_nodes.iter() {
             match node {
                 // handled by decreases checking:
                 Node::Fun(_) => {}
-                // TODO: get rid of T --> T edges, drop this special case:
-                Node::Trait(_) if count == 1 => {}
                 _ if ctx.func_call_graph.node_is_in_cycle(node) => {
                     return Err(scc_error(krate, node, &scc_nodes));
                 }

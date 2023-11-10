@@ -24,6 +24,7 @@ use rustc_hir::{
     ItemKind, MaybeOwner, Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn,
     TraitItem, TraitItemKind, TraitRef, Unsafety,
 };
+use vir::def::trait_self_type_param;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -493,16 +494,43 @@ fn check_item<'tcx>(
                 }
                 unsupported_err!(item.span, "trait generic bounds");
             }
-            let (generics_params, generics_bnds) = check_generics_bounds(
-                ctxt.tcx,
-                &ctxt.verus_items,
-                trait_generics,
-                false,
-                trait_def_id,
-                None,
-                Some(&mut *ctxt.diagnostics.borrow_mut()),
-            )?;
             let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def_id);
+            let (generics_params, generics_bnds) = {
+                let (generics_params, mut generics_bnds) = check_generics_bounds(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    trait_generics,
+                    false,
+                    trait_def_id,
+                    None,
+                    Some(&mut *ctxt.diagnostics.borrow_mut()),
+                )?;
+                // Remove the Self: Trait bound introduced by rustc
+                Arc::make_mut(&mut generics_bnds).retain(|gb| {
+                    match &**gb {
+                        vir::ast::GenericBoundX::Trait(bnd, tp) => {
+                            if bnd == &trait_path {
+                                let gp: Vec<_> = Some(trait_self_type_param())
+                                    .into_iter()
+                                    .chain(generics_params.iter().map(|(p, _)| p.clone()))
+                                    .map(|p| Some(p))
+                                    .collect();
+                                let tp: Vec<_> = tp
+                                    .iter()
+                                    .map(|p| match &**p {
+                                        vir::ast::TypX::TypParam(p) => Some(p.clone()),
+                                        _ => None,
+                                    })
+                                    .collect();
+                                assert_eq!(*tp, *gp);
+                                return false;
+                            }
+                        }
+                    }
+                    true
+                });
+                (generics_params, generics_bnds)
+            };
             let mut assoc_typs: Vec<vir::ast::Ident> = Vec::new();
             let mut methods: Vec<vir::ast::Function> = Vec::new();
             let mut method_names: Vec<Fun> = Vec::new();
