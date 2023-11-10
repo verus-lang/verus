@@ -1606,6 +1606,18 @@ impl VisitMut for Visitor {
                 new_expr = Expr::Binary(bin);
             }
             *expr = new_expr;
+        } else if let Expr::Macro(macro_expr) = expr {
+            macro_expr.mac.path.segments.first_mut().map(|x| {
+                let ident = x.ident.to_string();
+                // NOTE: this is currently hardcoded for
+                // open_*_invariant macros, but this could be extended
+                // to rewrite other macro names depending on proof vs exec mode.
+                if is_inside_ghost
+                    && (ident == "open_atomic_invariant" || ident == "open_local_invariant")
+                {
+                    x.ident = Ident::new((ident + "_in_proof").as_str(), x.span());
+                }
+            });
         }
 
         let do_replace = match &expr {
@@ -2884,6 +2896,7 @@ pub(crate) fn proof_macro_exprs(
 
 pub(crate) fn inv_macro_exprs(
     erase_ghost: EraseGhost,
+    inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
@@ -2905,8 +2918,8 @@ pub(crate) fn inv_macro_exprs(
             MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
             _ => {}
         }
-        // After the first element, parse as 'exec' expression
-        visitor.inside_ghost = 0;
+        // After the first element, parse as 'exec' or `proof` expression based on the current context.
+        visitor.inside_ghost = if inside_ghost { 1u32 } else { 0u32 };
     }
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)
