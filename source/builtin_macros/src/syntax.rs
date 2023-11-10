@@ -1575,25 +1575,17 @@ impl VisitMut for Visitor {
             }
             *expr = new_expr;
         } else if let Expr::Macro(macro_expr) = expr {
-            macro_expr
-                .mac
-                .path
-                .segments
-                .first_mut()
-                .map(|x|
-                     {
-                         let ident = x.ident.to_string();
-                         // NOTE: this is currently hardcoded for
-                         // open_*_invariant macros, but this could be extended
-                         // to rewrite other macro names depending on proof vs exec mode.
-                         if is_inside_ghost &&
-                             (ident == "open_atomic_invariant"
-                              || ident == "open_local_invariant")
-                         {
-                             x.ident = Ident::new((ident + "_in_proof").as_str(), x.span());
-                         }
-                     }
-                );
+            macro_expr.mac.path.segments.first_mut().map(|x| {
+                let ident = x.ident.to_string();
+                // NOTE: this is currently hardcoded for
+                // open_*_invariant macros, but this could be extended
+                // to rewrite other macro names depending on proof vs exec mode.
+                if is_inside_ghost
+                    && (ident == "open_atomic_invariant" || ident == "open_local_invariant")
+                {
+                    x.ident = Ident::new((ident + "_in_proof").as_str(), x.span());
+                }
+            });
         }
 
         let do_replace = match &expr {
