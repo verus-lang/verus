@@ -294,6 +294,7 @@ use crate::view::View;
 pub trait VecAdditionalExecFns<T> {
     fn set(&mut self, i: usize, value: T);
     fn set_and_swap(&mut self, i: usize, value: &mut T);
+    fn structural_eq(&self, other: &Self) -> bool where T: PartialEq + Eq + Structural;
 }
 
 #[cfg(feature = "alloc")]
@@ -321,6 +322,15 @@ impl<T> VecAdditionalExecFns<T> for Vec<T> {
             *value == old(self)@.index(i as int)
     {
         core::mem::swap(&mut self[i], value);
+    }
+
+    #[verifier::external_body]
+    fn structural_eq(&self, other: &Self) -> (res: bool)
+        where T: PartialEq + Eq + Structural
+        ensures
+            res == (self@ == other@)
+    {
+        self.eq(other)
     }
 }
 

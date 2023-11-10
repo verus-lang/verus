@@ -101,6 +101,15 @@ fn pust_test(t: Vec<u64>, y: u64)
     );
 }
 
+fn eq_test() {
+    let mut v1 = Vec::new();
+    v1.push(0);
+    let mut v2 = Vec::new();
+    v2.push(0);
+    let r = v1.structural_eq(&v2);
+    assert(r);
+}
+
 #[verifier(external)]
 fn main() {
     let mut v = vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
