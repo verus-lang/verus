@@ -1,16 +1,18 @@
 use crate::ast::{
-    Fun, Function, FunctionKind, Ident, Idents, ItemKind, Mode, Param, ParamX, Params,
+    Fun, Function, FunctionKind, Ident, Idents, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
 use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
-    new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
-    prefix_recursive_fun, prefix_requires, static_name, suffix_global_id, suffix_local_stmt_id,
-    suffix_typ_param_id, suffix_typ_param_ids, unique_local, CommandsWithContext, SnapPos, Spanned,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
+    new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_open_inv,
+    prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name, suffix_global_id,
+    suffix_local_stmt_id, suffix_typ_param_id, suffix_typ_param_ids, unique_local,
+    CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
+    SUCC, THIS_PRE_FAILED, ZERO,
 };
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
@@ -23,8 +25,8 @@ use air::ast::{
     Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
-    str_apply, str_ident, str_typ, str_var, string_apply,
+    bool_typ, ident_apply, ident_binder, ident_var, int_typ, mk_and, mk_bind_expr, mk_eq,
+    mk_implies, str_apply, str_ident, str_typ, str_var, string_apply,
 };
 use air::messages::ArcDynMessageLabel;
 use std::collections::HashMap;
@@ -364,6 +366,7 @@ pub fn req_ens_to_air(
     name: &Ident,
     msg: &Option<String>,
     is_singular: bool,
+    typ: air::ast::Typ,
 ) -> Result<bool, VirErr> {
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
@@ -372,7 +375,7 @@ pub fn req_ens_to_air(
                 all_typs.insert(0, str_typ(x));
             }
         }
-        let decl = Arc::new(DeclX::Fun(name.clone(), Arc::new(all_typs), bool_typ()));
+        let decl = Arc::new(DeclX::Fun(name.clone(), Arc::new(all_typs), typ));
         commands.push(Arc::new(CommandX::Global(decl)));
         let mut exprs: Vec<Expr> = Vec::new();
         for e in typing_invs {
@@ -555,7 +558,33 @@ pub fn func_decl_to_air(
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
             &msg,
             function.x.attrs.integer_ring,
+            bool_typ(),
         )?;
+    }
+
+    // Inv mask
+    match &function.x.mask_spec {
+        MaskSpec::NoSpec => {}
+        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+            for (i, e) in es.iter().enumerate() {
+                let req_params = params_to_pre_post_pars(&function.x.params, true);
+                let _ = req_ens_to_air(
+                    ctx,
+                    diagnostics,
+                    fun_ssts,
+                    &mut decl_commands,
+                    &req_params,
+                    &vec![],
+                    &vec![e.clone()],
+                    &function.x.typ_params,
+                    &req_typs,
+                    &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
+                    &None,
+                    function.x.attrs.integer_ring,
+                    int_typ(),
+                );
+            }
+        }
     }
 
     // Ensures
@@ -604,6 +633,7 @@ pub fn func_decl_to_air(
         &prefix_ensures(&fun_to_air_ident(&function.x.name)),
         &None,
         function.x.attrs.integer_ring,
+        bool_typ(),
     )?;
     if has_ens_pred {
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
@@ -863,6 +893,50 @@ pub fn func_def_to_air(
                     )?);
                 }
             }
+
+            let inv_spec_exprs = match &req_ens_function.x.mask_spec {
+                MaskSpec::NoSpec => Arc::new(vec![]),
+                MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => {
+                    exprs.clone()
+                }
+            };
+            let mut inv_spec_air_exprs = vec![];
+            for e in inv_spec_exprs.iter() {
+                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
+                let exp = if ctx.checking_spec_preconditions() {
+                    let (stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(
+                        ctx,
+                        &mut state,
+                        &e_with_req_ens_params,
+                    )?;
+                    req_stms.extend(stms);
+                    exp
+                } else {
+                    crate::ast_to_sst::expr_to_exp_skip_checks(
+                        ctx,
+                        diagnostics,
+                        &state.fun_ssts,
+                        &req_pars,
+                        &e_with_req_ens_params,
+                    )?
+                };
+
+                let is_singular = function.x.attrs.integer_ring;
+                let expr_ctxt = ExprCtxt::new_mode_singular(ExprMode::Body, is_singular);
+                let air_expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
+                inv_spec_air_exprs
+                    .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
+            }
+            let mask_set = match &req_ens_function.x.mask_spec {
+                MaskSpec::NoSpec => {
+                    crate::sst_to_air::default_mask_set_for_mode(req_ens_function.x.mode)
+                }
+                MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(inv_spec_air_exprs),
+                MaskSpec::InvariantOpensExcept(_exprs) => {
+                    MaskSet::from_list_complement(inv_spec_air_exprs)
+                }
+            };
+
             for e in function.x.decrease.iter() {
                 if ctx.checking_spec_preconditions() {
                     let stms = crate::ast_to_sst::check_pure_expr(ctx, &mut state, &e)?;
@@ -966,8 +1040,7 @@ pub fn func_def_to_air(
                 &reqs,
                 &enss,
                 &ens_spec_precondition_stms,
-                &function.x.mask_spec,
-                function.x.mode,
+                &mask_set,
                 &stm,
                 function.x.attrs.integer_ring,
                 function.x.attrs.bit_vector,

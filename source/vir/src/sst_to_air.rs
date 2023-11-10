@@ -11,14 +11,14 @@ use crate::context::Ctx;
 use crate::def::{
     fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
     new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, static_name,
-    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
-    suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident, CommandsWithContext,
-    CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE,
-    CHAR_TO_UNICODE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
-    I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
-    STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    prefix_lambda_type, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_unbox,
+    snapshot_ident, static_name, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
+    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
+    CHAR_FROM_UNICODE, CHAR_TO_UNICODE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
+    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
@@ -498,16 +498,31 @@ fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity
     ident_apply(&inv_fn_ident, &args)
 }
 
-pub fn mask_set_from_spec(spec: &MaskSpec, mode: Mode) -> MaskSet {
+pub fn default_mask_set_for_mode(mode: Mode) -> MaskSet {
+    // By default, we assume an #[verifier::exec] fn can open any invariant, and that
+    // a #[verifier::proof] fn can open no invariants.
+    if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
+}
+
+pub fn mask_set_from_spec(
+    spec: &MaskSpec,
+    mode: Mode,
+    function_name: &Fun,
+    args: &Vec<Expr>,
+) -> MaskSet {
     match spec {
-        MaskSpec::NoSpec => {
-            // By default, we assume an #[verifier::exec] fn can open any invariant, and that
-            // a #[verifier::proof] fn can open no invariants.
-            if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
+        MaskSpec::NoSpec => default_mask_set_for_mode(mode),
+        MaskSpec::InvariantOpens(exprs) => {
+            let mut l = vec![];
+            for (i, e) in exprs.iter().enumerate() {
+                let expr =
+                    ident_apply(&prefix_open_inv(&fun_to_air_ident(function_name), i), &args);
+                l.push(crate::inv_masks::MaskSingleton { expr, span: e.span.clone() });
+            }
+            MaskSet::from_list(l)
         }
-        MaskSpec::InvariantOpens(exprs) if exprs.len() == 0 => MaskSet::empty(),
         MaskSpec::InvariantOpensExcept(exprs) if exprs.len() == 0 => MaskSet::full(),
-        MaskSpec::InvariantOpens(_exprs) | MaskSpec::InvariantOpensExcept(_exprs) => {
+        MaskSpec::InvariantOpensExcept(_exprs) => {
             panic!("custom mask specs are not yet implemented");
         }
     }
@@ -1658,17 +1673,21 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
+
+            let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            for arg in args.iter() {
+                req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
+            }
+            let req_args = Arc::new(req_args);
+
             if func.x.require.len() > 0
                 && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
                 // don't check recommends during decreases checking; these are separate passes:
                 && !ctx.checking_spec_decreases()
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
-                let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-                for arg in args.iter() {
-                    req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
-                }
-                let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
+
+                let e_req = Arc::new(ExprX::Apply(f_req, req_args.clone()));
                 let description =
                     match (ctx.checking_spec_preconditions(), &func.x.attrs.custom_req_err) {
                         (true, None) => "recommendation not met".to_string(),
@@ -1679,7 +1698,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
 
-            let callee_mask_set = mask_set_from_spec(&func.x.mask_spec, func.x.mode);
+            let callee_mask_set =
+                mask_set_from_spec(&func.x.mask_spec, func.x.mode, &func.x.name, &req_args);
             if !ctx.checking_spec_preconditions() {
                 callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
@@ -2468,8 +2488,7 @@ pub(crate) fn body_stm_to_air(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
     ens_spec_precondition_stms: &Vec<Stm>,
-    mask_spec: &MaskSpec,
-    mode: Mode,
+    mask_set: &MaskSet,
     stm: &Stm,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
@@ -2541,8 +2560,6 @@ pub(crate) fn body_stm_to_air(
         .map(|ens_recommend_stm| subst_stm(&trait_typ_substs, &HashMap::new(), ens_recommend_stm))
         .collect();
 
-    let mask = mask_set_from_spec(mask_spec, mode);
-
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
         if param.x.is_mut {
@@ -2559,7 +2576,7 @@ pub(crate) fn body_stm_to_air(
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
-        mask,
+        mask: mask_set.clone(),
         post_condition_info: PostConditionInfo {
             dest,
             ens_exprs,

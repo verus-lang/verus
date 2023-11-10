@@ -44,6 +44,7 @@ const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
+const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
@@ -400,6 +401,10 @@ pub fn prefix_requires(ident: &Ident) -> Ident {
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_ENSURES.to_string() + ident)
+}
+
+pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
+    Arc::new(format!("{}{}%{}", PREFIX_OPEN_INV, i, ident))
 }
 
 fn prefix_path(prefix: String, path: &Path) -> Path {

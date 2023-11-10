@@ -141,4 +141,12 @@ impl MaskSet {
     pub fn empty() -> MaskSet {
         MaskSet { base: SetBase::Empty, plus: vec![], minus: vec![] }
     }
+
+    pub fn from_list_complement(l: Vec<MaskSingleton>) -> MaskSet {
+        MaskSet { base: SetBase::Full, plus: vec![], minus: l }
+    }
+
+    pub fn from_list(l: Vec<MaskSingleton>) -> MaskSet {
+        MaskSet { base: SetBase::Empty, plus: l, minus: vec![] }
+    }
 }

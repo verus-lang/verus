@@ -1,6 +1,6 @@
 use crate::ast::{
     AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::typ_to_diagnostic_str;
@@ -10,6 +10,7 @@ use crate::def::{
     FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
 use crate::sst::{
@@ -293,8 +294,7 @@ pub(crate) fn check_termination_commands(
         &Arc::new(vec![]),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &MaskSpec::NoSpec,
-        function.x.mode,
+        &MaskSet::empty(),
         &stm_block,
         false,
         false,

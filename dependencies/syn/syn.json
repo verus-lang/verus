@@ -3191,6 +3191,11 @@
           {
             "syn": "InvariantNameSetNone"
           }
+        ],
+        "List": [
+          {
+            "syn": "InvariantNameSetList"
+          }
         ]
       }
     },
@@ -3202,6 +3207,25 @@
       "fields": {
         "token": {
           "token": "InvAny"
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSetList",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "exprs": {
+          "punctuated": {
+            "element": {
+              "syn": "Expr"
+            },
+            "punct": "Comma"
+          }
         }
       }
     },

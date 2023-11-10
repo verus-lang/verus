@@ -407,3 +407,51 @@ test_verify_one_file! {
         }
     } => Ok(_err) => { /* allow unreachable warnings */ }
 }
+
+test_verify_one_file! {
+    #[test] opens_invariants_concrete verus_code! {
+        fn stuff()
+          opens_invariants [ 0int ]
+        {
+            stuff2();
+        }
+
+        fn stuff2()
+          opens_invariants [ 0int, 1int ] // FAILS
+        {
+        }
+
+        fn stuff3()
+          opens_invariants [ 0int ]
+        {
+        }
+
+        fn stuff4()
+          opens_invariants [ 0int, 1int ]
+        {
+            stuff3();
+        }
+
+        fn stuff5()
+        {
+            stuff3();
+        }
+
+        fn stuff6()
+          opens_invariants [ 0int, 1int ]
+        {
+            stuff5(); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+/*
+test_verify_one_file! {
+    #[test] opens_invariants_old_fail verus_code! {
+        fn stuff6(x: &mut u8)
+          opens_invariants [ ((*x) as int) ]
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "mismatched types")
+}
+*/

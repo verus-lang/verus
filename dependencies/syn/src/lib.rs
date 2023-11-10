@@ -459,9 +459,10 @@ mod verus;
 pub use crate::verus::{
     Assert, AssertForall, Assume, BigAnd, BigOr, Closed, DataMode, Decreases, Ensures, ExprHas,
     ExprIs, FnMode, Global, GlobalInner, GlobalLayout, GlobalSizeOf, Invariant, InvariantEnsures,
-    InvariantNameSet, InvariantNameSetAny, InvariantNameSetNone, Mode, ModeExec, ModeGhost,
-    ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open, OpenRestricted, Publish, Recommends,
-    Requires, RevealHide, SignatureDecreases, SignatureInvariants, Specification, TypeFnSpec, View,
+    InvariantNameSet, InvariantNameSetAny, InvariantNameSetList, InvariantNameSetNone, Mode,
+    ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open, OpenRestricted,
+    Publish, Recommends, Requires, RevealHide, SignatureDecreases, SignatureInvariants,
+    Specification, TypeFnSpec, View,
 };
 
 mod gen {

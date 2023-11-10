@@ -776,6 +776,16 @@ fn check_function(
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, ens, disallow_private_access)?;
     }
+    match &function.x.mask_spec {
+        MaskSpec::NoSpec => {}
+        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+            for expr in es.iter() {
+                let msg = "'opens_invariants' clause of public function";
+                let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+                check_expr(ctxt, function, expr, disallow_private_access)?;
+            }
+        }
+    }
     for expr in function.x.decrease.iter() {
         let msg = "'decreases' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
