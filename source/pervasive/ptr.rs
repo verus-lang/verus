@@ -509,7 +509,7 @@ impl<V> PPtr<V> {
         requires
             valid_layout(size, align),
         ensures
-            pt.1@.is_range(size as int, align as int),
+            pt.1@.is_range(pt.0.id(), size as int),
             pt.2@@ === (DeallocRawData{ pptr: pt.0.id(), size: size as nat, align: align as nat }),
             pt.0.id() % align as int == 0,
         opens_invariants none
