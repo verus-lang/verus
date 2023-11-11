@@ -228,6 +228,20 @@ pub fn main() {
         };
 
         if verifier.args.output_json {
+            assert!(
+                smt_function_breakdown
+                    .keys()
+                    .collect::<std::collections::HashSet<_>>()
+                    .difference(
+                        &smt_run_times
+                            .iter()
+                            .map(|(x, _)| *x)
+                            .collect::<std::collections::HashSet<_>>()
+                    )
+                    .next()
+                    .is_none()
+            );
+
             let mut times = serde_json::json!({
                 "verus-build": {
                     "profile": build_info.profile.to_string(),
@@ -284,12 +298,12 @@ pub fn main() {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t,
-                                "function-breakdown" : smt_function_breakdown.get_mut(*m).expect("Module should exist").iter().map(|(f, t)| {
+                                "function-breakdown" : smt_function_breakdown.get_mut(*m).map(|b| b.iter().map(|(f, t)| {
                                     serde_json::json!({
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
                                         "time" : t
                                     })
-                                 }).collect::<Vec<serde_json::Value>>()
+                                 }).collect::<Vec<serde_json::Value>>()).unwrap_or_default(),
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                     }),
