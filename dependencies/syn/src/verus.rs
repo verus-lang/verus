@@ -1446,7 +1446,11 @@ pub(crate) fn parse_matches(
         let mut rhs = expr::parsing::unary_expr(input, allow_struct)?;
         loop {
             let next = expr::parsing::peek_precedence(input);
-            if next >= expr::parsing::Precedence::Imply {
+            if matches!(op_token, MatchesOpToken::Implies(_))
+                && next >= expr::parsing::Precedence::Imply
+                || matches!(op_token, MatchesOpToken::AndAnd(_))
+                    && next >= expr::parsing::Precedence::And
+            {
                 rhs = expr::parsing::parse_expr(input, rhs, allow_struct, next)?;
             } else {
                 break;

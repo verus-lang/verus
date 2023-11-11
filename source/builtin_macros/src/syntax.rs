@@ -1817,16 +1817,24 @@ impl VisitMut for Visitor {
             return;
         }
 
-        if let Expr::Binary(ExprBinary { right, .. }) = &expr {
+        if let Expr::Binary(ExprBinary { op, right, .. }) = &expr {
             if let Expr::Matches(ExprMatches {
                 op_expr: Some(MatchesOpExpr { op_token, .. }),
                 ..
             }) = &**right
             {
-                if matches!(op_token, MatchesOpToken::Implies(_)) {
-                    *expr = Expr::Verbatim(
-                        quote_spanned! { expr.span() => compile_error!("matches using ==> is currently not allowed on the right-hand-side of && and || (use parentheses)") },
-                    );
+                match (op, op_token) {
+                    (_, MatchesOpToken::BigAnd) => (),
+                    (_, MatchesOpToken::Implies(_)) => {
+                        *expr = Expr::Verbatim(
+                            quote_spanned! { expr.span() => compile_error!("matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                        );
+                    }
+                    (_, MatchesOpToken::AndAnd(_)) => {
+                        *expr = Expr::Verbatim(
+                            quote_spanned! { expr.span() => compile_error!("matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                        );
+                    }
                 }
             }
         }

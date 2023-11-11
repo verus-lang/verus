@@ -1451,13 +1451,106 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] matches_syntax_precedence_4 verus_code! {
+    #[test] matches_syntax_assoc_1 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test1() {
+            let a = A::A1 { v: 3 };
+            assert(a matches A::A1 { v } && v == 3);
+            assert(a matches A::A1 { v } && v == 3 && v == 3);
+            assert(a matches A::A1 { v } && v == 3 && (v == 3 || v == 4));
+            assert(a matches A::A1 { v } && (v == 3 || v == 4));
+            assert(!(a matches A::A1 { v } && (v == 2 || v == 4)));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_assoc_fail_1 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test1() {
+            let a = A::A1 { v: 3 };
+            assert(a matches A::A1 { v } && v == 3 || v == 4);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot find value `v` in this scope")
+}
+
+fn matches_syntax_context(expr: &str) -> String {
+    r#"
+    builtin_macros::verus! {
         enum E { A, B }
         proof fn test1() {
-            // TODO support this?
-            assert(false && E::A matches E::A ==> true);
+            assert("#
+        .to_string()
+        + expr
+        + r#");
         }
-    } => Err(err) => assert_vir_error_msg(err, "matches using ==> is currently not allowed on the right-hand-side of && and || (use parentheses)")
+    }
+    "#
+}
+
+macro_rules! test_matches_syntax_err {
+    ($(#[$attrs:meta])* $name:ident with $code:tt $msg:expr) => {
+        test_verify_one_file! {
+            $(#[$attrs])* $name matches_syntax_context(code_str! { $code })
+            => Err(err) => assert_vir_error_msg(err, $msg)
+        }
+    }
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_4a with (false && E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_4b with (false || E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_5 with (false == E::A matches E::A && true)
+    "matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_6 with (false <==> E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_nonsensical_1 with (3 < E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_nonsensical_2 with (3 >> E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_10 verus_code! {
+        enum E { A, B }
+        proof fn test1() {
+            assert(false && false ==> false);
+            assert(E::A matches E::B && false ==> false);
+
+            assert(!(false && false == false));
+            assert(!(E::A matches E::B && false == false));
+
+            assert(false && true ==> true);
+            assert(E::A matches E::B && true ==> true);
+
+            assert(!(true && true ==> false));
+            assert(!(E::A matches E::A && true ==> false));
+
+            assert(true && true || false);
+            assert(E::A matches E::A && true || false);
+
+            assert(!(false && true || false));
+            assert(!(E::A matches E::B && true || false));
+
+            assert(!(true || true ==> false));
+            assert(!(E::A matches E::A || true ==> false));
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
