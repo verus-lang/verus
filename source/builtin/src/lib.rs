@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(internal_features)]
 #![cfg_attr(
     verus_keep_ghost,
     feature(rustc_attrs),

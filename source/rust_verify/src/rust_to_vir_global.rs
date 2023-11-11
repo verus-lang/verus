@@ -3,7 +3,10 @@ use std::sync::Arc;
 use rustc_hir::{Item, ItemKind};
 use vir::ast::{IntRange, VirErr};
 
-use crate::{attributes::get_verifier_attrs, context::Context, verus_items::VerusItem};
+use crate::{
+    attributes::get_verifier_attrs, context::Context, unsupported_err_unless,
+    verus_items::VerusItem,
+};
 
 pub(crate) fn process_const_early<'tcx>(
     ctxt: &mut Context<'tcx>,
@@ -13,9 +16,14 @@ pub(crate) fn process_const_early<'tcx>(
     let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let err = crate::util::err_span(item.span, "invalid global size_of");
     if vattrs.size_of_global {
-        let ItemKind::Const(_ty, body_id) = item.kind else {
+        let ItemKind::Const(_ty, generics, body_id) = item.kind else {
             return err;
         };
+        unsupported_err_unless!(
+            generics.params.len() == 0 && generics.predicates.len() == 0,
+            item.span,
+            "const generics"
+        );
         let def_id = body_id.hir_id.owner.to_def_id();
 
         let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);

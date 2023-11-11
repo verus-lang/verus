@@ -2196,7 +2196,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
             let spans = SpanContextX::new(
                 tcx,
-                compiler.session().local_stable_crate_id(),
+                tcx.stable_crate_id(LOCAL_CRATE),
                 compiler.session().source_map(),
                 imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             );

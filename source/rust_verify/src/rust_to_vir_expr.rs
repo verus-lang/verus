@@ -282,7 +282,9 @@ pub(crate) fn get_adt_res<'tcx>(
             let variant_def = tcx.adt_def(struct_did).non_enum_variant();
             Ok((struct_did, variant_def, false))
         }
-        Res::Def(DefKind::TyAlias, alias_did) => {
+        Res::Def(DefKind::TyAlias { lazy }, alias_did) => {
+            unsupported_err_unless!(!lazy, span, "lazy type alias");
+
             let alias_ty = tcx.type_of(alias_did).skip_binder();
 
             let struct_did = match alias_ty.kind() {
@@ -1080,7 +1082,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 bctx,
                                 expr,
                                 def_id,
-                                bctx.types.node_substs(fun.hir_id),
+                                bctx.types.node_args(fun.hir_id),
                                 fun.span,
                                 args,
                                 modifier,
@@ -1662,7 +1664,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 bctx,
                 expr,
                 fn_def_id,
-                bctx.types.node_substs(expr.hir_id),
+                bctx.types.node_args(expr.hir_id),
                 *fn_span,
                 all_args,
                 modifier,
@@ -1670,7 +1672,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )
         }
         ExprKind::Closure(..) => closure_to_vir(bctx, expr, expr_typ()?, false, modifier),
-        ExprKind::Index(tgt_expr, idx_expr) => {
+        ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut
             // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
             // this is apparently determined by the (adjusted) type of the receiver

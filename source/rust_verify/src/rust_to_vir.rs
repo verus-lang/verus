@@ -74,6 +74,39 @@ fn check_item<'tcx>(
     }
 
     let visibility = || mk_visibility(ctxt, item.owner_id.to_def_id());
+
+    let mut handle_const_or_static = |body_id: &rustc_hir::BodyId| {
+        let def_id = body_id.hir_id.owner.to_def_id();
+        let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+        if vattrs.size_of_global {
+            return Ok(()); // handled earlier
+        }
+        if path.segments.iter().find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_")).is_some()
+        {
+            ctxt.erasure_info
+                .borrow_mut()
+                .ignored_functions
+                .push((item.owner_id.to_def_id(), item.span.data()));
+            return Ok(());
+        }
+
+        let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
+        let vir_ty = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
+
+        crate::rust_to_vir_func::check_item_const_or_static(
+            ctxt,
+            vir,
+            item.span,
+            item.owner_id.to_def_id(),
+            visibility(),
+            &module_path(),
+            ctxt.tcx.hir().attrs(item.hir_id()),
+            &vir_ty,
+            body_id,
+            matches!(item.kind, ItemKind::Static(_, _, _)),
+        )
+    };
+
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -217,8 +250,8 @@ fn check_item<'tcx>(
                     {
                         rustc_middle::ty::TyKind::Adt(
                             def.to_owned(),
-                            ctxt.tcx.mk_substs_from_iter(substs.iter().map(|g| match g.unpack() {
-                                rustc_middle::ty::subst::GenericArgKind::Type(_) => {
+                            ctxt.tcx.mk_args_from_iter(substs.iter().map(|g| match g.unpack() {
+                                rustc_middle::ty::GenericArgKind::Type(_) => {
                                     (*ctxt.tcx).types.never.into()
                                 }
                                 _ => g,
@@ -275,7 +308,7 @@ fn check_item<'tcx>(
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
                 // We keep this full list, with the first element being the Self type X
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.skip_binder().substs.types() {
+                for ty in trait_ref.skip_binder().args.types() {
                     types.push(mid_ty_to_vir(
                         ctxt.tcx,
                         &ctxt.verus_items,
@@ -425,41 +458,16 @@ fn check_item<'tcx>(
         {
             return Ok(());
         }
-        ItemKind::Const(_ty, body_id) | ItemKind::Static(_ty, Mutability::Not, body_id) => {
-            let def_id = body_id.hir_id.owner.to_def_id();
-            let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
-            if vattrs.size_of_global {
-                return Ok(()); // handled earlier
-            }
-            if path
-                .segments
-                .iter()
-                .find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_"))
-                .is_some()
-            {
-                ctxt.erasure_info
-                    .borrow_mut()
-                    .ignored_functions
-                    .push((item.owner_id.to_def_id(), item.span.data()));
-                return Ok(());
-            }
-
-            let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-            let vir_ty =
-                mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
-
-            crate::rust_to_vir_func::check_item_const_or_static(
-                ctxt,
-                vir,
+        ItemKind::Const(_ty, generics, body_id) => {
+            unsupported_err_unless!(
+                generics.params.len() == 0 && generics.predicates.len() == 0,
                 item.span,
-                item.owner_id.to_def_id(),
-                visibility(),
-                &module_path(),
-                ctxt.tcx.hir().attrs(item.hir_id()),
-                &vir_ty,
-                body_id,
-                matches!(item.kind, ItemKind::Static(_, _, _)),
-            )?;
+                "const generics"
+            );
+            handle_const_or_static(body_id)?;
+        }
+        ItemKind::Static(_ty, Mutability::Not, body_id) => {
+            handle_const_or_static(body_id)?;
         }
         ItemKind::Static(_ty, Mutability::Mut, _body_id) => {
             if vattrs.external {

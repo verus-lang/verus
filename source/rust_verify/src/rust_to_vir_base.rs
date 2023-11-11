@@ -9,8 +9,8 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
-use rustc_middle::ty::{BoundConstness, ImplPolarity, TraitPredicate};
 use rustc_middle::ty::{ClauseKind, GenericParamDefKind};
+use rustc_middle::ty::{ImplPolarity, TraitPredicate};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
@@ -195,7 +195,7 @@ pub(crate) fn get_impl_paths<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
     target_id: DefId,
-    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
 ) -> vir::ast::ImplPaths {
     let mut impl_paths = Vec::new();
     let param_env = tcx.param_env(param_env_src);
@@ -250,7 +250,7 @@ pub(crate) fn get_impl_paths<'tcx>(
                     impl_paths.push(impl_path);
 
                     let preds = tcx.predicates_of(u.impl_def_id);
-                    for p in preds.instantiate(tcx, u.substs).predicates {
+                    for p in preds.instantiate(tcx, u.args).predicates {
                         if !predicate_worklist.contains(&p) {
                             predicate_worklist.push(p);
                         }
@@ -357,7 +357,7 @@ pub(crate) fn mid_ty_simplify<'tcx>(
                     || is_ghost_or_tracked)
                     && args.len() == 1;
             if is_box || is_smart_ptr {
-                if let rustc_middle::ty::subst::GenericArgKind::Type(t) = args[0].unpack() {
+                if let rustc_middle::ty::GenericArgKind::Type(t) = args[0].unpack() {
                     mid_ty_simplify(tcx, verus_items, &t, false)
                 } else {
                     panic!("unexpected type argument")
@@ -457,11 +457,11 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {
                     match arg.unpack() {
-                        rustc_middle::ty::subst::GenericArgKind::Type(t) => {
+                        rustc_middle::ty::GenericArgKind::Type(t) => {
                             typ_args.push(t_rec(&t)?);
                         }
-                        rustc_middle::ty::subst::GenericArgKind::Lifetime(_) => {}
-                        rustc_middle::ty::subst::GenericArgKind::Const(cnst) => {
+                        rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
+                        rustc_middle::ty::GenericArgKind::Const(cnst) => {
                             typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
                         }
                     }
@@ -470,7 +470,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let (t0, ghost) = &typ_args[0];
 
                     let allocator_arg = match args[1].unpack() {
-                        rustc_middle::ty::subst::GenericArgKind::Type(t) => t,
+                        rustc_middle::ty::GenericArgKind::Type(t) => t,
                         _ => {
                             panic!("Box expected type arg");
                         }
@@ -480,7 +480,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     }
                     return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
                 }
-                if typ_args.len() == 1 {
+                if typ_args.len() >= 1 {
                     let (t0, ghost) = &typ_args[0];
                     let decorate = |d: TypDecoration, ghost: bool| {
                         Ok((Arc::new(TypX::Decorate(d, t0.clone())), ghost))
@@ -489,13 +489,21 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let rust_item = verus_items::get_rust_item(tcx, did);
                     match (verus_item, rust_item) {
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)), _) => {
+                            assert!(typ_args.len() == 1);
                             return decorate(TypDecoration::Ghost, true);
                         }
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Tracked)), _) => {
+                            assert!(typ_args.len() == 1);
                             return decorate(TypDecoration::Tracked, true);
                         }
-                        (_, Some(RustItem::Rc)) => return decorate(TypDecoration::Rc, *ghost),
-                        (_, Some(RustItem::Arc)) => return decorate(TypDecoration::Arc, *ghost),
+                        (_, Some(RustItem::Rc)) => {
+                            assert!(typ_args.len() == 2);
+                            return decorate(TypDecoration::Rc, *ghost);
+                        }
+                        (_, Some(RustItem::Arc)) => {
+                            assert!(typ_args.len() == 2);
+                            return decorate(TypDecoration::Arc, *ghost);
+                        }
                         _ => {}
                     }
                 }
@@ -564,10 +572,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   use crate::rustc_middle::ty::DefIdTree;
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
-            if t.substs.iter().find(|x| x.as_type().is_none()).is_some() {
+            if t.args.iter().find(|x| x.as_type().is_none()).is_some() {
                 unsupported_err!(span, "projection type")
             }
-            match (trait_def, t.substs.into_type_list(tcx)) {
+            match (trait_def, t.args.into_type_list(tcx)) {
                 (Some(trait_def), typs) if typs.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
                     // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
@@ -904,12 +912,8 @@ pub(crate) fn check_generics_bounds<'tcx>(
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
                 // can ignore lifetime bounds
             }
-            ClauseKind::Trait(TraitPredicate {
-                trait_ref,
-                constness: BoundConstness::NotConst,
-                polarity: ImplPolarity::Positive,
-            }) => {
-                let substs = trait_ref.substs;
+            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
+                let substs = trait_ref.args;
 
                 // For a bound like `T: SomeTrait<X, Y, Z>`, then:
                 // T should be index 0,
