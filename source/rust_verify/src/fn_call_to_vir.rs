@@ -21,8 +21,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{GenericArgKind, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -40,7 +39,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     f: DefId,
-    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     _fn_span: Span,
     args: Vec<&'tcx Expr<'tcx>>,
     outer_modifier: ExprModifier,
@@ -186,10 +185,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         let inst = rustc_middle::ty::Instance::resolve(tcx, param_env, f, normalized_substs);
         if let Ok(Some(inst)) = inst {
             if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let typs = mk_typ_args(bctx, &inst.substs, expr.span)?;
+                let typs = mk_typ_args(bctx, &inst.args, expr.span)?;
                 let f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
-                let impl_paths = get_impl_paths(bctx, did, &inst.substs);
+                let impl_paths = get_impl_paths(bctx, did, &inst.args);
                 resolved = Some((f, typs, impl_paths));
             }
         }
@@ -1329,7 +1328,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 fn get_impl_paths<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     f: DefId,
-    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
 ) -> vir::ast::ImplPaths {
     if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).skip_binder().kind() {
         crate::rust_to_vir_base::get_impl_paths(
@@ -1658,7 +1657,7 @@ fn mk_vir_args<'tcx>(
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     // TODO(main_new) is calling `subst` still correct with the new API?
     let tcx = bctx.ctxt.tcx;
-    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).subst(tcx, node_substs).skip_binder().inputs();
+    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).instantiate(tcx, node_substs).skip_binder().inputs();
     assert!(raw_inputs.len() == args.len());
     args.iter()
         .zip(raw_inputs)

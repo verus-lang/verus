@@ -4,12 +4,12 @@ use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility, mk_visibility_from_vis,
 };
 use crate::unsupported_err_unless;
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::err_span;
 use crate::verus_items::{PervasiveItem, VerusItem};
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{SubstsRef, TyKind};
+use rustc_middle::ty::{GenericArgsRef, TyKind};
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Variant, VirErr};
@@ -30,7 +30,7 @@ fn check_variant_data<'tcx, 'fd>(
     name: &Ident,
     variant_data_opt: Option<&'tcx rustc_hir::VariantData<'tcx>>,
     field_defs: impl Iterator<Item = &'fd rustc_middle::ty::FieldDef>,
-    substs: Option<SubstsRef<'tcx>>,
+    substs: Option<GenericArgsRef<'tcx>>,
     visibility: &vir::ast::Visibility,
 ) -> Result<(Variant, vir::ast::Visibility), VirErr>
 where
@@ -370,7 +370,7 @@ pub(crate) fn check_item_external<'tcx>(
         };
         use rustc_hir::GenericParamKind;
         use rustc_hir::LifetimeParamKind;
-        use rustc_middle::ty::subst::GenericArgKind;
+        use rustc_middle::ty::GenericArgKind;
 
         match (generic_arg.unpack(), &generic_param.kind) {
             (

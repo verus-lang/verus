@@ -103,6 +103,7 @@ pub fn enable_default_features_and_verus_attr(
             rustc_args.push(allow.to_string());
         }
     }
+    rustc_args.push("-Zcrate-attr=allow(internal_features)".to_string());
     for feature in &[
         "stmt_expr_attributes",
         "box_patterns",

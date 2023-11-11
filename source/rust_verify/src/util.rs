@@ -42,13 +42,13 @@ macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
             dbg!();
-            unsupported_err_span($span, $msg.to_string())?;
+            crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            unsupported_err_span($span, $msg.to_string())?;
+            crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
 }

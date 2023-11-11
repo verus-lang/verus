@@ -1,3 +1,5 @@
+#![allow(internal_features)]
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]

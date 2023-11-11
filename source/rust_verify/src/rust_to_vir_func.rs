@@ -15,8 +15,7 @@ use rustc_hir::{
     def::Res, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
     MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
-use rustc_middle::ty::SubstsRef;
-use rustc_middle::ty::{Clause, TyCtxt};
+use rustc_middle::ty::{Clause, GenericArgsRef, TyCtxt};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -237,8 +236,8 @@ pub(crate) fn handle_external_fn<'tcx>(
             // This is to ensure that we are comparing the type signatures with
             // the same type params even if the user inputs different generic params
             // note: rustc 1.69.0 has replaced bound_fn_sig with just fn_sig I think
-            let poly_sig1 = ctxt.tcx.fn_sig(*def_id1).subst(ctxt.tcx, substs1);
-            let poly_sig2 = ctxt.tcx.fn_sig(*def_id2).subst(ctxt.tcx, substs1);
+            let poly_sig1 = ctxt.tcx.fn_sig(*def_id1).instantiate(ctxt.tcx, substs1);
+            let poly_sig2 = ctxt.tcx.fn_sig(*def_id2).instantiate(ctxt.tcx, substs1);
             (poly_sig1, poly_sig2, substs1)
         }
         _ => {
@@ -819,7 +818,7 @@ fn is_mut_ty<'tcx>(
             )) = verus_item
             {
                 assert_eq!(args.len(), 1);
-                if let subst::GenericArgKind::Type(t) = args[0].unpack() {
+                if let GenericArgKind::Type(t) = args[0].unpack() {
                     if let Some((inner, None)) = is_mut_ty(ctxt, t) {
                         let mode_and_decoration = match bt {
                             BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
@@ -887,7 +886,7 @@ pub(crate) fn predicates_match<'tcx>(
 fn all_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: rustc_span::def_id::DefId,
-    substs: SubstsRef<'tcx>,
+    substs: GenericArgsRef<'tcx>,
 ) -> Vec<Clause<'tcx>> {
     let preds = tcx.predicates_of(id);
     let preds = preds.instantiate(tcx, substs);
@@ -956,7 +955,7 @@ pub(crate) fn get_external_def_id<'tcx>(
         // If this is a trait function, then the DefId we have right now points to
         // function definition in the trait definition.
         // We want to resolve to a specific definition in a trait implementation.
-        let node_substs = types.node_substs(hir_id);
+        let node_substs = types.node_args(hir_id);
         let param_env = tcx.param_env(proxy_fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
         let inst =
