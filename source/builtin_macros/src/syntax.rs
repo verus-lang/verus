@@ -3,6 +3,7 @@ use crate::EraseGhost;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
+use quote::format_ident;
 use quote::{quote, quote_spanned};
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
@@ -886,6 +887,7 @@ impl Visitor {
         }
         for item in items.iter_mut() {
             if let Item::Global(global) = &item {
+                use quote::ToTokens;
                 let Global {
                     attrs: _,
                     global_token: _,
@@ -907,12 +909,32 @@ impl Visitor {
                         }; },
                     );
                 } else {
-                    *item = Item::Verbatim(
-                        quote_spanned! { span => #[verus::internal(size_of)] const _: () = {
+                    let type_name_escaped = format!("{}", type_.into_token_stream())
+                        .replace(" ", "")
+                        .replace("<", "_LL_")
+                        .replace(">", "_RR_");
+                    if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        let err =
+                            "this type name is not supported (it must only include A-Za-z0-9_)";
+                        *item = Item::Verbatim(
+                            quote_spanned!(span => const _: () = { compile_error!(#err) };),
+                        );
+                    } else {
+                        let lemma_ident = format_ident!("size_of_{}", type_name_escaped);
+                        *item = Item::Verbatim(quote_spanned! { span =>
+                        #[verus::internal(size_of)] const _: () = {
                             ::builtin::global_size_of::<#type_>(#expr_lit);
                             #static_assert
-                        }; },
-                    );
+                        };
+
+                        ::builtin_macros::verus! {
+                        #[verifier::external_body]
+                        #[verifier::broadcast_forall]
+                        proof fn #lemma_ident()
+                            ensures ::vstd::layout::size_of::<#type_>() == #expr_lit {}
+                        }
+                        });
+                    }
                 }
             }
         }

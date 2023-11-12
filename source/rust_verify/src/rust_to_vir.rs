@@ -14,6 +14,7 @@ use crate::rust_to_vir_base::{
     typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, BuiltinTraitItem, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
@@ -744,11 +745,17 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
             }
         }
     }
+
+    let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for (_, owner_opt) in ctxt.krate.owners.iter_enumerated() {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    crate::rust_to_vir_global::process_const_early(ctxt, item)?;
+                    crate::rust_to_vir_global::process_const_early(
+                        ctxt,
+                        &mut typs_sizes_set,
+                        item,
+                    )?;
                 }
                 _ => (),
             }

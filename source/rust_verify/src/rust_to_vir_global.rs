@@ -1,15 +1,27 @@
 use std::sync::Arc;
 
 use rustc_hir::{Item, ItemKind};
-use vir::ast::{IntRange, VirErr};
+use vir::ast::{IntRange, Typ, TypX, VirErr};
 
 use crate::{
     attributes::get_verifier_attrs, context::Context, unsupported_err_unless,
     verus_items::VerusItem,
 };
 
+#[derive(Debug, Hash)]
+pub(crate) struct TypIgnoreImplPaths(pub Typ);
+
+impl PartialEq for TypIgnoreImplPaths {
+    fn eq(&self, other: &Self) -> bool {
+        vir::ast_util::types_equal(&self.0, &other.0)
+    }
+}
+
+impl Eq for TypIgnoreImplPaths {}
+
 pub(crate) fn process_const_early<'tcx>(
     ctxt: &mut Context<'tcx>,
+    typs_sizes_set: &mut std::collections::HashMap<TypIgnoreImplPaths, u128>,
     item: &Item<'tcx>,
 ) -> Result<(), VirErr> {
     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
@@ -73,28 +85,45 @@ pub(crate) fn process_const_early<'tcx>(
             return err;
         };
 
-        match &*ty {
-            vir::ast::TypX::Int(IntRange::USize) => {
-                let arch_word_bits = &mut Arc::make_mut(ctxt).arch_word_bits;
-                if arch_word_bits.is_some() {
+        vir::layout::layout_of_typ_supported(&ty, &crate::spans::err_air_span(item.span))?;
+
+        match typs_sizes_set.entry(TypIgnoreImplPaths(ty.clone())) {
+            std::collections::hash_map::Entry::Occupied(_occ) => {
+                return crate::util::err_span(
+                    item.span,
+                    format!(
+                        "the size of `{}` can only be set once per crate",
+                        vir::ast_util::typ_to_diagnostic_str(&ty)
+                    ),
+                );
+            }
+            std::collections::hash_map::Entry::Vacant(vac) => {
+                vac.insert(size);
+            }
+        }
+
+        if let TypX::Int(IntRange::USize | IntRange::ISize) = &*ty {
+            let arch_word_bits = &mut Arc::make_mut(ctxt).arch_word_bits;
+            if let Some(arch_word_bits) = arch_word_bits {
+                let vir::ast::ArchWordBits::Exactly(size_bits_set) = arch_word_bits else {
+                    panic!("unexpected ArchWordBits");
+                };
+                if (size * 8) as u32 != *size_bits_set {
                     return crate::util::err_span(
                         item.span,
-                        "the size of usize can only be set once per crate",
+                        format!("usize or isize have already been set to {} bits", *size_bits_set),
                     );
                 }
-                *arch_word_bits = Some(match size {
-                    4 | 8 => vir::ast::ArchWordBits::Exactly((size as u32) * 8),
-                    _ => {
-                        return crate::util::err_span(
-                            item.span,
-                            "usize can be either 32 or 64 bits",
-                        );
-                    }
-                });
             }
-            _ => {
-                return crate::util::err_span(item.span, "only usize is currently supported here");
-            }
+            *arch_word_bits = Some(match size {
+                4 | 8 => vir::ast::ArchWordBits::Exactly((size * 8) as u32),
+                _ => {
+                    return crate::util::err_span(
+                        item.span,
+                        "usize and isize can be either 32 or 64 bits",
+                    );
+                }
+            });
         }
     }
     Ok(())
