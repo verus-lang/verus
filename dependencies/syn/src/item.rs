@@ -72,7 +72,7 @@ ast_enum_of_structs! {
 
         /// Tokens forming an item not interpreted by Syn.
         Verbatim(TokenStream),
-        
+
         // Verus
         Global(Global),
 

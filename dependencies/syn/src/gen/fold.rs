@@ -374,6 +374,15 @@ pub trait Fold {
     fn fold_global(&mut self, i: Global) -> Global {
         fold_global(self, i)
     }
+    fn fold_global_inner(&mut self, i: GlobalInner) -> GlobalInner {
+        fold_global_inner(self, i)
+    }
+    fn fold_global_layout(&mut self, i: GlobalLayout) -> GlobalLayout {
+        fold_global_layout(self, i)
+    }
+    fn fold_global_size_of(&mut self, i: GlobalSizeOf) -> GlobalSizeOf {
+        fold_global_size_of(self, i)
+    }
     fn fold_ident(&mut self, i: Ident) -> Ident {
         fold_ident(self, i)
     }
@@ -2189,6 +2198,50 @@ where
     Global {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         global_token: Token![global](tokens_helper(f, &node.global_token.span)),
+        inner: f.fold_global_inner(node.inner),
+        semi: Token![;](tokens_helper(f, &node.semi.spans)),
+    }
+}
+pub fn fold_global_inner<F>(f: &mut F, node: GlobalInner) -> GlobalInner
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        GlobalInner::SizeOf(_binding_0) => {
+            GlobalInner::SizeOf(f.fold_global_size_of(_binding_0))
+        }
+        GlobalInner::Layout(_binding_0) => {
+            GlobalInner::Layout(f.fold_global_layout(_binding_0))
+        }
+    }
+}
+pub fn fold_global_layout<F>(f: &mut F, node: GlobalLayout) -> GlobalLayout
+where
+    F: Fold + ?Sized,
+{
+    GlobalLayout {
+        layout_token: Token![layout](tokens_helper(f, &node.layout_token.span)),
+        type_: f.fold_type(node.type_),
+        is_token: Token![is](tokens_helper(f, &node.is_token.span)),
+        size: (
+            f.fold_ident((node.size).0),
+            Token![==](tokens_helper(f, &(node.size).1.spans)),
+            f.fold_expr_lit((node.size).2),
+        ),
+        align: (node.align)
+            .map(|it| (
+                Token![,](tokens_helper(f, &(it).0.spans)),
+                f.fold_ident((it).1),
+                Token![==](tokens_helper(f, &(it).2.spans)),
+                f.fold_expr_lit((it).3),
+            )),
+    }
+}
+pub fn fold_global_size_of<F>(f: &mut F, node: GlobalSizeOf) -> GlobalSizeOf
+where
+    F: Fold + ?Sized,
+{
+    GlobalSizeOf {
         size_of_token: Token![size_of](tokens_helper(f, &node.size_of_token.span)),
         type_: f.fold_type(node.type_),
         eq_token: Token![==](tokens_helper(f, &node.eq_token.spans)),

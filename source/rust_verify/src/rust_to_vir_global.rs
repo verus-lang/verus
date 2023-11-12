@@ -45,7 +45,7 @@ pub(crate) fn process_const_early<'tcx>(
         let rustc_hir::ExprKind::Block(block, _) = body.value.kind else {
             return err;
         };
-        if block.stmts.len() != 1 {
+        if block.stmts.len() < 1 {
             return err;
         }
         let rustc_hir::StmtKind::Semi(expr) = block.stmts[0].kind else {

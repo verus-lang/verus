@@ -373,6 +373,15 @@ pub trait Visit<'ast> {
     fn visit_global(&mut self, i: &'ast Global) {
         visit_global(self, i);
     }
+    fn visit_global_inner(&mut self, i: &'ast GlobalInner) {
+        visit_global_inner(self, i);
+    }
+    fn visit_global_layout(&mut self, i: &'ast GlobalLayout) {
+        visit_global_layout(self, i);
+    }
+    fn visit_global_size_of(&mut self, i: &'ast GlobalSizeOf) {
+        visit_global_size_of(self, i);
+    }
     fn visit_ident(&mut self, i: &'ast Ident) {
         visit_ident(self, i);
     }
@@ -2421,6 +2430,43 @@ where
         v.visit_attribute(it);
     }
     tokens_helper(v, &node.global_token.span);
+    v.visit_global_inner(&node.inner);
+    tokens_helper(v, &node.semi.spans);
+}
+pub fn visit_global_inner<'ast, V>(v: &mut V, node: &'ast GlobalInner)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        GlobalInner::SizeOf(_binding_0) => {
+            v.visit_global_size_of(_binding_0);
+        }
+        GlobalInner::Layout(_binding_0) => {
+            v.visit_global_layout(_binding_0);
+        }
+    }
+}
+pub fn visit_global_layout<'ast, V>(v: &mut V, node: &'ast GlobalLayout)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.layout_token.span);
+    v.visit_type(&node.type_);
+    tokens_helper(v, &node.is_token.span);
+    v.visit_ident(&(node.size).0);
+    tokens_helper(v, &(node.size).1.spans);
+    v.visit_expr_lit(&(node.size).2);
+    if let Some(it) = &node.align {
+        tokens_helper(v, &(it).0.spans);
+        v.visit_ident(&(it).1);
+        tokens_helper(v, &(it).2.spans);
+        v.visit_expr_lit(&(it).3);
+    }
+}
+pub fn visit_global_size_of<'ast, V>(v: &mut V, node: &'ast GlobalSizeOf)
+where
+    V: Visit<'ast> + ?Sized,
+{
     tokens_helper(v, &node.size_of_token.span);
     v.visit_type(&node.type_);
     tokens_helper(v, &node.eq_token.spans);

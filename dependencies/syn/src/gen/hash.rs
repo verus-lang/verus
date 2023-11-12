@@ -1514,6 +1514,44 @@ impl Hash for Global {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.inner.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for GlobalInner {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            GlobalInner::SizeOf(v0) => {
+                state.write_u8(0u8);
+                v0.hash(state);
+            }
+            GlobalInner::Layout(v0) => {
+                state.write_u8(1u8);
+                v0.hash(state);
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for GlobalLayout {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.type_.hash(state);
+        self.size.hash(state);
+        self.align.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for GlobalSizeOf {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
         self.type_.hash(state);
         self.expr_lit.hash(state);
     }
