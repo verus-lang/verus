@@ -44,6 +44,7 @@ pub mod func_to_air;
 pub mod headers;
 pub mod interpreter;
 mod inv_masks;
+pub mod layout;
 pub mod messages;
 pub mod modes;
 pub mod poly;
