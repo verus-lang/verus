@@ -106,4 +106,5 @@ jobs:
           vargo clean
           vargo build
           $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test basic
+          $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test layout
         shell: powershell

@@ -341,7 +341,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_align_of_1 ["vstd", "--compile"] => verus_code! {
+    #[test] test_layout_1 ["vstd", "--compile"] => verus_code! {
         #[repr(C)]
         struct S { v: u64 }
 
@@ -351,5 +351,69 @@ test_verify_one_file_with_options! {
             assert(core::mem::size_of::<S>() == 8);
             assert(core::mem::align_of::<S>() == 8);
         }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_2 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global layout S is size == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S>() == 8);
+            assert(core::mem::align_of::<S>() == 8); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_3 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64, z: u32 }
+
+        global layout S is size == 16, align == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S>() == 16);
+            assert(core::mem::size_of::<S>() != 8);
+            assert(core::mem::align_of::<S>() == 8);
+            assert(core::mem::align_of::<S>() != 16);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_4 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64, z: u32 }
+
+        global layout S is size == 16, align == 16;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected alignment"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_5 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64, z: u32 }
+
+        global layout S is size == 8, align == 8;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected size"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_6 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S<V> { v: V, z: V }
+
+        global layout S<u64> is size == 16, align == 8;
+        global layout S<u32> is size == 8, align == 4;
     } => Ok(())
 }
