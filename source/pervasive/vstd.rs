@@ -10,6 +10,7 @@
 #![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
+#![feature(allocator_api)]
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 
 #[cfg(feature = "alloc")]
