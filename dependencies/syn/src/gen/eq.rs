@@ -1104,8 +1104,35 @@ impl Eq for Global {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Global {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.type_ == other.type_
-            && self.expr_lit == other.expr_lit
+        self.attrs == other.attrs && self.inner == other.inner
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for GlobalInner {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for GlobalInner {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (GlobalInner::SizeOf(self0), GlobalInner::SizeOf(other0)) => self0 == other0,
+            (GlobalInner::Layout(self0), GlobalInner::Layout(other0)) => self0 == other0,
+            _ => false,
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for GlobalLayout {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for GlobalLayout {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_ == other.type_ && self.size == other.size && self.align == other.align
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for GlobalSizeOf {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for GlobalSizeOf {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_ == other.type_ && self.expr_lit == other.expr_lit
     }
 }
 #[cfg(feature = "full")]

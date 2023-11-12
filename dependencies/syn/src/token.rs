@@ -737,6 +737,7 @@ define_keywords! {
     "has"         pub struct Has          /// `has`
     "global"      pub struct Global       /// `global`
     "size_of"     pub struct SizeOf       /// `size_of`
+    "layout"      pub struct Layout       /// `layout`
 }
 
 define_punctuation! {
@@ -953,6 +954,7 @@ macro_rules! export_token_macro {
             [has]         => { $crate::token::Has };
             [global]      => { $crate::token::Global };
             [size_of]     => { $crate::token::SizeOf };
+            [layout]      => { $crate::token::Layout };
             [FnSpec]      => { $crate::token::FnSpec };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };

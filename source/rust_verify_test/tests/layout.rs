@@ -174,7 +174,7 @@ test_verify_one_file_with_options! {
     #[test] test_set_to_both_fail_1 ["vstd"] => verus_code! {
         global size_of usize == 8;
         global size_of usize == 4;
-    } => Err(err) => assert_rust_error_msg(err, "the name `size_of_usize` is defined multiple times")
+    } => Err(err) => assert_rust_error_msg(err, "the name `VERUS_layout_of_usize` is defined multiple times")
 }
 
 test_verify_one_file_with_options! {
@@ -336,6 +336,20 @@ test_verify_one_file_with_options! {
 
         fn test() {
             assert(core::mem::size_of::<S<U>>() == 8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_align_of_1 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global layout S is size == 8, align == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S>() == 8);
+            assert(core::mem::align_of::<S>() == 8);
         }
     } => Ok(())
 }

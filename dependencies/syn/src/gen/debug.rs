@@ -1626,6 +1626,44 @@ impl Debug for Global {
         let mut formatter = formatter.debug_struct("Global");
         formatter.field("attrs", &self.attrs);
         formatter.field("global_token", &self.global_token);
+        formatter.field("inner", &self.inner);
+        formatter.field("semi", &self.semi);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for GlobalInner {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GlobalInner::SizeOf(v0) => {
+                let mut formatter = formatter.debug_tuple("SizeOf");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            GlobalInner::Layout(v0) => {
+                let mut formatter = formatter.debug_tuple("Layout");
+                formatter.field(v0);
+                formatter.finish()
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for GlobalLayout {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("GlobalLayout");
+        formatter.field("layout_token", &self.layout_token);
+        formatter.field("type_", &self.type_);
+        formatter.field("is_token", &self.is_token);
+        formatter.field("size", &self.size);
+        formatter.field("align", &self.align);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for GlobalSizeOf {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("GlobalSizeOf");
         formatter.field("size_of_token", &self.size_of_token);
         formatter.field("type_", &self.type_);
         formatter.field("eq_token", &self.eq_token);
