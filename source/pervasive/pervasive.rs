@@ -299,7 +299,7 @@ pub trait VecAdditionalExecFns<T> {
 }
 
 #[cfg(feature = "alloc")]
-impl<T> VecAdditionalExecFns<T> for Vec<T> {
+impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
     /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
 
     #[verifier::external_body]
