@@ -41,13 +41,13 @@ use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: f32 = 3000000f32;
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub(crate) struct ProgressBarId(usize, usize);
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub(crate) struct ProgressBarId(String);
 
 trait Diagnostics: air::messages::Diagnostics {
     fn use_progress_bars(&self) -> bool;
-    fn add_progress_bar(&self, msg: CommandContext) -> ProgressBarId;
-    fn complete_progress_bar(&self, pid: ProgressBarId);
+    fn add_progress_bar(&self, ctx: CommandContext);
+    fn complete_progress_bar(&self, ctx: CommandContext);
 }
 
 pub(crate) struct Reporter<'tcx> {
@@ -147,18 +147,18 @@ impl Diagnostics for Reporter<'_> {
     fn use_progress_bars(&self) -> bool {
         false
     }
-    fn add_progress_bar(&self, _: CommandContext) -> ProgressBarId {
+    fn add_progress_bar(&self, _: CommandContext) {
         panic!("progress bars not supported in single-threaded Reporter");
     }
-    fn complete_progress_bar(&self, _: ProgressBarId) {
+    fn complete_progress_bar(&self, _: CommandContext) {
         panic!("progress bars not supported in single-threaded Reporter");
     }
 }
 
 /// A reporter message that is being collected by the main thread
 pub(crate) enum ReporterMessage {
-    ReportLongRunning(ProgressBarId, CommandContext),
-    FinishLongRunning(ProgressBarId),
+    ReportLongRunning(CommandContext),
+    FinishLongRunning(CommandContext),
     Message(usize, Message, MessageLevel, bool),
     // Debugger(),
     Done(usize),
@@ -168,12 +168,11 @@ pub(crate) enum ReporterMessage {
 pub(crate) struct QueuedReporter {
     bucket_id: usize,
     queue: std::sync::mpsc::Sender<ReporterMessage>,
-    next_bucket_progress_bar_id: std::cell::RefCell<usize>,
 }
 
 impl QueuedReporter {
     pub(crate) fn new(bucket_id: usize, queue: std::sync::mpsc::Sender<ReporterMessage>) -> Self {
-        Self { bucket_id, queue, next_bucket_progress_bar_id: Default::default() }
+        Self { bucket_id, queue }
     }
 
     pub(crate) fn done(&self) {
@@ -216,17 +215,13 @@ impl Diagnostics for QueuedReporter {
         true
     }
 
-    fn add_progress_bar(&self, pb: CommandContext) -> ProgressBarId {
-        let mut next_bucket_progress_bar_id = self.next_bucket_progress_bar_id.borrow_mut();
-        let pid = ProgressBarId(self.bucket_id, *next_bucket_progress_bar_id);
+    fn add_progress_bar(&self, pb: CommandContext) {
         self.queue
-            .send(ReporterMessage::ReportLongRunning(pid, pb))
+            .send(ReporterMessage::ReportLongRunning(pb))
             .expect("could not send the message!");
-        *next_bucket_progress_bar_id += 1;
-        pid
     }
 
-    fn complete_progress_bar(&self, f: ProgressBarId) {
+    fn complete_progress_bar(&self, f: CommandContext) {
         self.queue
             .send(ReporterMessage::FinishLongRunning(f))
             .expect("could not send the message!");
@@ -594,21 +589,21 @@ impl Verifier {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let report_long_running = || {
-            let mut progress_bar_id = None;
             let report_fn: Box<dyn FnMut(std::time::Duration, bool) -> ()> = Box::new(
                 move |elapsed, completed| {
                     if !completed {
-                        let mut msg = format!(
-                            "{} has been running for {} seconds",
-                            context.desc,
-                            elapsed.as_secs()
-                        );
                         if reporter.use_progress_bars() {
-                            progress_bar_id = Some(reporter.add_progress_bar(context.clone()));
+                            reporter.add_progress_bar(context.clone());
+                        } else {
+                            let msg = format!(
+                                "{} has been running for {} seconds\nreporting errors as they are discovered (they may not be in source order)",
+                                context.desc,
+                                elapsed.as_secs()
+                            );
+                            let msg = note(&context.span, msg);
+                            reporter.report_now(&msg.to_any());
                         }
                         if let Some(mut in_line_order) = diagnostics_to_report.take() {
-                            msg = msg
-                                + "\nreporting errors as they are discovered (they may not be in source order)";
                             in_line_order.sort_by_key(|(m, _)| {
                                 m.spans
                                     .get(0)
@@ -618,11 +613,9 @@ impl Verifier {
                                 reporter.report_as(&error.clone().to_any(), error_level);
                             }
                         }
-                        let msg = note(&context.span, msg);
-                        reporter.report_now(&msg.to_any());
                     } else {
                         if reporter.use_progress_bars() {
-                            reporter.complete_progress_bar(progress_bar_id.take().unwrap());
+                            reporter.complete_progress_bar(context.clone());
                         } else {
                             let msg = format!(
                                 "{} finished in {} seconds",
@@ -1784,8 +1777,9 @@ impl Verifier {
             }
 
             let multi_progress = indicatif::MultiProgress::with_draw_target(
-                indicatif::ProgressDrawTarget::stderr_with_hz(2),
+                indicatif::ProgressDrawTarget::stderr_with_hz(1),
             );
+            let mut multi_progress_header = None;
             let mut progress_bars = HashMap::new();
 
             // start handling messages, we keep track of the current active bucket for which we
@@ -1863,55 +1857,163 @@ impl Verifier {
 
                         num_done = num_done + 1;
                     }
-                    ReporterMessage::ReportLongRunning(pid, context) => {
-                        let pb = multi_progress.insert_from_back(
-                            0,
-                            indicatif::ProgressBar::new_spinner()
-                                .with_elapsed(Duration::from_millis(2000)),
-                        );
-                        pb.enable_steady_tick(std::time::Duration::from_millis(120));
-                        let progress_style =
-                            indicatif::ProgressStyle::with_template("{prefix} {elapsed}\n{msg}")
-                                .expect("invalid progress style");
-                        pb.set_style(progress_style);
+                    ReporterMessage::ReportLongRunning(context) => {
                         let CommandContext { fun, span, desc } = &context;
                         let span = from_raw_span(&span.raw_span).expect("valid span");
                         let span_str = source_map.span_to_diagnostic_string(span);
-                        pb.set_prefix(format!(
-                            "{} {} {} {} {}",
-                            console::style("•").red(),
-                            span_str,
-                            console::style("has been").bold(),
-                            console::style("running").bold().red(),
-                            console::style("for").bold()
-                        ));
-                        pb.set_message(format!(
-                            "  ⌝ {} {} {}",
-                            desc,
-                            console::style("for").bold(),
-                            fun_as_friendly_rust_name(&fun)
-                        ));
-                        progress_bars.insert(pid, (context, pb));
+                        let pid = ProgressBarId(span_str.clone());
+                        if progress_bars.contains_key(&pid) {
+                            // we already have a primary progress bar, so this query is either for
+                            // error localization or recommends checking
+                            let (pb, pb_aux) = progress_bars.remove(&pid).unwrap();
+                            match pb_aux {
+                                None => {
+                                    let pb_aux = multi_progress.insert_from_back(
+                                        0,
+                                        indicatif::ProgressBar::new_spinner()
+                                            .with_elapsed(Duration::from_millis(2000)),
+                                    );
+                                    pb_aux
+                                        .enable_steady_tick(std::time::Duration::from_millis(120));
+                                    let progress_style = indicatif::ProgressStyle::with_template(
+                                        "{prefix} {elapsed}\n{msg}",
+                                    )
+                                    .expect("invalid progress style");
+                                    pb_aux.set_style(progress_style);
+                                    pb_aux.set_prefix(format!(
+                                        "{} {} {} {} {}",
+                                        console::style("•").red(),
+                                        span_str,
+                                        console::style("has been").bold(),
+                                        console::style("running").bold().red(),
+                                        console::style("for").bold()
+                                    ));
+                                    pb_aux.set_message(format!(
+                                        "  ⌝ {} {} {} {}",
+                                        desc,
+                                        console::style("for").bold(),
+                                        fun_as_friendly_rust_name(&fun),
+                                        console::style("(auxiliary checks)").bold()
+                                    ));
+                                    progress_bars.insert(pid, (pb, Some(pb_aux)));
+                                }
+                                Some(pb_aux) => {
+                                    let new_pb_aux = multi_progress.insert_after(
+                                        &pb_aux,
+                                        indicatif::ProgressBar::new_spinner()
+                                            .with_elapsed(pb_aux.elapsed()),
+                                    );
+                                    pb_aux.finish_and_clear();
+                                    new_pb_aux
+                                        .enable_steady_tick(std::time::Duration::from_millis(120));
+                                    let progress_style = indicatif::ProgressStyle::with_template(
+                                        "{prefix} {elapsed}\n{msg}",
+                                    )
+                                    .expect("invalid progress style");
+                                    new_pb_aux.set_style(progress_style);
+                                    new_pb_aux.set_prefix(format!(
+                                        "{} {} {} {} {}",
+                                        console::style("•").red(),
+                                        span_str,
+                                        console::style("has been").bold(),
+                                        console::style("running").bold().red(),
+                                        console::style("for").bold()
+                                    ));
+                                    new_pb_aux.set_message(format!(
+                                        "  ⌝ {} {} {} {}",
+                                        desc,
+                                        console::style("for").bold(),
+                                        fun_as_friendly_rust_name(&fun),
+                                        console::style("(auxiliary checks)").bold()
+                                    ));
+                                    progress_bars.insert(pid, (pb, Some(new_pb_aux)));
+                                }
+                            }
+                        } else {
+                            if let None = multi_progress_header {
+                                let header_pb = multi_progress
+                                    .insert_from_back(0, indicatif::ProgressBar::new_spinner());
+                                let progress_style =
+                                    indicatif::ProgressStyle::with_template("{msg}")
+                                        .expect("invalid progress style");
+                                header_pb.set_style(progress_style);
+                                header_pb.set_message(format!(
+                                    "{}",
+                                    console::style("Some queries are taking longer than 2s (diagnostics for these may be reported out of order)").bold(),
+                                ));
+                                header_pb.finish();
+                                multi_progress_header = Some(header_pb);
+                            }
+                            let pb = multi_progress.insert_from_back(
+                                0,
+                                indicatif::ProgressBar::new_spinner()
+                                    .with_elapsed(Duration::from_millis(2000)),
+                            );
+                            pb.enable_steady_tick(std::time::Duration::from_millis(120));
+                            let progress_style = indicatif::ProgressStyle::with_template(
+                                "{prefix} {elapsed}\n{msg}",
+                            )
+                            .expect("invalid progress style");
+                            pb.set_style(progress_style);
+                            let CommandContext { fun, span, desc } = &context;
+                            let span = from_raw_span(&span.raw_span).expect("valid span");
+                            let span_str = source_map.span_to_diagnostic_string(span);
+                            pb.set_prefix(format!(
+                                "{} {} {} {} {}",
+                                console::style("•").red(),
+                                span_str,
+                                console::style("has been").bold(),
+                                console::style("running").bold().red(),
+                                console::style("for").bold()
+                            ));
+                            pb.set_message(format!(
+                                "  ⌝ {} {} {}",
+                                desc,
+                                console::style("for").bold(),
+                                fun_as_friendly_rust_name(&fun)
+                            ));
+                            progress_bars.insert(pid, (pb, None));
+                        }
                     }
-                    ReporterMessage::FinishLongRunning(pid) => {
-                        let (context, pb) = progress_bars.get_mut(&pid).unwrap();
+                    ReporterMessage::FinishLongRunning(context) => {
                         let CommandContext { fun, span, desc } = &context;
                         let span = from_raw_span(&span.raw_span).expect("valid span");
                         let span_str = source_map.span_to_diagnostic_string(span);
-                        pb.set_prefix(format!(
-                            "{} {} {} {} {}",
-                            console::style("✔").blue(),
-                            span_str,
-                            console::style("has").bold(),
-                            console::style("finished").bold().blue(),
-                            console::style("in").bold()
-                        ));
-                        pb.finish_with_message(format!(
-                            "  ⌝ {} {} {}",
-                            desc,
-                            console::style("for").bold(),
-                            fun_as_friendly_rust_name(&fun)
-                        ));
+                        let pid = ProgressBarId(span_str.clone());
+                        let (pb, pb_aux) = progress_bars.get_mut(&pid).unwrap();
+                        if !pb.is_finished() {
+                            pb.set_prefix(format!(
+                                "{} {} {} {} {}",
+                                console::style("✔").blue(),
+                                span_str,
+                                console::style("has").bold(),
+                                console::style("finished").bold().blue(),
+                                console::style("in").bold()
+                            ));
+                            pb.finish_with_message(format!(
+                                "  ⌝ {} {} {}",
+                                desc,
+                                console::style("for").bold(),
+                                fun_as_friendly_rust_name(&fun)
+                            ));
+                        } else {
+                            let pb_aux = pb_aux.as_ref().unwrap();
+                            pb_aux.set_prefix(format!(
+                                "{} {} {} {} {}",
+                                console::style("✔").blue(),
+                                span_str,
+                                console::style("has").bold(),
+                                console::style("finished").bold().blue(),
+                                console::style("in").bold()
+                            ));
+                            pb_aux.finish_with_message(format!(
+                                "  ⌝ {} {} {} {}",
+                                desc,
+                                console::style("for").bold(),
+                                fun_as_friendly_rust_name(&fun),
+                                console::style("(auxiliary checks)").bold()
+                            ));
+                        }
                     }
                 }
 
