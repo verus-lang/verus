@@ -4,7 +4,6 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 use quote::{quote, quote_spanned};
-use std::iter::FromIterator;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
@@ -2856,6 +2855,7 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
             _ => {}
         }
     }
+    use std::iter::FromIterator;
     proc_macro::TokenStream::from_iter(tokens.into_iter())
 }
 

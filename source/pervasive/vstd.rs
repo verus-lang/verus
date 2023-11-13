@@ -10,8 +10,8 @@
 #![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
-#![feature(allocator_api)]
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
+#![cfg_attr(verus_keep_ghost, feature(allocator_api))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

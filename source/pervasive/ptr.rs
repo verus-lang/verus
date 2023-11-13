@@ -2,7 +2,6 @@
 
 use alloc::alloc::Layout;
 use core::{marker, mem, mem::MaybeUninit};
-use alloc::alloc::Allocator;
 
 use builtin::*;
 use builtin_macros::*;
@@ -11,6 +10,8 @@ use crate::pervasive::*;
 use crate::modes::*;
 use crate::prelude::*;
 use crate::layout::*;
+
+#[cfg(verus_keep_ghost)]
 use crate::set_lib::set_int_range;
 
 verus!{
@@ -519,7 +520,7 @@ impl<V> PPtr<V> {
         // The 'add' can't overflow, since we already know (size, align) is a valid layout.
         let layout = Layout::from_size_align(size + align, align).unwrap();
         let p = PPtr {
-            uptr: alloc::alloc::Global.allocate(layout).unwrap().as_ptr() as *mut V,
+            uptr: unsafe { ::alloc::alloc::alloc(layout) as *mut V },
         };
 
         // See explanation about exposing pointers, above
@@ -645,13 +646,12 @@ impl<V> PPtr<V> {
         opens_invariants none
     {
         unsafe {
-            let nn = core::ptr::NonNull::new_unchecked(self.uptr as *mut u8);
             let layout = alloc::alloc::Layout::for_value(&*self.uptr);
             let size = layout.size();
             let align = layout.align();
             // Add the padding to match what we did in 'alloc'
             let layout = Layout::from_size_align_unchecked(size + align, align);
-            alloc::alloc::Global.deallocate(nn, alloc::alloc::Layout::for_value(&*self.uptr));
+            ::alloc::alloc::dealloc(self.uptr as *mut u8, layout);
         }
     }
 
@@ -675,8 +675,7 @@ impl<V> PPtr<V> {
             // and that it's safe to call 'deallocate'
             // Remember to add the padding, like in `alloc`
             let layout = Layout::from_size_align_unchecked(size + align, align);
-            let nn = core::ptr::NonNull::new_unchecked(self.uptr as *mut u8);
-            alloc::alloc::Global.deallocate(nn, alloc::alloc::Layout::for_value(&*self.uptr));
+            ::alloc::alloc::dealloc(self.uptr as *mut u8, layout);
         }
     }
 
@@ -723,6 +722,7 @@ impl<V> PPtr<V> {
 // Manipulating the contents in a PointsToRaw
 
 impl PPtr<u8> {
+    #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))]
     #[verifier::external_body]
     fn copy_nonoverlapping(&self, dst: PPtr<u8>, count: usize, perm_src: &PointsToRaw, perm_dst: &mut PointsToRaw)
         requires perm_src.contains_range(self.id(), count as int),
@@ -736,6 +736,7 @@ impl PPtr<u8> {
         }
     }
 
+    #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))]
     #[verifier::external_body]
     fn write_bytes(&self, val: u8, count: usize, perm: &mut PointsToRaw)
         requires old(perm).contains_range(self.id(), count as int),
