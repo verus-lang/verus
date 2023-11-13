@@ -2853,6 +2853,86 @@
         "global_token": {
           "token": "Global"
         },
+        "inner": {
+          "syn": "GlobalInner"
+        },
+        "semi": {
+          "token": "Semi"
+        }
+      }
+    },
+    {
+      "ident": "GlobalInner",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "SizeOf": [
+          {
+            "syn": "GlobalSizeOf"
+          }
+        ],
+        "Layout": [
+          {
+            "syn": "GlobalLayout"
+          }
+        ]
+      }
+    },
+    {
+      "ident": "GlobalLayout",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "layout_token": {
+          "token": "Layout"
+        },
+        "type_": {
+          "syn": "Type"
+        },
+        "is_token": {
+          "token": "Is"
+        },
+        "size": {
+          "tuple": [
+            {
+              "proc_macro2": "Ident"
+            },
+            {
+              "token": "EqEq"
+            },
+            {
+              "syn": "ExprLit"
+            }
+          ]
+        },
+        "align": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Comma"
+              },
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "EqEq"
+              },
+              {
+                "syn": "ExprLit"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "GlobalSizeOf",
+      "features": {
+        "any": []
+      },
+      "fields": {
         "size_of_token": {
           "token": "SizeOf"
         },
@@ -6701,6 +6781,7 @@
     "InvariantEnsures": "invariant_ensures",
     "Is": "is",
     "LArrow": "<-",
+    "Layout": "layout",
     "Le": "<=",
     "Let": "let",
     "Loop": "loop",

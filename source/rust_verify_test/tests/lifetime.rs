@@ -561,7 +561,7 @@ test_verify_one_file! {
     #[test] tracked_new_issue870 verus_code! {
         use vstd::ptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(perm), Tracked(dealloc)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);
@@ -575,11 +575,11 @@ test_verify_one_file! {
     #[test] tracked_new2_issue870 verus_code! {
         use vstd::ptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(perm), Tracked(dealloc)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);
-            pptr.dispose(Tracked(perm));
+            pptr.dispose(Tracked(perm), Tracked(dealloc));
             let z: u64 = *x; // but x is still available here
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move out of `perm` because it is borrowed")

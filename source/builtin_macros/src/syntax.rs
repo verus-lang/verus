@@ -3,8 +3,8 @@ use crate::EraseGhost;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
+use quote::format_ident;
 use quote::{quote, quote_spanned};
-use std::iter::FromIterator;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
@@ -887,33 +887,78 @@ impl Visitor {
         }
         for item in items.iter_mut() {
             if let Item::Global(global) = &item {
-                let Global {
-                    attrs: _,
-                    global_token: _,
-                    size_of_token: _,
-                    type_,
-                    eq_token: _,
-                    expr_lit,
-                } = global;
+                use quote::ToTokens;
+                let Global { attrs: _, global_token: _, inner, semi: _ } = global;
+                let (type_, size_lit, align_lit) = match inner {
+                    syn_verus::GlobalInner::SizeOf(size_of) => {
+                        (&size_of.type_, &size_of.expr_lit, None)
+                    }
+                    syn_verus::GlobalInner::Layout(layout) => {
+                        (&layout.type_, &layout.size.2, layout.align.as_ref().map(|a| &a.3))
+                    }
+                };
                 let span = item.span();
-                let static_assert = quote_spanned! { span =>
-                    if ::core::mem::size_of::<#type_>() != #expr_lit {
+                let static_assert_size = quote! {
+                    if ::core::mem::size_of::<#type_>() != #size_lit {
                         panic!("does not have the expected size");
                     }
+                };
+                let static_assert_align = if let Some(align_lit) = align_lit {
+                    quote! {
+                        if ::core::mem::align_of::<#type_>() != #align_lit {
+                            panic!("does not have the expected alignment");
+                        }
+                    }
+                } else {
+                    quote! {}
                 };
                 if self.erase_ghost.erase() {
                     *item = Item::Verbatim(
                         quote_spanned! { span => #[verus::internal(size_of)] const _: () = {
-                            #static_assert
+                            #static_assert_size
+                            #static_assert_align
                         }; },
                     );
                 } else {
-                    *item = Item::Verbatim(
-                        quote_spanned! { span => #[verus::internal(size_of)] const _: () = {
-                            ::builtin::global_size_of::<#type_>(#expr_lit);
-                            #static_assert
-                        }; },
-                    );
+                    let type_name_escaped = format!("{}", type_.into_token_stream())
+                        .replace(" ", "")
+                        .replace("<", "_LL_")
+                        .replace(">", "_RR_");
+                    if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        let err =
+                            "this type name is not supported (it must only include A-Za-z0-9<>)";
+                        *item = Item::Verbatim(
+                            quote_spanned!(span => const _: () = { compile_error!(#err) };),
+                        );
+                    } else {
+                        let lemma_ident = format_ident!("VERUS_layout_of_{}", type_name_escaped);
+
+                        let ensures_align = if let Some(align_lit) = align_lit {
+                            quote! { ::vstd::layout::align_of::<#type_>() == #align_lit, }
+                        } else {
+                            quote! {}
+                        };
+
+                        *item = Item::Verbatim(quote_spanned! { span =>
+                        #[verus::internal(size_of)] const _: () = {
+                            ::builtin::global_size_of::<#type_>(#size_lit);
+
+                            #static_assert_size
+                            #static_assert_align
+                        };
+
+                        ::builtin_macros::verus! {
+                            #[verifier::external_body]
+                            #[verifier::broadcast_forall]
+                            #[allow(non_snake_case)]
+                            proof fn #lemma_ident()
+                                ensures
+                                    ::vstd::layout::size_of::<#type_>() == #size_lit,
+                                    #ensures_align
+                            {}
+                        }
+                        });
+                    }
                 }
             }
         }
@@ -2856,6 +2901,7 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
             _ => {}
         }
     }
+    use std::iter::FromIterator;
     proc_macro::TokenStream::from_iter(tokens.into_iter())
 }
 

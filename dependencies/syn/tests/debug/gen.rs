@@ -3044,6 +3044,62 @@ impl Debug for Lite<syn::Global> {
         if !_val.attrs.is_empty() {
             formatter.field("attrs", Lite(&_val.attrs));
         }
+        formatter.field("inner", Lite(&_val.inner));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::GlobalInner> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::GlobalInner::SizeOf(_val) => {
+                formatter.write_str("SizeOf")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::GlobalInner::Layout(_val) => {
+                formatter.write_str("Layout")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+        }
+    }
+}
+impl Debug for Lite<syn::GlobalLayout> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("GlobalLayout");
+        formatter.field("type_", Lite(&_val.type_));
+        formatter.field("size", &(Lite(&&_val.size.0), Lite(&&_val.size.2)));
+        if let Some(val) = &_val.align {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(
+                (syn::token::Comma, proc_macro2::Ident, syn::token::EqEq, syn::ExprLit),
+            );
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(&(Lite(&_val.1), Lite(&_val.3)), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("align", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::GlobalSizeOf> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("GlobalSizeOf");
         formatter.field("type_", Lite(&_val.type_));
         formatter.field("expr_lit", Lite(&_val.expr_lit));
         formatter.finish()
