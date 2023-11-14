@@ -127,7 +127,7 @@ impl<V> PCell<V> {
             pcell_opt![ pt.0.id() => Option::None ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
-        (p, Tracked::assume_new(|| unreachable!()))
+        (p, Tracked::assume_new())
     }
 
     #[inline(always)]
@@ -136,7 +136,7 @@ impl<V> PCell<V> {
         ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
-        (p, Tracked::assume_new(|| unreachable!()))
+        (p, Tracked::assume_new())
     }
 
     #[inline(always)]

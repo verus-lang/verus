@@ -188,7 +188,7 @@ pub fn thread_id() -> (res: (ThreadId, Tracked<IsThread>))
 {
     let id: std::thread::ThreadId = std::thread::current().id();
     let id = ThreadId { thread_id: id };
-    (id, Tracked::assume_new(|| unreachable!()))
+    (id, Tracked::assume_new())
 }
 
 /// Returns _just_ the ghost object, without physically obtaining the thread ID.
