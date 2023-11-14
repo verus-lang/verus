@@ -588,21 +588,11 @@ impl Verifier {
     ) -> RunCommandQueriesResult {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
+        let do_report_long_running = self.args.report_long_running;
         let report_long_running = || {
             let report_fn: Box<dyn FnMut(std::time::Duration, bool) -> ()> = Box::new(
                 move |elapsed, completed| {
                     if !completed {
-                        if reporter.use_progress_bars() {
-                            reporter.add_progress_bar(context.clone());
-                        } else {
-                            let msg = format!(
-                                "{} has been running for {} seconds\nreporting errors as they are discovered (they may not be in source order)",
-                                context.desc,
-                                elapsed.as_secs()
-                            );
-                            let msg = note(&context.span, msg);
-                            reporter.report_now(&msg.to_any());
-                        }
                         if let Some(mut in_line_order) = diagnostics_to_report.take() {
                             in_line_order.sort_by_key(|(m, _)| {
                                 m.spans
@@ -613,17 +603,33 @@ impl Verifier {
                                 reporter.report_as(&error.clone().to_any(), error_level);
                             }
                         }
-                    } else {
-                        if reporter.use_progress_bars() {
-                            reporter.complete_progress_bar(context.clone());
+                    }
+
+                    if do_report_long_running {
+                        if !completed {
+                            if reporter.use_progress_bars() {
+                                reporter.add_progress_bar(context.clone());
+                            } else {
+                                let msg = format!(
+                                    "{} has been running for {} seconds\nreporting errors as they are discovered (they may not be in source order)",
+                                    context.desc,
+                                    elapsed.as_secs()
+                                );
+                                let msg = note(&context.span, msg);
+                                reporter.report_now(&msg.to_any());
+                            }
                         } else {
-                            let msg = format!(
-                                "{} finished in {} seconds",
-                                context.desc,
-                                elapsed.as_secs()
-                            );
-                            let msg = note(&context.span, msg);
-                            reporter.report_now(&msg.to_any());
+                            if reporter.use_progress_bars() {
+                                reporter.complete_progress_bar(context.clone());
+                            } else {
+                                let msg = format!(
+                                    "{} finished in {} seconds",
+                                    context.desc,
+                                    elapsed.as_secs()
+                                );
+                                let msg = note(&context.span, msg);
+                                reporter.report_now(&msg.to_any());
+                            }
                         }
                     }
                 },
@@ -1702,7 +1708,7 @@ impl Verifier {
         let source_map = compiler.session().source_map();
 
         self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
-        if self.num_threads > 1 {
+        if self.args.num_threads != 1 && self.num_threads >= 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
@@ -1939,7 +1945,7 @@ impl Verifier {
                                 header_pb.set_style(progress_style);
                                 header_pb.set_message(format!(
                                     "{}",
-                                    console::style("Some queries are taking longer than 2s (diagnostics for these may be reported out of order)").bold(),
+                                    console::style("Some checks are taking longer than 2s (diagnostics for these may be reported out of order)").bold(),
                                 ));
                                 header_pb.finish();
                                 multi_progress_header = Some(header_pb);
@@ -1984,7 +1990,7 @@ impl Verifier {
                         if !pb.is_finished() {
                             pb.set_prefix(format!(
                                 "{} {} {} {} {}",
-                                console::style("✔").blue(),
+                                console::style("•").blue(),
                                 span_str,
                                 console::style("has").bold(),
                                 console::style("finished").bold().blue(),

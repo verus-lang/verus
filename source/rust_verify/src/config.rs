@@ -81,6 +81,7 @@ pub struct ArgsX {
     pub version: bool,
     pub num_threads: usize,
     pub trace: bool,
+    pub report_long_running: bool,
 }
 
 pub type Args = Arc<ArgsX>;
@@ -186,6 +187,7 @@ pub fn parse_args_with_imports(
     const OPT_RECORD: &str = "record";
     const OPT_NUM_THREADS: &str = "num-threads";
     const OPT_TRACE: &str = "trace";
+    const OPT_NO_REPORT_LONG_RUNNING: &str = "no-report-long-running";
 
     const OPT_EXTENDED_MULTI: &str = "V";
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
@@ -303,6 +305,11 @@ pub fn parse_args_with_imports(
         "INTEGER",
     );
     opts.optflag("", OPT_TRACE, "Print progress information");
+    opts.optflag(
+        "",
+        OPT_NO_REPORT_LONG_RUNNING,
+        "Suppress notes and progress bars for functions that take a while to verify",
+    );
 
     opts.optflag("h", "help", "print this help menu");
     opts.optflag(
@@ -499,6 +506,7 @@ pub fn parse_args_with_imports(
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
+        report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
     };
 
     (Arc::new(args), unmatched)
