@@ -1507,7 +1507,7 @@ impl VisitMut for Visitor {
                     // Tracked(...)
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                        quote_spanned!(span => Tracked::assume_new(|| unreachable!()))
+                        quote_spanned!(span => Tracked::assume_new_fallback(|| unreachable!()))
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Tracked::new(#inner))
                     } else {
@@ -1517,7 +1517,7 @@ impl VisitMut for Visitor {
                     // Ghost(...)
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                        quote_spanned!(span => Ghost::assume_new(|| unreachable!()))
+                        quote_spanned!(span => Ghost::assume_new_fallback(|| unreachable!()))
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Ghost::new(#inner))
                     } else {

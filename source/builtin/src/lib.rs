@@ -355,7 +355,17 @@ impl<A> Ghost<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub const fn assume_new(_: fn() -> A) -> Self {
+    pub const fn assume_new() -> Self {
+        Ghost { phantom: PhantomData }
+    }
+
+    // The argument here is used as part of a trick to avoid
+    // type inference errors when erasing code.
+
+    #[doc(hidden)]
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    #[inline(always)]
+    pub const fn assume_new_fallback(_: fn() -> A) -> Self {
         Ghost { phantom: PhantomData }
     }
 
@@ -397,7 +407,14 @@ impl<A> Tracked<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub const fn assume_new(_: fn() -> A) -> Self {
+    pub const fn assume_new() -> Self {
+        Tracked { phantom: PhantomData }
+    }
+
+    #[doc(hidden)]
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    #[inline(always)]
+    pub const fn assume_new_fallback(_: fn() -> A) -> Self {
         Tracked { phantom: PhantomData }
     }
 
@@ -445,14 +462,14 @@ impl<A> Copy for Ghost<A> {}
 #[rustc_diagnostic_item = "verus::builtin::ghost_exec"]
 #[verifier::external_body]
 pub fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
-    Ghost::assume_new(|| unreachable!())
+    Ghost::assume_new()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::tracked_exec"]
 #[verifier::external_body]
 pub fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
-    Tracked::assume_new(|| unreachable!())
+    Tracked::assume_new()
 }
 
 #[cfg(verus_keep_ghost)]

@@ -501,7 +501,7 @@ impl<V> PPtr<V> {
         let size = layout.size();
         let align = layout.align();
         let (p, _, _) = PPtr::<V>::alloc(size, align);
-        (p, Tracked::assume_new(|| unreachable!()), Tracked::assume_new(|| unreachable!()))
+        (p, Tracked::assume_new(), Tracked::assume_new())
     }
 
     #[inline(always)]
@@ -526,7 +526,7 @@ impl<V> PPtr<V> {
         // See explanation about exposing pointers, above
         let _exposed_addr = p.uptr as usize;
 
-        (p, Tracked::assume_new(|| unreachable!()), Tracked::assume_new(|| unreachable!()))
+        (p, Tracked::assume_new(), Tracked::assume_new())
     }
 
     /// Moves `v` into the location pointed to by the pointer `self`.
