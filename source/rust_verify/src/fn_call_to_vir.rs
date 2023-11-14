@@ -292,12 +292,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                             }
                         },
                         SpecItem::OpensInvariants => match &*vir_arg.typ {
-                            TypX::Int(IntRange::Int) => {}
+                            TypX::Int(_) => {}
                             _ => {
-                                return err_span(
-                                    arg.span,
-                                    "opens_invariants needs an int expression",
-                                );
+                                //return err_span(
+                                //    arg.span,
+                                //    "opens_invariants needs an int expression",
+                                //);
                             }
                         },
                         _ => unreachable!(),

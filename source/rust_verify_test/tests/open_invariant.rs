@@ -445,13 +445,20 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-/*
 test_verify_one_file! {
     #[test] opens_invariants_old_fail verus_code! {
         fn stuff6(x: &mut u8)
           opens_invariants [ ((*x) as int) ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "mismatched types")
+    } => Err(err) => assert_vir_error_msg(err, "must use old")
 }
-*/
+
+test_verify_one_file! {
+    #[test] opens_invariants_wrong_type verus_code! {
+        fn stuff6(x: &mut u8)
+          opens_invariants [ true ]
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "opens_invariants needs an int expression")
+}
