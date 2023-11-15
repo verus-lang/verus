@@ -24,6 +24,7 @@ impl AirContext {
 
     pub(crate) fn command(
         &mut self,
+        message_interface: &dyn air::messages::MessageInterface,
         diagnostics: &impl air::messages::Diagnostics,
         command: &Command,
         query_context: air::context::QueryContext<'_, '_>,
@@ -31,7 +32,7 @@ impl AirContext {
         if let Some(stored_commands) = &mut self.stored_commands {
             stored_commands.push(command.clone());
         }
-        self.air_context.command(diagnostics, command, query_context)
+        self.air_context.command(message_interface, diagnostics, command, query_context)
     }
 
     pub(crate) fn take_commands(&mut self) -> Option<Vec<Command>> {
@@ -40,6 +41,7 @@ impl AirContext {
 
     pub(crate) fn commands_expect_valid(
         &mut self,
+        message_interface: &dyn air::messages::MessageInterface,
         diagnostics: &impl air::messages::Diagnostics,
         commands: Vec<Command>,
     ) {
@@ -47,6 +49,7 @@ impl AirContext {
         for command in commands.into_iter() {
             assert!(matches!(
                 self.air_context.command(
+                    message_interface,
                     diagnostics,
                     &command,
                     QueryContext { report_long_running: None }
@@ -83,6 +86,10 @@ impl AirContext {
 
     pub(crate) fn get_time(&self) -> (std::time::Duration, std::time::Duration) {
         self.air_context.get_time()
+    }
+    
+    pub(crate) fn check_valid_used(&self) -> bool {
+        self.air_context.check_valid_used()
     }
 }
 

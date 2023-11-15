@@ -881,7 +881,7 @@ impl Verifier {
         reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
         level: ReportingMode,
-        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, ReportingMode)>>>,
+        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
         air_context: &mut AirContext,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
@@ -1246,6 +1246,10 @@ impl Verifier {
         let bucket = self.get_bucket(bucket_id);
         let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
         let mut all_context_ops = vec![];
+        
+        let shuffle_commands =
+            self.args.shuffle.then(|| air_context.take_commands().expect("shufflable commands"));
+
         while let Some(mut function_opgen) = opgen.next()? {
             let diagnostics_to_report: std::cell::RefCell<
                 Option<PanicOnDropVec<(Message, MessageLevel)>>,
@@ -1341,6 +1345,66 @@ impl Verifier {
                             } else {
                                 None
                             };
+                            
+                            if let Some(shuffle_commands) = &shuffle_commands {
+                                if do_spinoff {
+                                    return Err(error(
+                                       "--shuffle is not yet supported for spunoff queries",
+                                    ));
+                                }
+                            
+                                let mut commands = shuffle_commands.clone();
+
+                                const SAMPLES: u64 = 30;
+                                let mut valid_count = 0;
+                                for _ in 0..SAMPLES {
+                                    let mut shuffled_z3_context = self.new_air_context_with_prelude(
+                                        message_interface.clone(),
+                                        reporter,
+                                        bucket_id,
+                                        Some((&(function.x.name).path, spinoff_context_counter)),
+                                        false,
+                                        PreludeConfig { arch_word_bits: function_opgen.ctx().arch_word_bits },
+                                        None,
+                                        false,
+                                    )?;
+                                    crate::air_context::shuffle_commands(&mut commands, &mut thread_rng());
+                                    shuffled_z3_context.commands_expect_valid(&* message_interface, reporter, commands.clone());
+
+                                    let RunCommandQueriesResult {
+                                        invalidity: command_invalidity,
+                                        timed_out: _,
+                                        not_skipped: _,
+                                    } = self.run_commands_queries(
+                                        reporter,
+                                        source_map,
+                                        if !profile_rerun {
+                                            ReportingMode::Report(level)
+                                        } else {
+                                            ReportingMode::DoNotReport
+                                        },
+                                        &diagnostics_to_report,
+                                        &mut air_context,
+                                        cmds.clone(),
+                                        &HashMap::new(),
+                                        &snap_map,
+                                        bucket_id,
+                                        &function.x.name,
+                                        &op.to_air_comment(),
+                                        None,
+                                    );
+                                    
+                                    if !command_invalidity {
+                                        valid_count += 1;
+                                    }
+                                }
+                                reporter.report(&note(
+                                    &function.span,
+                                    format!("shuffle outcome: valid {valid_count} out of {SAMPLES}"),
+                                ).to_any());
+                                
+                                continue;
+                            }
 
                             let query_air_context = if do_spinoff {
                                 spinoff_z3_context = self.new_air_context_with_bucket_context(
@@ -1377,7 +1441,11 @@ impl Verifier {
                             } = self.run_commands_queries(
                                 reporter,
                                 source_map,
-                                (!profile_rerun).then(|| level),
+                                if !profile_rerun {
+                                    ReportingMode::Report(level)
+                                } else {
+                                    ReportingMode::DoNotReport
+                                },
                                 &diagnostics_to_report,
                                 query_air_context,
                                 cmds.clone(),
