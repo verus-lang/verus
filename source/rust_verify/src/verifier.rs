@@ -309,6 +309,34 @@ pub fn module_name(module: &vir::ast::Path) -> String {
     module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
 }
 
+mod util {
+    pub(crate) struct PanicOnDropVec<T>(Option<Vec<T>>);
+
+    impl<T> PanicOnDropVec<T> {
+        pub fn new(v: Vec<T>) -> Self {
+            PanicOnDropVec(Some(v))
+        }
+
+        pub fn into_inner(mut self) -> Vec<T> {
+            self.0.take().unwrap()
+        }
+
+        pub fn as_mut(&mut self) -> &mut Vec<T> {
+            self.0.as_mut().unwrap()
+        }
+    }
+
+    impl<T> Drop for PanicOnDropVec<T> {
+        fn drop(&mut self) {
+            if self.0.is_some() {
+                panic!("dropped, expected call to `into_inner` instead");
+            }
+        }
+    }
+}
+
+use util::PanicOnDropVec;
+
 struct RunCommandQueriesResult {
     invalidity: bool,
     timed_out: bool,
@@ -577,7 +605,7 @@ impl Verifier {
         bucket_id: &BucketId,
         reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
-        diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
+        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
         level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
@@ -593,7 +621,8 @@ impl Verifier {
             let report_fn: Box<dyn FnMut(std::time::Duration, bool) -> ()> = Box::new(
                 move |elapsed, completed| {
                     if !completed {
-                        if let Some(mut in_line_order) = diagnostics_to_report.take() {
+                        if let Some(in_line_order) = diagnostics_to_report.take() {
+                            let mut in_line_order = in_line_order.into_inner();
                             in_line_order.sort_by_key(|(m, _)| {
                                 m.spans
                                     .get(0)
@@ -721,7 +750,7 @@ impl Verifier {
                     if let Some(level) = level {
                         if !self.expand_flag || vir::split_expression::is_split_error(&error) {
                             if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
-                                collected.push((error.clone(), level));
+                                collected.as_mut().push((error.clone(), level));
                             } else {
                                 reporter.report_as(&error.clone().to_any(), level);
                             }
@@ -833,7 +862,7 @@ impl Verifier {
         reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
         level: Option<MessageLevel>,
-        diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
+        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
@@ -1196,8 +1225,9 @@ impl Verifier {
         let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
         let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
-            let diagnostics_to_report: std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>> =
-                std::cell::RefCell::new(Some(Vec::new()));
+            let diagnostics_to_report: std::cell::RefCell<
+                Option<PanicOnDropVec<(Message, MessageLevel)>>,
+            > = std::cell::RefCell::new(Some(PanicOnDropVec::new(Vec::new())));
             let mut flush_diagnostics_to_report = false;
             loop {
                 let next_op = function_opgen.next();
@@ -1205,7 +1235,8 @@ impl Verifier {
                     flush_diagnostics_to_report = true;
                 }
                 if flush_diagnostics_to_report {
-                    if let Some(mut in_line_order) = diagnostics_to_report.take() {
+                    if let Some(container) = diagnostics_to_report.take() {
+                        let mut in_line_order = container.into_inner();
                         in_line_order.sort_by_key(|(m, _)| {
                             m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
                         });
