@@ -277,6 +277,7 @@ impl PointsToRaw {
         set_int_range(start, start + len) =~= self@.dom()
     }
 
+    #[verifier(inline)]
     pub open spec fn spec_index(self, i: int) -> u8 {
         self@[i]
     }

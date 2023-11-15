@@ -6,8 +6,9 @@ use crate::seq::*;
 verus!{
 
 pub trait ArrayAdditionalSpecFns<T> {
-   spec fn view(&self) -> Seq<T>;
-   spec fn spec_index(&self, i: int) -> T;
+    spec fn view(&self) -> Seq<T>;
+    spec fn spec_index(&self, i: int) -> T
+        recommends 0 <= i < self.view().len();
 }
 
 #[verifier::external]
