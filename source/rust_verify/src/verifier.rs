@@ -2037,7 +2037,7 @@ impl Verifier {
                             let pb_aux = pb_aux.as_ref().unwrap();
                             pb_aux.set_prefix(format!(
                                 "{} {} {} {} {}",
-                                console::style("✔").blue(),
+                                console::style("•").blue(),
                                 span_str,
                                 console::style("has").bold(),
                                 console::style("finished").bold().blue(),
