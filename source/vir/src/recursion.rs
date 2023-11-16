@@ -1,6 +1,6 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, ExprX, Fun, Function, FunctionKind,
+    GenericBoundX, IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::typ_to_diagnostic_str;
@@ -392,18 +392,71 @@ pub(crate) fn check_termination_stm(
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
+    method_impls: &HashMap<(&Fun, &Path), &Function>,
     call_graph: &mut Graph<Node>,
     function: &Function,
 ) -> Result<(), VirErr> {
     // See recursive_types::check_traits for more documentation
     let f_node = Node::Fun(function.x.name.clone());
 
+    // In addition to the rules in recursive_types::check_traits, we further constrain
+    // the order in which definitions and processed and and emitted.
+    // trait T {
+    //     spec fn a() -> bool;
+    //     proof fn p() ensures Self::a();
+    //     proof fn q() ensures Self::a();
+    // }
+    // struct S { pub dummy: nat }
+    // impl T for S {
+    //     spec fn a() -> bool;
+    //     proof fn p() { Self::q(); }
+    //     proof fn q() { /* ... */ }
+    // }
+    // Here, there are no explicit dependencies in the call graph that force:
+    // (+a) S::a to appear before S::q in the generated AIR code
+    // (+b) S::q to be processed before S::p, so that S::q's ensures is available for S::p
+    // `ordering_edges` is populated with additional edges for these, which are then added
+    // to the `func_call_graph` after computing sccs, but before sorting.
+
     // Add D: T --> f and D: T --> T where f is one of D's methods that implements T
-    if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
+    if let FunctionKind::TraitMethodImpl { method, trait_path, impl_path, .. } =
+        function.x.kind.clone()
+    {
         let t_node = Node::Trait(trait_path.clone());
         let impl_node = Node::TraitImpl(impl_path.clone());
         call_graph.add_edge(impl_node.clone(), t_node);
         call_graph.add_edge(impl_node, f_node.clone());
+
+        // Ordering (+b): also add an edge f --> f2 where f's requires/recommends/ensures call f2' and
+        // * f2 is a method in the same impl
+        // * f2 implements f2'
+        let method = &func_map[&method];
+        for e in method.x.require.iter().chain(method.x.ensure.iter()) {
+            crate::ast_visitor::expr_visitor_dfs::<(), _>(
+                e,
+                &mut crate::ast_visitor::VisitorScopeMap::new(),
+                &mut |_scope_map, expr| {
+                    match &expr.x {
+                        ExprX::Call(
+                            CallTarget::Fun(
+                                CallTargetKind::Method(None),
+                                x,
+                                _ts,
+                                _impl_paths,
+                                _autospec,
+                            ),
+                            _,
+                        ) => {
+                            if let Some(tgt) = method_impls.get(&(x, &impl_path)) {
+                                call_graph.add_edge(f_node.clone(), Node::Fun(tgt.x.name.clone()));
+                            }
+                        }
+                        _ => (),
+                    }
+                    crate::sst_visitor::VisitorControlFlow::Recurse
+                },
+            );
+        }
     }
 
     // Add f --> T for any function f with "where ...: T(...)"
@@ -433,7 +486,6 @@ pub(crate) fn expand_call_graph(
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
-                use crate::ast::CallTargetKind;
                 let callee = if let CallTargetKind::Method(Some((x_resolved, _, _))) = kind {
                     x_resolved
                 } else {
@@ -466,13 +518,17 @@ pub(crate) fn expand_call_graph(
                 }
 
                 // f --> f2
-                call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
+                call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()));
+                // Ordering (+a): also add an edge f --> f2' where f2' is the method implemented by f2
+                if let CallTargetKind::Method(Some((_, _, _))) = kind {
+                    call_graph.add_edge(f_node.clone(), Node::Fun(x.clone()));
+                }
             }
             ExprX::Fuel(callee, fuel) if *fuel >= 1 => {
                 let f2 = &func_map[callee];
                 if f2.x.attrs.broadcast_forall {
                     // f --> f2
-                    call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
+                    call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()));
                 }
             }
             _ => {}

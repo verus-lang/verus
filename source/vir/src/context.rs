@@ -252,10 +252,18 @@ impl GlobalCtx {
             // such as using s.view() in test so that test depends on S: View, to fix this.
             func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
         }
+
+        let mut method_impls = HashMap::new();
+        for f in &krate.functions {
+            if let crate::ast::FunctionKind::TraitMethodImpl { method, impl_path, .. } = &f.x.kind {
+                method_impls.insert((method, impl_path), f);
+            }
+        }
+
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
-            crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, f)?;
+            crate::recursion::expand_call_graph(&func_map, &method_impls, &mut func_call_graph, f)?;
         }
 
         func_call_graph.compute_sccs();
