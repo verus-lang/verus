@@ -283,3 +283,38 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] regression_907_reveal_u64_1 verus_code! {
+        trait Tau {
+            spec fn foo(&self)->bool;
+            fn bar(&self);
+        }
+        struct T {}
+        impl Tau for T {
+            spec fn foo(&self)->bool {
+                true
+            }
+            fn bar(&self){
+                reveal(<T as Tau>::foo);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_907_reveal_u64_2 verus_code! {
+        trait Tau {
+            spec fn foo(&self)->bool;
+            fn bar(&self);
+        }
+        impl Tau for u64 {
+            spec fn foo(&self)->bool {
+                true
+            }
+            fn bar(&self){
+                reveal(<u64 as Tau>::foo);
+            }
+        }
+    } => Ok(())
+}

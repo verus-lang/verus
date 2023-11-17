@@ -437,17 +437,28 @@ fn verus_item_to_vir<'tcx, 'a>(
                         match res {
                             crate::hir_hide_reveal_rewrite::ResOrSymbol::Res(res) => {
                                 // `res` has the def_id of the trait function
-                                // `ty_res` has the def_id of the type
+                                // `ty_res` has the def_id of the type, or is a primitive type
                                 // we need to find the impl that contains the non-blanket
                                 // implementation of the function for the type
-                                let trait_ = tcx.trait_of_item(res.def_id()).expect("TODO");
-                                let ty_ = tcx.type_of(ty_res.def_id());
-                                *tcx.non_blanket_impls_for_ty(trait_, ty_.skip_binder())
+                                let trait_ =
+                                    tcx.trait_of_item(res.def_id()).expect("trait of function");
+                                let ty_ = match ty_res {
+                                    Res::Def(_, def_id) => tcx.type_of(def_id).skip_binder(),
+                                    Res::PrimTy(prim_ty) => {
+                                        crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty)
+                                    }
+                                    _ => unsupported_err!(
+                                        expr.span,
+                                        "type {:?} not supported in reveal",
+                                        ty_res
+                                    ),
+                                };
+                                *tcx.non_blanket_impls_for_ty(trait_, ty_)
                                     .find_map(|impl_| {
                                         let implementor_ids = &tcx.impl_item_implementor_ids(impl_);
                                         implementor_ids.get(&res.def_id())
                                     })
-                                    .expect("TODO")
+                                    .expect("non-blanked impl for ty with def")
                             }
                             crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(sym) => {
                                 let matching_impls: Vec<_> = tcx
