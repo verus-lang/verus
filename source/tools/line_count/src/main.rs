@@ -849,11 +849,7 @@ impl<'f> Visitor<'f> {
     }
 
     fn mode_or_trusted(&self, kind: CodeKind) -> CodeKind {
-        if self.trusted > 0 {
-            CodeKind::Trusted
-        } else {
-            kind
-        }
+        if self.trusted > 0 { CodeKind::Trusted } else { kind }
     }
 
     fn handle_signature(
