@@ -160,7 +160,7 @@ pub(crate) enum ReporterMessage {
     ReportLongRunning(CommandContext),
     FinishLongRunning(CommandContext),
     Message(usize, Message, MessageLevel, bool),
-    // Debugger(),
+    WorkerPanicked(Box<dyn std::any::Any + Send>),
     Done(usize),
 }
 
@@ -1763,6 +1763,7 @@ impl Verifier {
                 let reporter = QueuedReporter::new(i, sender.clone());
 
                 tasks.push_back((
+                    i,
                     bucket_id.clone(),
                     global_ctx.from_self_with_log(interpreter_log_file),
                     reporter,
@@ -1783,32 +1784,45 @@ impl Verifier {
                 let thread_taskq = taskq.clone();
                 let thread_krate = krate.clone(); // is an Arc<T>
 
+                let worker_sender = sender.clone();
                 let worker = std::thread::spawn(move || {
-                    let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
-                    loop {
-                        let mut tq = thread_taskq.lock().unwrap();
-                        let elm = tq.pop_front();
-                        drop(tq);
-                        if let Some((bucket_id, task, reporter)) = elm {
-                            let res = thread_verifier.verify_bucket_outer(
-                                &reporter,
-                                &thread_krate,
-                                None,
-                                &bucket_id,
-                                task,
-                            );
-                            reporter.done(); // we've verified the bucket, send the done message
-                            match res {
-                                Ok(res) => {
-                                    completed_tasks.push(res);
+                    let r = std::panic::catch_unwind(|| {
+                        let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
+                        loop {
+                            let mut tq = thread_taskq.lock().unwrap();
+                            let elm = tq.pop_front();
+                            drop(tq);
+                            if let Some((_i, bucket_id, task, reporter)) = elm {
+                                let res = thread_verifier.verify_bucket_outer(
+                                    &reporter,
+                                    &thread_krate,
+                                    None,
+                                    &bucket_id,
+                                    task,
+                                );
+                                reporter.done(); // we've verified the bucket, send the done message
+                                match res {
+                                    Ok(res) => {
+                                        completed_tasks.push(res);
+                                    }
+                                    Err(e) => return Err(e),
                                 }
-                                Err(e) => return Err(e),
+                            } else {
+                                break;
                             }
-                        } else {
-                            break;
+                        }
+                        Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
+                    });
+
+                    match r {
+                        Ok(x) => x,
+                        Err(e) => {
+                            worker_sender
+                                .send(ReporterMessage::WorkerPanicked(e))
+                                .expect("mpsc open");
+                            panic!("worker thread panicked");
                         }
                     }
-                    Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
                 });
                 workers.push(worker);
             }
@@ -2051,6 +2065,9 @@ impl Verifier {
                                 console::style("(auxiliary checks)").bold()
                             ));
                         }
+                    }
+                    ReporterMessage::WorkerPanicked(err) => {
+                        std::panic::resume_unwind(err);
                     }
                 }
 
