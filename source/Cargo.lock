@@ -842,6 +842,7 @@ dependencies = [
  "prettyplease_verus",
  "proc-macro2",
  "serde",
+ "serde_json",
  "syn_verus",
  "tabled",
  "toml 0.8.2",

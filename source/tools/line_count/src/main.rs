@@ -13,6 +13,7 @@ use tabled::settings::{
 
 struct Config {
     print_all: bool,
+    json: bool,
 }
 
 fn main() {
@@ -22,6 +23,7 @@ fn main() {
     let mut opts = getopts::Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.optflag("p", "print-all", "print all the annotated files");
+    opts.optflag("", "json", "output as machine-readable json");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -47,7 +49,7 @@ fn main() {
         return;
     };
 
-    let config = Config { print_all: matches.opt_present("p") };
+    let config = Config { print_all: matches.opt_present("p"), json: matches.opt_present("json") };
 
     match run(&config, &std::path::Path::new(&deps_path)) {
         Ok(()) => (),
@@ -847,7 +849,11 @@ impl<'f> Visitor<'f> {
     }
 
     fn mode_or_trusted(&self, kind: CodeKind) -> CodeKind {
-        if self.trusted > 0 { CodeKind::Trusted } else { kind }
+        if self.trusted > 0 {
+            CodeKind::Trusted
+        } else {
+            kind
+        }
     }
 
     fn handle_signature(
@@ -1103,63 +1109,96 @@ fn run(config: &Config, deps_path: &std::path::Path) -> Result<(), String> {
     let kinds: HashSet<_> =
         file_summaries.iter().flat_map(|(_, s)| s.lines_by_kind.keys()).cloned().collect();
 
-    let columns: Vec<_> = {
-        let mut columns: Vec<_> = vec![
-            HashSet::from([CodeKind::Trusted]),
-            HashSet::from([CodeKind::Spec]),
-            HashSet::from([CodeKind::Proof]),
-            HashSet::from([CodeKind::Exec]),
-            HashSet::from([CodeKind::Proof, CodeKind::Exec]),
-            HashSet::from([CodeKind::Comment]),
-            HashSet::from([CodeKind::Layout]),
-            HashSet::from([]),
-        ];
-        let other_columns: Vec<_> = kinds
-            .difference(&HashSet::from_iter(columns.iter().map(hash_set_to_sorted_vec)))
-            .map(|h| HashSet::from_iter(h.iter().cloned()))
-            .collect();
-        columns.extend(other_columns);
-        columns.iter().map(hash_set_to_sorted_vec).collect()
-    };
+    if !config.json {
+        let columns: Vec<_> = {
+            let mut columns: Vec<_> = vec![
+                HashSet::from([CodeKind::Trusted]),
+                HashSet::from([CodeKind::Spec]),
+                HashSet::from([CodeKind::Proof]),
+                HashSet::from([CodeKind::Exec]),
+                HashSet::from([CodeKind::Proof, CodeKind::Exec]),
+                HashSet::from([CodeKind::Comment]),
+                HashSet::from([CodeKind::Layout]),
+                HashSet::from([]),
+            ];
+            let other_columns: Vec<_> = kinds
+                .difference(&HashSet::from_iter(columns.iter().map(hash_set_to_sorted_vec)))
+                .map(|h| HashSet::from_iter(h.iter().cloned()))
+                .collect();
+            columns.extend(other_columns);
+            columns.iter().map(hash_set_to_sorted_vec).collect()
+        };
 
-    let mut table_data: Vec<Vec<String>> = file_summaries
-        .iter()
-        .map(|(f, s)| {
-            Some(f.display().to_string())
+        let mut table_data: Vec<Vec<String>> = file_summaries
+            .iter()
+            .map(|(f, s)| {
+                Some(f.display().to_string())
+                    .into_iter()
+                    .chain(
+                        columns.iter().map(|k| format!("{}", s.lines_by_kind.get(k).unwrap_or(&0))),
+                    )
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        table_data.insert(
+            0,
+            Some("file".to_owned())
                 .into_iter()
-                .chain(columns.iter().map(|k| format!("{}", s.lines_by_kind.get(k).unwrap_or(&0))))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+                .chain(columns.iter().map(|k| {
+                    if k.is_empty() {
+                        format!("unaccounted")
+                    } else {
+                        k.iter().map(|x| format!("{:?}", x)).collect::<Vec<_>>().join("+")
+                    }
+                }))
+                .collect(),
+        );
+        table_data.push(
+            Some("total".to_owned())
+                .into_iter()
+                .chain(
+                    columns.iter().map(|k| format!("{}", total.lines_by_kind.get(k).unwrap_or(&0))),
+                )
+                .collect(),
+        );
 
-    table_data.insert(
-        0,
-        Some("file".to_owned())
-            .into_iter()
-            .chain(columns.iter().map(|k| {
-                if k.is_empty() {
-                    format!("unaccounted")
-                } else {
-                    k.iter().map(|x| format!("{:?}", x)).collect::<Vec<_>>().join("+")
-                }
-            }))
-            .collect(),
-    );
-    table_data.push(
-        Some("total".to_owned())
-            .into_iter()
-            .chain(columns.iter().map(|k| format!("{}", total.lines_by_kind.get(k).unwrap_or(&0))))
-            .collect(),
-    );
-
-    let mut table = tabled::builder::Builder::from(table_data).build();
-    table
-        .with(Style::markdown())
-        .with(Modify::new(Columns::new(1..=kinds.len() + 1)).with(Alignment::right()))
-        .with(Modify::new(Rows::last()).with(
-            tabled::settings::Border::default().corner_top_left('|').corner_top_right('|').top('-'),
-        ));
-    println!("{}", table.to_string());
+        let mut table = tabled::builder::Builder::from(table_data).build();
+        table
+            .with(Style::markdown())
+            .with(Modify::new(Columns::new(1..=kinds.len() + 1)).with(Alignment::right()))
+            .with(
+                Modify::new(Rows::last()).with(
+                    tabled::settings::Border::default()
+                        .corner_top_left('|')
+                        .corner_top_right('|')
+                        .top('-'),
+                ),
+            );
+        println!("{}", table.to_string());
+    } else {
+        let kinds_map: HashMap<_, _> = kinds
+            .iter()
+            .map(|k| {
+                (
+                    k,
+                    k.iter()
+                        .map(|x| format!("{:?}", x).to_lowercase())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+            })
+            .collect();
+        let json = serde_json::json!({
+            "kinds": kinds_map.iter().collect::<Vec<(_, _)>>(),
+            "files": file_summaries.iter().map(|(f, s)| {
+                (f.display().to_string(),
+                     s.lines_by_kind.iter().map(|(k, v)| (kinds_map[k].clone(), v)).collect::<HashMap<_, _>>())
+            }).collect::<HashMap<_, _>>(),
+            "total": total.lines_by_kind.iter().map(|(k, v)| (kinds_map[k].clone(), v)).collect::<HashMap<_, _>>()
+        });
+        println!("{}", serde_json::to_string_pretty(&json).expect("invalid json"));
+    }
 
     Ok(())
 }
