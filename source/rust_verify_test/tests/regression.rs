@@ -1170,3 +1170,25 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] closure_projection_regression_910 verus_code! {
+        use vstd::prelude::*;
+
+        trait T {
+            type X;
+        }
+
+        struct L<D: T> {
+            x: D::X,
+        }
+
+        spec fn f1<DT: T>(l: Map<nat, L<DT>>) -> Seq<DT::X> {
+            Seq::new(1, |i: int| l[i as nat].x)
+        }
+
+        spec fn f2<DT: T>(l: L<DT>) -> FnSpec(L<DT>)->DT::X {
+            |ll: L<DT>| ll.x
+        }
+    } => Ok(())
+}

@@ -981,7 +981,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::UnaryOpr(op, exp), false) => match op {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                try_box(ctx, expr, typ).expect("Box")
+                try_box(ctx, expr, typ)
+                    .expect(&format!("Box {:?}\n{:?}\n{:?}", &outer_exp.span, &outer_exp.x, typ))
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;

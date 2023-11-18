@@ -1376,7 +1376,7 @@ pub(crate) fn expr_to_stm_opt(
 
             // Parameters and return types must be boxed, so insert necessary box/unboxing
             match &*body.typ {
-                TypX::TypParam(_) | TypX::Boxed(_) => {}
+                TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. } => {}
                 _ => {
                     let boxed_typ = Arc::new(TypX::Boxed(body.typ.clone()));
                     let boxx = ExpX::UnaryOpr(UnaryOpr::Box(body.typ.clone()), exp);
@@ -1387,7 +1387,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut boxed_params: Vec<Binder<Typ>> = Vec::new();
             for p in params.iter() {
                 match &*p.a {
-                    TypX::TypParam(_) | TypX::Boxed(_) => {
+                    TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. } => {
                         boxed_params.push(p.clone());
                     }
                     _ => {
