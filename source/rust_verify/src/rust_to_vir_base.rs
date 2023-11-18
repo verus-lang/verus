@@ -145,7 +145,7 @@ pub(crate) fn def_id_to_vir_path<'tcx>(
     def_id: DefId,
 ) -> Path {
     def_id_to_vir_path_option(tcx, verus_items, def_id)
-        .expect(&format!("unhandled name {:?}", def_id))
+        .unwrap_or_else(|| panic!("unhandled name {:?}", def_id))
 }
 
 pub(crate) fn def_id_to_datatype<'tcx, 'hir>(

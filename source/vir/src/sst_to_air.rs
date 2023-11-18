@@ -981,11 +981,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         (ExpX::UnaryOpr(op, exp), false) => match op {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                try_box(ctx, expr, typ).expect(&format!("Box {:?}", typ))
+                try_box(ctx, expr, typ).unwrap_or_else(|| panic!("Box {:?}", typ))
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                try_unbox(ctx, expr.clone(), typ).expect(&format!("Unbox: {:?}", expr).to_owned())
+                try_unbox(ctx, expr.clone(), typ).unwrap_or_else(|| panic!("Unbox: {:?}", expr))
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
