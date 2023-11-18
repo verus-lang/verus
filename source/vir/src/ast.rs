@@ -975,6 +975,7 @@ pub struct TraitImplX {
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,
+    pub trait_typ_arg_impls: ImplPaths,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]

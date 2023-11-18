@@ -306,6 +306,14 @@ fn check_item<'tcx>(
             let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
                 let trait_ref =
                     ctxt.tcx.impl_trait_ref(item.owner_id.to_def_id()).expect("impl_trait_ref");
+                let trait_did = trait_ref.skip_binder().def_id;
+                let impl_paths = crate::rust_to_vir_base::get_impl_paths(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    impl_def_id,
+                    trait_did,
+                    trait_ref.skip_binder().args,
+                );
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
                 // We keep this full list, with the first element being the Self type X
                 let mut types: Vec<Typ> = Vec::new();
@@ -334,6 +342,7 @@ fn check_item<'tcx>(
                     typ_bounds,
                     trait_path: path.clone(),
                     trait_typ_args: types.clone(),
+                    trait_typ_arg_impls: impl_paths,
                 };
                 vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
                 Some((path, types))

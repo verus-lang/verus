@@ -488,6 +488,20 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     }
 }
 
+pub(crate) fn add_trait_impl_to_graph(call_graph: &mut Graph<Node>, t: &crate::ast::TraitImpl) {
+    // For
+    //   trait T<...> where ...: U1(...), ..., ...: Un(...)
+    //   impl T<t1...tn> for ... { ... }
+    // Add necessary impl_T_for_* --> impl_Ui_for_* edges
+    // This corresponds to instantiating the a: Dictionary_U<A> field in the comments below
+    let src_node = Node::TraitImpl(t.x.impl_path.clone());
+    for imp in t.x.trait_typ_arg_impls.iter() {
+        if &t.x.impl_path != imp {
+            call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
+        }
+    }
+}
+
 // Check for cycles in traits
 pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // It's possible to encode nontermination using trait methods.
@@ -564,7 +578,7 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   }
     // We can store a Dictionary_U inside Dictionary_T:
     //   struct Dictionary_T<Self, A> {
-    //     a: Dictionary_U<A>,
+    //     a: Dictionary_U<A>, // see add_trait_impl_to_graph
     //     f: Fn(x: Self, y: Self) -> bool,
     //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
     //   }
