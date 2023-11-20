@@ -5,6 +5,12 @@ This accounts Verus lines in a project by whether they are
 * executable code, or
 * proof text.
 
+## Known issues
+
+* `#[verus::trusted]` is ignored on macros
+* `macro_rules!` are accounted as directives, or ignored
+* `#[verifier::verify]` is ignored
+
 To run this, first run `verus` on a project with `--emit=dep-info`. This will output a `.d` file in the
 current working directory. Then run this tool with
 ```
