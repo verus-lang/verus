@@ -499,7 +499,10 @@ pub fn emit_match<T: quote::ToTokens>(
             let Arm { pat, guard, fat_arrow_token, comma: _ } = arm;
             let g = match guard {
                 None => None,
-                Some((if_token, box guard_e)) => Some(quote! { #if_token #guard_e }),
+                Some((if_token, guard_e)) => {
+                    let guard_e = &**guard_e;
+                    Some(quote! { #if_token #guard_e })
+                }
             };
             quote! { #pat #g #fat_arrow_token { #expr } }
         })

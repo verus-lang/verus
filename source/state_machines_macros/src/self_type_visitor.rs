@@ -102,8 +102,8 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
                     for arm in arms.iter_mut() {
                         replace_self_pat(&mut arm.pat, path);
                         match &mut arm.guard {
-                            Some((_, box guard_e)) => {
-                                replace_self_expr(guard_e, path);
+                            Some((_, guard_e)) => {
+                                replace_self_expr(&mut **guard_e, path);
                             }
                             None => {}
                         }
