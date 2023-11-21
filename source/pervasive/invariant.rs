@@ -339,7 +339,7 @@ macro_rules! open_atomic_invariant_in_proof {
 #[macro_export]
 macro_rules! open_atomic_invariant_internal {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
-        #[verifier::invariant_block] /* vattr */ {
+        #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
