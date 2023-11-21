@@ -1704,8 +1704,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // this test won't work until https://github.com/verus-lang/verus/issues/563 is fixed
-    #[ignore] #[test] mutual_recursion_result_incompleteness_regression_564 verus_code! {
+    #[test] mutual_recursion_result_incompleteness_regression_564_1 verus_code! {
         use vstd::prelude::*;
 
         pub spec const NUM_LAYERS: nat = 4;
@@ -1717,7 +1716,7 @@ test_verify_one_file! {
         }
 
         pub struct Directory {
-            entries: Seq<Entry>,
+            pub entries: Seq<Entry>,
         }
 
         #[verifier(external_body)]
@@ -1762,6 +1761,36 @@ test_verify_one_file! {
                     // let entry = self.fn_two(layer, init.len());
                     // self.fn_three(layer, init.add(seq![entry]))
                 }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mutual_recursion_result_incompleteness_regression_564_2 verus_code! {
+        use vstd::prelude::*;
+
+        pub spec const NUM_LAYERS: nat = 4;
+        pub spec const NUM_ENTRIES: nat = 32;
+
+        pub open spec fn fn_two(layer: nat, idx: nat) -> nat
+            decreases NUM_LAYERS - layer, NUM_ENTRIES - idx, 0nat
+        {
+            if layer + 1 <= NUM_LAYERS {
+                fn_three(layer + 1, seq![]).len()
+            } else {
+                arbitrary()
+            }
+        }
+
+        pub open spec fn fn_three(layer: nat, init: Seq<nat>) -> Seq<nat>
+            decreases NUM_LAYERS - layer, NUM_ENTRIES - init.len(), 1nat
+        {
+            if init.len() >= NUM_ENTRIES {
+                init
+            } else {
+                let entry = fn_two(layer, init.len());
+                fn_three(layer, init.push(entry))
             }
         }
     } => Ok(())

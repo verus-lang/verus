@@ -337,7 +337,7 @@ fn check_termination<'a>(
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call { fun, resolved_method, args, .. }
+        StmX::Call { fun, resolved_method, args, dest, .. }
             if is_recursive_call(&ctxt, fun, resolved_method) =>
         {
             let check = check_decrease_call(
@@ -351,8 +351,33 @@ fn check_termination<'a>(
             )?;
             let error = error(&s.span, "could not prove termination");
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
-            let stm_block =
-                Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
+
+            let mut stms = vec![stm_assert];
+            // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
+            // of the recursive call just after it was proven to terminate
+            // This is instead an interim fix for incompleteness in recommends checking, due to
+            // the fact that we currently do not emit AIR calls to a spec function in the same SCC.
+            // Even if we _did_ emit AIR calls to spec functions in the same SCC, they would be
+            // uninterpreted, because the function definition axioms must be emitted later (so
+            // they cannot be used to prove their own termination).
+            // Because of this, the call's destination remains uninitialized, and lacks its typing
+            // invariant, causeing imcompleteness (issue #564).
+            // It _might_ be sound to emit just the functions' typing invariants first,
+            // but we are not sure. So, as a partial fix for (some of) the resulting incompleteness),
+            // we manually emit an assume with just the typing invariant of the destination.
+            // It may be okay to emit this for non-spec functions too, but I have not checked, so
+            // I'm restricting this to spec functions for now.
+            if ctx.func_map[fun].x.mode == crate::ast::Mode::Spec {
+                if let Some(Dest { dest, is_init: true }) = &dest {
+                    let has_typx =
+                        ExpX::UnaryOpr(UnaryOpr::HasType(dest.typ.clone()), dest.clone());
+                    let has_typ = SpannedTyped::new(&s.span, &Arc::new(TypX::Bool), has_typx);
+                    let has_typ_assume = Spanned::new(s.span.clone(), StmX::Assume(has_typ));
+                    stms.push(has_typ_assume);
+                }
+            }
+            stms.push(s.clone());
+            let stm_block = Spanned::new(s.span.clone(), StmX::Block(Arc::new(stms)));
             Ok(stm_block)
         }
         StmX::Fuel(callee, fuel) if *fuel >= 1 => {
