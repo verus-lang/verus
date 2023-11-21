@@ -913,12 +913,10 @@ impl Visitor {
                     quote! {}
                 };
                 if self.erase_ghost.erase() {
-                    *item = Item::Verbatim(
-                        quote_spanned! { span => #[verus::internal(size_of)] const _: () = {
-                            #static_assert_size
-                            #static_assert_align
-                        }; },
-                    );
+                    *item = Item::Verbatim(quote_spanned! { span => const _: () = {
+                        #static_assert_size
+                        #static_assert_align
+                    }; });
                 } else {
                     let type_name_escaped = format!("{}", type_.into_token_stream())
                         .replace(" ", "")

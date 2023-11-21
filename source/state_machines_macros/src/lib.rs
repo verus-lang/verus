@@ -1,5 +1,3 @@
-#![feature(box_patterns)]
-
 extern crate proc_macro;
 
 mod ast;

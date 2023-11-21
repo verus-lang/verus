@@ -84,8 +84,8 @@ fn validate_idents_transition_stmt(
                         }
 
                         match &arm.guard {
-                            Some((_, box guard_e)) => {
-                                validate_idents_expr(guard_e, kind, &bound_names1, field_names)?;
+                            Some((_, guard_e)) => {
+                                validate_idents_expr(&**guard_e, kind, &bound_names1, field_names)?;
                             }
                             None => {}
                         }
