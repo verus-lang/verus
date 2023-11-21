@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        features: ['', 'singular']
+        features: ['', 'singular', 'record-history']
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -55,12 +55,19 @@ jobs:
         run: |
           . ../tools/activate
           vargo clean
+
+          EXTRA_FEATURES=""
+
+          if [ "${{ matrix.features }}" == "record-history" ]; then
+              EXTRA_FEATURES+=" --features record-history "
+          fi
+          
           if [ "${{ matrix.features }}" == "singular" ]; then
             vargo build --features singular
             VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p air --features singular
             VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular
           else
-            vargo build
+            vargo build "$EXTRA_FEATURES"
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
             cd pervasive
