@@ -720,6 +720,33 @@ impl<V> PPtr<V> {
     }
 }
 
+impl<V: Copy> PPtr<V> {
+    #[inline(always)]
+    pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
+        requires
+            self.id() === old(perm)@.pptr,
+        ensures
+            perm@.pptr === old(perm)@.pptr,
+            perm@.value === Some(in_v),
+        opens_invariants none
+    {
+        proof { perm.leak_contents(); }
+        self.put(Tracked(&mut *perm), in_v);
+    }
+
+    #[inline(always)]
+    pub fn read(&self, Tracked(perm): Tracked<&PointsTo<V>>) -> (out_v: V)
+        requires
+            self.id() === perm@.pptr,
+            perm@.value.is_Some(),
+        ensures
+            perm@.value === Some(out_v),
+        opens_invariants none
+    {
+        *self.borrow(Tracked(&*perm))
+    }
+}
+
 // Manipulating the contents in a PointsToRaw
 
 impl PPtr<u8> {
