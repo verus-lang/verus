@@ -1231,8 +1231,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let c = vir::ast::Constant::Char(c);
                 mk_expr(ExprX::Const(c))
             }
+            LitKind::Str(..) => {
+                return err_span(
+                    expr.span,
+                    "Unsupported string constant (use new_strlit(\"...\") instead)",
+                );
+            }
             _ => {
-                panic!("unexpected constant: {:?}", expr)
+                return err_span(expr.span, "Unsupported constant type");
             }
         },
         ExprKind::Cast(source, _) => {
