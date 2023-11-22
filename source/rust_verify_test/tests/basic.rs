@@ -606,3 +606,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: mut self")
 }
+
+test_verify_one_file! {
+    #[test] test_rlimit verus_code! {
+        #[verifier::rlimit(20)]
+        fn test1() {
+            assert(true);
+            assert(!false);
+            assert(true && true);
+            assert(true || false);
+            assert(true);
+        }
+    } => Ok(())
+}

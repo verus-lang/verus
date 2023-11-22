@@ -210,6 +210,12 @@ impl ToDebugSNode for usize {
     }
 }
 
+impl ToDebugSNode for f32 {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
+    }
+}
+
 impl ToDebugSNode for num_bigint::BigInt {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(self.to_string())

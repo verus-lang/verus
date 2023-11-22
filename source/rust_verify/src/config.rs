@@ -414,7 +414,7 @@ pub fn parse_args_with_imports(
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
         rlimit: matches
             .opt_get::<f32>(OPT_RLIMIT)
-            .unwrap_or_else(|_| error("expected integer after rlimit".to_string()))
+            .unwrap_or_else(|_| error("expected number after rlimit".to_string()))
             .unwrap_or(DEFAULT_RLIMIT_SECS),
         smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),
         multiple_errors: matches
