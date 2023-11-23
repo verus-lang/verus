@@ -302,3 +302,31 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error_msg(e, "signed integer is not supported for bit-vector reasoning")
 }
+
+test_verify_one_file! {
+    #[test] nonlinear_ops_dont_overflow_unsigned verus_code!{
+        fn test_mul(x: u16, y: u16) {
+            assert(((x as nat) * (y as nat)) as int == (x as int) * (y as int));
+        }
+
+        fn test_div(a: u32, b: u32)
+            requires b != 0
+        {
+            let x = a / b;
+            assert(x as int == a as int / b as int);
+        }
+
+        fn test_mod(a: u32, b: u32)
+            requires b != 0
+        {
+            let x = a % b;
+            assert(x as int == a as int % b as int);
+        }
+
+        // Make sure axiom about % properly accounts for 0:
+
+        proof fn test_mod_by_0(a: u32, b: u32) {
+            assert((a as int % 0 as int) < 0); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

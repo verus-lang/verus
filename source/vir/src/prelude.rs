@@ -490,6 +490,59 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_eucmod
         )))
 
+        // These axioms are important to make sure that the nonlinear operations
+        // commute with casting-to-ints
+        // (e.g., (a * b) as int == (a as int) * (b as int))
+        // where applicable.
+        //
+        // Without these, there can be really unintuitive proof failures.
+        //
+        // Right now I'm intending these to be the minimal necessary to achieve
+        // the above goal - for anything more specific, the user can use the
+        // nonlinear_arith solver.
+
+        // Axiom to ensure multiplication of nats are in-bounds
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (<= 0 y))
+              (<= 0 ([Mul] x y))
+            )
+            :pattern (([Mul] x y))
+            :qid prelude_mul_nats
+            :skolemid skolem_prelude_mul_nats
+        )))
+
+        // Axiom to ensure division of unsigned types are in-bounds
+        // By saying that (x / y) <= x, we can ensure that if x fits in an n-bit integer
+        // for any n, then (x / y) also fits in an n-bit integer.
+        // Axiom only applies for y != 0
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (< 0 y))
+              (and
+                (<= 0 ([EucDiv] x y))
+                (<= ([EucDiv] x y) x)
+              )
+            )
+            :pattern (([EucDiv] x y))
+            :qid prelude_div_unsigned_in_bounds
+            :skolemid skolem_prelude_div_unsigned_in_bounds
+        )))
+
+        // Axiom to ensure modulo of unsigned types are in-bounds
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (< 0 y))
+              (and
+                (<= 0 ([EucMod] x y))
+                (< ([EucMod] x y) y)
+              )
+            )
+            :pattern (([EucMod] x y))
+            :qid prelude_mod_unsigned_in_bounds
+            :skolemid skolem_prelude_mod_unsigned_in_bounds
+        )))
+
         // Chars
         (axiom (forall ((x [Poly])) (!
             (=>
