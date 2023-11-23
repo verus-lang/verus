@@ -515,9 +515,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         // Axiom to ensure division of unsigned types are in-bounds
         // By saying that (x / y) <= x, we can ensure that if x fits in an n-bit integer
         // for any n, then (x / y) also fits in an n-bit integer.
+        // Axiom only applies for y != 0
         (axiom (forall ((x Int) (y Int)) (!
             (=>
-              (and (<= 0 x) (<= 0 y))
+              (and (<= 0 x) (< 0 y))
               (and
                 (<= 0 ([EucDiv] x y))
                 (<= ([EucDiv] x y) x)
@@ -531,11 +532,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         // Axiom to ensure modulo of unsigned types are in-bounds
         (axiom (forall ((x Int) (y Int)) (!
             (=>
-              (and (<= 0 x) (<= 0 y))
+              (and (<= 0 x) (< 0 y))
               (and
                 (<= 0 ([EucMod] x y))
-                // Use <= rather than < here because y might be 0
-                (<= ([EucMod] x y) y)
+                (< ([EucMod] x y) y)
               )
             )
             :pattern (([EucMod] x y))
