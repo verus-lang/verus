@@ -211,6 +211,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_bitwise_trigger verus_code! {
+        spec fn f(u: u8) -> bool;
+        proof fn test() {
+            assert(forall|i: u8| #[trigger]f(i) || #[trigger](i >> 2) == i >> 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_recommends_regression_163 verus_code! {
         spec fn some_fn(a: int) -> bool;
 
