@@ -7,8 +7,8 @@ use syn_verus::{
     ForeignItemType, ImplItem, ImplItemConst, ImplItemMacro, ImplItemMethod, ImplItemType, Item,
     ItemConst, ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2,
     ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Pat,
-    Receiver, Signature, Stmt, Type, TraitItem, TraitItemConst, TraitItemMacro, TraitItemMethod,
-    TraitItemType, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree,
+    Receiver, Signature, Stmt, TraitItem, TraitItemConst, TraitItemMacro, TraitItemMethod,
+    TraitItemType, Type, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree,
 };
 
 impl Printer {

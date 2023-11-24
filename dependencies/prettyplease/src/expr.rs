@@ -69,9 +69,11 @@ impl Printer {
             Expr::BigOr(expr) => {
                 self.expr_big_op(&expr.exprs.iter().map(|(_, e)| e).collect(), true)
             }
+            Expr::Is(expr) => self.expr_is(expr),
+            Expr::Has(expr) => self.expr_has(expr),
 
             #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
-            _ => unimplemented!("unknown Expr"),
+            _ => unimplemented!("unknown Expr {:?}", expr),
         }
     }
 
@@ -90,6 +92,20 @@ impl Printer {
             self.end();
             self.hardbreak();
         }
+    }
+
+    pub fn expr_is(&mut self, expr: &syn_verus::ExprIs) {
+        self.outer_attrs(&expr.attrs);
+        self.expr(&expr.base);
+        self.word(" is ");
+        self.ident(&expr.variant_ident);
+    }
+
+    pub fn expr_has(&mut self, expr: &syn_verus::ExprHas) {
+        self.outer_attrs(&expr.attrs);
+        self.expr(&expr.lhs);
+        self.word(" has ");
+        self.expr(&expr.rhs);
     }
 
     pub fn expr_beginning_of_line(&mut self, expr: &Expr, beginning_of_line: bool) {
