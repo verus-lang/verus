@@ -318,3 +318,53 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] regression_925_reveal_loop_1 verus_code! {
+        #[verifier::opaque]
+        const X: usize = 1;
+
+        fn foo() by (nonlinear_arith) {
+            let mut i: usize = 0;
+            reveal(X);
+            while i < X
+                ensures i >= 1
+            {
+                reveal(X);
+                assume(false);
+                break;
+                reveal(X);
+                assume(false);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] regression_925_reveal_loop_2 verus_code! {
+        #[verifier::opaque]
+        spec fn x_spec() -> usize { 1 }
+
+        fn x() -> (r: usize)
+            ensures r == x_spec()
+        {
+            reveal(x_spec);
+            1
+        }
+
+        fn foo() {
+            let mut i: usize = 0;
+            reveal(x_spec);
+            while i < x()
+                ensures i >= 1
+            {
+                reveal(x_spec);
+                i += 1;
+                assert(i >= 1);
+                break;
+                reveal(x_spec);
+                assert(i >= 1);
+            }
+        }
+    } => Ok(())
+}
