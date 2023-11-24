@@ -927,6 +927,14 @@ impl Verifier {
         format!("{}{}{}{}", rerun_msg, count_msg, expand_msg, suffix,)
     }
 
+    fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
+        air_context.set_rlimit((rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32);
+    }
+
+    fn set_default_rlimit(&self, air_context: &mut air::context::Context) {
+        Self::set_rlimit(air_context, self.args.rlimit);
+    }
+
     fn new_air_context_with_prelude<'m>(
         &mut self,
         message_interface: Arc<dyn air::messages::MessageInterface>,
@@ -988,7 +996,7 @@ impl Verifier {
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
-        air_context.set_rlimit((self.args.rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32);
+        self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
@@ -1320,7 +1328,7 @@ impl Verifier {
                                 None
                             };
 
-                            let query_air_context = if do_spinoff {
+                            let mut query_air_context = if do_spinoff {
                                 spinoff_z3_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
@@ -1348,6 +1356,9 @@ impl Verifier {
                                 &mut air_context
                             };
                             let iter_curr_smt_time = query_air_context.get_time().1;
+                            if let Some(rlimit) = function.x.attrs.rlimit {
+                                Self::set_rlimit(&mut query_air_context, rlimit);
+                            }
                             let RunCommandQueriesResult {
                                 invalidity: command_invalidity,
                                 timed_out: command_timed_out,
@@ -1372,6 +1383,9 @@ impl Verifier {
                                 let (time_smt_init, time_smt_run) = query_air_context.get_time();
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
+                            }
+                            if function.x.attrs.rlimit.is_some() {
+                                self.set_default_rlimit(&mut query_air_context);
                             }
 
                             any_invalid |= command_invalidity;

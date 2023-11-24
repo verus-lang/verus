@@ -783,6 +783,8 @@ pub struct FunctionAttrsX {
     pub spinoff_prover: bool,
     /// Memoize function call results during interpretation
     pub memoize: bool,
+    /// override default rlimit
+    pub rlimit: Option<f32>,
 }
 
 /// Function specification of its invariant mask

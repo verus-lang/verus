@@ -187,7 +187,7 @@ pub(crate) enum GhostBlockAttr {
     Wrapper,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -256,6 +256,8 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Memoize function call results during interpretation
     Memoize,
+    // Override default rlimit
+    RLimit(f32),
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
     // In order to apply a specification to a method externally
@@ -438,6 +440,16 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::SpinoffProver)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
+                AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
+                    if name == "rlimit" =>
+                {
+                    match r.parse::<f32>() {
+                        Ok(rlimit) => v.push(Attr::RLimit(rlimit)),
+                        Err(_) => {
+                            return err_span(*span, "expected number for rlimit");
+                        }
+                    }
+                }
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
                 AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
                     v.push(Attr::ExternalFnSpecification)
@@ -664,6 +676,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) memoize: bool,
+    pub(crate) rlimit: Option<f32>,
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
@@ -717,6 +730,7 @@ pub(crate) fn get_verifier_attrs(
         nonlinear: false,
         spinoff_prover: false,
         memoize: false,
+        rlimit: None,
         truncate: false,
         external_fn_specification: false,
         external_type_specification: false,
@@ -765,6 +779,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::Memoize => vs.memoize = true,
+            Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
