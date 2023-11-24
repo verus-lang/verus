@@ -506,6 +506,8 @@ pub(crate) fn add_trait_impl_to_graph(call_graph: &mut Graph<Node>, t: &crate::a
             call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
         }
     }
+    // Add impl_T_for_* --> T
+    call_graph.add_edge(src_node, Node::Trait(t.x.trait_path.clone()));
 }
 
 // Check for cycles in traits
@@ -559,9 +561,10 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // We extend the call graph to represent trait declarations (T) and datatypes implementing
     // traits (D: T) using Node::Trait(T) and Node::TraitImpl(impl for D: T).
     // We add the following edges to the call graph (see recursion::expand_call_graph):
-    //   - T --> f if the requires/ensures of T's method declarations call f
+    //   - T --> f for any method f declared by T
     //   - f --> T for any function f<A: T> with type parameter A: T
     //     (more generally, f --> T for any function f with a where-bound T(...))
+    //   - f --> T for any function f that implements a method of T in D: T
     //   - D: T --> T
     //     (more generally, trait_impl -> trait)
     //   - f --> D: T where one of f's expressions instantiates A: T with D: T.

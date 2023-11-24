@@ -81,16 +81,14 @@ pub fn record_history_commit(
                                 fs_path.display(),
                             )
                         })?;
-                        let content_oid = repo.blob(contents.as_bytes()).unwrap_or_else(|| {
+                        let content_oid = repo.blob(contents.as_bytes()).unwrap_or_else(|_| {
                             panic!(
                                 "failed to create a git blob for file {}",
                                 cur_path.join(&name).display()
                             )
-                            .as_str()
                         });
                         treebuilder.insert(name.as_os_str(), content_oid, 0o100644).unwrap_or_else(
-                            panic!("failed to insert file {}", cur_path.join(&name).display())
-                                .as_str(),
+                            |_| panic!("failed to insert file {}", cur_path.join(&name).display()),
                         );
                     } else {
                         let mut inner_treebuilder =
@@ -102,17 +100,14 @@ pub fn record_history_commit(
                             deps_prefix,
                             cur_path.join(&name),
                         )?;
-                        let tree_oid = inner_treebuilder.write().unwrap_or_else(|| {
+                        let tree_oid = inner_treebuilder.write().unwrap_or_else(|_| {
                             panic!(
                                 "failed to write treebuilder for {}",
                                 cur_path.join(&name).display()
                             )
                         });
                         treebuilder.insert(name.as_os_str(), tree_oid, 0o040000).unwrap_or_else(
-                            || {
-                                panic!("failed to insert file {}", cur_path.join(&name).display())
-                                    .as_str()
-                            },
+                            |_| panic!("failed to insert file {}", cur_path.join(&name).display()),
                         );
                     }
                 }
@@ -156,7 +151,7 @@ pub fn record_history_commit(
             };
             let report_path = reports_dir.join(report_filename);
             {
-                let mut report = std::fs::File::create(&report_path).unwrap_or_else(|| {
+                let mut report = std::fs::File::create(&report_path).unwrap_or_else(|_| {
                     panic!("cannot create report file {}", report_path.display())
                 });
                 report.write_all(report_msg.as_bytes()).expect("failed to write report");
@@ -262,20 +257,20 @@ pub fn find_record_history_repo(
             git2::Repository::open_bare(&git_dir)
         };
         if !reports_dir.exists() {
-            std::fs::create_dir(&reports_dir).unwrap_or_else(|| {
+            std::fs::create_dir(&reports_dir).unwrap_or_else(|_| {
                 panic!("cannot create reports directory {}", reports_dir.display())
             });
         }
         let recorder_id = if !recorder_id_file.exists() {
             let new_recorder_id = gernerate_recorder_id();
             let mut fw = std::fs::File::create(recorder_id_file)
-                .unwrap_or_else(|| panic!("cannot open file in {}", history_dir.display()));
+                .unwrap_or_else(|_| panic!("cannot open file in {}", history_dir.display()));
             fw.write_all(new_recorder_id.as_bytes()).expect("failed to write recorder-id file");
             fw.flush().expect("failed to write recorder-id file");
             new_recorder_id
         } else {
             std::fs::read_to_string(&recorder_id_file)
-                .unwrap_or_else(|| panic!("cannot read file {}", recorder_id_file.display()))
+                .unwrap_or_else(|_| panic!("cannot read file {}", recorder_id_file.display()))
         };
         let repo = repo.map_err(|err| {
             format!("failed to open record-history repo at {} ({})", git_dir.display(), err)

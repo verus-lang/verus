@@ -423,12 +423,18 @@ pub(crate) fn expand_call_graph(
     // See recursive_types::check_traits for more documentation
     let f_node = Node::Fun(function.x.name.clone());
 
-    // Add D: T --> f and D: T --> T where f is one of D's methods that implements T
+    // Add T --> f if T declares method f
+    if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+        // T --> f
+        call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+    }
+
+    // Add D: T --> f and f --> T where f is one of D's methods that implements T
     if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
         let impl_node = Node::TraitImpl(impl_path.clone());
-        call_graph.add_edge(impl_node.clone(), t_node);
         call_graph.add_edge(impl_node, f_node.clone());
+        call_graph.add_edge(f_node.clone(), t_node);
     }
 
     // Add f --> T for any function f with "where ...: T(...)"
@@ -453,7 +459,6 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> f2 edges where f calls f2
     // Add f --> D: T where one of f's expressions instantiates A: T with D: T
-    // Add T --> f2 if the requires/ensures of T's method declarations call f2
     crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
@@ -482,12 +487,6 @@ pub(crate) fn expand_call_graph(
                         }
                     }
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
-                }
-
-                if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
-                    // T --> f2
-                    call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(x.clone()));
-                    call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(callee.clone()));
                 }
 
                 // f --> f2
