@@ -81,14 +81,14 @@ pub(crate) fn predict_native_quant_vars(
             };
             match &expr.x {
                 ExprX::Unary(op, arg) => match op {
-                    UnaryOp::Clip { .. } | UnaryOp::BitNot | UnaryOp::CharToInt => check_arg(arg),
+                    UnaryOp::Clip { .. } | UnaryOp::CharToInt => check_arg(arg),
                     _ => {}
                 },
                 ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), arg) => check_arg(arg),
                 ExprX::Binary(op, arg1, arg2) => {
                     use BinaryOp::*;
                     match op {
-                        Inequality(_) | Arith(..) | Bitwise(..) => {
+                        Inequality(_) | Arith(..) => {
                             check_arg(arg1);
                             check_arg(arg2);
                         }
@@ -247,8 +247,10 @@ fn check_trigger_expr(
                 Err(error(&exp.span, "triggers cannot contain trait bounds"))
             }
             ExpX::Unary(op, arg) => match op {
-                UnaryOp::StrLen | UnaryOp::StrIsAscii => check_trigger_expr_arg(state, true, arg),
-                UnaryOp::Clip { .. } | UnaryOp::BitNot | UnaryOp::CharToInt => {
+                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot => {
+                    check_trigger_expr_arg(state, true, arg)
+                }
+                UnaryOp::Clip { .. } | UnaryOp::CharToInt => {
                     check_trigger_expr_arg(state, false, arg)
                 }
                 UnaryOp::Trigger(_)
@@ -276,11 +278,11 @@ fn check_trigger_expr(
                         "triggers cannot contain interior is_smaller_than expressions",
                     )),
                     Inequality(_) => Err(error(&exp.span, "triggers cannot contain inequalities")),
-                    StrGetChar => {
+                    StrGetChar | Bitwise(..) => {
                         check_trigger_expr_arg(state, true, arg1)?;
                         check_trigger_expr_arg(state, true, arg2)
                     }
-                    Arith(..) | Bitwise(..) => {
+                    Arith(..) => {
                         check_trigger_expr_arg(state, false, arg1)?;
                         check_trigger_expr_arg(state, false, arg2)
                     }
