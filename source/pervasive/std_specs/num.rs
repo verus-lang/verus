@@ -121,6 +121,26 @@ macro_rules! num_specs {
             {
                 x.wrapping_sub(y)
             }
+
+            pub open spec fn signed_crop(x: int) -> $iN {
+                if (x % ($range as int)) > (<$iN>::MAX as int) {
+                    ((x % ($range as int)) - $range) as $iN
+                } else {
+                    (x % ($range as int)) as $iN
+                }
+            }
+
+            pub open spec fn wrapping_mul(x: $iN, y: $iN) -> $iN {
+                signed_crop(x * y)
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_mul)]
+            pub fn ex_wrapping_mul(x: $iN, y: $iN) -> (res: $iN)
+                ensures res == wrapping_mul(x, y)
+            {
+                x.wrapping_mul(y)
+            }
         }
 
         }
