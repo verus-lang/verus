@@ -299,6 +299,7 @@ fn token_struct_stream(
     let tokenname_data = field_token_data_type_name(field);
     let insttype = inst_type(sm);
     let token_data_ty = field_token_data_type(sm, field);
+    let token_ty = field_token_type(sm, field);
     let gen = &sm.generics;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
@@ -355,6 +356,16 @@ fn token_struct_stream(
             #[verifier::external_body] /* vattr */
             #[verifier::spec]
             pub fn view(self) -> #token_data_ty { ::core::unimplemented!() }
+
+            // Return an arbitrary token. It's not possible to do anything interesting
+            // with this token because it doesn't have a specified instance.
+
+            #[cfg(verus_keep_ghost_body)]
+            #[verus::internal(verus_macro)]
+            #[verifier::external_body] /* vattr */
+            #[verifier::returns(proof)] /* vattr */
+            #[verifier::proof]
+            pub fn arbitrary() -> #token_ty { ::core::unimplemented!() }
 
             #impl_token_stream
         }
