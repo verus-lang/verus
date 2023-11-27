@@ -71,7 +71,9 @@ fn param_type_name(typ: &Typ) -> String {
     match &*undecorate_typ(typ) {
         TypX::Bool => "Bool".to_string(),
         TypX::Datatype(path, _, _) => path_as_friendly_rust_name(path),
-        _ => panic!("Unsupported EPR Type"),
+        // TODO: Double check templating rules for QA Graph
+        TypX::TypParam(name) => name.to_string(),
+        _ => panic!("Unsupported EPR Type: {:?}", &*undecorate_typ(typ)),
     }
 }
 
