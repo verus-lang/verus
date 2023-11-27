@@ -228,21 +228,21 @@ struct Visitor<'f> {
 impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
     fn visit_assert(&mut self, i: &'ast syn_verus::Assert) {
         self.in_proof_directive += 1;
-        self.file_stats.mark(i, CodeKind::Proof, LineContent::ProofDirective);
+        self.file_stats.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
         syn_verus::visit::visit_assert(self, i);
         self.in_proof_directive -= 1;
     }
 
     fn visit_assert_forall(&mut self, i: &'ast syn_verus::AssertForall) {
         self.in_proof_directive += 1;
-        self.file_stats.mark(i, CodeKind::Proof, LineContent::ProofDirective);
+        self.file_stats.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
         syn_verus::visit::visit_assert_forall(self, i);
         self.in_proof_directive -= 1;
     }
 
     fn visit_assume(&mut self, i: &'ast syn_verus::Assume) {
         self.in_proof_directive += 1;
-        self.file_stats.mark(i, CodeKind::Proof, LineContent::ProofDirective);
+        self.file_stats.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
         syn_verus::visit::visit_assume(self, i);
         self.in_proof_directive -= 1;
     }
@@ -1219,23 +1219,40 @@ fn process_file(_config: &Config, input_path: &std::path::Path) -> Result<FileSt
         }
     }
     let mut multiline_comment = 0;
+    let mut kind_multiline_override = None;
+    let override_re = regex::Regex::new(r"\$line_count\$(([A-Za-z,]+)(\$\{)\$)|(\}\$)").unwrap();
     for line in file_stats.lines.iter_mut() {
         let trimmed = line.text.trim();
-        for (m, _) in trimmed.match_indices("/*") {
-            if trimmed[..m].trim().is_empty() && multiline_comment == 0 {
-                line.line_content = HashSet::from([LineContent::Comment]);
-                line.kinds = HashSet::from([CodeKind::Comment])
+        let mut start_not_comment = (multiline_comment == 0).then(|| 0);
+        let mut all_comment_indices = trimmed
+            .match_indices("/*")
+            .map(|(m, _)| (m, true))
+            .chain(trimmed.match_indices("*/").map(|(m, _)| (m + 2, false)))
+            .collect::<Vec<_>>();
+        all_comment_indices.sort_by_key(|(m, _)| *m);
+        let mut entriely_comment = true;
+        let had_comment_start_end = all_comment_indices.len() > 0;
+        for (i, s) in all_comment_indices {
+            if !s {
+                multiline_comment -= 1;
+                if multiline_comment == 0 {
+                    start_not_comment = Some(i);
+                }
+            } else {
+                multiline_comment += 1;
+                if multiline_comment == 1 {
+                    if let Some(_) = start_not_comment
+                        .take()
+                        .map(|x| line.text[x..i].trim())
+                        .filter(|x| x.is_empty())
+                    {
+                    } else {
+                        entriely_comment = false;
+                    }
+                }
             }
-            multiline_comment += 1;
         }
-        for (m, _) in trimmed.match_indices("*/") {
-            multiline_comment -= 1;
-            if trimmed[m + 2..].trim().is_empty() && multiline_comment == 0 {
-                line.line_content = HashSet::from([LineContent::Comment]);
-                line.kinds = HashSet::from([CodeKind::Comment])
-            }
-        }
-        if multiline_comment > 0 {
+        if entriely_comment && (multiline_comment > 0 || had_comment_start_end) {
             line.line_content = HashSet::from([LineContent::Comment]);
             line.kinds = HashSet::from([CodeKind::Comment])
         }
@@ -1243,17 +1260,45 @@ fn process_file(_config: &Config, input_path: &std::path::Path) -> Result<FileSt
             line.line_content = HashSet::from([LineContent::Comment]);
             line.kinds = HashSet::from([CodeKind::Comment])
         }
-        // TODO more layout-only chars
         if trimmed
             .chars()
             .all(|c| c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']')
         {
             line.kinds = HashSet::from([CodeKind::Layout])
         }
-
-        // if line.kinds.is_empty() && (trimmed == "{" || trimmed == "}" || trimmed == "") {
-        // }
-        // TODO manual marker
+        if let Some(captures) = override_re.captures(trimmed) {
+            dbg!(&captures);
+            if captures.get(1).is_some() {
+                let kinds = captures
+                    .get(2)
+                    .unwrap()
+                    .as_str()
+                    .split(',')
+                    .map(|x| match x {
+                        "Trusted" => CodeKind::Trusted,
+                        "Spec" => CodeKind::Spec,
+                        "Proof" => CodeKind::Proof,
+                        "Exec" => CodeKind::Exec,
+                        "Comment" => CodeKind::Comment,
+                        "Layout" => CodeKind::Layout,
+                        "Directives" => CodeKind::Directives,
+                        "Definitions" => CodeKind::Definitions,
+                        _ => panic!("unknown code kind {}", x),
+                    })
+                    .collect::<HashSet<_>>();
+                if captures.get(3).is_some() {
+                    kind_multiline_override = Some(kinds);
+                } else {
+                    line.kinds = kinds.clone();
+                }
+            }
+            if let Some(kinds) = &kind_multiline_override {
+                line.kinds = kinds.clone();
+            }
+            if captures.get(4).is_some() {
+                kind_multiline_override = None;
+            }
+        }
     }
     Ok(file_stats)
 }
