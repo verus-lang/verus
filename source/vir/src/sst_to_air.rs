@@ -1200,8 +1200,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
 
                     // These expects should succeed because we don't define any bitwise ops
                     // for int or nat in the builtin lib.
-                    let width_left = bitwidth_from_type(&lhs.typ).expect("bounded integer type");
-                    let width_right = bitwidth_from_type(&rhs.typ).expect("bounded integer type");
+                    let width_left = bitwidth_from_type(&lhs.typ)
+                        .unwrap_or_else(|| panic!("expected bounded integer type {:?}", &lhs.typ));
+                    let width_right = bitwidth_from_type(&rhs.typ)
+                        .unwrap_or_else(|| panic!("expected bounded integer type {:?}", &rhs.typ));
 
                     if width_left != width_right {
                         return Err(error(

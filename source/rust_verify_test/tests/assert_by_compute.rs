@@ -500,3 +500,46 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] shift_regression_928_1 ["vstd"] => verus_code! {
+        global size_of usize == 8;
+
+        pub open spec fn foo() -> int {
+            if 10 == 1 {
+                1
+            } else {
+                let w = 10 as u64;
+                let lz = w.leading_zeros();
+                (w >> lz as u64) as int
+            }
+        }
+
+        pub proof fn bar() {
+            assert(foo() == 0) by (compute);
+            // Doesn't panic:
+            // assert(foo() == 0) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[ignore] #[test] shift_regression_928_2 ["vstd"] => verus_code! {
+        spec fn foo(size: int) -> int {
+            let bits = usize::BITS as int;
+            if bits == 1 {
+                0
+            } else if bits <= 8 {
+                0
+            } else {
+                0
+            }
+        }
+
+        proof fn bar() {
+            assert(foo(0) == 0) by (compute);
+            // Doesn't panic:
+            // assert(foo() == 0) by (compute_only);
+        }
+    } => Ok(())
+}
