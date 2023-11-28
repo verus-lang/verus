@@ -759,6 +759,8 @@ pub struct FunctionAttrsX {
     pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
+    /// Suppress the function definition axiom
+    pub inline_only: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
