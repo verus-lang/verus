@@ -209,6 +209,8 @@ pub(crate) enum Attr {
     OpaqueOutsideModule,
     // inline spec function in SMT query
     Inline,
+    // TODO
+    InlineOnly,
     // generate ext_equal lemmas for datatype
     ExtEqual,
     // Rust ghost block
@@ -352,6 +354,7 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::OpaqueOutsideModule)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "inline" => v.push(Attr::Inline),
+                AttrTree::Fun(_, arg, None) if arg == "inline_only" => v.push(Attr::InlineOnly),
                 AttrTree::Fun(_, arg, None) if arg == "ext_equal" => v.push(Attr::ExtEqual),
                 AttrTree::Fun(_, arg, None) if arg == "epr_check" => v.push(Attr::EPRCheck),
                 AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
@@ -698,6 +701,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) publish: Option<bool>,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
+    pub(crate) inline_only: bool,
     pub(crate) ext_equal: bool,
     // TODO: get rid of *_recursive_types: bool
     pub(crate) reject_recursive_types_in_ground_variants: bool,
@@ -755,6 +759,7 @@ pub(crate) fn get_verifier_attrs(
         publish: None,
         opaque_outside_module: false,
         inline: false,
+        inline_only: false,
         ext_equal: false,
         reject_recursive_types: false,
         reject_recursive_types_in_ground_variants: false,
@@ -796,6 +801,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
+            Attr::InlineOnly => vs.inline_only = true,
             Attr::ExtEqual => vs.ext_equal = true,
             Attr::RejectRecursiveTypes(None) => vs.reject_recursive_types = true,
             Attr::RejectRecursiveTypes(Some(s)) => {
