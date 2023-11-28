@@ -679,16 +679,20 @@ fn bitwidth_to_exp(bitwidth: &IntegerTypeBitwidth) -> Expr {
 }
 
 // Generate a unique quantifier ID and map it to the quantifier's span
-pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
+pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp, is_mbqi: bool) -> Qid {
     let fun_name = fun_as_friendly_rust_name(
         &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
     );
     let qcount = ctx.quantifier_count.get();
-    let qid = new_user_qid_name(&fun_name, qcount);
+    let qid = new_user_qid_name(&fun_name, qcount, is_mbqi);
     ctx.quantifier_count.set(qcount + 1);
+    let mut check_is_mbqi = false;
     let trigs = match &exp.x {
         ExpX::Bind(bnd, _) => match &bnd.x {
-            BndX::Quant(_, _, trigs) => trigs,
+            BndX::Quant(_, _, trigs, is_mbqi_) => {
+                check_is_mbqi = *is_mbqi_;
+                trigs
+            },
             BndX::Choose(_, trigs, _) => trigs,
             BndX::Lambda(_, trigs) => trigs,
             _ => panic!(
@@ -701,6 +705,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
             exp.x
         ),
     };
+    assert!(check_is_mbqi == is_mbqi);
     let bnd_info = BndInfo {
         fun: ctx
             .fun
@@ -1083,7 +1088,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     })?;
                 air::ast_util::mk_let(&binders, &expr)
             }
-            BndX::Quant(quant, binders, trigs) => {
+            BndX::Quant(quant, binders, trigs, is_mbqi) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
@@ -1119,7 +1124,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
-                let qid = new_user_qid(ctx, &exp);
+                let qid = new_user_qid(ctx, &exp, *is_mbqi);
                 air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
             }
             BndX::Lambda(binders, trigs) => {
@@ -1131,7 +1136,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
-                let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
+                let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp, false));
                 let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
                 str_apply(crate::def::MK_FUN, &vec![lambda])
             }
@@ -1156,7 +1161,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let binders = Arc::new(bs);
-                let qid = new_user_qid(ctx, &exp);
+                let qid = new_user_qid(ctx, &exp, false);
                 let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), qid, cond_expr));
                 let mut choose_expr = Arc::new(ExprX::Bind(bind, body_expr));
                 match typ_inv {

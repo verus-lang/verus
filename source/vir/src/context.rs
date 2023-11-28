@@ -442,7 +442,11 @@ impl Ctx {
     }
 
     pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
-        let nodes = crate::prelude::prelude_nodes(prelude_config);
+        let nodes = if prelude_config.mbqi_mode {
+            crate::prelude::prelude_nodes_mbqi(prelude_config)
+        } else {
+            crate::prelude::prelude_nodes(prelude_config)
+        };
         air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")

@@ -1012,7 +1012,7 @@ impl Verifier {
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
-
+        
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude(prelude_config).iter() {
@@ -1054,10 +1054,10 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, mbqi_mode: false },
             profile_file_name,
         )?;
-
+        
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
         air_context.blank_line();
@@ -1130,6 +1130,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
+        mbqi: bool,
     ) -> Result<(Duration, Duration), VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1154,11 +1155,15 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, mbqi_mode: mbqi },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(crate::consts::EXPECTED_Z3_VERSION.to_string());
+        }
+        if mbqi {
+            air_context.set_z3_param("smt.mbqi", "true");
+            air_context.set_z3_param("smt.macro_finder", "true");
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
@@ -1676,7 +1681,7 @@ impl Verifier {
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
+            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx, epr_check)?;
 
         global_ctx = ctx.free();
 
