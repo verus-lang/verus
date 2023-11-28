@@ -447,7 +447,6 @@ pub(crate) fn build_triggers(
         }
         Ok((Arc::new(trigs), false))
     } else if state.auto_trigger == AutoType::MBQI {
-        // TODO: add the prefix to the QIDs? 
         Ok((Arc::new(Vec::new()), true))
     } else {
         let vars = &vars.iter().cloned().map(|(x, _)| x).collect();

@@ -219,7 +219,6 @@ impl Context {
         if option == "air_recommended_options" && value {
             self.set_z3_param_bool("auto_config", false, true);
             self.set_z3_param_bool("smt.mbqi", false, true);
-            // self.set_z3_param_str("smt.mbqi.id", "!!mbqi!!", true);
             self.set_z3_param_u32("smt.case_split", 3, true);
             self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
             self.set_z3_param_bool("smt.delay_units", true, true);

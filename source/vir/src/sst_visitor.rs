@@ -101,7 +101,7 @@ where
                                 bvars.push((b.name.clone(), false));
                             }
                         }
-                        BndX::Quant(_quant, binders, ts) => {
+                        BndX::Quant(_quant, binders, ts, _mbqi) => {
                             for b in binders.iter() {
                                 bvars.push((b.name.clone(), true));
                             }
@@ -359,7 +359,7 @@ where
                     }
                     BndX::Let(Arc::new(binders))
                 }
-                BndX::Quant(quant, binders, ts) => {
+                BndX::Quant(quant, binders, ts, mbqi) => {
                     map.push_scope(true);
                     for b in binders.iter() {
                         let _ = map.insert(b.name.clone(), true);
@@ -372,7 +372,7 @@ where
                         }
                         triggers.push(Arc::new(exprs));
                     }
-                    BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
+                    BndX::Quant(*quant, binders.clone(), Arc::new(triggers), *mbqi)
                 }
                 BndX::Lambda(binders, ts) => {
                     map.push_scope(true);
@@ -546,8 +546,8 @@ where
                     let bndx = BndX::Let(Arc::new(binders));
                     Spanned::new(bnd.span.clone(), bndx)
                 }
-                BndX::Quant(quant, binders, ts) => {
-                    let bndx = BndX::Quant(*quant, fbndtyps(env, binders)?, ftrigs(env, ts)?);
+                BndX::Quant(quant, binders, ts, mbqi) => {
+                    let bndx = BndX::Quant(*quant, fbndtyps(env, binders)?, ftrigs(env, ts)?, *mbqi);
                     Spanned::new(bnd.span.clone(), bndx)
                 }
                 BndX::Lambda(binders, ts) => {

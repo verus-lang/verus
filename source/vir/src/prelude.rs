@@ -35,6 +35,276 @@ impl Default for ArchWordBits {
 
 pub struct PreludeConfig {
     pub arch_word_bits: ArchWordBits,
+    pub mbqi_mode: bool,
+}
+
+pub(crate) fn prelude_nodes_mbqi(config: PreludeConfig) -> Vec<Node> {
+    #[allow(non_snake_case)]
+    let FuelId = str_to_node(FUEL_ID);
+    #[allow(non_snake_case)]
+    let Fuel = str_to_node(FUEL_TYPE);
+    let zero = str_to_node(ZERO);
+    let succ = str_to_node(SUCC);
+    let fuel_bool = str_to_node(FUEL_BOOL);
+    let fuel_bool_default = str_to_node(FUEL_BOOL_DEFAULT);
+    let fuel_defaults = str_to_node(FUEL_DEFAULTS);
+    let u_hi = str_to_node(U_HI);
+    let i_lo = str_to_node(I_LO);
+    let i_hi = str_to_node(I_HI);
+    let u_clip = str_to_node(U_CLIP);
+    let i_clip = str_to_node(I_CLIP);
+    let nat_clip = str_to_node(NAT_CLIP);
+    let u_inv = str_to_node(U_INV);
+    let i_inv = str_to_node(I_INV);
+    let arch_size = str_to_node(ARCH_SIZE);
+    #[allow(non_snake_case)]
+    let Add = str_to_node(ADD);
+    #[allow(non_snake_case)]
+    let Sub = str_to_node(SUB);
+    #[allow(non_snake_case)]
+    let Mul = str_to_node(MUL);
+    #[allow(non_snake_case)]
+    let EucDiv = str_to_node(EUC_DIV);
+    #[allow(non_snake_case)]
+    let EucMod = str_to_node(EUC_MOD);
+    let check_decrease_int = str_to_node(CHECK_DECREASE_INT);
+    let check_decrease_height = str_to_node(CHECK_DECREASE_HEIGHT);
+    let height = str_to_node(HEIGHT);
+    let height_le = nodes!(_ partial-order 0);
+    let height_lt = str_to_node(HEIGHT_LT);
+    let height_rec_fun = str_to_node(HEIGHT_REC_FUN);
+    let closure_req = str_to_node(CLOSURE_REQ);
+    let closure_ens = str_to_node(CLOSURE_ENS);
+    #[allow(non_snake_case)]
+    let Poly = str_to_node(POLY);
+    #[allow(non_snake_case)]
+    let Height = str_to_node(T_HEIGHT);
+    let box_int = str_to_node(BOX_INT);
+    let box_bool = str_to_node(BOX_BOOL);
+    let unbox_int = str_to_node(UNBOX_INT);
+    let unbox_bool = str_to_node(UNBOX_BOOL);
+
+    #[allow(non_snake_case)]
+    let Dummy = str_to_node(DUMMY);
+    let dummy_arg = str_to_node(DUMMY_ARG);
+
+    let box_dummy = str_to_node(BOX_DUMMY);
+    let unbox_dummy = str_to_node(UNBOX_DUMMY);
+
+    let box_strslice = str_to_node(BOX_STRSLICE);
+    let unbox_strslice = str_to_node(UNBOX_STRSLICE);
+
+    let box_char = str_to_node(BOX_CHAR);
+    let unbox_char = str_to_node(UNBOX_CHAR);
+
+    let typ = str_to_node(TYPE);
+    let type_id_bool = str_to_node(TYPE_ID_BOOL);
+    let type_id_int = str_to_node(TYPE_ID_INT);
+    let type_id_char = str_to_node(TYPE_ID_CHAR);
+    let type_id_nat = str_to_node(TYPE_ID_NAT);
+    let type_id_uint = str_to_node(TYPE_ID_UINT);
+    let type_id_sint = str_to_node(TYPE_ID_SINT);
+    let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+    let decoration = str_to_node(DECORATION);
+    let decorate_nil = str_to_node(DECORATE_NIL);
+    let decorate_ref = str_to_node(DECORATE_REF);
+    let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
+    let decorate_box = str_to_node(DECORATE_BOX);
+    let decorate_rc = str_to_node(DECORATE_RC);
+    let decorate_arc = str_to_node(DECORATE_ARC);
+    let decorate_ghost = str_to_node(DECORATE_GHOST);
+    let decorate_tracked = str_to_node(DECORATE_TRACKED);
+    let decorate_never = str_to_node(DECORATE_NEVER);
+    let has_type = str_to_node(HAS_TYPE);
+    let as_type = str_to_node(AS_TYPE);
+    let mk_fun = str_to_node(MK_FUN);
+    let const_int = str_to_node(CONST_INT);
+    let ext_eq = str_to_node(EXT_EQ);
+
+    let uint_xor = str_to_node(UINT_XOR);
+    let uint_and = str_to_node(UINT_AND);
+    let uint_or = str_to_node(UINT_OR);
+    let uint_shr = str_to_node(UINT_SHR);
+    let uint_shl = str_to_node(UINT_SHL);
+    let uint_not = str_to_node(UINT_NOT);
+    let singular_mod = str_to_node(SINGULAR_MOD);
+
+    let strslice = str_to_node(STRSLICE);
+    #[allow(non_snake_case)]
+    let Char = str_to_node(CHAR);
+
+    let strslice_is_ascii = str_to_node(STRSLICE_IS_ASCII);
+    let strslice_len = str_to_node(STRSLICE_LEN);
+    let strslice_get_char = str_to_node(STRSLICE_GET_CHAR);
+    let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
+    let new_strlit = str_to_node(STRSLICE_NEW_STRLIT);
+    let from_strlit = str_to_node(STRSLICE_FROM_STRLIT);
+
+    let from_unicode = str_to_node(CHAR_FROM_UNICODE);
+    let to_unicode = str_to_node(CHAR_TO_UNICODE);
+
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_slice = str_to_node(TYPE_ID_SLICE);
+    let type_id_dummy = str_to_node(TYPE_ID_DUMMY);
+
+    nodes_vec!(
+        // Fuel
+        (declare-sort [FuelId] 0)
+        (declare-sort [Fuel] 0)
+        (declare-const [zero] [Fuel])
+        (declare-fun [succ] ([Fuel]) [Fuel])
+        (declare-fun [fuel_bool] ([FuelId]) Bool)
+        (declare-fun [fuel_bool_default] ([FuelId]) Bool)
+        (declare-const [fuel_defaults] Bool)
+        (axiom (=> [fuel_defaults]
+            (forall ((id [FuelId])) (!
+                (= ([fuel_bool] id) ([fuel_bool_default] id))
+                :pattern (([fuel_bool] id))
+                :qid prelude_fuel_defaults
+                :skolemid skolem_prelude_fuel_defaults
+            ))
+        ))
+
+        // Dummy parameter sort for proof fns
+        (declare-sort [Dummy] 0)
+        (declare-fun [dummy_arg] () Dummy)
+
+        // Chars
+        (declare-sort [Char] 0)
+        (declare-fun [from_unicode] (Int) [Char])
+        (declare-fun [to_unicode] ([Char]) Int)
+
+        // Strings
+        (declare-sort [strslice] 0)
+        (declare-fun [strslice_is_ascii] ([strslice]) Bool)
+        (declare-fun [strslice_len] ([strslice]) Int)
+        (declare-fun [strslice_get_char] ([strslice] Int) [Char])
+        (declare-fun [new_strlit] (Int) [strslice])
+        (declare-fun [from_strlit] ([strslice]) Int)
+
+        // Polymorphism
+        (declare-sort [Poly] 0)
+        (declare-sort [Height] 0)
+        (declare-fun [box_int] (Int) [Poly])
+        (declare-fun [box_bool] (Bool) [Poly])
+        (declare-fun [unbox_int] ([Poly]) Int)
+        (declare-fun [unbox_bool] ([Poly]) Bool)
+        (declare-fun [box_strslice] ([strslice]) [Poly])
+        (declare-fun [unbox_strslice] ([Poly]) [strslice])
+        (declare-fun [box_char] ([Char]) [Poly])
+        (declare-fun [unbox_char] ([Poly]) [Char])
+        (declare-fun [box_dummy] ([Dummy]) [Poly])
+        (declare-fun [unbox_dummy] ([Poly]) [Dummy])
+        (declare-sort [typ] 0)
+        (declare-const [type_id_bool] [typ])
+        (declare-const [type_id_int] [typ])
+        (declare-const [type_id_nat] [typ])
+        (declare-const [type_id_strslice] [typ])
+        (declare-const [type_id_char] [typ])
+        (declare-fun [type_id_uint] (Int) [typ])
+        (declare-fun [type_id_sint] (Int) [typ])
+        (declare-fun [type_id_const_int] (Int) [typ])
+        (declare-const [type_id_dummy] [typ])
+        (declare-sort [decoration] 0)
+        (declare-const [decorate_nil] [decoration])
+        (declare-fun [decorate_ref] ([decoration]) [decoration])
+        (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
+        (declare-fun [decorate_box] ([decoration]) [decoration])
+        (declare-fun [decorate_rc] ([decoration]) [decoration])
+        (declare-fun [decorate_arc] ([decoration]) [decoration])
+        (declare-fun [decorate_ghost] ([decoration]) [decoration])
+        (declare-fun [decorate_tracked] ([decoration]) [decoration])
+        (declare-fun [decorate_never] ([decoration]) [decoration])
+        (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
+        (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
+        (declare-fun [has_type] ([Poly] [typ]) Bool)
+        (declare-fun [as_type] ([Poly] [typ]) [Poly])
+        (declare-fun [mk_fun] (Fun) Fun)
+        (declare-fun [const_int] ([typ]) Int)
+        (axiom (forall ((b Bool)) (!
+            ([has_type] ([box_bool] b) [type_id_bool])
+            :pattern (([has_type] ([box_bool] b) [type_id_bool]))
+            :qid prelude_has_type_bool
+            :skolemid skolem_prelude_has_type_bool
+        )))
+        (axiom (forall ((x Bool)) (!
+            (= x ([unbox_bool] ([box_bool] x)))
+            :pattern (([box_bool] x))
+            :qid prelude_unbox_box_bool
+            :skolemid skolem_prelude_unbox_box_bool
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_bool])
+                (= x ([box_bool] ([unbox_bool] x)))
+            )
+            :pattern (([has_type] x [type_id_bool]))
+            :qid prelude_box_unbox_bool
+            :skolemid skolem_prelude_box_unbox_bool
+        )))
+
+        // Integers
+        // TODO: make this more configurable via options or HeaderExpr directives
+        (declare-const [arch_size] Int) // number of bits for usize/isize
+        (declare-fun [u_hi] (Int) Int) // \
+        (declare-fun [i_lo] (Int) Int) // - convert number of bits to integer ranges
+        (declare-fun [i_hi] (Int) Int) // /
+        // clip functions f(num_bits, value)
+        (declare-fun [nat_clip] (Int) Int)
+        (declare-fun [u_clip] (Int Int) Int)
+        (declare-fun [i_clip] (Int Int) Int)
+        // type invariants inv(num_bits, value)
+        (declare-fun [u_inv] (Int Int) Bool)
+        (declare-fun [i_inv] (Int Int) Bool)
+
+        // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas
+        // that happen to contain *, div, or mod (e.g. failing to prove P ==> P).
+        // So wrap nonlinear occurrences of *, div, mod in a function for better stability:
+        (declare-fun [Add] (Int Int) Int)
+        (declare-fun [Sub] (Int Int) Int)
+        (declare-fun [Mul] (Int Int) Int)
+        (declare-fun [EucDiv] (Int Int) Int)
+        (declare-fun [EucMod] (Int Int) Int)
+
+
+        // Decreases
+        (declare-fun [height] ([Poly]) [Height])
+        (declare-fun [height_lt] ([Height] [Height]) Bool)
+        (declare-fun [height_rec_fun] ([Poly]) [Poly])
+        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
+        (declare-fun [check_decrease_height] ([Poly] [Poly] Bool) Bool)
+
+        // uninterpreted integer versions for bitvector Ops. first argument is bit-width
+        (declare-fun [uint_xor] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_and] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_or]  (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_shr] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_shl] (Int [Poly] [Poly]) Int)
+        (declare-fun [uint_not] (Int [Poly]) Int)
+
+        (declare-fun [singular_mod] (Int Int) Int)
+
+        // closure-related
+
+        // Each takes 2 type params:
+        //
+        //  - Closure type (e.g., anonymous closure type)
+        //  - Closure Param type (as tuple type)
+        //
+        // And 2-3 value params:
+        //
+        //  - the closure
+        //  - param value (as tuple)
+        //  - ret value (for closure_ens only)
+        //
+        // Also for the closure type param, we exclude the decoration.
+        // This is useful because it's pretty easy to write code that instantiates
+        // type parameters with either `F` or `&F` (where F: Fn(...))
+        // So we need to be able to handle both.
+
+        (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
+        (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+    )
 }
 
 pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {

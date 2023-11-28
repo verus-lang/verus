@@ -330,7 +330,7 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
                 AttrTree::Fun(_, name, None) if name == "all_triggers" => v.push(Attr::AllTriggers),
-                AttrTree::Fun(_, name, None) if name == "mbqi" => v.push(Attr::MBQI),
+                AttrTree::Fun(_, name, None) if name == "no_triggers" => v.push(Attr::MBQI),
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
@@ -490,7 +490,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, name, None) if name == "all_triggers" => {
                         v.push(Attr::AllTriggers)
                     }
-                    AttrTree::Fun(_, name, None) if name == "mbqi" => {
+                    AttrTree::Fun(_, name, None) if name == "no_triggers" => {
                         v.push(Attr::MBQI)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),

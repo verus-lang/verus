@@ -164,6 +164,8 @@ pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";
 
+pub const MBQI_QID_PREFIX: &str = "!!mbqi!!";
+
 pub const UINT_XOR: &str = "uintxor";
 pub const UINT_AND: &str = "uintand";
 pub const UINT_OR: &str = "uintor";
@@ -511,11 +513,12 @@ pub fn name_as_vstd_name(name: &String) -> Option<String> {
 }
 
 // Generate a unique quantifier name
-pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
+pub fn new_user_qid_name(fun_name: &str, q_count: u64, enable_mbqi: bool) -> String {
+    let mbqi_prefix = if enable_mbqi { crate::def::MBQI_QID_PREFIX } else { "" };
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars
     let fun_name = str::replace(&fun_name, ":", "_");
-    let qid = format!("{}{}_{}", air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
+    let qid = format!("{}{}{}_{}", mbqi_prefix, air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
     qid
 }
 
