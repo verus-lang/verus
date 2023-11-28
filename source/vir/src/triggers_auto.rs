@@ -32,6 +32,7 @@ and programmers having to use manual triggers to eliminate the timeouts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AutoType {
     Regular,
+    MBQI,
     All,
     None,
 }

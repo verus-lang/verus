@@ -726,8 +726,8 @@ pub fn func_axioms_to_air(
                     vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
-                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
+                let (triggers, is_mbqi) = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
+                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers, is_mbqi);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
                 let forall: Arc<SpannedTyped<ExpX>> =
                     SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);

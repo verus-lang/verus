@@ -198,6 +198,8 @@ pub enum TriggerAnnotation {
     /// with no diagnostics printed
     AutoTrigger,
     AllTriggers,
+    /// Do MBQI for this quantifier
+    MBQI,
     /// Each trigger group is named by either Some integer, or the unnamed group None.
     /// (None is just another name; it is no different from an integer-named group.)
     /// Example: #[trigger] expr is translated into Trigger(None) applied to expr
