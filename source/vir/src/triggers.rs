@@ -337,6 +337,12 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 }
                 Ok(())
             }
+            ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::MBQI), _) => {
+                if map.num_scopes() == 1 {
+                    state.auto_trigger = AutoType::MBQI;
+                }
+                Ok(())
+            }
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
                 let mut free_vars: HashSet<Ident> = HashSet::new();
                 let e1 = preprocess_exp(&e1);
@@ -384,7 +390,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
             ExpX::Bind(bnd, _) => {
                 let bvars: Vec<Ident> = match &bnd.x {
                     BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
-                    BndX::Quant(_, binders, _)
+                    BndX::Quant(_, binders, _, _)
                     | BndX::Lambda(binders, _)
                     | BndX::Choose(binders, _, _) => {
                         binders.iter().map(|b| b.name.clone()).collect()
@@ -414,7 +420,7 @@ pub(crate) fn build_triggers(
     vars: &Vec<(Ident, TriggerBoxing)>,
     exp: &Exp,
     allow_empty: bool,
-) -> Result<Trigs, VirErr> {
+) -> Result<(Trigs, bool), VirErr> {
     let mut state = State {
         auto_trigger: AutoType::None,
         trigger_vars: vars.iter().cloned().collect(),
@@ -449,9 +455,13 @@ pub(crate) fn build_triggers(
             }
             trigs.push(Arc::new(trig.clone()));
         }
-        Ok(Arc::new(trigs))
+        Ok((Arc::new(trigs), false))
+    } else if state.auto_trigger == AutoType::MBQI {
+        // TODO: add the prefix to the QIDs? 
+        Ok((Arc::new(Vec::new()), true))
     } else {
         let vars = &vars.iter().cloned().map(|(x, _)| x).collect();
-        crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
+        let res = crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)?;
+        Ok((res, false))
     }
 }

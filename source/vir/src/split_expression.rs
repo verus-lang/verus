@@ -441,7 +441,7 @@ fn split_expr(
             }
             let new_bnd = match &bnd.x {
                 BndX::Let(..) if !negated => bnd.clone(), // REVIEW: Can we support `Let` in negated position?
-                BndX::Quant(Quant { quant: air::ast::Quant::Forall }, _, _trigs) if !negated => {
+                BndX::Quant(Quant { quant: air::ast::Quant::Forall }, _, _trigs, _) if !negated => {
                     bnd.clone()
                 }
                 // REVIEW: is this actually useful?
