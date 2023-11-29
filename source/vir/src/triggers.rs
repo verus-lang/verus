@@ -327,6 +327,12 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 }
                 Ok(())
             }
+            ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::MBQI), _) => {
+                if map.num_scopes() == 1 {
+                    state.auto_trigger = AutoType::MBQI;
+                }
+                Ok(())
+            }
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
                 let mut free_vars: HashSet<Ident> = HashSet::new();
                 let e1 = preprocess_exp(&e1);
@@ -440,6 +446,9 @@ pub(crate) fn build_triggers(
             trigs.push(Arc::new(trig.clone()));
         }
         Ok(Arc::new(trigs))
+    } else if state.auto_trigger == AutoType::MBQI {
+        // TODO: add the prefix to the QIDs? 
+        todo!()
     } else {
         let vars = &vars.iter().cloned().map(|(x, _)| x).collect();
         crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
