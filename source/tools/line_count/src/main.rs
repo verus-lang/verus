@@ -305,30 +305,46 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         // self.mark(i, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
         syn_verus::visit::visit_ensures(self, i);
     }
-
-    fn visit_expr(&mut self, i: &'ast syn_verus::Expr) {
-        if !matches!(i, syn_verus::Expr::Block(_)) {
-            if let Some(content_code_kind) = self.in_body {
-                if self.in_proof_directive == 0 {
-                    self.mark(
-                        &i,
-                        self.mode_or_trusted(content_code_kind),
-                        LineContent::Code(content_code_kind),
-                    )
-                }
+    
+    fn visit_block(&mut self, i: &'ast syn_verus::Block) {
+        if let Some(content_code_kind) = self.in_body {
+            if self.in_proof_directive == 0 {
+                self.mark(
+                    &i,
+                    self.mode_or_trusted(content_code_kind),
+                    LineContent::Code(content_code_kind),
+                )
             }
         }
-        match i {
+        syn_verus::visit::visit_block(self, i);
+    }
+
+    fn visit_expr(&mut self, i: &'ast syn_verus::Expr) {
+        if let Some(content_code_kind) = self.in_body {
+            if self.in_proof_directive == 0 {
+                self.mark(
+                    &i,
+                    self.mode_or_trusted(content_code_kind),
+                    LineContent::Code(content_code_kind),
+                )
+            }
+        }
+        let entered_proof_directive = match i {
             syn_verus::Expr::Unary(syn_verus::ExprUnary {
                 op: syn_verus::UnOp::Proof(..),
                 attrs: _,
                 expr,
             }) => {
                 self.mark(expr, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofBlock);
+                self.in_proof_directive += 1;
+                true
             }
-            _ => (),
-        }
+            _ => false,
+        };
         syn_verus::visit::visit_expr(self, i);
+        if entered_proof_directive {
+            self.in_proof_directive -= 1;
+        }
     }
 
     fn visit_expr_block(&mut self, i: &'ast syn_verus::ExprBlock) {
