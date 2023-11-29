@@ -305,7 +305,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         // self.mark(i, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
         syn_verus::visit::visit_ensures(self, i);
     }
-    
+
     fn visit_block(&mut self, i: &'ast syn_verus::Block) {
         if let Some(content_code_kind) = self.in_body {
             if self.in_proof_directive == 0 {
