@@ -7,10 +7,6 @@ This accounts Verus lines in a project by whether they are
 
 ## Known issues
 
-* `#[verus::trusted]` is ignored on macros
-* `macro_rules!` are accounted as directives, or ignored
-* `#[verifier::verify]` is ignored
-
 To run this, first run `verus` on a project with `--emit=dep-info`. This will output a `.d` file in the
 current working directory. Then run this tool with
 ```
@@ -29,3 +25,17 @@ and `Comment`s.
 
 At the end of the output, there is a table with a summary per-file and totals. To only print the table
 remove the `-p` option.
+
+By default we only count items inside the `verus!` macro, and items marked `#[verified::verify]`.
+You can set `--no-external-by-default` to count everything in the crate. There are also local overrides:
+
+* `#[verus::line_count::ignore]` ignores an item in the line count (it becomes unaccounted);
+* `#[verus::line_count::consider]` enables counting for an item that would otherwise be ignored.
+
+Finally even more manual overrides are available:
+
+* you can mark a single line with a comment containing the string `$line_count$<list of categories>$` where `<list of categories>` is a comma separated list of categories to apply to that line (which is typically only one), for example `$line_count$Proof$` marks a line as Proof'
+* you can mark a block using `$line_count$<list of categories>${$` (at the start of the block) and
+`$line_count$}$` at the end of the block.
+
+Please use `-p` to check that the overrides are being applied correctly.

@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     ops::RangeInclusive,
+    rc::Rc,
 };
 
 use serde::Serialize;
@@ -57,12 +58,7 @@ fn main() {
         no_external_by_default: matches.opt_present("no-external-by-default"),
     };
 
-    if config.no_external_by_default {
-        eprintln!("error: --no-external-by-default is not yet implemented");
-        std::process::exit(1);
-    }
-
-    match run(&config, &std::path::Path::new(&deps_path)) {
+    match run(config, &std::path::Path::new(&deps_path)) {
         Ok(()) => (),
         Err(err) => {
             eprintln!("error: {}", err);
@@ -217,18 +213,21 @@ impl FileStats {
 }
 
 struct Visitor<'f> {
-    inside_verus_macro_or_verify: u64,
+    inside_verus_macro_or_verify_or_consider: u64,
     file_stats: &'f mut FileStats,
     in_body: Option<CodeKind>,
     trusted: u64,
     in_proof_directive: u64,
     in_state_machine_macro: u64,
-    inside_line_count_ignore: u64,
+    inside_line_count_ignore_or_external: u64,
+    config: Rc<Config>,
 }
 
 impl<'f> Visitor<'f> {
     fn active(&self) -> bool {
-        self.inside_line_count_ignore == 0 && self.inside_verus_macro_or_verify > 0
+        self.inside_line_count_ignore_or_external == 0
+            && (self.inside_verus_macro_or_verify_or_consider > 0
+                || self.config.no_external_by_default)
     }
 
     #[allow(dead_code)]
@@ -582,13 +581,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         let mut entered_state_machine_macro = false;
         let outer_last_segment = i.path.segments.last().map(|s| s.ident.to_string());
         if outer_last_segment == Some("macro_rules".into()) {
-            if self.inside_verus_macro_or_verify > 0 {
-                self.mark(
-                    i,
-                    self.mode_or_trusted(CodeKind::Definitions),
-                    LineContent::MacroDefinition,
-                );
-            }
+            self.mark(i, self.mode_or_trusted(CodeKind::Definitions), LineContent::MacroDefinition);
         } else if outer_last_segment == Some("verus".into()) {
             let source_toks = &i.tokens;
             let macro_content: File = syn_verus::parse2(source_toks.clone())
@@ -597,9 +590,9 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                     format!("failed to parse file macro contents: {} {:?}", e, e.span())
                 })
                 .expect("unexpected verus! macro content");
-            self.inside_verus_macro_or_verify += 1;
+            self.inside_verus_macro_or_verify_or_consider += 1;
             self.visit_file(&macro_content);
-            self.inside_verus_macro_or_verify -= 1;
+            self.inside_verus_macro_or_verify_or_consider -= 1;
         } else if outer_last_segment == Some("tokenized_state_machine".into())
             || outer_last_segment == Some("state_machine".into())
         {
@@ -609,7 +602,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
             //     LineContent::StateMachine(StateMachineCode::NameAndFields),
             // );
             entered_state_machine_macro = true;
-            self.inside_verus_macro_or_verify += 1;
+            self.inside_verus_macro_or_verify_or_consider += 1;
             self.in_state_machine_macro += 1;
             use proc_macro2::TokenTree;
             for tok in i.tokens.clone() {
@@ -684,7 +677,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_macro(self, i);
         if entered_state_machine_macro {
             self.in_state_machine_macro -= 1;
-            self.inside_verus_macro_or_verify -= 1;
+            self.inside_verus_macro_or_verify_or_consider -= 1;
         }
     }
 
@@ -927,20 +920,18 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
 
     fn visit_trait_item_method(&mut self, i: &'ast syn_verus::TraitItemMethod) {
         let exit = self.item_attr_enter(&i.attrs);
-        if self.inside_verus_macro_or_verify > 0 {
-            let content_code_kind = i.sig.mode.to_code_kind();
-            let code_kind = self.mode_or_trusted(content_code_kind);
-            self.mark_content(&i, LineContent::Trait);
-            // self.mark(&i.default, code_kind, LineContent::Code(content_code_kind));
-            self.mark_content(&i.default, LineContent::Body(content_code_kind));
-            self.handle_signature(content_code_kind, code_kind, &i.sig);
-            self.in_body = Some(content_code_kind);
-            if let Some(default) = &i.default {
-                self.visit_block(default);
-            }
-            syn_verus::visit::visit_trait_item_method(self, i);
-            self.in_body = None;
+        let content_code_kind = i.sig.mode.to_code_kind();
+        let code_kind = self.mode_or_trusted(content_code_kind);
+        self.mark_content(&i, LineContent::Trait);
+        // self.mark(&i.default, code_kind, LineContent::Code(content_code_kind));
+        self.mark_content(&i.default, LineContent::Body(content_code_kind));
+        self.handle_signature(content_code_kind, code_kind, &i.sig);
+        self.in_body = Some(content_code_kind);
+        if let Some(default) = &i.default {
+            self.visit_block(default);
         }
+        syn_verus::visit::visit_trait_item_method(self, i);
+        self.in_body = None;
         exit.exit(self);
     }
 
@@ -976,6 +967,8 @@ struct ItemAttrExit {
     entered_trusted: bool,
     entered_ignore: bool,
     entered_verify: bool,
+    entered_external: bool,
+    entered_consider: bool,
 }
 
 impl ItemAttrExit {
@@ -984,10 +977,16 @@ impl ItemAttrExit {
             visitor.trusted -= 1;
         }
         if self.entered_ignore {
-            visitor.inside_line_count_ignore -= 1;
+            visitor.inside_line_count_ignore_or_external -= 1;
         }
         if self.entered_verify {
-            visitor.inside_verus_macro_or_verify -= 1;
+            visitor.inside_verus_macro_or_verify_or_consider -= 1;
+        }
+        if self.entered_external {
+            visitor.inside_line_count_ignore_or_external -= 1;
+        }
+        if self.entered_consider {
+            visitor.inside_verus_macro_or_verify_or_consider -= 1;
         }
     }
 }
@@ -1006,6 +1005,8 @@ impl<'f> Visitor<'f> {
                             entered_trusted: true,
                             entered_ignore: false,
                             entered_verify: false,
+                            entered_external: false,
+                            entered_consider: false,
                         };
                     }
                     (Some(first), Some(second), Some(third))
@@ -1013,21 +1014,51 @@ impl<'f> Visitor<'f> {
                             && second.ident == "line_count"
                             && third.ident == "ignore" =>
                     {
-                        self.inside_line_count_ignore += 1;
+                        self.inside_line_count_ignore_or_external += 1;
                         return ItemAttrExit {
                             entered_trusted: false,
                             entered_ignore: true,
                             entered_verify: false,
+                            entered_external: false,
+                            entered_consider: false,
+                        };
+                    }
+                    (Some(first), Some(second), Some(third))
+                        if first.ident == "verus"
+                            && second.ident == "line_count"
+                            && third.ident == "consider" =>
+                    {
+                        self.inside_verus_macro_or_verify_or_consider += 1;
+                        return ItemAttrExit {
+                            entered_trusted: false,
+                            entered_ignore: false,
+                            entered_verify: false,
+                            entered_external: false,
+                            entered_consider: true,
                         };
                     }
                     (Some(first), Some(second), None)
                         if first.ident == "verifier" && second.ident == "verify" =>
                     {
-                        self.inside_verus_macro_or_verify += 1;
+                        self.inside_verus_macro_or_verify_or_consider += 1;
                         return ItemAttrExit {
                             entered_trusted: false,
                             entered_ignore: false,
                             entered_verify: true,
+                            entered_external: false,
+                            entered_consider: false,
+                        };
+                    }
+                    (Some(first), Some(second), None)
+                        if first.ident == "verifier" && second.ident == "external" =>
+                    {
+                        self.inside_line_count_ignore_or_external += 1;
+                        return ItemAttrExit {
+                            entered_trusted: false,
+                            entered_ignore: false,
+                            entered_verify: false,
+                            entered_external: true,
+                            entered_consider: false,
                         };
                     }
                     _ => {}
@@ -1043,7 +1074,13 @@ impl<'f> Visitor<'f> {
                 );
             }
         }
-        ItemAttrExit { entered_trusted: false, entered_ignore: false, entered_verify: false }
+        ItemAttrExit {
+            entered_trusted: false,
+            entered_ignore: false,
+            entered_verify: false,
+            entered_external: false,
+            entered_consider: false,
+        }
     }
 
     fn fn_code_kind(&self, kind: CodeKind) -> CodeKind {
@@ -1175,7 +1212,7 @@ fn hash_set_to_sorted_vec<V: Clone + Ord>(h: &HashSet<V>) -> Vec<V> {
     v
 }
 
-fn process_file(_config: &Config, input_path: &std::path::Path) -> Result<FileStats, String> {
+fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<FileStats, String> {
     let file_content = std::fs::read_to_string(input_path)
         .map_err(|e| format!("cannot read {} ({})", input_path.display(), e))?;
     let file = syn_verus::parse_file(&file_content).map_err(|e| {
@@ -1200,9 +1237,10 @@ fn process_file(_config: &Config, input_path: &std::path::Path) -> Result<FileSt
         in_body: None,
         trusted: 0,
         in_proof_directive: 0,
-        inside_verus_macro_or_verify: 0,
+        inside_verus_macro_or_verify_or_consider: 0,
         in_state_machine_macro: 0,
-        inside_line_count_ignore: 0,
+        inside_line_count_ignore_or_external: 0,
+        config,
     };
     for attr in file.attrs.iter() {
         if let Ok(Meta::Path(path)) = attr.parse_meta() {
@@ -1238,9 +1276,9 @@ fn process_file(_config: &Config, input_path: &std::path::Path) -> Result<FileSt
                                 e.span()
                             )
                         })?;
-                    visitor.inside_verus_macro_or_verify += 1;
+                    visitor.inside_verus_macro_or_verify_or_consider += 1;
                     visitor.visit_file(&macro_content);
-                    visitor.inside_verus_macro_or_verify -= 1;
+                    visitor.inside_verus_macro_or_verify_or_consider -= 1;
                 } else {
                     visitor.visit_item(&item);
                 }
@@ -1334,12 +1372,13 @@ fn process_file(_config: &Config, input_path: &std::path::Path) -> Result<FileSt
     Ok(file_stats)
 }
 
-fn run(config: &Config, deps_path: &std::path::Path) -> Result<(), String> {
+fn run(config: Config, deps_path: &std::path::Path) -> Result<(), String> {
+    let config = Rc::new(config);
     let (root_path, files) = get_dependencies(deps_path)?;
 
     let file_stats = files
         .iter()
-        .map(|f| process_file(config, &root_path.join(f)).map(|fs| (f, fs)))
+        .map(|f| process_file(config.clone(), &root_path.join(f)).map(|fs| (f, fs)))
         .collect::<Result<Vec<_>, String>>()?;
 
     if config.print_all {
