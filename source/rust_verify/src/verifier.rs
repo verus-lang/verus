@@ -901,7 +901,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: self.args.arch_word_bits, mbqi_mode: false },
             profile_file_name,
         )?;
         
@@ -1002,7 +1002,7 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: self.args.arch_word_bits, mbqi_mode: mbqi },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
@@ -1011,7 +1011,6 @@ impl Verifier {
         }
         if mbqi {
             air_context.set_z3_param("smt.mbqi", "true");
-            air_context.set_z3_param("smt.mbqi.id", "user_");
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
