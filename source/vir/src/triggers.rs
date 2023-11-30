@@ -447,8 +447,7 @@ pub(crate) fn build_triggers(
         }
         Ok(Arc::new(trigs))
     } else if state.auto_trigger == AutoType::MBQI {
-        // TODO: add the prefix to the QIDs? 
-        todo!()
+        Ok(Arc::new(vec![]))
     } else {
         let vars = &vars.iter().cloned().map(|(x, _)| x).collect();
         crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)

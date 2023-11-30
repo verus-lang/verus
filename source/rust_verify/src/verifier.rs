@@ -1011,6 +1011,7 @@ impl Verifier {
         }
         if mbqi {
             air_context.set_z3_param("smt.mbqi", "true");
+            air_context.set_z3_param("smt.macro_finder", "true");
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
