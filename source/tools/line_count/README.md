@@ -38,4 +38,6 @@ Finally even more manual overrides are available:
 * you can mark a block using `$line_count$<list of categories>${$` (at the start of the block) and
 `$line_count$}$` at the end of the block.
 
+By default lines that only contain delimiters are accounted as the enclosing context. If you would like to consider them as layout lines instead, use `--delimiters-are-layout`.
+
 Please use `-p` to check that the overrides are being applied correctly.

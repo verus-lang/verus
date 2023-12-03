@@ -16,6 +16,7 @@ struct Config {
     print_all: bool,
     json: bool,
     no_external_by_default: bool,
+    delimiters_are_layout: bool,
 }
 
 fn main() {
@@ -27,6 +28,7 @@ fn main() {
     opts.optflag("p", "print-all", "print all the annotated files");
     opts.optflag("", "no-external-by-default", "do not ignore items outside of verus! by default");
     opts.optflag("", "json", "output as machine-readable json");
+    opts.optflag("", "delimiters-are-layout", "consider delimiter-only lines as layout");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -56,6 +58,7 @@ fn main() {
         print_all: matches.opt_present("p"),
         json: matches.opt_present("json"),
         no_external_by_default: matches.opt_present("no-external-by-default"),
+        delimiters_are_layout: matches.opt_present("delimiters-are-layout"),
     };
 
     match run(config, &std::path::Path::new(&deps_path)) {
@@ -1256,7 +1259,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         inside_verus_macro_or_verify_or_consider: 0,
         in_state_machine_macro: 0,
         inside_line_count_ignore_or_external: 0,
-        config,
+        config: config.clone(),
     };
     for attr in file.attrs.iter() {
         if let Ok(Meta::Path(path)) = attr.parse_meta() {
@@ -1346,9 +1349,10 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
             line.line_content = HashSet::from([LineContent::Comment]);
             line.kinds = HashSet::from([CodeKind::Comment])
         }
-        if trimmed
-            .chars()
-            .all(|c| c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']')
+        if config.delimiters_are_layout
+            && trimmed
+                .chars()
+                .all(|c| c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']')
         {
             line.kinds = HashSet::from([CodeKind::Layout])
         }
