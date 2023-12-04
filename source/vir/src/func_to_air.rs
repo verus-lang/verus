@@ -456,6 +456,17 @@ pub fn func_name_to_air(
             }
         }
     }
+
+    if matches!(function.x.item_kind, ItemKind::Static) {
+        // Declare static%foo, which represents the result of 'foo()' when executed
+        // at the beginning of a program (here, `foo` is a 'static' item which we
+        // represent as 0-argument function)
+        commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
+            static_name(&function.x.name),
+            typ_to_air(ctx, &function.x.ret.x.typ),
+        )))));
+    }
+
     Ok(Arc::new(commands))
 }
 
@@ -596,16 +607,6 @@ pub fn func_decl_to_air(
     )?;
     if has_ens_pred {
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
-    }
-
-    if matches!(function.x.item_kind, ItemKind::Static) {
-        // Declare static%foo, which represents the result of 'foo()' when executed
-        // at the beginning of a program (here, `foo` is a 'static' item which we
-        // represent as 0-argument function)
-        decl_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
-            static_name(&function.x.name),
-            typ_to_air(ctx, &function.x.ret.x.typ),
-        )))));
     }
 
     Ok(Arc::new(decl_commands))
