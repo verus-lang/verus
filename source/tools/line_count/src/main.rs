@@ -750,7 +750,9 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                     LineContent::StateMachine(StateMachineCode::StructWithInvariantBody),
                 );
             }
-        } else if outer_last_segment == Some("atomic_with_ghost".into()) {
+        } else if outer_last_segment == Some("atomic_with_ghost".into())
+            || outer_last_segment == Some("my_atomic_with_ghost".into()) // for mem allocator
+        {
             let mut tokens_here = i.tokens.clone().into_iter();
             for tok in proc_macro2::TokenStream::from_iter(
                 tokens_here.by_ref().take_while(|t| t.to_string() != ";"),
