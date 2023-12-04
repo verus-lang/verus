@@ -762,7 +762,21 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
             for tok in tokens_here {
                 self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
             }
-        } else if outer_last_segment == Some("unused_page_get_mut".into()) {
+        } else if outer_last_segment == Some("tld_get_mut".into())
+                || outer_last_segment == Some("page_get_mut_inner".into())
+                || outer_last_segment == Some("unused_page_get_mut_prev".into())
+                || outer_last_segment == Some("unused_page_get_mut_inner".into())
+                || outer_last_segment == Some("unused_page_get_mut_next".into())
+                || outer_last_segment == Some("unused_page_get_mut_count".into())
+                || outer_last_segment == Some("unused_page_get_mut".into())
+                || outer_last_segment == Some("used_page_get_mut_prev".into())
+                || outer_last_segment == Some("heap_get_pages".into())
+                || outer_last_segment == Some("heap_get_pages_free_direct".into())
+                || outer_last_segment == Some("used_page_get_mut_next".into())
+                || outer_last_segment == Some("segment_get_mut_main".into())
+                || outer_last_segment == Some("segment_get_mut_main2".into())
+                || outer_last_segment == Some("segment_get_mut_local".into())
+        {
             for tok in i.tokens.clone().into_iter() {
                 match tok.clone() {
                     proc_macro2::TokenTree::Group(g) => {
