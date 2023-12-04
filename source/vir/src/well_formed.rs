@@ -375,6 +375,7 @@ fn check_function(
     ctxt: &Ctxt,
     function: &Function,
     diags: &mut Vec<VirErrAs>,
+    no_verify: bool,
 ) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
         if function.x.body.is_some() && function.x.mode != Mode::Exec {
@@ -582,7 +583,7 @@ fn check_function(
     }
 
     #[cfg(not(feature = "singular"))]
-    if function.x.attrs.integer_ring {
+    if function.x.attrs.integer_ring && !no_verify {
         return Err(error(
             &function.span,
             "Please cargo build with `--features singular` to use integer_ring attribute",
@@ -938,7 +939,11 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
     err
 }
 
-pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirErr> {
+pub fn check_crate(
+    krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    no_verify: bool,
+) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
@@ -1063,7 +1068,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
 
     let ctxt = Ctxt { funs, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
-        check_function(&ctxt, function, diags)?;
+        check_function(&ctxt, function, diags, no_verify)?;
     }
     for dt in krate.datatypes.iter() {
         check_datatype(&ctxt, dt)?;
