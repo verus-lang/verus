@@ -126,6 +126,7 @@ enum StateMachineCode {
     NameAndFields,
     Transition,
     Property,
+    StructWithInvariantBody,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -528,6 +529,29 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         exit.exit(self);
     }
 
+    fn visit_field(&mut self, i: &'ast syn_verus::Field) {
+        if let syn_verus::Type::Path(path) = &i.ty {
+            if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
+                .then(|| path.path.segments[0].ident.to_string())
+                .and_then(|c| match c.as_str() {
+                    "Ghost" => {
+                        if self.in_body == Some(CodeKind::Spec) {
+                            Some(self.mode_or_trusted(CodeKind::Spec))
+                        } else {
+                            Some(self.mode_or_trusted(CodeKind::Proof))
+                        }
+                    }
+                    "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
+                    _ => None,
+                })
+            {
+                self.mark(i, wrapper_code_kind, LineContent::GhostTracked(wrapper_code_kind));
+                return;
+            }
+        }
+        syn_verus::visit::visit_field(self, i);
+    }
+
     fn visit_item_trait_alias(&mut self, i: &'ast syn_verus::ItemTraitAlias) {
         let exit = self.item_attr_enter(&i.attrs);
         syn_verus::visit::visit_item_trait_alias(self, i);
@@ -594,11 +618,12 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         if i.ghost.is_some() || i.tracked.is_some() {
             self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofBinding);
         }
-        // TODO we may want to still recurse: syn_verus::visit::visit_local(self, i);
+        syn_verus::visit::visit_local(self, i);
     }
 
     fn visit_macro(&mut self, i: &'ast syn_verus::Macro) {
         let mut entered_state_machine_macro = false;
+        let mut entered_struct_with_invariants = false;
         let outer_last_segment = i.path.segments.last().map(|s| s.ident.to_string());
         if outer_last_segment == Some("macro_rules".into()) {
             self.mark(i, self.mode_or_trusted(CodeKind::Definitions), LineContent::MacroDefinition);
@@ -693,10 +718,44 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                     TokenTree::Literal(_) => (),
                 }
             }
+        } else if outer_last_segment == Some("struct_with_invariants".into()) {
+            entered_struct_with_invariants = true;
+            self.inside_verus_macro_or_verify_or_consider += 1;
+
+            let mut found_braced_group = false;
+            let mut tokens_here = i.tokens.clone().into_iter();
+            let s = proc_macro2::TokenStream::from_iter(tokens_here.by_ref().take_while(|t| {
+                match t {
+                    proc_macro2::TokenTree::Group(g) => {
+                        if g.delimiter() == proc_macro2::Delimiter::Brace {
+                            found_braced_group = true;
+                            return true;
+                        }
+                    }
+                    _ => (),
+                }
+                !found_braced_group
+            }));
+            let content_as_file: Option<syn_verus::File> = syn_verus::parse2(s).ok();
+            if let Some(content_as_file) = content_as_file {
+                for item in content_as_file.items {
+                    self.visit_item(&item);
+                }
+            }
+            for tok in tokens_here {
+                self.mark(
+                    &tok.span(),
+                    CodeKind::Spec,
+                    LineContent::StateMachine(StateMachineCode::StructWithInvariantBody),
+                );
+            }
         }
         syn_verus::visit::visit_macro(self, i);
         if entered_state_machine_macro {
             self.in_state_machine_macro -= 1;
+            self.inside_verus_macro_or_verify_or_consider -= 1;
+        }
+        if entered_struct_with_invariants {
             self.inside_verus_macro_or_verify_or_consider -= 1;
         }
     }
@@ -962,6 +1021,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                                         wrapper_code_kind,
                                         LineContent::GhostTracked(wrapper_code_kind),
                                     );
+                                    return;
                                 }
                             }
                         }
@@ -1366,7 +1426,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
     }
     let mut multiline_comment = 0;
     let mut kind_multiline_override = None;
-    let override_re = regex::Regex::new(r"\$line_count\$(([A-Za-z,]+)(\$\{)\$)|(\}\$)").unwrap();
+    let override_re = regex::Regex::new(r"\$line_count\$(([A-Za-z,]+)(\$\{)?\$)|(\}\$)").unwrap();
     for line in file_stats.lines.iter_mut() {
         let trimmed = line.text.trim();
         let mut start_not_comment = (multiline_comment == 0).then(|| 0);
@@ -1406,12 +1466,19 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
             line.line_content = HashSet::from([LineContent::Comment]);
             line.kinds = HashSet::from([CodeKind::Comment])
         }
+        if trimmed == "" {
+            if !line.kinds.is_empty() {
+                line.kinds = HashSet::from([CodeKind::Layout])
+            }
+        }
         if config.delimiters_are_layout
             && trimmed
                 .chars()
                 .all(|c| c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']')
         {
-            line.kinds = HashSet::from([CodeKind::Layout])
+            if !line.kinds.is_empty() {
+                line.kinds = HashSet::from([CodeKind::Layout])
+            }
         }
         if let Some(captures) = override_re.captures(trimmed) {
             if captures.get(1).is_some() {
