@@ -376,6 +376,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                     wrapper_code_kind,
                     LineContent::GhostTracked(wrapper_code_kind),
                 );
+                return;
             }
         }
         syn_verus::visit::visit_expr_call(self, i);
@@ -914,6 +915,62 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_stmt(&mut self, i: &'ast syn_verus::Stmt) {
+        match i {
+            syn_verus::Stmt::Local(syn_verus::Local {
+                attrs: _,
+                let_token: _,
+                tracked,
+                ghost,
+                pat: _,
+                init,
+                semi_token: _,
+            }) => {
+                if tracked.is_some() {
+                    self.mark(i, CodeKind::Proof, LineContent::GhostTracked(CodeKind::Proof));
+                    return;
+                }
+                if ghost.is_some() {
+                    if self.in_body == Some(CodeKind::Spec) {
+                        self.mark(i, CodeKind::Spec, LineContent::GhostTracked(CodeKind::Spec));
+                    } else {
+                        self.mark(i, CodeKind::Proof, LineContent::GhostTracked(CodeKind::Proof));
+                    }
+                    return;
+                }
+                if let Some(right) = init {
+                    match &*right.1 {
+                        syn_verus::Expr::Call(call_expr) => {
+                            let syn_verus::ExprCall { attrs: _, func, paren_token: _, args: _ } =
+                                &*call_expr;
+                            if let syn_verus::Expr::Path(path) = &**func {
+                                if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
+                                    .then(|| path.path.segments[0].ident.to_string())
+                                    .and_then(|c| match c.as_str() {
+                                        "Ghost" => {
+                                            if self.in_body == Some(CodeKind::Spec) {
+                                                Some(self.mode_or_trusted(CodeKind::Spec))
+                                            } else {
+                                                Some(self.mode_or_trusted(CodeKind::Proof))
+                                            }
+                                        }
+                                        "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
+                                        _ => None,
+                                    })
+                                {
+                                    self.mark(
+                                        i,
+                                        wrapper_code_kind,
+                                        LineContent::GhostTracked(wrapper_code_kind),
+                                    );
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+            _ => (),
+        }
         syn_verus::visit::visit_stmt(self, i);
     }
 
