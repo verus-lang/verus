@@ -375,7 +375,7 @@ fn check_function(
     ctxt: &Ctxt,
     function: &Function,
     diags: &mut Vec<VirErrAs>,
-    no_verify: bool,
+    _no_verify: bool,
 ) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
         if function.x.body.is_some() && function.x.mode != Mode::Exec {
@@ -583,7 +583,7 @@ fn check_function(
     }
 
     #[cfg(not(feature = "singular"))]
-    if function.x.attrs.integer_ring && !no_verify {
+    if function.x.attrs.integer_ring && !_no_verify {
         return Err(error(
             &function.span,
             "Please cargo build with `--features singular` to use integer_ring attribute",
