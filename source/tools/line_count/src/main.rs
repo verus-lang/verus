@@ -762,6 +762,21 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
             for tok in tokens_here {
                 self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
             }
+        } else if outer_last_segment == Some("unused_page_get_mut".into()) {
+            for tok in i.tokens.clone().into_iter() {
+                match tok.clone() {
+                    proc_macro2::TokenTree::Group(g) => {
+                        if g.delimiter() == proc_macro2::Delimiter::Brace {
+                            let content_as_block: Option<syn_verus::Block> =
+                                syn_verus::parse2(tok.into()).ok();
+                            if let Some(content_as_block) = content_as_block {
+                                self.visit_block(&content_as_block);
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
         }
         syn_verus::visit::visit_macro(self, i);
         if entered_state_machine_macro {
