@@ -148,6 +148,7 @@ enum LineContent {
     GhostTracked(CodeKind),
     Comment,
     StateMachine(StateMachineCode),
+    Atomic,
 }
 
 struct LineInfo {
@@ -748,6 +749,16 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                     CodeKind::Spec,
                     LineContent::StateMachine(StateMachineCode::StructWithInvariantBody),
                 );
+            }
+        } else if outer_last_segment == Some("atomic_with_ghost".into()) {
+            let mut tokens_here = i.tokens.clone().into_iter();
+            for tok in proc_macro2::TokenStream::from_iter(
+                tokens_here.by_ref().take_while(|t| t.to_string() != ";"),
+            ) {
+                self.mark(&tok.span(), CodeKind::Exec, LineContent::Atomic);
+            }
+            for tok in tokens_here {
+                self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
             }
         }
         syn_verus::visit::visit_macro(self, i);
