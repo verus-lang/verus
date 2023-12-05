@@ -228,6 +228,7 @@ pub(crate) enum AssertItem {
     AssertBitvectorBy,
     AssertForallBy,
     AssertBitVector,
+    AssertIntegerRingBy,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -427,6 +428,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::assert_bitvector_by",     VerusItem::Assert(AssertItem::AssertBitvectorBy)),
         ("verus::builtin::assert_forall_by",        VerusItem::Assert(AssertItem::AssertForallBy)),
         ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
+        ("verus::builtin::assert_integer_ring_by",  VerusItem::Assert(AssertItem::AssertIntegerRingBy)),
 
         ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
 

@@ -66,6 +66,7 @@ pub(crate) fn stm_assign(
         }
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
+        | StmX::AssertIntegerRing { .. }
         | StmX::AssertQuery { .. }
         | StmX::Assume(_)
         | StmX::Fuel(..)

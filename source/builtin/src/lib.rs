@@ -298,6 +298,13 @@ pub fn assert_nonlinear_by(_: ()) {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::assert_integer_ring_by"]
+#[verifier::proof]
+pub fn assert_integer_ring_by(_: ()) {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::assert_bitvector_by"]
 #[verifier::proof]
 pub fn assert_bitvector_by(_: ()) {

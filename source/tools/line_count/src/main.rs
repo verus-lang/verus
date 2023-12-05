@@ -389,6 +389,34 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_expr_closure(self, i);
     }
 
+    fn visit_expr_loop(&mut self, i: &'ast syn_verus::ExprLoop) {
+        if let Some(decreases) = &i.decreases {
+            self.mark(
+                decreases,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        if let Some(invariant) = &i.invariant {
+            self.mark(
+                &invariant,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        if let Some(invariant_ensures) = &i.invariant_ensures {
+            self.mark(
+                &invariant_ensures,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        if let Some(ensures) = &i.ensures {
+            self.mark(&ensures, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
+        }
+        self.visit_block(&i.body);
+    }
+
     fn visit_expr_while(&mut self, i: &'ast syn_verus::ExprWhile) {
         if let Some(decreases) = &i.decreases {
             self.mark(
@@ -751,7 +779,8 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 );
             }
         } else if outer_last_segment == Some("atomic_with_ghost".into())
-            || outer_last_segment == Some("my_atomic_with_ghost".into()) // for mem allocator
+            || outer_last_segment == Some("my_atomic_with_ghost".into())
+        // for mem allocator
         {
             let mut tokens_here = i.tokens.clone().into_iter();
             for tok in proc_macro2::TokenStream::from_iter(
@@ -763,19 +792,19 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
             }
         } else if outer_last_segment == Some("tld_get_mut".into())
-                || outer_last_segment == Some("page_get_mut_inner".into())
-                || outer_last_segment == Some("unused_page_get_mut_prev".into())
-                || outer_last_segment == Some("unused_page_get_mut_inner".into())
-                || outer_last_segment == Some("unused_page_get_mut_next".into())
-                || outer_last_segment == Some("unused_page_get_mut_count".into())
-                || outer_last_segment == Some("unused_page_get_mut".into())
-                || outer_last_segment == Some("used_page_get_mut_prev".into())
-                || outer_last_segment == Some("heap_get_pages".into())
-                || outer_last_segment == Some("heap_get_pages_free_direct".into())
-                || outer_last_segment == Some("used_page_get_mut_next".into())
-                || outer_last_segment == Some("segment_get_mut_main".into())
-                || outer_last_segment == Some("segment_get_mut_main2".into())
-                || outer_last_segment == Some("segment_get_mut_local".into())
+            || outer_last_segment == Some("page_get_mut_inner".into())
+            || outer_last_segment == Some("unused_page_get_mut_prev".into())
+            || outer_last_segment == Some("unused_page_get_mut_inner".into())
+            || outer_last_segment == Some("unused_page_get_mut_next".into())
+            || outer_last_segment == Some("unused_page_get_mut_count".into())
+            || outer_last_segment == Some("unused_page_get_mut".into())
+            || outer_last_segment == Some("used_page_get_mut_prev".into())
+            || outer_last_segment == Some("heap_get_pages".into())
+            || outer_last_segment == Some("heap_get_pages_free_direct".into())
+            || outer_last_segment == Some("used_page_get_mut_next".into())
+            || outer_last_segment == Some("segment_get_mut_main".into())
+            || outer_last_segment == Some("segment_get_mut_main2".into())
+            || outer_last_segment == Some("segment_get_mut_local".into())
         {
             for tok in i.tokens.clone().into_iter() {
                 match tok.clone() {
@@ -1293,6 +1322,31 @@ impl<'f> Visitor<'f> {
                     self.mode_or_trusted(CodeKind::Spec),
                     LineContent::FunctionSpec,
                 );
+            }
+        }
+        for p in &sig.inputs {
+            match &p.kind {
+                syn_verus::FnArgKind::Receiver(_) => (),
+                syn_verus::FnArgKind::Typed(pt) => {
+                    if let syn_verus::Type::Path(path) = &*pt.ty {
+                        if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
+                            .then(|| path.path.segments[0].ident.to_string())
+                            .and_then(|c| match c.as_str() {
+                                "Ghost" => {
+                                    if self.in_body == Some(CodeKind::Spec) {
+                                        Some(self.mode_or_trusted(CodeKind::Spec))
+                                    } else {
+                                        Some(self.mode_or_trusted(CodeKind::Proof))
+                                    }
+                                }
+                                "Tracked" => Some(self.mode_or_trusted(CodeKind::Proof)),
+                                _ => None,
+                            })
+                        {
+                            self.mark_additional_kind(&pt, wrapper_code_kind);
+                        }
+                    }
+                }
             }
         }
     }

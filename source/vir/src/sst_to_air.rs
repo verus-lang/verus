@@ -1040,6 +1040,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         },
         (ExpX::Binary(op, lhs, rhs), true) => {
             if !allowed_bitvector_type(&exp.typ) {
+                panic!();
                 return Err(error(
                     &exp.span,
                     format!("error: cannot use bit-vector arithmetic on type {:?}", exp.typ),
@@ -1961,6 +1962,117 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 true,
             ));
             vec![]
+        }
+        StmX::AssertIntegerRing { requires, ensures } => {
+            if ctx.debug {
+                unimplemented!("AssertIntegerRing is unsupported in debugger mode");
+            }
+
+            // parameters, requires, ensures to Singular Query
+            // in the resulting queryX::assertion, the last stmt should be ensure expression
+            let mut singular_vars: Vec<Decl> = vec![];
+            for pp in state.local_shared.iter() {
+                dbg!(pp);
+                match &**pp {
+                    DeclX::Var(id, ty) => {
+                        // this is not the case for function param
+                        // TODO check for Int
+                        singular_vars
+                        .push(Arc::new(DeclX::Var(id.clone(), ty.clone())));
+                    },
+                    DeclX::Const(id, ty) => {
+                        // TODO check for int
+                        let mut idd = id.to_string();
+                        idd.remove(idd.len()-1);
+                        // why one @ gets added here?
+                        singular_vars.push(Arc::new(DeclX::Var(Arc::new(idd), ty.clone())));
+                    }
+                    _ => {},
+                }
+            }
+            dbg!(&singular_vars);
+            let mut singular_stmts: Vec<Stmt> = vec![];
+            for req in &**requires {
+                dbg!(req);
+                if let ExpX::Const(_) = req.x {
+                    continue;
+                }
+                let error = error_with_label(
+                    &req.span,
+                    "Failed to translate this expression into a singular query".to_string(),
+                    "at the require clause".to_string(),
+                );
+                let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                dbg!(&air_expr);
+                let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+                singular_stmts.push(assert_stm);
+            }
+            for ens in &**ensures {
+                let error = error_with_label(
+                    &ens.span,
+                    "Failed to translate this expression into a singular query".to_string(),
+                    "at the ensure clause".to_string(),
+                );
+                let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+                singular_stmts.push(assert_stm);
+            }
+    
+            let query = Arc::new(QueryX {
+                local: Arc::new(singular_vars),
+                assertion: Arc::new(air::ast::StmtX::Block(Arc::new(singular_stmts))),
+            });
+            let singular_command = Arc::new(CommandX::CheckValid(query));
+    
+            state.commands.push(CommandsWithContextX::new(
+                ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
+                stm.span.clone(),
+                "Singular check valid".to_string(),
+                Arc::new(vec![singular_command]),
+                ProverChoice::Singular,
+                true,
+            ));
+            vec![]
+            
+            // let bv_expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, true);
+
+            // let requires_air: Vec<Expr> =
+            //     vec_map_result(requires, |e| exp_to_expr(ctx, e, bv_expr_ctxt))?;
+
+            // let ensures_air: Vec<(Span, Expr)> =
+            //     vec_map_result(ensures, |e| match exp_to_expr(ctx, e, bv_expr_ctxt) {
+            //         Ok(ens_air) => Ok((e.span.clone(), ens_air)),
+            //         Err(vir_err) => Err(vir_err.clone()),
+            //     })?;
+
+            // let mut local = state.local_bv_shared.clone();
+            // for req in requires_air.iter() {
+            //     local.push(Arc::new(DeclX::Axiom(req.clone())));
+            // }
+
+            // let mut air_body: Vec<Stmt> = Vec::new();
+            // for (span, ens) in ensures_air.iter() {
+            //     let error = error(span, "bitvector ensures not satisfied");
+            //     let ens_stmt = StmtX::Assert(error, ens.clone());
+            //     air_body.push(Arc::new(ens_stmt));
+            // }
+            // let assertion = one_stmt(air_body);
+            // let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+            // let mut bv_commands = mk_bitvector_option();
+            // bv_commands.push(Arc::new(CommandX::CheckValid(query)));
+            // state.commands.push(CommandsWithContextX::new(
+            //     ctx.fun
+            //         .as_ref()
+            //         .expect("asserts are expected to be in a function")
+            //         .current_fun
+            //         .clone(),
+            //     stm.span.clone(),
+            //     "assert_bitvector_by".to_string(),
+            //     Arc::new(bv_commands),
+            //     ProverChoice::BitVector,
+            //     true,
+            // ));
+            // vec![]
         }
         StmX::Assume(expr) => {
             if ctx.debug {

@@ -1899,7 +1899,7 @@ impl VisitMut for Visitor {
                                     );
                                 }
                             }
-                            "bit_vector" | "nonlinear_arith" => {
+                            "bit_vector" | "nonlinear_arith" | "integer_ring" => {
                                 let mut block = if let Some(block) = assert.body {
                                     *block
                                 } else {
@@ -1923,8 +1923,10 @@ impl VisitMut for Visitor {
                                 block.stmts.splice(0..0, stmts);
                                 let assert_x_by: Expr = if prover_id == "bit_vector" {
                                     quote_verbatim!(span, attrs => ::builtin::assert_bitvector_by(#block))
-                                } else {
+                                } else if prover_id == "nonlinear_arith" {
                                     quote_verbatim!(span, attrs => ::builtin::assert_nonlinear_by(#block))
+                                } else {
+                                    quote_verbatim!(span, attrs => ::builtin::assert_integer_ring_by(#block))
                                 };
                                 *expr = Expr::Verbatim(quote_spanned!(span => {#assert_x_by}));
                             }

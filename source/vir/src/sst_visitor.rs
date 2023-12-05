@@ -156,6 +156,7 @@ where
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
                 | StmX::AssertBitVector { .. }
+                | StmX::AssertIntegerRing { .. }
                 | StmX::Fuel(..)
                 | StmX::RevealString(_)
                 | StmX::Return { .. } => (),
@@ -218,7 +219,8 @@ where
             StmX::Assert(_span2, exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::AssertBitVector { requires, ensures } => {
+            StmX::AssertBitVector { requires, ensures } | 
+            StmX::AssertIntegerRing { requires, ensures } => {
                 for req in requires.iter() {
                     expr_visitor_control_flow!(exp_visitor_dfs(req, &mut ScopeMap::new(), f));
                 }
@@ -578,6 +580,7 @@ where
         StmX::Assume(_) => fs(stm),
         StmX::Assign { .. } => fs(stm),
         StmX::AssertBitVector { .. } => fs(stm),
+        StmX::AssertIntegerRing { .. } => fs(stm),
         StmX::Fuel(..) => fs(stm),
         StmX::RevealString(_) => fs(stm),
         StmX::DeadEnd(s) => {
@@ -660,6 +663,7 @@ where
         StmX::Assume(_) => Ok(stm.clone()),
         StmX::Assign { .. } => Ok(stm.clone()),
         StmX::AssertBitVector { .. } => Ok(stm.clone()),
+        StmX::AssertIntegerRing { .. } => Ok(stm.clone()),
         StmX::Fuel(..) => Ok(stm.clone()),
         StmX::RevealString(_) => Ok(stm.clone()),
         StmX::DeadEnd(s) => {
@@ -732,6 +736,7 @@ where
     match &stm.x {
         StmX::Assert(_, _)
         | StmX::AssertBitVector { requires: _, ensures: _ }
+        | StmX::AssertIntegerRing { requires: _, ensures: _ }
         | StmX::Assume(_)
         | StmX::Assign { lhs: _, rhs: _ }
         | StmX::Fuel(_, _)
@@ -839,6 +844,11 @@ where
                 let requires = Arc::new(vec_map_result(requires, fe)?);
                 let ensures = Arc::new(vec_map_result(ensures, fe)?);
                 Spanned::new(span, StmX::AssertBitVector { requires, ensures })
+            }
+            StmX::AssertIntegerRing { requires, ensures } => {
+                let requires = Arc::new(vec_map_result(requires, fe)?);
+                let ensures = Arc::new(vec_map_result(ensures, fe)?);
+                Spanned::new(span, StmX::AssertIntegerRing { requires, ensures })
             }
             StmX::Assume(exp) => Spanned::new(span, StmX::Assume(fe(exp)?)),
             StmX::Assign { lhs: Dest { dest, is_init }, rhs } => {

@@ -1654,6 +1654,7 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
             // Note that `ExprX::AssertQuery` makes a separate query for AssertQueryMode::NonLinear and AssertQueryMode::BitVector
             // only `requires` and type invariants will be provided to prove `ensures`
+            dbg!(&mode);
             match mode {
                 AssertQueryMode::NonLinear => {
                     let mut inner_body: Vec<Stm> = Vec::new();
@@ -1745,15 +1746,15 @@ pub(crate) fn expr_to_stm_opt(
                     Ok((vec![outer_block, nonlinear], ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
 
-                AssertQueryMode::BitVector => {
+                AssertQueryMode::BitVector | AssertQueryMode::IntegerRing=> {
                     // check if assertion block is consisted only with requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
                     let proof_block_err =
-                        Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));
+                        Err(error(&expr.span, "assert_bitvector_by/assert_by_integer_ring cannot contain a proof block"));
                     if let ReturnValue::Some(_) = e {
                         return Err(error(
                             &expr.span,
-                            "assert_bitvector_by cannot contain a return value",
+                            "assert_bitvector_by/assert_by_integer_ring cannot contain a return value",
                         ));
                     }
                     if proof_stms.len() > 1 {
@@ -1810,14 +1811,26 @@ pub(crate) fn expr_to_stm_opt(
                     }
                     let outer_block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(outer)));
 
-                    let bitvector = Spanned::new(
-                        expr.span.clone(),
-                        StmX::AssertBitVector {
-                            requires: Arc::new(requires_in),
-                            ensures: Arc::new(ensures_in),
-                        },
-                    );
-                    Ok((vec![outer_block, bitvector], ReturnValue::ImplicitUnit(expr.span.clone())))
+                    
+                    let bitvec_or_intring = match mode {
+                        AssertQueryMode::NonLinear => unreachable!(),
+                        AssertQueryMode::BitVector => Spanned::new(
+                            expr.span.clone(),
+                            StmX::AssertBitVector {
+                                requires: Arc::new(requires_in),
+                                ensures: Arc::new(ensures_in),
+                            },
+                        ),
+                        AssertQueryMode::IntegerRing =>
+                            Spanned::new(
+                                expr.span.clone(),
+                            StmX::AssertIntegerRing {
+                                    requires: Arc::new(requires_in),
+                                    ensures: Arc::new(ensures_in),
+                                },
+                            ),
+                    };
+                    Ok((vec![outer_block, bitvec_or_intring], ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
             }
         }

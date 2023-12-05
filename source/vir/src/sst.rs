@@ -146,6 +146,10 @@ pub enum StmX {
         requires: Exps,
         ensures: Exps,
     },
+    AssertIntegerRing {
+        requires: Exps,
+        ensures: Exps,
+    },
     Assume(Exp),
     Assign {
         lhs: Dest,

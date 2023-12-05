@@ -843,7 +843,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
                     mk_expr(ExprX::AssertCompute(exp, ComputeMode::ComputeOnly))
                 }
-                AssertItem::AssertNonlinearBy | AssertItem::AssertBitvectorBy => {
+                AssertItem::AssertNonlinearBy | AssertItem::AssertBitvectorBy | AssertItem::AssertIntegerRingBy => {
                     unsupported_err_unless!(
                         args_len == 1,
                         expr.span,
@@ -888,6 +888,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mode: match assert_item {
                             AssertItem::AssertNonlinearBy => AssertQueryMode::NonLinear,
                             AssertItem::AssertBitvectorBy => AssertQueryMode::BitVector,
+                            AssertItem::AssertIntegerRingBy => AssertQueryMode::IntegerRing,
                             _ => unreachable!(),
                         },
                     })

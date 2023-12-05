@@ -558,6 +558,7 @@ pub enum InvAtomicity {
 pub enum AssertQueryMode {
     NonLinear,
     BitVector,
+    IntegerRing,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
