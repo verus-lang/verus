@@ -565,12 +565,13 @@ fn output_step_datatype(
     let label_param;
     let label_arg;
     let use_label;
+    let label_gen = sm.get_label_generics_opt(is_init);
     if is_init && sm.init_label.is_some() {
-        label_param = quote! { init_label: InitLabel, };
+        label_param = quote! { init_label: InitLabel#label_gen, };
         label_arg = quote! { init_label, };
         use_label = true;
     } else if !is_init && sm.transition_label.is_some() {
-        label_param = quote! { label: Label, };
+        label_param = quote! { label: Label#label_gen, };
         label_arg = quote! { label, };
         use_label = true;
     } else {

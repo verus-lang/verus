@@ -19,7 +19,7 @@ use syn_verus::Token;
 use syn_verus::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
     GenericParam, Generics, Ident, ImplItemMethod, Item, ItemFn, Meta, MetaList, NestedMeta,
-    PathArguments, Receiver, ReturnType, Type, TypePath, Visibility, WhereClause,
+    PathArguments, Receiver, ReturnType, Type, TypeParam, TypePath, Visibility, WhereClause,
 };
 
 pub struct SMBundle {
@@ -639,12 +639,62 @@ fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {
     }
 }
 
-fn item_type_check_no_generics(span: Span, generics: &Generics) -> parse::Result<()> {
-    if generics.params.len() > 0 || generics.where_clause.is_some() {
-        Err(Error::new(span, "generics not yet supported here"))
-    } else {
-        Ok(())
+fn is_okay_label_generic_ident(ident: &Ident, main_generics: &Option<Generics>) -> bool {
+    let s = ident.to_string();
+    match main_generics {
+        None => false,
+        Some(main_generics) => {
+            for p in &main_generics.params {
+                match p {
+                    GenericParam::Type(TypeParam { ident: i, .. }) => {
+                        if i.to_string() == s {
+                            return true;
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            return false;
+        }
     }
+}
+
+fn item_type_check_no_bounds(
+    span: Span,
+    generics: &Generics,
+    main_generics: &Option<Generics>,
+) -> parse::Result<()> {
+    if generics.where_clause.is_some() {
+        return Err(Error::new(span, "where clause not supported here"));
+    }
+    for p in &generics.params {
+        match p {
+            GenericParam::Type(TypeParam {
+                attrs,
+                ident,
+                colon_token,
+                bounds,
+                eq_token,
+                default,
+            }) => {
+                if attrs.len() > 0
+                    || colon_token.is_some()
+                    || bounds.len() > 0
+                    || eq_token.is_some()
+                    || default.is_some()
+                {
+                    return Err(Error::new(p.span(), "unsupported type param"));
+                }
+                if !is_okay_label_generic_ident(ident, main_generics) {
+                    return Err(Error::new(p.span(), "invalid generic param"));
+                }
+            }
+            _ => {
+                return Err(Error::new(p.span(), "this type param not supported here"));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn item_type_check_vis(span: Span, vis: &Visibility) -> parse::Result<()> {
@@ -697,19 +747,19 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
                 let is_init = match &item {
                     Item::Type(item_type) => {
                         let is_init = item_type_check_name(&item_type.ident)?;
-                        item_type_check_no_generics(item.span(), &item_type.generics)?;
+                        item_type_check_no_bounds(item.span(), &item_type.generics, &generics)?;
                         item_type_check_vis(item.span(), &item_type.vis)?;
                         is_init
                     }
                     Item::Struct(item_struct) => {
                         let is_init = item_type_check_name(&item_struct.ident)?;
-                        item_type_check_no_generics(item.span(), &item_struct.generics)?;
+                        item_type_check_no_bounds(item.span(), &item_struct.generics, &generics)?;
                         item_type_check_vis(item.span(), &item_struct.vis)?;
                         is_init
                     }
                     Item::Enum(item_enum) => {
                         let is_init = item_type_check_name(&item_enum.ident)?;
-                        item_type_check_no_generics(item.span(), &item_enum.generics)?;
+                        item_type_check_no_bounds(item.span(), &item_enum.generics, &generics)?;
                         item_type_check_vis(item.span(), &item_enum.vis)?;
                         is_init
                     }

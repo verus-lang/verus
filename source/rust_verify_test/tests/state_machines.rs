@@ -7077,3 +7077,121 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] label_generics IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<U> = Option<U>;
+
+            pub type Label<T> = Option<T>;
+
+            init!{
+                g(l: InitLabel<U>, t: T, u: U) {
+                    init x = t;
+                    init y = u;
+                }
+            }
+
+
+            transition!{
+                f(l: Label<T>) {
+                }
+            }
+
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail1 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<U> = Option<U>;
+
+            pub type Label<T> = Option<T>;
+
+            init!{
+                g(l: InitLabel<T>, t: T, u: U) {
+                    init x = t;
+                    init y = u;
+                }
+            }
+
+
+            transition!{
+                f(l: Label<T>) {
+                }
+            }
+
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init' definition must be 'InitLabel'")
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail2 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<U> = Option<U>;
+
+            pub type Label<T> = Option<T>;
+
+            init!{
+                g(l: InitLabel<U>, t: T, u: U) {
+                    init x = t;
+                    init y = u;
+                }
+            }
+
+
+            transition!{
+                f(l: Label<U>) {
+                }
+            }
+
+        }}
+
+    } => Err(e) => assert_vir_error_msg(e, "the first param to a 'transition' must be 'Label'")
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail3 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type Label<J> = Option<J>;
+
+        }}
+
+    } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail4 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<J> = Option<J>;
+
+        }}
+
+    } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
+}

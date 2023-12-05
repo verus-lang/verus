@@ -13,7 +13,7 @@ use proc_macro2::Span;
 use std::collections::HashSet;
 use syn_verus::parse;
 use syn_verus::spanned::Spanned;
-use syn_verus::{Error, Ident, Type, TypePath};
+use syn_verus::{Error, GenericArgument, GenericParam, Ident, Path, PathArguments, Type, TypePath};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {
@@ -692,16 +692,65 @@ pub fn check_transitions(sm: &mut SM) -> parse::Result<()> {
 }
 
 fn check_label_param(sm: &SM, tr: &Transition, errors: &mut Vec<Error>) {
-    let first_arg_is_type = |expected_name: &str| {
+    let first_arg_is_type = |is_init: bool| {
+        let expected_name = if is_init { INIT_LABEL_TYPE_NAME } else { TRANSITION_LABEL_TYPE_NAME };
         if tr.params.len() == 0 {
             false
         } else {
             let ty = &tr.params[0].ty;
             match ty {
-                Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
-                    None => false,
-                    Some(id) => id.to_string() == expected_name,
-                },
+                Type::Path(TypePath {
+                    qself: None,
+                    path: Path { leading_colon: None, segments },
+                }) => {
+                    if segments.len() != 1 {
+                        return false;
+                    }
+                    let seg = &segments[0];
+                    if &seg.ident.to_string() != expected_name {
+                        return false;
+                    }
+                    let generics = sm.get_label_generics(is_init);
+                    match &seg.arguments {
+                        PathArguments::None => {
+                            if generics.params.len() != 0 {
+                                return false;
+                            }
+                        }
+                        PathArguments::AngleBracketed(abga) => {
+                            if abga.args.len() != generics.params.len() {
+                                return false;
+                            }
+                            for (arg, param) in abga.args.iter().zip(generics.params.iter()) {
+                                match (arg, param) {
+                                    (
+                                        GenericArgument::Type(Type::Path(TypePath {
+                                            qself: None,
+                                            path,
+                                        })),
+                                        GenericParam::Type(tp),
+                                    ) => match path.get_ident() {
+                                        Some(id) => {
+                                            if id.to_string() != tp.ident.to_string() {
+                                                return false;
+                                            }
+                                        }
+                                        None => {
+                                            return false;
+                                        }
+                                    },
+                                    _ => {
+                                        return false;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            return false;
+                        }
+                    }
+                    true
+                }
                 _ => false,
             }
         }
@@ -710,13 +759,13 @@ fn check_label_param(sm: &SM, tr: &Transition, errors: &mut Vec<Error>) {
     match tr.kind {
         TransitionKind::Property => { /* no requirement */ }
         TransitionKind::Init => {
-            if sm.init_label.is_some() && !first_arg_is_type(INIT_LABEL_TYPE_NAME) {
+            if sm.init_label.is_some() && !first_arg_is_type(true) {
                 errors.push(Error::new(tr.name.span(),
                   format!("Since '{INIT_LABEL_TYPE_NAME:}' was declared, the first param to an 'init' definition must be '{INIT_LABEL_TYPE_NAME:}'")));
             }
         }
         TransitionKind::ReadonlyTransition | TransitionKind::Transition => {
-            if sm.transition_label.is_some() && !first_arg_is_type(TRANSITION_LABEL_TYPE_NAME) {
+            if sm.transition_label.is_some() && !first_arg_is_type(false) {
                 let kindname = if tr.kind == TransitionKind::ReadonlyTransition {
                     "'readonly' transition"
                 } else {
