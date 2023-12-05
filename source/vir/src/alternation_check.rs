@@ -4,7 +4,9 @@ use air::scope_map::ScopeMap;
 use ast_visitor::VisitorControlFlow;
 
 use crate::{
-    ast::{Expr, Fun, FunctionX, Krate, Mode, Param, Params, Path, Typ, TypX, VirErr},
+    ast::{
+        Expr, Fun, FunctionX, Idents, Krate, Mode, Param, Params, Path, Typ, TypX, Typs, VirErr,
+    },
     ast_util::{path_as_friendly_rust_name, undecorate_typ},
     ast_visitor::{self, expr_visitor_dfs},
     context::Ctx,
@@ -12,8 +14,28 @@ use crate::{
     scc::Graph,
 };
 
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+struct FunBounds {
+    fun: Fun,
+    typs: Vec<String>,
+}
+
+impl FunBounds {
+    fn print_name(&self) -> String {
+        let mut res = path_as_friendly_rust_name(&self.fun.path);
+        if self.typs.len() > 0 {
+            res.push_str("<");
+            for typ in &self.typs {
+                res.push_str(&format!("{},", typ));
+            }
+            res.push_str(">");
+        }
+        res
+    }
+}
+
 struct CollectState {
-    reached_spec_funcs: HashSet<Fun>,
+    reached_spec_funcs: HashSet<FunBounds>,
 }
 
 impl CollectState {
@@ -52,10 +74,15 @@ impl BuildState {
         BuildState { qa_graph: Graph::<String>::new(), open_foralls: HashMap::new() }
     }
 
-    fn add_function_edges(&mut self, params: &Params, ret: &Param) {
-        let ret_node = param_type_name(&ret.x.typ);
+    fn add_function_edges(
+        &mut self,
+        params: &Params,
+        ret: &Param,
+        bindings: &HashMap<String, String>,
+    ) {
+        let ret_node = param_type_name_with_bindings(&ret.x.typ, bindings);
         for param in params.iter() {
-            let param_node = param_type_name(&param.x.typ);
+            let param_node = param_type_name_with_bindings(&param.x.typ, bindings);
             // println!("Adding Func Edge: {} -> {}", &param_node, &ret_node);
             self.qa_graph.add_edge(param_node, ret_node.clone());
         }
@@ -77,12 +104,61 @@ fn param_type_name(typ: &Typ) -> String {
     }
 }
 
+fn param_type_name_with_bindings(typ: &Typ, bindings: &HashMap<String, String>) -> String {
+    match &*undecorate_typ(typ) {
+        TypX::Bool => "Bool".to_string(),
+        TypX::Datatype(path, typs, _) => {
+            let mut name = path_as_friendly_rust_name(path);
+            if typs.len() > 0 {
+                name.push_str("<");
+                for t in typs.iter() {
+                    assert!(matches!(&*undecorate_typ(t), TypX::TypParam(_)));
+                    name.push_str(&param_type_name_with_bindings(t, bindings));
+                    name.push_str(",");
+                }
+                name.push_str(">");
+            }
+            name
+        }
+        TypX::TypParam(name) => bindings.get(name.as_ref()).unwrap().to_string(),
+        _ => panic!("Unsupported EPR Type: {:?}", &*undecorate_typ(typ)),
+    }
+}
+
+fn compute_new_bindings(
+    fun: &Fun,
+    orig_types: &Idents,
+    bound_types: Typs,
+    curr_bindings: &HashMap<String, String>,
+) -> (FunBounds, HashMap<String, String>) {
+    assert!(orig_types.len() == bound_types.len());
+    let orig_typ_names: Vec<String> = orig_types.iter().map(|x| x.as_ref()).cloned().collect();
+    let bound_typ_names: Vec<String> = bound_types.iter().map(|x| param_type_name(x)).collect();
+    // look at/update the active_param_typs
+    let mut final_typ_names = Vec::new();
+    let mut new_bindings = curr_bindings.clone();
+    for (orig, bound) in orig_typ_names.iter().zip(bound_typ_names.iter()) {
+        let final_typ = curr_bindings.get(bound).unwrap_or(bound);
+        final_typ_names.push(final_typ.clone());
+        new_bindings.insert(orig.clone(), final_typ.clone());
+    }
+
+    let fb = FunBounds { fun: fun.clone(), typs: final_typ_names };
+    (fb, new_bindings)
+}
+
 pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), VirErr> {
-    fn collect_functions(ctx: &Ctx, state: &mut CollectState, expr: &Expr) -> Result<(), VirErr> {
+    fn collect_functions(
+        ctx: &Ctx,
+        state: &mut CollectState,
+        expr: &Expr,
+        active_param_typs: &HashMap<String, String>,
+    ) -> Result<(), VirErr> {
         use crate::ast::ExprX::*;
         expr_visitor_dfs::<VirErr, _>(expr, &mut ScopeMap::new(), &mut |_, expr| match &expr.x {
-            Call(target, _) => match target {
-                crate::ast::CallTarget::Fun(call_target_kind, fun, _, impl_paths, _) => {
+            Call(target, exprs) => match target {
+                crate::ast::CallTarget::Fun(call_target_kind, fun, typs, impl_paths, _) => {
+                    // typs here are the actual types of the arguments, not the type params
                     if impl_paths.len() > 0 {
                         VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
                     } else {
@@ -98,17 +174,26 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                             crate::ast::CallTargetKind::Method(None) => None,
                         } {
                             let f = &ctx.func_map[fun];
+                            let (fb, new_active_param_typs) = compute_new_bindings(fun, &f.x.typ_params, typs.clone(), &active_param_typs);
+                            // iterate through expressions in arguments
+                            for expr in exprs.iter() {
+                                match collect_functions(ctx, state, expr, &new_active_param_typs) {
+                                    Ok(_) => (),
+                                    Err(err) => return VisitorControlFlow::Stop(err),
+                                }
+                            }
+                            // we've seen this function; add it to our list
                             match f.x.mode {
                                 Mode::Spec => {
                                     // if the function is inlined, don't add it to reached set. 
-                                    // Handled on second pass
+                                    // Instead, save it to inline spec funcs to learn bindings
                                     if !f.x.attrs.inline {
-                                        // we've seen this function; add it to our list
-                                        state.reached_spec_funcs.insert(fun.clone());
+                                        // println!("Reached Spec Fn: {}", fb.print_name());
+                                        state.reached_spec_funcs.insert(fb);
                                     }
                                     // if it has a body, recurse
                                     if let Some(f_body) = &f.x.body {
-                                        match collect_functions(ctx, state, f_body) {
+                                        match collect_functions(ctx, state, f_body, &new_active_param_typs) {
                                             Ok(_) => VisitorControlFlow::Return,
                                             Err(err) => VisitorControlFlow::Stop(err),
                                         }
@@ -119,13 +204,13 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                 Mode::Proof => {
                                     // parse ensures and requires recursively
                                     for r in f.x.require.iter() {
-                                        match collect_functions(ctx, state, r) {
+                                        match collect_functions(ctx, state, r, &new_active_param_typs) {
                                             Ok(_) => (),
                                             Err(err) => return VisitorControlFlow::Stop(err),
                                         }
                                     }
                                     for e in f.x.ensure.iter() {
-                                        match collect_functions(ctx, state, e) {
+                                        match collect_functions(ctx, state, e, &new_active_param_typs) {
                                             Ok(_) => (),
                                             Err(err) => return VisitorControlFlow::Stop(err),
                                         }
@@ -190,13 +275,14 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         ctx: &Ctx,
         state: &mut BuildState,
         polarity: Polarity,
+        bindings: Option<&HashMap<String, String>>,
         expr: &Expr,
     ) -> Result<(), VirErr> {
         use crate::ast::ExprX::*;
         expr_visitor_dfs::<VirErr, _>(expr, &mut ScopeMap::new(), &mut |_, expr| match &expr.x {
             Unary(op, e) => match op {
                 crate::ast::UnaryOp::Not => {
-                    match build_graph(ctx, state, polarity.flip(), e) {
+                    match build_graph(ctx, state, polarity.flip(), bindings, e) {
                         Ok(_) => VisitorControlFlow::Return,
                         Err(err) => return VisitorControlFlow::Stop(err),
                     }
@@ -209,13 +295,19 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 if forall {
                     // forall case: add the new variables to open foralls, then recurse
                     for b in binders.iter() {
-                        let typ_name = param_type_name(&b.a);
+                        let typ_name = match bindings {
+                            Some(bind) => param_type_name_with_bindings(&b.a, bind),
+                            None => param_type_name(&b.a),
+                        };
                         *state.open_foralls.entry(typ_name.clone()).or_insert(0) += 1;
                     }
-                    match build_graph(ctx, state, polarity, e) {
+                    match build_graph(ctx, state, polarity, bindings, e) {
                         Ok(_) => {
                             for b in binders.iter() {
-                                let typ_name = param_type_name(&b.a);
+                                let typ_name = match bindings {
+                                    Some(bind) => param_type_name_with_bindings(&b.a, bind),
+                                    None => param_type_name(&b.a),
+                                };
                                 let cur_count = state.open_foralls.get_mut(&typ_name).expect("should already have entry");
                                 assert!(*cur_count >= 1);
                                 *cur_count -= 1;
@@ -228,7 +320,10 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 } else {
                     // exists case: check through open foralls for edges to add, then recurse
                     for b in binders.iter() {
-                        let typ_name = param_type_name(&b.a);
+                        let typ_name = match bindings {
+                            Some(bind) => param_type_name_with_bindings(&b.a, bind),
+                            None => param_type_name(&b.a),
+                        };
                         for (forall_name, count) in state.open_foralls.iter() {
                             // empty ones remain in the map with 0 count
                             if *count > 0 {
@@ -237,7 +332,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                             }
                         }
                     }
-                    match build_graph(ctx, state, polarity, e) {
+                    match build_graph(ctx, state, polarity, bindings, e) {
                         Ok(_) => VisitorControlFlow::Return,
                         Err(err) => return VisitorControlFlow::Stop(err),
                     }
@@ -247,10 +342,10 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 crate::ast::BinaryOp::Implies => {
                     match {
                         // left is explored at opposite polarity
-                        build_graph(ctx, state, polarity.flip(), left)
+                        build_graph(ctx, state, polarity.flip(), bindings, left)
                     }.and({
                         // right is explored at same polarity
-                        build_graph(ctx, state, polarity, right)
+                        build_graph(ctx, state, polarity, bindings, right)
                     }) {
                         Ok(_) => VisitorControlFlow::Return,
                         Err(err) => return VisitorControlFlow::Stop(err),
@@ -264,13 +359,13 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                     // TODO: Does Eq Mode matter?
                     if crate::ast_util::type_is_bool(&undecorate_typ(&left.typ)) {
                         match {
-                            build_graph(ctx, state, Polarity::Positive, left)
+                            build_graph(ctx, state, Polarity::Positive, bindings, left)
                         }.and({
-                            build_graph(ctx, state, Polarity::Negative, left)
+                            build_graph(ctx, state, Polarity::Negative, bindings, left)
                         }).and({
-                            build_graph(ctx, state, Polarity::Positive, right)
+                            build_graph(ctx, state, Polarity::Positive, bindings, right)
                         }).and({
-                            build_graph(ctx, state, Polarity::Negative, right)
+                            build_graph(ctx, state, Polarity::Negative, bindings, right)
                         }) {
                             Ok(_) => VisitorControlFlow::Return,
                             Err(err) => VisitorControlFlow::Stop(err),
@@ -281,8 +376,9 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 },
                 _ => VisitorControlFlow::Recurse,
             }
-            Call(target, _) => match target {
-                crate::ast::CallTarget::Fun(call_target_kind, fun, _, impl_paths, _) => {
+            // TODO: exprs here?
+            Call(target, exprs) => match target {
+                crate::ast::CallTarget::Fun(call_target_kind, fun, typs, impl_paths, _) => {
                     if impl_paths.len() > 0 {
                         VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
                     } else {
@@ -298,6 +394,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                             crate::ast::CallTargetKind::Method(None) => None,
                         } {
                             let f = &ctx.func_map[fun];
+                            let (_, new_bindings) = compute_new_bindings(fun, &f.x.typ_params, typs.clone(), &bindings.unwrap_or(&HashMap::new()));
                             match f.x.mode {
                                 // spec funcs aren't recursed on second pass
                                 Mode::Spec => {
@@ -306,7 +403,8 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                             // TODO: Double check
                                             // as we're inlining, the params don't contribute new foralls
                                             // simply recurse into the body at the same polarity
-                                            match build_graph(ctx, state, polarity, body) {
+                                            // TODO: Fix the inline bindings here
+                                            match build_graph(ctx, state, polarity, Some(&new_bindings), body) {
                                                 Ok(_) => VisitorControlFlow::Return,
                                                 Err(err) => return VisitorControlFlow::Stop(err),
                                             }
@@ -325,11 +423,11 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                     match f.x.ensure.iter().fold(Ok(()), |acc,expr| {
                                         // shouldn't have any open foralls when invoking a lemma, afaik
                                         assert!(state.empty_foralls());
-                                        acc.and(build_graph(ctx, state, Polarity::Positive, expr))
+                                        acc.and(build_graph(ctx, state, Polarity::Positive, Some(&new_bindings), expr))
                                     }).and(f.x.require.iter().fold(Ok(()), |acc,expr| {
                                         // shouldn't have any open foralls when invoking a lemma, afaik
                                         assert!(state.empty_foralls());
-                                        acc.and(build_graph(ctx, state, Polarity::Negative, expr))
+                                        acc.and(build_graph(ctx, state, Polarity::Negative, Some(&new_bindings), expr))
                                     })) {
                                         Ok(_) => VisitorControlFlow::Return,
                                         Err(err) => return VisitorControlFlow::Stop(err),
@@ -351,16 +449,16 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             AssertAssume { is_assume, expr } => {
                 if *is_assume {
                     // assume means the expression is treated as just a ensures, so recurse positively
-                    match build_graph(ctx, state, Polarity::Positive, expr) {
+                    match build_graph(ctx, state, Polarity::Positive, bindings, expr) {
                         Ok(_) => VisitorControlFlow::Return,
                         Err(err) => return VisitorControlFlow::Stop(err),
                     }
                 } else {
                     // assert means the expression is treated as both a require and ensure, so recurse both ways
                     match {
-                        build_graph(ctx, state, polarity.flip(), expr)
+                        build_graph(ctx, state, polarity.flip(), bindings, expr)
                     }.and({
-                        build_graph(ctx, state, polarity, expr)
+                        build_graph(ctx, state, polarity, bindings, expr)
                     }) {
                         Ok(_) => VisitorControlFlow::Return,
                         Err(err) => return VisitorControlFlow::Stop(err),
@@ -371,18 +469,18 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                 // TODO: Diff between spec and proof If?
                 match {
                     // cond is explored negatively for if
-                    build_graph(ctx, state, polarity.flip(), cond)
+                    build_graph(ctx, state, polarity.flip(), bindings, cond)
                 }.and({
                     // e1 explored regularly
-                    build_graph(ctx, state, polarity, e1)
+                    build_graph(ctx, state, polarity, bindings, e1)
                 }).and({
                     if let Some(e2) = e2 {
                         {
                             // cond explored regularly for else
-                            build_graph(ctx, state, polarity, cond)
+                            build_graph(ctx, state, polarity, bindings, cond)
                         }.and({
                             // e2 explored regularly
-                            build_graph(ctx, state, polarity, e2)
+                            build_graph(ctx, state, polarity, bindings, e2)
                         })
                     } else {
                         Ok(())
@@ -441,44 +539,52 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         if matches!(mode, Mode::Exec) {
             return Err(error(&f.span, "Exec mode functions not supported in EPR Mode"));
         }
-        // let function_name = path_as_friendly_rust_name(&name.path);
+        let function_name = path_as_friendly_rust_name(&name.path);
         // dbg!(function_name);
         // Pass 1: Collect all the functions mentioned
         let mut state = CollectState::new();
         for expr in ensure.iter() {
-            collect_functions(ctx, &mut state, expr)?;
+            collect_functions(ctx, &mut state, expr, &HashMap::new())?;
         }
         for expr in require.iter() {
-            collect_functions(ctx, &mut state, expr)?;
+            collect_functions(ctx, &mut state, expr, &HashMap::new())?;
         }
         if let Some(expr) = body {
-            collect_functions(ctx, &mut state, expr)?;
+            collect_functions(ctx, &mut state, expr, &HashMap::new())?;
         }
         // Pass 2: Build the "VC". Check for QA in ensures/requires
         let mut bstate = BuildState::new();
         // params for a proof functions don't get encoded as additional quantifiers, so
         // don't need to specify init_params
+        // no bindings at top level as this is where the types come from
         for expr in ensure.iter() {
             // ensures start with negative polarity, as expression is negated
             assert!(bstate.empty_foralls());
-            build_graph(ctx, &mut bstate, Polarity::Negative, expr)?;
+            build_graph(ctx, &mut bstate, Polarity::Negative, None, expr)?;
         }
         for expr in require.iter() {
             // requires start with positive polarity
             assert!(bstate.empty_foralls());
-            build_graph(ctx, &mut bstate, Polarity::Positive, expr)?;
+            build_graph(ctx, &mut bstate, Polarity::Positive, None, expr)?;
         }
         if let Some(expr) = body {
             assert!(bstate.empty_foralls());
-            build_graph(ctx, &mut bstate, Polarity::Positive, expr)?;
+            build_graph(ctx, &mut bstate, Polarity::Positive, None, expr)?;
         }
         for spec in &state.reached_spec_funcs {
-            let spec_func = &ctx.func_map[spec];
-            let FunctionX { mode, body, params, ret, attrs, .. } = &spec_func.x;
-            // println!("Reached Spec Fn: {}", path_as_friendly_rust_name(&spec_func.x.name.path));
+            let spec_func = &ctx.func_map[&spec.fun];
+            let FunctionX { mode, body, params, ret, typ_params, .. } = &spec_func.x;
+            // println!("Reached Spec Fn: {}", spec.print_name());
             assert!(matches!(mode, Mode::Spec));
+            assert!(typ_params.len() == spec.typs.len());
+            let bindings = typ_params
+                .iter()
+                .map(|x| x.as_ref())
+                .cloned()
+                .zip(spec.typs.iter().cloned())
+                .collect();
             // add the edges for this functions args to the state
-            bstate.add_function_edges(params, ret);
+            bstate.add_function_edges(params, ret, &bindings);
             // recurse on the body of this function to add the positive and negative QA edges to the VC
             // i.e
             // foo(x) { bar(x) && baz(x)}
@@ -487,14 +593,14 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             if let Some(body) = body {
                 let mut param_types = HashMap::new();
                 for param in params.iter() {
-                    let param_type = param_type_name(&param.x.typ);
+                    let param_type = param_type_name_with_bindings(&param.x.typ, &bindings);
                     // track the number of new foralls for each argument type so we don't lose any
                     *param_types.entry(param_type).or_insert(0) += 1;
                 }
                 bstate.open_foralls = param_types.clone();
-                build_graph(ctx, &mut bstate, Polarity::Negative, &body)?;
+                build_graph(ctx, &mut bstate, Polarity::Negative, Some(&bindings), &body)?;
                 bstate.open_foralls = param_types.clone();
-                build_graph(ctx, &mut bstate, Polarity::Positive, &body)?;
+                build_graph(ctx, &mut bstate, Polarity::Positive, Some(&bindings), &body)?;
             }
         }
         bstate.qa_graph.compute_sccs();

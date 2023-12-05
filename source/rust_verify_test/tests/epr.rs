@@ -59,6 +59,48 @@ const TYPES_TEST_2: &str = verus_code_str! {
     }
 };
 
+const TYPES_GENERICS: &str = verus_code_str! {
+    trait MakeOne {
+        spec fn make() -> Self where Self: std::marker::Sized;
+    }
+
+    mod EPRData {
+        pub struct Foo<K, V> {
+            k : K,
+            v : V,
+        }
+
+        impl<K, V> Foo<K, V> {
+            pub open spec fn pred(&self, k: K) -> bool {
+                true
+            }
+
+            pub open spec fn pred_pair(&self, k: K, v: V) -> bool {
+                true
+            }
+
+            pub closed spec fn get_k(&self) -> K {
+                self.k
+            }
+
+            pub closed spec fn get_v(&self) -> V {
+                self.v
+            }
+
+            pub proof fn foo_prop(&self)
+                ensures
+                    forall|k : K| self.pred(k) && exists |v : V| self.pred_pair(k, v)
+            {
+                assume(false);
+            }
+
+            pub open spec fn pred_map(&self) -> bool {
+                self.pred_pair(self.get_k(), self.get_v())
+            }
+        }
+    }
+};
+
 test_verify_one_file! {
     #[test] negate_ensures_pass TYPES_TEST_2.to_string() + verus_code_str! {
         #[verifier::epr_check]
@@ -493,4 +535,75 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "Function not in EPR, quantifier alternation graph contains cycle")
+}
+
+test_verify_one_file! {
+    #[test] func_arg_cycle TYPES_TEST_2.to_string() + verus_code_str! {
+        #[verifier::epr_check]
+        mod EPRProofTest2 {
+            use crate::TypesTest2::*;
+
+
+            proof fn test()
+                ensures
+                    // arguments to functions should also be checked
+                    s2_pred(s1_s2(S1Val)),
+                    s3_pred(s2_s3(S2Val)),
+                    s1_pred(s3_s1(S3Val)),
+            {
+                assume(false);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Function not in EPR, quantifier alternation graph contains cycle")
+}
+
+test_verify_one_file! {
+    #[test] generics_loop_1 TYPES_GENERICS.to_string() + verus_code_str! {
+        #[verifier::epr_check]
+        mod EPRMod {
+            use super::EPRData::*;
+            use super::MakeOne;
+
+            spec fn loop_func<Kee: MakeOne, Value>(v : Value) -> Kee {
+                Kee::make()
+            }
+
+            proof fn loop_prop<Key: MakeOne, Val: MakeOne>(f : Foo<Key, Val>)
+                ensures
+                    f.pred_map(),
+                    // edge Val -> Key
+                    loop_func::<Key, Val>(f.get_v()) == f.get_k(),
+
+            {
+                // edge Key -> Val (with correct bounds)
+                f.foo_prop();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Function not in EPR, quantifier alternation graph contains cycle")
+
+}
+
+test_verify_one_file! {
+    #[test] generics_loop_2 TYPES_GENERICS.to_string() + verus_code_str! {
+        #[verifier::epr_check]
+        mod EPRMod {
+            use super::EPRData::*;
+            use super::MakeOne;
+
+            spec fn loop_func<Kee: MakeOne, Value>(v : Value) -> Kee {
+                Kee::make()
+            }
+
+            proof fn loop_prop<Key: MakeOne, Val: MakeOne>(f : Foo<Key, Val>)
+                ensures
+                    // loops from binding function 2 ways
+                    loop_func::<Key, Val>(f.get_v()) == f.get_k(),
+                    loop_func::<Val, Key>(f.get_k()) == f.get_v(),
+
+            {
+                assume(false);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Function not in EPR, quantifier alternation graph contains cycle")
+
 }
