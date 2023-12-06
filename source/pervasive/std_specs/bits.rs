@@ -651,26 +651,28 @@ pub closed spec fn u64_trailing_zeros(i: u64) -> u32
 
 /// Equivalent to `i.leading_zeros()`.
 /// See [`axiom_u64_leading_zeros`] for useful properties.
-pub closed spec fn u64_leading_zeros(i: u64) -> u32
+#[verifier::opaque]
+pub open spec fn u64_leading_zeros(i: u64) -> int
     decreases i
 {
     if i == 0 {
         64
     } else {
-        (u64_leading_zeros(i / 2) - 1) as u32
+        u64_leading_zeros(i / 2) - 1
     }
 }
+
 
 /// Equivalent to `i.trailing_ones()`.
 /// See [`axiom_u64_trailing_ones`] for useful properties.
 pub open spec fn u64_trailing_ones(i: u64) -> u32 {
-    u64_trailing_zeros(!i)
+    u64_trailing_zeros(!i) as u32
 }
 
 /// Equivalent to `i.leading_ones()`.
 /// See [`axiom_u64_leading_ones`] for useful properties.
 pub open spec fn u64_leading_ones(i: u64) -> u32 {
-    u64_leading_zeros(!i)
+    u64_leading_zeros(!i) as u32
 }
 
 #[verifier::external_fn_specification]
@@ -690,9 +692,9 @@ pub fn ex_u64_trailing_ones(i: u64) -> (r: u32)
 }
 
 #[verifier::external_fn_specification]
-#[verifier::when_used_as_spec(u64_leading_zeros)]
+//#[verifier::when_used_as_spec(u64_leading_zeros)]
 pub fn ex_u64_leading_zeros(i: u64) -> (r: u32)
-    ensures r == u64_leading_zeros(i)
+    ensures r as int == u64_leading_zeros(i)
 {
     i.leading_zeros()
 }
