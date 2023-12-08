@@ -74,7 +74,7 @@ fn check_path_and_get_datatype<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "`{rpath:}` is not supported (note: you may be able to add a Verus specification to this function with the `external_type_specification` attribute){:}",
+                        "`{rpath:}` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute){:}",
                         if path.is_rust_std_path() {
                             " (note: the vstd library provides some specification for the Rust std library, but it is currently limited)"
                         } else {
