@@ -43,7 +43,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Static items</td>
-    <td>[Partially supported](./statics.md)</td>
+    <td><a href="static.html">Partially supported</a></td>
   </tr>
   <tr>
     <td>Unions</td>
