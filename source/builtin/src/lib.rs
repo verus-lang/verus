@@ -1220,30 +1220,15 @@ pub fn closure_to_fn_spec<Args: core::marker::Tuple, F: FnOnce<Args>>(
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::FnWithSpecification"]
-pub trait FnWithSpecification<Args> {
-    type Output;
-
-    #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::FnWithSpecification::requires"]
-    fn requires(self, args: Args) -> bool;
-
-    #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::FnWithSpecification::ensures"]
-    fn ensures(self, args: Args, output: Self::Output) -> bool;
+#[rustc_diagnostic_item = "verus::builtin::call_requires"]
+pub fn call_requires<Args: core::marker::Tuple, F: FnOnce<Args>>(_f: F, _args: Args) -> bool {
+    unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-impl<Args: core::marker::Tuple, F: FnOnce<Args>> FnWithSpecification<Args> for F {
-    type Output = F::Output;
-
-    fn requires(self, _args: Args) -> bool {
-        unimplemented!();
-    }
-
-    fn ensures(self, _args: Args, _output: Self::Output) -> bool {
-        unimplemented!();
-    }
+#[rustc_diagnostic_item = "verus::builtin::call_ensures"]
+pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(_f: F, _args: Args, _output: F::Output) -> bool {
+    unimplemented!();
 }
 
 // Intrinsics defined in the AIR prelude related to word-sizes and bounded ints

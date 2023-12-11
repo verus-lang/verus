@@ -22,7 +22,7 @@ pub use super::pervasive::{
     unreached,
 };
 
-
+pub use super::pervasive::FnWithRequiresEnsures;
 pub use super::array::ArrayAdditionalExecFns;
 pub use super::array::ArrayAdditionalSpecFns;
 pub use super::slice::SliceAdditionalSpecFns;

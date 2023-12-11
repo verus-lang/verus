@@ -10,7 +10,6 @@ macro_rules! println {
     ($($arg:tt)*) => {
     };
 }
-
 verus! {
 
 // TODO: remove this
@@ -31,6 +30,28 @@ pub proof fn assert(b: bool)
 pub proof fn affirm(b: bool)
     requires b
 {
+}
+
+#[cfg(verus_keep_ghost)]
+pub trait FnWithRequiresEnsures<Args> : Sized {
+    type Output;
+    spec fn requires(self, args: Args) -> bool;
+    spec fn ensures(self, args: Args, output: Self::Output) -> bool;
+}
+
+#[cfg(verus_keep_ghost)]
+impl<Args: core::marker::Tuple, F: FnOnce<Args>> FnWithRequiresEnsures<Args> for F {
+    type Output = F::Output;
+
+    #[verifier::inline]
+    open spec fn requires(self, args: Args) -> bool {
+        call_requires(self, args)
+    }
+
+    #[verifier::inline]
+    open spec fn ensures(self, args: Args, output: F::Output) -> bool {
+        call_ensures(self, args, output)
+    }
 }
 
 // Non-statically-determined function calls are translated *internally* (at the VIR level)

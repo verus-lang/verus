@@ -133,8 +133,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         match verus_item {
             VerusItem::Pervasive(_, _)
             | VerusItem::Marker(_)
-            | VerusItem::BuiltinType(_)
-            | VerusItem::BuiltinTrait(_) => (),
+            | VerusItem::BuiltinType(_) => (),
             _ => {
                 return verus_item_to_vir(
                     bctx,
@@ -1300,17 +1299,17 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
         }
         VerusItem::BuiltinFunction(
-            re @ (BuiltinFunctionItem::FnWithSpecificationRequires
-            | BuiltinFunctionItem::FnWithSpecificationEnsures),
+            re @ (BuiltinFunctionItem::CallRequires
+            | BuiltinFunctionItem::CallEnsures),
         ) => {
             record_spec_fn_no_proof_args(bctx, expr);
 
             let bsf = match re {
-                BuiltinFunctionItem::FnWithSpecificationRequires => {
+                BuiltinFunctionItem::CallRequires => {
                     assert!(args.len() == 2);
                     BuiltinSpecFun::ClosureReq
                 }
-                BuiltinFunctionItem::FnWithSpecificationEnsures => {
+                BuiltinFunctionItem::CallEnsures => {
                     assert!(args.len() == 3);
                     BuiltinSpecFun::ClosureEns
                 }
@@ -1322,6 +1321,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 .collect::<Result<Vec<_>, _>>()?;
 
             let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
+            let mut typ_args = (*typ_args).clone();
+            // Put the args in the order [function type, args type]
+            typ_args.swap(0, 1);
+            let typ_args = Arc::new(typ_args);
 
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args),
@@ -1331,7 +1334,6 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Pervasive(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
-        | VerusItem::BuiltinTrait(_)
         | VerusItem::Global(_) => unreachable!(),
     }
 }
