@@ -4,7 +4,7 @@ Quick reference for supported Rust features. Note that this list does not includ
 
 Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [github issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
 
-**Last Updated: 2023-05-17**
+**Last Updated: 2023-12-11**
 
 <div class="table-wrapper"><table>
   <thead><tr><th colspan="2"><strong>Items</strong></th></tr></thead>
@@ -43,7 +43,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Static items</td>
-    <td>Not supported</td>
+    <td>[Partially supported](./statics.md)</td>
   </tr>
   <tr>
     <td>Unions</td>
@@ -141,11 +141,11 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Compound assigments (<code>+=</code>, etc.)</td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Array expressions</td>
-    <td>Not supported</td>
+    <td>Partially supported (no fill expressions)</td>
   </tr>
   <tr>
     <td>Range expressions</td>
@@ -239,7 +239,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Arrays</td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Pointers</td>
@@ -338,7 +338,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td><code>Sized</code> (<code>size_of</code>, <code>align_of</code>)</td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td><code>Deref</code>, <code>DerefMut</code></td>

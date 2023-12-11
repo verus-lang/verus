@@ -43,6 +43,7 @@
     - [broadcast_forall]() <!--- Chris --->
 - [Runtime `exec` Features]()
     - [Exec closures]()
+    - [Statics](./static.md)
 - [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [Integers: nonlinear arithmetic and bit vectors](nonlinear_bitvec.md) <!--- Chris and Chanhee --->
