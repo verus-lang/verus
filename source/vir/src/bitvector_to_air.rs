@@ -109,12 +109,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                     let old_n = bitvector_expect_exact(ctx, &arg.span, &arg.typ, &old_n)?;
 
                     if new_n > old_n {
-                        let bop = air::ast::BinaryOp::BitConcat;
-                        let zero_pad = Arc::new(ExprX::Const(Constant::BitVec(
-                            Arc::new("0".to_string()),
-                            new_n - old_n,
-                        )));
-                        return Ok(Arc::new(ExprX::Binary(bop, zero_pad, bv_e)));
+                        return Ok(zero_extend(&bv_e, new_n - old_n));
                     }
                     // extract lower new_n bits
                     else if new_n < old_n {
@@ -178,6 +173,13 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
             let expr_ctxt = &expr_ctxt.set_bit_vector_typ_hint(hint);
             let lh = bv_exp_to_expr(ctx, lhs, expr_ctxt)?;
             let rh = bv_exp_to_expr(ctx, rhs, expr_ctxt)?;
+
+            let (lh, rh) = if matches!(op, BinaryOp::Inequality(..)) {
+                zero_extend_smaller_one_to_same_bitwidth(ctx, &lh, lhs, &rh, rhs)?
+            } else {
+                (lh, rh)
+            };
+
             let _ = match op {
                 BinaryOp::And => return Ok(mk_and(&vec![lh, rh])),
                 BinaryOp::Or => return Ok(mk_or(&vec![lh, rh])),
@@ -338,5 +340,51 @@ pub(crate) fn bv_typ_to_air(typ: &Typ) -> Option<air::ast::Typ> {
         TypX::Decorate(_, t) => bv_typ_to_air(t),
         TypX::Boxed(t) => bv_typ_to_air(t),
         _ => None,
+    }
+}
+
+pub(crate) fn zero_extend(bv_e: &Expr, padding: u32) -> Expr {
+    let bop = air::ast::BinaryOp::BitConcat;
+    let zero_pad = Arc::new(ExprX::Const(Constant::BitVec(Arc::new("0".to_string()), padding)));
+    Arc::new(ExprX::Binary(bop, zero_pad, bv_e.clone()))
+}
+
+pub(crate) fn zero_extend_smaller_one_to_same_bitwidth(
+    ctx: &Ctx,
+    lh: &Expr,
+    lexp: &Exp,
+    rh: &Expr,
+    rexp: &Exp,
+) -> Result<(Expr, Expr), VirErr> {
+    // When getting the widths, we need to account for the possibility that it was
+    // an integer that used the type hints, in which case lexp.typ will
+    // give a non-fixed or non-finite bit type. In this case we can get the chosen
+    // bit width from the Constant::BitVec.
+    // (We should be able to be more systematic about this.)
+
+    let lwidth = match &**lh {
+        ExprX::Const(Constant::BitVec(_, w)) => *w,
+        _ => {
+            let lwidth = bitwidth_from_type(&lexp.typ);
+            let lwidth = bitvector_expect_exact(ctx, &lexp.span, &lexp.typ, &lwidth)?;
+            lwidth
+        }
+    };
+
+    let rwidth = match &**rh {
+        ExprX::Const(Constant::BitVec(_, w)) => *w,
+        _ => {
+            let rwidth = bitwidth_from_type(&rexp.typ);
+            let rwidth = bitvector_expect_exact(ctx, &rexp.span, &rexp.typ, &rwidth)?;
+            rwidth
+        }
+    };
+
+    if lwidth < rwidth {
+        Ok((zero_extend(lh, rwidth - lwidth), rh.clone()))
+    } else if lwidth > rwidth {
+        Ok((lh.clone(), zero_extend(rh, lwidth - rwidth)))
+    } else {
+        Ok((lh.clone(), rh.clone()))
     }
 }
