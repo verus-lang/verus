@@ -451,7 +451,7 @@ test_verify_one_file! {
           opens_invariants [ ((*x) as int) ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "must use old")
+    } => Err(err) => assert_vir_error_msg(err, "in opens_invariants clause, use `old(x)` to refer to the pre-state of an &mut variable")
 }
 
 test_verify_one_file! {
@@ -461,4 +461,15 @@ test_verify_one_file! {
         {
         }
     } => Err(err) => assert_vir_error_msg(err, "opens_invariants needs an int expression")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_const verus_code! {
+        const X: u8 = 5;
+
+        fn stuff6(x: &mut u8)
+          opens_invariants [ X as int ]
+        {
+        }
+    } => Ok(())
 }

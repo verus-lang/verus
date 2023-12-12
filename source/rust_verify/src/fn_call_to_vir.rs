@@ -281,8 +281,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
 
                 for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
+                    let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
                     match spec_item {
-                        SpecItem::Requires | SpecItem::Recommends => match &*vir_arg.typ {
+                        SpecItem::Requires | SpecItem::Recommends => match &*typ {
                             TypX::Bool => {}
                             _ => {
                                 return err_span(
@@ -291,13 +292,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 );
                             }
                         },
-                        SpecItem::OpensInvariants => match &*vir_arg.typ {
+                        SpecItem::OpensInvariants => match &*typ {
                             TypX::Int(_) => {}
                             _ => {
-                                //return err_span(
-                                //    arg.span,
-                                //    "opens_invariants needs an int expression",
-                                //);
+                                return err_span(
+                                    arg.span,
+                                    "opens_invariants needs an int expression",
+                                );
                             }
                         },
                         _ => unreachable!(),
