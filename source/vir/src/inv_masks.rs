@@ -55,7 +55,13 @@ pub struct MaskSet {
 
 impl MaskSet {
     // assert that e in self
-    pub fn assert_contains(&self, span: &Span, e: &Expr, results: &mut Vec<Stmt>) {
+    pub fn assert_contains(
+        &self,
+        span: &Span,
+        e: &Expr,
+        results: &mut Vec<Stmt>,
+        call_span: Option<&Span>,
+    ) {
         match self.base {
             SetBase::Empty => {
                 let mut disjuncts = Vec::new();
@@ -63,10 +69,17 @@ impl MaskSet {
                     disjuncts.push(mk_eq(e, &plus_e.expr));
                 }
                 let equals_one = mk_or(&disjuncts);
-                let error = error_with_label(
-                    span,
-                    "cannot show invariant namespace is in the mask given by the function signature".to_string(),
-                    "invariant opened here".to_string());
+                let error = match call_span {
+                    None => error_with_label(
+                        span,
+                        "cannot show invariant namespace is in the mask given by the function signature".to_string(),
+                        "invariant opened here".to_string()),
+                    Some(call_span) => error_with_label(
+                        span,
+                        "cannot show this invariant namespace is allowed to be opened".to_string(),
+                        "function might open this invariant namespace".to_string())
+                    .primary_label(call_span, "might not be allowed at this call-site"),
+                };
                 results.push(Arc::new(StmtX::Assert(error, equals_one)));
             }
             SetBase::Full => {}
@@ -98,13 +111,20 @@ impl MaskSet {
                 }
 
                 for e in &self.plus {
-                    other.assert_contains(&e.span, &e.expr, results);
+                    other.assert_contains(&e.span, &e.expr, results, Some(call_span));
                 }
             }
             SetBase::Full => match other.base {
                 SetBase::Empty => {
                     let fa = mk_false();
-                    let error = error(call_span, "callee may open invariants that caller cannot");
+                    let error = if self.minus.len() == 0 {
+                        error(
+                            call_span,
+                            "callee may open invariants that caller cannot (callee may open any invariant)",
+                        )
+                    } else {
+                        error(call_span, "callee may open invariants that caller cannot")
+                    };
                     results.push(Arc::new(StmtX::Assert(error, fa)));
                 }
                 SetBase::Full => {

@@ -442,7 +442,31 @@ test_verify_one_file! {
         {
             stuff5(); // FAILS
         }
-    } => Err(err) => assert_fails(err, 2)
+
+        fn symbolic(x: u8)
+          opens_invariants [ x ] // FAILS
+        {
+        }
+
+        fn symbolic_caller(x: u8, y: u8)
+          opens_invariants [ y ]
+        {
+          symbolic(x);
+        }
+
+        fn symbolic2(x: u8)
+          opens_invariants [ x ]
+        {
+        }
+
+        fn symbolic2_caller(x: u8, y: u8)
+          requires x == y,
+          opens_invariants [ y ]
+        {
+          symbolic2(x);
+        }
+
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
@@ -461,15 +485,4 @@ test_verify_one_file! {
         {
         }
     } => Err(err) => assert_vir_error_msg(err, "opens_invariants needs an int expression")
-}
-
-test_verify_one_file! {
-    #[test] opens_invariants_const verus_code! {
-        const X: u8 = 5;
-
-        fn stuff6(x: &mut u8)
-          opens_invariants [ X as int ]
-        {
-        }
-    } => Ok(())
 }

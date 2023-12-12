@@ -2302,7 +2302,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let typ_args = get_inv_typ_args(&inv_exp.typ);
             let namespace_expr = call_namespace(ctx, inv_expr.clone(), &typ_args, *atomicity);
             if !ctx.checking_spec_preconditions() {
-                state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
+                state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts, None);
             }
 
             // add an 'assume' that inv holds

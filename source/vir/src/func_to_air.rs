@@ -923,6 +923,7 @@ pub fn func_def_to_air(
 
                 let is_singular = function.x.attrs.integer_ring;
                 let expr_ctxt = ExprCtxt::new_mode_singular(ExprMode::Body, is_singular);
+                let exp = state.finalize_exp(ctx, &state.fun_ssts, &exp)?;
                 let air_expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
                 inv_spec_air_exprs
                     .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
