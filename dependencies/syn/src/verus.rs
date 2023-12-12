@@ -423,6 +423,7 @@ pub mod parsing {
             let mut exprs = Punctuated::new();
             while !(input.is_empty()
                 || input.peek(token::Brace)
+                || input.peek(Token![;])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
