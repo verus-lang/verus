@@ -34,6 +34,7 @@ mod ast_to_sst;
 pub mod ast_util;
 mod ast_visitor;
 pub mod autospec;
+pub mod bitvector_to_air;
 pub mod check_ast_flavor;
 mod closures;
 pub mod context;
