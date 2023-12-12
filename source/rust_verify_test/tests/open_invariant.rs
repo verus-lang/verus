@@ -486,3 +486,14 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "opens_invariants needs an int expression")
 }
+
+test_verify_one_file! {
+    #[test] opens_invariants_private_fn verus_code! {
+        spec fn some_inv() -> int { 5 }
+
+        pub fn test(x: &mut u8)
+          opens_invariants [ some_inv() ]
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in 'opens_invariants' clause of public function, cannot refer to private function")
+}
