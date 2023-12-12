@@ -33,23 +33,20 @@ pub proof fn affirm(b: bool)
 }
 
 #[cfg(verus_keep_ghost)]
-pub trait FnWithRequiresEnsures<Args> : Sized {
-    type Output;
+pub trait FnWithRequiresEnsures<Args, Output> : Sized {
     spec fn requires(self, args: Args) -> bool;
-    spec fn ensures(self, args: Args, output: Self::Output) -> bool;
+    spec fn ensures(self, args: Args, output: Output) -> bool;
 }
 
 #[cfg(verus_keep_ghost)]
-impl<Args: core::marker::Tuple, F: FnOnce<Args>> FnWithRequiresEnsures<Args> for F {
-    type Output = F::Output;
-
+impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output=Output>> FnWithRequiresEnsures<Args, Output> for F {
     #[verifier::inline]
     open spec fn requires(self, args: Args) -> bool {
         call_requires(self, args)
     }
 
     #[verifier::inline]
-    open spec fn ensures(self, args: Args, output: F::Output) -> bool {
+    open spec fn ensures(self, args: Args, output: Output) -> bool {
         call_ensures(self, args, output)
     }
 }
