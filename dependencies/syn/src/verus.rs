@@ -850,12 +850,19 @@ pub mod parsing {
             } else {
                 return Err(lookahead.error());
             }
+
             let content;
             let paren_token = parenthesized!(content in input);
             let path = content.parse()?;
 
-            let fuel = if reveal_with_fuel_token.is_some() && content.peek(Token![,]) {
-                Some((content.parse()?, content.parse()?))
+            // Parse a possible comma (either trailing for hide/reveal,
+            // or as a preface to a fuel argument
+            let comma:Option<Token![,]> = content.parse()?;
+
+            let fuel = if reveal_with_fuel_token.is_some() && comma.is_some() {
+                let f = Some((comma.unwrap(), content.parse()?));
+                let _trailing_comma:Option<Token![,]> = content.parse()?;
+                f
             } else {
                 None
             };
