@@ -87,12 +87,18 @@ impl MaskSet {
 
         for prev_e in &self.minus {
             let not_equal = mk_not(&mk_eq(e, &prev_e.expr));
-            let error = error_with_label(
+            let mut error = error_with_label(
                 &prev_e.span,
                 "possible invariant collision".to_string(),
                 "this invariant".to_string(),
             )
             .primary_label(span, "might be the same as this invariant".to_string());
+            match call_span {
+                None => {}
+                Some(call_span) => {
+                    error = error.primary_label(call_span, "at this call-site");
+                }
+            }
             results.push(Arc::new(StmtX::Assert(error, not_equal)));
         }
     }

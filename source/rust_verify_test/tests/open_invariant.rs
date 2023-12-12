@@ -410,6 +410,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] opens_invariants_concrete verus_code! {
+        use vstd::invariant::*;
+
         fn stuff()
           opens_invariants [ 0int ]
         {
@@ -466,7 +468,21 @@ test_verify_one_file! {
           symbolic2(x);
         }
 
-    } => Err(err) => assert_fails(err, 3)
+        fn test_inside_open()
+          opens_invariants [ 1int ]
+        {
+        }
+
+        fn test_inside_open_caller<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>)
+          requires i.namespace() == 1,
+          opens_invariants [ 1int ]
+        {
+            open_local_invariant!(&i => inner => { // FAILS
+                test_inside_open();
+            });
+        }
+
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file! {
