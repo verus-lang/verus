@@ -1227,7 +1227,11 @@ pub fn call_requires<Args: core::marker::Tuple, F: FnOnce<Args>>(_f: F, _args: A
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::call_ensures"]
-pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(_f: F, _args: Args, _output: F::Output) -> bool {
+pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
+    _f: F,
+    _args: Args,
+    _output: F::Output,
+) -> bool {
     unimplemented!();
 }
 
