@@ -2,7 +2,6 @@
 //! Contains various utilities and datatypes for proofs,
 //! as well as runtime functionality with specifications.
 //! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
-#![feature(step_trait)]
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(unused_parens)]
@@ -13,6 +12,7 @@
 
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
+#![cfg_attr(verus_keep_ghost, feature(step_trait))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
