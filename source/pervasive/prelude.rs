@@ -22,6 +22,7 @@ pub use super::pervasive::{
     unreached,
 };
 
+#[cfg(verus_keep_ghost)]
 pub use super::pervasive::FnWithRequiresEnsures;
 pub use super::array::ArrayAdditionalExecFns;
 pub use super::array::ArrayAdditionalSpecFns;
