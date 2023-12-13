@@ -145,7 +145,7 @@ test_verify_one_file! {
                 r1 == r2
             }) by (compute_only);     // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "assert simplifies to false")
+    } => Err(err) => assert_vir_error_msg(err, "expression simplifies to false")
 }
 
 test_verify_one_file! {

@@ -1488,6 +1488,57 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
+enum SimplificationResult {
+    True,
+    False(Option<Exp>),
+    Complex(Exp),
+}
+
+/// Evaluate the result
+///
+/// This special case certain kinds of operations to present more specific error messages
+/// For example, if the user tries to prove `a == b`, and it evaluates
+/// to `7 == 5` which evaluates to false, we return
+///     SimplificationResult::False(Some(`7 == 5`))
+/// This lets the caller report a nicer error message
+fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SimplificationResult, VirErr> {
+    use BinaryOp::*;
+    use ExpX::*;
+    match &exp.x {
+        Binary(op @ (Eq(_) | Ne | Inequality(_)), e1, e2) => {
+            let e1 = eval_expr_internal(ctx, state, e1)?;
+            let e2 = eval_expr_internal(ctx, state, e2)?;
+
+            let simpl_exp = exp.new_x(Binary(*op, e1, e2));
+
+            // This should only take one step to simplify the binary expression
+            let final_exp = eval_expr_internal(ctx, state, &simpl_exp)?;
+
+            if let ExpX::Const(Constant::Bool(b)) = final_exp.x {
+                if b {
+                    Ok(SimplificationResult::True)
+                } else {
+                    Ok(SimplificationResult::False(Some(simpl_exp)))
+                }
+            } else {
+                Ok(SimplificationResult::Complex(final_exp))
+            }
+        }
+        _ => {
+            let final_exp = eval_expr_internal(ctx, state, exp)?;
+            if let ExpX::Const(Constant::Bool(b)) = final_exp.x {
+                if b {
+                    Ok(SimplificationResult::True)
+                } else {
+                    Ok(SimplificationResult::False(None))
+                }
+            } else {
+                Ok(SimplificationResult::Complex(final_exp))
+            }
+        }
+    }
+}
+
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     exp: Exp,
@@ -1521,15 +1572,26 @@ fn eval_expr_launch(
     // Don't run for too long
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch };
-    let res = eval_expr_internal(&ctx, &mut state, &exp)?;
+    let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
         log.replace(state.log.unwrap());
     }
-    if let ExpX::Const(Constant::Bool(false)) = res.x {
-        Err(error(&exp.span, "assert simplifies to false"))
-    } else {
-        match mode {
+
+    match result {
+        SimplificationResult::True => {
+            return Ok((crate::sst_util::sst_bool(&exp.span, true), state.msgs));
+        }
+        SimplificationResult::False(None) => {
+            return Err(error(&exp.span, "expression simplifies to false"));
+        }
+        SimplificationResult::False(Some(small_exp)) => {
+            return Err(error(
+                &exp.span,
+                format!("expression simplifies to `{}`, which evaluates to false", small_exp),
+            ));
+        }
+        SimplificationResult::Complex(res) => match mode {
             // Send partial result to Z3
             ComputeMode::Z3 => {
                 // Restore the free variables we hid during interpretation
@@ -1594,18 +1656,15 @@ fn eval_expr_launch(
                 Ok((res, state.msgs))
             }
             // Proof must succeed purely through computation
-            ComputeMode::ComputeOnly => match res.x {
-                ExpX::Const(Constant::Bool(true)) => Ok((res, state.msgs)),
-                _ => Err(error(
-                    &exp.span,
-                    &format!(
-                        "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
-                        res
-                    )
-                    .to_string(),
-                )),
-            },
-        }
+            ComputeMode::ComputeOnly => Err(error(
+                &exp.span,
+                &format!(
+                    "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
+                    res
+                )
+                .to_string(),
+            )),
+        },
     }
 }
 
