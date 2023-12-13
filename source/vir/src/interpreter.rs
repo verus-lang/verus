@@ -1489,14 +1489,20 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 }
 
 enum SimplificationResult {
+    /// Expression evaluated to true.
     True,
+    /// Expression evaluated to false.
+    /// If the optional argument is given, then it is equivalent
+    /// to the original and also simplifies to 'false'.
     False(Option<Exp>),
+    /// Expression evaluates to something that we can't simplify
+    /// further via the interpreter.
     Complex(Exp),
 }
 
 /// Evaluate the result
 ///
-/// This special case certain kinds of operations to present more specific error messages
+/// Includes a special case when the top-level operation is a binary op.
 /// For example, if the user tries to prove `a == b`, and it evaluates
 /// to `7 == 5` which evaluates to false, we return
 ///     SimplificationResult::False(Some(`7 == 5`))
