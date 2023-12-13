@@ -932,3 +932,54 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] iter_loop verus_code! {
+        use vstd::prelude::*;
+        fn test_loop() {
+            let mut n: u64 = 0;
+            let mut iter = (0..10).into_iter();
+            loop
+                invariant_ensures
+                    iter.start <= 10,
+                    iter.end == 10,
+                    n == iter.start * 3,
+                ensures
+                    iter.start == 10,
+            {
+                if let Some(x) = iter.next() {
+                    assert(x < 10);
+                    assert(x == iter.start - 1);
+                    n += 3;
+                } else {
+                    break;
+                }
+            }
+            assert(iter.start == 10);
+            assert(n == 30);
+        }
+
+        fn test_loop_fail() {
+            let mut n: u64 = 0;
+            let mut iter = (0..10).into_iter();
+            loop
+                invariant_ensures
+                    iter.start <= 10,
+                    iter.end == 10,
+                    n == iter.start * 3,
+                ensures
+                    iter.start == 10,
+            {
+                if let Some(x) = iter.next() {
+                    assert(x < 9); // FAILS
+                    assert(x == iter.start - 1);
+                    n += 3;
+                } else {
+                    break;
+                }
+            }
+            assert(iter.start == 10);
+            assert(n == 30);
+        }
+    } => Err(e) => assert_one_fails(e)
+}

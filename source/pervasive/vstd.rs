@@ -2,6 +2,7 @@
 //! Contains various utilities and datatypes for proofs,
 //! as well as runtime functionality with specifications.
 //! For an introduction to Verus, see [the tutorial](https://verus-lang.github.io/verus/guide/).
+#![feature(step_trait)]
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(unused_parens)]
