@@ -820,6 +820,8 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_fn_with_ref_arguments_1 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
         struct X { v: u64 }
 
         fn test<F: Fn(&X) -> bool>(f: F, x: X) -> bool
@@ -832,6 +834,8 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test_fn_with_ref_arguments ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
         struct X { v: u64 }
         struct Y { w: u64 }
 
