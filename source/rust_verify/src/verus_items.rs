@@ -292,13 +292,8 @@ pub(crate) enum BuiltinTypeItem {
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinFunctionItem {
-    FnWithSpecificationRequires,
-    FnWithSpecificationEnsures,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
-pub(crate) enum BuiltinTraitItem {
-    FnWithSpecification,
+    CallRequires,
+    CallEnsures,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -323,7 +318,6 @@ pub(crate) enum VerusItem {
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
     BuiltinFunction(BuiltinFunctionItem),
-    BuiltinTrait(BuiltinTraitItem),
     Global(GlobalItem),
 }
 
@@ -470,10 +464,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
 
-        ("verus::builtin::FnWithSpecification::requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationRequires)),
-        ("verus::builtin::FnWithSpecification::ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationEnsures)),
-
-        ("verus::builtin::FnWithSpecification", VerusItem::BuiltinTrait(BuiltinTraitItem::FnWithSpecification)),
+        ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
+        ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
         
         ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
     ]

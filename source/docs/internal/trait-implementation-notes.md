@@ -20,8 +20,8 @@ inside are treated as normal functions.
 There are also a number of special cases:
 
  * Marker traits (`Copy`, `Send`, `Sync`, `Sized`, `Unpin`, `Tuple`) - these are pretty much treated as external (though `Sized` has some complications)
- * `Fn`, `FnMut`, `FnOnce` and Verus `FnWithSpecification`
-    * `FnWithSpecification` is defined in the `builtin` crate and is implemented for any type that implements `FnOnce`. `FnWithSpecification` is used to add `requires` and `ensures` spec functions to the function types. The 3 Rust traits are ignored, while conceptually, `FnWithSpecification` is a "verified trait" with 3 functions (spec requires, spec ensures, and the exec `call` function), though it isn't actually represented in VIR as a trait (unlike other verified traits).
+ * `Fn`, `FnMut`, `FnOnce`
+    * Note that `FnWithSpecification` has been remove from builtin and is now defined as a user trait in vstd, so it's not important for soundness considerations.
 
 ### Expected Behaviors vs. current behaviors
 
@@ -33,7 +33,6 @@ There are also a number of special cases:
  - Verified trait, non-external impl, external f - Allowed, but calling it is disallowed
    - [ ] TODO: fix panic
  - Implement a marker trait - allowed (if unsafe, must be marked external)
- - Implement `FnWithSpecification` - disallowed
  - impl FnOnce / Fn / FnMut - could be supported in principle, but probably not useful unless we also allow them to specify 'requires' and 'ensures' somehow. Currently an error.
 
 # Overall architecture
@@ -56,9 +55,9 @@ TODO fill in
 
 TODO fill in
 
-### Handling FnWithSpecification
+### Handling FnOnce
 
-Curerntly, FnWithSpecification is only handled for closure types, though support
+Curerntly, FnOnce is only handled for closure types, though support
 for named function types ("FnDef types") is coming: https://github.com/verus-lang/verus/pull/565
 
 There are 3 functions to consider:
