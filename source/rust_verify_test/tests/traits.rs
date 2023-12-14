@@ -188,22 +188,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
-}
-
-test_verify_one_file! {
-    #[test] test_ill_formed_9 verus_code! {
-        trait T1 {
-            fn f(&self);
-        }
-        struct S {}
-        impl T1 for S {
-            fn f(&self)
-                ensures true // no ensures allowed
-            {
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires")
 }
 
 test_verify_one_file! {
