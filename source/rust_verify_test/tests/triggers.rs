@@ -313,7 +313,7 @@ test_verify_one_file! {
     #[test] test_broadcast_arith_trigger verus_code! {
         #[verifier::broadcast_forall]
         pub proof fn testb(x: int, y: int)
-            ensures 
+            ensures
                 #[trigger] (2 * x + 2 * y) == (x + y) * 2
         {
         }
