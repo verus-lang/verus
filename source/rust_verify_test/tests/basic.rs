@@ -625,6 +625,7 @@ test_verify_one_file! {
         // We allow a final comma in the ensures
         // list for a bodyless function
         trait Marshalable {
+            spec fn is_marshalable(&self) -> bool;
             exec fn _is_marshalable(&self) -> (res: bool)
                 ensures res == self.is_marshalable(),
             ;
