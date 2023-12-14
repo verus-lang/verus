@@ -423,6 +423,7 @@ pub mod parsing {
             let mut exprs = Punctuated::new();
             while !(input.is_empty()
                 || input.peek(token::Brace)
+                || input.peek(Token![;])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
@@ -849,12 +850,19 @@ pub mod parsing {
             } else {
                 return Err(lookahead.error());
             }
+
             let content;
             let paren_token = parenthesized!(content in input);
             let path = content.parse()?;
 
-            let fuel = if reveal_with_fuel_token.is_some() && content.peek(Token![,]) {
-                Some((content.parse()?, content.parse()?))
+            // Parse a possible comma (either trailing for hide/reveal,
+            // or as a preface to a fuel argument
+            let comma:Option<Token![,]> = content.parse()?;
+
+            let fuel = if reveal_with_fuel_token.is_some() && comma.is_some() {
+                let f = Some((comma.unwrap(), content.parse()?));
+                let _trailing_comma:Option<Token![,]> = content.parse()?;
+                f
             } else {
                 None
             };
