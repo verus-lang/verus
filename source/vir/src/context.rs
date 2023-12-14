@@ -337,6 +337,13 @@ impl GlobalCtx {
     pub fn get_chosen_triggers(&self) -> Vec<ChosenTriggers> {
         self.chosen_triggers.borrow().clone()
     }
+
+    pub fn set_interpreter_log_file(
+        &mut self,
+        interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    ) {
+        self.interpreter_log = interpreter_log;
+    }
 }
 
 impl Ctx {
