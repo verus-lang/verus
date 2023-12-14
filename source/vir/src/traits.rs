@@ -11,7 +11,7 @@ use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
 use air::scope_map::ScopeMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 // We currently do not support trait bounds for traits from other crates
@@ -44,7 +44,7 @@ pub fn demote_foreign_traits(
         }
         */
 
-        if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
+        if let FunctionKind::TraitMethodImpl { trait_path, .. } = &function.x.kind {
             let our_trait = traits.contains(trait_path);
             let mut functionx = function.x.clone();
             if !our_trait {
