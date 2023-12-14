@@ -269,7 +269,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] trailing_commas verus_code! {
-        spec fn s(x:int) -> bool 
+        spec fn s(x:int) -> bool
             decreases x,
         {
             if x <= 0 { true}
@@ -277,7 +277,7 @@ test_verify_one_file! {
                 s(x - 1)
             }
         }
-        
+
         // We treat hide/reveal like other Rust functions,
         // which allow trailing commas
         proof fn test() {
