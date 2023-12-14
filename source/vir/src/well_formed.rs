@@ -419,10 +419,10 @@ fn check_function(
     }
 
     if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
-        if function.x.require.len() + function.x.ensure.len() != 0 {
+        if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
-                "trait method implementation cannot declare requires/ensures; these can only be inherited from the trait declaration",
+                "trait method implementation cannot declare requires clauses; these can only be inherited from the trait declaration",
             ));
         }
         if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {

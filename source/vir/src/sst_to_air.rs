@@ -1388,7 +1388,7 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, resolved_method: _, mode, typ_args: typs, args, split, dest } => {
+        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest } => {
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
@@ -1529,10 +1529,21 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                 }
             }
-            if ctx.funcs_with_ensure_predicate.contains(&func.x.name) {
-                let f_ens = prefix_ensures(&fun_to_air_ident(&func.x.name));
-                let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
-                stmts.push(Arc::new(StmtX::Assume(e_ens)));
+            match resolved_method {
+                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate.contains(res_fun) => {
+                    let skip = (typs.len() - res_typs.len())
+                        * (if crate::context::DECORATE { 2 } else { 1 });
+                    let ens_args = ens_args.iter().skip(skip).cloned().collect();
+                    let f_ens = prefix_ensures(&fun_to_air_ident(&res_fun));
+                    let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
+                    stmts.push(Arc::new(StmtX::Assume(e_ens)));
+                }
+                _ if ctx.funcs_with_ensure_predicate.contains(&func.x.name) => {
+                    let f_ens = prefix_ensures(&fun_to_air_ident(&func.x.name));
+                    let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
+                    stmts.push(Arc::new(StmtX::Assume(e_ens)));
+                }
+                _ => {}
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
@@ -2206,6 +2217,7 @@ pub(crate) fn body_stm_to_air(
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
+    inherit_enss: &Vec<Exp>,
     ens_spec_precondition_stms: &Vec<Stm>,
     mask_set: &MaskSet,
     stm: &Stm,
@@ -2268,6 +2280,11 @@ pub(crate) fn body_stm_to_air(
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in enss {
+        let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, is_bit_vector_mode);
+        let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
+        ens_exprs.push((ens.span.clone(), e));
+    }
+    for ens in inherit_enss {
         let ens = subst_exp(&trait_typ_substs, &HashMap::new(), ens);
         let e = if is_bit_vector_mode {
             let bv_expr_ctxt = &BvExprCtxt::new();

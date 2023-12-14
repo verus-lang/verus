@@ -294,7 +294,7 @@ pub(crate) fn check_termination_commands(
         &Arc::new(vec![]),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &MaskSet::empty(),
+        &Arc::new(vec![]),
         &stm_block,
         false,
         false,
