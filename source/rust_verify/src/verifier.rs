@@ -1763,7 +1763,7 @@ impl Verifier {
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
                 // give each bucket its own log file
                 let interpreter_log_file = Arc::new(std::sync::Mutex::new(
-                    if self.args.log_all || self.args.log_args.log_vir_simple {
+                    if self.args.log_all || self.args.log_args.log_interpreter {
                         Some(self.create_log_file(
                             Some(bucket_id),
                             crate::config::INTERPRETER_FILE_SUFFIX,
