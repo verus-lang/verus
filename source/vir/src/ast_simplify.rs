@@ -884,7 +884,11 @@ fn mk_fun_decl(
 }
 */
 
-pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
+pub fn simplify_krate(
+    ctx: &mut GlobalCtx,
+    krate: &Krate,
+    disable_prune_tuples: bool,
+) -> Result<Krate, VirErr> {
     let KrateX {
         functions,
         datatypes,
@@ -901,6 +905,13 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     // Pre-emptively add this because unit values might be added later.
     state.tuple_type_name(0);
+
+    if disable_prune_tuples {
+        for i in 0..=12 {
+            state.tuple_type_name(i);
+            state.closure_type_name(i);
+        }
+    }
 
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;

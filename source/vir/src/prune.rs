@@ -397,6 +397,9 @@ pub fn prune_krate_for_module(
     module: &Path,
     fun: Option<&Fun>,
     vstd_crate_name: &Option<Ident>,
+    disable_prune: bool,
+    disable_prune_primitives: bool,
+    disable_prune_tuples: bool,
 ) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>) {
     let is_root = |function: &Function| match fun {
         Some(f) => &function.x.name == f,
@@ -407,8 +410,15 @@ pub fn prune_krate_for_module(
     };
 
     let mut state: State = Default::default();
-    state.reached_modules.insert(module.clone());
-    state.worklist_modules.push(module.clone());
+    if disable_prune {
+        for m in &krate.modules {
+            state.reached_modules.insert(m.x.path.clone());
+            state.worklist_modules.push(m.x.path.clone());
+        }
+    } else {
+        state.reached_modules.insert(module.clone());
+        state.worklist_modules.push(module.clone());
+    }
 
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
@@ -573,6 +583,27 @@ pub fn prune_krate_for_module(
         all_functions_in_each_module,
         vstd_crate_name: vstd_crate_name.clone(),
     };
+
+    if disable_prune_primitives {
+        use crate::ast::IntRange;
+        let mut ranges = vec![IntRange::Nat, IntRange::USize, IntRange::ISize];
+        for width in [8, 16, 32, 64, 128] {
+            ranges.push(IntRange::U(width));
+            ranges.push(IntRange::I(width));
+        }
+        for r in ranges {
+            reach_type(&ctxt, &mut state, &ReachedType::Int(r));
+        }
+        reach_type(&ctxt, &mut state, &ReachedType::StrSlice);
+        reach_type(&ctxt, &mut state, &ReachedType::Char);
+        reach_type(&ctxt, &mut state, &ReachedType::Primitive);
+    }
+    if disable_prune_tuples {
+        for i in 0..=12 {
+            reach_type(&ctxt, &mut state, &ReachedType::Lambda(i));
+        }
+    }
+
     traverse_reachable(&ctxt, &mut state);
 
     for tr in krate.traits.iter() {

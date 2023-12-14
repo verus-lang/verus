@@ -1630,6 +1630,9 @@ impl Verifier {
                 bucket_id.module(),
                 bucket_id.function(),
                 &self.vstd_crate_name,
+                self.args.disable_prune,
+                self.args.disable_prune_primitives,
+                self.args.disable_prune_tuples,
             );
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
@@ -1698,7 +1701,11 @@ impl Verifier {
             self.vstd_crate_name.clone(),
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
-        let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
+        let krate = vir::ast_simplify::simplify_krate(
+            &mut global_ctx,
+            &krate,
+            self.args.disable_prune_tuples,
+        )?;
 
         if self.args.log_all || self.args.log_args.log_vir_simple {
             let mut file = self.create_log_file(None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;

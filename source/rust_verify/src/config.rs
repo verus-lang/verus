@@ -75,6 +75,9 @@ pub struct ArgsX {
     pub capture_profiles: bool,
     pub spinoff_all: bool,
     pub use_internal_profiler: bool,
+    pub disable_prune: bool,
+    pub disable_prune_primitives: bool,
+    pub disable_prune_tuples: bool,
     pub no_vstd: bool,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -196,6 +199,9 @@ pub fn parse_args_with_imports(
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
+    const EXTENDED_DISABLE_PRUNE: &str = "disable-prune";
+    const EXTENDED_DISABLE_PRUNE_PRIMITIVES: &str = "disable-prune-primitives";
+    const EXTENDED_DISABLE_PRUNE_TUPLES: &str = "disable-prune-tuples";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -212,6 +218,9 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_INTERNAL_PROFILER,
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
+        (EXTENDED_DISABLE_PRUNE, "Disable context pruning"),
+        (EXTENDED_DISABLE_PRUNE_PRIMITIVES, "Disable context pruning of primitive types"),
+        (EXTENDED_DISABLE_PRUNE_TUPLES, "Disable context pruning of tuples/closures/lambdas"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -497,6 +506,9 @@ pub fn parse_args_with_imports(
         },
         spinoff_all: extended.get(EXTENDED_SPINOFF_ALL).is_some(),
         use_internal_profiler: extended.get(EXTENDED_USE_INTERNAL_PROFILER).is_some(),
+        disable_prune: extended.get(EXTENDED_DISABLE_PRUNE).is_some(),
+        disable_prune_primitives: extended.get(EXTENDED_DISABLE_PRUNE_PRIMITIVES).is_some(),
+        disable_prune_tuples: extended.get(EXTENDED_DISABLE_PRUNE_TUPLES).is_some(),
         compile: matches.opt_present(OPT_COMPILE),
         no_vstd,
         solver_version_check: !extended.get(EXTENDED_NO_SOLVER_VERSION_CHECK).is_some(),
