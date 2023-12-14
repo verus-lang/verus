@@ -619,3 +619,15 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_bodyless_fn verus_code! {
+        // We allow a final comma in the ensures
+        // list for a bodyless function
+        trait Marshalable {
+            exec fn _is_marshalable(&self) -> (res: bool)
+                ensures res == self.is_marshalable(),
+            ;
+        }
+    } => Ok(())
+}
