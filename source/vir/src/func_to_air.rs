@@ -889,13 +889,15 @@ pub fn func_def_to_air(
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
             }
 
-            let req_ens_e_rename: HashMap<_, _> = req_ens_function
+            let mut req_ens_e_rename: HashMap<_, _> = req_ens_function
                 .x
                 .params
                 .iter()
                 .zip(function.x.params.iter())
                 .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
                 .collect();
+            req_ens_e_rename
+                .insert(req_ens_function.x.ret.x.name.clone(), function.x.ret.x.name.clone());
 
             let mut req_stms: Vec<Stm> = Vec::new();
             let mut reqs: Vec<Exp> = Vec::new();
