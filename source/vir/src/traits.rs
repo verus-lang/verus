@@ -21,8 +21,6 @@ pub fn demote_foreign_traits(
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
     let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
-    let func_map: HashMap<Fun, Function> =
-        krate.functions.iter().map(|f| (f.x.name.clone(), f.clone())).collect();
 
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
@@ -49,12 +47,7 @@ pub fn demote_foreign_traits(
         if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
             let our_trait = traits.contains(trait_path);
             let mut functionx = function.x.clone();
-            if our_trait {
-                let decl = &func_map[method];
-                let mut retx = functionx.ret.x.clone();
-                retx.name = decl.x.ret.x.name.clone();
-                functionx.ret = Spanned::new(functionx.ret.span.clone(), retx);
-            } else {
+            if !our_trait {
                 if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
                     if !function.x.require.is_empty() {
                         return Err(error(
