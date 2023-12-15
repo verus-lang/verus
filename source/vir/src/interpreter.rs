@@ -944,7 +944,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     state.msgs.push(warning(&exp.span, msg));
                                     ok.clone()
                                 } else {
-                                    Ok(e.clone())
+                                    // Use the type of clip, not the inner expression,
+                                    // to reflect the type change imposed by clip
+                                    Ok(SpannedTyped::new(&e.span, &exp.typ, e.x.clone()))
                                 }
                             };
                             match range {
