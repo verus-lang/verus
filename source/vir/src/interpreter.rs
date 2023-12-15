@@ -1340,7 +1340,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         eval_expr_internal(ctx, state, e3)
                     }
                 }
-                _ => exp_new(If(e1, e2.clone(), e3.clone())),
+                _ => {
+                    // We still try to simplify both branches, if we can
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
+                    let e3 = eval_expr_internal(ctx, state, e3)?;
+                    exp_new(If(e1, e2, e3))
+                }
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
