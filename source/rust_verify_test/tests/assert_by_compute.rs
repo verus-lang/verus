@@ -502,7 +502,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] shift_regression_928_1 ["vstd"] => verus_code! {
+    #[test] shift_regression_928_1 ["vstd"] => verus_code! {
         global size_of usize == 8;
 
         pub open spec fn foo() -> int {
@@ -524,7 +524,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] shift_regression_928_2 ["vstd"] => verus_code! {
+    #[test] shift_regression_928_2 ["vstd"] => verus_code! {
         spec fn foo(size: int) -> int {
             let bits = usize::BITS as int;
             if bits == 1 {
