@@ -465,7 +465,7 @@ pub fn prune_krate_for_module(
         let within_module = is_visible_to_of_owner(&f.x.owning_module, module);
         let is_non_opaque =
             if within_module { f.x.fuel > 0 } else { f.x.fuel > 0 && f.x.publish == Some(true) };
-        let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
+        let is_revealed = is_non_opaque || disable_prune || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;
         if is_vis && is_revealed && is_spec {
             if !within_module && f.x.publish == Some(false) {
