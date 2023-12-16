@@ -385,11 +385,8 @@ pub fn req_ens_to_air(
         match inherit_from {
             None => {}
             Some((name, trait_typ_args)) => {
-                let mut t_args: Vec<Expr> =
-                    trait_typ_args.iter().map(typ_to_ids).flatten().collect();
-                let mut f_args = func_def_typs_args(&typ_args, params);
-                t_args.append(&mut f_args);
-                let f_app = string_apply(&name, &Arc::new(t_args));
+                let args = func_def_typs_args(&trait_typ_args, params);
+                let f_app = string_apply(&name, &Arc::new(args));
                 exprs.push(f_app);
             }
         }

@@ -192,3 +192,222 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "spec functions cannot have requires/ensures")
 }
+
+test_verify_one_file! {
+    #[test] test_trait_arg verus_code! {
+        trait T<A> {
+            proof fn f(a: &A) ensures true;
+        }
+        struct S;
+        impl<B> T<B> for S {
+            proof fn f(b: &B) ensures true {  }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_arg2 verus_code! {
+        struct Y { j: int }
+
+        trait Tr<B> {
+            proof fn stuff(a: B, b: B) -> (res: (B, B, B))
+                ensures res.0 == res.1;
+        }
+
+        struct X<B> { b: B }
+
+        impl<B> Tr<B> for X<B> {
+            proof fn stuff(a: B, b: B) -> (res: (B, B, B))
+                ensures res.1 == res.2
+            {
+                return (a, a, b); // FAILS
+            }
+        }
+
+        struct X2<B> { b: B }
+
+        impl<B> Tr<B> for X2<B> {
+            proof fn stuff(a: B, b: B) -> (res: (B, B, B))
+                ensures res.1 == res.2
+            {
+                return (a, b, b); // FAILS
+            }
+        }
+
+        proof fn test(a: Y, b: Y) {
+            let r = X::<Y>::stuff(a, b);
+            assert(r.0 == r.1);
+            assert(r.1 == r.2);
+            assert(false); // FAILS
+        }
+
+        struct Z { j: int }
+
+        impl Tr<u8> for Z {
+            proof fn stuff(a: u8, b: u8) -> (res: (u8, u8, u8))
+                ensures res.1 == res.2
+            {
+                return (0, 0, 1); // FAILS
+            }
+        }
+
+        proof fn test2(a: u8, b: u8) {
+            let r = Z::stuff(a, b);
+            assert(r.0 == r.1);
+            assert(r.1 == r.2);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_arg3 verus_code! {
+        trait Compare {
+            spec fn comp(&self, other: &Self) -> bool;
+        }
+
+        struct Y { j: int }
+        impl Compare for Y {
+            spec fn comp(&self, other: &Self) -> bool {
+                self.j == other.j + 1
+            }
+        }
+
+        trait Tr<B: Compare> {
+            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
+                requires a.comp(&b), b.comp(&c),
+                ensures res.0.comp(&res.1);
+        }
+
+        struct X<B> { b: B }
+
+        impl<B: Compare> Tr<B> for X<B> {
+            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
+                ensures res.1.comp(&res.2)
+            {
+                return (a, a, b); // FAILS
+            }
+        }
+
+        struct X2<B> { b: B }
+
+        impl<B: Compare> Tr<B> for X2<B> {
+            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
+                ensures res.1.comp(&res.2)
+            {
+                return (a, b, b); // FAILS
+            }
+        }
+
+        struct X3<B> { b: B }
+
+        impl<B: Compare> Tr<B> for X3<B> {
+            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
+                ensures res.1.comp(&res.2)
+            {
+                return (a, b, c);
+            }
+        }
+
+        proof fn test(a: Y, b: Y, c: Y)
+            requires a.comp(&b), b.comp(&c),
+        {
+            let r = X::<Y>::stuff(a, b, c);
+            assert(r.0.comp(&r.1));
+            assert(r.1.comp(&r.2));
+            assert(false); // FAILS
+        }
+
+        impl Compare for u8 {
+            spec fn comp(&self, other: &Self) -> bool {
+                self == other + 1
+            }
+        }
+
+        struct Z { j: int }
+
+        impl Tr<u8> for Z {
+            proof fn stuff(a: u8, b: u8, c: u8) -> (res: (u8, u8, u8))
+                ensures res.1.comp(&res.2)
+            {
+                return (1, 1, 0); // FAILS
+            }
+        }
+
+        proof fn test2(a: u8, b: u8, c: u8)
+            requires a == b + 1, b == c + 1,
+        {
+            let r = Z::stuff(a, b, c);
+            assert(r.0 == r.1 + 1);
+            assert(r.1 == r.2 + 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_arg4 verus_code! {
+        trait Compare {
+            spec fn comp(&self, other: &Self) -> bool;
+        }
+
+        trait Tr<B: Compare> {
+            proof fn stuff(a: B, b: B, c: B) -> (res: (B, B, B))
+                requires a.comp(&b), b.comp(&c),
+                ensures res.0.comp(&res.1);
+        }
+
+        struct X<B> { b: B }
+
+        impl<B: Compare> Compare for X<B> {
+            spec fn comp(&self, other: &Self) -> bool {
+                other.b.comp(&self.b)
+            }
+        }
+
+        struct Y<B> { b: B }
+
+        impl<B: Compare> Tr<X<B>> for Y<B> {
+            proof fn stuff(a: X<B>, b: X<B>, c: X<B>) -> (res: (X<B>, X<B>, X<B>))
+                ensures res.1.comp(&res.2)
+            {
+                return (a, a, b); // FAILS
+            }
+        }
+
+        struct Y2<B> { b: B }
+
+        impl<B: Compare> Tr<X<B>> for Y2<B> {
+            proof fn stuff(a: X<B>, b: X<B>, c: X<B>) -> (res: (X<B>, X<B>, X<B>))
+                ensures res.1.comp(&res.2)
+            {
+                return (a, a, b); // FAILS
+            }
+        }
+
+        struct Y3<B> { b: B }
+
+        impl<B: Compare> Tr<X<B>> for Y3<B> {
+            proof fn stuff(a: X<B>, b: X<B>, c: X<B>) -> (res: (X<B>, X<B>, X<B>))
+                ensures res.1.comp(&res.2)
+            {
+                return (a, b, c);
+            }
+        }
+
+        impl Compare for u8 {
+            spec fn comp(&self, other: &Self) -> bool {
+                self == other + 1
+            }
+        }
+
+        proof fn test(a: X<u8>, b: X<u8>, c: X<u8>)
+            requires a.comp(&b), b.comp(&c),
+        {
+            let r = Y3::<u8>::stuff(a, b, c);
+            assert(r.0.comp(&r.1));
+            assert(r.1.comp(&r.2));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
