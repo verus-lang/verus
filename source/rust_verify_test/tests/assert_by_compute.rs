@@ -520,7 +520,7 @@ test_verify_one_file_with_options! {
             if bits == 1 {
                 0
             } else {
-                bits 
+                bits
             }
         }
 
