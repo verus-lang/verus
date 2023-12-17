@@ -409,5 +409,5 @@ test_verify_one_file! {
             assert(r.1.comp(&r.2));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 3)
 }

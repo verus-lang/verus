@@ -1508,8 +1508,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     state.map_span(&stm, SpanKind::Full);
                 }
             }
+
+            let (has_ens, ens_fun, ens_typ_args) = match resolved_method {
+                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate.contains(res_fun) => {
+                    // Use ens predicate for the statically-resolved function
+                    let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
+                    (true, res_fun, res_typ_args)
+                }
+                _ if ctx.funcs_with_ensure_predicate.contains(&func.x.name) => {
+                    // Use ens predicate for the generic function
+                    (true, &func.x.name, typ_args)
+                }
+                _ => {
+                    // No ens predicate
+                    (false, &func.x.name, typ_args)
+                }
+            };
+
             let mut ens_args: Vec<_> =
-                typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
+                ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
             if func.x.has_return() {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
@@ -1529,21 +1546,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                 }
             }
-            match resolved_method {
-                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate.contains(res_fun) => {
-                    let skip = (typs.len() - res_typs.len())
-                        * (if crate::context::DECORATE { 2 } else { 1 });
-                    let ens_args = ens_args.iter().skip(skip).cloned().collect();
-                    let f_ens = prefix_ensures(&fun_to_air_ident(&res_fun));
-                    let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
-                    stmts.push(Arc::new(StmtX::Assume(e_ens)));
-                }
-                _ if ctx.funcs_with_ensure_predicate.contains(&func.x.name) => {
-                    let f_ens = prefix_ensures(&fun_to_air_ident(&func.x.name));
-                    let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
-                    stmts.push(Arc::new(StmtX::Assume(e_ens)));
-                }
-                _ => {}
+            if has_ens {
+                let f_ens = prefix_ensures(&fun_to_air_ident(&ens_fun));
+                let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
+                stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
