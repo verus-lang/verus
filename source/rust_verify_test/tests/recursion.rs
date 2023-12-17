@@ -1218,7 +1218,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mutable_reference_decreases_2_pass verus_code! {
         fn e(s: &mut u64) -> u64
-            decreases *s
+            decreases *old(s)
         {
             if *s > 0 {
                 *s = *s - 1;
@@ -1235,7 +1235,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mutable_reference_decreases_2_fail verus_code! {
         fn e(s: &mut u64) -> u64
-            decreases *s
+            decreases *old(s)
         {
             *s = *s - 1; // FAILS
             e(s) // FAILS

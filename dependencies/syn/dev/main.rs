@@ -8,7 +8,7 @@ syn_dev::r#mod! {
 
     pub proof fn foo2()
         requires true,
-        opens_invariants none
+        opens_invariants [x, y]
     {
     }
 

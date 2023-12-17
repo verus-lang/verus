@@ -161,8 +161,25 @@ fn check_one_expr(
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
+    place: Place,
 ) -> Result<(), VirErr> {
     match &expr.x {
+        ExprX::Var(x) => {
+            if let Place::PreState(clause_name) = place {
+                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
+                    if *x == param.x.name {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "in {}, use `old({})` to refer to the pre-state of an &mut variable",
+                                clause_name,
+                                crate::def::user_local_name(&param.x.name)
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
         ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
@@ -360,14 +377,21 @@ fn check_one_expr(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum Place {
+    PreState(&'static str),
+    BodyOrPostState,
+}
+
 fn check_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
+    place: Place,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
-        check_one_expr(ctxt, function, expr, disallow_private_access)
+        check_one_expr(ctxt, function, expr, disallow_private_access, place)
     })
 }
 
@@ -753,33 +777,39 @@ fn check_function(
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, req, disallow_private_access)?;
-        crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
-            if let ExprX::Var(x) = &expr.x {
-                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
-                    if *x == param.x.name {
-                        return Err(error(
-                            &expr.span,
-                            format!(
-                                "in requires, use `old({})` to refer to the pre-state of an &mut variable",
-                                crate::def::user_local_name(&param.x.name)
-                            ),
-                        ));
-                    }
-                }
-            }
-            Ok(())
-        })?;
+        check_expr(ctxt, function, req, disallow_private_access, Place::PreState("requires"))?;
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, ens, disallow_private_access)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
+    }
+    match &function.x.mask_spec {
+        MaskSpec::NoSpec => {}
+        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+            for expr in es.iter() {
+                let msg = "'opens_invariants' clause of public function";
+                let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+                check_expr(
+                    ctxt,
+                    function,
+                    expr,
+                    disallow_private_access,
+                    Place::PreState("opens_invariants clause"),
+                )?;
+            }
+        }
     }
     for expr in function.x.decrease.iter() {
         let msg = "'decreases' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, expr, disallow_private_access)?;
+        check_expr(
+            ctxt,
+            function,
+            expr,
+            disallow_private_access,
+            Place::PreState("decreases clause"),
+        )?;
     }
     if let Some(expr) = &function.x.decrease_when {
         let msg = "'when' clause of public function";
@@ -796,7 +826,7 @@ fn check_function(
                 "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
             ));
         }
-        check_expr(ctxt, function, expr, disallow_private_access)?;
+        check_expr(ctxt, function, expr, disallow_private_access, Place::PreState("when clause"))?;
     }
 
     if function.x.mode == Mode::Exec
@@ -816,7 +846,7 @@ fn check_function(
             }
             _ => None,
         };
-        check_expr(ctxt, function, body, disallow_private_access)?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
     }
     Ok(())
 }

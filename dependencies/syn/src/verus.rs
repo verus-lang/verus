@@ -166,6 +166,7 @@ ast_enum_of_structs! {
     pub enum InvariantNameSet {
         Any(InvariantNameSetAny),
         None(InvariantNameSetNone),
+        List(InvariantNameSetList),
     }
 }
 
@@ -178,6 +179,13 @@ ast_struct! {
 ast_struct! {
     pub struct InvariantNameSetNone {
         pub token: Token![none],
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetList {
+        pub bracket_token: token::Bracket,
+        pub exprs: Punctuated<Expr, Token![,]>,
     }
 }
 
@@ -595,6 +603,9 @@ pub mod parsing {
             } else if input.peek(Token![none]) {
                 let none = input.parse()?;
                 InvariantNameSet::None(none)
+            } else if input.peek(token::Bracket) {
+                let list = input.parse()?;
+                InvariantNameSet::List(list)
             } else {
                 return Err(input.error("invariant clause expected `any` or `none`"));
             };
@@ -615,6 +626,19 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let token_none = input.parse()?;
             Ok(InvariantNameSetNone { token: token_none })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetList {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let exprs = content.parse_terminated(Expr::parse)?;
+            Ok(InvariantNameSetList {
+                bracket_token,
+                exprs,
+            })
         }
     }
 
@@ -1126,6 +1150,15 @@ mod printing {
     impl ToTokens for InvariantNameSetNone {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetList {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.bracket_token.surround(tokens, |tokens| {
+                self.exprs.to_tokens(tokens);
+            });
         }
     }
 

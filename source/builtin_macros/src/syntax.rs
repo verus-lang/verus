@@ -21,11 +21,11 @@ use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemMethod,
-    Invariant, InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl,
-    ItemMod, ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path,
-    PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature,
-    SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type,
-    TypeFnSpec, UnOp, Visibility,
+    Invariant, InvariantEnsures, InvariantNameSet, InvariantNameSetList, Item, ItemConst, ItemEnum,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec,
+    ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends, Requires,
+    ReturnType, Signature, SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem,
+    TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -464,6 +464,17 @@ impl Visitor {
                             quote_spanned!(none.span() => ::builtin::opens_invariants_none()),
                         ),
                         Semi { spans: [none.span()] },
+                    ));
+                }
+                InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
+                    for expr in exprs.iter_mut() {
+                        self.visit_expr_mut(expr);
+                    }
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned!(bracket_token.span => ::builtin::opens_invariants([#exprs])),
+                        ),
+                        Semi { spans: [bracket_token.span] },
                     ));
                 }
             }
