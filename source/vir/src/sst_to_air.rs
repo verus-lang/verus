@@ -2286,8 +2286,13 @@ pub(crate) fn body_stm_to_air(
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in enss {
-        let expr_ctxt = &ExprCtxt::new_mode_bv(ExprMode::Body, is_bit_vector_mode);
-        let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
+        let e = if is_bit_vector_mode {
+            let bv_expr_ctxt = &BvExprCtxt::new();
+            bv_exp_to_expr(ctx, &ens, bv_expr_ctxt)?
+        } else {
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            exp_to_expr(ctx, &ens, expr_ctxt)?
+        };
         ens_exprs.push((ens.span.clone(), e));
     }
     for ens in inherit_enss {

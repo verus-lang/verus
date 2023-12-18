@@ -602,6 +602,7 @@ pub fn func_decl_to_air(
                     &None,
                     function.x.attrs.integer_ring,
                     int_typ(),
+                    None,
                 );
             }
         }
