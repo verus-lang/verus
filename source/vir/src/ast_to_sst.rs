@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
-    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
@@ -1224,8 +1224,36 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
         ExprX::UnaryOpr(op, expr) => {
-            let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             let exp = unwrap_or_return_never!(exp, stms);
+            match (op, state.checking_recommends(ctx)) {
+                (
+                    UnaryOpr::Field(FieldOpr {
+                        datatype,
+                        variant,
+                        field: _,
+                        get_variant: _,
+                        check: VariantCheck::Yes,
+                    }),
+                    false,
+                ) => {
+                    let unary = UnaryOpr::IsVariant {
+                        datatype: datatype.clone(),
+                        variant: variant.clone(),
+                    };
+                    let is_variant = ExpX::UnaryOpr(unary, exp.clone());
+                    let is_variant =
+                        SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), is_variant);
+                    let error = crate::messages::error(
+                        &expr.span,
+                        "requirement not met: to access this field, the union must be in the correct variant",
+                    );
+                    let assert = StmX::Assert(Some(error), is_variant);
+                    let assert = Spanned::new(expr.span.clone(), assert);
+                    stms.push(assert);
+                }
+                _ => {}
+            }
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::UnaryOpr(op.clone(), exp)))))
         }
         ExprX::Binary(op, e1, e2) => {

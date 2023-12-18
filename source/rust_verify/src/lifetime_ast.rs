@@ -119,6 +119,7 @@ pub(crate) enum Fields {
 pub(crate) enum Datatype {
     Struct(Fields),
     Enum(Vec<(Id, Fields)>),
+    Union(Fields),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

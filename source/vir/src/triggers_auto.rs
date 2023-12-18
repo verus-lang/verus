@@ -359,7 +359,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             panic!("internal error: TupleField should have been removed before here")
         }
         ExpX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }),
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),
             lhs,
         ) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);

@@ -3,7 +3,7 @@ use crate::erase::{ErasureHints, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir_datatype,
 };
-use crate::rust_to_vir_expr::get_adt_res;
+use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
@@ -533,7 +533,8 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
         }
         PatKind::Path(qpath) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
+            let (adt_def_id, variant_def, is_enum) =
+                get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
             let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
@@ -559,7 +560,8 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
         }
         PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
+            let (adt_def_id, variant_def, is_enum) =
+                get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
             let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
@@ -574,7 +576,8 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
         }
         PatKind::Struct(qpath, pats, has_omitted) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) = get_adt_res(ctxt.tcx, res, pat.span).unwrap();
+            let (adt_def_id, variant_def, is_enum) =
+                get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
             let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
@@ -1051,7 +1054,7 @@ fn erase_expr<'tcx>(
                         None
                     } else {
                         let (adt_def_id, variant_def, is_enum) =
-                            get_adt_res(ctxt.tcx, res, expr.span).unwrap();
+                            get_adt_res_struct_enum(ctxt.tcx, res, expr.span).unwrap();
                         let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
@@ -1205,9 +1208,9 @@ fn erase_expr<'tcx>(
                 erase_spec_exps(ctxt, state, expr, exps)
             } else {
                 let res = ctxt.types().qpath_res(qpath, expr.hir_id);
-                let (adt_def_id, variant_def, is_enum) =
-                    get_adt_res(ctxt.tcx, res, expr.span).unwrap();
-                let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+
+                let (adt_def_id, variant_name, is_enum) =
+                    get_adt_res_struct_enum_union(ctxt.tcx, res, expr.span, fields).unwrap();
                 let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
                 let datatype = &ctxt.datatypes[&vir_path];
@@ -1465,7 +1468,7 @@ fn erase_block<'tcx>(
     block: &Block<'tcx>,
 ) -> Option<Exp> {
     let mk_exp = |e: ExpX| Some(Box::new((block.span, e)));
-    assert!(block.rules == BlockCheckMode::DefaultBlock);
+    assert!(matches!(block.rules, BlockCheckMode::DefaultBlock | BlockCheckMode::UnsafeBlock(_)));
     assert!(!block.targeted_by_break);
     let mut stms: Vec<Stm> = Vec::new();
     for stmt in block.stmts {
@@ -2286,6 +2289,10 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         }
         let datatype = Datatype::Enum(variants);
         erase_datatype(ctxt, state, span, id, datatype);
+    } else if adt_def.is_union() {
+        let fields = erase_variant_data(ctxt, state, adt_def.non_enum_variant());
+        let datatype = Datatype::Union(fields);
+        erase_datatype(ctxt, state, span, id, datatype);
     } else {
         panic!("unexpected datatype {:?}", id);
     }
@@ -2437,6 +2444,12 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Enum(_e, _generics) => {
+                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                                continue;
+                            }
+                            state.reach_datatype(&ctxt, id);
+                        }
+                        ItemKind::Union(_e, _generics) => {
                             if vattrs.is_external(&ctxt.cmd_line_args) {
                                 continue;
                             }
