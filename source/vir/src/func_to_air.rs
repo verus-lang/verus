@@ -367,6 +367,7 @@ pub fn req_ens_to_air(
     msg: &Option<String>,
     is_singular: bool,
     typ: air::ast::Typ,
+    inherit_from: Option<(Ident, Typs)>,
 ) -> Result<bool, VirErr> {
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
@@ -377,7 +378,18 @@ pub fn req_ens_to_air(
         }
         let decl = Arc::new(DeclX::Fun(name.clone(), Arc::new(all_typs), typ));
         commands.push(Arc::new(CommandX::Global(decl)));
+
+        let typ_args = Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone()))));
+
         let mut exprs: Vec<Expr> = Vec::new();
+        match inherit_from {
+            None => {}
+            Some((name, trait_typ_args)) => {
+                let args = func_def_typs_args(&trait_typ_args, params);
+                let f_app = string_apply(&name, &Arc::new(args));
+                exprs.push(f_app);
+            }
+        }
         for e in typing_invs {
             exprs.push(e.clone());
         }
@@ -402,7 +414,6 @@ pub fn req_ens_to_air(
             exprs.push(loc_expr);
         }
         let body = mk_and(&exprs);
-        let typ_args = Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone()))));
         let e_forall = func_def_quant(ctx, &name, &typ_params, &typ_args, &params, &vec![], body)?;
         let req_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
         commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
@@ -525,11 +536,17 @@ pub fn func_decl_to_air(
     fun_ssts: &SstMap,
     function: &Function,
 ) -> Result<Commands, VirErr> {
-    if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
-        // For a trait method implementation, we inherit the trait requires/ensures,
-        // so we can just return here.
-        return Ok(Arc::new(vec![]));
-    }
+    let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
+            if ctx.funcs_with_ensure_predicate.contains(method) {
+                let ens = prefix_ensures(&fun_to_air_ident(&method));
+                (true, Some((ens, trait_typ_args.clone())))
+            } else {
+                (true, None)
+            }
+        }
+        _ => (false, None),
+    };
 
     let req_typs: Arc<Vec<_>> =
         Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
@@ -537,6 +554,8 @@ pub fn func_decl_to_air(
 
     // Requires
     if function.x.require.len() > 0 {
+        assert!(!is_trait_method_impl);
+
         let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
             // We don't highlight the failed precondition if the programmer supplied their own msg
             (_, Some(_)) => None,
@@ -559,6 +578,7 @@ pub fn func_decl_to_air(
             &msg,
             function.x.attrs.integer_ring,
             bool_typ(),
+            None,
         )?;
     }
 
@@ -582,6 +602,7 @@ pub fn func_decl_to_air(
                     &None,
                     function.x.attrs.integer_ring,
                     int_typ(),
+                    None,
                 );
             }
         }
@@ -620,6 +641,13 @@ pub fn func_decl_to_air(
     } else {
         assert!(function.x.ensure.len() == 0); // no ensures allowed on spec functions yet
     }
+
+    if is_trait_method_impl {
+        // For a trait method impl, we can skip the type invariants because we'll
+        // be inheriting them from the trait function.
+        ens_typing_invs = vec![];
+    }
+
     let has_ens_pred = req_ens_to_air(
         ctx,
         diagnostics,
@@ -634,6 +662,7 @@ pub fn func_decl_to_air(
         &None,
         function.x.attrs.integer_ring,
         bool_typ(),
+        inherit_fn_ens,
     )?;
     if has_ens_pred {
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
@@ -812,29 +841,30 @@ pub fn func_def_to_air(
         | (FuncDefPhase::CheckingProofExec, Mode::Proof | Mode::Exec, _, Some(body)) => {
             // Note: since is_const functions serve double duty as exec and spec,
             // we generate an exec check for them here to catch any arithmetic overflows.
-            let (trait_typ_substs, req_ens_function) = if let FunctionKind::TraitMethodImpl {
-                method,
-                impl_path: _,
-                trait_path,
-                trait_typ_args,
-            } = &function.x.kind
-            {
-                // Inherit requires/ensures from trait method declaration
-                let tr = &ctx.trait_map[trait_path];
-                let mut typ_params = vec![crate::def::trait_self_type_param()];
-                for (x, _) in tr.x.typ_params.iter() {
-                    typ_params.push(x.clone());
-                }
-                let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                assert!(typ_params.len() == trait_typ_args.len());
-                for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
-                    let t = crate::poly::coerce_typ_to_poly(ctx, t);
-                    trait_typ_substs.insert(x.clone(), t);
-                }
-                (trait_typ_substs, &ctx.func_map[method])
-            } else {
-                (HashMap::new(), function)
-            };
+            let (trait_typ_substs, req_ens_function, inherit) =
+                if let FunctionKind::TraitMethodImpl {
+                    method,
+                    impl_path: _,
+                    trait_path,
+                    trait_typ_args,
+                } = &function.x.kind
+                {
+                    // Inherit requires/ensures from trait method declaration
+                    let tr = &ctx.trait_map[trait_path];
+                    let mut typ_params = vec![crate::def::trait_self_type_param()];
+                    for (x, _) in tr.x.typ_params.iter() {
+                        typ_params.push(x.clone());
+                    }
+                    let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                    assert!(typ_params.len() == trait_typ_args.len());
+                    for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
+                        let t = crate::poly::coerce_typ_to_poly(ctx, t);
+                        trait_typ_substs.insert(x.clone(), t);
+                    }
+                    (trait_typ_substs, &ctx.func_map[method], true)
+                } else {
+                    (HashMap::new(), function, false)
+                };
 
             let mut state = crate::ast_to_sst::State::new(diagnostics);
             state.fun_ssts = fun_ssts;
@@ -857,13 +887,15 @@ pub fn func_def_to_air(
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
             }
 
-            let req_ens_e_rename: HashMap<_, _> = req_ens_function
+            let mut req_ens_e_rename: HashMap<_, _> = req_ens_function
                 .x
                 .params
                 .iter()
                 .zip(function.x.params.iter())
                 .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
                 .collect();
+            req_ens_e_rename
+                .insert(req_ens_function.x.ret.x.name.clone(), function.x.ret.x.name.clone());
 
             let mut req_stms: Vec<Stm> = Vec::new();
             let mut reqs: Vec<Exp> = Vec::new();
@@ -946,14 +978,32 @@ pub fn func_def_to_air(
             }
             let mut ens_spec_precondition_stms: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
-            for e in req_ens_function.x.ensure.iter() {
-                let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
+            let mut enss_inherit: Vec<Exp> = Vec::new();
+            if inherit {
+                for e in req_ens_function.x.ensure.iter() {
+                    let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
+                    if ctx.checking_spec_preconditions() {
+                        ens_spec_precondition_stms.extend(crate::ast_to_sst::check_pure_expr(
+                            ctx,
+                            &mut state,
+                            &e_with_req_ens_params,
+                        )?);
+                    } else {
+                        // skip checks because we call expr_to_pure_exp_check above
+                        enss_inherit.push(crate::ast_to_sst::expr_to_exp_skip_checks(
+                            ctx,
+                            diagnostics,
+                            &state.fun_ssts,
+                            &ens_pars,
+                            &e_with_req_ens_params,
+                        )?);
+                    }
+                }
+            }
+            for e in function.x.ensure.iter() {
                 if ctx.checking_spec_preconditions() {
-                    ens_spec_precondition_stms.extend(crate::ast_to_sst::check_pure_expr(
-                        ctx,
-                        &mut state,
-                        &e_with_req_ens_params,
-                    )?);
+                    ens_spec_precondition_stms
+                        .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, &e)?);
                 } else {
                     // skip checks because we call expr_to_pure_exp_check above
                     enss.push(crate::ast_to_sst::expr_to_exp_skip_checks(
@@ -961,7 +1011,7 @@ pub fn func_def_to_air(
                         diagnostics,
                         &state.fun_ssts,
                         &ens_pars,
-                        &e_with_req_ens_params,
+                        &e,
                     )?);
                 }
             }
@@ -1040,6 +1090,7 @@ pub fn func_def_to_air(
                 &function.x.attrs.hidden,
                 &reqs,
                 &enss,
+                &enss_inherit,
                 &ens_spec_precondition_stms,
                 &mask_set,
                 &stm,

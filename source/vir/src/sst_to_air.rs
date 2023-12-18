@@ -1388,7 +1388,7 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, resolved_method: _, mode, typ_args: typs, args, split, dest } => {
+        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest } => {
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
@@ -1508,8 +1508,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     state.map_span(&stm, SpanKind::Full);
                 }
             }
+
+            let (has_ens, ens_fun, ens_typ_args) = match resolved_method {
+                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate.contains(res_fun) => {
+                    // Use ens predicate for the statically-resolved function
+                    let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
+                    (true, res_fun, res_typ_args)
+                }
+                _ if ctx.funcs_with_ensure_predicate.contains(&func.x.name) => {
+                    // Use ens predicate for the generic function
+                    (true, &func.x.name, typ_args)
+                }
+                _ => {
+                    // No ens predicate
+                    (false, &func.x.name, typ_args)
+                }
+            };
+
             let mut ens_args: Vec<_> =
-                typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
+                ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
             if func.x.has_return() {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
@@ -1529,8 +1546,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                 }
             }
-            if ctx.funcs_with_ensure_predicate.contains(&func.x.name) {
-                let f_ens = prefix_ensures(&fun_to_air_ident(&func.x.name));
+            if has_ens {
+                let f_ens = prefix_ensures(&fun_to_air_ident(&ens_fun));
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
@@ -2206,6 +2223,7 @@ pub(crate) fn body_stm_to_air(
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
+    inherit_enss: &Vec<Exp>,
     ens_spec_precondition_stms: &Vec<Stm>,
     mask_set: &MaskSet,
     stm: &Stm,
@@ -2268,6 +2286,16 @@ pub(crate) fn body_stm_to_air(
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in enss {
+        let e = if is_bit_vector_mode {
+            let bv_expr_ctxt = &BvExprCtxt::new();
+            bv_exp_to_expr(ctx, &ens, bv_expr_ctxt)?
+        } else {
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            exp_to_expr(ctx, &ens, expr_ctxt)?
+        };
+        ens_exprs.push((ens.span.clone(), e));
+    }
+    for ens in inherit_enss {
         let ens = subst_exp(&trait_typ_substs, &HashMap::new(), ens);
         let e = if is_bit_vector_mode {
             let bv_expr_ctxt = &BvExprCtxt::new();

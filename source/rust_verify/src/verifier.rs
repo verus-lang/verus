@@ -2352,6 +2352,7 @@ impl Verifier {
 
         let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)
             .map_err(map_err_diagnostics)?;
+
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
             &mut ctxt.diagnostics.borrow_mut(),
