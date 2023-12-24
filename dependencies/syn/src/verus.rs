@@ -436,6 +436,8 @@ pub mod parsing {
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
                 || input.peek(Token![decreases])
+                || input.peek(Token![via])
+                || input.peek(Token![when])
                 || input.peek(Token![opens_invariants]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
