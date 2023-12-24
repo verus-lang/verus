@@ -1881,3 +1881,28 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in decreases_by function")
 }
+
+test_verify_one_file! {
+    #[test] commas_in_spec_sigs_github_issue947 verus_code! {
+        spec fn add0(a: nat, b: nat) -> nat
+            recommends
+                a > 0,
+            via add0_recommends
+        {
+            a
+        }
+
+        #[via_fn]
+        proof fn add0_recommends(a: nat, b: nat) {
+            // proof
+        }
+
+        spec fn rids_match(bools_start: nat) -> bool
+            decreases bools_start,
+            when 0 <= bools_start <= 5
+        {
+            true
+        }
+
+    } => Ok(())
+}
