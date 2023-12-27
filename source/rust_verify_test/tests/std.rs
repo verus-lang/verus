@@ -195,3 +195,48 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] question_mark_option verus_code! {
+        use vstd::*;
+
+        fn test() -> (res: Option<u32>)
+            ensures res.is_none()
+        {
+            let x: Option<u8> = None;
+            let y = x?;
+
+            assert(false);
+            return None;
+        }
+
+        fn test2() -> (res: Option<u32>)
+        {
+            let x: Option<u8> = Some(5);
+            let y = x?;
+
+            assert(false); // FAILS
+            return None;
+        }
+
+        fn test3() -> (res: Option<u32>)
+            ensures res.is_some(),
+        {
+            let x: Option<u8> = None;
+            let y = x?; // FAILS
+
+            return Some(13);
+        }
+
+        fn test4() -> (res: Option<u32>)
+            ensures false,
+        {
+            let x: Option<u8> = Some(12);
+            let y = x?;
+
+            assert(y == 12);
+
+            loop { }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
