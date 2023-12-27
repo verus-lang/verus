@@ -40,7 +40,7 @@ use vir::ast::{
     Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
-use vir::def::positional_field_ident;
+use vir::def::{positional_field_ident, positional_field_ident_for_str};
 
 pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, String), VirErr> {
     let Pat { hir_id: _, kind, span, default_binding_modes } = pat;
@@ -481,7 +481,8 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for fpat in pats.iter() {
                 let pattern = pattern_to_vir(bctx, &fpat.pat)?;
-                let binder = ident_binder(&str_ident(&fpat.ident.as_str()), &pattern);
+                let ident = field_name_to_vir_ident(fpat.ident.as_str());
+                let binder = ident_binder(&ident, &pattern);
                 binders.push(binder);
             }
             PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
@@ -1650,7 +1651,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
                         let vir = expr_to_vir(bctx, f.expr, modifier)?;
-                        Ok(ident_binder(&str_ident(&f.ident.as_str()), &vir))
+                        let ident = field_name_to_vir_ident(f.ident.as_str());
+                        Ok(ident_binder(&ident, &vir))
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
@@ -2199,5 +2201,13 @@ pub(crate) fn closure_to_vir<'tcx>(
         Ok(bctx.spanned_typed_new(closure_expr.span, &closure_vir_typ, exprx))
     } else {
         panic!("closure_to_vir expects ExprKind::Closure");
+    }
+}
+
+pub(crate) fn field_name_to_vir_ident(name: &str) -> vir::ast::Ident {
+    if name.bytes().nth(0).unwrap().is_ascii_digit() {
+        positional_field_ident_for_str(name)
+    } else {
+        str_ident(name)
     }
 }

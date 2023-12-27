@@ -3,7 +3,7 @@ use crate::erase::{ErasureHints, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir_datatype,
 };
-use crate::rust_to_vir_expr::get_adt_res;
+use crate::rust_to_vir_expr::{field_name_to_vir_ident, get_adt_res};
 use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
@@ -77,6 +77,7 @@ pub(crate) struct State {
     datatype_worklist: Vec<DefId>,
     imported_fun_worklist: Vec<DefId>,
     id_to_name: HashMap<String, Id>,
+    field_to_name: HashMap<String, Id>,
     typ_param_to_name: HashMap<(String, Option<u32>), Id>,
     lifetime_to_name: HashMap<(String, Option<u32>), Id>,
     fun_to_name: HashMap<Fun, Id>,
@@ -99,6 +100,7 @@ impl State {
             datatype_worklist: Vec::new(),
             imported_fun_worklist: Vec::new(),
             id_to_name: HashMap::new(),
+            field_to_name: HashMap::new(),
             typ_param_to_name: HashMap::new(),
             lifetime_to_name: HashMap::new(),
             fun_to_name: HashMap::new(),
@@ -135,6 +137,12 @@ impl State {
         let raw_id = raw_id.into();
         let f = || raw_id.clone();
         Self::id(&mut self.rename_count, &mut self.id_to_name, IdKind::Local, &raw_id, f)
+    }
+
+    fn field<S: Into<String>>(&mut self, raw_id: S) -> Id {
+        let raw_id = raw_id.into();
+        let f = || raw_id.clone();
+        Self::id(&mut self.rename_count, &mut self.field_to_name, IdKind::Field, &raw_id, f)
     }
 
     fn typ_param<S: Into<String>>(&mut self, raw_id: S, maybe_impl_index: Option<u32>) -> Id {
@@ -495,7 +503,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
             let name = state.datatype_name(&vir_path);
             let mut binders: Vec<(Id, Pattern)> = Vec::new();
             for pat in pats.iter() {
-                let field = state.local(pat.ident.to_string());
+                let field = state.field(pat.ident.to_string());
                 let pattern = erase_pat(ctxt, state, &pat.pat);
                 binders.push((field, pattern));
             }
@@ -1114,9 +1122,9 @@ fn erase_expr<'tcx>(
                 let variant = datatype.x.get_variant(&variant_name);
                 let mut fs: Vec<(Id, Exp)> = Vec::new();
                 for f in fields.iter() {
-                    let field_name = Arc::new(f.ident.as_str().to_string());
-                    let (_, field_mode, _) = get_field(&variant.a, &field_name).a;
-                    let name = state.local(f.ident.to_string());
+                    let vir_field_name = field_name_to_vir_ident(f.ident.as_str());
+                    let (_, field_mode, _) = get_field(&variant.a, &vir_field_name).a;
+                    let name = state.field(f.ident.to_string());
                     let e = if field_mode == Mode::Spec {
                         phantom_data_expr(ctxt, state, &f.expr)
                     } else {
@@ -1204,12 +1212,7 @@ fn erase_expr<'tcx>(
             if expect_spec {
                 erase_spec_exps(ctxt, state, expr, vec![exp1])
             } else {
-                let field_name = field.to_string();
-                let field_id = if field_name.chars().all(char::is_numeric) {
-                    Id::new(IdKind::Builtin, 0, field_name)
-                } else {
-                    state.local(field.to_string())
-                };
+                let field_id = state.field(field.to_string());
                 mk_exp(ExpX::Field(exp1.expect("expr"), field_id))
             }
         }
@@ -2067,7 +2070,7 @@ fn erase_variant_data<'tcx>(
         None => {
             let mut fields: Vec<Field> = Vec::new();
             for field in &variant.fields {
-                let name = state.local(field.ident(ctxt.tcx).to_string());
+                let name = state.field(field.ident(ctxt.tcx).to_string());
                 let typ = erase_ty(ctxt, state, &ctxt.tcx.type_of(field.did).skip_binder());
                 fields.push(Field { name, typ: revise_typ(field.did, typ) });
             }

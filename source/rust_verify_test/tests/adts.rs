@@ -1088,3 +1088,82 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] struct_syntax_with_numeric_field_names verus_code! {
+        #[is_variant]
+        enum Foo {
+            Bar(u32, u32),
+            Qux,
+        }
+
+        fn test() {
+            let b = Foo::Bar { 1: 30, 0: 20 };
+            assert(b.get_Bar_0() == 20);
+            assert(b.get_Bar_1() == 30);
+        }
+
+        fn test2() {
+            let b = Foo::Bar { 1: 30, 0: 20 };
+            assert(b.get_Bar_1() == 20); // FAILS
+        }
+
+
+        fn test_pat(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, 0: b } => {
+                    assert(b == 20);
+                    assert(a == 40);
+                }
+                Foo::Qux => { assert(false); }
+            }
+        }
+
+        fn test_pat2(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, 0: b } => {
+                    assert(b == 40); // FAILS
+                }
+                Foo::Qux => { }
+            }
+        }
+
+        fn test_pat_not_all_fields(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, .. } => {
+                    assert(a == 40);
+                }
+                Foo::Qux => { assert(false); }
+            }
+        }
+
+        fn test_pat_not_all_fields2(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, .. } => {
+                    assert(a == 20); // FAILS
+                }
+                Foo::Qux => { }
+            }
+        }
+
+        spec fn sfn(foo: Foo) -> (u32, u32) {
+            match foo {
+                Foo::Bar { 1: a, 0: b } => (b, a),
+                Foo::Qux => (0, 0),
+            }
+        }
+
+        proof fn test_sfn(foo: Foo) {
+            assert(sfn(Foo::Bar(20, 30)) == (20u32, 30u32));
+            assert(sfn(Foo::Qux) == (0u32, 0u32));
+        }
+
+        proof fn test_sfn2(foo: Foo) {
+            assert(sfn(Foo::Bar(20, 30)).0 == 30); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}

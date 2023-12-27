@@ -474,6 +474,10 @@ pub fn positional_field_ident(idx: usize) -> Ident {
     Arc::new(format!("_{}", idx))
 }
 
+pub fn positional_field_ident_for_str(idx: &str) -> Ident {
+    Arc::new(format!("_{}", idx))
+}
+
 pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
     if args.len() == 0 {
         datatype.clone()
