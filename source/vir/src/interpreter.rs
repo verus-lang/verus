@@ -1488,6 +1488,62 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
+/// Restore the free variables we hid during interpretation
+/// and any sequence expressions we partially simplified during interpretation
+fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
+    crate::sst_visitor::map_exp_visitor_result(exp, &mut |e| match &e.x {
+        ExpX::Interp(InterpExp::FreeVar(v)) => {
+            Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
+        }
+        ExpX::Interp(InterpExp::Seq(v)) => {
+            match &*e.typ {
+                TypX::Datatype(_, typs, _) => {
+                    // Grab the type the sequence holds
+                    let inner_type = typs[0].clone();
+                    // Convert back to a standard SST sequence representation
+                    let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                    // Wrap the sequence construction in unbox to account for the Poly
+                    // type of the sequence functions
+                    let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
+                    let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
+                    let unboxed_e = SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
+                    Ok(unboxed_e)
+                }
+                TypX::Boxed(t) => {
+                    match &**t {
+                        TypX::Datatype(_, typs, _) => {
+                            // Grab the type the sequence holds
+                            let inner_type = typs[0].clone();
+                            // Convert back to a standard SST sequence representation
+                            let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                            Ok(s)
+                        }
+                        _ => Err(error(
+                            &e.span,
+                            format!(
+                                "Internal error: Expected to find a sequence type but found: {:?}",
+                                e.typ,
+                            ),
+                        )),
+                    }
+                }
+                _ => Err(error(
+                    &e.span,
+                    format!(
+                        "Internal error: Expected to find a sequence type but found: {:?}",
+                        e.typ
+                    ),
+                )),
+            }
+        }
+        ExpX::Interp(InterpExp::Closure(..)) => Err(error(
+            &e.span,
+            "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
+        )),
+        _ => Ok(e.clone()),
+    })
+}
+
 enum SimplificationResult {
     /// Expression evaluated to true.
     True,
@@ -1592,68 +1648,16 @@ fn eval_expr_launch(
             return Err(error(&exp.span, "expression simplifies to false"));
         }
         SimplificationResult::False(Some(small_exp)) => {
+            let small_exp = cleanup_exp(&small_exp)?;
             return Err(error(
                 &exp.span,
                 format!("expression simplifies to `{}`, which evaluates to false", small_exp),
             ));
         }
         SimplificationResult::Complex(res) => match mode {
-            // Send partial result to Z3
             ComputeMode::Z3 => {
-                // Restore the free variables we hid during interpretation
-                // and any sequence expressions we partially simplified during interpretation
-                let res = crate::sst_visitor::map_exp_visitor_result(&res, &mut |e| match &e.x {
-                    ExpX::Interp(InterpExp::FreeVar(v)) => {
-                        Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
-                    }
-                    ExpX::Interp(InterpExp::Seq(v)) => {
-                        match &*e.typ {
-                            TypX::Datatype(_, typs, _) => {
-                                // Grab the type the sequence holds
-                                let inner_type = typs[0].clone();
-                                // Convert back to a standard SST sequence representation
-                                let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                                // Wrap the sequence construction in unbox to account for the Poly
-                                // type of the sequence functions
-                                let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
-                                let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
-                                let unboxed_e =
-                                    SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
-                                Ok(unboxed_e)
-                            }
-                            TypX::Boxed(t) => {
-                                match &**t {
-                                    TypX::Datatype(_, typs, _) => {
-                                        // Grab the type the sequence holds
-                                        let inner_type = typs[0].clone();
-                                        // Convert back to a standard SST sequence representation
-                                        let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                                        Ok(s)
-                                    }
-                                    _ => Err(error(
-                                        &e.span,
-                                        format!(
-                                            "Internal error: Expected to find a sequence type but found: {:?}",
-                                            e.typ,
-                                        ),
-                                    )),
-                                }
-                            }
-                            _ => Err(error(
-                                &e.span,
-                                format!(
-                                    "Internal error: Expected to find a sequence type but found: {:?}",
-                                    e.typ
-                                ),
-                            )),
-                        }
-                    }
-                    ExpX::Interp(InterpExp::Closure(..)) => Err(error(
-                        &e.span,
-                        "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
-                    )),
-                    _ => Ok(e.clone()),
-                })?;
+                let res = cleanup_exp(&res)?;
+                // Send partial result to Z3
                 if exp.definitely_eq(&res) {
                     let msg =
                         format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
@@ -1661,15 +1665,18 @@ fn eval_expr_launch(
                 }
                 Ok((res, state.msgs))
             }
-            // Proof must succeed purely through computation
-            ComputeMode::ComputeOnly => Err(error(
-                &exp.span,
-                &format!(
-                    "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
-                    res
-                )
-                .to_string(),
-            )),
+            ComputeMode::ComputeOnly => {
+                // Proof must succeed purely through computation
+                let res = cleanup_exp(&res)?;
+                Err(error(
+                    &exp.span,
+                    &format!(
+                        "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
+                        res
+                    )
+                    .to_string(),
+                ))
+            }
         },
     }
 }
