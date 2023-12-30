@@ -1955,7 +1955,7 @@ fn erase_trait_methods<'tcx>(
                     id,
                     sig,
                     Some(trait_id),
-                    true,
+                    body_id.is_none(),
                     false,
                     body_id,
                 );

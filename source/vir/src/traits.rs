@@ -1,6 +1,7 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, GenericBounds, Krate,
-    Mode, Path, SpannedTyped, TraitImpl, TypX, Typs, VirErr, WellKnownItem,
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBounds,
+    Ident, Krate, Mode, Path, SpannedTyped, Trait, TraitImpl, Typ, TypX, Typs, VirErr, Visibility,
+    WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -11,13 +12,13 @@ use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
 use air::scope_map::ScopeMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 // We currently do not support trait bounds for traits from other crates
 // and we consider methods for traits from other crates to be static.
 pub fn demote_foreign_traits(
-    path_to_well_known_item: &std::collections::HashMap<Path, WellKnownItem>,
+    path_to_well_known_item: &HashMap<Path, WellKnownItem>,
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
     let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
@@ -96,6 +97,123 @@ pub fn demote_foreign_traits(
     }
 
     Ok(Arc::new(kratex))
+}
+
+pub fn inherit_default_bodies(krate: &Krate) -> Krate {
+    let mut kratex = (**krate).clone();
+
+    let mut trait_map: HashMap<Path, &Trait> = HashMap::new();
+    // map trait_path to all default methods in trait
+    let mut default_methods: HashMap<Path, Vec<&Function>> = HashMap::new();
+    // set of all impl methods (&impl_path, &trait_method_name)
+    let mut method_impls: HashSet<(&Path, &Fun)> = HashSet::new();
+    for tr in &krate.traits {
+        assert!(!trait_map.contains_key(&tr.x.name));
+        trait_map.insert(tr.x.name.clone(), tr);
+        assert!(!default_methods.contains_key(&tr.x.name));
+        default_methods.insert(tr.x.name.clone(), Vec::new());
+    }
+    for f in &krate.functions {
+        if let FunctionKind::TraitMethodDecl { trait_path } = &f.x.kind {
+            if f.x.body.is_some() {
+                default_methods.get_mut(trait_path).expect("trait_path").push(f);
+            }
+        }
+        if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
+            let p = (impl_path, method);
+            assert!(!method_impls.contains(&p));
+            method_impls.insert(p);
+        }
+    }
+
+    for trait_impl in &krate.trait_impls {
+        if !trait_map.contains_key(&trait_impl.x.trait_path) {
+            // skip external traits and marker traits
+            continue;
+        }
+        for default_function in &default_methods[&trait_impl.x.trait_path] {
+            let impl_path = &trait_impl.x.impl_path;
+            let method = &default_function.x.name;
+            if !method_impls.contains(&(impl_path, method)) {
+                // Create a shell Function for trait_impl, with these purposes:
+                // - used as a recursion::Node::Fun in the call graph
+                // - for spec functions, used by func_to_air to create a definition axiom
+                let inherit_kind = FunctionKind::TraitMethodImpl {
+                    method: default_function.x.name.clone(),
+                    impl_path: impl_path.clone(),
+                    trait_path: trait_impl.x.trait_path.clone(),
+                    trait_typ_args: trait_impl.x.trait_typ_args.clone(),
+                    inherit_body_from: Some(default_function.x.name.clone()),
+                };
+                let tr = trait_map[&trait_impl.x.trait_path];
+                let mut subst_map: HashMap<Ident, Typ> = HashMap::new();
+                assert!(trait_impl.x.trait_typ_args.len() == tr.x.typ_params.len() + 1);
+                let tr_params = tr.x.typ_params.iter().map(|(x, _)| x);
+                for (x, t) in vec![crate::def::trait_self_type_param()]
+                    .iter()
+                    .chain(tr_params)
+                    .zip(trait_impl.x.trait_typ_args.iter())
+                {
+                    assert!(!subst_map.contains_key(x));
+                    subst_map.insert(x.clone(), t.clone());
+                }
+                let ft = |_: &mut (), t: &Typ| -> Result<Typ, VirErr> {
+                    match &**t {
+                        TypX::TypParam(x) => Ok(subst_map[x].clone()),
+                        _ => Ok(t.clone()),
+                    }
+                };
+                let params = crate::ast_visitor::map_params_visitor(
+                    &default_function.x.params,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
+                let ret =
+                    crate::ast_visitor::map_param_visitor(&default_function.x.ret, &mut (), &ft)
+                        .unwrap();
+                let name =
+                    crate::def::trait_inherit_default_name(&default_function.x.name, &impl_path);
+                let visibility = Visibility {
+                    restricted_to: default_function
+                        .x
+                        .visibility
+                        .restricted_to
+                        .clone()
+                        .and(trait_impl.x.owning_module.clone()),
+                };
+                let inherit_functionx = FunctionX {
+                    name,
+                    proxy: None,
+                    kind: inherit_kind,
+                    // TODO: we could try to use the impl visibility and owning module for better pruning:
+                    visibility,
+                    owning_module: trait_impl.x.owning_module.clone(),
+                    mode: default_function.x.mode,
+                    fuel: 1,
+                    typ_params: trait_impl.x.typ_params.clone(),
+                    typ_bounds: trait_impl.x.typ_bounds.clone(),
+                    params,
+                    ret,
+                    require: Arc::new(vec![]),
+                    ensure: Arc::new(vec![]),
+                    decrease: Arc::new(vec![]),
+                    decrease_when: None,
+                    decrease_by: None,
+                    broadcast_forall: None,
+                    mask_spec: crate::ast::MaskSpec::NoSpec,
+                    item_kind: default_function.x.item_kind,
+                    publish: None,
+                    attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
+                    body: None,
+                    extra_dependencies: vec![],
+                };
+                kratex.functions.push(default_function.new_x(inherit_functionx));
+            }
+        }
+    }
+
+    Arc::new(kratex)
 }
 
 fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {

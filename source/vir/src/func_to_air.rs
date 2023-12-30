@@ -278,6 +278,9 @@ fn func_body_to_air(
     let (name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
             (method.clone(), trait_typ_args.clone())
+        } else if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
+            let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
+            (crate::def::trait_default_name(&function.x.name), Arc::new(typ_args))
         } else {
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
             (function.x.name.clone(), Arc::new(typ_args))
@@ -445,12 +448,19 @@ pub fn func_name_to_air(
                 all_typs.insert(0, str_typ(x));
             }
         }
+        let all_typs = Arc::new(all_typs);
 
         // Declare the function symbol itself
         let typ = typ_to_air(ctx, &function.x.ret.x.typ);
-        let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
-        let decl = Arc::new(DeclX::Fun(name, Arc::new(all_typs), typ.clone()));
-        commands.push(Arc::new(CommandX::Global(decl)));
+        let mut names = vec![function.x.name.clone()];
+        if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
+            names.push(crate::def::trait_default_name(&function.x.name));
+        }
+        for name in names {
+            let name = suffix_global_id(&fun_to_air_ident(&name));
+            let decl = Arc::new(DeclX::Fun(name, all_typs.clone(), typ.clone()));
+            commands.push(Arc::new(CommandX::Global(decl)));
+        }
 
         // Check whether we need to declare the recursive version too
         if function.x.body.is_some() {
@@ -710,6 +720,34 @@ pub fn func_axioms_to_air(
                         not_verifying_owning_bucket,
                     )?;
                 }
+                if let FunctionKind::TraitMethodImpl {
+                    trait_typ_args,
+                    inherit_body_from: Some(f_trait),
+                    ..
+                } = &function.x.kind
+                {
+                    // Emit axiom that says our method equals the default method we inherit from
+                    let mut args: Vec<Expr> =
+                        trait_typ_args.iter().map(typ_to_ids).flatten().collect();
+                    for p in function.x.params.iter() {
+                        args.push(air::ast_util::string_var(&suffix_local_stmt_id(&p.x.name)));
+                    }
+                    let default_name = crate::def::trait_default_name(f_trait);
+                    let default_name = &suffix_global_id(&fun_to_air_ident(&default_name));
+                    let body = ident_apply(&default_name, &args);
+                    let pars = params_to_pars(&function.x.params, false);
+                    let e_forall = func_def_quant(
+                        ctx,
+                        &suffix_global_id(&fun_to_air_ident(&f_trait)),
+                        &function.x.typ_params,
+                        &trait_typ_args,
+                        &pars,
+                        &vec![],
+                        body,
+                    )?;
+                    let def_axiom = Arc::new(DeclX::Axiom(e_forall));
+                    decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
+                }
             }
 
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
@@ -819,6 +857,12 @@ pub fn func_def_to_air(
     fun_ssts: SstMap,
     function: &Function,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
+    if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind {
+        // We are inheriting a trait default method.
+        // It's already verified in the trait, so we don't need to reverify it here.
+        return Ok((Arc::new(vec![]), vec![], fun_ssts));
+    }
+
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
@@ -829,7 +873,7 @@ pub fn func_def_to_air(
     // Note: since is_const functions serve double duty as exec and spec,
     // we generate an exec check for them here to catch any arithmetic overflows.
     let (trait_typ_substs, req_ens_function, inherit) =
-        if let FunctionKind::TraitMethodImpl { method, impl_path: _, trait_path, trait_typ_args } =
+        if let FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, .. } =
             &function.x.kind
         {
             // Inherit requires/ensures from trait method declaration

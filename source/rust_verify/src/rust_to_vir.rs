@@ -334,6 +334,7 @@ fn check_item<'tcx>(
                     trait_path: path.clone(),
                     trait_typ_args: types.clone(),
                     trait_typ_arg_impls: impl_paths,
+                    owning_module: Some(module_path()),
                 };
                 vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
                 Some((trait_ref, path, types))
@@ -363,6 +364,7 @@ fn check_item<'tcx>(
                                         impl_path: impl_path.clone(),
                                         trait_path,
                                         trait_typ_args,
+                                        inherit_body_from: None,
                                     }
                                 } else {
                                     FunctionKind::Static

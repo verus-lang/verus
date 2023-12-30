@@ -1,6 +1,6 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, ExprX, Fun, Function, FunctionKind,
+    GenericBoundX, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::typ_to_diagnostic_str;
@@ -418,6 +418,7 @@ pub(crate) fn check_termination_stm(
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
+    trait_impl_map: &HashMap<(Fun, Path), Fun>,
     call_graph: &mut Graph<Node>,
     function: &Function,
 ) -> Result<(), VirErr> {
@@ -460,17 +461,81 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> f2 edges where f calls f2
     // Add f --> D: T where one of f's expressions instantiates A: T with D: T
-    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
+    let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
-                use crate::ast::CallTargetKind;
-                let callee = if let CallTargetKind::Method(Some((x_resolved, _, _))) = kind {
-                    x_resolved
-                } else {
-                    x
+                let (callee, ts) =
+                    if let CallTargetKind::Method(Some((x_resolved, ts_resolved, _))) = kind {
+                        (x_resolved.clone(), ts_resolved.clone())
+                    } else {
+                        (x.clone(), ts.clone())
+                    };
+                let callee = {
+                    let f2 = &func_map[&callee];
+                    if let (
+                        FunctionKind::TraitMethodImpl {
+                            trait_path: caller_trait,
+                            impl_path: caller_impl,
+                            trait_typ_args: caller_trait_typ_args,
+                            inherit_body_from,
+                            ..
+                        },
+                        FunctionKind::TraitMethodDecl { trait_path: callee_trait, .. },
+                    ) = (&function.x.kind, &f2.x.kind)
+                    {
+                        if callee_trait == caller_trait {
+                            if let Some(f_trait) = inherit_body_from {
+                                let f_trait = &func_map[f_trait];
+                                let trait_typ_args = f_trait
+                                    .x
+                                    .typ_params
+                                    .iter()
+                                    .map(|x| Arc::new(TypX::TypParam(x.clone())))
+                                    .collect();
+                                if crate::ast_util::n_types_equal(&ts, &Arc::new(trait_typ_args)) {
+                                    // Since we don't have a copy of the default method body
+                                    // specialized to our impl, we need to do extra work to
+                                    // redirect calls from the inherited body back to our own impl.
+                                    // See comment below regarding trait_inherit_default_name.
+                                    let default_name = crate::def::trait_inherit_default_name(
+                                        &callee,
+                                        caller_impl,
+                                    );
+                                    if func_map.contains_key(&default_name) {
+                                        // turn T::f into impl::default-f
+                                        default_name
+                                    } else {
+                                        // turn T::f into impl::f
+                                        trait_impl_map[&(callee, caller_impl.clone())].clone()
+                                    }
+                                } else {
+                                    // In a normal body, we rely on impl_paths to detect cycles.
+                                    // Unfortunately, in an inherited body, we don't have impl_paths
+                                    // specialized to our impl, so we conservatively reject
+                                    // the call.
+                                    return Err(error(
+                                        &expr.span,
+                                        "call from trait default method to same trait with different type arguments is not allowed",
+                                    ));
+                                }
+                            } else if crate::ast_util::n_types_equal(&ts, caller_trait_typ_args) {
+                                // We resolved to a method implemented in the trait (a default)
+                                // Because ts is the same as caller_trait_typ_args,
+                                // we infer that this is a call to our own inherited copy of the
+                                // trait method, and thus is a direct call within our own impl.
+                                crate::def::trait_inherit_default_name(&callee, caller_impl)
+                            } else {
+                                callee
+                            }
+                        } else {
+                            callee
+                        }
+                    } else {
+                        callee
+                    }
                 };
-                let f2 = &func_map[callee];
+                let f2 = &func_map[&callee];
 
                 for impl_path in impl_paths.iter() {
                     // f --> D: T
@@ -503,7 +568,12 @@ pub(crate) fn expand_call_graph(
             _ => {}
         }
         Ok(())
-    })?;
+    };
+    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, add_calls)?;
+    if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(f_trait), .. } = &function.x.kind
+    {
+        crate::ast_visitor::function_visitor_check::<VirErr, _>(&func_map[f_trait], add_calls)?;
+    }
 
     for fun in &function.x.extra_dependencies {
         call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone()));

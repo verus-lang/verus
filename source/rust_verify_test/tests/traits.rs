@@ -112,15 +112,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ill_formed_2 code! {
-        trait T1 {
-            fn f(&self) {
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "trait default methods are not yet supported")
-}
-
-test_verify_one_file! {
     #[test] test_ill_formed_3 code! {
         trait T1 {
             fn f(&self) {
@@ -2737,4 +2728,141 @@ test_verify_one_file! {
             assert(t.b());
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default1 verus_code! {
+        trait T {
+            spec fn f() -> int { 3 }
+        }
+        struct S1;
+        struct S2;
+        impl T for S1 { }
+        impl T for S2 { spec fn f() -> int { 4 } }
+        proof fn test() {
+            assert(S1::f() == 3);
+            assert(S2::f() == 4);
+            assert(S2::f() == 3); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default2 verus_code! {
+        trait T {
+            spec fn f() -> int;
+            spec fn g() -> int { 3 }
+        }
+        struct S;
+        impl T for S { spec fn f() -> int { Self::g() } }
+        proof fn test() {
+            assert(S::f() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default3 verus_code! {
+        trait T {
+            spec fn f() -> int;
+            spec fn g() -> int { Self::f() }
+        }
+        struct S;
+        impl T for S { spec fn f() -> int { 3 } }
+        proof fn test() {
+            assert(S::g() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default4 verus_code! {
+        trait T {
+            spec fn f() -> int;
+            spec fn g() -> int { Self::f() }
+        }
+        struct S;
+        impl T for S { spec fn f() -> int { Self::g() } }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default5 verus_code! {
+        trait T {
+            spec fn f(i: int) -> int;
+            spec fn g(i: int) -> int decreases i { Self::f(i) }
+        }
+        struct S;
+        impl T for S { spec fn f(i: int) -> int decreases i { Self::g(i) } }
+    } => Err(err) => assert_vir_error_msg(err, "trait default methods do not yet support recursion and decreases")
+}
+
+test_verify_one_file! {
+    #[test] test_default6 verus_code! {
+        trait T<A, B> {
+            spec fn f(a: A, b: B) -> (A, B) { (a, b) }
+            spec fn g(a: A, b: B) -> (A, B);
+        }
+        struct S<C>(C);
+        impl<D> T<bool, D> for S<D> {
+            spec fn g(x: bool, y: D) -> (bool, D) { Self::f(x, y) }
+        }
+        proof fn test() {
+            assert(S::g(true, 5int) == (true, 5int));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default7 verus_code! {
+        trait T {
+            proof fn f() {
+                assert(false); // FAILS
+            }
+        }
+        struct S1;
+        struct S2;
+        impl T for S1 {}
+        impl T for S2 {}
+        proof fn test() {
+            S1::f();
+            S2::f();
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default8 verus_code! {
+        pub trait T {
+            spec fn f() -> int;
+            proof fn g() ensures Self::f() > 10;
+            proof fn h() ensures Self::f() >= 10 {
+                Self::g()
+            }
+        }
+        mod m1 {
+            pub struct S;
+            impl crate::T for S {
+                closed spec fn f() -> builtin::int { 15 }
+                proof fn g() {}
+            }
+        }
+        proof fn test() {
+            crate::m1::S::h();
+            assert(crate::m1::S::f() >= 10);
+            assert(crate::m1::S::f() > 10); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default9 verus_code! {
+        struct S;
+        trait T {
+            proof fn f(tracked s: S) -> (tracked r: (S, S)) {
+                (s, s)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `s`")
 }
