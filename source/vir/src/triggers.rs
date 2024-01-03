@@ -154,7 +154,8 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
             | UnaryOp::BitNot
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
-            | UnaryOp::CharToInt => Ok(()),
+            | UnaryOp::CharToInt
+            | UnaryOp::InferSpecForLoopIter => Ok(()),
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => {
@@ -257,6 +258,9 @@ fn check_trigger_expr(
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized => Ok(()),
+                UnaryOp::InferSpecForLoopIter => {
+                    Err(error(&exp.span, "triggers cannot contain loop spec inference"))
+                }
                 UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             },
             ExpX::UnaryOpr(op, arg) => match op {

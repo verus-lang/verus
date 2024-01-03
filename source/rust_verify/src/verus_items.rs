@@ -138,6 +138,7 @@ pub(crate) enum ExprItem {
     IsSmallerThan,
     IsSmallerThanLexicographic,
     IsSmallerThanRecursiveFunctionField,
+    InferSpecForLoopIter,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -371,6 +372,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::is_smaller_than",         VerusItem::Expr(ExprItem::IsSmallerThan)),
         ("verus::builtin::is_smaller_than_lexicographic", VerusItem::Expr(ExprItem::IsSmallerThanLexicographic)),
         ("verus::builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
+        ("verus::builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
 
         ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),

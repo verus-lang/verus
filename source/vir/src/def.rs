@@ -741,3 +741,10 @@ pub fn array_index_path(vstd_crate_name: &Option<Ident>) -> Path {
         ]),
     })
 }
+
+pub(crate) fn option_type_path() -> Path {
+    Arc::new(PathX {
+        krate: Some(Arc::new("core".to_string())),
+        segments: Arc::new(vec![Arc::new("option".to_string()), Arc::new("Option".to_string())]),
+    })
+}

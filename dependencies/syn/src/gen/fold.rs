@@ -1603,7 +1603,14 @@ where
         for_token: Token![for](tokens_helper(f, &node.for_token.span)),
         pat: f.fold_pat(node.pat),
         in_token: Token![in](tokens_helper(f, &node.in_token.span)),
+        expr_name: (node.expr_name)
+            .map(|it| Box::new((
+                f.fold_ident((*it).0),
+                Token![:](tokens_helper(f, &(*it).1.spans)),
+            ))),
         expr: Box::new(f.fold_expr(*node.expr)),
+        invariant: (node.invariant).map(|it| f.fold_invariant(it)),
+        decreases: (node.decreases).map(|it| f.fold_decreases(it)),
         body: f.fold_block(node.body),
     }
 }

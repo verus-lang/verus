@@ -865,7 +865,10 @@ impl Hash for ExprForLoop {
         self.attrs.hash(state);
         self.label.hash(state);
         self.pat.hash(state);
+        self.expr_name.hash(state);
         self.expr.hash(state);
+        self.invariant.hash(state);
+        self.decreases.hash(state);
         self.body.hash(state);
     }
 }

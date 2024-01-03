@@ -1696,6 +1696,12 @@ impl Verifier {
             self.args.rlimit,
             interpreter_log_file,
             self.vstd_crate_name.clone(),
+            &self
+                .erasure_hints
+                .as_ref()
+                .expect("erasure_hints")
+                .erasure_modes
+                .infer_spec_for_loop_iter_modes,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;

@@ -33,6 +33,20 @@ pub proof fn affirm(b: bool)
 {
 }
 
+pub trait ForLoopSpec {
+    type Decrease;
+    // Always true before and after each loop iteration
+    // (When the analysis can infer a spec initial value, it places it in init)
+    spec fn invariant(&self, init: Option<&Self>) -> bool;
+    // Is the loop condition satisfied?
+    spec fn condition(&self) -> bool;
+    // Value used by default for decreases clause when no explicit decreases clause is provided
+    // (the user can override this with an explicit decreases clause).
+    // (If there's no appropriate decrease, this can return an arbitrary value like 0,
+    // and the user will have to provide an explicit decreases clause.)
+    spec fn decrease(&self) -> Self::Decrease;
+}
+
 // Non-statically-determined function calls are translated *internally* (at the VIR level)
 // to this function call. This should not actually be called directly by the user.
 // That is, Verus treats `f(x, y)` as `exec_nonstatic_call(f, (x, y))`.

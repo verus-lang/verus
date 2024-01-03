@@ -1305,6 +1305,101 @@ impl Visitor {
         self.inside_ghost -= 1;
     }
 
+    fn desugar_for_loop(&mut self, for_loop: syn_verus::ExprForLoop) -> Expr {
+        use syn_verus::parse_quote_spanned;
+        // The regular Rust for-loop doesn't give us direct access to the iterator,
+        // which we need for writing invariants.
+        // Therefore, rather than letting Rust desugar a for-loop into a loop with a break,
+        // we desugar the for-loop into a loop with a break here.
+        // Specifically, we desugar:
+        //  for x in y: e inv I { body }
+        // into:
+        //  {
+        //      let mut y = core::iter::IntoIterator::into_iter(e);
+        //      loop
+        //          invariant_ensures
+        //              vstd::pervasive::ForLoopSpec::invariant(&y,
+        //                  builtin::infer_spec_for_loop_iter(
+        //                      &core::iter::IntoIterator::into_iter(e))),
+        //              I,
+        //          ensures
+        //              !vstd::pervasive::ForLoopSpec::condition(&y),
+        //      {
+        //          if let Some(x) = y.next() { body } else { break }
+        //      }
+        //  }
+        let span = for_loop.span();
+
+        let syn_verus::ExprForLoop {
+            mut attrs,
+            label,
+            for_token: _,
+            pat,
+            in_token: _,
+            expr_name,
+            expr,
+            invariant,
+            decreases,
+            body,
+        } = for_loop;
+
+        // Note: in principle, the automatically generated loop invariant
+        // should always succeed.  In case something goes unexpectedly wrong, though,
+        // give people a reasonable way to disable it:
+        let no_auto_loop_invariant = attrs.iter().position(|attr| {
+            attr.path.segments.len() == 2
+                && attr.path.segments[0].ident.to_string() == "verifier"
+                && attr.path.segments[1].ident.to_string() == "no_auto_loop_invariant"
+        });
+        if let Some(i) = no_auto_loop_invariant {
+            attrs.remove(i);
+        }
+        let inv_msg = "Automatically generated loop invariant failed. \
+            You can disable the automatic generation by adding \
+            #[verifier::no_auto_loop_invariant] \
+            to the loop. \
+            You might also try storing the loop expression in a variable outside the loop \
+            (e.g. `let e = 0..10; for x in e { ... }`).";
+
+        let (x_iter, _) = *expr_name.expect("for loop expr_name");
+        let mut stmts: Vec<Stmt> = Vec::new();
+        let expr_inv = expr.clone();
+        let inv: Expr = parse_quote_spanned!(span =>
+            #[verifier::custom_err(#inv_msg)]
+            vstd::pervasive::ForLoopSpec::invariant(&#x_iter,
+                builtin::infer_spec_for_loop_iter(&core::iter::IntoIterator::into_iter(#expr_inv)))
+        );
+        let invariant_ensure = if let Some(mut invariant) = invariant {
+            if no_auto_loop_invariant.is_none() {
+                invariant.exprs.exprs.insert(0, inv);
+            }
+            InvariantEnsures { token: Token![invariant_ensures](span), exprs: invariant.exprs }
+        } else if no_auto_loop_invariant.is_none() {
+            parse_quote_spanned!(span => invariant_ensures #inv,)
+        } else {
+            parse_quote_spanned!(span => )
+        };
+        // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
+        // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
+        let ensure = parse_quote_spanned!(span =>
+            ensures !vstd::pervasive::ForLoopSpec::condition(&#x_iter),
+        );
+        self.add_loop_specs(&mut stmts, None, Some(invariant_ensure), Some(ensure), decreases);
+        let mut body: Block = parse_quote_spanned!(span => {
+            if let core::option::Option::Some(#pat) = core::iter::Iterator::next(&mut #x_iter)
+            #body else { break }
+        });
+        body.stmts.splice(0..0, stmts);
+        let mut loop_expr: ExprLoop = parse_quote_spanned!(span => loop #body);
+        loop_expr.label = label;
+        loop_expr.attrs = attrs;
+        let full_loop: Expr = parse_quote_spanned!(span => {
+            let mut #x_iter = core::iter::IntoIterator::into_iter(#expr);
+            #loop_expr
+        });
+        full_loop
+    }
+
     fn extract_quant_triggers(
         &mut self,
         inner_attrs: Vec<Attribute>,
@@ -1698,6 +1793,7 @@ impl VisitMut for Visitor {
             Expr::Closure(..) => true,
             Expr::Is(..) => true,
             Expr::Has(..) => true,
+            Expr::ForLoop(syn_verus::ExprForLoop { expr_name: Some(_), .. }) => true,
             _ => false,
         };
         if do_replace && self.inside_type == 0 {
@@ -2025,6 +2121,9 @@ impl VisitMut for Visitor {
                     } else {
                         *expr = expr_replacement;
                     }
+                }
+                Expr::ForLoop(for_loop) => {
+                    *expr = self.desugar_for_loop(for_loop);
                 }
                 Expr::Closure(mut clos) => {
                     if is_inside_ghost {

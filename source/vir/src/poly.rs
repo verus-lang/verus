@@ -410,6 +410,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
+                UnaryOp::InferSpecForLoopIter => {
+                    // e1 will be the argument to spec Option::Some(...)
+                    let e1 = coerce_expr_to_poly(ctx, &e1);
+                    mk_expr(ExprX::Unary(*op, e1))
+                }
                 UnaryOp::HeightTrigger => panic!("direct access to 'height' is not allowed"),
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))

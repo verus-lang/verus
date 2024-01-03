@@ -1204,6 +1204,11 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::NullaryOpr(op.clone())))))
         }
+        ExprX::Unary(UnaryOp::InferSpecForLoopIter, spec_expr) => {
+            let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
+            let infer_exp = mk_exp(ExpX::Unary(UnaryOp::InferSpecForLoopIter, spec_exp));
+            Ok((vec![], ReturnValue::Some(infer_exp)))
+        }
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = unwrap_or_return_never!(exp, stms);

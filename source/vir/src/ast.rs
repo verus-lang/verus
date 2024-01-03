@@ -254,6 +254,15 @@ pub enum UnaryOp {
     StrIsAscii,
     /// Used only for handling casts from chars to ints
     CharToInt,
+    /// Given an exec/proof expression used to construct a loop iterator,
+    /// try to infer a pure specification for the loop iterator.
+    /// Return Some(spec) if successful, None otherwise.
+    /// (Note: this is just used as a hint for loop invariants;
+    /// regardless of whether it is Some(spec) or None, it should not affect soundness.)
+    /// For an exec/proof expression e, the spec s should be chosen so that the value v
+    /// that e evaluates to is immutable and v == s, where v may contain local variables.
+    /// For example, if v == (n..m), then n and m must be immutable local variables.
+    InferSpecForLoopIter,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]

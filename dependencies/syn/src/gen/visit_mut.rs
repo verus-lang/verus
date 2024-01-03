@@ -1739,7 +1739,17 @@ where
     tokens_helper(v, &mut node.for_token.span);
     v.visit_pat_mut(&mut node.pat);
     tokens_helper(v, &mut node.in_token.span);
+    if let Some(it) = &mut node.expr_name {
+        v.visit_ident_mut(&mut (**it).0);
+        tokens_helper(v, &mut (**it).1.spans);
+    }
     v.visit_expr_mut(&mut *node.expr);
+    if let Some(it) = &mut node.invariant {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
     v.visit_block_mut(&mut node.body);
 }
 #[cfg(feature = "full")]

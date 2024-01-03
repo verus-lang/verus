@@ -1314,6 +1314,13 @@ macro_rules! decreases_to {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]
+#[verifier::spec]
+pub fn infer_spec_for_loop_iter<A>(_: A) -> Option<A> {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::global_size_of"]
 #[verifier::spec]
 pub const fn global_size_of<T>(_bytes: usize) {

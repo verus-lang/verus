@@ -49,6 +49,8 @@ pub struct ErasureModes {
     pub condition_modes: Vec<(Span, Mode)>,
     // Modes of variables in Var, Assign, Decl
     pub var_modes: Vec<(Span, Mode)>,
+    // Modes of InferSpecForLoopIter
+    pub infer_spec_for_loop_iter_modes: Vec<(Span, Mode)>,
 }
 
 impl Ghost {
@@ -622,6 +624,17 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Unary(UnaryOp::HeightTrigger, _) => {
             panic!("direct access to 'height' is not allowed")
+        }
+        ExprX::Unary(UnaryOp::InferSpecForLoopIter, e1) => {
+            // InferSpecForLoopIter is a loop-invariant hint that always has mode spec.
+            // If the expression already has mode spec (e.g. because the function calls
+            // are all autospec), then keep the expression.
+            // Otherwise, make a note that the expression had mode exec,
+            // so that ast_simplify can replace the expression with None.
+            let mode_opt = check_expr(typing, outer_mode, e1);
+            let mode = mode_opt.unwrap_or(Mode::Exec);
+            typing.erasure_modes.infer_spec_for_loop_iter_modes.push((expr.span.clone(), mode));
+            Ok(Mode::Spec)
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
@@ -1264,7 +1277,11 @@ pub fn check_crate(
     for datatype in krate.datatypes.iter() {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
-    let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
+    let erasure_modes = ErasureModes {
+        condition_modes: vec![],
+        var_modes: vec![],
+        infer_spec_for_loop_iter_modes: vec![],
+    };
     let mut typing = Typing {
         funs,
         datatypes,

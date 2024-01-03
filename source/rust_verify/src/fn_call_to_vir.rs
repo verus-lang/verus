@@ -677,6 +677,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     expr_item == &ExprItem::IsSmallerThanRecursiveFunctionField,
                 )
             }
+            ExprItem::InferSpecForLoopIter => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                assert!(args.len() == 1);
+                let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter, arg))
+            }
             ExprItem::IsVariant => {
                 record_spec_fn_allow_proof_args(bctx, expr);
                 assert!(args.len() == 2);

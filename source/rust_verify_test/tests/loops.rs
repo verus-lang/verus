@@ -983,3 +983,67 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] for_loop1 verus_code! {
+        use vstd::prelude::*;
+        fn test_loop() {
+            let mut n: u64 = 0;
+            for x in iter: 0..10
+                invariant n == iter.start * 3,
+            {
+                assert(x < 10);
+                assert(x == iter.start - 1);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+
+        fn test_loop_fail() {
+            let mut n: u64 = 0;
+            for x in iter: 0..10
+                invariant n == iter.start * 3,
+            {
+                assert(x < 9); // FAILS
+                assert(x == iter.start - 1);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] for_loop2 verus_code! {
+        use vstd::prelude::*;
+        fn test_loop() {
+            let mut n: u64 = 0;
+            let mut end = 10;
+            for x in iter: 0..end
+                invariant
+                    n == iter.start * 3,
+                    end == 10,
+            {
+                assert(x < 10);
+                assert(x == iter.start - 1);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+
+        fn test_loop_fail() {
+            let mut n: u64 = 0;
+            let mut end = 10;
+            for x in iter: 0..end
+                invariant
+                    n == iter.start * 3,
+                    end == 10,
+            {
+                assert(x < 10); // FAILS
+                assert(x == iter.start - 1);
+                n += 3;
+                end = end + 0; // causes end to be non-constant, so loop needs more invariants
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}

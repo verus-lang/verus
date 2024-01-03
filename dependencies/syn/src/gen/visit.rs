@@ -1738,7 +1738,17 @@ where
     tokens_helper(v, &node.for_token.span);
     v.visit_pat(&node.pat);
     tokens_helper(v, &node.in_token.span);
+    if let Some(it) = &node.expr_name {
+        v.visit_ident(&(**it).0);
+        tokens_helper(v, &(**it).1.spans);
+    }
     v.visit_expr(&*node.expr);
+    if let Some(it) = &node.invariant {
+        v.visit_invariant(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_decreases(it);
+    }
     v.visit_block(&node.body);
 }
 #[cfg(feature = "full")]
