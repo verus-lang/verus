@@ -1186,3 +1186,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] parsing_unit_ret_type_issue937 verus_code! {
+        fn stuff() -> () { }
+
+        fn stuff_fn_once<F: FnOnce(u8) -> ()>() { }
+
+        fn pat_ret_colons() -> (x: ::std::primitive::bool)
+        {
+            true
+        }
+    } => Ok(())
+}
