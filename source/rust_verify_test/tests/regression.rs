@@ -1197,5 +1197,15 @@ test_verify_one_file! {
         {
             true
         }
+
+        fn pat_ret_colons2() -> (::std::primitive::bool)
+        {
+            true
+        }
+
+        fn pat_ret_colons3() -> (std::primitive::bool)
+        {
+            true
+        }
     } => Ok(())
 }

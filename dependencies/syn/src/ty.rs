@@ -925,7 +925,7 @@ pub mod parsing {
                     if id.is_err() {
                         return Ok(false);
                     }
-                    return Ok(content.peek(token::Colon));
+                    return Ok(content.peek(token::Colon) && !content.peek(Token![::]));
                 }
             }
             return Ok(false);
