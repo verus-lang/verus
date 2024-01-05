@@ -64,6 +64,7 @@ pub trait ForLoopGhostIterator {
     spec fn ghost_peek_next(&self) -> Self::Item;
 
     // At the end of the for loop, advance to the next position.
+    // Future TODO: this may be better as a proof function
     spec fn ghost_advance(&self, exec_iter: &Self::ExecIter) -> Self where Self: Sized;
 }
 
@@ -71,6 +72,7 @@ pub trait ForLoopGhostIteratorNew {
     type GhostIter;
 
     // Create a new ghost iterator from an exec iterator
+    // Future TODO: this may be better as a proof function
     spec fn ghost_iter(&self) -> Self::GhostIter;
 }
 

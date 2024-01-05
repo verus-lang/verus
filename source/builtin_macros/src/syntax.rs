@@ -1401,23 +1401,23 @@ impl Visitor {
         //                  builtin::infer_spec_for_loop_iter(
         //                      &vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
         //                          &core::iter::IntoIterator::into_iter(e)))),
-        let exec_inv: Expr = parse_quote_spanned!(span =>
+        let exec_inv: Expr = Expr::Verbatim(quote_spanned!(span =>
             #[verifier::custom_err(#exec_inv_msg)]
             vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
-        );
-        let ghost_inv: Expr = parse_quote_spanned!(span =>
+        ));
+        let ghost_inv: Expr = Expr::Verbatim(quote_spanned!(span =>
             #[verifier::custom_err(#ghost_inv_msg)]
             vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
                 builtin::infer_spec_for_loop_iter(
                     &vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &core::iter::IntoIterator::into_iter(#expr_inv))))
-        );
+        ));
         let invariant_ensure = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
-                *inv = parse_quote_spanned!(span => {
+                *inv = Expr::Verbatim(quote_spanned!(span => {
                     let #pat = vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter);
                     #inv
-                });
+                }));
             }
             if no_loop_invariant.is_none() {
                 invariant.exprs.exprs.insert(0, exec_inv);
@@ -1446,19 +1446,24 @@ impl Visitor {
             None
         };
         self.add_loop_specs(&mut stmts, None, invariant_ensure, ensure, decreases);
+        let body_exec = Expr::Verbatim(quote_spanned!(span =>
+            if let core::option::Option::Some(#pat) = core::iter::Iterator::next(&mut #x_exec_iter)
+            #body else { break }
+        ));
         let mut body: Block = if no_loop_invariant.is_none() {
-            parse_quote_spanned!(span => {
-                if let core::option::Option::Some(#pat) = core::iter::Iterator::next(&mut #x_exec_iter)
-                #body else { break }
+            let body_ghost = Expr::Verbatim(quote_spanned!(span =>
                 #[verifier::proof_block] {
                     #x_ghost_iter = vstd::pervasive::ForLoopGhostIterator::ghost_advance(
                         &#x_ghost_iter, &#x_exec_iter);
                 }
+            ));
+            parse_quote_spanned!(span => {
+                #body_exec
+                #body_ghost
             })
         } else {
             parse_quote_spanned!(span => {
-                if let core::option::Option::Some(#pat) = core::iter::Iterator::next(&mut #x_exec_iter)
-                #body else { break }
+                #body_exec
             })
         };
         body.stmts.splice(0..0, stmts);
@@ -1466,7 +1471,7 @@ impl Visitor {
         loop_expr.label = label;
         loop_expr.attrs = attrs;
         let full_loop: Expr = if no_loop_invariant.is_none() {
-            parse_quote_spanned!(span => {
+            Expr::Verbatim(quote_spanned!(span => {
                 #[allow(non_snake_case)]
                 let mut #x_exec_iter = core::iter::IntoIterator::into_iter(#expr);
                 #[allow(non_snake_case)]
@@ -1476,13 +1481,13 @@ impl Visitor {
                     #x_ghost_iter = vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(&#x_exec_iter);
                 }
                 #loop_expr
-            })
+            }))
         } else {
-            parse_quote_spanned!(span => {
+            Expr::Verbatim(quote_spanned!(span => {
                 #[allow(non_snake_case)]
                 let mut #x_exec_iter = core::iter::IntoIterator::into_iter(#expr);
                 #loop_expr
-            })
+            }))
         };
         full_loop
     }
