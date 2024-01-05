@@ -14,8 +14,8 @@ use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
     visit_impl_item_method_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
-    visit_item_static_mut, visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut,
-    VisitMut,
+    visit_item_static_mut, visit_item_struct_mut, visit_local_mut, visit_specification_mut,
+    visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
@@ -1263,37 +1263,27 @@ impl Visitor {
     ) {
         // TODO: wrap specs inside ghost blocks
         self.inside_ghost += 1;
-        if let Some(Invariant { token, mut exprs }) = invariants {
+        if let Some(Invariant { token, exprs }) = invariants {
             if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
                 stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
             }
         }
-        if let Some(InvariantEnsures { token, mut exprs }) = invariant_ensures {
+        if let Some(InvariantEnsures { token, exprs }) = invariant_ensures {
             if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
                 stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
             }
         }
-        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+        if let Some(Ensures { token, exprs, attrs }) = ensures {
             if attrs.len() > 0 {
                 let err = "outer attributes only allowed on function's ensures";
                 let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
                 stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
             } else if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
                 stmts.push(stmt_with_semi!(token.span => ::builtin::ensures([#exprs])));
             }
         }
-        if let Some(Decreases { token, mut exprs }) = decreases {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
+        if let Some(Decreases { token, exprs }) = decreases {
+            for expr in exprs.exprs.iter() {
                 if matches!(expr, Expr::Tuple(..)) {
                     let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
                     let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
@@ -2433,6 +2423,7 @@ impl VisitMut for Visitor {
     }
 
     fn visit_expr_while_mut(&mut self, expr_while: &mut ExprWhile) {
+        visit_expr_while_mut(self, expr_while);
         let invariants = self.take_ghost(&mut expr_while.invariant);
         let invariant_ensures = self.take_ghost(&mut expr_while.invariant_ensures);
         let ensures = self.take_ghost(&mut expr_while.ensures);
@@ -2440,10 +2431,10 @@ impl VisitMut for Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         self.add_loop_specs(&mut stmts, invariants, invariant_ensures, ensures, decreases);
         expr_while.body.stmts.splice(0..0, stmts);
-        visit_expr_while_mut(self, expr_while);
     }
 
     fn visit_expr_loop_mut(&mut self, expr_loop: &mut ExprLoop) {
+        visit_expr_loop_mut(self, expr_loop);
         let invariants = self.take_ghost(&mut expr_loop.invariant);
         let invariant_ensures = self.take_ghost(&mut expr_loop.invariant_ensures);
         let ensures = self.take_ghost(&mut expr_loop.ensures);
@@ -2451,7 +2442,12 @@ impl VisitMut for Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         self.add_loop_specs(&mut stmts, invariants, invariant_ensures, ensures, decreases);
         expr_loop.body.stmts.splice(0..0, stmts);
-        visit_expr_loop_mut(self, expr_loop);
+    }
+
+    fn visit_specification_mut(&mut self, spec: &mut syn_verus::Specification) {
+        self.inside_ghost += 1;
+        visit_specification_mut(self, spec);
+        self.inside_ghost -= 1;
     }
 
     fn visit_local_mut(&mut self, local: &mut Local) {

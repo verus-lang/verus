@@ -68,17 +68,14 @@ fn compute_arith_sum(n: u64) -> (sum: u64)
     ensures
         arith_sum_int(n as int) == sum,
 {
-    let mut i: u64 = 0;
     let mut sum: u64 = 0;
-    while i < n
+    for i in 0..n
         invariant
             n < 100,
-            i <= n,
             arith_sum_int(i as int) == sum,
             sum <= 100 * i,
     {
-        i = i + 1;
-        sum = sum + i;
+        sum = sum + (i + 1);
     }
     sum
 }

@@ -39,8 +39,7 @@ fn reverse(v: &mut Vec<u64>)
 {
     let length = v.len();
     let ghost v1 = v@;
-    let mut n: usize = 0;
-    while n < length / 2
+    for n in 0..(length / 2)
         invariant
             length == v.len(),
             forall|i: int| 0 <= i < n ==> v[i] == v1[length - i - 1],
@@ -51,8 +50,6 @@ fn reverse(v: &mut Vec<u64>)
         let y = v[length - 1 - n];
         v.set(n, y);
         v.set(length - 1 - n, x);
-
-        n = n + 1;
     }
 }
 
