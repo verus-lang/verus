@@ -1209,3 +1209,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] struct_with_updater_and_tuple_type_in_field_issue857 verus_code! {
+        use vstd::prelude::*;
+        use vstd::set::*;
+
+        pub struct S {
+            pub n: int,
+            pub s: Set<(int, int)>,
+        }
+
+        pub open spec fn f(s1: S, s2: S) -> bool {
+            s2 == S { n: s1.n + 1, ..s1 }
+        }
+
+        pub proof fn test(se: Set<(int, int)>) {
+            let s1 = S { n: 20, s: se };
+            let s2 = S { n: 21, s: se };
+            assert(f(s1, s2));
+        }
+    } => Ok(())
+}
