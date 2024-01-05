@@ -101,7 +101,8 @@ fn pust_test(t: Vec<u64>, y: u64)
     );
 }
 
-#[verifier(external)]
+} // verus!
+
 fn main() {
     let mut v = vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
     println!("{}", binary_search(&v, 70));
@@ -116,5 +117,3 @@ fn main() {
         println!("{}", x);
     }
 }
-
-} // verus!

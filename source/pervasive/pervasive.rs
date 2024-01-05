@@ -33,18 +33,45 @@ pub proof fn affirm(b: bool)
 {
 }
 
-pub trait ForLoopSpec {
+pub trait ForLoopGhostIterator {
+    type ExecIter;
+    type Item;
     type Decrease;
+
+    // Connect the ExecIter to the GhostIter
+    // Always enabled
     // Always true before and after each loop iteration
-    // (When the analysis can infer a spec initial value, it places it in init)
-    spec fn invariant(&self, init: Option<&Self>) -> bool;
+    spec fn exec_invariant(&self, exec_iter: &Self::ExecIter) -> bool;
+
+    // Additional optional invariants about the GhostIter
+    // May be disabled with #[verifier::no_auto_loop_invariant]
+    // If enabled, always true before and after each loop iteration
+    // (When the analysis can infer a spec initial value, the analysis places the value in init)
+    spec fn ghost_invariant(&self, init: Option<&Self>) -> bool;
+
     // Is the loop condition satisfied?
-    spec fn condition(&self) -> bool;
+    spec fn ghost_condition(&self) -> bool;
+
     // Value used by default for decreases clause when no explicit decreases clause is provided
     // (the user can override this with an explicit decreases clause).
     // (If there's no appropriate decrease, this can return an arbitrary value like 0,
     // and the user will have to provide an explicit decreases clause.)
-    spec fn decrease(&self) -> Self::Decrease;
+    spec fn ghost_decrease(&self) -> Self::Decrease;
+
+    // If there will be Some next value, and we can make a useful guess as to what the next value
+    // will be, return it.
+    // Otherwise, return an arbitrary value.
+    spec fn ghost_peek_next(&self) -> Self::Item;
+
+    // At the end of the for loop, advance to the next position.
+    spec fn ghost_advance(&self, exec_iter: &Self::ExecIter) -> Self where Self: Sized;
+}
+
+pub trait ForLoopGhostIteratorNew {
+    type GhostIter;
+
+    // Create a new ghost iterator from an exec iterator
+    spec fn ghost_iter(&self) -> Self::GhostIter;
 }
 
 // Non-statically-determined function calls are translated *internally* (at the VIR level)

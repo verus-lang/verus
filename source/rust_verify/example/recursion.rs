@@ -101,7 +101,8 @@ fn exec_with_decreases(n: u64) -> u64
     }
 }
 
-#[verifier(external)]
+} // verus!
+
 fn main() {
     let args = std::env::args();
     for arg in args {
@@ -110,5 +111,3 @@ fn main() {
         }
     }
 }
-
-} // verus!

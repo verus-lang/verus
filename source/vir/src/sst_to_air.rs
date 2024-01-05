@@ -1438,6 +1438,7 @@ struct PostConditionInfo {
 
 #[derive(Debug)]
 struct LoopInfo {
+    is_for_loop: bool,
     label: Option<String>,
     some_cond: bool,
     invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>)>>,
@@ -2045,6 +2046,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     state.loop_infos.last().expect("inside loop")
                 };
                 assert!(!loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
+                if loop_info.is_for_loop && !*is_break {
+                    // At the very least, the syntax macro will need to advance the ghost iterator
+                    // at each continue.
+                    return Err(error(&stm.span, "for-loops do not yet support continue"));
+                }
                 let invs = if *is_break {
                     loop_info.invs_exit.clone()
                 } else {
@@ -2110,7 +2116,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
             let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
                 let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
                 let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -2206,6 +2212,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 air_body.push(pos_assume);
             }
             let loop_info = LoopInfo {
+                is_for_loop: *is_for_loop,
                 label: label.clone(),
                 some_cond: cond.is_some(),
                 invs_entry: invs_entry.clone(),

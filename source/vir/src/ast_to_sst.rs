@@ -492,8 +492,10 @@ fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
 
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Loop { label, cond: None, body, invs: _ } => loop_body_has_break(label, body),
-        ExprX::Loop { label: _, cond: Some(_), body: _, invs: _ } => true,
+        ExprX::Loop { is_for_loop: _, label, cond: None, body, invs: _ } => {
+            loop_body_has_break(label, body)
+        }
+        ExprX::Loop { is_for_loop: _, label: _, cond: Some(_), body: _, invs: _ } => true,
         _ => {
             panic!("expected while loop");
         }
@@ -1873,7 +1875,7 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Match(..) => {
             panic!("internal error: Match should have been simplified by ast_simplify")
         }
-        ExprX::Loop { label, cond, body, invs } => {
+        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
             let has_break = loop_body_has_break(label, body);
             let simple_invs = invs.iter().all(|inv| inv.kind == LoopInvariantKind::Invariant);
             let simple_while = !has_break && simple_invs && cond.is_some();
@@ -1930,6 +1932,7 @@ pub(crate) fn expr_to_stm_opt(
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
+                    is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond: cnd,
                     body: stms_to_one_stm(&body.span, stms1),

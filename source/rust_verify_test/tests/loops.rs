@@ -990,10 +990,21 @@ test_verify_one_file! {
         fn test_loop() {
             let mut n: u64 = 0;
             for x in iter: 0..10
-                invariant n == iter.start * 3,
+                invariant n == iter.cur * 3,
             {
                 assert(x < 10);
-                assert(x == iter.start - 1);
+                assert(x == iter.cur);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+
+        fn test_loop_peek() {
+            let mut n: u64 = 0;
+            for x in 0..10
+                invariant n == x * 3,
+            {
+                assert(x < 10);
                 n += 3;
             }
             assert(n == 30);
@@ -1002,10 +1013,10 @@ test_verify_one_file! {
         fn test_loop_fail() {
             let mut n: u64 = 0;
             for x in iter: 0..10
-                invariant n == iter.start * 3,
+                invariant n == iter.cur * 3,
             {
                 assert(x < 9); // FAILS
-                assert(x == iter.start - 1);
+                assert(x == iter.cur);
                 n += 3;
             }
             assert(n == 30);
@@ -1021,11 +1032,11 @@ test_verify_one_file! {
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == iter.start * 3,
+                    n == iter.cur * 3,
                     end == 10,
             {
                 assert(x < 10);
-                assert(x == iter.start - 1);
+                assert(x == iter.cur);
                 n += 3;
             }
             assert(n == 30);
@@ -1036,14 +1047,49 @@ test_verify_one_file! {
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == iter.start * 3,
+                    n == iter.cur * 3,
                     end == 10,
             {
                 assert(x < 10); // FAILS
-                assert(x == iter.start - 1);
+                assert(x == iter.cur);
                 n += 3;
                 end = end + 0; // causes end to be non-constant, so loop needs more invariants
             }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] for_loop3 verus_code! {
+        use vstd::prelude::*;
+        fn test_loop(n: u32) -> (v: Vec<u32>)
+            ensures
+                v.len() == n,
+                forall|i: int| 0 <= i < n ==> v[i] == i,
+        {
+            let mut v: Vec<u32> = Vec::new();
+            for i in iter: 0..n
+                invariant
+                    v@ =~= iter@,
+            {
+                v.push(i);
+            }
+            v
+        }
+
+        fn test_loop_fail(n: u32) -> (v: Vec<u32>)
+            ensures
+                v.len() == n,
+                forall|i: int| 0 <= i < n ==> v[i] == i,
+        {
+            let mut v: Vec<u32> = Vec::new();
+            for i in iter: 0..n
+                invariant
+                    v@ =~= iter@, // FAILS
+            {
+                v.push(0);
+            }
+            v
         }
     } => Err(e) => assert_one_fails(e)
 }

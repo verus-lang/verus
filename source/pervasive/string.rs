@@ -141,6 +141,7 @@ impl<'a> StrSlice<'a> {
             ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8)
     {
         let mut v = alloc::vec::Vec::new();
+        #[verifier::no_loop_invariant]
         for c in self.inner.as_bytes().iter() {
             v.push(*c);
         }

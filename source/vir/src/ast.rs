@@ -681,7 +681,13 @@ pub enum ExprX {
     /// Match (Note: ast_simplify replaces Match with other expressions)
     Match(Expr, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
-    Loop { label: Option<String>, cond: Option<Expr>, body: Expr, invs: LoopInvariants },
+    Loop {
+        is_for_loop: bool,
+        label: Option<String>,
+        cond: Option<Expr>,
+        body: Expr,
+        invs: LoopInvariants,
+    },
     /// Open invariant
     OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
     /// Return from function

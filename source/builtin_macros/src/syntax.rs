@@ -1312,30 +1312,38 @@ impl Visitor {
         // Therefore, rather than letting Rust desugar a for-loop into a loop with a break,
         // we desugar the for-loop into a loop with a break here.
         // Specifically, we desugar:
-        //  for x in y: e inv I { body }
+        //  for x in y: e invariant inv { body }
         // into:
         //  {
-        //      let mut y = core::iter::IntoIterator::into_iter(e);
+        //      #[allow(non_snake_case)]
+        //      let mut VERUS_exec_iter = core::iter::IntoIterator::into_iter(e);
+        //      #[allow(non_snake_case)]
+        //      let ghost mut y = vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(&VERUS_exec_iter);
         //      loop
         //          invariant_ensures
-        //              vstd::pervasive::ForLoopSpec::invariant(&y,
+        //              vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
+        //              vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
         //                  builtin::infer_spec_for_loop_iter(
-        //                      &core::iter::IntoIterator::into_iter(e))),
-        //              I,
+        //                      &vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+        //                          &core::iter::IntoIterator::into_iter(e)))),
+        //              { let x = vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y); inv },
         //          ensures
-        //              !vstd::pervasive::ForLoopSpec::condition(&y),
+        //              !vstd::pervasive::ForLoopGhostIterator::ghost_condition(&y),
         //      {
-        //          if let Some(x) = y.next() { body } else { break }
+        //          if let Some(x) = core::iter::Iterator::next(&mut y) { body } else { break }
+        //          proof { y = vstd::pervasive::ForLoopGhostIterator::ghost_advance(&y, &VERUS_exec_iter); }
         //      }
         //  }
+        // Note that "continue" and labels are not yet supported;
+        // continue would also need to call ghost_advance.
         let span = for_loop.span();
 
         let syn_verus::ExprForLoop {
             mut attrs,
             label,
-            for_token: _,
+            for_token,
             pat,
-            in_token: _,
+            in_token,
             expr_name,
             expr,
             invariant,
@@ -1343,6 +1351,14 @@ impl Visitor {
             body,
         } = for_loop;
 
+        let no_loop_invariant = attrs.iter().position(|attr| {
+            attr.path.segments.len() == 2
+                && attr.path.segments[0].ident.to_string() == "verifier"
+                && attr.path.segments[1].ident.to_string() == "no_loop_invariant"
+        });
+        if let Some(i) = no_loop_invariant {
+            attrs.remove(i);
+        }
         // Note: in principle, the automatically generated loop invariant
         // should always succeed.  In case something goes unexpectedly wrong, though,
         // give people a reasonable way to disable it:
@@ -1354,49 +1370,130 @@ impl Visitor {
         if let Some(i) = no_auto_loop_invariant {
             attrs.remove(i);
         }
-        let inv_msg = "Automatically generated loop invariant failed. \
+
+        if !self.erase_ghost.keep() {
+            return Expr::ForLoop(syn_verus::ExprForLoop {
+                attrs,
+                label,
+                for_token,
+                pat,
+                in_token,
+                expr_name: None,
+                expr,
+                invariant: None,
+                decreases: None,
+                body,
+            });
+        }
+
+        attrs.push(mk_verus_attr(span, quote! { for_loop }));
+        let exec_inv_msg = "For-loop iterator invariant failed. \
+            This may indicate a bug in the definition of the ForLoopGhostIterator. \
+            You might try using a `loop` instead of a `for`.";
+        let ghost_inv_msg = "Automatically generated loop invariant failed. \
             You can disable the automatic generation by adding \
             #[verifier::no_auto_loop_invariant] \
             to the loop. \
             You might also try storing the loop expression in a variable outside the loop \
             (e.g. `let e = 0..10; for x in e { ... }`).";
 
-        let (x_iter, _) = *expr_name.expect("for loop expr_name");
+        let x_exec_iter = Ident::new("VERUS_exec_iter", span);
+        let x_ghost_iter = if let Some(x_ghost_iter_box) = expr_name {
+            let (x_ghost_iter, _) = *x_ghost_iter_box;
+            x_ghost_iter
+        } else {
+            Ident::new("VERUS_ghost_iter", span)
+        };
         let mut stmts: Vec<Stmt> = Vec::new();
         let expr_inv = expr.clone();
-        let inv: Expr = parse_quote_spanned!(span =>
-            #[verifier::custom_err(#inv_msg)]
-            vstd::pervasive::ForLoopSpec::invariant(&#x_iter,
-                builtin::infer_spec_for_loop_iter(&core::iter::IntoIterator::into_iter(#expr_inv)))
+        //              vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
+        //              vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
+        //                  builtin::infer_spec_for_loop_iter(
+        //                      &vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+        //                          &core::iter::IntoIterator::into_iter(e)))),
+        let exec_inv: Expr = parse_quote_spanned!(span =>
+            #[verifier::custom_err(#exec_inv_msg)]
+            vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
+        );
+        let ghost_inv: Expr = parse_quote_spanned!(span =>
+            #[verifier::custom_err(#ghost_inv_msg)]
+            vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
+                builtin::infer_spec_for_loop_iter(
+                    &vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+                        &core::iter::IntoIterator::into_iter(#expr_inv))))
         );
         let invariant_ensure = if let Some(mut invariant) = invariant {
-            if no_auto_loop_invariant.is_none() {
-                invariant.exprs.exprs.insert(0, inv);
+            for inv in &mut invariant.exprs.exprs {
+                *inv = parse_quote_spanned!(span => {
+                    let #pat = vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter);
+                    #inv
+                });
             }
-            InvariantEnsures { token: Token![invariant_ensures](span), exprs: invariant.exprs }
-        } else if no_auto_loop_invariant.is_none() {
-            parse_quote_spanned!(span => invariant_ensures #inv,)
+            if no_loop_invariant.is_none() {
+                invariant.exprs.exprs.insert(0, exec_inv);
+                if no_auto_loop_invariant.is_none() {
+                    invariant.exprs.exprs.insert(1, ghost_inv);
+                }
+            }
+            Some(InvariantEnsures {
+                token: Token![invariant_ensures](span),
+                exprs: invariant.exprs,
+            })
+        } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_none() {
+            Some(parse_quote_spanned!(span => invariant_ensures #exec_inv, #ghost_inv,))
+        } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_some() {
+            Some(parse_quote_spanned!(span => invariant_ensures #exec_inv,))
         } else {
-            parse_quote_spanned!(span => )
+            None
         };
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
-        let ensure = parse_quote_spanned!(span =>
-            ensures !vstd::pervasive::ForLoopSpec::condition(&#x_iter),
-        );
-        self.add_loop_specs(&mut stmts, None, Some(invariant_ensure), Some(ensure), decreases);
-        let mut body: Block = parse_quote_spanned!(span => {
-            if let core::option::Option::Some(#pat) = core::iter::Iterator::next(&mut #x_iter)
-            #body else { break }
-        });
+        let ensure = if no_loop_invariant.is_none() {
+            Some(parse_quote_spanned!(span =>
+                ensures !vstd::pervasive::ForLoopGhostIterator::ghost_condition(&#x_ghost_iter),
+            ))
+        } else {
+            None
+        };
+        self.add_loop_specs(&mut stmts, None, invariant_ensure, ensure, decreases);
+        let mut body: Block = if no_loop_invariant.is_none() {
+            parse_quote_spanned!(span => {
+                if let core::option::Option::Some(#pat) = core::iter::Iterator::next(&mut #x_exec_iter)
+                #body else { break }
+                #[verifier::proof_block] {
+                    #x_ghost_iter = vstd::pervasive::ForLoopGhostIterator::ghost_advance(
+                        &#x_ghost_iter, &#x_exec_iter);
+                }
+            })
+        } else {
+            parse_quote_spanned!(span => {
+                if let core::option::Option::Some(#pat) = core::iter::Iterator::next(&mut #x_exec_iter)
+                #body else { break }
+            })
+        };
         body.stmts.splice(0..0, stmts);
         let mut loop_expr: ExprLoop = parse_quote_spanned!(span => loop #body);
         loop_expr.label = label;
         loop_expr.attrs = attrs;
-        let full_loop: Expr = parse_quote_spanned!(span => {
-            let mut #x_iter = core::iter::IntoIterator::into_iter(#expr);
-            #loop_expr
-        });
+        let full_loop: Expr = if no_loop_invariant.is_none() {
+            parse_quote_spanned!(span => {
+                #[allow(non_snake_case)]
+                let mut #x_exec_iter = core::iter::IntoIterator::into_iter(#expr);
+                #[allow(non_snake_case)]
+                #[verus::internal(spec)]
+                let mut #x_ghost_iter;
+                #[verifier::proof_block] {
+                    #x_ghost_iter = vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(&#x_exec_iter);
+                }
+                #loop_expr
+            })
+        } else {
+            parse_quote_spanned!(span => {
+                #[allow(non_snake_case)]
+                let mut #x_exec_iter = core::iter::IntoIterator::into_iter(#expr);
+                #loop_expr
+            })
+        };
         full_loop
     }
 
@@ -1793,7 +1890,7 @@ impl VisitMut for Visitor {
             Expr::Closure(..) => true,
             Expr::Is(..) => true,
             Expr::Has(..) => true,
-            Expr::ForLoop(syn_verus::ExprForLoop { expr_name: Some(_), .. }) => true,
+            Expr::ForLoop(..) => true,
             _ => false,
         };
         if do_replace && self.inside_type == 0 {
