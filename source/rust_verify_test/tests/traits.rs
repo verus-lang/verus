@@ -2738,3 +2738,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
+        use vstd::prelude::View;
+
+        pub trait A {
+            type Input: View;
+            type Output: View;
+        }
+
+        pub trait B {
+            type MyA: A;
+
+            fn foo(input: <Self::MyA as A>::Input) -> <Self::MyA as A>::Output;
+        }
+    } => Ok(())
+}
