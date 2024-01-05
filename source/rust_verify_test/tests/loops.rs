@@ -1093,3 +1093,121 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] for_loop_vec_custom_iterator verus_code! {
+        use vstd::prelude::*;
+        pub struct VecIterCopy<'a, T: 'a> {
+            pub vec: &'a Vec<T>,
+            pub cur: usize,
+        }
+
+        impl<'a, T: Copy> Iterator for VecIterCopy<'a, T> {
+            type Item = T;
+            fn next(&mut self) -> (item: Option<T>)
+                ensures
+                    self.vec == old(self).vec,
+                    old(self).cur < self.vec.len() ==> self.cur == old(self).cur + 1,
+                    old(self).cur < self.vec.len() ==> item == Some(self.vec[old(self).cur as int]),
+                    old(self).cur >= self.vec.len() ==> item.is_none() && self.cur == old(self).cur,
+            {
+                if self.cur < self.vec.len() {
+                    let item = self.vec[self.cur];
+                    self.cur = self.cur + 1;
+                    Some(item)
+                } else {
+                    None
+                }
+            }
+        }
+
+        pub struct VecGhostIterCopy<'a, T> {
+            pub seq: Seq<T>,
+            pub cur: int,
+            pub unused_phantom_dummy: &'a Vec<T>, // use the 'a parameter, which I don't even want; ugh
+        }
+
+        impl<'a, T: 'a> vstd::pervasive::ForLoopGhostIteratorNew for VecIterCopy<'a, T> {
+            type GhostIter = VecGhostIterCopy<'a, T>;
+
+            open spec fn ghost_iter(&self) -> VecGhostIterCopy<'a, T> {
+                VecGhostIterCopy {
+                    seq: self.vec@,
+                    cur: 0,
+                    unused_phantom_dummy: &self.vec,
+                }
+            }
+        }
+
+        impl<'a, T: 'a> vstd::pervasive::ForLoopGhostIterator for VecGhostIterCopy<'a, T> {
+            type ExecIter = VecIterCopy<'a, T>;
+            type Item = T;
+            type Decrease = int;
+
+            open spec fn exec_invariant(&self, exec_iter: &VecIterCopy<'a, T>) -> bool {
+                &&& self.seq == exec_iter.vec@
+                &&& self.cur == exec_iter.cur
+            }
+
+            open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+                &&& 0 <= self.cur <= self.seq.len()
+                &&& if let Some(init) = init {
+                        init.seq == self.seq
+                    } else {
+                        true
+                    }
+            }
+
+            open spec fn ghost_condition(&self) -> bool {
+                self.cur < self.seq.len()
+            }
+
+            open spec fn ghost_decrease(&self) -> int {
+                self.seq.len() - self.cur
+            }
+
+            open spec fn ghost_peek_next(&self) -> T {
+                self.seq[self.cur]
+            }
+
+            open spec fn ghost_advance(&self, _exec_iter: &VecIterCopy<T>) -> VecGhostIterCopy<'a, T> {
+                VecGhostIterCopy { cur: self.cur + 1, ..*self }
+            }
+        }
+
+        impl<'a, T: 'a> vstd::view::View for VecGhostIterCopy<'a, T> {
+            type V = Seq<T>;
+
+            open spec fn view(&self) -> Seq<T> {
+                self.seq.subrange(0, self.cur)
+            }
+        }
+
+        spec fn vec_iter_copy_spec<'a, T: 'a>(vec: &'a Vec<T>) -> VecIterCopy<'a, T> {
+            VecIterCopy { vec, cur: 0 }
+        }
+
+        #[verifier::when_used_as_spec(vec_iter_copy_spec)]
+        fn vec_iter_copy<'a, T: 'a>(vec: &'a Vec<T>) -> (iter: VecIterCopy<'a, T>)
+            ensures
+                iter == (VecIterCopy { vec, cur: 0 }),
+        {
+            VecIterCopy { vec, cur: 0 }
+        }
+
+        fn all_positive(v: &Vec<u8>) -> (b: bool)
+            ensures
+                b <==> (forall|i: int| 0 <= i < v.len() ==> v[i] > 0),
+        {
+            let mut b: bool = true;
+
+            for x in iter: vec_iter_copy(v)
+                invariant
+                    b <==> (forall|i: int| 0 <= i < iter.cur ==> v[i] > 0),
+            {
+                b = b && x > 0;
+            }
+            b
+        }
+    } => Ok(())
+}
