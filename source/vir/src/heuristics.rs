@@ -30,11 +30,11 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
     // In ordinary asserts,
     // in positive positions,
     // for == on types explicitly supporting ext_eq,
-    // replace == with =!=
+    // replace == with =~=
     // Example:
     //   assert(b ==> c && x == y); // x: S and y: S where S is ext_eq
     // -->
-    //   assert(b ==> c && x =!= y);
+    //   assert(b ==> c && x =~= y);
     // Rationale: assert and assert-by are sort of tactics for various proof techniques
     // (e.g. nonlinear_arith, bit_vector, compute),
     // and in this spirit,
@@ -70,7 +70,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
                 let e2 = crate::poly::coerce_exp_to_poly(ctx, e2);
                 exp.new_x(ExpX::BinaryOpr(op, e1, e2))
             }
-            BinaryOp::And | BinaryOp::Or | BinaryOp::Xor => {
+            BinaryOp::And | BinaryOp::Or => {
                 let e1 = insert_ext_eq_in_assert(ctx, e1);
                 let e2 = insert_ext_eq_in_assert(ctx, e2);
                 exp.new_x(ExpX::Binary(*op, e1, e2))
@@ -83,6 +83,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             | BinaryOp::HeightCompare { .. }
             | BinaryOp::Ne
             | BinaryOp::Inequality(_)
+            | BinaryOp::Xor
             | BinaryOp::Arith(..)
             | BinaryOp::Bitwise(..)
             | BinaryOp::StrGetChar => exp.clone(),
