@@ -102,28 +102,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 "Verus does not yet support IntoIterator::into_iter and for loops, use a while loop instead",
             );
         }
-        Some(RustItem::ResidualTraitFromResidual) => {
-            if let Some((ok_ty, err_ty)) = from_residual_for_result(bctx, expr, &args) {
-                record_compilable_operator(bctx, expr, CompilableOperator::ResultFromResidual);
-                let e2 = bctx.spanned_typed_new(expr.span, vir_err_ty, ExprX::UnaryOpr(
-                    UnaryOpr::Field(FieldOpr {
-                        datatype: adt_path,
-                        variant: str_ident("Err"),
-                        field: positional_field_ident(0),
-                        get_variant: false,
-                    }),
-                    e1,
-                ));
-                Ok(bctx.spanned_typed_new(expr.span, vir_result_ty, ExprX::Ctor(
-                    path!("core", "result", "Result"),
-                    str_ident("Err"),
-                    Arc::new(vec![
-                        Arc::new(BinderX { name: positional_field_ident(0), a: e2 }),
-                    ]),
-                    None
-               )))
-            }
-        }
         Some(RustItem::Clone) => {
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
