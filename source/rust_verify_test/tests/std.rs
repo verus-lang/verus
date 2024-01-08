@@ -240,3 +240,48 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] question_mark_result verus_code! {
+        use vstd::*;
+
+        fn test() -> (res: Result<u32, bool>)
+            ensures res === Err(false),
+        {
+            let x: Result<u8, bool> = Err(false);
+            let y = x?;
+
+            assert(false);
+            return Err(true);
+        }
+
+        fn test2() -> (res: Result<u32, bool>)
+        {
+            let x: Result<u8, bool> = Ok(5);
+            let y = x?;
+
+            assert(false); // FAILS
+            return Err(false);
+        }
+
+        fn test3() -> (res: Result<u32, bool>)
+            ensures res.is_ok(),
+        {
+            let x: Result<u8, bool> = Err(false);
+            let y = x?; // FAILS
+
+            return Ok(13);
+        }
+
+        fn test4() -> (res: Result<u32, bool>)
+            ensures false,
+        {
+            let x: Result<u8, bool> = Ok(12);
+            let y = x?;
+
+            assert(y == 12);
+
+            loop { }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

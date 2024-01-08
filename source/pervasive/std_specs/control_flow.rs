@@ -47,19 +47,26 @@ pub fn ex_option_from_residual<T>(option: Option<Infallible>) -> (option2: Optio
     Option::from_residual(option)
 }
 
+pub spec fn spec_from<S, T>(value: T, ret: S) -> bool;
 
-
-/*#[verifier::external_fn_specification]
-pub fn ex_result_from_residual<T, E>(result: Result<Convert::Infallible, E>)
-      -> (cf: ControlFlow<<Result<T, E> as Try>::Residual, <Result<T, E> as Try>::Output>)
+#[verifier::broadcast_forall]
+#[verifier::external_body]
+pub proof fn spec_from_blanket_identity<T>(t: T, s: T)
     ensures
-        cf === match result {
-            Ok(v) => ControlFlow::Continue(v),
-            Err(e) => ControlFlow::Break(Err(e)),
+        spec_from::<T, T>(t, s) ==> t == s
+{
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_result_from_residual<T, E, F: From<E>>(result: Result<Infallible, E>)
+      -> (result2: Result<T, F>)
+    ensures
+        match (result, result2) {
+            (Err(e), Err(e2)) => spec_from::<F, E>(e, e2),
+            _ => false,
         },
 {
-    result.branch()
-}*/
-
+    Result::from_residual(result)
+}
 
 }
