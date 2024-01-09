@@ -358,16 +358,6 @@ fn simplify_one_expr(
             }
         }
         ExprX::Unary(UnaryOp::CoerceMode { .. }, expr0) => Ok(expr0.clone()),
-        ExprX::Unary(UnaryOp::InferSpecForLoopIter, _) => {
-            let mode_opt = ctx.infer_spec_for_loop_iter_modes.get(&expr.span.id);
-            if mode_opt == Some(&Mode::Spec) {
-                // InferSpecForLoopIter must be spec mode to be usable for invariant inference
-                Ok(expr.clone())
-            } else {
-                // Otherwise, abandon the expression and return None (no inference)
-                Ok(crate::loop_inference::make_none_expr(&expr.span, &expr.typ))
-            }
-        }
         ExprX::UnaryOpr(UnaryOpr::TupleField { tuple_arity, field }, expr0) => {
             Ok(tuple_get_field_expr(state, &expr.span, &expr.typ, expr0, *tuple_arity, *field))
         }
@@ -1024,7 +1014,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.vstd_crate_name.clone(),
-        &vec![],
     )?;
     Ok(krate)
 }

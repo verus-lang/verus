@@ -256,7 +256,7 @@ pub enum UnaryOp {
     CharToInt,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
-    /// Return Some(spec) if successful, None otherwise.
+    /// Evaluate to Some(spec) if successful, None otherwise.
     /// (Note: this is just used as a hint for loop invariants;
     /// regardless of whether it is Some(spec) or None, it should not affect soundness.)
     /// For an exec/proof expression e, the spec s should be chosen so that the value v

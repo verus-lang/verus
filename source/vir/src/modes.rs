@@ -12,6 +12,7 @@ use air::scope_map::ScopeMap;
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
+use std::sync::Arc;
 
 // Exec <= Proof <= Spec
 pub fn mode_le(m1: Mode, m2: Mode) -> bool {
@@ -49,8 +50,6 @@ pub struct ErasureModes {
     pub condition_modes: Vec<(Span, Mode)>,
     // Modes of variables in Var, Assign, Decl
     pub var_modes: Vec<(Span, Mode)>,
-    // Modes of InferSpecForLoopIter
-    pub infer_spec_for_loop_iter_modes: Vec<(Span, Mode)>,
 }
 
 impl Ghost {
@@ -88,6 +87,8 @@ struct Typing {
     pub(crate) fun_mode: Mode,
     pub(crate) ret_mode: Option<Mode>,
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
+    // Modes of InferSpecForLoopIter
+    infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
 }
 
 impl Typing {
@@ -633,7 +634,14 @@ fn check_expr_handle_mut_arg(
             // so that ast_simplify can replace the expression with None.
             let mode_opt = check_expr(typing, outer_mode, e1);
             let mode = mode_opt.unwrap_or(Mode::Exec);
-            typing.erasure_modes.infer_spec_for_loop_iter_modes.push((expr.span.clone(), mode));
+            if let Some(infer_spec) = typing.infer_spec_for_loop_iter_modes.as_mut() {
+                infer_spec.push((expr.span.clone(), mode));
+            } else {
+                return Err(error(
+                    &expr.span,
+                    "infer_spec_for_loop_iter is only allowed in function body",
+                ));
+            }
             Ok(Mode::Spec)
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
@@ -1160,7 +1168,7 @@ fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), 
     }
 }
 
-fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr> {
+fn check_function(typing: &mut Typing, function: &mut Function) -> Result<(), VirErr> {
     typing.vars.push_scope(true);
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
@@ -1257,7 +1265,33 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     }
     if let Some(body) = &function.x.body {
         typing.block_ghostness = Ghost::of_mode(function.x.mode);
+        assert!(typing.infer_spec_for_loop_iter_modes.is_none());
+        typing.infer_spec_for_loop_iter_modes = Some(Vec::new());
         check_expr_has_mode(typing, function.x.mode, body, function.x.ret.x.mode)?;
+
+        // Replace any InferSpecForLoopIter with Some(...expr...) or None
+        let infer_spec = typing.infer_spec_for_loop_iter_modes.as_ref().expect("infer_spec");
+        if infer_spec.len() > 0 {
+            let mut functionx = function.x.clone();
+            functionx.body = Some(crate::ast_visitor::map_expr_visitor(body, &|expr: &Expr| {
+                match &expr.x {
+                    ExprX::Unary(UnaryOp::InferSpecForLoopIter, _) => {
+                        let mode_opt = infer_spec.iter().find(|(span, _)| span.id == expr.span.id);
+                        if let Some((_, Mode::Spec)) = mode_opt {
+                            // InferSpecForLoopIter must be spec mode
+                            // to be usable for invariant inference
+                            Ok(expr.clone())
+                        } else {
+                            // Otherwise, abandon the expression and return None (no inference)
+                            Ok(crate::loop_inference::make_none_expr(&expr.span, &expr.typ))
+                        }
+                    }
+                    _ => Ok(expr.clone()),
+                }
+            })?);
+            *function = function.new_x(functionx);
+        }
+        typing.infer_spec_for_loop_iter_modes = None;
     }
     typing.ret_mode = None;
     typing.vars.pop_scope();
@@ -1268,7 +1302,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 pub fn check_crate(
     krate: &Krate,
     macro_erasure: bool, // TODO(main_new) remove, always true
-) -> Result<ErasureModes, VirErr> {
+) -> Result<(Krate, ErasureModes), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -1277,11 +1311,7 @@ pub fn check_crate(
     for datatype in krate.datatypes.iter() {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
-    let erasure_modes = ErasureModes {
-        condition_modes: vec![],
-        var_modes: vec![],
-        infer_spec_for_loop_iter_modes: vec![],
-    };
+    let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
     let mut typing = Typing {
         funs,
         datatypes,
@@ -1295,8 +1325,10 @@ pub fn check_crate(
         fun_mode: Mode::Exec,
         ret_mode: None,
         atomic_insts: None,
+        infer_spec_for_loop_iter_modes: None,
     };
-    for function in krate.functions.iter() {
+    let mut kratex = (**krate).clone();
+    for function in kratex.functions.iter_mut() {
         typing.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
         typing.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
@@ -1311,5 +1343,5 @@ pub fn check_crate(
             check_function(&mut typing, function)?;
         }
     }
-    Ok(typing.erasure_modes)
+    Ok((Arc::new(kratex), typing.erasure_modes))
 }

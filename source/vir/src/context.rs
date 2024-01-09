@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
-use crate::messages::{error, AstId, Span};
+use crate::messages::{error, Span};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -47,7 +47,6 @@ pub struct GlobalCtx {
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) vstd_crate_name: Option<Ident>, // already an arc
     pub arch: crate::ast::ArchWordBits,
-    pub(crate) infer_spec_for_loop_iter_modes: Arc<HashMap<AstId, Mode>>,
 }
 
 // Context for verifying one function
@@ -195,7 +194,6 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
-        infer_spec_for_loop_iter_modes_vec: &Vec<(Span, Mode)>,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -293,13 +291,6 @@ impl GlobalCtx {
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate);
 
-        let mut infer_spec_for_loop_iter_modes = HashMap::new();
-        for (span, mode) in infer_spec_for_loop_iter_modes_vec {
-            if *mode != Mode::Spec || !infer_spec_for_loop_iter_modes.contains_key(&span.id) {
-                infer_spec_for_loop_iter_modes.insert(span.id, *mode);
-            }
-        }
-
         Ok(GlobalCtx {
             chosen_triggers,
             datatypes: Arc::new(datatypes),
@@ -313,7 +304,6 @@ impl GlobalCtx {
             interpreter_log,
             vstd_crate_name,
             arch: krate.arch.word_bits,
-            infer_spec_for_loop_iter_modes: Arc::new(infer_spec_for_loop_iter_modes),
         })
     }
 
@@ -335,7 +325,6 @@ impl GlobalCtx {
             interpreter_log,
             vstd_crate_name: self.vstd_crate_name.clone(),
             arch: self.arch,
-            infer_spec_for_loop_iter_modes: self.infer_spec_for_loop_iter_modes.clone(),
         }
     }
 

@@ -1097,6 +1097,12 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] for_loop_vec_custom_iterator verus_code! {
         use vstd::prelude::*;
+
+        #[verifier::external_body]
+        pub closed spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V> {
+            core::marker::PhantomData::default()
+        }
+
         pub struct VecIterCopy<'a, T: 'a> {
             pub vec: &'a Vec<T>,
             pub cur: usize,
@@ -1124,7 +1130,7 @@ test_verify_one_file! {
         pub struct VecGhostIterCopy<'a, T> {
             pub seq: Seq<T>,
             pub cur: int,
-            pub unused_phantom_dummy: &'a Vec<T>, // use the 'a parameter, which I don't even want; ugh
+            pub phantom: core::marker::PhantomData<&'a T>,
         }
 
         impl<'a, T: 'a> vstd::pervasive::ForLoopGhostIteratorNew for VecIterCopy<'a, T> {
@@ -1134,7 +1140,7 @@ test_verify_one_file! {
                 VecGhostIterCopy {
                     seq: self.vec@,
                     cur: 0,
-                    unused_phantom_dummy: &self.vec,
+                    phantom: spec_phantom_data(),
                 }
             }
         }

@@ -1696,12 +1696,6 @@ impl Verifier {
             self.args.rlimit,
             interpreter_log_file,
             self.vstd_crate_name.clone(),
-            &self
-                .erasure_hints
-                .as_ref()
-                .expect("erasure_hints")
-                .erasure_modes
-                .infer_spec_for_loop_iter_modes,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2375,7 +2369,7 @@ impl Verifier {
         }
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let erasure_modes =
+        let (vir_crate, erasure_modes) =
             vir::modes::check_crate(&vir_crate, true).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());

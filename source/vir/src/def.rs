@@ -560,6 +560,10 @@ impl<X> Spanned<X> {
         Arc::new(Spanned { span: span, x: x })
     }
 
+    pub fn new_x(&self, x: X) -> Arc<Spanned<X>> {
+        Arc::new(Spanned { span: self.span.clone(), x })
+    }
+
     pub fn map_x<Y>(&self, f: impl FnOnce(&X) -> Y) -> Arc<Spanned<Y>> {
         Arc::new(Spanned { span: self.span.clone(), x: f(&self.x) })
     }
