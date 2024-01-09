@@ -546,7 +546,6 @@ pub(crate) enum RustItem {
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
     TryTraitBranch,
-    ResidualTraitFromResidual,
     IntoIterFn,
     Destruct,
 }
@@ -582,9 +581,6 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().branch_fn() == Some(def_id) {
         return Some(RustItem::TryTraitBranch);
-    }
-    if tcx.lang_items().from_residual_fn() == Some(def_id) {
-        return Some(RustItem::ResidualTraitFromResidual);
     }
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
