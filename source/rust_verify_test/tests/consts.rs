@@ -262,3 +262,25 @@ test_verify_one_file! {
         pub exec const FOO: u64 = foo();
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] statics_atomics verus_code! {
+        use vstd::*;
+
+        pub fn heap_init() {
+            increment_thread_count();
+        }
+
+        exec static THREAD_COUNT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+        #[inline]
+        fn increment_thread_count() {
+            THREAD_COUNT.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        }
+
+        #[inline]
+        pub fn current_thread_count() -> usize {
+            THREAD_COUNT.load(core::sync::atomic::Ordering::Relaxed)
+        }
+    } => Ok(())
+}

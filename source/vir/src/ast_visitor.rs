@@ -1188,13 +1188,21 @@ pub(crate) fn map_trait_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let TraitImplX { impl_path, typ_params, typ_bounds, trait_path, trait_typ_args } = &imp.x;
+    let TraitImplX {
+        impl_path,
+        typ_params,
+        typ_bounds,
+        trait_path,
+        trait_typ_args,
+        trait_typ_arg_impls,
+    } = &imp.x;
     let impx = TraitImplX {
         impl_path: impl_path.clone(),
         typ_params: typ_params.clone(),
         typ_bounds: map_generic_bounds_visitor(typ_bounds, env, ft)?,
         trait_path: trait_path.clone(),
         trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
+        trait_typ_arg_impls: trait_typ_arg_impls.clone(),
     };
     Ok(Spanned::new(imp.span.clone(), impx))
 }
@@ -1207,8 +1215,16 @@ pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let AssocTypeImplX { name, impl_path, typ_params, typ_bounds, trait_path, trait_typ_args, typ } =
-        &assoc.x;
+    let AssocTypeImplX {
+        name,
+        impl_path,
+        typ_params,
+        typ_bounds,
+        trait_path,
+        trait_typ_args,
+        typ,
+        impl_paths,
+    } = &assoc.x;
     let typ = map_typ_visitor_env(typ, env, ft)?;
     let assocx = AssocTypeImplX {
         name: name.clone(),
@@ -1218,6 +1234,7 @@ where
         trait_path: trait_path.clone(),
         trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
         typ,
+        impl_paths: impl_paths.clone(),
     };
     Ok(Spanned::new(assoc.span.clone(), assocx))
 }

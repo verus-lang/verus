@@ -15,9 +15,7 @@ use rustc_hir::{
     def::Res, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
     MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
-use rustc_middle::ty::Predicate;
-use rustc_middle::ty::SubstsRef;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{Clause, GenericArgsRef, TyCtxt};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -38,7 +36,7 @@ pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::a
     Arc::new(pathx)
 }
 
-fn body_id_to_types<'tcx>(
+pub(crate) fn body_id_to_types<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: &BodyId,
 ) -> &'tcx rustc_middle::ty::TypeckResults<'tcx> {
@@ -108,7 +106,7 @@ pub(crate) fn find_body_krate<'tcx>(
     panic!("Body not found");
 }
 
-fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
+pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     find_body_krate(ctxt.krate, body_id)
 }
 
@@ -238,8 +236,8 @@ pub(crate) fn handle_external_fn<'tcx>(
             // This is to ensure that we are comparing the type signatures with
             // the same type params even if the user inputs different generic params
             // note: rustc 1.69.0 has replaced bound_fn_sig with just fn_sig I think
-            let poly_sig1 = ctxt.tcx.fn_sig(*def_id1).subst(ctxt.tcx, substs1);
-            let poly_sig2 = ctxt.tcx.fn_sig(*def_id2).subst(ctxt.tcx, substs1);
+            let poly_sig1 = ctxt.tcx.fn_sig(*def_id1).instantiate(ctxt.tcx, substs1);
+            let poly_sig2 = ctxt.tcx.fn_sig(*def_id2).instantiate(ctxt.tcx, substs1);
             (poly_sig1, poly_sig2, substs1)
         }
         _ => {
@@ -357,7 +355,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let name = Arc::new(FunX { path: path.clone() });
 
-    if vattrs.external {
+    if vattrs.is_external(&ctxt.cmd_line_args) {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(None);
@@ -740,6 +738,7 @@ pub(crate) fn check_item_fn<'tcx>(
         nonlinear: vattrs.nonlinear,
         spinoff_prover: vattrs.spinoff_prover,
         memoize: vattrs.memoize,
+        rlimit: vattrs.rlimit,
     };
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -820,7 +819,7 @@ fn is_mut_ty<'tcx>(
             )) = verus_item
             {
                 assert_eq!(args.len(), 1);
-                if let subst::GenericArgKind::Type(t) = args[0].unpack() {
+                if let GenericArgKind::Type(t) = args[0].unpack() {
                     if let Some((inner, None)) = is_mut_ty(ctxt, t) {
                         let mode_and_decoration = match bt {
                             BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
@@ -839,12 +838,10 @@ fn is_mut_ty<'tcx>(
 
 fn remove_destruct_trait_bounds_from_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
-    preds: &mut Vec<Predicate<'tcx>>,
+    preds: &mut Vec<Clause<'tcx>>,
 ) {
-    preds.retain(|p: &Predicate<'tcx>| match p.kind().skip_binder() {
-        rustc_middle::ty::PredicateKind::<'tcx>::Clause(
-            rustc_middle::ty::Clause::<'tcx>::Trait(tp),
-        ) => {
+    preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
+        rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
             let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
             rust_item != Some(crate::verus_items::RustItem::Destruct)
         }
@@ -854,8 +851,8 @@ fn remove_destruct_trait_bounds_from_predicates<'tcx>(
 
 pub(crate) fn predicates_match<'tcx>(
     tcx: TyCtxt<'tcx>,
-    preds1: &Vec<Predicate<'tcx>>,
-    preds2: &Vec<Predicate<'tcx>>,
+    preds1: &Vec<Clause<'tcx>>,
+    preds2: &Vec<Clause<'tcx>>,
 ) -> bool {
     if preds1.len() != preds2.len() {
         return false;
@@ -890,8 +887,8 @@ pub(crate) fn predicates_match<'tcx>(
 fn all_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: rustc_span::def_id::DefId,
-    substs: SubstsRef<'tcx>,
-) -> Vec<Predicate<'tcx>> {
+    substs: GenericArgsRef<'tcx>,
+) -> Vec<Clause<'tcx>> {
     let preds = tcx.predicates_of(id);
     let preds = preds.instantiate(tcx, substs);
     preds.predicates
@@ -959,7 +956,7 @@ pub(crate) fn get_external_def_id<'tcx>(
         // If this is a trait function, then the DefId we have right now points to
         // function definition in the trait definition.
         // We want to resolve to a specific definition in a trait implementation.
-        let node_substs = types.node_substs(hir_id);
+        let node_substs = types.node_args(hir_id);
         let param_env = tcx.param_env(proxy_fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
         let inst =
@@ -1029,7 +1026,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let fuel = get_fuel(&vattrs);
-    if vattrs.external {
+    if vattrs.is_external(&ctxt.cmd_line_args) {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(());

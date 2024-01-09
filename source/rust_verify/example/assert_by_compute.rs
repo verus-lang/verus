@@ -394,7 +394,7 @@ mod arch_specific {
         assert((1usize << 20usize) != 0usize) by (compute_only);
         assert((1usize << 100usize) == 0usize) by (compute_only);
 
-        // But this next assert should not work (at least without --arch-word-bits), because usize
+        // But this next assert should not work (at least without size_of usize set), because usize
         // could be either 32-bit or 64-bit.
         //
         // assert((1usize << 40usize) == 0usize) by (compute_only);

@@ -895,14 +895,17 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_fns,
         external_types,
         path_as_rust_names,
+        arch,
     } = &**krate;
     let mut state = State::new();
 
     // Pre-emptively add this because unit values might be added later.
     state.tuple_type_name(0);
 
-    let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
+    ctx.datatypes =
+        Arc::new(datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect());
+    let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
     let assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
@@ -1005,6 +1008,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_fns,
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
+        arch: arch.clone(),
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
@@ -1012,24 +1016,14 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.vstd_crate_name.clone(),
-        ctx.arch,
     )?;
     Ok(krate)
 }
 
 pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
-    let mut kratex = KrateX {
-        functions: Vec::new(),
-        datatypes: Vec::new(),
-        traits: Vec::new(),
-        trait_impls: Vec::new(),
-        assoc_type_impls: Vec::new(),
-        modules: Vec::new(),
-        external_fns: Vec::new(),
-        external_types: Vec::new(),
-        path_as_rust_names: Vec::new(),
-    };
-    for k in krates.into_iter() {
+    let mut krates = krates.into_iter();
+    let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
+    for k in krates {
         kratex.functions.extend(k.functions.clone());
         kratex.datatypes.extend(k.datatypes.clone());
         kratex.traits.extend(k.traits.clone());
@@ -1039,6 +1033,25 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.external_fns.extend(k.external_fns.clone());
         kratex.external_types.extend(k.external_types.clone());
         kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());
+        kratex.arch.word_bits = {
+            let word_bits = match (k.arch.word_bits, kratex.arch.word_bits) {
+                (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
+                    if l != r {
+                        return Err(crate::messages::error_bare(
+                            "all crates must have compatible arch_word_bits (set via `global size_of usize`",
+                        ));
+                    } else {
+                        crate::ast::ArchWordBits::Exactly(l)
+                    }
+                }
+                (crate::ast::ArchWordBits::Either32Or64, other)
+                | (other, crate::ast::ArchWordBits::Either32Or64) => other,
+            };
+            if let crate::ast::ArchWordBits::Exactly(e) = &word_bits {
+                assert!(*e == 32 || *e == 64);
+            }
+            word_bits
+        };
     }
     Ok(Arc::new(kratex))
 }

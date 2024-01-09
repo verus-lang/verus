@@ -370,6 +370,18 @@ pub trait Visit<'ast> {
     fn visit_generics(&mut self, i: &'ast Generics) {
         visit_generics(self, i);
     }
+    fn visit_global(&mut self, i: &'ast Global) {
+        visit_global(self, i);
+    }
+    fn visit_global_inner(&mut self, i: &'ast GlobalInner) {
+        visit_global_inner(self, i);
+    }
+    fn visit_global_layout(&mut self, i: &'ast GlobalLayout) {
+        visit_global_layout(self, i);
+    }
+    fn visit_global_size_of(&mut self, i: &'ast GlobalSizeOf) {
+        visit_global_size_of(self, i);
+    }
     fn visit_ident(&mut self, i: &'ast Ident) {
         visit_ident(self, i);
     }
@@ -408,6 +420,9 @@ pub trait Visit<'ast> {
     }
     fn visit_invariant_name_set_any(&mut self, i: &'ast InvariantNameSetAny) {
         visit_invariant_name_set_any(self, i);
+    }
+    fn visit_invariant_name_set_list(&mut self, i: &'ast InvariantNameSetList) {
+        visit_invariant_name_set_list(self, i);
     }
     fn visit_invariant_name_set_none(&mut self, i: &'ast InvariantNameSetNone) {
         visit_invariant_name_set_none(self, i);
@@ -2410,6 +2425,56 @@ where
         v.visit_where_clause(it);
     }
 }
+pub fn visit_global<'ast, V>(v: &mut V, node: &'ast Global)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.global_token.span);
+    v.visit_global_inner(&node.inner);
+    tokens_helper(v, &node.semi.spans);
+}
+pub fn visit_global_inner<'ast, V>(v: &mut V, node: &'ast GlobalInner)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        GlobalInner::SizeOf(_binding_0) => {
+            v.visit_global_size_of(_binding_0);
+        }
+        GlobalInner::Layout(_binding_0) => {
+            v.visit_global_layout(_binding_0);
+        }
+    }
+}
+pub fn visit_global_layout<'ast, V>(v: &mut V, node: &'ast GlobalLayout)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.layout_token.span);
+    v.visit_type(&node.type_);
+    tokens_helper(v, &node.is_token.span);
+    v.visit_ident(&(node.size).0);
+    tokens_helper(v, &(node.size).1.spans);
+    v.visit_expr_lit(&(node.size).2);
+    if let Some(it) = &node.align {
+        tokens_helper(v, &(it).0.spans);
+        v.visit_ident(&(it).1);
+        tokens_helper(v, &(it).2.spans);
+        v.visit_expr_lit(&(it).3);
+    }
+}
+pub fn visit_global_size_of<'ast, V>(v: &mut V, node: &'ast GlobalSizeOf)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.size_of_token.span);
+    v.visit_type(&node.type_);
+    tokens_helper(v, &node.eq_token.spans);
+    v.visit_expr_lit(&node.expr_lit);
+}
 pub fn visit_ident<'ast, V>(v: &mut V, node: &'ast Ident)
 where
     V: Visit<'ast> + ?Sized,
@@ -2546,6 +2611,9 @@ where
         InvariantNameSet::None(_binding_0) => {
             v.visit_invariant_name_set_none(_binding_0);
         }
+        InvariantNameSet::List(_binding_0) => {
+            v.visit_invariant_name_set_list(_binding_0);
+        }
     }
 }
 pub fn visit_invariant_name_set_any<'ast, V>(v: &mut V, node: &'ast InvariantNameSetAny)
@@ -2553,6 +2621,22 @@ where
     V: Visit<'ast> + ?Sized,
 {
     tokens_helper(v, &node.token.span);
+}
+pub fn visit_invariant_name_set_list<'ast, V>(
+    v: &mut V,
+    node: &'ast InvariantNameSetList,
+)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.bracket_token.span);
+    for el in Punctuated::pairs(&node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
 }
 pub fn visit_invariant_name_set_none<'ast, V>(
     v: &mut V,
@@ -2619,6 +2703,9 @@ where
         }
         Item::Verbatim(_binding_0) => {
             skip!(_binding_0);
+        }
+        Item::Global(_binding_0) => {
+            v.visit_global(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),

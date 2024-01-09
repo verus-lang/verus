@@ -1507,6 +1507,55 @@ impl Hash for Generics {
         self.where_clause.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Global {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.inner.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for GlobalInner {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            GlobalInner::SizeOf(v0) => {
+                state.write_u8(0u8);
+                v0.hash(state);
+            }
+            GlobalInner::Layout(v0) => {
+                state.write_u8(1u8);
+                v0.hash(state);
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for GlobalLayout {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.type_.hash(state);
+        self.size.hash(state);
+        self.align.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for GlobalSizeOf {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.type_.hash(state);
+        self.expr_lit.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ImplItem {
@@ -1632,6 +1681,10 @@ impl Hash for InvariantNameSet {
                 state.write_u8(1u8);
                 v0.hash(state);
             }
+            InvariantNameSet::List(v0) => {
+                state.write_u8(2u8);
+                v0.hash(state);
+            }
         }
     }
 }
@@ -1641,6 +1694,15 @@ impl Hash for InvariantNameSetAny {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for InvariantNameSetList {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for InvariantNameSetNone {
@@ -1724,6 +1786,10 @@ impl Hash for Item {
             Item::Verbatim(v0) => {
                 state.write_u8(16u8);
                 TokenStreamHelper(v0).hash(state);
+            }
+            Item::Global(v0) => {
+                state.write_u8(17u8);
+                v0.hash(state);
             }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),

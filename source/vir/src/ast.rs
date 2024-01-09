@@ -783,6 +783,8 @@ pub struct FunctionAttrsX {
     pub spinoff_prover: bool,
     /// Memoize function call results during interpretation
     pub memoize: bool,
+    /// override default rlimit
+    pub rlimit: Option<f32>,
 }
 
 /// Function specification of its invariant mask
@@ -948,6 +950,7 @@ pub struct TraitX {
     pub typ_params: TypPositives,
     pub typ_bounds: GenericBounds,
     pub assoc_typs: Arc<Vec<Ident>>,
+    pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
 }
 
@@ -963,6 +966,8 @@ pub struct AssocTypeImplX {
     pub trait_path: Path,
     pub trait_typ_args: Typs,
     pub typ: Typ,
+    /// Paths of the impls that are used to satisfy the bounds on the associated type
+    pub impl_paths: ImplPaths,
 }
 
 pub type TraitImpl = Arc<Spanned<TraitImplX>>;
@@ -975,6 +980,7 @@ pub struct TraitImplX {
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,
+    pub trait_typ_arg_impls: ImplPaths,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
@@ -987,6 +993,38 @@ pub type Module = Arc<Spanned<ModuleX>>;
 pub struct ModuleX {
     pub path: Path,
     // add attrs here
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
+pub enum ArchWordBits {
+    Either32Or64,
+    Exactly(u32),
+}
+
+impl ArchWordBits {
+    pub fn min_bits(&self) -> u32 {
+        match self {
+            ArchWordBits::Either32Or64 => 32,
+            ArchWordBits::Exactly(v) => *v,
+        }
+    }
+    pub fn num_bits(&self) -> Option<u32> {
+        match self {
+            ArchWordBits::Either32Or64 => None,
+            ArchWordBits::Exactly(v) => Some(*v),
+        }
+    }
+}
+
+impl Default for ArchWordBits {
+    fn default() -> Self {
+        ArchWordBits::Either32Or64
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct Arch {
+    pub word_bits: ArchWordBits,
 }
 
 /// An entire crate
@@ -1011,4 +1049,6 @@ pub struct KrateX {
     pub external_types: Vec<Path>,
     /// Map rustc-based internal paths to friendlier names for error messages
     pub path_as_rust_names: Vec<(Path, String)>,
+    /// Arch info
+    pub arch: Arch,
 }

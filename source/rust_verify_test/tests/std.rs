@@ -170,3 +170,28 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
 }
+
+test_verify_one_file! {
+    #[test] signed_wrapping_mul verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let i = (1000 as i64).wrapping_mul(2000);
+            assert(i == 2000000);
+
+            let i = (1000 as i64).wrapping_mul(-2000);
+            assert(i == -2000000);
+
+            let i = (12345678901 as i64).wrapping_mul(45678912301);
+            assert(i == -7911882469911038895);
+
+            let i = (92345678901 as i64).wrapping_mul(175678912301);
+            assert(i == 8500384234389190737);
+
+            let i = (12 as i64).wrapping_mul(2305843009213693952);
+            assert(i == -9223372036854775808);
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

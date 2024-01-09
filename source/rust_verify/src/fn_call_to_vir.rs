@@ -21,8 +21,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{GenericArgKind, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -40,7 +39,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     f: DefId,
-    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     _fn_span: Span,
     args: Vec<&'tcx Expr<'tcx>>,
     outer_modifier: ExprModifier,
@@ -132,10 +131,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     if let Some(verus_item) = verus_item {
         match verus_item {
-            VerusItem::Pervasive(_, _)
-            | VerusItem::Marker(_)
-            | VerusItem::BuiltinType(_)
-            | VerusItem::BuiltinTrait(_) => (),
+            VerusItem::Pervasive(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_) => (),
             _ => {
                 return verus_item_to_vir(
                     bctx,
@@ -186,10 +182,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         let inst = rustc_middle::ty::Instance::resolve(tcx, param_env, f, normalized_substs);
         if let Ok(Some(inst)) = inst {
             if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let typs = mk_typ_args(bctx, &inst.substs, expr.span)?;
+                let typs = mk_typ_args(bctx, &inst.args, expr.span)?;
                 let f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
-                let impl_paths = get_impl_paths(bctx, did, &inst.substs);
+                let impl_paths = get_impl_paths(bctx, did, &inst.args);
                 resolved = Some((f, typs, impl_paths));
             }
         }
@@ -267,7 +263,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
             }
-            SpecItem::Requires | SpecItem::Recommends => {
+            SpecItem::Requires | SpecItem::Recommends | SpecItem::OpensInvariants => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(
                     args_len == 1,
@@ -277,21 +273,46 @@ fn verus_item_to_vir<'tcx, 'a>(
                 );
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let subargs = extract_array(args[0]);
-                for arg in &subargs {
-                    if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
-                        return err_span(arg.span, "requires/recommends needs a bool expression");
-                    }
-                }
+
                 let vir_args =
                     vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
+
+                for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
+                    let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
+                    match spec_item {
+                        SpecItem::Requires | SpecItem::Recommends => match &*typ {
+                            TypX::Bool => {}
+                            _ => {
+                                return err_span(
+                                    arg.span,
+                                    "requires/recommends needs a bool expression",
+                                );
+                            }
+                        },
+                        SpecItem::OpensInvariants => match &*typ {
+                            TypX::Int(_) => {}
+                            _ => {
+                                return err_span(
+                                    arg.span,
+                                    "opens_invariants needs an int expression",
+                                );
+                            }
+                        },
+                        _ => unreachable!(),
+                    }
+                }
+
                 let header = match spec_item {
                     SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
                     SpecItem::Recommends => Arc::new(HeaderExprX::Recommends(Arc::new(vir_args))),
+                    SpecItem::OpensInvariants => {
+                        Arc::new(HeaderExprX::InvariantOpens(Arc::new(vir_args)))
+                    }
                     _ => unreachable!(),
                 };
                 mk_expr(ExprX::Header(header))
             }
-            SpecItem::OpensInvariants | SpecItem::OpensInvariantsExcept => {
+            SpecItem::OpensInvariantsExcept => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 err_span(
                     expr.span,
@@ -421,11 +442,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                 {
                     unsupported_err!(expr.span, "invalid reveal", &args);
                 }
-                let Some(ExprKind::Path(QPath::Resolved(None, path))) = block.expr.as_ref().map(|x| &x.kind) else {
+                let Some(ExprKind::Path(QPath::Resolved(None, path))) =
+                    block.expr.as_ref().map(|x| &x.kind)
+                else {
                     unsupported_err!(expr.span, "invalid reveal", &args);
                 };
                 let id = {
-                    let Some(path_map) = &*crate::verifier::BODY_HIR_ID_TO_REVEAL_PATH_RES.read().expect("lock failed") else {
+                    let Some(path_map) = &*crate::verifier::BODY_HIR_ID_TO_REVEAL_PATH_RES
+                        .read()
+                        .expect("lock failed")
+                    else {
                         unsupported_err!(expr.span, "invalid reveal", &args);
                     };
                     let (ty_res, res) = &path_map[&path.res.def_id()];
@@ -433,17 +459,28 @@ fn verus_item_to_vir<'tcx, 'a>(
                         match res {
                             crate::hir_hide_reveal_rewrite::ResOrSymbol::Res(res) => {
                                 // `res` has the def_id of the trait function
-                                // `ty_res` has the def_id of the type
+                                // `ty_res` has the def_id of the type, or is a primitive type
                                 // we need to find the impl that contains the non-blanket
                                 // implementation of the function for the type
-                                let trait_ = tcx.trait_of_item(res.def_id()).expect("TODO");
-                                let ty_ = tcx.type_of(ty_res.def_id());
-                                *tcx.non_blanket_impls_for_ty(trait_, ty_.skip_binder())
+                                let trait_ =
+                                    tcx.trait_of_item(res.def_id()).expect("trait of function");
+                                let ty_ = match ty_res {
+                                    Res::Def(_, def_id) => tcx.type_of(def_id).skip_binder(),
+                                    Res::PrimTy(prim_ty) => {
+                                        crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty)
+                                    }
+                                    _ => unsupported_err!(
+                                        expr.span,
+                                        "type {:?} not supported in reveal",
+                                        ty_res
+                                    ),
+                                };
+                                *tcx.non_blanket_impls_for_ty(trait_, ty_)
                                     .find_map(|impl_| {
                                         let implementor_ids = &tcx.impl_item_implementor_ids(impl_);
                                         implementor_ids.get(&res.def_id())
                                     })
-                                    .expect("TODO")
+                                    .expect("non-blanked impl for ty with def")
                             }
                             crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(sym) => {
                                 let matching_impls: Vec<_> = tcx
@@ -493,7 +530,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, id);
 
                 // let fun = get_fn_path(bctx, &args[0])?;
-                let ExprX::Const(Constant::Int(i)) = &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x else {
+                let ExprX::Const(Constant::Int(i)) =
+                    &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x
+                else {
                     panic!("internal error: is_reveal_fuel");
                 };
                 let n = vir::ast_util::fuel_const_int_to_u32(
@@ -1283,17 +1322,16 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
         }
         VerusItem::BuiltinFunction(
-            re @ (BuiltinFunctionItem::FnWithSpecificationRequires
-            | BuiltinFunctionItem::FnWithSpecificationEnsures),
+            re @ (BuiltinFunctionItem::CallRequires | BuiltinFunctionItem::CallEnsures),
         ) => {
             record_spec_fn_no_proof_args(bctx, expr);
 
             let bsf = match re {
-                BuiltinFunctionItem::FnWithSpecificationRequires => {
+                BuiltinFunctionItem::CallRequires => {
                     assert!(args.len() == 2);
                     BuiltinSpecFun::ClosureReq
                 }
-                BuiltinFunctionItem::FnWithSpecificationEnsures => {
+                BuiltinFunctionItem::CallEnsures => {
                     assert!(args.len() == 3);
                     BuiltinSpecFun::ClosureEns
                 }
@@ -1305,6 +1343,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 .collect::<Result<Vec<_>, _>>()?;
 
             let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
+            let mut typ_args = (*typ_args).clone();
+            // Put the args in the order [function type, args type]
+            typ_args.swap(0, 1);
+            let typ_args = Arc::new(typ_args);
 
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args),
@@ -1314,14 +1356,14 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Pervasive(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
-        | VerusItem::BuiltinTrait(_) => unreachable!(),
+        | VerusItem::Global(_) => unreachable!(),
     }
 }
 
 fn get_impl_paths<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     f: DefId,
-    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
 ) -> vir::ast::ImplPaths {
     if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).skip_binder().kind() {
         crate::rust_to_vir_base::get_impl_paths(
@@ -1650,7 +1692,7 @@ fn mk_vir_args<'tcx>(
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     // TODO(main_new) is calling `subst` still correct with the new API?
     let tcx = bctx.ctxt.tcx;
-    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).subst(tcx, node_substs).skip_binder().inputs();
+    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).instantiate(tcx, node_substs).skip_binder().inputs();
     assert!(raw_inputs.len() == args.len());
     args.iter()
         .zip(raw_inputs)

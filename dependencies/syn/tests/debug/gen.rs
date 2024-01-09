@@ -3037,6 +3037,74 @@ impl Debug for Lite<syn::Generics> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Global> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Global");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("inner", Lite(&_val.inner));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::GlobalInner> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::GlobalInner::SizeOf(_val) => {
+                formatter.write_str("SizeOf")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::GlobalInner::Layout(_val) => {
+                formatter.write_str("Layout")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+        }
+    }
+}
+impl Debug for Lite<syn::GlobalLayout> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("GlobalLayout");
+        formatter.field("type_", Lite(&_val.type_));
+        formatter.field("size", &(Lite(&&_val.size.0), Lite(&&_val.size.2)));
+        if let Some(val) = &_val.align {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(
+                (syn::token::Comma, proc_macro2::Ident, syn::token::EqEq, syn::ExprLit),
+            );
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(&(Lite(&_val.1), Lite(&_val.3)), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("align", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::GlobalSizeOf> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("GlobalSizeOf");
+        formatter.field("type_", Lite(&_val.type_));
+        formatter.field("expr_lit", Lite(&_val.expr_lit));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ImplItem> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -3304,6 +3372,13 @@ impl Debug for Lite<syn::InvariantNameSet> {
                 let mut formatter = formatter.debug_struct("InvariantNameSet::None");
                 formatter.finish()
             }
+            syn::InvariantNameSet::List(_val) => {
+                let mut formatter = formatter.debug_struct("InvariantNameSet::List");
+                if !_val.exprs.is_empty() {
+                    formatter.field("exprs", Lite(&_val.exprs));
+                }
+                formatter.finish()
+            }
         }
     }
 }
@@ -3311,6 +3386,16 @@ impl Debug for Lite<syn::InvariantNameSetAny> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("InvariantNameSetAny");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::InvariantNameSetList> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("InvariantNameSetList");
+        if !_val.exprs.is_empty() {
+            formatter.field("exprs", Lite(&_val.exprs));
+        }
         formatter.finish()
     }
 }
@@ -3874,6 +3959,13 @@ impl Debug for Lite<syn::Item> {
                 formatter.write_str("(`")?;
                 Display::fmt(_val, formatter)?;
                 formatter.write_str("`)")?;
+                Ok(())
+            }
+            syn::Item::Global(_val) => {
+                formatter.write_str("Global")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
                 Ok(())
             }
             _ => unreachable!(),

@@ -51,7 +51,7 @@ test_verify_one_file! {
 
         pub proof fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>)
             requires
-                b.le(a),
+                b.subset_of(a),
             ensures
                 a.sub(b).add(b) === a,
         {

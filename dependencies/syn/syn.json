@@ -2840,6 +2840,114 @@
       }
     },
     {
+      "ident": "Global",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "global_token": {
+          "token": "Global"
+        },
+        "inner": {
+          "syn": "GlobalInner"
+        },
+        "semi": {
+          "token": "Semi"
+        }
+      }
+    },
+    {
+      "ident": "GlobalInner",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "SizeOf": [
+          {
+            "syn": "GlobalSizeOf"
+          }
+        ],
+        "Layout": [
+          {
+            "syn": "GlobalLayout"
+          }
+        ]
+      }
+    },
+    {
+      "ident": "GlobalLayout",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "layout_token": {
+          "token": "Layout"
+        },
+        "type_": {
+          "syn": "Type"
+        },
+        "is_token": {
+          "token": "Is"
+        },
+        "size": {
+          "tuple": [
+            {
+              "proc_macro2": "Ident"
+            },
+            {
+              "token": "EqEq"
+            },
+            {
+              "syn": "ExprLit"
+            }
+          ]
+        },
+        "align": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Comma"
+              },
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "EqEq"
+              },
+              {
+                "syn": "ExprLit"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "GlobalSizeOf",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "size_of_token": {
+          "token": "SizeOf"
+        },
+        "type_": {
+          "syn": "Type"
+        },
+        "eq_token": {
+          "token": "EqEq"
+        },
+        "expr_lit": {
+          "syn": "ExprLit"
+        }
+      }
+    },
+    {
       "ident": "ImplItem",
       "features": {
         "any": [
@@ -3083,6 +3191,11 @@
           {
             "syn": "InvariantNameSetNone"
           }
+        ],
+        "List": [
+          {
+            "syn": "InvariantNameSetList"
+          }
         ]
       }
     },
@@ -3094,6 +3207,25 @@
       "fields": {
         "token": {
           "token": "InvAny"
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSetList",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "exprs": {
+          "punctuated": {
+            "element": {
+              "syn": "Expr"
+            },
+            "punct": "Comma"
+          }
         }
       }
     },
@@ -3199,6 +3331,11 @@
         "Verbatim": [
           {
             "proc_macro2": "TokenStream"
+          }
+        ],
+        "Global": [
+          {
+            "syn": "Global"
           }
         ]
       },
@@ -6653,6 +6790,7 @@
     "Forall": "forall",
     "Ge": ">=",
     "Ghost": "ghost",
+    "Global": "global",
     "Gt": ">",
     "Has": "has",
     "Hide": "hide",
@@ -6667,6 +6805,7 @@
     "InvariantEnsures": "invariant_ensures",
     "Is": "is",
     "LArrow": "<-",
+    "Layout": "layout",
     "Le": "<=",
     "Let": "let",
     "Loop": "loop",
@@ -6706,6 +6845,7 @@
     "ShlEq": "<<=",
     "Shr": ">>",
     "ShrEq": ">>=",
+    "SizeOf": "size_of",
     "Spec": "spec",
     "Star": "*",
     "Static": "static",

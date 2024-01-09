@@ -121,7 +121,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_set_to_32 ["--arch-word-bits 32"] => verus_code! {
+    #[test] test_set_to_32 ["vstd"] => verus_code! {
+        global size_of usize == 4;
 
         fn test1() {  // ARCH-WORD-BITS-32
             assert(arch_word_bits() == 32);
@@ -145,7 +146,8 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_set_to_64 ["--arch-word-bits 64"] => verus_code! {
+    #[test] test_set_to_64 ["vstd"] => verus_code! {
+        global size_of usize == 8;
 
         fn test1() {  // ARCH-WORD-BITS-64
             assert(arch_word_bits() == 64);
@@ -166,6 +168,79 @@ test_verify_one_file_with_options! {
             assert(arch_word_bits() == 32); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_set_to_both_fail_1 ["vstd"] => verus_code! {
+        global size_of usize == 8;
+        global size_of usize == 4;
+    } => Err(err) => assert_rust_error_msg(err, "the name `VERUS_layout_of_usize` is defined multiple times")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_set_to_both_fail_2 ["vstd"] => verus_code! {
+        global size_of usize == 8;
+        mod m3 {
+            global size_of usize == 4;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the size of `usize` can only be set once per crate")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_set_both_usize_isize_pass ["vstd"] => verus_code! {
+        global size_of usize == 8;
+        global size_of isize == 8;
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_set_both_usize_isize_fail_1 ["vstd"] => verus_code! {
+        global size_of usize == 4;
+        global size_of isize == 8;
+    } => Err(err) => assert_vir_error_msg(err, "usize or isize have already been set to 32 bits")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_set_both_usize_isize_fail_2 ["vstd"] => verus_code! {
+        global size_of usize == 8;
+        mod m3 {
+            global size_of isize == 4;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "usize or isize have already been set to 64 bits")
+}
+
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_32_on_64_bit_compile ["vstd", "--compile"] => verus_code! {
+        global size_of usize == 4;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected size"));
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_64_on_64_bit_compile ["vstd", "--compile"] => verus_code! {
+        global size_of usize == 8;
+    } => Ok(())
+}
+
+#[cfg(target_pointer_width = "32")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_64_on_32_bit_compile ["vstd", "--compile"] => verus_code! {
+        global size_of usize == 8;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected size"));
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+test_verify_one_file_with_options! {
+    #[test] test_set_to_32_on_32_bit_compile ["vstd", "--compile"] => verus_code! {
+        global size_of usize == 4;
+    } => Ok(())
 }
 
 // These intrinsics operate on nats so they should be disallowed in 'exec' mode:
@@ -200,4 +275,145 @@ test_verify_one_file! {
             let x = arch_word_bits();
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_size_of_1 ["vstd"] => verus_code! {
+        global size_of usize == 8;
+        global size_of isize == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<usize>() == 8);
+            assert(core::mem::size_of::<usize>() != 4);
+            assert(core::mem::size_of::<isize>() == 8);
+            assert(core::mem::size_of::<isize>() != 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_size_of_2 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global size_of S == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S>() == 8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_size_of_3 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S<V> { v: V }
+
+        global size_of S<u64> == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S<u64>>() == 8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_size_of_4 ["vstd", "--compile"] => verus_code! {
+        trait T {
+            type X;
+        }
+
+        struct U {}
+
+        impl T for U {
+            type X = u64;
+        }
+
+        #[repr(C)]
+        struct S<V: T> { v: V::X }
+
+        global size_of S<U> == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S<U>>() == 8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_1 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global layout S is size == 8, align == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S>() == 8);
+            assert(core::mem::align_of::<S>() == 8);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_2 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global layout S is size == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S>() == 8);
+            assert(core::mem::align_of::<S>() == 8); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_3 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64, z: u32 }
+
+        global layout S is size == 16, align == 8;
+
+        fn test() {
+            assert(core::mem::size_of::<S>() == 16);
+            assert(core::mem::size_of::<S>() != 8);
+            assert(core::mem::align_of::<S>() == 8);
+            assert(core::mem::align_of::<S>() != 16);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_4 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64, z: u32 }
+
+        global layout S is size == 16, align == 16;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected alignment"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_5 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64, z: u32 }
+
+        global layout S is size == 8, align == 8;
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert!(err.errors[0].rendered.contains("does not have the expected size"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_layout_6 ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S<V> { v: V, z: V }
+
+        global layout S<u64> is size == 16, align == 8;
+        global layout S<u32> is size == 8, align == 4;
+    } => Ok(())
 }

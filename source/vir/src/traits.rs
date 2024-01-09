@@ -11,7 +11,7 @@ use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
 use air::scope_map::ScopeMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 // We currently do not support trait bounds for traits from other crates
@@ -21,8 +21,6 @@ pub fn demote_foreign_traits(
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
     let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
-    let func_map: HashMap<Fun, Function> =
-        krate.functions.iter().map(|f| (f.x.name.clone(), f.clone())).collect();
 
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
@@ -46,15 +44,10 @@ pub fn demote_foreign_traits(
         }
         */
 
-        if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
+        if let FunctionKind::TraitMethodImpl { trait_path, .. } = &function.x.kind {
             let our_trait = traits.contains(trait_path);
             let mut functionx = function.x.clone();
-            if our_trait {
-                let decl = &func_map[method];
-                let mut retx = functionx.ret.x.clone();
-                retx.name = decl.x.ret.x.name.clone();
-                functionx.ret = Spanned::new(functionx.ret.span.clone(), retx);
-            } else {
+            if !our_trait {
                 if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
                     if !function.x.require.is_empty() {
                         return Err(error(

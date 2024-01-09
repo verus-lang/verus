@@ -78,6 +78,11 @@ impl<A> Set<A> {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
 
+    #[verifier(inline)]
+    pub open spec fn spec_le(self, s2: Set<A>) -> bool {
+        self.subset_of(s2)
+    }
+
     /// Returns a new set with the given element inserted.
     /// If that element is already in the set, then an identical set is returned.
 

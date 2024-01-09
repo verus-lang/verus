@@ -921,3 +921,14 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 3)
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] while_continue_panic_regression_421 verus_code! {
+        fn test() {
+            let i = 7;
+            while i < 5 {
+                continue;
+            }
+        }
+    } => Ok(())
+}

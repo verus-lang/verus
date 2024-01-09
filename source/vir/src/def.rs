@@ -44,6 +44,7 @@ const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
+const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
@@ -402,6 +403,10 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_ENSURES.to_string() + ident)
 }
 
+pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
+    Arc::new(format!("{}{}%{}", PREFIX_OPEN_INV, i, ident))
+}
+
 fn prefix_path(prefix: String, path: &Path) -> Path {
     let mut segments: Vec<Ident> = (*path.segments).clone();
     let last: &mut Ident = segments.last_mut().expect("path last segment");
@@ -579,9 +584,26 @@ pub enum ProverChoice {
     Singular,
 }
 
-pub struct CommandsWithContextX {
+#[derive(Clone)]
+pub struct CommandContext {
+    pub fun: Fun,
     pub span: crate::messages::Span,
     pub desc: String,
+}
+
+impl CommandContext {
+    pub fn with_desc_prefix(&self, prefix: Option<&str>) -> Self {
+        let CommandContext { fun, span, desc } = self;
+        CommandContext {
+            fun: fun.clone(),
+            span: span.clone(),
+            desc: prefix.unwrap_or("").to_string() + desc,
+        }
+    }
+}
+
+pub struct CommandsWithContextX {
+    pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
@@ -589,6 +611,7 @@ pub struct CommandsWithContextX {
 
 impl CommandsWithContextX {
     pub fn new(
+        fun: Fun,
         span: Span,
         desc: String,
         commands: Commands,
@@ -596,11 +619,10 @@ impl CommandsWithContextX {
         skip_recommends: bool,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
-            span: span,
-            desc: desc,
-            commands: commands,
-            prover_choice: prover_choice,
-            skip_recommends: skip_recommends,
+            context: CommandContext { fun, span, desc },
+            commands,
+            prover_choice,
+            skip_recommends,
         })
     }
 }
@@ -722,16 +744,5 @@ pub fn array_index_path(vstd_crate_name: &Option<Ident>) -> Path {
             Arc::new("array".to_string()),
             Arc::new("array_index".to_string()),
         ]),
-    })
-}
-
-pub fn array_len_fun(vstd_crate_name: &Option<Ident>) -> Fun {
-    Arc::new(FunX { path: array_len_path(vstd_crate_name) })
-}
-
-pub fn array_len_path(vstd_crate_name: &Option<Ident>) -> Path {
-    Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_len".to_string())]),
     })
 }

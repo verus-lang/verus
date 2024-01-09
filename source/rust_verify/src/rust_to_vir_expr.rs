@@ -27,7 +27,7 @@ use rustc_hir::{
     Local, LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCast,
+    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
 use rustc_span::def_id::DefId;
@@ -173,8 +173,18 @@ pub(crate) fn check_lit_int(
             IntRange::Int | IntRange::Nat => Ok(()),
             IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => Ok(()),
             IntRange::I(n) if n - 1 < 128 && i < (1u128 << (n - 1)) + i_bump => Ok(()),
-            IntRange::USize if i < (1u128 << ctxt.arch.word_bits.min_bits()) => Ok(()),
-            IntRange::ISize if i < (1u128 << (ctxt.arch.word_bits.min_bits() - 1)) + i_bump => {
+            IntRange::USize
+                if i < (1u128
+                    << (ctxt.arch_word_bits.expect("unkown arch_word_bits").min_bits()
+                        as u128)) =>
+            {
+                Ok(())
+            }
+            IntRange::ISize
+                if i < (1u128
+                    << (ctxt.arch_word_bits.expect("unkown arch_word_bits").min_bits() - 1))
+                    + i_bump =>
+            {
                 Ok(())
             }
             _ => {
@@ -272,7 +282,9 @@ pub(crate) fn get_adt_res<'tcx>(
             let variant_def = tcx.adt_def(struct_did).non_enum_variant();
             Ok((struct_did, variant_def, false))
         }
-        Res::Def(DefKind::TyAlias, alias_did) => {
+        Res::Def(DefKind::TyAlias { lazy }, alias_did) => {
+            unsupported_err_unless!(!lazy, span, "lazy type alias");
+
             let alias_ty = tcx.type_of(alias_did).skip_binder();
 
             let struct_did = match alias_ty.kind() {
@@ -930,7 +942,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 "dereferencing a pointer (here the dereference is implicit)"
             )
         }
-        Adjust::Pointer(PointerCast::Unsize) => {
+        Adjust::Pointer(PointerCoercion::Unsize) => {
             unsupported_err!(
                 expr.span,
                 "unsizing operation (e.g., implicit cast from array [T; N] to slice [T])"
@@ -1070,7 +1082,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 bctx,
                                 expr,
                                 def_id,
-                                bctx.types.node_substs(fun.hir_id),
+                                bctx.types.node_args(fun.hir_id),
                                 fun.span,
                                 args,
                                 modifier,
@@ -1219,8 +1231,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let c = vir::ast::Constant::Char(c);
                 mk_expr(ExprX::Const(c))
             }
+            LitKind::Str(..) => {
+                return err_span(
+                    expr.span,
+                    "Unsupported string constant (use new_strlit(\"...\") instead)",
+                );
+            }
             _ => {
-                panic!("unexpected constant: {:?}", expr)
+                return err_span(expr.span, "Unsupported constant type");
             }
         },
         ExprKind::Cast(source, _) => {
@@ -1652,7 +1670,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 bctx,
                 expr,
                 fn_def_id,
-                bctx.types.node_substs(expr.hir_id),
+                bctx.types.node_args(expr.hir_id),
                 *fn_span,
                 all_args,
                 modifier,
@@ -1660,7 +1678,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )
         }
         ExprKind::Closure(..) => closure_to_vir(bctx, expr, expr_typ()?, false, modifier),
-        ExprKind::Index(tgt_expr, idx_expr) => {
+        ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut
             // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
             // this is apparently determined by the (adjusted) type of the receiver
@@ -1772,6 +1790,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Yield(..) => unsupported_err!(expr.span, format!("yield expressions")),
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
         ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),
+        ExprKind::Become(..) => unsupported_err!(expr.span, format!("Become expressions")),
     }
 }
 

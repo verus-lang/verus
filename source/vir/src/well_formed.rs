@@ -74,7 +74,7 @@ fn check_path_and_get_datatype<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "`{rpath:}` is not supported (note: you may be able to add a Verus specification to this function with the `external_type_specification` attribute){:}",
+                        "`{rpath:}` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute){:}",
                         if path.is_rust_std_path() {
                             " (note: the vstd library provides some specification for the Rust std library, but it is currently limited)"
                         } else {
@@ -161,8 +161,25 @@ fn check_one_expr(
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
+    place: Place,
 ) -> Result<(), VirErr> {
     match &expr.x {
+        ExprX::Var(x) => {
+            if let Place::PreState(clause_name) = place {
+                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
+                    if *x == param.x.name {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "in {}, use `old({})` to refer to the pre-state of an &mut variable",
+                                clause_name,
+                                crate::def::user_local_name(&param.x.name)
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
         ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
@@ -360,14 +377,21 @@ fn check_one_expr(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum Place {
+    PreState(&'static str),
+    BodyOrPostState,
+}
+
 fn check_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
+    place: Place,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
-        check_one_expr(ctxt, function, expr, disallow_private_access)
+        check_one_expr(ctxt, function, expr, disallow_private_access, place)
     })
 }
 
@@ -375,6 +399,7 @@ fn check_function(
     ctxt: &Ctxt,
     function: &Function,
     diags: &mut Vec<VirErrAs>,
+    _no_verify: bool,
 ) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
         if function.x.body.is_some() && function.x.mode != Mode::Exec {
@@ -394,10 +419,10 @@ fn check_function(
     }
 
     if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
-        if function.x.require.len() + function.x.ensure.len() != 0 {
+        if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
-                "trait method implementation cannot declare requires/ensures; these can only be inherited from the trait declaration",
+                "trait method implementation cannot declare requires clauses; these can only be inherited from the trait declaration",
             ));
         }
         if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
@@ -582,7 +607,7 @@ fn check_function(
     }
 
     #[cfg(not(feature = "singular"))]
-    if function.x.attrs.integer_ring {
+    if function.x.attrs.integer_ring && !_no_verify {
         return Err(error(
             &function.span,
             "Please cargo build with `--features singular` to use integer_ring attribute",
@@ -752,33 +777,39 @@ fn check_function(
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, req, disallow_private_access)?;
-        crate::ast_visitor::expr_visitor_check(req, &mut |_scope_map, expr| {
-            if let ExprX::Var(x) = &expr.x {
-                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
-                    if *x == param.x.name {
-                        return Err(error(
-                            &expr.span,
-                            format!(
-                                "in requires, use `old({})` to refer to the pre-state of an &mut variable",
-                                crate::def::user_local_name(&param.x.name)
-                            ),
-                        ));
-                    }
-                }
-            }
-            Ok(())
-        })?;
+        check_expr(ctxt, function, req, disallow_private_access, Place::PreState("requires"))?;
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, ens, disallow_private_access)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
+    }
+    match &function.x.mask_spec {
+        MaskSpec::NoSpec => {}
+        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+            for expr in es.iter() {
+                let msg = "'opens_invariants' clause of public function";
+                let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+                check_expr(
+                    ctxt,
+                    function,
+                    expr,
+                    disallow_private_access,
+                    Place::PreState("opens_invariants clause"),
+                )?;
+            }
+        }
     }
     for expr in function.x.decrease.iter() {
         let msg = "'decreases' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, expr, disallow_private_access)?;
+        check_expr(
+            ctxt,
+            function,
+            expr,
+            disallow_private_access,
+            Place::PreState("decreases clause"),
+        )?;
     }
     if let Some(expr) = &function.x.decrease_when {
         let msg = "'when' clause of public function";
@@ -795,7 +826,7 @@ fn check_function(
                 "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
             ));
         }
-        check_expr(ctxt, function, expr, disallow_private_access)?;
+        check_expr(ctxt, function, expr, disallow_private_access, Place::PreState("when clause"))?;
     }
 
     if function.x.mode == Mode::Exec
@@ -815,7 +846,7 @@ fn check_function(
             }
             _ => None,
         };
-        check_expr(ctxt, function, body, disallow_private_access)?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
     }
     Ok(())
 }
@@ -938,7 +969,11 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
     err
 }
 
-pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirErr> {
+pub fn check_crate(
+    krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    no_verify: bool,
+) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
@@ -1063,7 +1098,7 @@ pub fn check_crate(krate: &Krate, diags: &mut Vec<VirErrAs>) -> Result<(), VirEr
 
     let ctxt = Ctxt { funs, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
-        check_function(&ctxt, function, diags)?;
+        check_function(&ctxt, function, diags, no_verify)?;
     }
     for dt in krate.datatypes.iter() {
         check_datatype(&ctxt, dt)?;

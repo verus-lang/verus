@@ -141,4 +141,13 @@ pub fn unwrap_or<T>(option: Option<T>, default: T) -> (t: T)
     option.unwrap_or(default)
 }
 
+#[verifier::external_fn_specification]
+pub fn take<T>(option: &mut Option<T>) -> (t: Option<T>)
+    ensures
+        t == old(option),
+        *option is None,
+{
+    option.take()
+}
+
 }

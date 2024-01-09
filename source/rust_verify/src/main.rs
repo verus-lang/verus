@@ -2,7 +2,8 @@
 
 use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
-extern crate rustc_driver; // TODO(main_new) can we remove this?
+extern crate rustc_driver;
+extern crate rustc_session;
 
 #[cfg(target_family = "windows")]
 fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
@@ -81,7 +82,9 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
-    rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+    let logger_handler =
+        rustc_session::EarlyErrorHandler::new(rustc_session::config::ErrorOutputType::default());
+    rustc_driver::init_env_logger(&logger_handler, "RUSTVERIFY_LOG");
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
@@ -225,6 +228,20 @@ pub fn main() {
         };
 
         if verifier.args.output_json {
+            assert!(
+                smt_function_breakdown
+                    .keys()
+                    .collect::<std::collections::HashSet<_>>()
+                    .difference(
+                        &smt_run_times
+                            .iter()
+                            .map(|(x, _)| *x)
+                            .collect::<std::collections::HashSet<_>>()
+                    )
+                    .next()
+                    .is_none()
+            );
+
             let mut times = serde_json::json!({
                 "verus-build": {
                     "profile": build_info.profile.to_string(),
@@ -281,12 +298,12 @@ pub fn main() {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t,
-                                "function-breakdown" : smt_function_breakdown.get_mut(*m).expect("Module should exist").iter().map(|(f, t)| {
+                                "function-breakdown" : smt_function_breakdown.get_mut(*m).map(|b| b.iter().map(|(f, t)| {
                                     serde_json::json!({
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
                                         "time" : t
                                     })
-                                 }).collect::<Vec<serde_json::Value>>()
+                                 }).collect::<Vec<serde_json::Value>>()).unwrap_or_default(),
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                     }),

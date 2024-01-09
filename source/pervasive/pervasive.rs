@@ -1,3 +1,5 @@
+#![allow(internal_features)]
+
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -8,7 +10,6 @@ macro_rules! println {
     ($($arg:tt)*) => {
     };
 }
-
 verus! {
 
 // TODO: remove this
@@ -29,6 +30,25 @@ pub proof fn assert(b: bool)
 pub proof fn affirm(b: bool)
     requires b
 {
+}
+
+#[cfg(verus_keep_ghost)]
+pub trait FnWithRequiresEnsures<Args, Output> : Sized {
+    spec fn requires(self, args: Args) -> bool;
+    spec fn ensures(self, args: Args, output: Output) -> bool;
+}
+
+#[cfg(verus_keep_ghost)]
+impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output=Output>> FnWithRequiresEnsures<Args, Output> for F {
+    #[verifier::inline]
+    open spec fn requires(self, args: Args) -> bool {
+        call_requires(self, args)
+    }
+
+    #[verifier::inline]
+    open spec fn ensures(self, args: Args, output: Output) -> bool {
+        call_ensures(self, args, output)
+    }
 }
 
 // Non-statically-determined function calls are translated *internally* (at the VIR level)
@@ -297,7 +317,7 @@ pub trait VecAdditionalExecFns<T> {
 }
 
 #[cfg(feature = "alloc")]
-impl<T> VecAdditionalExecFns<T> for Vec<T> {
+impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
     /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
 
     #[verifier::external_body]

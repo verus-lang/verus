@@ -552,16 +552,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_associated_type_with_bound_387_discussioncomment_6179829 verus_code! {
-        pub trait T { }
-
-        pub trait U {
-            type S: T;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support associated types with trait bounds")
-}
-
-test_verify_one_file! {
     #[test] test_empty_recommends_387_discussioncomment_5670055 verus_code! {
         pub open spec fn foo() -> bool
           recommends
@@ -830,6 +820,8 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_fn_with_ref_arguments_1 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
         struct X { v: u64 }
 
         fn test<F: Fn(&X) -> bool>(f: F, x: X) -> bool
@@ -842,6 +834,8 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test_fn_with_ref_arguments ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
         struct X { v: u64 }
         struct Y { w: u64 }
 
@@ -1104,6 +1098,136 @@ test_verify_one_file! {
                     }
                 }
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] panic_external_by_default_regression893 verus_code! {
+        use vstd::prelude::*;
+
+        pub enum Message { A, B, }
+
+        pub enum SingleMessage {
+            Message {
+                seqno: nat,
+                other: nat,
+            },
+            Other,
+        }
+
+        pub struct Packet {
+            pub msg: SingleMessage,
+            pub other: nat,
+        }
+
+        pub struct CPacket {
+            pub msg: CSingleMessage,
+            pub other: u64,
+        }
+
+        impl CPacket {
+            pub open spec fn view(self) -> Packet {
+                Packet { msg: self.msg@, other: self.other@ as nat }
+            }
+        }
+
+        pub enum CSingleMessage {
+            Message { seqno: u64, other: u64 },
+            Other,
+        }
+
+        impl CSingleMessage {
+            pub open spec fn view(self) -> SingleMessage {
+                arbitrary()
+            }
+        }
+
+        struct HostState {
+            received_packet: Option<CPacket>,
+        }
+
+        impl HostState {
+            fn host_model_next_get_request(&mut self) -> (sent_packets: Vec<CPacket>) {
+                assume(self.received_packet.is_some());
+                let cpacket: &CPacket = &self.received_packet.as_ref().unwrap();
+                let ghost pkt: Packet = cpacket@;
+                match &cpacket.msg {
+                    CSingleMessage::Message{ seqno, .. } => {
+                        let ghost received_request: nat = seqno@ as nat;
+                    }
+                    _ => (),
+                }
+                assume(false); unreached()
+            }
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_projection_regression_910 verus_code! {
+        use vstd::prelude::*;
+
+        trait T {
+            type X;
+        }
+
+        struct L<D: T> {
+            x: D::X,
+        }
+
+        spec fn f1<DT: T>(l: Map<nat, L<DT>>) -> Seq<DT::X> {
+            Seq::new(1, |i: int| l[i as nat].x)
+        }
+
+        spec fn f2<DT: T>(l: L<DT>) -> FnSpec(L<DT>)->DT::X {
+            |ll: L<DT>| ll.x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] parsing_unit_ret_type_issue937 verus_code! {
+        fn stuff() -> () { }
+
+        fn stuff_fn_once<F: FnOnce(u8) -> ()>() { }
+
+        fn pat_ret_colons() -> (x: ::std::primitive::bool)
+        {
+            true
+        }
+
+        fn pat_ret_colons2() -> (::std::primitive::bool)
+        {
+            true
+        }
+
+        fn pat_ret_colons3() -> (std::primitive::bool)
+        {
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] struct_with_updater_and_tuple_type_in_field_issue857 verus_code! {
+        use vstd::prelude::*;
+        use vstd::set::*;
+
+        pub struct S {
+            pub n: int,
+            pub s: Set<(int, int)>,
+        }
+
+        pub open spec fn f(s1: S, s2: S) -> bool {
+            s2 == S { n: s1.n + 1, ..s1 }
+        }
+
+        pub proof fn test(se: Set<(int, int)>) {
+            let s1 = S { n: 20, s: se };
+            let s2 = S { n: 21, s: se };
+            assert(f(s1, s2));
         }
     } => Ok(())
 }

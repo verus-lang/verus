@@ -186,11 +186,193 @@ test_verify_one_file! {
         trait T { type X; }
         struct S(<Self as T>::X) where Self: T;
         impl T for S { type X = u8; }
-        proof fn test1(s: S) {
-            assert(s.0 < 256);
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+fn trait_assoc_type_bound_code(pass: bool) -> String {
+    (verus_code! {
+        trait A {
+            spec fn a(&self) -> bool;
         }
-        proof fn test2(s: S) {
-            assert(s.0 < 255); // FAILS
+        trait B {
+            type T: A;
+
+            spec fn req(t: Self::T) -> bool;
+
+            proof fn foo(t: Self::T)
+                requires Self::req(t),
+                ensures t.a(); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    }) + (if pass {
+        verus_code_str! {
+            impl A for bool {
+                spec fn a(&self) -> bool {
+                    *self
+                }
+            }
+        }
+    } else {
+        verus_code_str! {
+            impl A for bool {
+                spec fn a(&self) -> bool {
+                    !*self
+                }
+            }
+        }
+    }) + verus_code_str! {
+        struct BB { }
+        impl B for BB {
+            type T = bool;
+
+            spec fn req(t: Self::T) -> bool { t }
+
+            proof fn foo(t: Self::T) { }
+        }
+    }
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_pass trait_assoc_type_bound_code(true) => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_fail trait_assoc_type_bound_code(false) => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_generic verus_code! {
+        trait A {
+            spec fn a(&self) -> bool;
+        }
+        trait B {
+            type T: A;
+
+            spec fn ens(t: Self::T) -> bool;
+
+            proof fn foo(t: Self::T)
+                requires t.a(),
+                ensures Self::ens(t);
+        }
+
+        proof fn bar<BB: B>(t: BB::T)
+            requires t.a(),
+            ensures BB::ens(t),
+        {
+            BB::foo(t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_self verus_code! {
+        trait A {
+            spec fn a(&self) -> bool;
+        }
+        trait B where Self: A {
+            spec fn b(&self) -> bool;
+        }
+        impl A for bool {
+            spec fn a(&self) -> bool { *self }
+        }
+        impl B for bool {
+            spec fn b(&self) -> bool { self.a() }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_lifetimes verus_code! {
+        trait U<'a> {
+            spec fn a(&self) -> bool;
+        }
+        trait T<'a> {
+            type X: U<'a>;
+
+            spec fn b(&self) -> Self::X;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "projection type")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_no_lifetimes verus_code! {
+        trait U {
+            spec fn a(&self) -> bool;
+        }
+        trait T {
+            type X: U;
+
+            spec fn b(&self, x: Self::X) -> bool;
+        }
+        struct S;
+        impl U for bool {
+            spec fn a(&self) -> bool { true }
+        }
+        impl T for S {
+            type X = bool;
+
+            spec fn b(&self, x: bool) -> bool {
+                x.a()
+            }
+        }
+        proof fn test1(s: S)
+        {
+            assert(s.b(false));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_mutual_bounds_0 verus_code! {
+        trait A: B {
+            spec fn a(&self) -> Self::AT;
+        }
+
+        trait B: A {
+            spec fn b(&self) -> Self::BT;
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when computing the super predicates of `A`")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_mutual_bounds_1 verus_code! {
+        trait A where Self: B {
+            spec fn a(&self) -> Self::AT;
+        }
+
+        trait B where Self: A {
+            spec fn b(&self) -> Self::BT;
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when computing the super predicates of `A`")
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_mutual_bounds_2 verus_code! {
+        trait A {
+            type AT: B;
+
+            spec fn a(v: Self::AT) -> bool;
+        }
+
+        trait B {
+            type BT: A;
+
+            spec fn b(v: Self::BT) -> bool;
+        }
+
+        impl A for bool {
+            type AT = bool;
+
+            spec fn a(v: Self::AT) -> bool {
+                bool::b(v)
+            }
+        }
+
+        impl B for bool {
+            type BT = bool;
+
+            spec fn b(v: Self::BT) -> bool {
+                bool::a(v)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
 }

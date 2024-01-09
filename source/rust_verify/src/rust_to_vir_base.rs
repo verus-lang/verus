@@ -7,10 +7,10 @@ use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::GenericParamDefKind;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
-use rustc_middle::ty::{BoundConstness, Clause, ImplPolarity, PredicateKind, TraitPredicate};
+use rustc_middle::ty::{ClauseKind, GenericParamDefKind};
+use rustc_middle::ty::{ImplPolarity, TraitPredicate};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
@@ -145,7 +145,7 @@ pub(crate) fn def_id_to_vir_path<'tcx>(
     def_id: DefId,
 ) -> Path {
     def_id_to_vir_path_option(tcx, verus_items, def_id)
-        .expect(&format!("unhandled name {:?}", def_id))
+        .unwrap_or_else(|| panic!("unhandled name {:?}", def_id))
 }
 
 pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
@@ -195,7 +195,7 @@ pub(crate) fn get_impl_paths<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
     target_id: DefId,
-    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::subst::GenericArg<'tcx>>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
 ) -> vir::ast::ImplPaths {
     let mut impl_paths = Vec::new();
     let param_env = tcx.param_env(param_env_src);
@@ -212,7 +212,7 @@ pub(crate) fn get_impl_paths<'tcx>(
     // impls once you start nesting?
     // So I'm implementing this with a predicate worklist to be safe.
 
-    let mut predicate_worklist: Vec<rustc_middle::ty::Predicate> =
+    let mut predicate_worklist: Vec<rustc_middle::ty::Clause> =
         preds.instantiate(tcx, node_substs).predicates;
 
     let mut idx = 0;
@@ -224,22 +224,33 @@ pub(crate) fn get_impl_paths<'tcx>(
         let inst_pred = &predicate_worklist[idx];
         idx += 1;
 
-        if let PredicateKind::Clause(Clause::Trait(_)) = inst_pred.kind().skip_binder() {
-            let poly_trait_refs = inst_pred.kind().map_bound(|p| {
-                if let PredicateKind::Clause(Clause::Trait(tp)) = &p {
-                    tp.trait_ref
-                } else {
-                    unreachable!()
-                }
+        if let ClauseKind::Trait(_) = inst_pred.kind().skip_binder() {
+            let inst_pred_erased = inst_pred.kind();
+
+            let trait_refs = inst_pred_erased.map_bound(|p| {
+                if let ClauseKind::Trait(tp) = &p { tp.trait_ref } else { unreachable!() }
             });
-            let candidate = tcx.codegen_select_candidate((param_env, poly_trait_refs));
+
+            let mut regions = HashMap::new();
+            let delegate = rustc_middle::ty::fold::FnMutDelegate {
+                regions: &mut |br| {
+                    *regions
+                        .entry(br)
+                        .or_insert(rustc_middle::ty::Region::new_free(tcx, target_id, br.kind))
+                },
+                types: &mut |b| panic!("unexpected bound ty in binder: {:?}", b),
+                consts: &mut |b, ty| panic!("unexpected bound ct in binder: {:?} {}", b, ty),
+            };
+            let trait_refs = tcx.replace_escaping_bound_vars_uncached(trait_refs, delegate);
+
+            let candidate = tcx.codegen_select_candidate((param_env, trait_refs.skip_binder()));
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
                     impl_paths.push(impl_path);
 
                     let preds = tcx.predicates_of(u.impl_def_id);
-                    for p in preds.instantiate(tcx, u.substs).predicates {
+                    for p in preds.instantiate(tcx, u.args).predicates {
                         if !predicate_worklist.contains(&p) {
                             predicate_worklist.push(p);
                         }
@@ -346,7 +357,7 @@ pub(crate) fn mid_ty_simplify<'tcx>(
                     || is_ghost_or_tracked)
                     && args.len() == 1;
             if is_box || is_smart_ptr {
-                if let rustc_middle::ty::subst::GenericArgKind::Type(t) = args[0].unpack() {
+                if let rustc_middle::ty::GenericArgKind::Type(t) = args[0].unpack() {
                     mid_ty_simplify(tcx, verus_items, &t, false)
                 } else {
                     panic!("unexpected type argument")
@@ -446,11 +457,11 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {
                     match arg.unpack() {
-                        rustc_middle::ty::subst::GenericArgKind::Type(t) => {
+                        rustc_middle::ty::GenericArgKind::Type(t) => {
                             typ_args.push(t_rec(&t)?);
                         }
-                        rustc_middle::ty::subst::GenericArgKind::Lifetime(_) => {}
-                        rustc_middle::ty::subst::GenericArgKind::Const(cnst) => {
+                        rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
+                        rustc_middle::ty::GenericArgKind::Const(cnst) => {
                             typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
                         }
                     }
@@ -459,7 +470,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let (t0, ghost) = &typ_args[0];
 
                     let allocator_arg = match args[1].unpack() {
-                        rustc_middle::ty::subst::GenericArgKind::Type(t) => t,
+                        rustc_middle::ty::GenericArgKind::Type(t) => t,
                         _ => {
                             panic!("Box expected type arg");
                         }
@@ -469,7 +480,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     }
                     return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
                 }
-                if typ_args.len() == 1 {
+                if typ_args.len() >= 1 {
                     let (t0, ghost) = &typ_args[0];
                     let decorate = |d: TypDecoration, ghost: bool| {
                         Ok((Arc::new(TypX::Decorate(d, t0.clone())), ghost))
@@ -478,13 +489,21 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let rust_item = verus_items::get_rust_item(tcx, did);
                     match (verus_item, rust_item) {
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)), _) => {
+                            assert!(typ_args.len() == 1);
                             return decorate(TypDecoration::Ghost, true);
                         }
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Tracked)), _) => {
+                            assert!(typ_args.len() == 1);
                             return decorate(TypDecoration::Tracked, true);
                         }
-                        (_, Some(RustItem::Rc)) => return decorate(TypDecoration::Rc, *ghost),
-                        (_, Some(RustItem::Arc)) => return decorate(TypDecoration::Arc, *ghost),
+                        (_, Some(RustItem::Rc)) => {
+                            assert!(typ_args.len() == 2);
+                            return decorate(TypDecoration::Rc, *ghost);
+                        }
+                        (_, Some(RustItem::Arc)) => {
+                            assert!(typ_args.len() == 2);
+                            return decorate(TypDecoration::Arc, *ghost);
+                        }
                         _ => {}
                     }
                 }
@@ -553,10 +572,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   use crate::rustc_middle::ty::DefIdTree;
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
-            if t.substs.iter().find(|x| x.as_type().is_none()).is_some() {
+            if t.args.iter().find(|x| x.as_type().is_none()).is_some() {
                 unsupported_err!(span, "projection type")
             }
-            match (trait_def, t.substs.into_type_list(tcx)) {
+            match (trait_def, t.args.into_type_list(tcx)) {
                 (Some(trait_def), typs) if typs.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
                     // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
@@ -574,6 +593,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
         }
         TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => {
+            unsupported_err!(span, "opaque type")
+        }
+        TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => {
             unsupported_err!(span, "opaque type")
         }
         TyKind::Char => (Arc::new(TypX::Char), false),
@@ -835,6 +857,93 @@ pub(crate) fn param_ty_to_vir_name(param: &rustc_middle::ty::ParamTy) -> String 
     }
 }
 
+pub(crate) fn process_predicate_bounds<'tcx, 'a>(
+    tcx: TyCtxt<'tcx>,
+    param_env_src: DefId,
+    verus_items: &crate::verus_items::VerusItems,
+    predicates: impl Iterator<Item = &'a (rustc_middle::ty::Clause<'tcx>, Span)>,
+) -> Result<Vec<vir::ast::GenericBound>, VirErr>
+where
+    'tcx: 'a,
+{
+    let mut bounds: Vec<vir::ast::GenericBound> = Vec::new();
+    for (predicate, span) in predicates {
+        // REVIEW: rustc docs say that skip_binder is "dangerous"
+        match predicate.kind().skip_binder() {
+            ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
+                // can ignore lifetime bounds
+            }
+            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
+                let substs = trait_ref.args;
+
+                // For a bound like `T: SomeTrait<X, Y, Z>`, then:
+                // T should be index 0,
+                // X, Y, Z, should be the rest
+                // The SomeTrait is given by the def_id
+
+                // Note: I _think_ rustc organizes it this way because
+                // T, X, Y, Z are actually all handled symmetrically
+                // in the formal theory of Rust's traits;
+                // i.e., the `Self` of a trait is actually the same as any of the other
+                // type parameters, it's just special in the notation for convenience.
+                //
+                // Right now Verus only allows `Self` (in the example, `T`) to be a type param,
+                // and it doesn't have full support for the other type params, so we special
+                // case it here.
+
+                let trait_def_id = trait_ref.def_id;
+
+                if Some(trait_def_id) == tcx.lang_items().fn_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
+                {
+                    // Ignore Fn bounds
+                    continue;
+                }
+
+                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
+                let generic_bound = check_generic_bound(
+                    tcx,
+                    verus_items,
+                    param_env_src,
+                    *span,
+                    trait_def_id,
+                    &trait_params,
+                )?;
+                if let Some(bound) = generic_bound {
+                    bounds.push(bound);
+                }
+            }
+            ClauseKind::Projection(pred) => {
+                let item_def_id = pred.projection_ty.def_id;
+                // The trait bound `F: Fn(A) -> B`
+                // is really more like a trait bound `F: Fn<A, Output=B>`
+                // The trait bounds that use = are called projections.
+                // When Rust sees a trait bound like this, it actually creates *two*
+                // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
+                //
+                // We don't handle projections in general right now, but we skip
+                // over them to support Fns
+                // (What Verus actually cares about is the builtin 'FnWithSpecification'
+                // trait which Fn/FnMut/FnOnce all get automatically.)
+
+                if Some(item_def_id) == tcx.lang_items().fn_once_output() {
+                    // Do nothing
+                } else {
+                    return err_span(*span, "Verus does yet not support this type of bound");
+                }
+            }
+            ClauseKind::ConstArgHasType(..) => {
+                // Do nothing
+            }
+            _ => {
+                return err_span(*span, "Verus does yet not support this type of bound");
+            }
+        }
+    }
+    Ok(bounds)
+}
+
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -880,88 +989,10 @@ pub(crate) fn check_generics_bounds<'tcx>(
         .collect();
 
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::AcceptRecursiveType)> = Vec::new();
-    let mut bounds: Vec<vir::ast::GenericBound> = Vec::new();
 
     // Process all trait bounds.
     let predicates = tcx.predicates_of(def_id);
-    for (predicate, span) in predicates.predicates.iter() {
-        // REVIEW: rustc docs say that skip_binder is "dangerous"
-        match predicate.kind().skip_binder() {
-            PredicateKind::Clause(Clause::RegionOutlives(_) | Clause::TypeOutlives(_)) => {
-                // can ignore lifetime bounds
-            }
-            PredicateKind::Clause(Clause::Trait(TraitPredicate {
-                trait_ref,
-                constness: BoundConstness::NotConst,
-                polarity: ImplPolarity::Positive,
-            })) => {
-                let substs = trait_ref.substs;
-
-                // For a bound like `T: SomeTrait<X, Y, Z>`, then:
-                // T should be index 0,
-                // X, Y, Z, should be the rest
-                // The SomeTrait is given by the def_id
-
-                // Note: I _think_ rustc organizes it this way because
-                // T, X, Y, Z are actually all handled symmetrically
-                // in the formal theory of Rust's traits;
-                // i.e., the `Self` of a trait is actually the same as any of the other
-                // type parameters, it's just special in the notation for convenience.
-                //
-                // Right now Verus only allows `Self` (in the example, `T`) to be a type param,
-                // and it doesn't have full support for the other type params, so we special
-                // case it here.
-
-                let trait_def_id = trait_ref.def_id;
-
-                if Some(trait_def_id) == tcx.lang_items().fn_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
-                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
-                {
-                    // Ignore Fn bounds
-                    continue;
-                }
-
-                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
-                let generic_bound = check_generic_bound(
-                    tcx,
-                    verus_items,
-                    def_id,
-                    *span,
-                    trait_def_id,
-                    &trait_params,
-                )?;
-                if let Some(bound) = generic_bound {
-                    bounds.push(bound);
-                }
-            }
-            PredicateKind::Clause(Clause::Projection(pred)) => {
-                let item_def_id = pred.projection_ty.def_id;
-                // The trait bound `F: Fn(A) -> B`
-                // is really more like a trait bound `F: Fn<A, Output=B>`
-                // The trait bounds that use = are called projections.
-                // When Rust sees a trait bound like this, it actually creates *two*
-                // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
-                //
-                // We don't handle projections in general right now, but we skip
-                // over them to support Fns
-                // (What Verus actually cares about is the builtin 'FnWithSpecification'
-                // trait which Fn/FnMut/FnOnce all get automatically.)
-
-                if Some(item_def_id) == tcx.lang_items().fn_once_output() {
-                    // Do nothing
-                } else {
-                    return err_span(*span, "Verus does yet not support this type of bound");
-                }
-            }
-            PredicateKind::Clause(Clause::ConstArgHasType(..)) => {
-                // Do nothing
-            }
-            _ => {
-                return err_span(*span, "Verus does yet not support this type of bound");
-            }
-        }
-    }
+    let bounds = process_predicate_bounds(tcx, def_id, verus_items, predicates.predicates.iter())?;
 
     // In traits, the first type param is Self. This is handled specially,
     // so we skip it here.
@@ -1058,7 +1089,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 typ_params.push((Arc::new(param_name), accept_rec));
             }
             _ => {
-                panic!("shouldn't get here");
+                unsupported_err!(*span, "this kind of generic param");
             }
         }
     }

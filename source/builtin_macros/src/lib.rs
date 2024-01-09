@@ -132,10 +132,18 @@ pub fn verus_exec_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::Tok
     syntax::proof_macro_exprs(cfg_erase(), false, input)
 }
 
+// This is for expanding the body of an open_*_invariant in exec mode
 #[proc_macro]
-pub fn verus_inv_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn verus_exec_inv_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Reads the first expression as proof; the second as exec
-    syntax::inv_macro_exprs(cfg_erase(), input)
+    syntax::inv_macro_exprs(cfg_erase(), false, input)
+}
+
+// This is for expanding the body of an open_*_invariant in `proof` mode
+#[proc_macro]
+pub fn verus_ghost_inv_macro_exprs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    // Reads all expressions as proof
+    syntax::inv_macro_exprs(cfg_erase(), true, input)
 }
 
 /// `verus_proof_macro_explicit_exprs!(f!(tts))` applies verus syntax to transform `tts` into

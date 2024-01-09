@@ -1,6 +1,6 @@
 use crate::ast::{
     AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    IntRange, MaskSpec, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::typ_to_diagnostic_str;
@@ -10,6 +10,7 @@ use crate::def::{
     FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
 use crate::sst::{
@@ -293,8 +294,8 @@ pub(crate) fn check_termination_commands(
         &Arc::new(vec![]),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &MaskSpec::NoSpec,
-        function.x.mode,
+        &Arc::new(vec![]),
+        &MaskSet::empty(),
         &stm_block,
         false,
         false,
@@ -337,7 +338,7 @@ fn check_termination<'a>(
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call { fun, resolved_method, args, .. }
+        StmX::Call { fun, resolved_method, args, dest, .. }
             if is_recursive_call(&ctxt, fun, resolved_method) =>
         {
             let check = check_decrease_call(
@@ -351,8 +352,33 @@ fn check_termination<'a>(
             )?;
             let error = error(&s.span, "could not prove termination");
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
-            let stm_block =
-                Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
+
+            let mut stms = vec![stm_assert];
+            // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
+            // of the recursive call just after it was proven to terminate
+            // This is instead an interim fix for incompleteness in recommends checking, due to
+            // the fact that we currently do not emit AIR calls to a spec function in the same SCC.
+            // Even if we _did_ emit AIR calls to spec functions in the same SCC, they would be
+            // uninterpreted, because the function definition axioms must be emitted later (so
+            // they cannot be used to prove their own termination).
+            // Because of this, the call's destination remains uninitialized, and lacks its typing
+            // invariant, causeing imcompleteness (issue #564).
+            // It _might_ be sound to emit just the functions' typing invariants first,
+            // but we are not sure. So, as a partial fix for (some of) the resulting incompleteness),
+            // we manually emit an assume with just the typing invariant of the destination.
+            // It may be okay to emit this for non-spec functions too, but I have not checked, so
+            // I'm restricting this to spec functions for now.
+            if ctx.func_map[fun].x.mode == crate::ast::Mode::Spec {
+                if let Some(Dest { dest, is_init: true }) = &dest {
+                    let has_typx =
+                        ExpX::UnaryOpr(UnaryOpr::HasType(dest.typ.clone()), dest.clone());
+                    let has_typ = SpannedTyped::new(&s.span, &Arc::new(TypX::Bool), has_typx);
+                    let has_typ_assume = Spanned::new(s.span.clone(), StmX::Assume(has_typ));
+                    stms.push(has_typ_assume);
+                }
+            }
+            stms.push(s.clone());
+            let stm_block = Spanned::new(s.span.clone(), StmX::Block(Arc::new(stms)));
             Ok(stm_block)
         }
         StmX::Fuel(callee, fuel) if *fuel >= 1 => {
@@ -398,12 +424,18 @@ pub(crate) fn expand_call_graph(
     // See recursive_types::check_traits for more documentation
     let f_node = Node::Fun(function.x.name.clone());
 
-    // Add D: T --> f and D: T --> T where f is one of D's methods that implements T
+    // Add T --> f if T declares method f
+    if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+        // T --> f
+        call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+    }
+
+    // Add D: T --> f and f --> T where f is one of D's methods that implements T
     if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
         let impl_node = Node::TraitImpl(impl_path.clone());
-        call_graph.add_edge(impl_node.clone(), t_node);
         call_graph.add_edge(impl_node, f_node.clone());
+        call_graph.add_edge(f_node.clone(), t_node);
     }
 
     // Add f --> T for any function f with "where ...: T(...)"
@@ -428,7 +460,6 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> f2 edges where f calls f2
     // Add f --> D: T where one of f's expressions instantiates A: T with D: T
-    // Add T --> f2 if the requires/ensures of T's method declarations call f2
     crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
@@ -457,12 +488,6 @@ pub(crate) fn expand_call_graph(
                         }
                     }
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
-                }
-
-                if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
-                    // T --> f2
-                    call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(x.clone()));
-                    call_graph.add_edge(Node::Trait(trait_path.clone()), Node::Fun(callee.clone()));
                 }
 
                 // f --> f2

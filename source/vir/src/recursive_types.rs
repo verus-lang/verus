@@ -203,6 +203,7 @@ fn check_positive_uses(
                 check_positive_uses(global, local, t_polarity, t)?;
             }
             for impl_path in impl_paths.iter() {
+                // REVIEW: this check isn't actually about polarity; should it be somewhere else?
                 let impl_node = TypNode::TraitImpl(impl_path.clone());
                 if global.type_graph.in_same_scc(&impl_node, &my_node) {
                     let scc_rep = global.type_graph.get_scc_rep(&my_node);
@@ -269,8 +270,14 @@ pub(crate) fn build_datatype_graph(krate: &Krate) -> Graph<TypNode> {
     }
 
     for a in &krate.assoc_type_impls {
+        let src = TypNode::TraitImpl(a.x.impl_path.clone());
+        for impl_path in a.x.impl_paths.iter() {
+            let dst = TypNode::TraitImpl(impl_path.clone());
+            type_graph.add_edge(src.clone(), dst);
+        }
+
         let mut ft = |type_graph: &mut Graph<TypNode>, typ: &Typ| {
-            add_one_type_to_graph(type_graph, &TypNode::TraitImpl(a.x.impl_path.clone()), typ);
+            add_one_type_to_graph(type_graph, &src, typ);
             Ok(typ.clone())
         };
         crate::ast_visitor::map_assoc_type_impl_visitor_env(a, &mut type_graph, &mut ft).unwrap();
@@ -331,6 +338,15 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
 
     let type_sccs = global.type_graph.sort_sccs();
     for scc in &type_sccs {
+        for node in &global.type_graph.get_scc_nodes(scc) {
+            match node {
+                TypNode::TraitImpl(_) if global.type_graph.node_is_in_cycle(node) => {
+                    return Err(type_scc_error(krate, node, &global.type_graph.get_scc_nodes(scc)));
+                }
+                _ => {}
+            }
+        }
+
         let mut converged = false;
         loop {
             let count = datatypes_well_founded.len();
@@ -468,12 +484,30 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     // For
     //   trait T<...> where ...: U1(...), ..., ...: Un(...)
     // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
-    let t_node = Node::Trait(trt.x.name.clone());
-    for bound in trt.x.typ_bounds.iter() {
+    let t_path = &trt.x.name;
+    let t_node = Node::Trait(t_path.clone());
+    for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
         let GenericBoundX::Trait(u_path, _) = &**bound;
+        assert_ne!(t_path, u_path);
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);
     }
+}
+
+pub(crate) fn add_trait_impl_to_graph(call_graph: &mut Graph<Node>, t: &crate::ast::TraitImpl) {
+    // For
+    //   trait T<...> where ...: U1(...), ..., ...: Un(...)
+    //   impl T<t1...tn> for ... { ... }
+    // Add necessary impl_T_for_* --> impl_Ui_for_* edges
+    // This corresponds to instantiating the a: Dictionary_U<A> field in the comments below
+    let src_node = Node::TraitImpl(t.x.impl_path.clone());
+    for imp in t.x.trait_typ_arg_impls.iter() {
+        if &t.x.impl_path != imp {
+            call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
+        }
+    }
+    // Add impl_T_for_* --> T
+    call_graph.add_edge(src_node, Node::Trait(t.x.trait_path.clone()));
 }
 
 // Check for cycles in traits
@@ -527,9 +561,10 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // We extend the call graph to represent trait declarations (T) and datatypes implementing
     // traits (D: T) using Node::Trait(T) and Node::TraitImpl(impl for D: T).
     // We add the following edges to the call graph (see recursion::expand_call_graph):
-    //   - T --> f if the requires/ensures of T's method declarations call f
+    //   - T --> f for any method f declared by T
     //   - f --> T for any function f<A: T> with type parameter A: T
     //     (more generally, f --> T for any function f with a where-bound T(...))
+    //   - f --> T for any function f that implements a method of T in D: T
     //   - D: T --> T
     //     (more generally, trait_impl -> trait)
     //   - f --> D: T where one of f's expressions instantiates A: T with D: T.
@@ -552,7 +587,7 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   }
     // We can store a Dictionary_U inside Dictionary_T:
     //   struct Dictionary_T<Self, A> {
-    //     a: Dictionary_U<A>,
+    //     a: Dictionary_U<A>, // see add_trait_impl_to_graph
     //     f: Fn(x: Self, y: Self) -> bool,
     //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
     //   }
@@ -560,6 +595,40 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   - T --> U
     // This also ensures that whenever A is used in f and g,
     // the dictionary a: Dictionary_U<A> is available.
+
+    // To handle bounds on Self like this:
+    //   trait T: U {
+    //     fn f(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // We can store a Dictionary_U inside Dictionary_T:
+    //   struct Dictionary_T<Self> {
+    //     a: Dictionary_U<Self>,
+    //     f: Fn(x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge, like for bounds on trait parameters:
+    //   - T --> U
+    // This also ensures that whenever Self is used in f and g,
+    // the dictionary a: Dictionary_U<Self> is available.
+
+    // To handle bounds on associated types:
+    //   trait T {
+    //     type Y: U;
+    //     fn f(x: Self, y: Y) -> bool;
+    //     fn g(x: Self, y: Y) -> Self { requires(f(x, y)); };
+    //   }
+    // We can store a Dictionary_U inside Dictionary_T:
+    //   struct Dictionary_T<Self> {
+    //     Y: Type, // an F* Type0
+    //     a: Dictionary_U<Y>,
+    //     f: Fn(x: Self, y: Y) -> bool,
+    //     g: Fn(x: Self, y: Y) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge, like for bounds on trait parameters:
+    //   - T --> U
+    // This also ensures that whenever Y is used in f and g,
+    // the dictionary a: Dictionary_U<Y> is available.
 
     // For bounds on datatype parameters like this:
     //   struct D<A: U> {
@@ -572,14 +641,14 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
 
     for scc in ctx.func_call_sccs.iter() {
         let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
-        let count = scc_nodes.len();
         for node in scc_nodes.iter() {
             match node {
+                // handled by decreases checking:
                 Node::Fun(_) => {}
-                _ if count == 1 => {}
-                _ => {
+                _ if ctx.func_call_graph.node_is_in_cycle(node) => {
                     return Err(scc_error(krate, node, &scc_nodes));
                 }
+                _ => {}
             }
         }
     }

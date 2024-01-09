@@ -121,6 +121,26 @@ macro_rules! num_specs {
             {
                 x.wrapping_sub(y)
             }
+
+            pub open spec fn signed_crop(x: int) -> $iN {
+                if (x % ($range as int)) > (<$iN>::MAX as int) {
+                    ((x % ($range as int)) - $range) as $iN
+                } else {
+                    (x % ($range as int)) as $iN
+                }
+            }
+
+            pub open spec fn wrapping_mul(x: $iN, y: $iN) -> $iN {
+                signed_crop(x * y)
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(wrapping_mul)]
+            pub fn ex_wrapping_mul(x: $iN, y: $iN) -> (res: $iN)
+                ensures res == wrapping_mul(x, y)
+            {
+                x.wrapping_mul(y)
+            }
         }
 
         }
@@ -132,6 +152,7 @@ num_specs!(u16, i16, u16_specs, i16_specs, 0x1_0000);
 num_specs!(u32, i32, u32_specs, i32_specs, 0x1_0000_0000);
 num_specs!(u64, i64, u64_specs, i64_specs, 0x1_0000_0000_0000_0000);
 num_specs!(u128, i128, u128_specs, i128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000);
+num_specs!(usize, isize, usize_specs, isize_specs, (usize::MAX - usize::MIN + 1));
 
 verus!{
 

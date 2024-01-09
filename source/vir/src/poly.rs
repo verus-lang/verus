@@ -853,10 +853,20 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let broadcast_forall = if attrs.broadcast_forall {
         // Create a coerce_typ_to_poly version of the parameters, requires, ensures
         state.types.push_scope(true);
+        let mut bs: Vec<Binder<Typ>> = Vec::new();
+        for param in params.iter() {
+            let ParamX { name, typ, .. } = &param.x;
+            bs.push(Arc::new(air::ast::BinderX { name: name.clone(), a: typ.clone() }));
+        }
+        let all_exps: Vec<&Expr> =
+            (function.x.require.iter()).chain(function.x.ensure.iter()).collect();
+        let natives = crate::triggers::predict_native_quant_vars(&Arc::new(bs), &all_exps);
         let mut new_params: Vec<Param> = Vec::new();
         for param in params.iter() {
             let ParamX { name, typ, mode, is_mut, unwrapped_info } = &param.x;
-            let typ = coerce_typ_to_poly(ctx, typ);
+            let native = natives.contains(name);
+            let typ =
+                if native { coerce_typ_to_native(ctx, typ) } else { coerce_typ_to_poly(ctx, typ) };
             let _ = state.types.insert(name.clone(), typ.clone());
             let paramx = ParamX {
                 name: name.clone(),
@@ -948,6 +958,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         external_fns,
         external_types,
         path_as_rust_names,
+        arch,
     } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
@@ -959,6 +970,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
         external_fns: external_fns.clone(),
         external_types: external_types.clone(),
         path_as_rust_names: path_as_rust_names.clone(),
+        arch: arch.clone(),
     };
     ctx.func_map = HashMap::new();
     for function in kratex.functions.iter() {

@@ -1,7 +1,6 @@
-use crate::smt_process::writer_thread;
-use std::io::{BufRead, BufReader};
-use std::process::ChildStdout;
-use std::sync::mpsc::{channel, Sender};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{ChildStdin, ChildStdout};
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub struct SingularManager {
     pub singular_executable_name: String,
@@ -10,6 +9,21 @@ pub struct SingularManager {
 pub struct SingularProcess {
     requests: Sender<Vec<u8>>,
     singular_pipe_stdout: BufReader<ChildStdout>,
+}
+
+/// A separate thread writes data to the Singular solver over a pipe.
+/// (Rust's documentation says you need a separate thread; otherwise, it lets the pipes deadlock.)
+pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
+    while let Ok(req) = requests.recv() {
+        smt_pipe_stdin
+            .write_all(&req)
+            .and_then(|_| writeln!(&smt_pipe_stdin))
+            .and_then(|_| smt_pipe_stdin.flush())
+            // The Singular process could die unexpectedly.  In that case, we die too:
+            // TODO: https://github.com/verus-lang/verus/pull/730
+            .expect("IO error: failure when sending data to Singular process across pipe");
+    }
+    // Exit when the other side closes the channel
 }
 
 impl SingularManager {

@@ -7,9 +7,10 @@ fn empty_raw_span() -> RawSpan {
     Arc::new(())
 }
 
-pub type RawSpan = Arc<dyn std::any::Any + std::marker::Sync + std::marker::Send>;
+pub type RawSpan =
+    Arc<dyn std::any::Any + std::marker::Sync + std::marker::Send + std::panic::RefUnwindSafe>;
 pub type AstId = u64;
-#[derive(Debug, Clone, Serialize, Deserialize)] // for Debug, see ast_util
+#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
 pub struct Span {
     #[serde(skip)]
     #[serde(default = "crate::messages::empty_raw_span")]
@@ -17,6 +18,17 @@ pub struct Span {
     pub id: AstId, // arbitrary integer identifier that may be set and used in any way (e.g. as unique id, or just left as 0)
     pub data: Vec<u64>, // arbitrary integers (e.g. for serialization/deserialization)
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
+}
+
+impl std::fmt::Debug for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Span")
+            .field("raw_span", &"ANY")
+            .field("id", &self.id)
+            .field("data", &self.data)
+            .field("as_string", &self.as_string)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

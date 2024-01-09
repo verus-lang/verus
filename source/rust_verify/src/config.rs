@@ -53,10 +53,10 @@ pub struct ArgsX {
     pub verify_root: bool,
     pub verify_module: Vec<String>,
     pub verify_function: Option<String>,
+    pub no_external_by_default: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
-    pub arch_word_bits: vir::prelude::ArchWordBits,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -81,6 +81,7 @@ pub struct ArgsX {
     pub version: bool,
     pub num_threads: usize,
     pub trace: bool,
+    pub report_long_running: bool,
 }
 
 pub type Args = Arc<ArgsX>;
@@ -103,6 +104,7 @@ pub fn enable_default_features_and_verus_attr(
             rustc_args.push(allow.to_string());
         }
     }
+    rustc_args.push("-Zcrate-attr=allow(internal_features)".to_string());
     for feature in &[
         "stmt_expr_attributes",
         "box_patterns",
@@ -111,7 +113,6 @@ pub fn enable_default_features_and_verus_attr(
         "unboxed_closures",
         "register_tool",
         "tuple_trait",
-        "allocator_api",
         "custom_inner_attributes",
     ] {
         rustc_args.push("-Z".to_string());
@@ -132,10 +133,10 @@ pub fn parse_args_with_imports(
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
+    const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
-    const OPT_ARCH_WORD_BITS: &str = "arch-word-bits";
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
@@ -186,6 +187,7 @@ pub fn parse_args_with_imports(
     const OPT_RECORD: &str = "record";
     const OPT_NUM_THREADS: &str = "num-threads";
     const OPT_TRACE: &str = "trace";
+    const OPT_NO_REPORT_LONG_RUNNING: &str = "no-report-long-running";
 
     const OPT_EXTENDED_MULTI: &str = "V";
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
@@ -237,6 +239,7 @@ pub fn parse_args_with_imports(
         "Verify just one function within the one module specified by verify-module or verify-root, \nmatches on unique substring (foo) or wildcards at ends of the argument (*foo, foo*, *foo*)",
         "MODULE",
     );
+    opts.optflag("", OPT_NO_EXTERNAL_BY_DEFAULT, "(deprecated) Verify all items, even those declared outside the verus! macro, and even if they aren't marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optflag(
@@ -244,7 +247,6 @@ pub fn parse_args_with_imports(
         OPT_NO_AUTO_RECOMMENDS_CHECK,
         "Do not automatically check recommends after verification failures",
     );
-    opts.optopt("", OPT_ARCH_WORD_BITS, "Size in bits for usize/isize: valid options are either '32', '64', or '32,64'. (default: 32,64)\nWARNING: this flag is a temporary workaround and will be removed in the near future", "BITS");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
     opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
@@ -303,6 +305,11 @@ pub fn parse_args_with_imports(
         "INTEGER",
     );
     opts.optflag("", OPT_TRACE, "Print progress information");
+    opts.optflag(
+        "",
+        OPT_NO_REPORT_LONG_RUNNING,
+        "Suppress notes and progress bars for functions that take a while to verify",
+    );
 
     opts.optflag("h", "help", "print this help menu");
     opts.optflag(
@@ -398,30 +405,16 @@ pub fn parse_args_with_imports(
         import: import,
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
         verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
+        no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
-        arch_word_bits: matches
-            .opt_str(OPT_ARCH_WORD_BITS)
-            .map(|bits| {
-                use vir::prelude::ArchWordBits;
-                match bits.as_str() {
-                    "32" => ArchWordBits::Exactly(32),
-                    "64" => ArchWordBits::Exactly(64),
-                    "32,64" => ArchWordBits::Either32Or64,
-                    _ => error(format!(
-                        "invalid {} option: it must be either '32', '64', or '32,64'",
-                        OPT_ARCH_WORD_BITS
-                    )),
-                }
-            })
-            .unwrap_or(vir::prelude::ArchWordBits::Either32Or64),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
         rlimit: matches
             .opt_get::<f32>(OPT_RLIMIT)
-            .unwrap_or_else(|_| error("expected integer after rlimit".to_string()))
+            .unwrap_or_else(|_| error("expected number after rlimit".to_string()))
             .unwrap_or(DEFAULT_RLIMIT_SECS),
         smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),
         multiple_errors: matches
@@ -513,6 +506,7 @@ pub fn parse_args_with_imports(
             .unwrap_or_else(|_| error("expected integer after num_threads".to_string()))
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
+        report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
     };
 
     (Arc::new(args), unmatched)

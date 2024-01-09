@@ -187,7 +187,7 @@ pub(crate) enum GhostBlockAttr {
     Wrapper,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -199,6 +199,8 @@ pub(crate) enum Attr {
     ExternalBody,
     // don't parse function; function can't be called directly from verified code
     External,
+    // opposite of External; verify item even if it's declared without VerusMacro
+    Verify,
     // hide body (from all modules) until revealed
     Opaque,
     // publish body?
@@ -254,6 +256,8 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Memoize function call results during interpretation
     Memoize,
+    // Override default rlimit
+    RLimit(f32),
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
     // In order to apply a specification to a method externally
@@ -266,6 +270,8 @@ pub(crate) enum Attr {
     InternalRevealFn,
     // Marks trusted code
     Trusted,
+    // global size_of
+    SizeOfGlobal,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -327,6 +333,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
+                AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "publish" => {
                     report_deprecated("publish");
@@ -433,6 +440,16 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::SpinoffProver)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
+                AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
+                    if name == "rlimit" =>
+                {
+                    match r.parse::<f32>() {
+                        Ok(rlimit) => v.push(Attr::RLimit(rlimit)),
+                        Err(_) => {
+                            return err_span(*span, "expected number for rlimit");
+                        }
+                    }
+                }
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
                 AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
                     v.push(Attr::ExternalFnSpecification)
@@ -522,6 +539,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "unwrapped_binding" => {
                         v.push(Attr::UnwrappedBinding)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "size_of" => v.push(Attr::SizeOfGlobal),
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -635,6 +653,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
     pub(crate) external: bool,
+    pub(crate) verify: bool,
     pub(crate) opaque: bool,
     pub(crate) publish: Option<bool>,
     pub(crate) opaque_outside_module: bool,
@@ -657,12 +676,28 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) memoize: bool,
+    pub(crate) rlimit: Option<f32>,
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) unwrapped_binding: bool,
+    pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
     pub(crate) trusted: bool,
+    pub(crate) size_of_global: bool,
+}
+
+impl VerifierAttrs {
+    pub(crate) fn is_external(&self, cmd_line_args: &crate::config::Args) -> bool {
+        self.external
+            || !(cmd_line_args.no_external_by_default
+                || self.verus_macro
+                || self.external_body
+                || self.external_fn_specification
+                || self.external_type_specification
+                || self.verify
+                || self.sets_mode)
+    }
 }
 
 pub(crate) fn get_verifier_attrs(
@@ -673,6 +708,7 @@ pub(crate) fn get_verifier_attrs(
         verus_macro: false,
         external_body: false,
         external: false,
+        verify: false,
         opaque: false,
         publish: None,
         opaque_outside_module: false,
@@ -694,18 +730,22 @@ pub(crate) fn get_verifier_attrs(
         nonlinear: false,
         spinoff_prover: false,
         memoize: false,
+        rlimit: None,
         truncate: false,
         external_fn_specification: false,
         external_type_specification: false,
         unwrapped_binding: false,
+        sets_mode: false,
         internal_reveal_fn: false,
         trusted: false,
+        size_of_global: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
+            Attr::Verify => vs.verify = true,
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::ExternalTypeSpecification => vs.external_type_specification = true,
             Attr::Opaque => vs.opaque = true,
@@ -739,11 +779,28 @@ pub(crate) fn get_verifier_attrs(
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::Memoize => vs.memoize = true,
+            Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
+            Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::Trusted => vs.trusted = true,
+            Attr::SizeOfGlobal => vs.size_of_global = true,
             _ => {}
+        }
+    }
+    if attrs.len() > 0 {
+        let span = attrs[0].span;
+        let mismatches = vec![
+            ("inside verus macro", "`verify`", vs.verus_macro, vs.verify),
+            ("`external`", "`verify`", vs.external, vs.verify),
+            ("`external_body`", "`verify`", vs.external_body, vs.verify),
+            ("`external_body`", "`external`", vs.external_body, vs.external),
+        ];
+        for (msg1, msg2, flag1, flag2) in mismatches {
+            if flag1 && flag2 {
+                return err_span(span, format!("item cannot be both {msg1} and {msg2}",));
+            }
         }
     }
     Ok(vs)

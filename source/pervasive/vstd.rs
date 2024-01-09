@@ -11,6 +11,7 @@
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
+#![cfg_attr(verus_keep_ghost, feature(allocator_api))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -34,6 +35,7 @@ pub mod atomic;
 pub mod atomic_ghost;
 pub mod math;
 pub mod modes;
+pub mod layout;
 pub mod multiset;
 pub mod function;
 pub mod state_machine_internal;

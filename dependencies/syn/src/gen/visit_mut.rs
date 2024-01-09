@@ -371,6 +371,18 @@ pub trait VisitMut {
     fn visit_generics_mut(&mut self, i: &mut Generics) {
         visit_generics_mut(self, i);
     }
+    fn visit_global_mut(&mut self, i: &mut Global) {
+        visit_global_mut(self, i);
+    }
+    fn visit_global_inner_mut(&mut self, i: &mut GlobalInner) {
+        visit_global_inner_mut(self, i);
+    }
+    fn visit_global_layout_mut(&mut self, i: &mut GlobalLayout) {
+        visit_global_layout_mut(self, i);
+    }
+    fn visit_global_size_of_mut(&mut self, i: &mut GlobalSizeOf) {
+        visit_global_size_of_mut(self, i);
+    }
     fn visit_ident_mut(&mut self, i: &mut Ident) {
         visit_ident_mut(self, i);
     }
@@ -409,6 +421,9 @@ pub trait VisitMut {
     }
     fn visit_invariant_name_set_any_mut(&mut self, i: &mut InvariantNameSetAny) {
         visit_invariant_name_set_any_mut(self, i);
+    }
+    fn visit_invariant_name_set_list_mut(&mut self, i: &mut InvariantNameSetList) {
+        visit_invariant_name_set_list_mut(self, i);
     }
     fn visit_invariant_name_set_none_mut(&mut self, i: &mut InvariantNameSetNone) {
         visit_invariant_name_set_none_mut(self, i);
@@ -2408,6 +2423,56 @@ where
         v.visit_where_clause_mut(it);
     }
 }
+pub fn visit_global_mut<V>(v: &mut V, node: &mut Global)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut node.global_token.span);
+    v.visit_global_inner_mut(&mut node.inner);
+    tokens_helper(v, &mut node.semi.spans);
+}
+pub fn visit_global_inner_mut<V>(v: &mut V, node: &mut GlobalInner)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        GlobalInner::SizeOf(_binding_0) => {
+            v.visit_global_size_of_mut(_binding_0);
+        }
+        GlobalInner::Layout(_binding_0) => {
+            v.visit_global_layout_mut(_binding_0);
+        }
+    }
+}
+pub fn visit_global_layout_mut<V>(v: &mut V, node: &mut GlobalLayout)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.layout_token.span);
+    v.visit_type_mut(&mut node.type_);
+    tokens_helper(v, &mut node.is_token.span);
+    v.visit_ident_mut(&mut (node.size).0);
+    tokens_helper(v, &mut (node.size).1.spans);
+    v.visit_expr_lit_mut(&mut (node.size).2);
+    if let Some(it) = &mut node.align {
+        tokens_helper(v, &mut (it).0.spans);
+        v.visit_ident_mut(&mut (it).1);
+        tokens_helper(v, &mut (it).2.spans);
+        v.visit_expr_lit_mut(&mut (it).3);
+    }
+}
+pub fn visit_global_size_of_mut<V>(v: &mut V, node: &mut GlobalSizeOf)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.size_of_token.span);
+    v.visit_type_mut(&mut node.type_);
+    tokens_helper(v, &mut node.eq_token.spans);
+    v.visit_expr_lit_mut(&mut node.expr_lit);
+}
 pub fn visit_ident_mut<V>(v: &mut V, node: &mut Ident)
 where
     V: VisitMut + ?Sized,
@@ -2546,6 +2611,9 @@ where
         InvariantNameSet::None(_binding_0) => {
             v.visit_invariant_name_set_none_mut(_binding_0);
         }
+        InvariantNameSet::List(_binding_0) => {
+            v.visit_invariant_name_set_list_mut(_binding_0);
+        }
     }
 }
 pub fn visit_invariant_name_set_any_mut<V>(v: &mut V, node: &mut InvariantNameSetAny)
@@ -2553,6 +2621,19 @@ where
     V: VisitMut + ?Sized,
 {
     tokens_helper(v, &mut node.token.span);
+}
+pub fn visit_invariant_name_set_list_mut<V>(v: &mut V, node: &mut InvariantNameSetList)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.bracket_token.span);
+    for el in Punctuated::pairs_mut(&mut node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
 }
 pub fn visit_invariant_name_set_none_mut<V>(v: &mut V, node: &mut InvariantNameSetNone)
 where
@@ -2616,6 +2697,9 @@ where
         }
         Item::Verbatim(_binding_0) => {
             skip!(_binding_0);
+        }
+        Item::Global(_binding_0) => {
+            v.visit_global_mut(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),

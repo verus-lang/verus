@@ -1,6 +1,7 @@
 use super::*;
 use crate::derive::{Data, DataEnum, DataStruct, DataUnion, DeriveInput};
 use crate::punctuated::Punctuated;
+use crate::verus::Global;
 use proc_macro2::TokenStream;
 
 #[cfg(feature = "parsing")]
@@ -71,6 +72,9 @@ ast_enum_of_structs! {
 
         /// Tokens forming an item not interpreted by Syn.
         Verbatim(TokenStream),
+
+        // Verus
+        Global(Global),
 
         // Not public API.
         //
@@ -386,7 +390,8 @@ impl Item {
             | Item::TraitAlias(ItemTraitAlias { attrs, .. })
             | Item::Impl(ItemImpl { attrs, .. })
             | Item::Macro(ItemMacro { attrs, .. })
-            | Item::Macro2(ItemMacro2 { attrs, .. }) => mem::replace(attrs, new),
+            | Item::Macro2(ItemMacro2 { attrs, .. })
+            | Item::Global(Global { attrs, .. }) => mem::replace(attrs, new),
             Item::Verbatim(_) => Vec::new(),
 
             #[cfg(syn_no_non_exhaustive)]
@@ -1226,6 +1231,8 @@ pub mod parsing {
                 } else {
                     Ok(Item::Verbatim(verbatim::between(begin, input)))
                 }
+            } else if lookahead.peek(Token![global]) {
+                input.parse().map(Item::Global)
             } else if lookahead.peek(Token![macro]) {
                 input.parse().map(Item::Macro2)
             } else if vis.is_inherited()

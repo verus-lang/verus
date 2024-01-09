@@ -3,6 +3,7 @@ use builtin_macros::*;
 use state_machines_macros::*;
 use vstd::prelude::*;
 
+#[verifier::verify]
 pub enum ThreadState {
     Idle,
     SetFlag,

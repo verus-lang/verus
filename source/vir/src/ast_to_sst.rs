@@ -15,8 +15,8 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_array_len,
-    sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt,
+    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_conjoin, sst_equal,
+    sst_has_type, sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
@@ -425,7 +425,7 @@ pub fn assume_false(span: &Span) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
-fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
+pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
     let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
@@ -1049,6 +1049,12 @@ pub(crate) fn expr_to_stm_opt(
                         args,
                         Some(dest),
                     )?);
+                    // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
+                    // value of the destination when, in recommends checking, the StmX::Call is used
+                    // to check its recommends, however we do not do this here.
+                    // That may cause recommends incompleteness. We should either use the `ExprX::Call`
+                    // special-case for recommends here, or replace this logic with a recursive call
+                    // to handle the right-hand-side, if possible.
                     stms.extend(assign.into_iter());
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
@@ -1137,6 +1143,12 @@ pub(crate) fn expr_to_stm_opt(
                             args.clone(),
                             Some(dest),
                         )?);
+                        // REVIEW: this emits a StmX::Assign to set the value of the destination when,
+                        // in recommends checking, the StmX::Call is used to check its recommends, however
+                        // we only do this here, and not in the similar cases in for `ExprX::Assign` and
+                        // `StmtX::Decl` where the right-hand-side is an `ExprX::Call`.
+                        // That may cause recommends incompleteness. We should either use this case for all
+                        // calls, or add this special case to `ExprX::Assign` and `StmtX::Decl`.
                         if state.checking_recommends(ctx)
                             || state.checking_spec_decreases(ctx, &x, &resolved_method)
                         {
@@ -1376,7 +1388,7 @@ pub(crate) fn expr_to_stm_opt(
 
             // Parameters and return types must be boxed, so insert necessary box/unboxing
             match &*body.typ {
-                TypX::TypParam(_) | TypX::Boxed(_) => {}
+                TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. } => {}
                 _ => {
                     let boxed_typ = Arc::new(TypX::Boxed(body.typ.clone()));
                     let boxx = ExpX::UnaryOpr(UnaryOpr::Box(body.typ.clone()), exp);
@@ -1387,7 +1399,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut boxed_params: Vec<Binder<Typ>> = Vec::new();
             for p in params.iter() {
                 match &*p.a {
-                    TypX::TypParam(_) | TypX::Boxed(_) => {
+                    TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. } => {
                         boxed_params.push(p.clone());
                     }
                     _ => {
@@ -1462,13 +1474,11 @@ pub(crate) fn expr_to_stm_opt(
             let uid = state.declare_new_var(&tmp_ident, &expr.typ, false, false);
             let v = mk_exp(ExpX::Var(uid));
 
-            // assume v.len() == len
-            let len_eq = sst_equal(
-                &expr.span,
-                &sst_array_len(ctx, &expr.span, &v),
-                &sst_int_literal(&expr.span, elems.len() as i128),
-            );
-            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(len_eq)));
+            // assume the type invariant
+            // (this implies that v.len() == len because of a vstd axiom,
+            // array_len_matches_n)
+            let has_typ = sst_has_type(&expr.span, &v, &expr.typ);
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
             for (i, exp) in exps.into_iter().enumerate() {
                 // assume v[i] == exp
                 let elem_i_eq = sst_equal(
@@ -2147,6 +2157,12 @@ fn stmt_to_stm(
                             args,
                             Some(dest),
                         )?);
+                        // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
+                        // value of the destination when, in recommends checking, the StmX::Call is used
+                        // to check its recommends, however we do not do this here.
+                        // That may cause recommends incompleteness. We should either use the `ExprX::Call`
+                        // special-case for recommends here, or replace this logic with a recursive call
+                        // to handle the right-hand-side, if possible.
                         let ret = ReturnValue::ImplicitUnit(stmt.span.clone());
                         return Ok((stms, ret, Some((decl, None))));
                     }

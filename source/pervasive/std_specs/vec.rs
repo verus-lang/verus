@@ -22,7 +22,9 @@ pub struct ExGlobal(alloc::alloc::Global);
 ////// Declare 'view' function
 
 pub trait VecAdditionalSpecFns<T> {
-    spec fn spec_index(&self, i: int) -> T;
+    spec fn spec_len(&self) -> nat;
+    spec fn spec_index(&self, i: int) -> T
+        recommends 0 <= i < self.spec_len();
 }
 
 impl<T, A: Allocator> View for Vec<T, A> {
@@ -31,6 +33,11 @@ impl<T, A: Allocator> View for Vec<T, A> {
 }
 
 impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
+    #[verifier(inline)]
+    open spec fn spec_len(&self) -> nat {
+        self.view().len()
+    }
+
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)

@@ -383,9 +383,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file_with_options! {
-    // TODO: remove vstd when ghost is moved to builtin
-    #[test] lifetime_bounds_exec ["vstd"] => verus_code! {
+test_verify_one_file! {
+    #[test] lifetime_bounds_exec verus_code! {
         #[verifier(external_body)]
         pub fn exec_to_ref<'a, T: 'a>(t: T) -> (t2: &'a T)
             ensures t == *t2
@@ -428,7 +427,7 @@ test_verify_one_file_with_options! {
         }
 
         fn bar<'a, F: Fn(u32) -> bool>(f: F, v: u32, foo: Foo<'a, u32>) -> Ghost<bool> {
-            Ghost(f.requires((v,)))
+            Ghost(call_requires(f, (v,)))
         }
     } => Ok(())
 }
@@ -561,7 +560,7 @@ test_verify_one_file! {
     #[test] tracked_new_issue870 verus_code! {
         use vstd::ptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(perm), Tracked(dealloc)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);
@@ -575,11 +574,11 @@ test_verify_one_file! {
     #[test] tracked_new2_issue870 verus_code! {
         use vstd::ptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(perm), Tracked(dealloc)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);
-            pptr.dispose(Tracked(perm));
+            pptr.dispose(Tracked(perm), Tracked(dealloc));
             let z: u64 = *x; // but x is still available here
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot move out of `perm` because it is borrowed")

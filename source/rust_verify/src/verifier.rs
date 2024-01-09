@@ -1,14 +1,14 @@
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
-use crate::context::{ArchContextX, ContextX, ErasureInfo};
+use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
-use crate::spans::{SpanContext, SpanContextX};
+use crate::spans::{from_raw_span, SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
-use air::messages::{ArcDynMessage, Diagnostics};
+use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
@@ -34,10 +34,21 @@ use vir::context::GlobalCtx;
 use crate::buckets::{Bucket, BucketId};
 use vir::ast::{Fun, Ident, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{path_to_string, CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{
+    path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
+};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND: f32 = 3000000f32;
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub(crate) struct ProgressBarId(String);
+
+trait Diagnostics: air::messages::Diagnostics {
+    fn use_progress_bars(&self) -> bool;
+    fn add_progress_bar(&self, ctx: CommandContext);
+    fn complete_progress_bar(&self, ctx: CommandContext);
+}
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
@@ -91,24 +102,24 @@ impl air::messages::Diagnostics for Reporter<'_> {
         ) {
             diag.span = multispan;
             if let Some(help) = help {
-                diag.help(&**help);
+                diag.help(help.clone());
             }
             diag.emit();
         }
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note_without_error(&*msg.note),
+                self.compiler_diagnostics.struct_note_without_error(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_warn(&*msg.note),
+                self.compiler_diagnostics.struct_warn(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_err(&*msg.note),
+                self.compiler_diagnostics.struct_err(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
@@ -132,10 +143,24 @@ impl air::messages::Diagnostics for Reporter<'_> {
     }
 }
 
+impl Diagnostics for Reporter<'_> {
+    fn use_progress_bars(&self) -> bool {
+        false
+    }
+    fn add_progress_bar(&self, _: CommandContext) {
+        panic!("progress bars not supported in single-threaded Reporter");
+    }
+    fn complete_progress_bar(&self, _: CommandContext) {
+        panic!("progress bars not supported in single-threaded Reporter");
+    }
+}
+
 /// A reporter message that is being collected by the main thread
 pub(crate) enum ReporterMessage {
+    ReportLongRunning(CommandContext),
+    FinishLongRunning(CommandContext),
     Message(usize, Message, MessageLevel, bool),
-    // Debugger(),
+    WorkerPanicked(Box<dyn std::any::Any + Send>),
     Done(usize),
 }
 
@@ -182,6 +207,24 @@ impl air::messages::Diagnostics for QueuedReporter {
         let air_msg: &MessageX =
             msg.downcast_ref().expect("unexpected value in Any -> Message conversion");
         self.report_as_now(msg, air_msg.level)
+    }
+}
+
+impl Diagnostics for QueuedReporter {
+    fn use_progress_bars(&self) -> bool {
+        true
+    }
+
+    fn add_progress_bar(&self, pb: CommandContext) {
+        self.queue
+            .send(ReporterMessage::ReportLongRunning(pb))
+            .expect("could not send the message!");
+    }
+
+    fn complete_progress_bar(&self, f: CommandContext) {
+        self.queue
+            .send(ReporterMessage::FinishLongRunning(f))
+            .expect("could not send the message!");
     }
 }
 
@@ -265,6 +308,34 @@ pub(crate) fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
 pub fn module_name(module: &vir::ast::Path) -> String {
     module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
 }
+
+mod util {
+    pub(crate) struct PanicOnDropVec<T>(Option<Vec<T>>);
+
+    impl<T> PanicOnDropVec<T> {
+        pub fn new(v: Vec<T>) -> Self {
+            PanicOnDropVec(Some(v))
+        }
+
+        pub fn into_inner(mut self) -> Vec<T> {
+            self.0.take().unwrap()
+        }
+
+        pub fn as_mut(&mut self) -> &mut Vec<T> {
+            self.0.as_mut().unwrap()
+        }
+    }
+
+    impl<T> Drop for PanicOnDropVec<T> {
+        fn drop(&mut self) {
+            if self.0.is_some() {
+                panic!("dropped, expected call to `into_inner` instead");
+            }
+        }
+    }
+}
+
+use util::PanicOnDropVec;
 
 struct RunCommandQueriesResult {
     invalidity: bool,
@@ -532,38 +603,66 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         bucket_id: &BucketId,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
-        diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
+        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
         level: Option<MessageLevel>,
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
-        context: &(&vir::messages::Span, &str),
+        context: &CommandContext,
         is_singular: bool,
     ) -> RunCommandQueriesResult {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
+        let do_report_long_running = self.args.report_long_running;
         let report_long_running = || {
-            let mut counter = 0;
-            let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
-                let mut msg =
-                    format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                if let Some(mut in_line_order) = diagnostics_to_report.take() {
-                    msg = msg
-                        + "\nreporting errors as they are discovered (they may not be in source order)";
-                    in_line_order.sort_by_key(|(m, _)| {
-                        m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
-                    });
-                    for (error, error_level) in in_line_order.into_iter() {
-                        reporter.report_as(&error.clone().to_any(), error_level);
+            let report_fn: Box<dyn FnMut(std::time::Duration, bool) -> ()> = Box::new(
+                move |elapsed, completed| {
+                    if !completed {
+                        if let Some(in_line_order) = diagnostics_to_report.take() {
+                            let mut in_line_order = in_line_order.into_inner();
+                            in_line_order.sort_by_key(|(m, _)| {
+                                m.spans
+                                    .get(0)
+                                    .and_then(|s| crate::spans::from_raw_span(&s.raw_span))
+                            });
+                            for (error, error_level) in in_line_order.into_iter() {
+                                reporter.report_as(&error.clone().to_any(), error_level);
+                            }
+                        }
                     }
-                }
-                let msg = if counter % 5 == 0 { note(&context.0, msg) } else { note_bare(msg) };
-                reporter.report_now(&msg.to_any());
-                counter += 1;
-            });
+
+                    if do_report_long_running {
+                        if !completed {
+                            if reporter.use_progress_bars() {
+                                reporter.add_progress_bar(context.clone());
+                            } else {
+                                let msg = format!(
+                                    "{} has been running for {} seconds\nreporting errors as they are discovered (they may not be in source order)",
+                                    context.desc,
+                                    elapsed.as_secs()
+                                );
+                                let msg = note(&context.span, msg);
+                                reporter.report_now(&msg.to_any());
+                            }
+                        } else {
+                            if reporter.use_progress_bars() {
+                                reporter.complete_progress_bar(context.clone());
+                            } else {
+                                let msg = format!(
+                                    "{} finished in {} seconds",
+                                    context.desc,
+                                    elapsed.as_secs()
+                                );
+                                let msg = note(&context.span, msg);
+                                reporter.report_now(&msg.to_any());
+                            }
+                        }
+                    }
+                },
+            );
             (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
@@ -580,7 +679,7 @@ impl Verifier {
             crate::singular::check_singular_valid(
                 air_context,
                 &command,
-                context.0,
+                &context.span,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
             )
         };
@@ -620,12 +719,12 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
+                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     if let Some(level) = level {
-                        reporter.report(&message(level, msg, &context.0).to_any());
+                        reporter.report(&message(level, msg, &context.span).to_any());
                     }
                     // need to report that we need to rerun from this function (into spinoff)
                     // so that we can run the profiler on an isolated file on the second pass
@@ -651,7 +750,7 @@ impl Verifier {
                     if let Some(level) = level {
                         if !self.expand_flag || vir::split_expression::is_split_error(&error) {
                             if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
-                                collected.push((error.clone(), level));
+                                collected.as_mut().push((error.clone(), level));
                             } else {
                                 reporter.report_as(&error.clone().to_any(), level);
                             }
@@ -673,7 +772,7 @@ impl Verifier {
                                 reporter.report(&message(
                                     MessageLevel::Warning,
                                     "no source map available for debugger. Try running single threaded.",
-                                    &context.0,
+                                    &context.span,
                                 ).to_any());
                             }
                         }
@@ -711,9 +810,9 @@ impl Verifier {
         if level == Some(MessageLevel::Error) && checks_remaining == 0 {
             let msg = format!(
                 "{}: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function",
-                context.1
+                context.desc
             );
-            reporter.report(&note(context.0, msg).to_any());
+            reporter.report(&note(&context.span, msg).to_any());
         }
 
         if is_check_valid && !is_singular {
@@ -760,10 +859,10 @@ impl Verifier {
     /// not_skipped : whether a nontrivial validity check was performed or not
     fn run_commands_queries(
         &mut self,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         source_map: Option<&SourceMap>,
         level: Option<MessageLevel>,
-        diagnostics_to_report: &std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>>,
+        diagnostics_to_report: &std::cell::RefCell<Option<PanicOnDropVec<(Message, MessageLevel)>>>,
         air_context: &mut air::context::Context,
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const vir::messages::Span, HashSet<Arc<String>>>,
@@ -785,14 +884,14 @@ impl Verifier {
 
         let mut result =
             RunCommandQueriesResult { invalidity: false, timed_out: false, not_skipped: false };
-        let CommandsWithContextX { span, desc, commands, prover_choice, skip_recommends: _ } =
+        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
             &*commands_with_context;
+        let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
-            air_context.comment(&span.as_string);
+            air_context.comment(&context.span.as_string);
         }
-        let desc = desc_prefix.unwrap_or("").to_string() + desc;
         for command in commands.iter() {
             result = result
                 + self.check_result_validity(
@@ -805,7 +904,7 @@ impl Verifier {
                     assign_map,
                     snap_map,
                     &command,
-                    &(span, &desc),
+                    &context,
                     *prover_choice == vir::def::ProverChoice::Singular,
                 );
         }
@@ -826,6 +925,14 @@ impl Verifier {
         let expand_msg = if expand_flag { "_expand" } else { "" };
 
         format!("{}{}{}{}", rerun_msg, count_msg, expand_msg, suffix,)
+    }
+
+    fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
+        air_context.set_rlimit((rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32);
+    }
+
+    fn set_default_rlimit(&self, air_context: &mut air::context::Context) {
+        Self::set_rlimit(air_context, self.args.rlimit);
     }
 
     fn new_air_context_with_prelude<'m>(
@@ -889,7 +996,7 @@ impl Verifier {
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
-        air_context.set_rlimit((self.args.rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32);
+        self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
@@ -935,7 +1042,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_file_name,
         )?;
 
@@ -1006,7 +1113,7 @@ impl Verifier {
     // Verify a single bucket
     fn verify_bucket(
         &mut self,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
@@ -1035,7 +1142,7 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: self.args.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
@@ -1126,8 +1233,9 @@ impl Verifier {
         let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
         let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
-            let diagnostics_to_report: std::cell::RefCell<Option<Vec<(Message, MessageLevel)>>> =
-                std::cell::RefCell::new(Some(Vec::new()));
+            let diagnostics_to_report: std::cell::RefCell<
+                Option<PanicOnDropVec<(Message, MessageLevel)>>,
+            > = std::cell::RefCell::new(Some(PanicOnDropVec::new(Vec::new())));
             let mut flush_diagnostics_to_report = false;
             loop {
                 let next_op = function_opgen.next();
@@ -1135,7 +1243,8 @@ impl Verifier {
                     flush_diagnostics_to_report = true;
                 }
                 if flush_diagnostics_to_report {
-                    if let Some(mut in_line_order) = diagnostics_to_report.take() {
+                    if let Some(container) = diagnostics_to_report.take() {
+                        let mut in_line_order = container.into_inner();
                         in_line_order.sort_by_key(|(m, _)| {
                             m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
                         });
@@ -1144,7 +1253,9 @@ impl Verifier {
                         }
                     }
                 }
-                let Some(op) = next_op else { break; };
+                let Some(op) = next_op else {
+                    break;
+                };
                 match &op.kind {
                     OpKind::Context(_context_op, commands) => {
                         self.run_commands(
@@ -1217,7 +1328,7 @@ impl Verifier {
                                 None
                             };
 
-                            let query_air_context = if do_spinoff {
+                            let mut query_air_context = if do_spinoff {
                                 spinoff_z3_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
@@ -1232,7 +1343,7 @@ impl Verifier {
                                     &all_context_ops,
                                     is_recommend,
                                     spinoff_context_counter,
-                                    &cmds.span,
+                                    &cmds.context.span,
                                     profile_file_name.as_ref(),
                                 )?;
                                 // for bitvector, only one query, no push/pop
@@ -1245,6 +1356,9 @@ impl Verifier {
                                 &mut air_context
                             };
                             let iter_curr_smt_time = query_air_context.get_time().1;
+                            if let Some(rlimit) = function.x.attrs.rlimit {
+                                Self::set_rlimit(&mut query_air_context, rlimit);
+                            }
                             let RunCommandQueriesResult {
                                 invalidity: command_invalidity,
                                 timed_out: command_timed_out,
@@ -1269,6 +1383,9 @@ impl Verifier {
                                 let (time_smt_init, time_smt_run) = query_air_context.get_time();
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
+                            }
+                            if function.x.attrs.rlimit.is_some() {
+                                self.set_default_rlimit(&mut query_air_context);
                             }
 
                             any_invalid |= command_invalidity;
@@ -1488,7 +1605,7 @@ impl Verifier {
 
     fn verify_bucket_outer(
         &mut self,
-        reporter: &impl air::messages::Diagnostics,
+        reporter: &impl Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
@@ -1566,20 +1683,12 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let interpreter_log_file = Arc::new(std::sync::Mutex::new(
-            if self.args.log_all || self.args.log_args.log_interpreter {
-                Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
-            } else {
-                None
-            },
-        ));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
             self.args.rlimit,
-            interpreter_log_file,
+            Arc::new(std::sync::Mutex::new(None)),
             self.vstd_crate_name.clone(),
-            self.args.arch_word_bits,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -1637,7 +1746,7 @@ impl Verifier {
         let source_map = compiler.session().source_map();
 
         self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
-        if self.num_threads > 1 {
+        if self.args.num_threads != 1 && self.num_threads >= 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
@@ -1647,7 +1756,7 @@ impl Verifier {
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
                 // give each bucket its own log file
                 let interpreter_log_file = Arc::new(std::sync::Mutex::new(
-                    if self.args.log_all || self.args.log_args.log_vir_simple {
+                    if self.args.log_all || self.args.log_args.log_interpreter {
                         Some(self.create_log_file(
                             Some(bucket_id),
                             crate::config::INTERPRETER_FILE_SUFFIX,
@@ -1661,6 +1770,7 @@ impl Verifier {
                 let reporter = QueuedReporter::new(i, sender.clone());
 
                 tasks.push_back((
+                    i,
                     bucket_id.clone(),
                     global_ctx.from_self_with_log(interpreter_log_file),
                     reporter,
@@ -1681,35 +1791,54 @@ impl Verifier {
                 let thread_taskq = taskq.clone();
                 let thread_krate = krate.clone(); // is an Arc<T>
 
+                let worker_sender = sender.clone();
                 let worker = std::thread::spawn(move || {
-                    let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
-                    loop {
-                        let mut tq = thread_taskq.lock().unwrap();
-                        let elm = tq.pop_front();
-                        drop(tq);
-                        if let Some((bucket_id, task, reporter)) = elm {
-                            let res = thread_verifier.verify_bucket_outer(
-                                &reporter,
-                                &thread_krate,
-                                None,
-                                &bucket_id,
-                                task,
-                            );
-                            reporter.done(); // we've verified the bucket, send the done message
-                            match res {
-                                Ok(res) => {
-                                    completed_tasks.push(res);
+                    let r = std::panic::catch_unwind(|| {
+                        let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
+                        loop {
+                            let mut tq = thread_taskq.lock().unwrap();
+                            let elm = tq.pop_front();
+                            drop(tq);
+                            if let Some((_i, bucket_id, task, reporter)) = elm {
+                                let res = thread_verifier.verify_bucket_outer(
+                                    &reporter,
+                                    &thread_krate,
+                                    None,
+                                    &bucket_id,
+                                    task,
+                                );
+                                reporter.done(); // we've verified the bucket, send the done message
+                                match res {
+                                    Ok(res) => {
+                                        completed_tasks.push(res);
+                                    }
+                                    Err(e) => return Err(e),
                                 }
-                                Err(e) => return Err(e),
+                            } else {
+                                break;
                             }
-                        } else {
-                            break;
+                        }
+                        Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
+                    });
+
+                    match r {
+                        Ok(x) => x,
+                        Err(e) => {
+                            worker_sender
+                                .send(ReporterMessage::WorkerPanicked(e))
+                                .expect("mpsc open");
+                            panic!("worker thread panicked");
                         }
                     }
-                    Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
                 });
                 workers.push(worker);
             }
+
+            let multi_progress = indicatif::MultiProgress::with_draw_target(
+                indicatif::ProgressDrawTarget::stderr_with_hz(1),
+            );
+            let mut multi_progress_header = None;
+            let mut progress_bars = HashMap::new();
 
             // start handling messages, we keep track of the current active bucket for which we
             // print messages immediately, while buffering other messages from the other buckets
@@ -1723,14 +1852,14 @@ impl Verifier {
                         if now {
                             // if the message should be reported immediately, do so
                             // this is used for printing notices for long running queries
-                            reporter.report_as(&msg.to_any(), level);
+                            multi_progress.suspend(|| reporter.report_as(&msg.to_any(), level));
                             continue;
                         }
 
                         if let Some(m) = active_bucket {
                             // if it's the active bucket, print the message
                             if id == m {
-                                reporter.report_as(&msg.to_any(), level);
+                                multi_progress.suspend(|| reporter.report_as(&msg.to_any(), level));
                             } else {
                                 let msgs = messages.get_mut(id).expect("message id out of range");
                                 msgs.1.push((msg, level));
@@ -1739,7 +1868,7 @@ impl Verifier {
                             // no active bucket, print this message and set the bucket as the
                             // active one
                             active_bucket = Some(id);
-                            reporter.report_as(&msg.to_any(), level);
+                            multi_progress.suspend(|| reporter.report_as(&msg.to_any(), level));
                         }
                     }
                     ReporterMessage::Done(id) => {
@@ -1773,7 +1902,8 @@ impl Verifier {
                                 }
                                 // drain and print all messages of the bucket
                                 for (msg, level) in msgs.1.drain(..) {
-                                    reporter.report_as(&msg.to_any(), level);
+                                    multi_progress
+                                        .suspend(|| reporter.report_as(&msg.to_any(), level));
                                 }
                                 // if the bucket wasn't done, make it active and handle next message
                                 if !msgs.0 {
@@ -1784,6 +1914,167 @@ impl Verifier {
                         }
 
                         num_done = num_done + 1;
+                    }
+                    ReporterMessage::ReportLongRunning(context) => {
+                        let CommandContext { fun, span, desc } = &context;
+                        let span = from_raw_span(&span.raw_span).expect("valid span");
+                        let span_str = source_map.span_to_diagnostic_string(span);
+                        let pid = ProgressBarId(span_str.clone());
+                        if progress_bars.contains_key(&pid) {
+                            // we already have a primary progress bar, so this query is either for
+                            // error localization or recommends checking
+                            let (pb, pb_aux) = progress_bars.remove(&pid).unwrap();
+                            match pb_aux {
+                                None => {
+                                    let pb_aux = multi_progress.insert_from_back(
+                                        0,
+                                        indicatif::ProgressBar::new_spinner()
+                                            .with_elapsed(Duration::from_millis(2000)),
+                                    );
+                                    pb_aux
+                                        .enable_steady_tick(std::time::Duration::from_millis(120));
+                                    let progress_style = indicatif::ProgressStyle::with_template(
+                                        "{prefix} {elapsed}\n{msg}",
+                                    )
+                                    .expect("invalid progress style");
+                                    pb_aux.set_style(progress_style);
+                                    pb_aux.set_prefix(format!(
+                                        "{} {} {} {} {}",
+                                        console::style("•").red(),
+                                        span_str,
+                                        console::style("has been").bold(),
+                                        console::style("running").bold().red(),
+                                        console::style("for").bold()
+                                    ));
+                                    pb_aux.set_message(format!(
+                                        "  ⌝ {} {} {} {}",
+                                        desc,
+                                        console::style("for").bold(),
+                                        fun_as_friendly_rust_name(&fun),
+                                        console::style("(auxiliary checks)").bold()
+                                    ));
+                                    progress_bars.insert(pid, (pb, Some(pb_aux)));
+                                }
+                                Some(pb_aux) => {
+                                    let new_pb_aux = multi_progress.insert_after(
+                                        &pb_aux,
+                                        indicatif::ProgressBar::new_spinner()
+                                            .with_elapsed(pb_aux.elapsed()),
+                                    );
+                                    pb_aux.finish_and_clear();
+                                    new_pb_aux
+                                        .enable_steady_tick(std::time::Duration::from_millis(120));
+                                    let progress_style = indicatif::ProgressStyle::with_template(
+                                        "{prefix} {elapsed}\n{msg}",
+                                    )
+                                    .expect("invalid progress style");
+                                    new_pb_aux.set_style(progress_style);
+                                    new_pb_aux.set_prefix(format!(
+                                        "{} {} {} {} {}",
+                                        console::style("•").red(),
+                                        span_str,
+                                        console::style("has been").bold(),
+                                        console::style("running").bold().red(),
+                                        console::style("for").bold()
+                                    ));
+                                    new_pb_aux.set_message(format!(
+                                        "  ⌝ {} {} {} {}",
+                                        desc,
+                                        console::style("for").bold(),
+                                        fun_as_friendly_rust_name(&fun),
+                                        console::style("(auxiliary checks)").bold()
+                                    ));
+                                    progress_bars.insert(pid, (pb, Some(new_pb_aux)));
+                                }
+                            }
+                        } else {
+                            if let None = multi_progress_header {
+                                let header_pb = multi_progress
+                                    .insert_from_back(0, indicatif::ProgressBar::new_spinner());
+                                let progress_style =
+                                    indicatif::ProgressStyle::with_template("{msg}")
+                                        .expect("invalid progress style");
+                                header_pb.set_style(progress_style);
+                                header_pb.set_message(format!(
+                                    "{}",
+                                    console::style("Some checks are taking longer than 2s (diagnostics for these may be reported out of order)").bold(),
+                                ));
+                                header_pb.finish();
+                                multi_progress_header = Some(header_pb);
+                            }
+                            let pb = multi_progress.insert_from_back(
+                                0,
+                                indicatif::ProgressBar::new_spinner()
+                                    .with_elapsed(Duration::from_millis(2000)),
+                            );
+                            pb.enable_steady_tick(std::time::Duration::from_millis(120));
+                            let progress_style = indicatif::ProgressStyle::with_template(
+                                "{prefix} {elapsed}\n{msg}",
+                            )
+                            .expect("invalid progress style");
+                            pb.set_style(progress_style);
+                            let CommandContext { fun, span, desc } = &context;
+                            let span = from_raw_span(&span.raw_span).expect("valid span");
+                            let span_str = source_map.span_to_diagnostic_string(span);
+                            pb.set_prefix(format!(
+                                "{} {} {} {} {}",
+                                console::style("•").red(),
+                                span_str,
+                                console::style("has been").bold(),
+                                console::style("running").bold().red(),
+                                console::style("for").bold()
+                            ));
+                            pb.set_message(format!(
+                                "  ⌝ {} {} {}",
+                                desc,
+                                console::style("for").bold(),
+                                fun_as_friendly_rust_name(&fun)
+                            ));
+                            progress_bars.insert(pid, (pb, None));
+                        }
+                    }
+                    ReporterMessage::FinishLongRunning(context) => {
+                        let CommandContext { fun, span, desc } = &context;
+                        let span = from_raw_span(&span.raw_span).expect("valid span");
+                        let span_str = source_map.span_to_diagnostic_string(span);
+                        let pid = ProgressBarId(span_str.clone());
+                        let (pb, pb_aux) = progress_bars.get_mut(&pid).unwrap();
+                        if !pb.is_finished() {
+                            pb.set_prefix(format!(
+                                "{} {} {} {} {}",
+                                console::style("•").blue(),
+                                span_str,
+                                console::style("has").bold(),
+                                console::style("finished").bold().blue(),
+                                console::style("in").bold()
+                            ));
+                            pb.finish_with_message(format!(
+                                "  ⌝ {} {} {}",
+                                desc,
+                                console::style("for").bold(),
+                                fun_as_friendly_rust_name(&fun)
+                            ));
+                        } else {
+                            let pb_aux = pb_aux.as_ref().unwrap();
+                            pb_aux.set_prefix(format!(
+                                "{} {} {} {} {}",
+                                console::style("•").blue(),
+                                span_str,
+                                console::style("has").bold(),
+                                console::style("finished").bold().blue(),
+                                console::style("in").bold()
+                            ));
+                            pb_aux.finish_with_message(format!(
+                                "  ⌝ {} {} {} {}",
+                                desc,
+                                console::style("for").bold(),
+                                fun_as_friendly_rust_name(&fun),
+                                console::style("(auxiliary checks)").bold()
+                            ));
+                        }
+                    }
+                    ReporterMessage::WorkerPanicked(err) => {
+                        std::panic::resume_unwind(err);
                     }
                 }
 
@@ -1831,6 +2122,14 @@ impl Verifier {
                 }
             }
         } else {
+            global_ctx.set_interpreter_log_file(Arc::new(std::sync::Mutex::new(
+                if self.args.log_all || self.args.log_args.log_interpreter {
+                    Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+                } else {
+                    None
+                },
+            )));
+
             for bucket_id in &bucket_ids {
                 global_ctx = self.verify_bucket_outer(
                     &reporter,
@@ -1991,27 +2290,29 @@ impl Verifier {
         } else {
             None
         };
-        let ctxt = Arc::new(ContextX {
+        let mut ctxt = Arc::new(ContextX {
+            cmd_line_args: self.args.clone(),
             tcx,
             krate: hir.krate(),
             erasure_info,
             spans: spans.clone(),
             vstd_crate_name: vstd_crate_name.clone(),
-            arch: Arc::new(ArchContextX { word_bits: self.args.arch_word_bits }),
             verus_items,
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
             no_vstd: self.args.no_vstd,
+            arch_word_bits: None,
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
+        let ctxt_diagnostics = ctxt.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (err, ctxt.diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt).map_err(map_err_diagnostics)?;
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
@@ -2021,12 +2322,12 @@ impl Verifier {
             crate_id: spans.local_crate.as_u64(),
             original_files: spans.local_files.clone(),
         };
-        crate::import_export::export_crate(&self.args, crate_metadata, vir_crate.clone())
-            .map_err(map_err_diagnostics)?;
 
         let user_filter =
             UserFilter::from_args(&self.args, &vir_crate).map_err(map_err_diagnostics)?;
         self.user_filter = Some(user_filter);
+
+        let mut current_vir_crate = vir_crate.clone();
 
         // Gather all crates and merge them into one crate.
         // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
@@ -2036,6 +2337,11 @@ impl Verifier {
         // because well_formed and modes checking look up definitions from libraries.)
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+
+        Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
+
+        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate)
+            .map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_args.log_vir {
             let mut file = self
@@ -2047,8 +2353,12 @@ impl Verifier {
 
         let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)
             .map_err(map_err_diagnostics)?;
-        let check_crate_result =
-            vir::well_formed::check_crate(&vir_crate, &mut ctxt.diagnostics.borrow_mut());
+
+        let check_crate_result = vir::well_formed::check_crate(
+            &vir_crate,
+            &mut ctxt.diagnostics.borrow_mut(),
+            self.args.no_verify,
+        );
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
@@ -2179,7 +2489,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Err(err) => {
                     assert!(err.spans.len() == 0);
                     assert!(err.level == MessageLevel::Error);
-                    compiler.session().diagnostic().err(&*err.note);
+                    compiler.session().diagnostic().err(err.note.clone());
                     self.verifier.encountered_vir_error = true;
                     return;
                 }
@@ -2188,7 +2498,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
             let spans = SpanContextX::new(
                 tcx,
-                compiler.session().local_stable_crate_id(),
+                tcx.stable_crate_id(LOCAL_CRATE),
                 compiler.session().source_map(),
                 imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             );
@@ -2246,6 +2556,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         None
                     };
                     crate::lifetime::check_tracked_lifetimes(
+                        self.verifier.args.clone(),
                         tcx,
                         verus_items,
                         &spans,

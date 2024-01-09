@@ -6,13 +6,12 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
-    IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
+    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents,
+    InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::messages::{error, warning, Message, Span, ToAny};
-use crate::prelude::ArchWordBits;
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -945,7 +944,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     state.msgs.push(warning(&exp.span, msg));
                                     ok.clone()
                                 } else {
-                                    Ok(e.clone())
+                                    // Use the type of clip, not the inner expression,
+                                    // to reflect the type change imposed by clip
+                                    Ok(SpannedTyped::new(&e.span, &exp.typ, e.x.clone()))
                                 }
                             };
                             match range {
@@ -1339,7 +1340,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         eval_expr_internal(ctx, state, e3)
                     }
                 }
-                _ => exp_new(If(e1, e2.clone(), e3.clone())),
+                _ => {
+                    // We still try to simplify both branches, if we can
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
+                    let e3 = eval_expr_internal(ctx, state, e3)?;
+                    exp_new(If(e1, e2, e3))
+                }
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
@@ -1489,6 +1495,119 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
+/// Restore the free variables we hid during interpretation
+/// and any sequence expressions we partially simplified during interpretation
+fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
+    crate::sst_visitor::map_exp_visitor_result(exp, &mut |e| match &e.x {
+        ExpX::Interp(InterpExp::FreeVar(v)) => {
+            Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
+        }
+        ExpX::Interp(InterpExp::Seq(v)) => {
+            match &*e.typ {
+                TypX::Datatype(_, typs, _) => {
+                    // Grab the type the sequence holds
+                    let inner_type = typs[0].clone();
+                    // Convert back to a standard SST sequence representation
+                    let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                    // Wrap the sequence construction in unbox to account for the Poly
+                    // type of the sequence functions
+                    let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
+                    let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
+                    let unboxed_e = SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
+                    Ok(unboxed_e)
+                }
+                TypX::Boxed(t) => {
+                    match &**t {
+                        TypX::Datatype(_, typs, _) => {
+                            // Grab the type the sequence holds
+                            let inner_type = typs[0].clone();
+                            // Convert back to a standard SST sequence representation
+                            let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                            Ok(s)
+                        }
+                        _ => Err(error(
+                            &e.span,
+                            format!(
+                                "Internal error: Expected to find a sequence type but found: {:?}",
+                                e.typ,
+                            ),
+                        )),
+                    }
+                }
+                _ => Err(error(
+                    &e.span,
+                    format!(
+                        "Internal error: Expected to find a sequence type but found: {:?}",
+                        e.typ
+                    ),
+                )),
+            }
+        }
+        ExpX::Interp(InterpExp::Closure(..)) => Err(error(
+            &e.span,
+            "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
+        )),
+        _ => Ok(e.clone()),
+    })
+}
+
+enum SimplificationResult {
+    /// Expression evaluated to true.
+    True,
+    /// Expression evaluated to false.
+    /// If the optional argument is given, then it is equivalent
+    /// to the original and also simplifies to 'false'.
+    False(Option<Exp>),
+    /// Expression evaluates to something that we can't simplify
+    /// further via the interpreter.
+    Complex(Exp),
+}
+
+/// Evaluate the result
+///
+/// Includes a special case when the top-level operation is a binary op.
+/// For example, if the user tries to prove `a == b`, and it evaluates
+/// to `7 == 5` which evaluates to false, we return
+///     SimplificationResult::False(Some(`7 == 5`))
+/// This lets the caller report a nicer error message
+fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SimplificationResult, VirErr> {
+    use BinaryOp::*;
+    use ExpX::*;
+    match &exp.x {
+        Binary(op @ (Eq(_) | Ne | Inequality(_)), e1, e2) => {
+            let e1 = eval_expr_internal(ctx, state, e1)?;
+            let e2 = eval_expr_internal(ctx, state, e2)?;
+
+            let simpl_exp = exp.new_x(Binary(*op, e1, e2));
+
+            // This should only take one step to simplify the binary expression
+            let final_exp = eval_expr_internal(ctx, state, &simpl_exp)?;
+
+            if let ExpX::Const(Constant::Bool(b)) = final_exp.x {
+                if b {
+                    Ok(SimplificationResult::True)
+                } else {
+                    Ok(SimplificationResult::False(Some(simpl_exp)))
+                }
+            } else {
+                Ok(SimplificationResult::Complex(final_exp))
+            }
+        }
+        _ => {
+            let final_exp = eval_expr_internal(ctx, state, exp)?;
+            if let ExpX::Const(Constant::Bool(b)) = final_exp.x {
+                if b {
+                    Ok(SimplificationResult::True)
+                } else {
+                    Ok(SimplificationResult::False(None))
+                }
+            } else {
+                Ok(SimplificationResult::Complex(final_exp))
+            }
+        }
+    }
+}
+
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     exp: Exp,
@@ -1522,71 +1641,30 @@ fn eval_expr_launch(
     // Don't run for too long
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch };
-    let res = eval_expr_internal(&ctx, &mut state, &exp)?;
+    let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
         log.replace(state.log.unwrap());
     }
-    if let ExpX::Const(Constant::Bool(false)) = res.x {
-        Err(error(&exp.span, "assert simplifies to false"))
-    } else {
-        match mode {
-            // Send partial result to Z3
+
+    match result {
+        SimplificationResult::True => {
+            return Ok((crate::sst_util::sst_bool(&exp.span, true), state.msgs));
+        }
+        SimplificationResult::False(None) => {
+            return Err(error(&exp.span, "expression simplifies to false"));
+        }
+        SimplificationResult::False(Some(small_exp)) => {
+            let small_exp = cleanup_exp(&small_exp)?;
+            return Err(error(
+                &exp.span,
+                format!("expression simplifies to `{}`, which evaluates to false", small_exp),
+            ));
+        }
+        SimplificationResult::Complex(res) => match mode {
             ComputeMode::Z3 => {
-                // Restore the free variables we hid during interpretation
-                // and any sequence expressions we partially simplified during interpretation
-                let res = crate::sst_visitor::map_exp_visitor_result(&res, &mut |e| match &e.x {
-                    ExpX::Interp(InterpExp::FreeVar(v)) => {
-                        Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
-                    }
-                    ExpX::Interp(InterpExp::Seq(v)) => {
-                        match &*e.typ {
-                            TypX::Datatype(_, typs, _) => {
-                                // Grab the type the sequence holds
-                                let inner_type = typs[0].clone();
-                                // Convert back to a standard SST sequence representation
-                                let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                                // Wrap the sequence construction in unbox to account for the Poly
-                                // type of the sequence functions
-                                let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
-                                let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
-                                let unboxed_e =
-                                    SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
-                                Ok(unboxed_e)
-                            }
-                            TypX::Boxed(t) => {
-                                match &**t {
-                                    TypX::Datatype(_, typs, _) => {
-                                        // Grab the type the sequence holds
-                                        let inner_type = typs[0].clone();
-                                        // Convert back to a standard SST sequence representation
-                                        let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                                        Ok(s)
-                                    }
-                                    _ => Err(error(
-                                        &e.span,
-                                        format!(
-                                            "Internal error: Expected to find a sequence type but found: {:?}",
-                                            e.typ,
-                                        ),
-                                    )),
-                                }
-                            }
-                            _ => Err(error(
-                                &e.span,
-                                format!(
-                                    "Internal error: Expected to find a sequence type but found: {:?}",
-                                    e.typ
-                                ),
-                            )),
-                        }
-                    }
-                    ExpX::Interp(InterpExp::Closure(..)) => Err(error(
-                        &e.span,
-                        "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
-                    )),
-                    _ => Ok(e.clone()),
-                })?;
+                let res = cleanup_exp(&res)?;
+                // Send partial result to Z3
                 if exp.definitely_eq(&res) {
                     let msg =
                         format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
@@ -1594,19 +1672,19 @@ fn eval_expr_launch(
                 }
                 Ok((res, state.msgs))
             }
-            // Proof must succeed purely through computation
-            ComputeMode::ComputeOnly => match res.x {
-                ExpX::Const(Constant::Bool(true)) => Ok((res, state.msgs)),
-                _ => Err(error(
+            ComputeMode::ComputeOnly => {
+                // Proof must succeed purely through computation
+                let res = cleanup_exp(&res)?;
+                Err(error(
                     &exp.span,
                     &format!(
                         "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
                         res
                     )
                     .to_string(),
-                )),
-            },
-        }
+                ))
+            }
+        },
     }
 }
 

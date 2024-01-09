@@ -268,6 +268,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] trailing_commas verus_code! {
+        spec fn s(x:int) -> bool
+            decreases x,
+        {
+            if x <= 0 { true}
+            else {
+                s(x - 1)
+            }
+        }
+
+        // We treat hide/reveal like other Rust functions,
+        // which allow trailing commas
+        proof fn test() {
+            hide(s,);
+            reveal(s,);
+            reveal_with_fuel(s,2,);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] regression_704_impl_arg verus_code! {
         trait X {}
         impl X for int {}
@@ -280,6 +301,91 @@ test_verify_one_file! {
         proof fn test() {
             reveal(foo);
             assert(foo(3int));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_907_reveal_u64_1 verus_code! {
+        trait Tau {
+            spec fn foo(&self)->bool;
+            fn bar(&self);
+        }
+        struct T {}
+        impl Tau for T {
+            spec fn foo(&self)->bool {
+                true
+            }
+            fn bar(&self){
+                reveal(<T as Tau>::foo);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_907_reveal_u64_2 verus_code! {
+        trait Tau {
+            spec fn foo(&self)->bool;
+            fn bar(&self);
+        }
+        impl Tau for u64 {
+            spec fn foo(&self)->bool {
+                true
+            }
+            fn bar(&self){
+                reveal(<u64 as Tau>::foo);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] regression_925_reveal_loop_1 verus_code! {
+        #[verifier::opaque]
+        const X: usize = 1;
+
+        fn foo() by (nonlinear_arith) {
+            let mut i: usize = 0;
+            reveal(X);
+            while i < X
+                ensures i >= 1
+            {
+                reveal(X);
+                assume(false);
+                break;
+                reveal(X);
+                assume(false);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] regression_925_reveal_loop_2 verus_code! {
+        #[verifier::opaque]
+        spec fn x_spec() -> usize { 1 }
+
+        fn x() -> (r: usize)
+            ensures r == x_spec()
+        {
+            reveal(x_spec);
+            1
+        }
+
+        fn foo() {
+            let mut i: usize = 0;
+            reveal(x_spec);
+            while i < x()
+                ensures i >= 1
+            {
+                reveal(x_spec);
+                i += 1;
+                assert(i >= 1);
+                break;
+                reveal(x_spec);
+                assert(i >= 1);
+            }
         }
     } => Ok(())
 }

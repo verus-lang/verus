@@ -3,8 +3,8 @@ use crate::EraseGhost;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
+use quote::format_ident;
 use quote::{quote, quote_spanned};
-use std::iter::FromIterator;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
@@ -20,12 +20,12 @@ use syn_verus::visit_mut::{
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
-    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Ident, ImplItem, ImplItemMethod, Invariant,
-    InvariantEnsures, InvariantNameSet, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path,
-    PathArguments, PathSegment, Publish, Recommends, Requires, ReturnType, Signature,
-    SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem, TraitItemMethod, Type,
-    TypeFnSpec, UnOp, Visibility,
+    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemMethod,
+    Invariant, InvariantEnsures, InvariantNameSet, InvariantNameSetList, Item, ItemConst, ItemEnum,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec,
+    ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends, Requires,
+    ReturnType, Signature, SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem,
+    TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -466,6 +466,17 @@ impl Visitor {
                         Semi { spans: [none.span()] },
                     ));
                 }
+                InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
+                    for expr in exprs.iter_mut() {
+                        self.visit_expr_mut(expr);
+                    }
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned!(bracket_token.span => ::builtin::opens_invariants([#exprs])),
+                        ),
+                        Semi { spans: [bracket_token.span] },
+                    ));
+                }
             }
         }
 
@@ -883,6 +894,81 @@ impl Visitor {
                 *item = Item::Verbatim(quote_spanned! {
                     span => #[allow(unused_imports)] #vis fn #name() { unimplemented!() }
                 });
+            }
+        }
+        for item in items.iter_mut() {
+            if let Item::Global(global) = &item {
+                use quote::ToTokens;
+                let Global { attrs: _, global_token: _, inner, semi: _ } = global;
+                let (type_, size_lit, align_lit) = match inner {
+                    syn_verus::GlobalInner::SizeOf(size_of) => {
+                        (&size_of.type_, &size_of.expr_lit, None)
+                    }
+                    syn_verus::GlobalInner::Layout(layout) => {
+                        (&layout.type_, &layout.size.2, layout.align.as_ref().map(|a| &a.3))
+                    }
+                };
+                let span = item.span();
+                let static_assert_size = quote! {
+                    if ::core::mem::size_of::<#type_>() != #size_lit {
+                        panic!("does not have the expected size");
+                    }
+                };
+                let static_assert_align = if let Some(align_lit) = align_lit {
+                    quote! {
+                        if ::core::mem::align_of::<#type_>() != #align_lit {
+                            panic!("does not have the expected alignment");
+                        }
+                    }
+                } else {
+                    quote! {}
+                };
+                if self.erase_ghost.erase() {
+                    *item = Item::Verbatim(quote_spanned! { span => const _: () = {
+                        #static_assert_size
+                        #static_assert_align
+                    }; });
+                } else {
+                    let type_name_escaped = format!("{}", type_.into_token_stream())
+                        .replace(" ", "")
+                        .replace("<", "_LL_")
+                        .replace(">", "_RR_");
+                    if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        let err =
+                            "this type name is not supported (it must only include A-Za-z0-9<>)";
+                        *item = Item::Verbatim(
+                            quote_spanned!(span => const _: () = { compile_error!(#err) };),
+                        );
+                    } else {
+                        let lemma_ident = format_ident!("VERUS_layout_of_{}", type_name_escaped);
+
+                        let ensures_align = if let Some(align_lit) = align_lit {
+                            quote! { ::vstd::layout::align_of::<#type_>() == #align_lit, }
+                        } else {
+                            quote! {}
+                        };
+
+                        *item = Item::Verbatim(quote_spanned! { span =>
+                        #[verus::internal(size_of)] const _: () = {
+                            ::builtin::global_size_of::<#type_>(#size_lit);
+
+                            #static_assert_size
+                            #static_assert_align
+                        };
+
+                        ::builtin_macros::verus! {
+                            #[verifier::external_body]
+                            #[verifier::broadcast_forall]
+                            #[allow(non_snake_case)]
+                            proof fn #lemma_ident()
+                                ensures
+                                    ::vstd::layout::size_of::<#type_>() == #size_lit,
+                                    #ensures_align
+                            {}
+                        }
+                        });
+                    }
+                }
             }
         }
     }
@@ -1430,7 +1516,7 @@ impl VisitMut for Visitor {
                     // Tracked(...)
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                        quote_spanned!(span => Tracked::assume_new(|| unreachable!()))
+                        quote_spanned!(span => Tracked::assume_new_fallback(|| unreachable!()))
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Tracked::new(#inner))
                     } else {
@@ -1440,7 +1526,7 @@ impl VisitMut for Visitor {
                     // Ghost(...)
                     let inner = take_expr(&mut call.args[0]);
                     *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                        quote_spanned!(span => Ghost::assume_new(|| unreachable!()))
+                        quote_spanned!(span => Ghost::assume_new_fallback(|| unreachable!()))
                     } else if is_inside_ghost {
                         quote_spanned!(span => ::builtin::Ghost::new(#inner))
                     } else {
@@ -1574,6 +1660,18 @@ impl VisitMut for Visitor {
                 new_expr = Expr::Binary(bin);
             }
             *expr = new_expr;
+        } else if let Expr::Macro(macro_expr) = expr {
+            macro_expr.mac.path.segments.first_mut().map(|x| {
+                let ident = x.ident.to_string();
+                // NOTE: this is currently hardcoded for
+                // open_*_invariant macros, but this could be extended
+                // to rewrite other macro names depending on proof vs exec mode.
+                if is_inside_ghost
+                    && (ident == "open_atomic_invariant" || ident == "open_local_invariant")
+                {
+                    x.ident = Ident::new((ident + "_in_proof").as_str(), x.span());
+                }
+            });
         }
 
         let do_replace = match &expr {
@@ -2302,6 +2400,7 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_enum_mut(&mut self, item: &mut ItemEnum) {
+        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
         visit_item_enum_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
@@ -2309,6 +2408,7 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
+        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
         visit_item_struct_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
@@ -2388,6 +2488,7 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_mod_mut(&mut self, item: &mut ItemMod) {
+        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
         if let Some((_, items)) = &mut item.content {
             self.visit_items_prefilter(items);
         }
@@ -2396,12 +2497,14 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
+        imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         self.filter_attrs(&mut imp.attrs);
         syn_verus::visit_mut::visit_item_impl_mut(self, imp);
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
+        tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
         self.visit_trait_items_prefilter(&mut tr.items);
         self.filter_attrs(&mut tr.attrs);
         syn_verus::visit_mut::visit_item_trait_mut(self, tr);
@@ -2807,6 +2910,7 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
             _ => {}
         }
     }
+    use std::iter::FromIterator;
     proc_macro::TokenStream::from_iter(tokens.into_iter())
 }
 
@@ -2847,6 +2951,7 @@ pub(crate) fn proof_macro_exprs(
 
 pub(crate) fn inv_macro_exprs(
     erase_ghost: EraseGhost,
+    inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
@@ -2868,8 +2973,8 @@ pub(crate) fn inv_macro_exprs(
             MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
             _ => {}
         }
-        // After the first element, parse as 'exec' expression
-        visitor.inside_ghost = 0;
+        // After the first element, parse as 'exec' or `proof` expression based on the current context.
+        visitor.inside_ghost = if inside_ghost { 1u32 } else { 0u32 };
     }
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)

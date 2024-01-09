@@ -1218,7 +1218,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mutable_reference_decreases_2_pass verus_code! {
         fn e(s: &mut u64) -> u64
-            decreases *s
+            decreases *old(s)
         {
             if *s > 0 {
                 *s = *s - 1;
@@ -1235,7 +1235,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mutable_reference_decreases_2_fail verus_code! {
         fn e(s: &mut u64) -> u64
-            decreases *s
+            decreases *old(s)
         {
             *s = *s - 1; // FAILS
             e(s) // FAILS
@@ -1704,8 +1704,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // this test won't work until https://github.com/verus-lang/verus/issues/563 is fixed
-    #[ignore] #[test] mutual_recursion_result_incompleteness_regression_564 verus_code! {
+    #[test] mutual_recursion_result_incompleteness_regression_564_1 verus_code! {
         use vstd::prelude::*;
 
         pub spec const NUM_LAYERS: nat = 4;
@@ -1717,7 +1716,7 @@ test_verify_one_file! {
         }
 
         pub struct Directory {
-            entries: Seq<Entry>,
+            pub entries: Seq<Entry>,
         }
 
         #[verifier(external_body)]
@@ -1762,6 +1761,36 @@ test_verify_one_file! {
                     // let entry = self.fn_two(layer, init.len());
                     // self.fn_three(layer, init.add(seq![entry]))
                 }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mutual_recursion_result_incompleteness_regression_564_2 verus_code! {
+        use vstd::prelude::*;
+
+        pub spec const NUM_LAYERS: nat = 4;
+        pub spec const NUM_ENTRIES: nat = 32;
+
+        pub open spec fn fn_two(layer: nat, idx: nat) -> nat
+            decreases NUM_LAYERS - layer, NUM_ENTRIES - idx, 0nat
+        {
+            if layer + 1 <= NUM_LAYERS {
+                fn_three(layer + 1, seq![]).len()
+            } else {
+                arbitrary()
+            }
+        }
+
+        pub open spec fn fn_three(layer: nat, init: Seq<nat>) -> Seq<nat>
+            decreases NUM_LAYERS - layer, NUM_ENTRIES - init.len(), 1nat
+        {
+            if init.len() >= NUM_ENTRIES {
+                init
+            } else {
+                let entry = fn_two(layer, init.len());
+                fn_three(layer, init.push(entry))
             }
         }
     } => Ok(())
@@ -1851,4 +1880,29 @@ test_verify_one_file! {
             assert(false);
         }
     } => Err(err) => assert_vir_error_msg(err, "found cyclic dependency in decreases_by function")
+}
+
+test_verify_one_file! {
+    #[test] commas_in_spec_sigs_github_issue947 verus_code! {
+        spec fn add0(a: nat, b: nat) -> nat
+            recommends
+                a > 0,
+            via add0_recommends
+        {
+            a
+        }
+
+        #[via_fn]
+        proof fn add0_recommends(a: nat, b: nat) {
+            // proof
+        }
+
+        spec fn rids_match(bools_start: nat) -> bool
+            decreases bools_start,
+            when 0 <= bools_start <= 5
+        {
+            true
+        }
+
+    } => Ok(())
 }

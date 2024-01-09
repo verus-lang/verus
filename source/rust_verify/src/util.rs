@@ -42,13 +42,13 @@ macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
             dbg!();
-            unsupported_err_span($span, $msg.to_string())?;
+            crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            unsupported_err_span($span, $msg.to_string())?;
+            crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
 }
@@ -205,3 +205,38 @@ pub const fn const_str_equal(lhs: &str, rhs: &str) -> bool {
     true
 }
 // ==================================================================================================
+
+// this is unfortunate, but when processing a reveal we cannot get the type of the
+// corresponding node in HIR because the body of the reveal closure cannot be
+// successfully typechecked, and I did not find a public interface to this in rustc
+// NOTE: do not use this if you have a body context with `types` or can otherwise obtain TypeckResults
+pub fn hir_prim_ty_to_mir_ty<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    prim_ty: &rustc_hir::PrimTy,
+) -> rustc_middle::ty::Ty<'tcx> {
+    match prim_ty {
+        rustc_hir::PrimTy::Int(int_ty) => match int_ty {
+            rustc_ast::IntTy::Isize => tcx.types.isize,
+            rustc_ast::IntTy::I8 => tcx.types.i8,
+            rustc_ast::IntTy::I16 => tcx.types.i16,
+            rustc_ast::IntTy::I32 => tcx.types.i32,
+            rustc_ast::IntTy::I64 => tcx.types.i64,
+            rustc_ast::IntTy::I128 => tcx.types.i128,
+        },
+        rustc_hir::PrimTy::Uint(uint_ty) => match uint_ty {
+            rustc_ast::UintTy::Usize => tcx.types.usize,
+            rustc_ast::UintTy::U8 => tcx.types.u8,
+            rustc_ast::UintTy::U16 => tcx.types.u16,
+            rustc_ast::UintTy::U32 => tcx.types.u32,
+            rustc_ast::UintTy::U64 => tcx.types.u64,
+            rustc_ast::UintTy::U128 => tcx.types.u128,
+        },
+        rustc_hir::PrimTy::Float(float_ty) => match float_ty {
+            rustc_ast::FloatTy::F32 => tcx.types.f32,
+            rustc_ast::FloatTy::F64 => tcx.types.f64,
+        },
+        rustc_hir::PrimTy::Str => tcx.types.str_,
+        rustc_hir::PrimTy::Bool => tcx.types.bool,
+        rustc_hir::PrimTy::Char => tcx.types.char,
+    }
+}

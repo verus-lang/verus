@@ -1119,6 +1119,49 @@ impl Clone for Generics {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Global {
+    fn clone(&self) -> Self {
+        Global {
+            attrs: self.attrs.clone(),
+            global_token: self.global_token.clone(),
+            inner: self.inner.clone(),
+            semi: self.semi.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for GlobalInner {
+    fn clone(&self) -> Self {
+        match self {
+            GlobalInner::SizeOf(v0) => GlobalInner::SizeOf(v0.clone()),
+            GlobalInner::Layout(v0) => GlobalInner::Layout(v0.clone()),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for GlobalLayout {
+    fn clone(&self) -> Self {
+        GlobalLayout {
+            layout_token: self.layout_token.clone(),
+            type_: self.type_.clone(),
+            is_token: self.is_token.clone(),
+            size: self.size.clone(),
+            align: self.align.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for GlobalSizeOf {
+    fn clone(&self) -> Self {
+        GlobalSizeOf {
+            size_of_token: self.size_of_token.clone(),
+            type_: self.type_.clone(),
+            eq_token: self.eq_token.clone(),
+            expr_lit: self.expr_lit.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ImplItem {
@@ -1230,6 +1273,7 @@ impl Clone for InvariantNameSet {
         match self {
             InvariantNameSet::Any(v0) => InvariantNameSet::Any(v0.clone()),
             InvariantNameSet::None(v0) => InvariantNameSet::None(v0.clone()),
+            InvariantNameSet::List(v0) => InvariantNameSet::List(v0.clone()),
         }
     }
 }
@@ -1238,6 +1282,15 @@ impl Clone for InvariantNameSetAny {
     fn clone(&self) -> Self {
         InvariantNameSetAny {
             token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSetList {
+    fn clone(&self) -> Self {
+        InvariantNameSetList {
+            bracket_token: self.bracket_token.clone(),
+            exprs: self.exprs.clone(),
         }
     }
 }
@@ -1271,6 +1324,7 @@ impl Clone for Item {
             Item::Union(v0) => Item::Union(v0.clone()),
             Item::Use(v0) => Item::Use(v0.clone()),
             Item::Verbatim(v0) => Item::Verbatim(v0.clone()),
+            Item::Global(v0) => Item::Global(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }

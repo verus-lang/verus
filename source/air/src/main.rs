@@ -115,15 +115,18 @@ pub fn main() {
 
     // Start logging
     if let Some(filename) = matches.opt_str("log-air-middle") {
-        let file = File::create(&filename).expect(&format!("could not open file {}", &filename));
+        let file =
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
         air_context.set_air_middle_log(Box::new(file));
     }
     if let Some(filename) = matches.opt_str("log-air-final") {
-        let file = File::create(&filename).expect(&format!("could not open file {}", &filename));
+        let file =
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
         air_context.set_air_final_log(Box::new(file));
     }
     if let Some(filename) = matches.opt_str("log-smt") {
-        let file = File::create(&filename).expect(&format!("could not open file {}", &filename));
+        let file =
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
         air_context.set_smt_log(Box::new(file));
     }
 

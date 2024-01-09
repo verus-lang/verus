@@ -215,7 +215,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
     let storage_types = get_storage_type_tuple(sm);
 
     return quote! {
-        #[verifier::proof]
+        #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         pub struct #insttype #gen {
             // This is not marked external_body, but the fields are private, so the
@@ -225,9 +225,9 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
             // However, since it's not marked external_body,
             // Verus will still look at the fields when doing its type hierarchy analysis.
 
-            #[verifier::spec] send_sync: ::vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
-            #[verifier::spec] state: #self_ty,
-            #[verifier::spec] location: ::builtin::int,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] send_sync: ::vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] state: #self_ty,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] location: ::builtin::int,
         }
     };
 }
@@ -299,6 +299,7 @@ fn token_struct_stream(
     let tokenname_data = field_token_data_type_name(field);
     let insttype = inst_type(sm);
     let token_data_ty = field_token_data_type(sm, field);
+    let token_ty = field_token_type(sm, field);
     let gen = &sm.generics;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
@@ -309,23 +310,25 @@ fn token_struct_stream(
     }
 
     let key_field = match key_ty {
-        Some(key_ty) => quote! { #[verifier::spec] pub key: #key_ty, },
+        Some(key_ty) => quote! { #[cfg_attr(verus_keep_ghost, verifier::spec)] pub key: #key_ty, },
         None => TokenStream::new(),
     };
 
     let value_field = match value_ty {
-        Some(value_ty) => quote! { #[verifier::spec] pub value: #value_ty, },
+        Some(value_ty) => {
+            quote! { #[cfg_attr(verus_keep_ghost, verifier::spec)] pub value: #value_ty, }
+        }
         None => TokenStream::new(),
     };
 
     let count_field = if count {
-        quote! { #[verifier::spec] pub count: ::builtin::nat }
+        quote! { #[cfg_attr(verus_keep_ghost, verifier::spec)] pub count: ::builtin::nat }
     } else {
         TokenStream::new()
     };
 
     return quote! {
-        #[verifier::proof]
+        #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         pub struct #tokenname#gen {
             // These are private so they can't be accessed outside this module.
@@ -333,14 +336,14 @@ fn token_struct_stream(
             // VIR knows about the dummy_instance field. It is important for
             // the type well-foundedness checks.
 
-            #[verifier::proof] dummy_instance: #insttype,
+            #[cfg_attr(verus_keep_ghost, verifier::proof)] dummy_instance: #insttype,
             no_copy: ::vstd::state_machine_internal::NoCopy,
         }
 
-        #[verifier::spec]
+        #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[allow(non_camel_case_types)]
         pub struct #tokenname_data#gen {
-            #[verifier::spec] pub instance: #insttype,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] pub instance: #insttype,
             #key_field
             #value_field
             #count_field
@@ -353,6 +356,16 @@ fn token_struct_stream(
             #[verifier::external_body] /* vattr */
             #[verifier::spec]
             pub fn view(self) -> #token_data_ty { ::core::unimplemented!() }
+
+            // Return an arbitrary token. It's not possible to do anything interesting
+            // with this token because it doesn't have a specified instance.
+
+            #[cfg(verus_keep_ghost_body)]
+            #[verus::internal(verus_macro)]
+            #[verifier::external_body] /* vattr */
+            #[verifier::returns(proof)] /* vattr */
+            #[verifier::proof]
+            pub fn arbitrary() -> #token_ty { ::core::unimplemented!() }
 
             #impl_token_stream
         }
@@ -371,9 +384,9 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     };
 
     return quote! {
-        ::builtin_macros::fndecl!(
-            pub fn #fieldname(&self) -> #fieldtype
-        );
+        #[cfg_attr(verus_keep_ghost, verifier::spec)]
+        #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+        pub fn #fieldname(&self) -> #fieldtype { unimplemented!() }
     };
 }
 

@@ -11,8 +11,9 @@ pub use super::std_specs::vec::VecAdditionalSpecFns;
 verus!{
 
 pub trait SliceAdditionalSpecFns<T> {
-   spec fn view(&self) -> Seq<T>;
-   spec fn spec_index(&self, i: int) -> T;
+    spec fn view(&self) -> Seq<T>;
+    spec fn spec_index(&self, i: int) -> T
+        recommends 0 <= i < self.view().len();
 }
 
 impl<T> SliceAdditionalSpecFns<T> for [T] {

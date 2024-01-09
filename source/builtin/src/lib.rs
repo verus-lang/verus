@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(internal_features)]
 #![cfg_attr(
     verus_keep_ghost,
     feature(rustc_attrs),
@@ -354,7 +355,17 @@ impl<A> Ghost<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub const fn assume_new(_: fn() -> A) -> Self {
+    pub const fn assume_new() -> Self {
+        Ghost { phantom: PhantomData }
+    }
+
+    // The argument here is used as part of a trick to avoid
+    // type inference errors when erasing code.
+
+    #[doc(hidden)]
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    #[inline(always)]
+    pub const fn assume_new_fallback(_: fn() -> A) -> Self {
         Ghost { phantom: PhantomData }
     }
 
@@ -396,7 +407,14 @@ impl<A> Tracked<A> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     #[inline(always)]
-    pub const fn assume_new(_: fn() -> A) -> Self {
+    pub const fn assume_new() -> Self {
+        Tracked { phantom: PhantomData }
+    }
+
+    #[doc(hidden)]
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    #[inline(always)]
+    pub const fn assume_new_fallback(_: fn() -> A) -> Self {
         Tracked { phantom: PhantomData }
     }
 
@@ -444,14 +462,14 @@ impl<A> Copy for Ghost<A> {}
 #[rustc_diagnostic_item = "verus::builtin::ghost_exec"]
 #[verifier::external_body]
 pub fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
-    Ghost::assume_new(|| unreachable!())
+    Ghost::assume_new()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::tracked_exec"]
 #[verifier::external_body]
 pub fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
-    Tracked::assume_new(|| unreachable!())
+    Tracked::assume_new()
 }
 
 #[cfg(verus_keep_ghost)]
@@ -1202,30 +1220,19 @@ pub fn closure_to_fn_spec<Args: core::marker::Tuple, F: FnOnce<Args>>(
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::FnWithSpecification"]
-pub trait FnWithSpecification<Args> {
-    type Output;
-
-    #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::FnWithSpecification::requires"]
-    fn requires(self, args: Args) -> bool;
-
-    #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::FnWithSpecification::ensures"]
-    fn ensures(self, args: Args, output: Self::Output) -> bool;
+#[rustc_diagnostic_item = "verus::builtin::call_requires"]
+pub fn call_requires<Args: core::marker::Tuple, F: FnOnce<Args>>(_f: F, _args: Args) -> bool {
+    unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-impl<Args: core::marker::Tuple, F: FnOnce<Args>> FnWithSpecification<Args> for F {
-    type Output = F::Output;
-
-    fn requires(self, _args: Args) -> bool {
-        unimplemented!();
-    }
-
-    fn ensures(self, _args: Args, _output: Self::Output) -> bool {
-        unimplemented!();
-    }
+#[rustc_diagnostic_item = "verus::builtin::call_ensures"]
+pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
+    _f: F,
+    _args: Args,
+    _output: F::Output,
+) -> bool {
+    unimplemented!();
 }
 
 // Intrinsics defined in the AIR prelude related to word-sizes and bounded ints
@@ -1293,4 +1300,11 @@ macro_rules! decreases_to {
     ($($x:tt)*) => {
         ::builtin_macros::verus_proof_macro_exprs!($crate::decreases_to_internal!($($x)*))
     };
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::global_size_of"]
+#[verifier::spec]
+pub const fn global_size_of<T>(_bytes: usize) {
+    unimplemented!()
 }

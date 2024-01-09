@@ -735,6 +735,9 @@ define_keywords! {
     "any"         pub struct InvAny       /// `any`
     "none"        pub struct InvNone      /// `none`
     "has"         pub struct Has          /// `has`
+    "global"      pub struct Global       /// `global`
+    "size_of"     pub struct SizeOf       /// `size_of`
+    "layout"      pub struct Layout       /// `layout`
 }
 
 define_punctuation! {
@@ -949,6 +952,9 @@ macro_rules! export_token_macro {
             [choose]      => { $crate::token::Choose };
             [is]          => { $crate::token::Is };
             [has]         => { $crate::token::Has };
+            [global]      => { $crate::token::Global };
+            [size_of]     => { $crate::token::SizeOf };
+            [layout]      => { $crate::token::Layout };
             [FnSpec]      => { $crate::token::FnSpec };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };

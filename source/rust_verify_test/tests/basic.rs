@@ -606,3 +606,29 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: mut self")
 }
+
+test_verify_one_file! {
+    #[test] test_rlimit verus_code! {
+        #[verifier::rlimit(20)]
+        fn test1() {
+            assert(true);
+            assert(!false);
+            assert(true && true);
+            assert(true || false);
+            assert(true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_bodyless_fn verus_code! {
+        // We allow a final comma in the ensures
+        // list for a bodyless function
+        trait Marshalable {
+            spec fn is_marshalable(&self) -> bool;
+            exec fn _is_marshalable(&self) -> (res: bool)
+                ensures res == self.is_marshalable(),
+            ;
+        }
+    } => Ok(())
+}

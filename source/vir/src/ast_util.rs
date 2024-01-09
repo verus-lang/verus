@@ -1,11 +1,10 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX, GenericBound,
-    GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, Variant, Variants,
-    VirErr, Visibility,
+    ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
+    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
+    PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
+    Variant, Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
-use crate::prelude::ArchWordBits;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders};
@@ -17,9 +16,19 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 impl PathX {
+    pub fn last_segment(&self) -> Ident {
+        self.segments[self.segments.len() - 1].clone()
+    }
+
     pub fn pop_segment(&self) -> Path {
         let mut segments = (*self.segments).clone();
         segments.pop();
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn push_segment(&self, ident: Ident) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments.push(ident);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 

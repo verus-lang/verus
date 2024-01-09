@@ -12,6 +12,18 @@ use crate::map::Map;
 verus! {
 
 impl<K, V> Map<K, V> {
+    
+    /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
+    #[verifier(inline)]
+    pub open spec fn is_full(self) -> bool {
+        self.dom().is_full()
+    }
+     
+    /// Is `true` if called by an "empty" map, i.e., a map containing no elements and has length 0
+    #[verifier(inline)]
+    pub open spec fn is_empty(self) -> (b: bool) {
+        self.dom().is_empty()
+    }
 
     /// Returns true if the key `k` is in the domain of `self`.
 
@@ -58,9 +70,22 @@ impl<K, V> Map<K, V> {
     /// );
     /// ```
 
-    pub open spec fn le(self, m2: Self) -> bool {
+    pub open spec fn submap_of(self, m2: Self) -> bool {
         forall|k: K| #[trigger] self.dom().contains(k) ==>
             #[trigger] m2.dom().contains(k) && self[k] == m2[k]
+    }
+
+    #[verifier(inline)]
+    pub open spec fn spec_le(self, m2: Self) -> bool {
+        self.submap_of(m2)
+    }
+
+    /// Deprecated synonym for `submap_of`
+
+    #[verifier(inline)]
+    #[deprecated = "use m1.submap_of(m2) or m1 <= m2 instead"]
+    pub open spec fn le(self, m2: Self) -> bool {
+        self.submap_of(m2)
     }
 
     /// Gives the union of two maps, defined as:

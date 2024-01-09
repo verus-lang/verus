@@ -295,7 +295,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] bit_vector_usize_as_32bit ["--arch-word-bits 32"] => verus_code! {
+    #[test] bit_vector_usize_as_32bit ["vstd"] => verus_code! {
+        global size_of usize == 4;
+
         proof fn test1(x: usize) {
             assert(x & x == x) by(bit_vector);
         }
@@ -328,7 +330,9 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] bit_vector_usize_as_64bit ["--arch-word-bits 64"] => verus_code! {
+    #[test] bit_vector_usize_as_64bit ["vstd"] => verus_code! {
+        global size_of usize == 8;
+
         proof fn test1(x: usize) {
             assert(x & x == x) by(bit_vector);
         }
@@ -423,4 +427,29 @@ test_verify_one_file! {
             assert((n > 0) ==> (n >> 1) < n) by(bit_vector);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] bitvector_ineq_different_bitwidth verus_code! {
+        proof fn test() {
+            let b: u8 = 5;
+
+            assert(b >= 3u64) by(bit_vector)
+                requires b == 5;
+        }
+
+        proof fn test2() {
+            let b: u8 = 5;
+
+            assert(3u64 <= b) by(bit_vector)
+                requires b == 5;
+        }
+
+        proof fn test3() {
+            let b: u8 = 5;
+
+            assert(b <= 3u64) by(bit_vector) // FAILS
+                requires b == 5;
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

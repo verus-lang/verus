@@ -1,12 +1,11 @@
 use crate::ast::{
-    Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path, Trait, TypX,
-    Variants, VirErr,
+    ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path,
+    Primitive, Trait, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::messages::{error, Span};
 use crate::poly::MonoTyp;
-use crate::prelude::ArchWordBits;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
@@ -47,7 +46,7 @@ pub struct GlobalCtx {
     pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub(crate) vstd_crate_name: Option<Ident>, // already an arc
-    pub arch: ArchWordBits,
+    pub arch: crate::ast::ArchWordBits,
 }
 
 // Context for verifying one function
@@ -91,6 +90,7 @@ pub struct Ctx {
     pub debug: bool,
     pub expand_flag: bool,
     pub debug_expand_targets: Vec<crate::messages::Message>,
+    pub arch_word_bits: ArchWordBits,
 }
 
 impl Ctx {
@@ -172,7 +172,10 @@ fn datatypes_invs(
                         TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) => {}
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
-                        TypX::Primitive(_, _) => {}
+                        TypX::Primitive(Primitive::Array, _) => {
+                            roots.insert(container_path.clone());
+                        }
+                        TypX::Primitive(Primitive::Slice, _) => {}
                     }
                 }
             }
@@ -191,7 +194,6 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         vstd_crate_name: Option<Ident>,
-        arch: ArchWordBits,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -250,6 +252,11 @@ impl GlobalCtx {
             // such as using s.view() in test so that test depends on S: View, to fix this.
             func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
         }
+
+        for t in &krate.trait_impls {
+            crate::recursive_types::add_trait_impl_to_graph(&mut func_call_graph, t);
+        }
+
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
@@ -296,7 +303,7 @@ impl GlobalCtx {
             rlimit,
             interpreter_log,
             vstd_crate_name,
-            arch,
+            arch: krate.arch.word_bits,
         })
     }
 
@@ -329,6 +336,13 @@ impl GlobalCtx {
     // Report chosen triggers as strings for printing diagnostics
     pub fn get_chosen_triggers(&self) -> Vec<ChosenTriggers> {
         self.chosen_triggers.borrow().clone()
+    }
+
+    pub fn set_interpreter_log_file(
+        &mut self,
+        interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    ) {
+        self.interpreter_log = interpreter_log;
     }
 }
 
@@ -385,6 +399,7 @@ impl Ctx {
             debug,
             expand_flag: false,
             debug_expand_targets: vec![],
+            arch_word_bits: krate.arch.word_bits,
         })
     }
 

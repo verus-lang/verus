@@ -14,7 +14,8 @@ pub(crate) fn to_raw_span(span: Span) -> vir::messages::RawSpan {
 
 // Note: this only returns Some for Spans in the local crate
 pub(crate) fn from_raw_span(raw_span: &vir::messages::RawSpan) -> Option<Span> {
-    (**raw_span).downcast_ref::<SpanData>().map(|data| data.span())
+    let x = (&(**raw_span)) as &(dyn std::any::Any + Sync + Send); // rust subtyping limitaiton
+    x.downcast_ref::<SpanData>().map(|data| data.span())
 }
 
 // Note: this produces a span suitable for reporting immediate errors;
