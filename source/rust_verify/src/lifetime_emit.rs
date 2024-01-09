@@ -664,10 +664,12 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     }
 }
 
-fn emit_generic_bound(bound: &GenericBound) -> String {
+fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
     let mut buf = String::new();
-    buf += &bound.typ.to_string();
-    buf += ": ";
+    if !bare {
+        buf += &bound.typ.to_string();
+        buf += ": ";
+    }
     if !bound.bound_vars.is_empty() {
         buf += "for<";
         for b in bound.bound_vars.iter() {
@@ -707,7 +709,7 @@ fn emit_generic_bounds(state: &mut EmitState, bounds: &Vec<GenericBound>) {
     if bounds.len() > 0 {
         state.write(" where ");
         for bound in bounds.iter() {
-            state.write(emit_generic_bound(bound));
+            state.write(emit_generic_bound(bound, false));
             state.write(", ");
         }
     }
@@ -831,10 +833,16 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     emit_generic_bounds(state, &t.generic_bounds);
     state.write(" {");
     state.push_indent();
-    for a in &t.assoc_typs {
+    for (a, bounds) in &t.assoc_typs {
         state.newline();
         state.write("type ");
         state.write(a.to_string());
+        if bounds.len() > 0 {
+            state.write(" : ");
+            let bounds_strs: Vec<_> =
+                bounds.iter().map(|bound| emit_generic_bound(bound, true)).collect();
+            state.write(bounds_strs.join("+"));
+        }
         state.write(";");
     }
     state.newline_unindent();
