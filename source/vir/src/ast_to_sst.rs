@@ -1574,6 +1574,7 @@ pub(crate) fn expr_to_stm_opt(
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with expr_to_stm_or_error
                 let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
+                let exp = crate::heuristics::insert_ext_eq_in_assert(ctx, &exp);
                 let small = is_small_exp_or_loc(&exp);
                 let exp = if small || split {
                     exp.clone()

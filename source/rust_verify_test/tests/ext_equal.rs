@@ -29,7 +29,16 @@ test_verify_one_file! {
             assume(s1[0] == s2[0]);
             assert(s1 =~= s2);
         }
-    } => Ok(())
+
+        proof fn test_auto_ext_equal_in_assert(s1: Seq<u8>, s2: Seq<u8>) {
+            assert(s1.len() == 1 && s2.len() == 1 && s1[0] == s2[0] ==> s1 == s2);
+        }
+
+        proof fn test_no_auto_ext_equal_in_ensures(s1: Seq<u8>, s2: Seq<u8>)
+            ensures s1.len() == 1 && s2.len() == 1 && s1[0] == s2[0] ==> s1 == s2 // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
