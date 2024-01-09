@@ -21,7 +21,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArgKind, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -96,9 +96,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 ),
             );
         }
-        Some(RustItem::TryTraitBranch) => {
-            return err_span(expr.span, "Verus does not yet support the ? operator");
-        }
         Some(RustItem::Clone) => {
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
@@ -166,6 +163,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     //
     // If the resolution is statically known, we record the resolved function for the
     // to be used by lifetime_generate.
+
+    let node_substs = fix_node_substs(tcx, bctx.types, node_substs, rust_item, &args, expr);
 
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
@@ -1644,6 +1643,33 @@ fn mk_is_smaller_than<'tcx>(
         }
     }
     return Ok(dec_exp);
+}
+
+pub(crate) fn fix_node_substs<'tcx, 'a>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    types: &'tcx rustc_middle::ty::TypeckResults<'tcx>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    rust_item: Option<RustItem>,
+    args: &'a [&'tcx Expr<'tcx>],
+    expr: &'a Expr<'tcx>,
+) -> &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>> {
+    match rust_item {
+        Some(RustItem::TryTraitBranch) => {
+            // I don't understand why, but in this case, node_substs is empty instead
+            // of having the type argument. Let's fix it here.
+            // `branch` has type `fn branch(self) -> ...`
+            // so we can get the Self argument from the first argument.
+            let generic_arg = GenericArg::from(types.expr_ty_adjusted(&args[0]));
+            tcx.mk_args(&[generic_arg])
+        }
+        Some(RustItem::ResidualTraitFromResidual) => {
+            // `fn from_residual(residual: R) -> Self;`
+            let generic_arg0 = GenericArg::from(types.expr_ty(expr));
+            let generic_arg1 = GenericArg::from(types.expr_ty_adjusted(&args[0]));
+            tcx.mk_args(&[generic_arg0, generic_arg1])
+        }
+        _ => node_substs,
+    }
 }
 
 fn mk_typ_args<'tcx>(

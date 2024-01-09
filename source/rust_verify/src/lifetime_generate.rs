@@ -469,6 +469,27 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
             // Note: even if rust_to_vir_base decides to normalize t,
             // we don't have to normalize t here, since we're generating Rust code, not VIR.
+            // However, normalizing means we might reach less stuff so it's
+            // still useful.
+
+            // Try normalization:
+            use crate::rustc_trait_selection::infer::TyCtxtInferExt;
+            use crate::rustc_trait_selection::traits::NormalizeExt;
+            if let Some(fun_id) = state.enclosing_fun_id {
+                let param_env = ctxt.tcx.param_env(fun_id);
+                let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build();
+                let cause = rustc_infer::traits::ObligationCause::dummy();
+                let at = infcx.at(&cause, param_env);
+                let resolved_ty = infcx.resolve_vars_if_possible(*ty);
+                if !rustc_middle::ty::TypeVisitableExt::has_escaping_bound_vars(&resolved_ty) {
+                    let norm = at.normalize(*ty);
+                    if norm.value != *ty {
+                        return erase_ty(ctxt, state, &norm.value);
+                    }
+                }
+            }
+
+            // If normalization isn't possible:
             let assoc_item = ctxt.tcx.associated_item(t.def_id);
             let name = state.typ_param(assoc_item.name.to_string(), None);
             let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
@@ -782,10 +803,21 @@ fn erase_call<'tcx>(
 
             // Maybe resolve from trait function to a specific implementation
 
-            let mut node_substs = node_substs;
+            let node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
             let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.expect("enclosing_fun_id"));
+
+            let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, fn_def_id);
+            let mut node_substs = crate::fn_call_to_vir::fix_node_substs(
+                ctxt.tcx,
+                ctxt.types(),
+                node_substs,
+                rust_item,
+                &args_slice.iter().collect::<Vec<_>>(),
+                expr,
+            );
+
             let normalized_substs = ctxt.tcx.normalize_erasing_regions(param_env, node_substs);
             let inst = rustc_middle::ty::Instance::resolve(
                 ctxt.tcx,
@@ -1798,6 +1830,8 @@ fn erase_fn_common<'tcx>(
             &mut typ_params,
             &mut generic_bounds,
         );
+
+        state.enclosing_fun_id = Some(id);
         let mut params: Vec<Param> = Vec::new();
         for ((input, param), param_info) in
             inputs.iter().zip(f_vir.x.params.iter()).zip(params_info.iter())
@@ -1832,6 +1866,7 @@ fn erase_fn_common<'tcx>(
         } else {
             Some((None, erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
         };
+        state.enclosing_fun_id = None;
         let decl = FunDecl {
             sig_span: sig_span,
             name_span,
