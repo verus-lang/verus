@@ -1056,6 +1056,22 @@ test_verify_one_file! {
                 end = end + 0; // causes end to be non-constant, so loop needs more invariants
             }
         }
+
+        fn non_spec() {}
+
+        fn test_loop_modes_transient_state() {
+            let mut n: u64 = 0;
+            let mut end = 10;
+            // test Typing::snapshot_transient_state
+            for x in iter: 0..({let z = end; non_spec(); z})
+                invariant
+                    n == iter.cur * 3,
+                    end == 10,
+            {
+                n += 3;
+                end = end + 0; // causes end to be non-constant
+            }
+        }
     } => Err(e) => assert_one_fails(e)
 }
 

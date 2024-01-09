@@ -77,7 +77,6 @@ struct Typing {
     pub(crate) erasure_modes: ErasureModes,
     pub(crate) in_forall_stmt: bool,
     pub(crate) check_ghost_blocks: bool,
-    pub(crate) macro_erasure: bool,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
     // If yes (corresponding to proof/spec mode), say whether variables are tracked or not.
@@ -91,6 +90,16 @@ struct Typing {
     infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
 }
 
+// If we need to catch an error and continue,
+// keep a snapshot of the old transient Typing state fields so we can restore the fields.
+// (used by InferSpecForLoopIter)
+struct TypingSnapshot {
+    vars_scope_count: usize,
+    in_forall_stmt: bool,
+    block_ghostness: Ghost,
+    atomic_insts: Option<AtomicInstCollector>,
+}
+
 impl Typing {
     fn get(&self, x: &Ident) -> (bool, Mode) {
         *self.vars.get(x).expect("internal error: missing mode")
@@ -98,6 +107,43 @@ impl Typing {
 
     fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
         self.vars.insert(x.clone(), (mutable, mode)).expect("internal error: Typing insert");
+    }
+
+    fn snapshot_transient_state(&mut self) -> TypingSnapshot {
+        // mention every field of Typing to make sure TypingSnapshot stays up to date with Typing:
+        let Typing {
+            funs: _,
+            datatypes: _,
+            traits: _,
+            vars,
+            erasure_modes: _,
+            in_forall_stmt,
+            check_ghost_blocks: _,
+            block_ghostness,
+            fun_mode: _,
+            ret_mode: _,
+            atomic_insts,
+            infer_spec_for_loop_iter_modes: _,
+        } = &self;
+        let snapshot = TypingSnapshot {
+            vars_scope_count: vars.num_scopes(),
+            in_forall_stmt: *in_forall_stmt,
+            block_ghostness: *block_ghostness,
+            atomic_insts: atomic_insts.clone(),
+        };
+        self.vars.push_scope(true);
+        snapshot
+    }
+
+    fn pop_transient_state(&mut self, snapshot: TypingSnapshot) {
+        let TypingSnapshot { vars_scope_count, in_forall_stmt, block_ghostness, atomic_insts } =
+            snapshot;
+        while self.vars.num_scopes() != vars_scope_count {
+            self.vars.pop_scope();
+        }
+        self.in_forall_stmt = in_forall_stmt;
+        self.block_ghostness = block_ghostness;
+        self.atomic_insts = atomic_insts;
     }
 }
 
@@ -125,7 +171,7 @@ impl Typing {
 // In principle, we could do something fancy and allow 1 atomic instruction in each branch,
 // but for now we just error if there is more than 1 atomic call in the AST.
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct AtomicInstCollector {
     atomics: Vec<Span>,
     non_atomics: Vec<Span>,
@@ -632,7 +678,13 @@ fn check_expr_handle_mut_arg(
             // are all autospec), then keep the expression.
             // Otherwise, make a note that the expression had mode exec,
             // so that ast_simplify can replace the expression with None.
+
+            // Since we may catch a Result::Err,
+            // explicitly push and pop transient state around check_expr
+            let snapshot = typing.snapshot_transient_state();
             let mode_opt = check_expr(typing, outer_mode, e1);
+            typing.pop_transient_state(snapshot);
+
             let mode = mode_opt.unwrap_or(Mode::Exec);
             if let Some(infer_spec) = typing.infer_spec_for_loop_iter_modes.as_mut() {
                 infer_spec.push((expr.span.clone(), mode));
@@ -828,14 +880,14 @@ fn check_expr_handle_mut_arg(
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => {
-            if typing.macro_erasure && typing.block_ghostness == Ghost::Exec {
+            if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use reveal/hide in exec mode")
                     .help("wrap the reveal call in a `proof` block"));
             }
             Ok(outer_mode)
         }
         ExprX::RevealString(_) => {
-            if typing.macro_erasure && typing.block_ghostness == Ghost::Exec {
+            if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use reveal_strlit in exec mode")
                     .help("wrap the reveal_strlit call in a `proof` block"));
             }
@@ -1299,10 +1351,7 @@ fn check_function(typing: &mut Typing, function: &mut Function) -> Result<(), Vi
     Ok(())
 }
 
-pub fn check_crate(
-    krate: &Krate,
-    macro_erasure: bool, // TODO(main_new) remove, always true
-) -> Result<(Krate, ErasureModes), VirErr> {
+pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -1320,7 +1369,6 @@ pub fn check_crate(
         erasure_modes,
         in_forall_stmt: false,
         check_ghost_blocks: false,
-        macro_erasure,
         block_ghostness: Ghost::Exec,
         fun_mode: Mode::Exec,
         ret_mode: None,

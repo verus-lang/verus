@@ -2370,7 +2370,7 @@ impl Verifier {
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
         let (vir_crate, erasure_modes) =
-            vir::modes::check_crate(&vir_crate, true).map_err(|e| (e, Vec::new()))?;
+            vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);
