@@ -158,7 +158,7 @@ pub(crate) struct TraitDecl {
     pub(crate) name: Id,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
-    pub(crate) assoc_typs: Vec<Id>,
+    pub(crate) assoc_typs: Vec<(Id, Vec<GenericBound>)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
