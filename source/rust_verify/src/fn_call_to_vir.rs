@@ -33,7 +33,7 @@ use vir::ast::{
     UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
-use vir::def::positional_field_ident;
+use vir::def::field_ident_from_rust;
 
 pub(crate) fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -1807,12 +1807,7 @@ fn check_variant_field<'tcx>(
                 return err_span(span, "field has the wrong type");
             }
 
-            let field_ident = if field_name.as_str().bytes().nth(0).unwrap().is_ascii_digit() {
-                let i = field_name.parse::<usize>().unwrap();
-                positional_field_ident(i)
-            } else {
-                str_ident(&field_name)
-            };
+            let field_ident = field_ident_from_rust(&field_name);
 
             Ok((adt_path, Some(field_ident)))
         }

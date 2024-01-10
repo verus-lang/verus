@@ -3,7 +3,7 @@ use crate::erase::{ErasureHints, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir_datatype,
 };
-use crate::rust_to_vir_expr::{field_name_to_vir_ident, get_adt_res};
+use crate::rust_to_vir_expr::get_adt_res;
 use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
-use vir::def::VERUS_SPEC;
+use vir::def::{field_ident_from_rust, VERUS_SPEC};
 use vir::messages::AstId;
 
 impl TypX {
@@ -1122,7 +1122,7 @@ fn erase_expr<'tcx>(
                 let variant = datatype.x.get_variant(&variant_name);
                 let mut fs: Vec<(Id, Exp)> = Vec::new();
                 for f in fields.iter() {
-                    let vir_field_name = field_name_to_vir_ident(f.ident.as_str());
+                    let vir_field_name = field_ident_from_rust(f.ident.as_str());
                     let (_, field_mode, _) = get_field(&variant.a, &vir_field_name).a;
                     let name = state.field(f.ident.to_string());
                     let e = if field_mode == Mode::Spec {
