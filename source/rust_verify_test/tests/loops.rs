@@ -1180,8 +1180,8 @@ test_verify_one_file! {
                     }
             }
 
-            open spec fn ghost_condition(&self) -> bool {
-                self.cur < self.seq.len()
+            open spec fn ghost_ensures(&self) -> bool {
+                self.cur >= self.seq.len()
             }
 
             open spec fn ghost_decrease(&self) -> int {

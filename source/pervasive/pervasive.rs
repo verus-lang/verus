@@ -49,8 +49,8 @@ pub trait ForLoopGhostIterator {
     // (When the analysis can infer a spec initial value, the analysis places the value in init)
     spec fn ghost_invariant(&self, init: Option<&Self>) -> bool;
 
-    // Is the loop condition satisfied?
-    spec fn ghost_condition(&self) -> bool;
+    // True upon loop exit
+    spec fn ghost_ensures(&self) -> bool;
 
     // Value used by default for decreases clause when no explicit decreases clause is provided
     // (the user can override this with an explicit decreases clause).

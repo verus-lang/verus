@@ -1318,7 +1318,7 @@ impl Visitor {
         //                          &core::iter::IntoIterator::into_iter(e)))),
         //              { let x = vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y); inv },
         //          ensures
-        //              !vstd::pervasive::ForLoopGhostIterator::ghost_condition(&y),
+        //              vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&y),
         //      {
         //          if let Some(x) = core::iter::Iterator::next(&mut y) { body } else { break }
         //          proof { y = vstd::pervasive::ForLoopGhostIterator::ghost_advance(&y, &VERUS_exec_iter); }
@@ -1440,7 +1440,7 @@ impl Visitor {
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
             Some(parse_quote_spanned!(span =>
-                ensures !vstd::pervasive::ForLoopGhostIterator::ghost_condition(&#x_ghost_iter),
+                ensures vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&#x_ghost_iter),
             ))
         } else {
             None

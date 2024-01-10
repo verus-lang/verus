@@ -68,8 +68,8 @@ impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for 
             }
     }
 
-    open spec fn ghost_condition(&self) -> bool {
-        self.cur.spec_is_lt(self.end)
+    open spec fn ghost_ensures(&self) -> bool {
+        !self.cur.spec_is_lt(self.end)
     }
 
     open spec fn ghost_decrease(&self) -> int {
