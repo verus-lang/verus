@@ -283,19 +283,8 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
         let mut sst_map = UpdateCell::new(HashMap::new());
         std::mem::swap(&mut sst_map, &mut self.sst_map);
-        let (commands, snap_map, mut new_sst_map) = vir::func_to_air::func_def_to_air(
-            self.ctx,
-            self.reporter,
-            sst_map,
-            &function,
-            // TODO revisit if we still need FuncDefPhase
-            if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
-                vir::func_to_air::FuncDefPhase::CheckingSpecs
-            } else {
-                vir::func_to_air::FuncDefPhase::CheckingProofExec
-            },
-            recommend,
-        )?;
+        let (commands, snap_map, mut new_sst_map) =
+            vir::func_to_air::func_def_to_air(self.ctx, self.reporter, sst_map, &function)?;
         std::mem::swap(&mut new_sst_map, &mut self.sst_map);
 
         self.ctx.fun = None;

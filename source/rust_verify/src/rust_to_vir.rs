@@ -16,7 +16,7 @@ use crate::rust_to_vir_base::{
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::util::{err_span, unsupported_err_span};
-use crate::verus_items::{self, BuiltinTraitItem, MarkerItem, RustItem, VerusItem};
+use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
 use rustc_ast::IsAuto;
@@ -218,15 +218,6 @@ fn check_item<'tcx>(
                 }
 
                 let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
-                if matches!(
-                    verus_item,
-                    Some(VerusItem::BuiltinTrait(BuiltinTraitItem::FnWithSpecification))
-                ) {
-                    return err_span(
-                        item.span,
-                        "Verus does not support implementing this trait without implementing FnOnce",
-                    );
-                }
 
                 let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {
                     let ty = {

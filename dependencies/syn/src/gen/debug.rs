@@ -1813,6 +1813,11 @@ impl Debug for InvariantNameSet {
                 formatter.field(v0);
                 formatter.finish()
             }
+            InvariantNameSet::List(v0) => {
+                let mut formatter = formatter.debug_tuple("List");
+                formatter.field(v0);
+                formatter.finish()
+            }
         }
     }
 }
@@ -1821,6 +1826,15 @@ impl Debug for InvariantNameSetAny {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("InvariantNameSetAny");
         formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for InvariantNameSetList {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("InvariantNameSetList");
+        formatter.field("bracket_token", &self.bracket_token);
+        formatter.field("exprs", &self.exprs);
         formatter.finish()
     }
 }

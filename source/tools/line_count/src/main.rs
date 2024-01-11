@@ -1387,6 +1387,11 @@ fn get_dependencies(
         .map(|x| dep_file_folder.join(Path::new(x)))
         .collect();
     assert!(result.len() > 0);
+
+    if result.len() == 1 {
+        return Ok((PathBuf::new(), vec![result[0].clone()]));
+    }
+
     let mut path_iters: Vec<_> = result.iter().map(|x| x.iter()).collect();
     let mut chomp_components = 0;
     loop {

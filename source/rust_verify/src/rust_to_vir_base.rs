@@ -1091,7 +1091,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 typ_params.push((Arc::new(param_name), accept_rec));
             }
             _ => {
-                panic!("shouldn't get here");
+                unsupported_err!(*span, "this kind of generic param");
             }
         }
     }

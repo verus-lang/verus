@@ -451,6 +451,9 @@ where
 
 pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>) -> Exp {
     map_exp_visitor(exp, &mut |exp| match &exp.x {
+        ExpX::VarAt(x, crate::ast::VarAt::Pre) if map.contains_key(x) => {
+            SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
+        }
         ExpX::Var(x) if map.contains_key(x) => {
             SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
         }

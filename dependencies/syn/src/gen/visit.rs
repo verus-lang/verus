@@ -421,6 +421,9 @@ pub trait Visit<'ast> {
     fn visit_invariant_name_set_any(&mut self, i: &'ast InvariantNameSetAny) {
         visit_invariant_name_set_any(self, i);
     }
+    fn visit_invariant_name_set_list(&mut self, i: &'ast InvariantNameSetList) {
+        visit_invariant_name_set_list(self, i);
+    }
     fn visit_invariant_name_set_none(&mut self, i: &'ast InvariantNameSetNone) {
         visit_invariant_name_set_none(self, i);
     }
@@ -2618,6 +2621,9 @@ where
         InvariantNameSet::None(_binding_0) => {
             v.visit_invariant_name_set_none(_binding_0);
         }
+        InvariantNameSet::List(_binding_0) => {
+            v.visit_invariant_name_set_list(_binding_0);
+        }
     }
 }
 pub fn visit_invariant_name_set_any<'ast, V>(v: &mut V, node: &'ast InvariantNameSetAny)
@@ -2625,6 +2631,22 @@ where
     V: Visit<'ast> + ?Sized,
 {
     tokens_helper(v, &node.token.span);
+}
+pub fn visit_invariant_name_set_list<'ast, V>(
+    v: &mut V,
+    node: &'ast InvariantNameSetList,
+)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.bracket_token.span);
+    for el in Punctuated::pairs(&node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
 }
 pub fn visit_invariant_name_set_none<'ast, V>(
     v: &mut V,

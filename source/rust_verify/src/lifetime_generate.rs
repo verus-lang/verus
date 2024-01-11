@@ -90,9 +90,9 @@ pub(crate) struct State {
     // (We add each impl for T to this when we process T)
     // (To avoid importing unnecessary impls, we delay processing impl until all t are used)
     // t1 -> impl, ..., tn -> impl
-    typ_to_trait_impls: HashMap<DefId, Vec<DefId>>,
+    typs_used_in_trait_impls_reverse_map: HashMap<DefId, Vec<DefId>>,
     // impl -> (t1, ..., tn) and process impl when t1...tn is empty
-    impl_to_remaining_typs: HashMap<DefId, (Id, Vec<DefId>)>,
+    remaining_typs_needed_for_each_impl: HashMap<DefId, (Id, Vec<DefId>)>,
     enclosing_fun_id: Option<DefId>,
 }
 
@@ -115,8 +115,8 @@ impl State {
             datatype_decls: Vec::new(),
             assoc_type_impls: HashMap::new(),
             fun_decls: Vec::new(),
-            typ_to_trait_impls: HashMap::new(),
-            impl_to_remaining_typs: HashMap::new(),
+            typs_used_in_trait_impls_reverse_map: HashMap::new(),
+            remaining_typs_needed_for_each_impl: HashMap::new(),
             enclosing_fun_id: None,
         }
     }
@@ -212,10 +212,12 @@ impl State {
                 self.reached.insert((None, id));
                 self.datatype_worklist.push(id);
             }
-            if let Some(impl_ids) = self.typ_to_trait_impls.remove(&id) {
+            if let Some(impl_ids) = self.typs_used_in_trait_impls_reverse_map.remove(&id) {
                 // Wake up any impls waiting for our type to be reached
                 for impl_id in impl_ids {
-                    if let Some((_, ref mut ts)) = self.impl_to_remaining_typs.get_mut(&impl_id) {
+                    if let Some((_, ref mut ts)) =
+                        self.remaining_typs_needed_for_each_impl.get_mut(&impl_id)
+                    {
                         // Remove ourself from what impl_id is waiting on
                         ts.retain(|t| *t != id);
                     }
@@ -1845,15 +1847,15 @@ fn erase_fn<'tcx>(
 }
 
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
-    if !state.impl_to_remaining_typs.contains_key(&impl_id) {
+    if !state.remaining_typs_needed_for_each_impl.contains_key(&impl_id) {
         // Already finished
         return;
     }
-    if state.impl_to_remaining_typs[&impl_id].1.len() > 0 {
+    if state.remaining_typs_needed_for_each_impl[&impl_id].1.len() > 0 {
         // We haven't reached all the types we would need to justify this impl
         return;
     }
-    let (name, _) = state.impl_to_remaining_typs.remove(&impl_id).unwrap();
+    let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
     for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
         match assoc_item.kind {
@@ -1950,14 +1952,17 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             for ty in trait_ref.skip_binder().args.types() {
                 collect_unreached_datatypes(ctxt, state, &mut datatypes, &ty);
                 for t in &datatypes {
-                    if !state.typ_to_trait_impls.contains_key(t) {
-                        state.typ_to_trait_impls.insert(*t, Vec::new());
-                    }
-                    state.typ_to_trait_impls.get_mut(&t).unwrap().push(impl_id);
+                    state
+                        .typs_used_in_trait_impls_reverse_map
+                        .entry(*t)
+                        .or_insert_with(|| Vec::new())
+                        .push(impl_id);
                 }
             }
-            assert!(!state.impl_to_remaining_typs.contains_key(&impl_id));
-            state.impl_to_remaining_typs.insert(impl_id, (name.clone(), datatypes));
+            state
+                .remaining_typs_needed_for_each_impl
+                .insert(impl_id, (name.clone(), datatypes))
+                .map(|_| panic!("already inserted"));
             erase_impl_assocs(ctxt, state, impl_id);
         }
     }

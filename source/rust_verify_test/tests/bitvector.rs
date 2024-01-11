@@ -428,3 +428,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] bitvector_ineq_different_bitwidth verus_code! {
+        proof fn test() {
+            let b: u8 = 5;
+
+            assert(b >= 3u64) by(bit_vector)
+                requires b == 5;
+        }
+
+        proof fn test2() {
+            let b: u8 = 5;
+
+            assert(3u64 <= b) by(bit_vector)
+                requires b == 5;
+        }
+
+        proof fn test3() {
+            let b: u8 = 5;
+
+            assert(b <= 3u64) by(bit_vector) // FAILS
+                requires b == 5;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

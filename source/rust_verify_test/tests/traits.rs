@@ -188,22 +188,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
-}
-
-test_verify_one_file! {
-    #[test] test_ill_formed_9 verus_code! {
-        trait T1 {
-            fn f(&self);
-        }
-        struct S {}
-        impl T1 for S {
-            fn f(&self)
-                ensures true // no ensures allowed
-            {
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires")
 }
 
 test_verify_one_file! {
@@ -2750,6 +2735,23 @@ test_verify_one_file! {
         {
             t.foo();
             assert(t.b());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
+        use vstd::prelude::View;
+
+        pub trait A {
+            type Input: View;
+            type Output: View;
+        }
+
+        pub trait B {
+            type MyA: A;
+
+            fn foo(input: <Self::MyA as A>::Input) -> <Self::MyA as A>::Output;
         }
     } => Ok(())
 }

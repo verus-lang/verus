@@ -268,6 +268,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] trailing_commas verus_code! {
+        spec fn s(x:int) -> bool
+            decreases x,
+        {
+            if x <= 0 { true}
+            else {
+                s(x - 1)
+            }
+        }
+
+        // We treat hide/reveal like other Rust functions,
+        // which allow trailing commas
+        proof fn test() {
+            hide(s,);
+            reveal(s,);
+            reveal_with_fuel(s,2,);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] regression_704_impl_arg verus_code! {
         trait X {}
         impl X for int {}

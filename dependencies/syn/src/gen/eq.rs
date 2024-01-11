@@ -1232,6 +1232,9 @@ impl PartialEq for InvariantNameSet {
             (InvariantNameSet::None(self0), InvariantNameSet::None(other0)) => {
                 self0 == other0
             }
+            (InvariantNameSet::List(self0), InvariantNameSet::List(other0)) => {
+                self0 == other0
+            }
             _ => false,
         }
     }
@@ -1242,6 +1245,14 @@ impl Eq for InvariantNameSetAny {}
 impl PartialEq for InvariantNameSetAny {
     fn eq(&self, _other: &Self) -> bool {
         true
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for InvariantNameSetList {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for InvariantNameSetList {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

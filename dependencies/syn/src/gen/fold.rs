@@ -425,6 +425,12 @@ pub trait Fold {
     ) -> InvariantNameSetAny {
         fold_invariant_name_set_any(self, i)
     }
+    fn fold_invariant_name_set_list(
+        &mut self,
+        i: InvariantNameSetList,
+    ) -> InvariantNameSetList {
+        fold_invariant_name_set_list(self, i)
+    }
     fn fold_invariant_name_set_none(
         &mut self,
         i: InvariantNameSetNone,
@@ -2389,6 +2395,9 @@ where
         InvariantNameSet::None(_binding_0) => {
             InvariantNameSet::None(f.fold_invariant_name_set_none(_binding_0))
         }
+        InvariantNameSet::List(_binding_0) => {
+            InvariantNameSet::List(f.fold_invariant_name_set_list(_binding_0))
+        }
     }
 }
 pub fn fold_invariant_name_set_any<F>(
@@ -2400,6 +2409,18 @@ where
 {
     InvariantNameSetAny {
         token: Token![any](tokens_helper(f, &node.token.span)),
+    }
+}
+pub fn fold_invariant_name_set_list<F>(
+    f: &mut F,
+    node: InvariantNameSetList,
+) -> InvariantNameSetList
+where
+    F: Fold + ?Sized,
+{
+    InvariantNameSetList {
+        bracket_token: Bracket(tokens_helper(f, &node.bracket_token.span)),
+        exprs: FoldHelper::lift(node.exprs, |it| f.fold_expr(it)),
     }
 }
 pub fn fold_invariant_name_set_none<F>(
