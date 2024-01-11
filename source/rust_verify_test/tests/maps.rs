@@ -61,7 +61,7 @@ test_verify_one_file! {
             assert(m1.index(2) == 20);
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
             let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
-            assert(equal(m1, m2)); // FAILS
+            assert(equal(m1, m2)) by {} // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -90,7 +90,7 @@ test_verify_one_file! {
             let m1 = s.mk_map(|x: int| x + 4);
             let m2 = s.mk_map(|y: int| (2 + 2) + y);
             // would require extensional equality:
-            assert(m1 === m2); // FAILS
+            assert(m1 === m2) by {} // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

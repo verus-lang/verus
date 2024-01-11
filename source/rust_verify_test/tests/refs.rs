@@ -111,6 +111,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_mut_ref_arg_invalid_spec_decreases verus_code! {
+        proof fn add1(a: &mut u64)
+            decreases (*a as int),
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in decreases clause, use `old(a)` to refer to the pre-state of an &mut variable")
+}
+
+test_verify_one_file! {
     #[test] test_mut_ref_arg_spec verus_code! {
         spec fn add1(a: &mut u64) {
             *a = add(*a, 1);

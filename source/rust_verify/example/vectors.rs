@@ -88,7 +88,7 @@ fn pop_test(t: Vec<u64>)
     assert(forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]));
 }
 
-fn pust_test(t: Vec<u64>, y: u64)
+fn push_test(t: Vec<u64>, y: u64)
     requires
         forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]),
         uninterp_fn(y),

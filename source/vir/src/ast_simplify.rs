@@ -902,8 +902,10 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     // Pre-emptively add this because unit values might be added later.
     state.tuple_type_name(0);
 
-    let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
+    ctx.datatypes =
+        Arc::new(datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect());
+    let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
     let assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
