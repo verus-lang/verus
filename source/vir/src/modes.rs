@@ -1329,7 +1329,8 @@ fn check_function(typing: &mut Typing, function: &mut Function) -> Result<(), Vi
         typing.infer_spec_for_loop_iter_modes = Some(Vec::new());
         check_expr_has_mode(typing, function.x.mode, body, function.x.ret.x.mode)?;
 
-        // Replace any InferSpecForLoopIter with Some(...expr...) or None
+        // Replace InferSpecForLoopIter None if it fails to have mode spec
+        // (if it's mode spec, leave as is to be processed by sst_to_air and loop_inference)
         let infer_spec = typing.infer_spec_for_loop_iter_modes.as_ref().expect("infer_spec");
         if infer_spec.len() > 0 {
             let mut functionx = function.x.clone();

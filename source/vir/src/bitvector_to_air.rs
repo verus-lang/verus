@@ -131,9 +131,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                     "internal error: matching for bit vector ops on this match should be impossible"
                 ),
                 UnaryOp::InferSpecForLoopIter { .. } => {
-                    panic!(
-                        "internal error: InferSpecForLoopIter should have been removed before here"
-                    )
+                    panic!("internal error: unexpected Option type (from InferSpecForLoopIter)")
                 }
             }
         }
