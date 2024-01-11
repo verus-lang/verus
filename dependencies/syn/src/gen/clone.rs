@@ -1273,6 +1273,7 @@ impl Clone for InvariantNameSet {
         match self {
             InvariantNameSet::Any(v0) => InvariantNameSet::Any(v0.clone()),
             InvariantNameSet::None(v0) => InvariantNameSet::None(v0.clone()),
+            InvariantNameSet::List(v0) => InvariantNameSet::List(v0.clone()),
         }
     }
 }
@@ -1281,6 +1282,15 @@ impl Clone for InvariantNameSetAny {
     fn clone(&self) -> Self {
         InvariantNameSetAny {
             token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantNameSetList {
+    fn clone(&self) -> Self {
+        InvariantNameSetList {
+            bracket_token: self.bracket_token.clone(),
+            exprs: self.exprs.clone(),
         }
     }
 }

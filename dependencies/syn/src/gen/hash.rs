@@ -1681,6 +1681,10 @@ impl Hash for InvariantNameSet {
                 state.write_u8(1u8);
                 v0.hash(state);
             }
+            InvariantNameSet::List(v0) => {
+                state.write_u8(2u8);
+                v0.hash(state);
+            }
         }
     }
 }
@@ -1690,6 +1694,15 @@ impl Hash for InvariantNameSetAny {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for InvariantNameSetList {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for InvariantNameSetNone {

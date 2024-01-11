@@ -16,9 +16,19 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 impl PathX {
+    pub fn last_segment(&self) -> Ident {
+        self.segments[self.segments.len() - 1].clone()
+    }
+
     pub fn pop_segment(&self) -> Path {
         let mut segments = (*self.segments).clone();
         segments.pop();
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn push_segment(&self, ident: Ident) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments.push(ident);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 

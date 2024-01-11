@@ -131,10 +131,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     if let Some(verus_item) = verus_item {
         match verus_item {
-            VerusItem::Pervasive(_, _)
-            | VerusItem::Marker(_)
-            | VerusItem::BuiltinType(_)
-            | VerusItem::BuiltinTrait(_) => (),
+            VerusItem::Pervasive(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_) => (),
             _ => {
                 return verus_item_to_vir(
                     bctx,
@@ -266,7 +263,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
             }
-            SpecItem::Requires | SpecItem::Recommends => {
+            SpecItem::Requires | SpecItem::Recommends | SpecItem::OpensInvariants => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(
                     args_len == 1,
@@ -276,21 +273,46 @@ fn verus_item_to_vir<'tcx, 'a>(
                 );
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let subargs = extract_array(args[0]);
-                for arg in &subargs {
-                    if !matches!(bctx.types.expr_ty_adjusted(arg).kind(), TyKind::Bool) {
-                        return err_span(arg.span, "requires/recommends needs a bool expression");
-                    }
-                }
+
                 let vir_args =
                     vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
+
+                for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
+                    let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
+                    match spec_item {
+                        SpecItem::Requires | SpecItem::Recommends => match &*typ {
+                            TypX::Bool => {}
+                            _ => {
+                                return err_span(
+                                    arg.span,
+                                    "requires/recommends needs a bool expression",
+                                );
+                            }
+                        },
+                        SpecItem::OpensInvariants => match &*typ {
+                            TypX::Int(_) => {}
+                            _ => {
+                                return err_span(
+                                    arg.span,
+                                    "opens_invariants needs an int expression",
+                                );
+                            }
+                        },
+                        _ => unreachable!(),
+                    }
+                }
+
                 let header = match spec_item {
                     SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
                     SpecItem::Recommends => Arc::new(HeaderExprX::Recommends(Arc::new(vir_args))),
+                    SpecItem::OpensInvariants => {
+                        Arc::new(HeaderExprX::InvariantOpens(Arc::new(vir_args)))
+                    }
                     _ => unreachable!(),
                 };
                 mk_expr(ExprX::Header(header))
             }
-            SpecItem::OpensInvariants | SpecItem::OpensInvariantsExcept => {
+            SpecItem::OpensInvariantsExcept => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 err_span(
                     expr.span,
@@ -1300,17 +1322,16 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
         }
         VerusItem::BuiltinFunction(
-            re @ (BuiltinFunctionItem::FnWithSpecificationRequires
-            | BuiltinFunctionItem::FnWithSpecificationEnsures),
+            re @ (BuiltinFunctionItem::CallRequires | BuiltinFunctionItem::CallEnsures),
         ) => {
             record_spec_fn_no_proof_args(bctx, expr);
 
             let bsf = match re {
-                BuiltinFunctionItem::FnWithSpecificationRequires => {
+                BuiltinFunctionItem::CallRequires => {
                     assert!(args.len() == 2);
                     BuiltinSpecFun::ClosureReq
                 }
-                BuiltinFunctionItem::FnWithSpecificationEnsures => {
+                BuiltinFunctionItem::CallEnsures => {
                     assert!(args.len() == 3);
                     BuiltinSpecFun::ClosureEns
                 }
@@ -1322,6 +1343,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 .collect::<Result<Vec<_>, _>>()?;
 
             let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
+            let mut typ_args = (*typ_args).clone();
+            // Put the args in the order [function type, args type]
+            typ_args.swap(0, 1);
+            let typ_args = Arc::new(typ_args);
 
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args),
@@ -1331,7 +1356,6 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Pervasive(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
-        | VerusItem::BuiltinTrait(_)
         | VerusItem::Global(_) => unreachable!(),
     }
 }
