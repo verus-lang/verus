@@ -97,6 +97,7 @@ struct TypingSnapshot {
     vars_scope_count: usize,
     in_forall_stmt: bool,
     block_ghostness: Ghost,
+    ret_mode: Option<Mode>,
     atomic_insts: Option<AtomicInstCollector>,
 }
 
@@ -121,7 +122,7 @@ impl Typing {
             check_ghost_blocks: _,
             block_ghostness,
             fun_mode: _,
-            ret_mode: _,
+            ret_mode,
             atomic_insts,
             infer_spec_for_loop_iter_modes: _,
         } = &self;
@@ -129,6 +130,7 @@ impl Typing {
             vars_scope_count: vars.num_scopes(),
             in_forall_stmt: *in_forall_stmt,
             block_ghostness: *block_ghostness,
+            ret_mode: *ret_mode,
             atomic_insts: atomic_insts.clone(),
         };
         self.vars.push_scope(true);
@@ -136,13 +138,19 @@ impl Typing {
     }
 
     fn pop_transient_state(&mut self, snapshot: TypingSnapshot) {
-        let TypingSnapshot { vars_scope_count, in_forall_stmt, block_ghostness, atomic_insts } =
-            snapshot;
+        let TypingSnapshot {
+            vars_scope_count,
+            in_forall_stmt,
+            block_ghostness,
+            ret_mode,
+            atomic_insts,
+        } = snapshot;
         while self.vars.num_scopes() != vars_scope_count {
             self.vars.pop_scope();
         }
         self.in_forall_stmt = in_forall_stmt;
         self.block_ghostness = block_ghostness;
+        self.ret_mode = ret_mode;
         self.atomic_insts = atomic_insts;
     }
 }
