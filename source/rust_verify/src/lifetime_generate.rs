@@ -88,6 +88,13 @@ pub(crate) struct State {
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
     pub(crate) assoc_type_impls: HashMap<AssocTypeImpl, Vec<AssocTypeImplType>>,
     pub(crate) fun_decls: Vec<FunDecl>,
+    // For an impl "bounds ==> trait T(...t...)", point some or all of t to impl:
+    // (We add each impl for T to this when we process T)
+    // (To avoid importing unnecessary impls, we delay processing impl until all t are used)
+    // t1 -> impl, ..., tn -> impl
+    typs_used_in_trait_impls_reverse_map: HashMap<DefId, Vec<DefId>>,
+    // impl -> (t1, ..., tn) and process impl when t1...tn is empty
+    remaining_typs_needed_for_each_impl: HashMap<DefId, (Id, Vec<DefId>)>,
     enclosing_fun_id: Option<DefId>,
 }
 
@@ -110,6 +117,8 @@ impl State {
             datatype_decls: Vec::new(),
             assoc_type_impls: HashMap::new(),
             fun_decls: Vec::new(),
+            typs_used_in_trait_impls_reverse_map: HashMap::new(),
+            remaining_typs_needed_for_each_impl: HashMap::new(),
             enclosing_fun_id: None,
         }
     }
@@ -204,6 +213,18 @@ impl State {
             if crate_name != "builtin" {
                 self.reached.insert((None, id));
                 self.datatype_worklist.push(id);
+            }
+            if let Some(impl_ids) = self.typs_used_in_trait_impls_reverse_map.remove(&id) {
+                // Wake up any impls waiting for our type to be reached
+                for impl_id in impl_ids {
+                    if let Some((_, ref mut ts)) =
+                        self.remaining_typs_needed_for_each_impl.get_mut(&impl_id)
+                    {
+                        // Remove ourself from what impl_id is waiting on
+                        ts.retain(|t| *t != id);
+                    }
+                    erase_impl_assocs(ctxt, self, impl_id);
+                }
             }
         }
     }
@@ -316,6 +337,56 @@ fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Con
     }
 }
 
+fn adt_args<'a, 'tcx>(
+    rust_item: Option<RustItem>,
+    args: &'a [rustc_middle::ty::GenericArg<'tcx>],
+) -> (bool, &'a [rustc_middle::ty::GenericArg<'tcx>]) {
+    if rust_item == Some(RustItem::Box)
+        || rust_item == Some(RustItem::Rc)
+        || rust_item == Some(RustItem::Arc)
+    {
+        // For Box, Rc, Arc, skip the second argument (the Allocator)
+        // which is currently restricted to always be `Global`.
+        assert!(args.len() == 2);
+        (false, &args[0..1])
+    } else {
+        (true, args)
+    }
+}
+
+// Collect some or all as-yet unreached types mentioned directly by ty
+// (It's ok to miss some, but the more we capture, the less extraneous code
+// we have to import.)
+fn collect_unreached_datatypes<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &State,
+    datatypes: &mut Vec<DefId>,
+    ty: &Ty<'tcx>,
+) {
+    match ty.kind() {
+        TyKind::Ref(_, t, _) | TyKind::Slice(t) | TyKind::Array(t, _) => {
+            collect_unreached_datatypes(ctxt, state, datatypes, t);
+        }
+        TyKind::Adt(AdtDef(adt_def_data), args) => {
+            let did = adt_def_data.did;
+            let rust_item = verus_items::get_rust_item(ctxt.tcx, did);
+            let (is_user_adt, args) = adt_args(rust_item, args);
+            if is_user_adt && !state.reached.contains(&(None, did)) {
+                datatypes.push(did);
+            }
+            for arg in args.iter() {
+                match arg.unpack() {
+                    rustc_middle::ty::GenericArgKind::Type(t) => {
+                        collect_unreached_datatypes(ctxt, state, datatypes, &t);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ {
     match ty.kind() {
         TyKind::Bool | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Char | TyKind::Str => {
@@ -349,18 +420,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
 
             let rust_item = verus_items::get_rust_item(ctxt.tcx, did);
             let mut typ_args: Vec<Typ> = Vec::new();
-
-            let args = if rust_item == Some(RustItem::Box)
-                || rust_item == Some(RustItem::Rc)
-                || rust_item == Some(RustItem::Arc)
-            {
-                // For Box, Rc, Arc, skip the second argument (the Allocator)
-                // which is currently restricted to always be `Global`.
-                assert!(args.len() == 2);
-                &args[0..1]
-            } else {
-                &args
-            };
+            let (_, args) = adt_args(rust_item, args);
 
             for arg in args.iter() {
                 match arg.unpack() {
@@ -1829,6 +1889,62 @@ fn erase_fn<'tcx>(
     );
 }
 
+fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
+    if !state.remaining_typs_needed_for_each_impl.contains_key(&impl_id) {
+        // Already finished
+        return;
+    }
+    if state.remaining_typs_needed_for_each_impl[&impl_id].1.len() > 0 {
+        // We haven't reached all the types we would need to justify this impl
+        return;
+    }
+    let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
+    let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
+    for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
+        match assoc_item.kind {
+            rustc_middle::ty::AssocKind::Type => {
+                let impl_name = state.typ_param(&assoc_item.name.to_string(), None);
+
+                let mut trait_typ_args: Vec<Typ> = Vec::new();
+                for ty in trait_ref.skip_binder().args.types().skip(1) {
+                    trait_typ_args.push(erase_ty(ctxt, state, &ty));
+                }
+                let mut lifetimes: Vec<GenericParam> = Vec::new();
+                let mut typ_params: Vec<GenericParam> = Vec::new();
+                let mut generic_bounds: Vec<GenericBound> = Vec::new();
+                erase_mir_generics(
+                    ctxt,
+                    state,
+                    impl_id,
+                    false,
+                    &mut lifetimes,
+                    &mut typ_params,
+                    &mut generic_bounds,
+                );
+                let mut trait_lifetime_args: Vec<Id> = Vec::new();
+                for region in trait_ref.skip_binder().args.regions() {
+                    if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
+                        trait_lifetime_args.push(id);
+                    }
+                }
+
+                let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+                let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
+                let self_typ = erase_ty(ctxt, state, &self_ty);
+                let ty = ctxt.tcx.type_of(assoc_item.def_id).skip_binder();
+                let typ = erase_ty(ctxt, state, &ty);
+                let trait_as_datatype =
+                    Box::new(TypX::Datatype(name.clone(), trait_lifetime_args, trait_typ_args));
+                let assoc =
+                    AssocTypeImpl { generic_params, generic_bounds, self_typ, trait_as_datatype };
+                let assoc_type = AssocTypeImplType { name: impl_name, typ };
+                state.assoc_type_impls.entry(assoc).or_insert(Vec::new()).push(assoc_type);
+            }
+            _ => (),
+        }
+    }
+}
+
 fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     if !state.reached.insert((None, trait_id)) {
         return;
@@ -1874,58 +1990,23 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
         state.trait_decls.push(decl);
 
         for impl_id in ctxt.tcx.all_impls(trait_id) {
+            let mut datatypes: Vec<DefId> = Vec::new();
             let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
-            for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
-                match assoc_item.kind {
-                    rustc_middle::ty::AssocKind::Type => {
-                        let impl_name = state.typ_param(&assoc_item.name.to_string(), None);
-
-                        let mut trait_typ_args: Vec<Typ> = Vec::new();
-                        for ty in trait_ref.skip_binder().args.types().skip(1) {
-                            trait_typ_args.push(erase_ty(ctxt, state, &ty));
-                        }
-                        let mut lifetimes: Vec<GenericParam> = Vec::new();
-                        let mut typ_params: Vec<GenericParam> = Vec::new();
-                        let mut generic_bounds: Vec<GenericBound> = Vec::new();
-                        erase_mir_generics(
-                            ctxt,
-                            state,
-                            impl_id,
-                            false,
-                            &mut lifetimes,
-                            &mut typ_params,
-                            &mut generic_bounds,
-                        );
-                        let mut trait_lifetime_args: Vec<Id> = Vec::new();
-                        for region in trait_ref.skip_binder().args.regions() {
-                            if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
-                                trait_lifetime_args.push(id);
-                            }
-                        }
-
-                        let generic_params =
-                            lifetimes.into_iter().chain(typ_params.into_iter()).collect();
-                        let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
-                        let self_typ = erase_ty(ctxt, state, &self_ty);
-                        let ty = ctxt.tcx.type_of(assoc_item.def_id).skip_binder();
-                        let typ = erase_ty(ctxt, state, &ty);
-                        let trait_as_datatype = Box::new(TypX::Datatype(
-                            name.clone(),
-                            trait_lifetime_args,
-                            trait_typ_args,
-                        ));
-                        let assoc = AssocTypeImpl {
-                            generic_params,
-                            generic_bounds,
-                            self_typ,
-                            trait_as_datatype,
-                        };
-                        let assoc_type = AssocTypeImplType { name: impl_name, typ };
-                        state.assoc_type_impls.entry(assoc).or_insert(Vec::new()).push(assoc_type);
-                    }
-                    _ => (),
+            for ty in trait_ref.skip_binder().args.types() {
+                collect_unreached_datatypes(ctxt, state, &mut datatypes, &ty);
+                for t in &datatypes {
+                    state
+                        .typs_used_in_trait_impls_reverse_map
+                        .entry(*t)
+                        .or_insert_with(|| Vec::new())
+                        .push(impl_id);
                 }
             }
+            state
+                .remaining_typs_needed_for_each_impl
+                .insert(impl_id, (name.clone(), datatypes))
+                .map(|_| panic!("already inserted"));
+            erase_impl_assocs(ctxt, state, impl_id);
         }
     }
 }
@@ -2144,10 +2225,9 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
             DatatypeTransparency::Never => true,
             DatatypeTransparency::WhenVisible(_) => false,
         },
-        None => {
-            dbg!(id);
-            panic!("erase_mir_datatype: unrecognized datatype");
-        }
+        // We may see extra datatypes from imported libraries that we
+        // use for associated types:
+        None => true,
     };
     if is_external_body {
         erase_abstract_datatype(ctxt, state, span, id);

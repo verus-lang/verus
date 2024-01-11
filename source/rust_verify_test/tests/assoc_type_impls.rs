@@ -376,3 +376,10 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
 }
+
+test_verify_one_file! {
+    #[test] mention_external_trait_with_assoc_type verus_code! {
+        fn foo<A: IntoIterator>(a: &A) {
+        }
+    } => Ok(())
+}
