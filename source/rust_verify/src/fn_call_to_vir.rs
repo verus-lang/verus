@@ -99,12 +99,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(RustItem::TryTraitBranch) => {
             return err_span(expr.span, "Verus does not yet support the ? operator");
         }
-        Some(RustItem::IntoIterFn) => {
-            return err_span(
-                expr.span,
-                "Verus does not yet support IntoIterator::into_iter and for loops, use a while loop instead",
-            );
-        }
         Some(RustItem::Clone) => {
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
