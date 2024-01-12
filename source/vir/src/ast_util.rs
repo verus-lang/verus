@@ -118,6 +118,16 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
     typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
 }
 
+pub fn typ_args_for_datatype_typ(typ: &Typ) -> &Typs {
+    match &**typ {
+        TypX::Decorate(_, t) => typ_args_for_datatype_typ(t),
+        TypX::Datatype(_, args, _) => args,
+        _ => {
+            panic!("typ_args_for_datatype_typ expected datatype type");
+        }
+    }
+}
+
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall };
 
 pub fn params_equal_opt(

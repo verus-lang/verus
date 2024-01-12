@@ -1,6 +1,6 @@
 use crate::ast::{
     ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path,
-    Primitive, Trait, TypX, Variants, VirErr,
+    Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -34,7 +34,7 @@ pub struct ChosenTriggers {
 /// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
-    pub(crate) datatypes: Arc<HashMap<Path, Variants>>,
+    pub(crate) datatypes: Arc<HashMap<Path, (TypPositives, Variants)>>,
     pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
@@ -198,8 +198,11 @@ impl GlobalCtx {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
 
-        let datatypes: HashMap<Path, Variants> =
-            krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
+        let datatypes: HashMap<Path, (TypPositives, Variants)> = krate
+            .datatypes
+            .iter()
+            .map(|d| (d.x.path.clone(), (d.x.typ_params.clone(), d.x.variants.clone())))
+            .collect();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
         for function in krate.functions.iter() {
             assert!(!func_map.contains_key(&function.x.name));

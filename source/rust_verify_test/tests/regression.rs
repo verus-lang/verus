@@ -1231,3 +1231,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] struct_with_updater_and_typ_subst_in_field_issue956 verus_code! {
+        struct X<T> {
+            a: int,
+            b: T,
+        }
+
+        proof fn stuff(x: X<bool>) {
+            let y = X { a: x.a + 1, .. x };
+        }
+    } => Ok(())
+}

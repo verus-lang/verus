@@ -535,7 +535,7 @@ pub(crate) fn ctor_to_apply<'a>(
     variant: &Ident,
     binders: &'a Binders<Exp>,
 ) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
-    let fields = &get_variant(&ctx.global.datatypes[path], variant).a;
+    let fields = &get_variant(&ctx.global.datatypes[path].1, variant).a;
     (variant_ident(path, &variant), fields.iter().map(move |f| get_field(binders, &f.name)))
 }
 
@@ -1328,7 +1328,7 @@ fn assume_other_fields_unchanged_inner(
                 assert!(u[0].datatype == *datatype && u[0].variant == *variant);
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
-            let datatype_fields = &get_variant(&ctx.global.datatypes[datatype], variant).a;
+            let datatype_fields = &get_variant(&ctx.global.datatypes[datatype].1, variant).a;
             let dt =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
                     let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
