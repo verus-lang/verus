@@ -14,7 +14,7 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Variant, VirErr};
 use vir::ast_util::ident_binder;
-use vir::def::positional_field_ident;
+use vir::def::field_ident_from_rust;
 
 // The `rustc_hir::VariantData` is optional here because we won't have it available
 // when handling external datatype definitions.
@@ -72,14 +72,7 @@ where
             }
         };
 
-        // Only way I can see to determine if the field is positional using rustc_middle
-        let use_positional = field_def.name.as_str().bytes().nth(0).unwrap().is_ascii_digit();
-
-        let ident = if use_positional {
-            positional_field_ident(idx)
-        } else {
-            str_ident(&field_def_ident.as_str())
-        };
+        let ident = field_ident_from_rust(&field_def_ident.as_str());
 
         let typ = mid_ty_to_vir(
             ctxt.tcx,

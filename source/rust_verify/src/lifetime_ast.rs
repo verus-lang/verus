@@ -11,6 +11,7 @@ pub(crate) enum IdKind {
     Fun,
     Local,
     Builtin,
+    Field,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

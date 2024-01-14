@@ -12,6 +12,12 @@ pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> S
         IdKind::Fun => format!("f{}_{}", rename_count, raw_id),
         IdKind::Local => format!("x{}_{}", rename_count, vir::def::user_local_name(raw_id)),
         IdKind::Builtin => raw_id.clone(),
+
+        // Numeric fields need to be emitted as numeric fields.
+        // Non-numeric fields need to be unique-ified to avoid conflict with method names.
+        // Therefore, we only use the rename_count for non-numeric fields.
+        IdKind::Field if raw_id.bytes().nth(0).unwrap().is_ascii_digit() => raw_id.clone(),
+        IdKind::Field => format!("y{}_{}", rename_count, vir::def::user_local_name(raw_id)),
     }
 }
 

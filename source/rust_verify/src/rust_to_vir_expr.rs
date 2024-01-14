@@ -40,7 +40,7 @@ use vir::ast::{
     Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
-use vir::def::positional_field_ident;
+use vir::def::{field_ident_from_rust, positional_field_ident};
 
 pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, String), VirErr> {
     let Pat { hir_id: _, kind, span, default_binding_modes } = pat;
@@ -481,7 +481,8 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for fpat in pats.iter() {
                 let pattern = pattern_to_vir(bctx, &fpat.pat)?;
-                let binder = ident_binder(&str_ident(&fpat.ident.as_str()), &pattern);
+                let ident = field_ident_from_rust(fpat.ident.as_str());
+                let binder = ident_binder(&ident, &pattern);
                 binders.push(binder);
             }
             PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
@@ -1455,18 +1456,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let hir_def = bctx.ctxt.tcx.adt_def(adt_def.did());
                 let variant = hir_def.variants().iter().next().unwrap();
                 let variant_name = str_ident(&variant.ident(tcx).as_str());
-                let field_name = match variant.ctor_kind() {
-                    Some(rustc_hir::def::CtorKind::Fn) => {
-                        let field_idx = variant
-                            .fields
-                            .iter()
-                            .position(|f| f.ident(tcx).as_str() == name.as_str())
-                            .expect("positional field not found");
-                        positional_field_ident(field_idx)
-                    }
-                    None => str_ident(&name.as_str()),
+                let field_name = field_ident_from_rust(&name.as_str());
+                match variant.ctor_kind() {
+                    Some(rustc_hir::def::CtorKind::Fn) => {}
+                    None => {}
                     Some(rustc_hir::def::CtorKind::Const) => panic!("unexpected tuple constructor"),
-                };
+                }
                 (datatype_path, variant_name, field_name)
             } else {
                 let lhs_typ = typ_of_node(bctx, lhs.span, &lhs.hir_id, false)?;
@@ -1650,7 +1645,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
                         let vir = expr_to_vir(bctx, f.expr, modifier)?;
-                        Ok(ident_binder(&str_ident(&f.ident.as_str()), &vir))
+                        let ident = field_ident_from_rust(f.ident.as_str());
+                        Ok(ident_binder(&ident, &vir))
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
