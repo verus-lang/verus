@@ -757,7 +757,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     UnaryOpr::Field(FieldOpr {
                         datatype: adt_path,
                         variant: field_ident.clone(),
-                        field: field_ident.clone(),
+                        field: field_ident_from_rust(&field_ident),
                         get_variant: true,
                         check: VariantCheck::None,
                     }),

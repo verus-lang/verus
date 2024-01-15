@@ -340,8 +340,8 @@ pub fn check_item_union<'tcx>(
         assert!(adt_def.variants().len() == 1);
         let variant_def = adt_def.variants().iter().next().unwrap();
         for field_def in variant_def.fields.iter() {
-            let field_name = str_ident(field_def.ident(ctxt.tcx).as_str());
-            let variant_name = field_name.clone();
+            let variant_name = str_ident(field_def.ident(ctxt.tcx).as_str());
+            let field_name = field_ident_from_rust(&variant_name);
 
             let vis = mk_visibility_from_vis(ctxt, field_def.vis);
             total_vis = total_vis.join(&vis);

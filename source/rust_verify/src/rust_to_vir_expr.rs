@@ -1527,7 +1527,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Some(rustc_hir::def::CtorKind::Const) => panic!("unexpected tuple constructor"),
                 }
                 let variant_name = if adt_def.is_union() {
-                    field_name.clone()
+                    str_ident(name.as_str())
                 } else {
                     str_ident(&variant.ident(tcx).as_str())
                 };
