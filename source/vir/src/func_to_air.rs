@@ -2,7 +2,7 @@ use crate::ast::{
     Fun, Function, FunctionKind, Ident, Idents, ItemKind, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, Typs, VirErr,
 };
-use crate::ast_util::QUANT_FORALL;
+use crate::ast_util::{mk_bool, QUANT_FORALL};
 use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
@@ -289,66 +289,72 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
     if !function.x.attrs.inline_only {
-    let body_expr = exp_to_expr(&ctx, &body_exp, &ExprCtxt::new())?;
-    let def_body = if !is_recursive {
-        body_expr
-    } else {
-        // Compute shortest path from function back to itself
-        // Example: f calls g, g calls f, so shortest cycle f --> g --> f has len 2
-        // We use this as the minimum default fuel for f
-        let fun_node = crate::recursion::Node::Fun(function.x.name.clone());
-        let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node);
-        assert!(cycle_len >= 1);
+        let body_expr = exp_to_expr(&ctx, &body_exp, &ExprCtxt::new())?;
+        let def_body = if !is_recursive {
+            body_expr
+        } else {
+            // Compute shortest path from function back to itself
+            // Example: f calls g, g calls f, so shortest cycle f --> g --> f has len 2
+            // We use this as the minimum default fuel for f
+            let fun_node = crate::recursion::Node::Fun(function.x.name.clone());
+            let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node);
+            assert!(cycle_len >= 1);
 
-        let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&name)));
-        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&name));
-        let args = func_def_args(&function.x.typ_params, &pars);
-        let mut args_zero = args.clone();
-        let mut args_fuel = args.clone();
-        let mut args_succ = args.clone();
-        let mut args_def = args;
-        args_zero.push(str_var(ZERO));
-        args_fuel.push(str_var(FUEL_LOCAL));
-        args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_LOCAL)]));
-        let mut succ_fuel_nat_f = ident_var(&fuel_nat_f);
-        for _ in 0..cycle_len {
-            succ_fuel_nat_f = str_apply(SUCC, &vec![succ_fuel_nat_f]);
-        }
-        args_def.push(succ_fuel_nat_f);
-        let rec_f_zero = ident_apply(&rec_f, &args_zero);
-        let rec_f_fuel = ident_apply(&rec_f, &args_fuel);
-        let rec_f_succ = ident_apply(&rec_f, &args_succ);
-        let rec_f_def = ident_apply(&rec_f, &args_def);
-        let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
-        let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
-        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
-        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true);
-        let bind_body = func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true);
-        let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
-        let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
-        let forall_body = mk_bind_expr(&bind_body, &implies_body);
-        let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
-        let axiom_zero = Arc::new(DeclX::Axiom(forall_zero));
-        let axiom_body = Arc::new(DeclX::Axiom(forall_body));
-        decl_commands.push(Arc::new(CommandX::Global(fuel_nat_decl)));
-        decl_commands.push(Arc::new(CommandX::Global(axiom_zero)));
-        decl_commands.push(Arc::new(CommandX::Global(axiom_body)));
-        rec_f_def
-    };
+            let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&name)));
+            let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&name));
+            let args = func_def_args(&function.x.typ_params, &pars);
+            let mut args_zero = args.clone();
+            let mut args_fuel = args.clone();
+            let mut args_succ = args.clone();
+            let mut args_def = args;
+            args_zero.push(str_var(ZERO));
+            args_fuel.push(str_var(FUEL_LOCAL));
+            args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_LOCAL)]));
+            let mut succ_fuel_nat_f = ident_var(&fuel_nat_f);
+            for _ in 0..cycle_len {
+                succ_fuel_nat_f = str_apply(SUCC, &vec![succ_fuel_nat_f]);
+            }
+            args_def.push(succ_fuel_nat_f);
+            let rec_f_zero = ident_apply(&rec_f, &args_zero);
+            let rec_f_fuel = ident_apply(&rec_f, &args_fuel);
+            let rec_f_succ = ident_apply(&rec_f, &args_succ);
+            let rec_f_def = ident_apply(&rec_f, &args_def);
+            let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
+            let eq_body = mk_eq(&rec_f_succ, &body_expr);
+            let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
+            let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
+            let bind_zero =
+                func_bind(ctx, name_zero, &function.x.typ_params, &pars, &rec_f_fuel, true);
+            let bind_body =
+                func_bind(ctx, name_body, &function.x.typ_params, &pars, &rec_f_succ, true);
+            let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
+            let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
+            let forall_body = mk_bind_expr(&bind_body, &implies_body);
+            let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
+            let axiom_zero = Arc::new(DeclX::Axiom(forall_zero));
+            let axiom_body = Arc::new(DeclX::Axiom(forall_body));
+            decl_commands.push(Arc::new(CommandX::Global(fuel_nat_decl)));
+            decl_commands.push(Arc::new(CommandX::Global(axiom_zero)));
+            decl_commands.push(Arc::new(CommandX::Global(axiom_body)));
+            rec_f_def
+        };
 
-    let e_forall = func_def_quant(
-        ctx,
-        &suffix_global_id(&fun_to_air_ident(&name)),
-        &function.x.typ_params,
-        &typ_args,
-        &pars,
-        &def_reqs,
-        def_body,
-    )?;
-    let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
-    let def_axiom = Arc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
-    decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
+        let e_forall = func_def_quant(
+            ctx,
+            &suffix_global_id(&fun_to_air_ident(&name)),
+            &function.x.typ_params,
+            &typ_args,
+            &pars,
+            &def_reqs,
+            def_body,
+        )?;
+        let fuel_guard = if ctx.epr {
+            Arc::new(ExprX::Const(air::ast::Constant::Bool(true)))
+        } else {
+            str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)])
+        };
+        let def_axiom = Arc::new(DeclX::Axiom(mk_implies(&fuel_guard, &e_forall)));
+        decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
     }
     Ok(check_state.fun_ssts)
 }
@@ -728,7 +734,8 @@ pub fn func_axioms_to_air(
                     vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let (triggers, is_mbqi) = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
+                let (triggers, is_mbqi) =
+                    crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers, is_mbqi);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
                 let forall: Arc<SpannedTyped<ExpX>> =

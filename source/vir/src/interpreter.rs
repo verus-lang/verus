@@ -452,7 +452,9 @@ fn hash_bnd<H: Hasher>(state: &mut H, bnd: &Bnd) {
     }
     match &bnd.x {
         Let(bnds) => dohash!(0; hash_binders_exp(bnds)),
-        Quant(quant, bnds, trigs, is_mbqi) => dohash!(1, quant, is_mbqi; hash_binders_typ(bnds), hash_trigs(trigs)),
+        Quant(quant, bnds, trigs, is_mbqi) => {
+            dohash!(1, quant, is_mbqi; hash_binders_typ(bnds), hash_trigs(trigs))
+        }
         Lambda(bnds, trigs) => dohash!(2; hash_binders_typ(bnds), hash_trigs(trigs)),
         Choose(bnds, trigs, e) => dohash!(3;
                     hash_binders_typ(bnds), hash_trigs(trigs), hash_exp(e)),

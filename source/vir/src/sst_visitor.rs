@@ -547,7 +547,8 @@ where
                     Spanned::new(bnd.span.clone(), bndx)
                 }
                 BndX::Quant(quant, binders, ts, mbqi) => {
-                    let bndx = BndX::Quant(*quant, fbndtyps(env, binders)?, ftrigs(env, ts)?, *mbqi);
+                    let bndx =
+                        BndX::Quant(*quant, fbndtyps(env, binders)?, ftrigs(env, ts)?, *mbqi);
                     Spanned::new(bnd.span.clone(), bndx)
                 }
                 BndX::Lambda(binders, ts) => {

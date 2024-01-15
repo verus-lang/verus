@@ -518,7 +518,8 @@ pub fn new_user_qid_name(fun_name: &str, q_count: u64, enable_mbqi: bool) -> Str
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars
     let fun_name = str::replace(&fun_name, ":", "_");
-    let qid = format!("{}{}{}_{}", mbqi_prefix, air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
+    let qid =
+        format!("{}{}{}_{}", mbqi_prefix, air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
     qid
 }
 

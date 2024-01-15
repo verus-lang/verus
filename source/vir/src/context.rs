@@ -91,6 +91,7 @@ pub struct Ctx {
     pub debug: bool,
     pub expand_flag: bool,
     pub debug_expand_targets: Vec<crate::messages::Message>,
+    pub epr: bool,
 }
 
 impl Ctx {
@@ -342,6 +343,7 @@ impl Ctx {
         lambda_types: Vec<usize>,
         bound_traits: HashSet<Path>,
         debug: bool,
+        epr: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
@@ -386,6 +388,7 @@ impl Ctx {
             debug,
             expand_flag: false,
             debug_expand_targets: vec![],
+            epr,
         })
     }
 
