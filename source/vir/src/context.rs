@@ -94,6 +94,7 @@ pub struct Ctx {
     pub expand_flag: bool,
     pub debug_expand_targets: Vec<crate::messages::Message>,
     pub arch_word_bits: ArchWordBits,
+    pub epr: bool,
 }
 
 impl Ctx {
@@ -381,6 +382,7 @@ impl Ctx {
         bound_traits: HashSet<Path>,
         fndef_types: Vec<Fun>,
         debug: bool,
+        epr: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
@@ -434,6 +436,7 @@ impl Ctx {
             expand_flag: false,
             debug_expand_targets: vec![],
             arch_word_bits: krate.arch.word_bits,
+            epr,
         })
     }
 

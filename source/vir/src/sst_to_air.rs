@@ -692,7 +692,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp, is_mbqi: bool) -> Qid {
             BndX::Quant(_, _, trigs, is_mbqi_) => {
                 check_is_mbqi = *is_mbqi_;
                 trigs
-            },
+            }
             BndX::Choose(_, trigs, _) => trigs,
             BndX::Lambda(_, trigs) => trigs,
             _ => panic!(
@@ -1136,7 +1136,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
-                let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp, false));
+                let qid =
+                    (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp, false));
                 let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
                 str_apply(crate::def::MK_FUN, &vec![lambda])
             }

@@ -793,13 +793,13 @@ mod EPRModel {
             forall | x : K | key_le(key_zero(), x),
             forall | x : K | key_le(x, x),
             forall | x : K, y : K, z : K | 
-                #![no_triggers]
+                #![auto]
                 key_le(x, y) && key_le(y, z) ==> key_le(x, z),
             forall | x : K, y : K | 
-                #![no_triggers]
+                #![auto]
                 key_le(x, y) && key_le(y, x) ==> x == y,
             forall | x : K, y : K |
-                #![no_triggers]
+                #![auto]
                 key_le(x, y) || key_le(y, x),
     {
         K::zero_properties();
@@ -831,16 +831,16 @@ mod EPRModel {
         pub proof fn gap_properties(&self)
             ensures
                 forall|w, x, y, z| 
-                    #![no_triggers]
+                    #![auto]
                     self.gap(w, x) && self.gap(y, z) && !key_le(x, y) ==> self.gap(w, z),
                 forall|x, y, z| 
-                    #![no_triggers]
+                    #![auto]
                     self.gap(x, y) && self.gap(y, z) && !self.gap(x, z) ==> self.contains(y),
                 forall|w, x, y, z| 
-                    #![no_triggers]
+                    #![auto]
                     self.gap(w, x) && key_le(w, y) && key_le(z, x) ==> self.gap(y, z),
                 forall|l, k, m, id| 
-                    #![no_triggers]     // k < l < m                      l has an entry
+                    #![auto]     // k < l < m                      l has an entry
                     self.gap(k, m) ==> !(!key_le(l, k) && !key_le(m, l) && self.m(l, id))
         {
             K::cmp_properties();
@@ -868,20 +868,20 @@ mod EPRModel {
 
         #[verifier::inline_only]
         pub open spec fn erase(&self, new: Self, lo: K, hi: K) -> bool {
-            &&& (forall|k,id| #![no_triggers] new.m(k, id) == (self.m(k, id) && !(key_le(lo, k) && !key_le(hi, k))))
-            &&& (forall|x,y| #![no_triggers] new.gap(x,y) == (self.gap(x,y) || (self.gap(x,lo) && self.gap(hi,y) && (key_le(y, hi) || !self.contains(hi)))))
+            &&& (forall|k,id| #![auto] new.m(k, id) == (self.m(k, id) && !(key_le(lo, k) && !key_le(hi, k))))
+            &&& (forall|x,y| #![auto] new.gap(x,y) == (self.gap(x,y) || (self.gap(x,lo) && self.gap(hi,y) && (key_le(y, hi) || !self.contains(hi)))))
         }
 
         #[verifier::inline_only]
         pub open spec fn erase_unbounded(&self, new: Self, lo: K) -> bool {
-            &&& (forall|k,id| #![no_triggers] new.m(k, id) == (self.m(k, id) && !(key_le(lo, k))))
-            &&& (forall|x,y| #![no_triggers] new.gap(x,y) == (self.gap(x,y) || (self.gap(x,lo))))
+            &&& (forall|k,id| #![auto] new.m(k, id) == (self.m(k, id) && !(key_le(lo, k))))
+            &&& (forall|x,y| #![auto] new.gap(x,y) == (self.gap(x,y) || (self.gap(x,lo))))
         }
 
         #[verifier::inline_only]
         pub open spec fn set(&self, new: Self, key: K, val : ID)  -> bool {
-            &&& (forall|k,id| #![no_triggers] new.m(k, id) == (if key == k { id == val } else { self.m(k, id) }))
-            &&& (forall|x,y| #![no_triggers] new.gap(x,y) == (self.gap(x,y) && !(!key_le(key, x) && !key_le(y, key))))
+            &&& (forall|k,id| #![auto] new.m(k, id) == (if key == k { id == val } else { self.m(k, id) }))
+            &&& (forall|x,y| #![auto] new.gap(x,y) == (self.gap(x,y) && !(!key_le(key, x) && !key_le(y, key))))
         }
 
 
@@ -893,7 +893,7 @@ mod EPRModel {
         
         #[verifier::inline_only]
         pub open spec fn contains(&self, k : K) -> bool {
-           exists|id| #![no_triggers] self.m(k, id) 
+           exists|id| #![auto] self.m(k, id) 
         }
         
         #[verifier::inline_only]
@@ -901,8 +901,8 @@ mod EPRModel {
             // glb less than k
             &&& key_le(glb, k)
             // glb definition
-            &&& (exists|id| #![no_triggers] self.m(glb, id))
-            &&& ((exists|id| #![no_triggers] self.m(k, id)) ==> (glb == k))
+            &&& (exists|id| #![auto] self.m(glb, id))
+            &&& ((exists|id| #![auto] self.m(k, id)) ==> (glb == k))
             &&& self.gap(glb, k)
         }
 
@@ -952,7 +952,7 @@ mod EPRModel {
 
         pub proof fn map_properties(&self)
             ensures 
-                forall|k, id_1, id_2| #![no_triggers] self.m(k, id_1) && self.m(k, id_2) ==> id_1 == id_2,
+                forall|k, id_1, id_2| #![auto] self.m(k, id_1) && self.m(k, id_2) ==> id_1 == id_2,
         {}
 
 
@@ -968,17 +968,17 @@ mod EPRModel {
         #[verifier::inline_only]
         pub open spec fn new(&self, id_zero: ID) -> bool {
             // all keys in m, value set to id_zero
-            &&& forall|k, id| #![no_triggers] self.m(k, id) == (id == id_zero)
+            &&& forall|k, id| #![auto] self.m(k, id) == (id == id_zero)
             // only key in lows is k_zero with id_zero
-            &&& forall|k, id| #![no_triggers] self.lows().m(k, id) == (k == key_zero::<K>() && id == id_zero)
+            &&& forall|k, id| #![auto] self.lows().m(k, id) == (k == key_zero::<K>() && id == id_zero)
             // gap is true for every pair of keys
-            &&& forall|k, j| #![no_triggers] self.lows().gap(k,j)
+            &&& forall|k, j| #![auto] self.lows().gap(k,j)
         }
 
         #[verifier::inline_only]
         pub open spec fn get(&self, k : K, id : ID) -> bool
         {
-            &&& exists|glb : K| #![no_triggers] self.get_internal(k, id, glb)
+            &&& exists|glb : K| #![auto] self.get_internal(k, id, glb)
         }
 
         #[verifier::inline_only]
@@ -996,8 +996,8 @@ mod EPRModel {
             &&& !key_le(hi, lo)
             &&& self.get_internal(hi, hi_id, hi_glb)
             // m update
-            &&& forall |k : K| #![no_triggers] (key_le(lo, k) && !key_le(hi, k)) ==> (forall|id : ID| new.m(k, id) == (id == dst))
-            &&& forall |k : K| #![no_triggers] !(key_le(lo, k) && !key_le(hi, k)) ==> (forall|id : ID| (new.m(k, id) == self.m(k, id)))
+            &&& forall |k : K| #![auto] (key_le(lo, k) && !key_le(hi, k)) ==> (forall|id : ID| new.m(k, id) == (id == dst))
+            &&& forall |k : K| #![auto] !(key_le(lo, k) && !key_le(hi, k)) ==> (forall|id : ID| (new.m(k, id) == self.m(k, id)))
             // lows update
             &&& self.lows().set(lows_1, hi, hi_id)
             &&& lows_1.erase(lows_2, lo, hi)
@@ -1009,8 +1009,8 @@ mod EPRModel {
         #[verifier::inline_only]
         pub open spec fn set_unbounded(&self, new: Self, lo: K, dst: ID, lows_2: SOMapModel<K, ID>) -> bool {
             // m update (everything about lo is dst)
-            &&& forall |k : K| #![no_triggers] key_le(lo, k) ==> (forall|id : ID| new.m(k, id) == (id == dst))
-            &&& forall |k : K| #![no_triggers] !key_le(lo, k) ==> (forall|id : ID| (new.m(k, id) == self.m(k, id)))
+            &&& forall |k : K| #![auto] key_le(lo, k) ==> (forall|id : ID| new.m(k, id) == (id == dst))
+            &&& forall |k : K| #![auto] !key_le(lo, k) ==> (forall|id : ID| (new.m(k, id) == self.m(k, id)))
             // lows update
             &&& self.lows().erase_unbounded(lows_2, lo)
             &&& lows_2.set(new.lows(), lo, dst)
@@ -1067,23 +1067,23 @@ mod EPRProof {
     use crate::KeyIterator;
 
     spec fn m_has_key<K: Key + VerusClone, ID: VerusClone>(dm: DMapModel<K, ID>, k : K) -> bool {
-       exists|id| #![no_triggers] dm.m(k, id) 
+       exists|id| #![auto] dm.m(k, id) 
     }
 
     pub closed spec fn dmap_invariant<K: Key + VerusClone, ID: VerusClone>(dm: DMapModel<K, ID>) -> bool {
         // lows contains zero_spec
-        &&& exists|id : ID| #![no_triggers] dm.lows().m(key_zero(), id)
+        &&& exists|id : ID| #![auto] dm.lows().m(key_zero(), id)
         // TODO: avoid forall exists?
         // domain of view is full
-        &&& forall|k| #![no_triggers] m_has_key(dm, k)
+        &&& forall|k| #![auto] m_has_key(dm, k)
         // lows contains i, gap i j, i < k < j => m(k) = lows(i)
         // alternate representation:
         // if in lows, the value agrees in m
-        &&& forall|k , id| #![no_triggers] dm.lows().m(k, id) ==> dm.m(k, id)
+        &&& forall|k , id| #![auto] dm.lows().m(k, id) ==> dm.m(k, id)
         // if i and j have a gap, and i has id_1 in lows, j has id_2 in m, then j must have id_2 in lows
         // i.e. if there is a gap, the value in lows is the same as the value in m
         &&& forall|i, j, id_1, id_2|
-                #![no_triggers]
+                #![auto]
                 key_le(i, j)
             &&  dm.lows().m(i, id_1)
             &&  dm.m(j, id_2)
@@ -1141,8 +1141,8 @@ mod EPRProof {
             dmap_invariant(dm),
             dm.set(dm_, lo, hi, dst, hi_id, hi_glb, lows_1, lows_2),
         ensures
-            forall |k : K| #![no_triggers] (key_le(lo, k) && !key_le(hi, k)) ==> dm_.m(k, dst),
-            forall |k : K| #![no_triggers] !(key_le(lo, k) && !key_le(hi, k)) ==> (forall|id : ID| (dm_.m(k, id) == dm.m(k, id))),
+            forall |k : K| #![auto] (key_le(lo, k) && !key_le(hi, k)) ==> dm_.m(k, dst),
+            forall |k : K| #![auto] !(key_le(lo, k) && !key_le(hi, k)) ==> (forall|id : ID| (dm_.m(k, id) == dm.m(k, id))),
             dmap_invariant(dm_),
     {
         key_le_properties::<K>();
@@ -1179,8 +1179,8 @@ mod EPRProof {
             dmap_invariant(dm),
             dm.set_unbounded(dm_, lo, dst, lows_2),
         ensures
-            forall |k : K| #![no_triggers] (key_le(lo, k)) ==> dm_.m(k, dst),
-            forall |k : K| #![no_triggers] !(key_le(lo, k)) ==> (forall|id : ID| (dm_.m(k, id) == dm.m(k, id))),
+            forall |k : K| #![auto] (key_le(lo, k)) ==> dm_.m(k, dst),
+            forall |k : K| #![auto] !(key_le(lo, k)) ==> (forall|id : ID| (dm_.m(k, id) == dm.m(k, id))),
             dmap_invariant(dm_),
     {
         key_le_properties::<K>();

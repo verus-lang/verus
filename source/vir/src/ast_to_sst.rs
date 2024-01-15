@@ -278,8 +278,10 @@ impl<'a> State<'a> {
                     }
                     let (trigs, is_mbqi) =
                         crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, false)?;
-                    let bnd =
-                        Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs, is_mbqi));
+                    let bnd = Spanned::new(
+                        bnd.span.clone(),
+                        BndX::Quant(*quant, bs.clone(), trigs, is_mbqi),
+                    );
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
                 BndX::Choose(bs, trigs, cond) => {
@@ -1405,7 +1407,8 @@ pub(crate) fn expr_to_stm_opt(
             let exp = expr_to_pure_exp_skip_checks(ctx, state, body)?;
             state.pop_scope();
             let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
-            let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs, false));
+            let bnd =
+                Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs, false));
             let e = mk_exp(ExpX::Bind(bnd, exp));
             let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
             Ok((check_stms, ReturnValue::Some(e)))
@@ -1548,8 +1551,10 @@ pub(crate) fn expr_to_stm_opt(
             let e_choose = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_choose));
             if state.checking_recommends(ctx) {
                 let quant = crate::ast::Quant { quant: air::ast::Quant::Exists };
-                let bnd_exists =
-                    Spanned::new(body.span.clone(), BndX::Quant(quant, params.clone(), trigs, false));
+                let bnd_exists = Spanned::new(
+                    body.span.clone(),
+                    BndX::Quant(quant, params.clone(), trigs, false),
+                );
                 let e_exists = mk_exp(ExpX::Bind(bnd_exists, cond_exp.clone()));
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_exists));
                 let error = error(

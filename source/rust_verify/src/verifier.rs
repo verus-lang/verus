@@ -1012,7 +1012,7 @@ impl Verifier {
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
-        
+
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude(prelude_config).iter() {
@@ -1057,7 +1057,7 @@ impl Verifier {
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, mbqi_mode: false },
             profile_file_name,
         )?;
-        
+
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
         air_context.blank_line();
@@ -1646,6 +1646,12 @@ impl Verifier {
                 bucket_id.module(),
                 bucket_id.function(),
             );
+        let mut epr_check = false;
+        for module in &pruned_krate.modules {
+            if module.x.path == bucket_id.module().clone() && module.x.epr_check {
+                epr_check = true;
+            }
+        }
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1655,13 +1661,8 @@ impl Verifier {
             bound_traits,
             fndef_types,
             self.args.debugger,
+            epr_check,
         )?;
-        let mut epr_check = false;
-        for module in &pruned_krate.modules {
-            if module.x.path == bucket_id.module().clone() && module.x.epr_check {
-                epr_check = true;
-            }
-        }
         if epr_check {
             if types_are_uninterpreted {
                 alternation_check::alternation_check(&ctx, krate, bucket_id.module().clone())?;

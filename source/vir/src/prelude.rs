@@ -129,14 +129,14 @@ pub(crate) fn prelude_nodes_mbqi(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [fuel_bool] ([FuelId]) Bool)
         (declare-fun [fuel_bool_default] ([FuelId]) Bool)
         (declare-const [fuel_defaults] Bool)
-        (axiom (=> [fuel_defaults]
-            (forall ((id [FuelId])) (!
-                (= ([fuel_bool] id) ([fuel_bool_default] id))
-                :pattern (([fuel_bool] id))
-                :qid prelude_fuel_defaults
-                :skolemid skolem_prelude_fuel_defaults
-            ))
-        ))
+        // (axiom (=> [fuel_defaults]
+        //     (forall ((id [FuelId])) (!
+        //         (= ([fuel_bool] id) ([fuel_bool_default] id))
+        //         :pattern (([fuel_bool] id))
+        //         :qid prelude_fuel_defaults
+        //         :skolemid skolem_prelude_fuel_defaults
+        //     ))
+        // ))
 
         // Dummy parameter sort for proof fns
         (declare-sort [Dummy] 0)
@@ -200,12 +200,12 @@ pub(crate) fn prelude_nodes_mbqi(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_has_type_bool
             :skolemid skolem_prelude_has_type_bool
         )))
-        (axiom (forall ((x Bool)) (!
-            (= x ([unbox_bool] ([box_bool] x)))
-            :pattern (([box_bool] x))
-            :qid prelude_unbox_box_bool
-            :skolemid skolem_prelude_unbox_box_bool
-        )))
+        // (axiom (forall ((x Bool)) (!
+        //     (= x ([unbox_bool] ([box_bool] x)))
+        //     :pattern (([box_bool] x))
+        //     :qid prelude_unbox_box_bool
+        //     :skolemid skolem_prelude_unbox_box_bool
+        // )))
         (axiom (forall ((x [Poly])) (!
             (=>
                 ([has_type] x [type_id_bool])
