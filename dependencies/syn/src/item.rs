@@ -2237,7 +2237,13 @@ pub mod parsing {
     impl Parse for ItemUnion {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
+
             let vis = input.parse::<Visibility>()?;
+
+            if input.peek(Token![tracked]) || input.peek(Token![ghost]) {
+                return Err(input.error("a 'union' can only be exec-mode"));
+            }
+
             let union_token = input.parse::<Token![union]>()?;
             let ident = input.parse::<Ident>()?;
             let generics = input.parse::<Generics>()?;

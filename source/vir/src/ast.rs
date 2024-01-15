@@ -257,11 +257,19 @@ pub enum UnaryOp {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
+pub enum VariantCheck {
+    None,
+    //Recommends,
+    Yes,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
 pub struct FieldOpr {
     pub datatype: Path,
     pub variant: Ident,
     pub field: Ident,
     pub get_variant: bool,
+    pub check: VariantCheck,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]

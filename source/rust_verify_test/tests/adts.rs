@@ -346,6 +346,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_builtin_get_variant_field_invalid_3 IS_VARIANT_MAYBE.to_string() + verus_code_str! {
+        struct T { }
+        proof fn test_fail(tracked u: Maybe<T>) {
+            let tracked j = get_variant_field::<_, T>(u, "Some", "0");
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
     #[test] test_is_variant_not_enum verus_code! {
         #[is_variant]
         pub struct Maybe<T> {

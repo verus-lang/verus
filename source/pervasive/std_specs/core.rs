@@ -54,4 +54,9 @@ pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
     core::intrinsics::unlikely(b)
 }
 
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types_in_ground_variants(V)]
+pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
+
 }

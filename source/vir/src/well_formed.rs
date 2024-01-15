@@ -268,7 +268,7 @@ fn check_one_expr(
             }
         }
         ExprX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype: path, variant, field, get_variant: _ }),
+            UnaryOpr::Field(FieldOpr { datatype: path, variant, field, get_variant: _, check: _ }),
             _,
         ) => {
             if let Some(dt) = ctxt.dts.get(path) {

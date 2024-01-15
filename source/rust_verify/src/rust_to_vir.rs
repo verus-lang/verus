@@ -8,7 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
-use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
+use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
     process_predicate_bounds, typ_path_and_ident_to_vir_path,
@@ -191,6 +191,31 @@ fn check_item<'tcx>(
                 visibility(),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 enum_def,
+                generics,
+                &adt_def,
+            )?;
+        }
+        ItemKind::Union(variant_data, generics) => {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
+                let def_id = id.owner_id.to_def_id();
+                let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+                vir.external_types.push(path);
+
+                return Ok(());
+            }
+
+            let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id()).skip_binder();
+            let adt_def = tyof.ty_adt_def().expect("adt_def");
+
+            check_item_union(
+                ctxt,
+                vir,
+                &module_path(),
+                item.span,
+                id,
+                visibility(),
+                ctxt.tcx.hir().attrs(item.hir_id()),
+                variant_data,
                 generics,
                 &adt_def,
             )?;

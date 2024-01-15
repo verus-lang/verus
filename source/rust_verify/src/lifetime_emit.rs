@@ -852,6 +852,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     let d_keyword = match &*d.datatype {
         Datatype::Struct(..) => "struct ",
         Datatype::Enum(..) => "enum ",
+        Datatype::Union(..) => "union ",
     };
     state.newline();
     state.write_spanned(d_keyword, d.span);
@@ -865,7 +866,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
         }
     };
     match &*d.datatype {
-        Datatype::Struct(fields) => {
+        Datatype::Struct(fields) | Datatype::Union(fields) => {
             let suffix = if suffix_where { "" } else { ";" };
             emit_fields(state, fields, suffix);
             if suffix_where {

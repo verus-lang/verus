@@ -30,7 +30,7 @@ use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
     ChainedOp, ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
     IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VirErr,
+    UnaryOpr, VarAt, VariantCheck, VirErr,
 };
 use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::field_ident_from_rust;
@@ -733,6 +733,33 @@ fn verus_item_to_vir<'tcx, 'a>(
                         variant: str_ident(&variant_name),
                         field: variant_field.unwrap(),
                         get_variant: true,
+                        check: VariantCheck::None,
+                    }),
+                    adt_arg,
+                ))
+            }
+            ExprItem::GetUnionField => {
+                record_spec_fn_allow_proof_args(bctx, expr);
+                assert!(args.len() == 2);
+                let adt_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                let field_name = get_string_lit_arg(&args[1], &f_name)?;
+
+                let adt_path = check_union_field(
+                    bctx,
+                    expr.span,
+                    args[0],
+                    &field_name,
+                    &bctx.types.expr_ty(expr),
+                )?;
+
+                let field_ident = str_ident(&field_name);
+                mk_expr(ExprX::UnaryOpr(
+                    UnaryOpr::Field(FieldOpr {
+                        datatype: adt_path,
+                        variant: field_ident.clone(),
+                        field: field_ident_from_rust(&field_ident),
+                        get_variant: true,
+                        check: VariantCheck::None,
                     }),
                     adt_arg,
                 ))
@@ -1791,11 +1818,6 @@ fn check_variant_field<'tcx>(
         }
     };
 
-    let variant_opt = adt.variants().iter().find(|v| v.ident(tcx).as_str() == variant_name);
-    let Some(variant) = variant_opt else {
-        return err_span(span, format!("no variant `{variant_name:}` for this datatype"));
-    };
-
     let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
@@ -1804,9 +1826,34 @@ fn check_variant_field<'tcx>(
         }
     };
 
+    if adt.is_union() {
+        if field_name_typ.is_some() {
+            // Don't use get_variant_field with unions
+            return err_span(
+                span,
+                format!("this datatype is a union; consider `get_union_field` instead"),
+            );
+        }
+        let variant = adt.non_enum_variant();
+        let field_opt = variant.fields.iter().find(|f| f.ident(tcx).as_str() == variant_name);
+        if field_opt.is_none() {
+            return err_span(span, format!("no field `{variant_name:}` for this union"));
+        }
+
+        return Ok((adt_path, None));
+    }
+
+    // Enum case:
+
+    let variant_opt = adt.variants().iter().find(|v| v.ident(tcx).as_str() == variant_name);
+    let Some(variant) = variant_opt else {
+        return err_span(span, format!("no variant `{variant_name:}` for this datatype"));
+    };
+
     match field_name_typ {
         None => Ok((adt_path, None)),
         Some((field_name, expected_field_typ)) => {
+            // The 'get_variant_field' case
             let field_opt = variant.fields.iter().find(|f| f.ident(tcx).as_str() == field_name);
             let Some(field) = field_opt else {
                 return err_span(span, format!("no field `{field_name:}` for this variant"));
@@ -1832,6 +1879,58 @@ fn check_variant_field<'tcx>(
             Ok((adt_path, Some(field_ident)))
         }
     }
+}
+
+fn check_union_field<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    adt_arg: &'tcx Expr<'tcx>,
+    field_name: &String,
+    expected_field_typ: &rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Path, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+
+    let ty = bctx.types.expr_ty_adjusted(adt_arg);
+    let ty = match ty.kind() {
+        rustc_middle::ty::TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
+        _ => &ty,
+    };
+    let (adt, substs) = match ty.kind() {
+        rustc_middle::ty::TyKind::Adt(adt, substs) => (adt, substs),
+        _ => {
+            return err_span(span, format!("expected type to be datatype"));
+        }
+    };
+
+    if !adt.is_union() {
+        return err_span(span, format!("get_union_field expects a union type"));
+    }
+
+    let variant = adt.non_enum_variant();
+
+    let field_opt = variant.fields.iter().find(|f| f.ident(tcx).as_str() == field_name);
+    let Some(field) = field_opt else {
+        return err_span(span, format!("no field `{field_name:}` for this union"));
+    };
+
+    let field_ty = field.ty(tcx, substs);
+    let vir_field_ty =
+        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &field_ty, false)?;
+    let vir_expected_field_ty =
+        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &expected_field_typ, false)?;
+    if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
+        return err_span(span, "field has the wrong type");
+    }
+
+    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
+    let adt_path = match &*vir_adt_ty {
+        TypX::Datatype(path, _, _) => path.clone(),
+        _ => {
+            return err_span(span, format!("expected type to be datatype"));
+        }
+    };
+
+    Ok(adt_path)
 }
 
 fn record_compilable_operator<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, op: CompilableOperator) {
