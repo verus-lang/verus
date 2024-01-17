@@ -1327,7 +1327,10 @@ impl Visitor {
         //                  builtin::infer_spec_for_loop_iter(
         //                      &vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
         //                          &core::iter::IntoIterator::into_iter(e)))),
-        //              { let x = vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y); inv },
+        //              { let x =
+        //                  vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y)
+        //                  .unwrap_or(vstd::pervasive::arbitrary());
+        //                inv },
         //          ensures
         //              vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&y),
         //      {
@@ -1426,7 +1429,9 @@ impl Visitor {
         let invariant_ensure = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned!(span => {
-                    let #pat = vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter);
+                    let #pat =
+                        vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
+                        .unwrap_or(vstd::pervasive::arbitrary());
                     #inv
                 }));
             }

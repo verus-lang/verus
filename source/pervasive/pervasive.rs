@@ -32,6 +32,7 @@ pub proof fn affirm(b: bool)
 {
 }
 
+// TODO: when default trait methods are supported, most of these should be given defaults
 pub trait ForLoopGhostIterator {
     type ExecIter;
     type Item;
@@ -53,14 +54,19 @@ pub trait ForLoopGhostIterator {
 
     // Value used by default for decreases clause when no explicit decreases clause is provided
     // (the user can override this with an explicit decreases clause).
-    // (If there's no appropriate decrease, this can return an arbitrary value like 0,
+    // (If there's no appropriate decrease, this can return None,
     // and the user will have to provide an explicit decreases clause.)
-    spec fn ghost_decrease(&self) -> Self::Decrease;
+    spec fn ghost_decrease(&self) -> Option<Self::Decrease>;
 
     // If there will be Some next value, and we can make a useful guess as to what the next value
-    // will be, return it.
-    // Otherwise, return an arbitrary value.
-    spec fn ghost_peek_next(&self) -> Self::Item;
+    // will be, return Some of it.
+    // Otherwise, return None.
+    // TODO: in the long term, we could have VIR insert an assertion (or warning)
+    // that ghost_peek_next returns non-null if it is used in the invariants.
+    // (this will take a little bit of engineering since the syntax macro blindly inserts
+    // let bindings using ghost_peek_next, even if they aren't needed, and we only learn
+    // what is actually needed later in VIR.)
+    spec fn ghost_peek_next(&self) -> Option<Self::Item>;
 
     // At the end of the for loop, advance to the next position.
     // Future TODO: this may be better as a proof function

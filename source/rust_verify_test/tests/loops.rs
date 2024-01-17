@@ -1184,12 +1184,12 @@ test_verify_one_file! {
                 self.cur >= self.seq.len()
             }
 
-            open spec fn ghost_decrease(&self) -> int {
-                self.seq.len() - self.cur
+            open spec fn ghost_decrease(&self) -> Option<int> {
+                Some(self.seq.len() - self.cur)
             }
 
-            open spec fn ghost_peek_next(&self) -> T {
-                self.seq[self.cur]
+            open spec fn ghost_peek_next(&self) -> Option<T> {
+                Some(self.seq[self.cur])
             }
 
             open spec fn ghost_advance(&self, _exec_iter: &VecIterCopy<T>) -> VecGhostIterCopy<'a, T> {

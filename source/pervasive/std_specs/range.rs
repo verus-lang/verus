@@ -72,12 +72,12 @@ impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for 
         !self.cur.spec_is_lt(self.end)
     }
 
-    open spec fn ghost_decrease(&self) -> int {
-        self.cur.spec_steps_between_int(self.end)
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.cur.spec_steps_between_int(self.end))
     }
 
-    open spec fn ghost_peek_next(&self) -> A {
-        self.cur
+    open spec fn ghost_peek_next(&self) -> Option<A> {
+        Some(self.cur)
     }
 
     open spec fn ghost_advance(&self, _exec_iter: &Range<A>) -> RangeGhostIterator<A> {
