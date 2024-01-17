@@ -1189,7 +1189,11 @@ test_verify_one_file! {
             }
 
             open spec fn ghost_peek_next(&self) -> Option<T> {
-                Some(self.seq[self.cur])
+                if 0 <= self.cur < self.seq.len() {
+                    Some(self.seq[self.cur])
+                } else {
+                    None
+                }
             }
 
             open spec fn ghost_advance(&self, _exec_iter: &VecIterCopy<T>) -> VecGhostIterCopy<'a, T> {
