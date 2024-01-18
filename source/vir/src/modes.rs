@@ -414,6 +414,13 @@ fn check_expr_handle_mut_arg(
 
             if typing.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
+                && matches!(&expr.x, ExprX::VarAt(..))
+            {
+                return Err(error(&expr.span, &format!("cannot use `old` in exec-code")));
+            }
+
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
                 && x_mode != Mode::Exec
             {
                 return Err(error(

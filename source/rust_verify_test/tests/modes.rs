@@ -1447,3 +1447,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] old_in_exec_mode_issue922 verus_code! {
+        fn stuff(x: &mut u8) {
+            let y = *old(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `old` in exec-code")
+}
