@@ -98,115 +98,134 @@ struct State {
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
 }
 
-struct Typing<'a> {
-    // don't use these fields directly; use * and push_*
-    internal_state: &'a mut State,
-    internal_undo: Option<Box<dyn for<'b> FnOnce(&'b mut State)>>,
-}
+mod typing {
+    use super::*;
 
-impl Drop for Typing<'_> {
-    fn drop(&mut self) {
-        let f: Box<dyn for<'b> FnOnce(&'b mut State)> =
-            self.internal_undo.take().expect("drop-undo");
-        f(&mut self.internal_state);
+    pub(super) struct Typing<'a> {
+        // don't use these fields directly; use * and push_*
+        internal_state: &'a mut State,
+        internal_undo: Option<Box<dyn for<'b> FnOnce(&'b mut State)>>,
     }
-}
 
-impl Typing<'_> {
-    fn push_var_scope<'a>(&'a mut self) -> Typing<'a> {
-        self.internal_state.vars.push_scope(true);
-        Typing {
-            internal_state: self.internal_state,
-            internal_undo: Some(Box::new(|state| {
-                state.vars.pop_scope();
-            })),
+    impl Drop for Typing<'_> {
+        fn drop(&mut self) {
+            let f: Box<dyn for<'b> FnOnce(&'b mut State)> =
+                self.internal_undo.take().expect("drop-undo");
+            f(&mut self.internal_state);
         }
     }
 
-    fn push_var_multi_scope<'a>(&'a mut self) -> Typing<'a> {
-        let vars_scope_count = self.internal_state.vars.num_scopes();
-        Typing {
-            internal_state: self.internal_state,
-            internal_undo: Some(Box::new(move |state: &mut State| {
-                while state.vars.num_scopes() != vars_scope_count {
+    impl Typing<'_> {
+        pub(super) fn new<'a>(state: &'a mut State) -> Typing<'a> {
+            Typing { internal_state: state, internal_undo: Some(Box::new(|_| {})) }
+        }
+
+        pub(super) fn push_var_scope<'a>(&'a mut self) -> Typing<'a> {
+            self.internal_state.vars.push_scope(true);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(|state| {
                     state.vars.pop_scope();
-                }
-            })),
+                })),
+            }
+        }
+
+        pub(super) fn push_var_multi_scope<'a>(&'a mut self) -> Typing<'a> {
+            let vars_scope_count = self.internal_state.vars.num_scopes();
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state: &mut State| {
+                    while state.vars.num_scopes() != vars_scope_count {
+                        state.vars.pop_scope();
+                    }
+                })),
+            }
+        }
+
+        // For use after push_var_multi_scope (otherwise, use push_var_scope)
+        pub(super) fn add_var_multi_scope<'a>(&mut self) {
+            self.internal_state.vars.push_scope(true);
+        }
+
+        pub(super) fn push_in_forall_stmt<'a>(
+            &'a mut self,
+            mut in_forall_stmt: bool,
+        ) -> Typing<'a> {
+            swap(&mut in_forall_stmt, &mut self.internal_state.in_forall_stmt);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.in_forall_stmt = in_forall_stmt;
+                })),
+            }
+        }
+
+        pub(super) fn push_block_ghostness<'a>(
+            &'a mut self,
+            mut block_ghostness: Ghost,
+        ) -> Typing<'a> {
+            swap(&mut block_ghostness, &mut self.internal_state.block_ghostness);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.block_ghostness = block_ghostness;
+                })),
+            }
+        }
+
+        pub(super) fn push_ret_mode<'a>(&'a mut self, mut ret_mode: Option<Mode>) -> Typing<'a> {
+            swap(&mut ret_mode, &mut self.internal_state.ret_mode);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.ret_mode = ret_mode;
+                })),
+            }
+        }
+
+        pub(super) fn push_atomic_insts<'a>(
+            &'a mut self,
+            mut atomic_insts: Option<AtomicInstCollector>,
+        ) -> Typing<'a> {
+            swap(&mut atomic_insts, &mut self.internal_state.atomic_insts);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.atomic_insts = atomic_insts;
+                })),
+            }
+        }
+
+        // If we want to catch a VirErr, use this to make sure state is restored upon catching the error
+        pub(super) fn push_restore_on_error<'a>(&'a mut self) -> Typing<'a> {
+            self.push_var_scope()
+        }
+
+        pub(super) fn assert_zero_scopes(&self) {
+            assert_eq!(self.internal_state.vars.num_scopes(), 0);
+        }
+
+        pub(super) fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
+            self.internal_state
+                .vars
+                .insert(x.clone(), (mutable, mode))
+                .expect("internal error: Typing insert");
+        }
+
+        pub(super) fn update_atomic_insts<'a>(&'a mut self) -> &'a mut Option<AtomicInstCollector> {
+            &mut self.internal_state.atomic_insts
         }
     }
 
-    // For use after push_var_multi_scope (otherwise, use push_var_scope)
-    fn add_var_multi_scope<'a>(&mut self) {
-        self.internal_state.vars.push_scope(true);
-    }
+    impl std::ops::Deref for Typing<'_> {
+        type Target = State;
 
-    fn push_in_forall_stmt<'a>(&'a mut self, mut in_forall_stmt: bool) -> Typing<'a> {
-        swap(&mut in_forall_stmt, &mut self.internal_state.in_forall_stmt);
-        Typing {
-            internal_state: self.internal_state,
-            internal_undo: Some(Box::new(move |state| {
-                state.in_forall_stmt = in_forall_stmt;
-            })),
+        fn deref(&self) -> &State {
+            &self.internal_state
         }
-    }
-
-    fn push_block_ghostness<'a>(&'a mut self, mut block_ghostness: Ghost) -> Typing<'a> {
-        swap(&mut block_ghostness, &mut self.internal_state.block_ghostness);
-        Typing {
-            internal_state: self.internal_state,
-            internal_undo: Some(Box::new(move |state| {
-                state.block_ghostness = block_ghostness;
-            })),
-        }
-    }
-
-    fn push_ret_mode<'a>(&'a mut self, mut ret_mode: Option<Mode>) -> Typing<'a> {
-        swap(&mut ret_mode, &mut self.internal_state.ret_mode);
-        Typing {
-            internal_state: self.internal_state,
-            internal_undo: Some(Box::new(move |state| {
-                state.ret_mode = ret_mode;
-            })),
-        }
-    }
-
-    fn push_atomic_insts<'a>(
-        &'a mut self,
-        mut atomic_insts: Option<AtomicInstCollector>,
-    ) -> Typing<'a> {
-        swap(&mut atomic_insts, &mut self.internal_state.atomic_insts);
-        Typing {
-            internal_state: self.internal_state,
-            internal_undo: Some(Box::new(move |state| {
-                state.atomic_insts = atomic_insts;
-            })),
-        }
-    }
-
-    // If we want to catch a VirErr, use this to make sure state is restored upon catching the error
-    fn push_restore_on_error<'a>(&'a mut self) -> Typing<'a> {
-        self.push_var_scope()
-    }
-
-    fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
-        self.internal_state
-            .vars
-            .insert(x.clone(), (mutable, mode))
-            .expect("internal error: Typing insert");
-    }
-
-    fn update_atomic_insts<'a>(&'a mut self) -> &'a mut Option<AtomicInstCollector> {
-        &mut self.internal_state.atomic_insts
     }
 }
-
-impl std::ops::Deref for Typing<'_> {
-    type Target = State;
-
-    fn deref(&self) -> &State {
-        &self.internal_state
-    }
-}
+use typing::Typing;
 
 impl State {
     fn get(&self, x: &Ident) -> (bool, Mode) {
@@ -1442,7 +1461,7 @@ fn check_function(
         record.infer_spec_for_loop_iter_modes = None;
     }
     drop(fun_typing);
-    assert_eq!(typing.internal_state.vars.num_scopes(), 0);
+    typing.assert_zero_scopes();
     Ok(())
 }
 
@@ -1471,7 +1490,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         ret_mode: None,
         atomic_insts: None,
     };
-    let mut typing = Typing { internal_state: &mut state, internal_undo: Some(Box::new(|_| {})) };
+    let mut typing = Typing::new(&mut state);
     let mut kratex = (**krate).clone();
     for function in kratex.functions.iter_mut() {
         ctxt.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
