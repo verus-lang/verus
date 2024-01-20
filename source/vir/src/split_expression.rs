@@ -64,7 +64,7 @@ impl<'a> State<'a> {
     }
 }
 
-fn is_bool_type(t: &Typ) -> bool {
+pub fn is_bool_type(t: &Typ) -> bool {
     match &**t {
         TypX::Bool => true,
         TypX::Boxed(b) => is_bool_type(b),
@@ -75,14 +75,14 @@ fn is_bool_type(t: &Typ) -> bool {
 // This function is to
 // 1) inline a function body at a call site
 // 2) inline a function's requires expression at a call site
-fn inline_expression(
+pub fn inline_expression(
     ctx: &Ctx,
     args: &Exps,
     typs: &Typs,
     params: &Params,
     typ_params: &crate::ast::Idents,
     body: &Exp,
-) -> Result<Exp, (Span, String)> {
+) -> Exp {
     // code copied from crate::ast_to_sst::finalized_exp
     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
     let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
@@ -100,7 +100,7 @@ fn inline_expression(
     }
     let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
     let e = SpannedTyped::new(&body.span, &e.typ, e.x.clone());
-    return Ok(e);
+    return e;
 }
 
 // Note that errors from `tr_inline_function` will be used by `split_expr`.
@@ -201,7 +201,7 @@ fn tr_inline_function(
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
         if let Some(SstInfo { inline, params, body, .. }) = fun_ssts.borrow().get(fun) {
-            return inline_expression(ctx, args, typs, params, &inline.typ_params, body);
+            return Ok(inline_expression(ctx, args, typs, params, &inline.typ_params, body));
         } else {
             return Err((fun_to_inline.span.clone(), format!("Note: not found on SstMap")));
         }
@@ -489,7 +489,7 @@ fn register_split_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
     }
     for small_exp in &*traced_exprs {
         let new_error = small_exp.trace.primary_span(&small_exp.e.span);
-        let additional_assert = StmX::Assert(Some(new_error), small_exp.e.clone());
+        let additional_assert = StmX::Assert(None, Some(new_error), small_exp.e.clone());
         stms.push(Spanned::new(small_exp.e.span.clone(), additional_assert));
     }
     stms
@@ -569,10 +569,6 @@ fn split_call(
         };
         let exp = crate::sst_visitor::map_exp_visitor(&exp, &mut f_var_at);
         let exp_subsituted = inline_expression(ctx, args, typs, params, typ_params, &exp);
-        if exp_subsituted.is_err() {
-            continue;
-        }
-        let exp_subsituted = exp_subsituted.unwrap();
         // REVIEW: should we simply use SPLIT_ASSERT_FAILURE?
         let exprs = split_expr(
             ctx,
@@ -593,7 +589,7 @@ fn visit_split_stm(
     stm: &Stm,
 ) -> Result<Stm, VirErr> {
     match &stm.x {
-        StmX::Assert(_err, e1) => {
+        StmX::Assert(_aid, _err, e1) => {
             if need_split_expression(ctx, &stm.span) {
                 let error = error(&stm.span, crate::def::SPLIT_ASSERT_FAILURE);
                 let split_exprs = split_expr(
@@ -609,7 +605,7 @@ fn visit_split_stm(
                 Ok(stm.clone())
             }
         }
-        StmX::Return { base_error: _, ret_exp, inside_body: _ } => {
+        StmX::Return { base_error: _, ret_exp, inside_body: _, assert_id: _ } => {
             let split_stms = if state.ensures.len() == 0 {
                 vec![]
             } else {
