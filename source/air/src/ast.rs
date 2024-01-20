@@ -148,15 +148,17 @@ pub enum ExprX {
     // Sometimes an axiom will have additional error messages. If an assert fails
     // and this axiom was relevant, then we append the error labels to the Message.
     LabeledAxiom(Vec<ArcDynMessage>, AxiomInfoFilter, Expr),
-    LabeledAssertion(ArcDynMessage, AxiomInfoFilter, Expr),
+    LabeledAssertion(Option<AssertId>, ArcDynMessage, AxiomInfoFilter, Expr),
 }
+
+pub type AssertId = Ident;
 
 pub type Stmt = Arc<StmtX>;
 pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
-    Assert(ArcDynMessage, AxiomInfoFilter, Expr),
+    Assert(Option<AssertId>, ArcDynMessage, AxiomInfoFilter, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
     // create a named snapshot of the state of the variables

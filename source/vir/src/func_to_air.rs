@@ -13,7 +13,7 @@ use crate::def::{
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
-use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::PostConditionSst;
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
@@ -911,12 +911,12 @@ pub fn func_axioms_to_air(
     Ok((Arc::new(decl_commands), check_commands, new_fun_ssts))
 }
 
-pub fn func_def_to_air(
+pub fn func_def_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
-) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
+) -> Result<(SstMap, FunctionSst), VirErr> {
     if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind {
         // We are inheriting a trait default method.
         // It's already verified in the trait, so we don't need to reverify it here.
@@ -926,7 +926,7 @@ pub fn func_def_to_air(
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
-            return Ok((Arc::new(vec![]), vec![], fun_ssts));
+            panic!("func_def_to_air should only be called for function with a body");
         }
     };
 
@@ -1147,30 +1147,55 @@ pub fn func_def_to_air(
         state.local_decls.push(decl.clone());
     }
 
+    state.finalize();
+    let crate::ast_to_sst::State { local_decls, statics, fun_ssts, .. } = state;
+
+    Ok((
+        fun_ssts,
+        FunctionSst {
+            reqs: Arc::new(reqs),
+            post_condition: PostConditionSst {
+                dest,
+                ens_exps: enss,
+                ens_spec_precondition_stms,
+                kind: PostConditionKind::Ensures,
+            },
+            mask_set,
+            body: stm,
+            local_decls: local_decls,
+            statics: statics.into_iter().collect(),
+        },
+    ))
+}
+
+pub fn func_sst_to_air(
+    ctx: &Ctx,
+    function: &Function,
+    function_sst: &FunctionSst,
+) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
         &function.x.typ_params,
         &function.x.params,
-        &state.local_decls,
+        function_sst,
         &function.x.attrs.hidden,
-        &reqs,
-        &PostConditionSst {
-            dest,
-            ens_exps: enss,
-            ens_spec_precondition_stms,
-            kind: PostConditionKind::Ensures,
-        },
-        &mask_set,
-        &stm,
         function.x.attrs.integer_ring,
         function.x.attrs.bit_vector,
         function.x.attrs.nonlinear,
-        &state.statics.iter().cloned().collect(),
     )?;
 
-    state.finalize();
-    Ok((Arc::new(commands), snap_map, state.fun_ssts))
+    Ok((Arc::new(commands), snap_map))
+}
+
+#[derive(Clone)]
+pub struct FunctionSst {
+    pub reqs: Exps,
+    pub post_condition: PostConditionSst,
+    pub mask_set: MaskSet, // Actually AIR
+    pub body: Stm,
+    pub local_decls: Vec<LocalDecl>,
+    pub statics: Vec<Fun>,
 }
 
 fn map_expr_rename_vars(

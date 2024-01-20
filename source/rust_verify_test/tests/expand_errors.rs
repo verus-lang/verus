@@ -341,3 +341,21 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_fails(e, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] unboxing_and_negation_issue788 ["--expand-errors"] => verus_code! {
+        trait Tr {
+            spec fn stuff(&self) -> bool;
+            spec fn stuff2(&self) -> bool;
+        }
+
+        spec fn hi<T: Tr>(t: T) -> bool {
+            t.stuff() // EXPAND-ERRORS
+            && !t.stuff2() // EXPAND-ERRORS
+        }
+
+        proof fn test<T: Tr>(t: T) {
+            assert(hi(t));
+        }
+    } => Err(e) => assert_expand_fails(e, 2)
+}
