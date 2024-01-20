@@ -668,6 +668,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_termination_5_fail_8 verus_code! {
+        trait T { type A: T; }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_9 verus_code! {
+        trait T1 { type A: T2; }
+        trait T2 { type A: T1; }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
     #[ignore] #[test] test_termination_bounds_1 verus_code! {
         trait T {
             spec fn f(&self) -> bool;

@@ -298,7 +298,7 @@ fn func_body_to_air(
         // Example: f calls g, g calls f, so shortest cycle f --> g --> f has len 2
         // We use this as the minimum default fuel for f
         let fun_node = crate::recursion::Node::Fun(function.x.name.clone());
-        let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node);
+        let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node).len();
         assert!(cycle_len >= 1);
 
         let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&name)));

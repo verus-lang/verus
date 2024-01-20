@@ -207,7 +207,7 @@ fn check_positive_uses(
                 let impl_node = TypNode::TraitImpl(impl_path.clone());
                 if global.type_graph.in_same_scc(&impl_node, &my_node) {
                     let scc_rep = global.type_graph.get_scc_rep(&my_node);
-                    let scc_nodes = global.type_graph.get_scc_nodes(&scc_rep);
+                    let scc_nodes = global.type_graph.shortest_cycle_back_to_self(&scc_rep);
                     return Err(type_scc_error(&global.krate, &my_node, &scc_nodes));
                 }
             }
@@ -341,7 +341,11 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         for node in &global.type_graph.get_scc_nodes(scc) {
             match node {
                 TypNode::TraitImpl(_) if global.type_graph.node_is_in_cycle(node) => {
-                    return Err(type_scc_error(krate, node, &global.type_graph.get_scc_nodes(scc)));
+                    return Err(type_scc_error(
+                        krate,
+                        node,
+                        &global.type_graph.shortest_cycle_back_to_self(scc),
+                    ));
                 }
                 _ => {}
             }
@@ -378,14 +382,13 @@ fn type_scc_error(krate: &Krate, head: &TypNode, nodes: &Vec<TypNode>) -> VirErr
         "found a cyclic self-reference in a trait definition, which may result in nontermination"
             .to_string();
     let mut err = crate::messages::error_bare(msg);
-    for node in nodes {
+    for (i, node) in nodes.iter().enumerate() {
         let mut push = |node: &TypNode, span: Span| {
             if node == head {
                 err = err.primary_span(&span);
-            } else {
-                let msg = "may be part of cycle".to_string();
-                err = err.secondary_label(&span, msg);
             }
+            let msg = format!("may be part of cycle (node {} of {} in cycle)", i + 1, nodes.len());
+            err = err.secondary_label(&span, msg);
         };
         match node {
             TypNode::Datatype(path) => {
@@ -410,14 +413,13 @@ fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
         "found a cyclic self-reference in a trait definition, which may result in nontermination"
             .to_string();
     let mut err = crate::messages::error_bare(msg);
-    for node in nodes {
+    for (i, node) in nodes.iter().enumerate() {
         let mut push = |node: &Node, span: Span| {
             if node == head {
                 err = err.primary_span(&span);
-            } else {
-                let msg = "may be part of cycle".to_string();
-                err = err.secondary_label(&span, msg);
             }
+            let msg = format!("may be part of cycle (node {} of {} in cycle)", i + 1, nodes.len());
+            err = err.secondary_label(&span, msg);
         };
         match node {
             Node::Fun(fun) => {
@@ -488,7 +490,6 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     let t_node = Node::Trait(t_path.clone());
     for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
         let GenericBoundX::Trait(u_path, _) = &**bound;
-        assert_ne!(t_path, u_path);
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);
     }
@@ -640,13 +641,16 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // 2) Check function definitions using value dictionaries
 
     for scc in ctx.func_call_sccs.iter() {
-        let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
-        for node in scc_nodes.iter() {
+        for node in ctx.func_call_graph.get_scc_nodes(scc).iter() {
             match node {
                 // handled by decreases checking:
                 Node::Fun(_) => {}
                 _ if ctx.func_call_graph.node_is_in_cycle(node) => {
-                    return Err(scc_error(krate, node, &scc_nodes));
+                    return Err(scc_error(
+                        krate,
+                        node,
+                        &ctx.func_call_graph.shortest_cycle_back_to_self(node),
+                    ));
                 }
                 _ => {}
             }
