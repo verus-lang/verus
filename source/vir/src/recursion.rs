@@ -18,6 +18,7 @@ use crate::sst::{
     UniqueIdent,
 };
 use crate::sst_to_air::PostConditionKind;
+use crate::sst_to_air::PostConditionSst;
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast::Binder;
@@ -286,26 +287,26 @@ pub(crate) fn check_termination_commands(
     let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
-        &HashMap::new(),
         &function.x.typ_params,
         &function.x.params,
         &Arc::new(local_decls),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
+        &PostConditionSst {
+            dest: None,
+            kind: if uses_decreases_by {
+                PostConditionKind::DecreasesBy
+            } else {
+                PostConditionKind::DecreasesImplicitLemma
+            },
+            ens_exps: vec![],
+            ens_spec_precondition_stms: vec![],
+        },
         &MaskSet::empty(),
         &stm_block,
         false,
         false,
         false,
-        None,
-        if uses_decreases_by {
-            PostConditionKind::DecreasesBy
-        } else {
-            PostConditionKind::DecreasesImplicitLemma
-        },
         &vec![],
     )?;
 
