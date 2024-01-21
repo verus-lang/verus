@@ -218,7 +218,7 @@ impl GlobalCtx {
             // This is currently needed because external_body broadcast_forall functions
             // are currently implicitly imported.
             // In the future, this might become less important; we could remove this heuristic.
-            if f.x.body.is_none() {
+            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
         }
