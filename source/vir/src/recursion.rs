@@ -33,6 +33,9 @@ pub enum Node {
     Datatype(Path),
     Trait(Path),
     TraitImpl(Path),
+    // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
+    // to give more precise span information than X or Y alone provide
+    SpanInfo { span_infos_index: usize, text: String },
 }
 
 #[derive(Clone)]
@@ -420,6 +423,7 @@ pub(crate) fn check_termination_stm(
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
     call_graph: &mut Graph<Node>,
+    span_infos: &mut Vec<Span>,
     function: &Function,
 ) -> Result<(), VirErr> {
     // See recursive_types::check_traits for more documentation
@@ -488,7 +492,15 @@ pub(crate) fn expand_call_graph(
                             continue;
                         }
                     }
-                    call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
+                    let expr_node = crate::recursive_types::new_span_info_node(
+                        span_infos,
+                        expr.span.clone(),
+                        ": application of a function to some type arguments, which may depend on \
+                            other trait implementations to satisfy trait bounds"
+                            .to_string(),
+                    );
+                    call_graph.add_edge(f_node.clone(), expr_node.clone());
+                    call_graph.add_edge(expr_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
 
                 // f --> f2

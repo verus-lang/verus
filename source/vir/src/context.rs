@@ -41,6 +41,7 @@ pub struct GlobalCtx {
     pub func_call_graph: Arc<Graph<Node>>,
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
+    pub(crate) datatype_graph_span_infos: Vec<Span>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -256,14 +257,24 @@ impl GlobalCtx {
             func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
         }
 
+        let mut span_infos: Vec<Span> = Vec::new();
         for t in &krate.trait_impls {
-            crate::recursive_types::add_trait_impl_to_graph(&mut func_call_graph, t);
+            crate::recursive_types::add_trait_impl_to_graph(
+                &mut span_infos,
+                &mut func_call_graph,
+                t,
+            );
         }
 
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
-            crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, f)?;
+            crate::recursion::expand_call_graph(
+                &func_map,
+                &mut func_call_graph,
+                &mut span_infos,
+                f,
+            )?;
         }
 
         func_call_graph.compute_sccs();
@@ -292,7 +303,7 @@ impl GlobalCtx {
         }
         let qid_map = RefCell::new(HashMap::new());
 
-        let datatype_graph = crate::recursive_types::build_datatype_graph(krate);
+        let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -302,6 +313,7 @@ impl GlobalCtx {
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
+            datatype_graph_span_infos: span_infos,
             qid_map,
             rlimit,
             interpreter_log,
@@ -322,6 +334,7 @@ impl GlobalCtx {
             no_span: self.no_span.clone(),
             func_call_graph: self.func_call_graph.clone(),
             datatype_graph: self.datatype_graph.clone(),
+            datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
             qid_map,
             rlimit: self.rlimit,

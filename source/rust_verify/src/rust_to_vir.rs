@@ -344,6 +344,7 @@ fn check_item<'tcx>(
                     )?);
                 }
                 let types = Arc::new(types);
+                let path_span = path.span.to(impll.self_ty.span);
                 let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
                 let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_fun(
                     ctxt.tcx,
@@ -358,7 +359,7 @@ fn check_item<'tcx>(
                     typ_bounds,
                     trait_path: path.clone(),
                     trait_typ_args: types.clone(),
-                    trait_typ_arg_impls: impl_paths,
+                    trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
                 };
                 vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
                 Some((trait_ref, path, types))
@@ -498,7 +499,7 @@ fn check_item<'tcx>(
                                     typ,
                                     impl_paths: Arc::new(impl_paths),
                                 };
-                                vir.assoc_type_impls.push(ctxt.spanned_new(item.span, assocx));
+                                vir.assoc_type_impls.push(ctxt.spanned_new(impl_item.span, assocx));
                             } else {
                                 unsupported_err!(
                                     item.span,
