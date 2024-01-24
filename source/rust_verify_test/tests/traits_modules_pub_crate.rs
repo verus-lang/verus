@@ -70,38 +70,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_10 verus_code! {
-        mod M1 {
-            pub(crate) trait T {
-                spec fn f(&self) -> bool;
-
-                proof fn p(&self)
-                    ensures exists|x: &Self| self.f() != x.f();
-            }
-        }
-
-        mod M2 {
-            #[verifier::external_body] /* vattr */
-            #[verifier::broadcast_forall] /* vattr */
-            proof fn f_not_g<A: crate::M1::T>()
-                ensures exists|x: &A, y: &A| x.f() != y.f()
-            {
-            }
-        }
-
-        mod M3 {
-            struct S {}
-        }
-
-        mod M4 {
-            fn test() {
-                assert(false);
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, ": bounds on broadcast_forall function type parameters")
-}
-
-test_verify_one_file! {
     #[test] test_ill_formed_7 code! {
         mod M1 {
             pub(crate) trait T1 {
@@ -137,24 +105,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
-}
-
-test_verify_one_file! {
-    #[test] test_ill_formed_9 verus_code! {
-        mod M1 {
-            pub(crate) trait T1 {
-                fn f(&self);
-            }
-        }
-        mod M2 {
-            struct S {}
-            impl crate::M1::T1 for S {
-                fn f(&self)
-                    ensures true; // no ensures allowed
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires/ensures")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires")
 }
 
 test_verify_one_file! {
@@ -184,7 +135,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T1 for S {
-                spec fn f(&self) {
+                closed spec fn f(&self) {
                 }
             }
         }
@@ -313,7 +264,7 @@ test_verify_one_file! {
             pub(crate) struct S {}
 
             impl crate::M1::T for S {
-                spec fn f(&self) {
+                closed spec fn f(&self) {
                     crate::M1::rec(self);
                 }
             }
@@ -341,7 +292,7 @@ test_verify_one_file! {
             pub(crate) struct S {}
 
             impl crate::M1::T for S {
-                spec fn f<A: crate::M1::T>(&self, x: &A) {
+                closed spec fn f<A: crate::M1::T>(&self, x: &A) {
                     x.f(x)
                 }
             }
@@ -369,7 +320,7 @@ test_verify_one_file! {
             struct S {}
 
             impl crate::M1::T for S {
-                spec fn f(&self) {
+                closed spec fn f(&self) {
                     self.f()
                 }
             }
@@ -396,7 +347,9 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Ok(())
+    } => Ok(err) => {
+        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+    }
 }
 
 test_verify_one_file! {
@@ -570,7 +523,7 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                spec fn req(&self) -> bool { false }
+                closed spec fn req(&self) -> bool { false }
                 fn f(&self) {}
             }
         }
@@ -596,7 +549,7 @@ test_verify_one_file! {
         mod M2 {
             struct S {}
             impl crate::M1::T for S {
-                spec fn ens(&self) -> bool { false }
+                closed spec fn ens(&self) -> bool { false }
                 fn f(&self) {} // FAILS
             }
         }
@@ -615,7 +568,7 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                spec fn req(&self) -> bool { true }
+                closed spec fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
         }
@@ -645,8 +598,7 @@ test_verify_one_file! {
         mod M2 {
             pub(crate) struct S {}
             impl crate::M1::T for S {
-                #[verifier::publish] /* vattr */
-                spec fn req(&self) -> bool { true }
+                open spec fn req(&self) -> bool { true }
                 fn f(&self) {}
             }
         }
@@ -692,11 +644,11 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T<bool> for crate::M2::B {
-                spec fn req(&self, a: bool) -> bool {
+                closed spec fn req(&self, a: bool) -> bool {
                     a
                 }
 
-                spec fn ens(&self, a: bool, r: bool) -> bool {
+                closed spec fn ens(&self, a: bool, r: bool) -> bool {
                     r == (a && self.x)
                 }
 
@@ -709,11 +661,11 @@ test_verify_one_file! {
         mod M5 {
             use builtin::*;
             impl crate::M1::T<u64> for crate::M3::I {
-                spec fn req(&self, a: u64) -> bool {
+                closed spec fn req(&self, a: u64) -> bool {
                     self.x < a && a < 100
                 }
 
-                spec fn ens(&self, a: u64, r: u64) -> bool {
+                closed spec fn ens(&self, a: u64, r: u64) -> bool {
                     self.x <= r && r < 100
                 }
 
@@ -796,7 +748,7 @@ test_verify_one_file! {
         mod M3 {
             use builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                closed spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -831,8 +783,7 @@ test_verify_one_file! {
         mod M3 {
             use builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
-                #[verifier::publish] /* vattr */
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                open spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -865,8 +816,7 @@ test_verify_one_file! {
             pub(crate) struct S<A: Sized, B: Sized>(pub(crate) A, pub(crate) B);
 
             impl<C: Sized> crate::M1::T<(C, u16)> for S<bool, C> {
-                #[verifier::publish] /* vattr */
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                open spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
             }
@@ -900,7 +850,7 @@ test_verify_one_file! {
             pub(crate) struct S<A, B>(pub(crate) A, pub(crate) B);
 
             impl<C> crate::M1::T<(C, u16)> for S<bool, C> {
-                spec fn apple(&self, b: (C, u16)) -> bool {
+                closed spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
                 }
                 fn banana(&self, b: (C, u16)) -> (C, u16) {
@@ -937,8 +887,7 @@ test_verify_one_file! {
             pub(crate) struct S<A, B>(pub(crate) A, pub(crate) B);
 
             impl crate::M1::T<u8> for S<u16, u32> {
-                #[verifier::publish]
-                spec fn apple(&self, b: u8) -> bool {
+                open spec fn apple(&self, b: u8) -> bool {
                     b > 10
                 }
                 fn banana(&self, b: u8) -> u8 {
@@ -986,8 +935,7 @@ test_verify_one_file! {
 
         mod M4 {
             impl crate::M1::T for crate::M2::S<bool, bool> {
-                #[verifier::publish] /* vattr */
-                spec fn apple(&self, b: bool) -> bool {
+                open spec fn apple(&self, b: bool) -> bool {
                     self.0 && self.1 && b
                 }
 
@@ -1044,7 +992,7 @@ test_verify_one_file! {
             pub(crate) struct S(pub(crate) u8);
 
             impl crate::M1::T for S {
-                spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
+                closed spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                     if b { self } else { x }
                 }
 

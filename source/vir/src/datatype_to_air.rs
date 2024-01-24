@@ -8,10 +8,11 @@ use crate::def::{
     QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
+use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
 use crate::sst_to_air::{datatype_id, expr_has_type, path_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::vec_map;
-use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX, Span};
+use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{
     ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies, str_apply,
     str_ident, str_typ,
@@ -73,7 +74,8 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::StrSlice => false,
         TypX::Char => false,
-        TypX::Primitive(_, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Array, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
     }
 }
 
@@ -454,9 +456,10 @@ fn datatype_or_fun_to_air_commands(
                     &variant_field_ident(&dpath, &variant.name, &field.name),
                     recursive_function_field,
                 );
-                let axioms = air::parser::Parser::new()
-                    .nodes_to_commands(&nodes)
-                    .expect("internal error: malformed datatype axiom");
+                let axioms =
+                    air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+                        .nodes_to_commands(&nodes)
+                        .expect("internal error: malformed datatype axiom");
                 axiom_commands.extend(axioms.iter().cloned());
             }
         }

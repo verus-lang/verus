@@ -107,7 +107,7 @@ test_verify_one_file! {
                     List::Cons(_, tl) => {
                         iter = tl;
                         proof {
-                            reveal_with_fuel(len::<A>, 2);
+                            reveal_with_fuel(len, 2);
                         }
                         n = n + 1;
                     }
@@ -156,7 +156,7 @@ test_verify_one_file! {
                     List::Cons { hd: _, tl } => {
                         iter = tl;
                         proof {
-                            reveal_with_fuel(len::<A>, 2);
+                            reveal_with_fuel(len, 2);
                         }
                         n = n + 1;
                     }
@@ -204,7 +204,7 @@ test_verify_one_file! {
                     List::Cons(_, tl) => {
                         iter = tl;
                         proof {
-                            reveal_with_fuel(len::<A>, 2);
+                            reveal_with_fuel(len, 2);
                         }
                         n = n + 1; // FAILS
                         assume(n + len(iter) == len(list));
@@ -526,6 +526,7 @@ test_verify_one_file! {
         enum E { X(u64) }
 
         proof fn test_ep(e: &E) {
+            #[allow(irrefutable_let_patterns)]
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {
@@ -534,6 +535,7 @@ test_verify_one_file! {
         }
 
         fn test_ee(e: &E) {
+            #[allow(irrefutable_let_patterns)]
             if let E::X(u) = e {
                 assert(*u as int >= 0);
             } else {

@@ -2,11 +2,11 @@ use crate::ast::{
     AcceptRecursiveType, Datatype, FunctionKind, GenericBound, GenericBoundX, Ident, Idents, Krate,
     Path, Trait, Typ, TypX, VirErr,
 };
-use crate::ast_util::{error, path_as_friendly_rust_name};
+use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::GlobalCtx;
+use crate::messages::{error, Span};
 use crate::recursion::Node;
 use crate::scc::Graph;
-use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
@@ -126,18 +126,34 @@ fn check_well_founded_typ(
 pub(crate) enum TypNode {
     Datatype(Path),
     TraitImpl(Path),
+    // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
+    // to give more precise span information than X or Y alone provide
+    SpanInfo { span_infos_index: usize, text: String },
 }
 
 struct CheckPositiveGlobal {
     krate: Krate,
     datatypes: HashMap<Path, Datatype>,
     type_graph: Graph<TypNode>,
+    span_infos: Vec<Span>,
 }
 
 struct CheckPositiveLocal {
     span: Span,
     my_datatype: Path,
     tparams: HashMap<Ident, AcceptRecursiveType>,
+}
+
+pub(crate) fn new_span_info_node(span_infos: &mut Vec<Span>, span: Span, text: String) -> Node {
+    let node = Node::SpanInfo { span_infos_index: span_infos.len(), text };
+    span_infos.push(span);
+    node
+}
+
+fn new_span_info_typ_node(span_infos: &mut Vec<Span>, span: Span, text: String) -> TypNode {
+    let node = TypNode::SpanInfo { span_infos_index: span_infos.len(), text };
+    span_infos.push(span);
+    node
 }
 
 // polarity = Some(true) for positive, Some(false) for negative, None for neither
@@ -184,14 +200,14 @@ fn check_positive_uses(
                 match polarity {
                     Some(true) => {}
                     _ => {
-                        return error(
+                        return Err(error(
                             &local.span,
                             format!(
                                 "Type {} recursively uses type {} in a non-positive position",
                                 path_as_friendly_rust_name(&local.my_datatype),
                                 path_as_friendly_rust_name(path)
                             ),
-                        );
+                        ));
                     }
                 }
             }
@@ -203,11 +219,17 @@ fn check_positive_uses(
                 check_positive_uses(global, local, t_polarity, t)?;
             }
             for impl_path in impl_paths.iter() {
+                // REVIEW: this check isn't actually about polarity; should it be somewhere else?
                 let impl_node = TypNode::TraitImpl(impl_path.clone());
                 if global.type_graph.in_same_scc(&impl_node, &my_node) {
                     let scc_rep = global.type_graph.get_scc_rep(&my_node);
-                    let scc_nodes = global.type_graph.get_scc_nodes(&scc_rep);
-                    return Err(type_scc_error(&global.krate, &my_node, &scc_nodes));
+                    let scc_nodes = global.type_graph.shortest_cycle_back_to_self(&scc_rep);
+                    return Err(type_scc_error(
+                        &global.krate,
+                        &global.span_infos,
+                        &my_node,
+                        &scc_nodes,
+                    ));
                 }
             }
             Ok(())
@@ -225,13 +247,13 @@ fn check_positive_uses(
             match (strictly_positive, polarity) {
                 (false, _) => Ok(()),
                 (true, Some(true)) => Ok(()),
-                (true, _) => error(
+                (true, _) => Err(error(
                     &local.span,
                     format!(
                         "Type parameter {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
                         x
                     ),
-                ),
+                )),
             }
         }
         TypX::Projection { .. } => {
@@ -255,7 +277,7 @@ fn add_one_type_to_graph(type_graph: &mut Graph<TypNode>, src: &TypNode, typ: &T
     }
 }
 
-pub(crate) fn build_datatype_graph(krate: &Krate) -> Graph<TypNode> {
+pub(crate) fn build_datatype_graph(krate: &Krate, span_infos: &mut Vec<Span>) -> Graph<TypNode> {
     let mut type_graph: Graph<TypNode> = Graph::new();
 
     // If datatype D1 has a field whose type mentions datatype D2, create a graph edge D1 --> D2
@@ -269,19 +291,35 @@ pub(crate) fn build_datatype_graph(krate: &Krate) -> Graph<TypNode> {
     }
 
     for a in &krate.assoc_type_impls {
+        let trait_impl_src = TypNode::TraitImpl(a.x.impl_path.clone());
+        let src = new_span_info_typ_node(
+            span_infos,
+            a.span.clone(),
+            ": associated type definition, which may depend on other trait implementations \
+                to satisfy type bounds"
+                .to_string(),
+        );
+        type_graph.add_edge(trait_impl_src, src.clone());
+        for impl_path in a.x.impl_paths.iter() {
+            let dst = TypNode::TraitImpl(impl_path.clone());
+            type_graph.add_edge(src.clone(), dst);
+        }
+
         let mut ft = |type_graph: &mut Graph<TypNode>, typ: &Typ| {
-            add_one_type_to_graph(type_graph, &TypNode::TraitImpl(a.x.impl_path.clone()), typ);
+            add_one_type_to_graph(type_graph, &src, typ);
             Ok(typ.clone())
         };
         crate::ast_visitor::map_assoc_type_impl_visitor_env(a, &mut type_graph, &mut ft).unwrap();
     }
 
     type_graph.compute_sccs();
-    return type_graph;
+
+    type_graph
 }
 
 pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
-    let type_graph = build_datatype_graph(krate);
+    let mut span_infos: Vec<Span> = Vec::new();
+    let type_graph = build_datatype_graph(krate, &mut span_infos);
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     let mut datatypes_well_founded: HashSet<Path> = HashSet::new();
 
@@ -289,18 +327,11 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
 
-    let global = CheckPositiveGlobal { krate: krate.clone(), datatypes, type_graph };
+    let global = CheckPositiveGlobal { krate: krate.clone(), datatypes, type_graph, span_infos };
 
     for function in &krate.functions {
         if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
             assert!(&function.x.typ_params[0] == &crate::def::trait_self_type_param());
-        }
-        if function.x.typ_bounds.len() != 0 && function.x.attrs.broadcast_forall {
-            // See the todo!() in func_to_air.rs
-            return error(
-                &function.span,
-                "not yet supported: bounds on broadcast_forall function type parameters",
-            );
         }
     }
 
@@ -338,6 +369,20 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
 
     let type_sccs = global.type_graph.sort_sccs();
     for scc in &type_sccs {
+        for node in &global.type_graph.get_scc_nodes(scc) {
+            match node {
+                TypNode::TraitImpl(_) if global.type_graph.node_is_in_cycle(node) => {
+                    return Err(type_scc_error(
+                        krate,
+                        &global.span_infos,
+                        node,
+                        &global.type_graph.shortest_cycle_back_to_self(scc),
+                    ));
+                }
+                _ => {}
+            }
+        }
+
         let mut converged = false;
         loop {
             let count = datatypes_well_founded.len();
@@ -347,10 +392,10 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
                         check_well_founded(&global.datatypes, &mut datatypes_well_founded, path);
                     if converged && !wf {
                         let span = &global.datatypes[path].span;
-                        return error(
+                        return Err(error(
                             span,
                             "datatype must have at least one non-recursive variant",
-                        );
+                        ));
                     }
                 }
             }
@@ -364,76 +409,95 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     Ok(())
 }
 
-fn type_scc_error(krate: &Krate, head: &TypNode, nodes: &Vec<TypNode>) -> VirErr {
+fn type_scc_error(
+    krate: &Krate,
+    span_infos: &Vec<Span>,
+    head: &TypNode,
+    nodes: &Vec<TypNode>,
+) -> VirErr {
     let msg =
         "found a cyclic self-reference in a trait definition, which may result in nontermination"
             .to_string();
-    let mut err = air::messages::error_bare(msg);
-    for node in nodes {
-        let mut push = |node: &TypNode, span: Span| {
+    let mut err = crate::messages::error_bare(msg);
+    for (i, node) in nodes.iter().enumerate() {
+        let mut push = |node: &TypNode, span: Span, text: &str| {
             if node == head {
                 err = err.primary_span(&span);
-            } else {
-                let msg = "may be part of cycle".to_string();
-                err = err.secondary_label(&span, msg);
             }
+            let msg = format!(
+                "may be part of cycle (node {} of {} in cycle){}",
+                i + 1,
+                nodes.len(),
+                text
+            );
+            err = err.secondary_label(&span, msg);
         };
         match node {
             TypNode::Datatype(path) => {
                 if let Some(d) = krate.datatypes.iter().find(|t| t.x.path == *path) {
                     let span = d.span.clone();
-                    push(node, span);
+                    push(node, span, ": type definition");
                 }
             }
             TypNode::TraitImpl(impl_path) => {
                 if let Some(t) = krate.trait_impls.iter().find(|t| t.x.impl_path == *impl_path) {
                     let span = t.span.clone();
-                    push(node, span);
+                    push(node, span, ": implementation of trait for a type");
                 }
+            }
+            TypNode::SpanInfo { span_infos_index, text } => {
+                push(node, span_infos[*span_infos_index].clone(), text);
             }
         }
     }
     err
 }
 
-fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
+fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Node>) -> VirErr {
     let msg =
         "found a cyclic self-reference in a trait definition, which may result in nontermination"
             .to_string();
-    let mut err = air::messages::error_bare(msg);
-    for node in nodes {
-        let mut push = |node: &Node, span: Span| {
+    let mut err = crate::messages::error_bare(msg);
+    for (i, node) in nodes.iter().enumerate() {
+        let mut push = |node: &Node, span: Span, text: &str| {
             if node == head {
                 err = err.primary_span(&span);
-            } else {
-                let msg = "may be part of cycle".to_string();
-                err = err.secondary_label(&span, msg);
             }
+            let msg = format!(
+                "may be part of cycle (node {} of {} in cycle){}",
+                i + 1,
+                nodes.len(),
+                text
+            );
+            err = err.secondary_label(&span, msg);
         };
         match node {
             Node::Fun(fun) => {
                 if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
                     let span = f.span.clone();
-                    push(node, span);
+                    push(node, span, ": function definition, whose body may have dependencies");
                 }
             }
             Node::Datatype(path) => {
                 if let Some(d) = krate.datatypes.iter().find(|t| t.x.path == *path) {
                     let span = d.span.clone();
-                    push(node, span);
+                    push(node, span, ": type definition");
                 }
             }
             Node::Trait(trait_path) => {
                 if let Some(t) = krate.traits.iter().find(|t| t.x.name == *trait_path) {
                     let span = t.span.clone();
-                    push(node, span);
+                    push(node, span, ": declaration of trait");
                 }
             }
             Node::TraitImpl(impl_path) => {
                 if let Some(t) = krate.trait_impls.iter().find(|t| t.x.impl_path == *impl_path) {
                     let span = t.span.clone();
-                    push(node, span);
+                    push(node, span, ": implementation of trait for a type");
                 }
+            }
+            Node::SpanInfo { span_infos_index, text } => {
+                push(node, span_infos[*span_infos_index].clone(), text);
             }
         }
     }
@@ -475,12 +539,42 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     // For
     //   trait T<...> where ...: U1(...), ..., ...: Un(...)
     // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
-    let t_node = Node::Trait(trt.x.name.clone());
-    for bound in trt.x.typ_bounds.iter() {
+    let t_path = &trt.x.name;
+    let t_node = Node::Trait(t_path.clone());
+    for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
         let GenericBoundX::Trait(u_path, _) = &**bound;
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);
     }
+}
+
+pub(crate) fn add_trait_impl_to_graph(
+    span_infos: &mut Vec<Span>,
+    call_graph: &mut Graph<Node>,
+    t: &crate::ast::TraitImpl,
+) {
+    // For
+    //   trait T<...> where ...: U1(...), ..., ...: Un(...)
+    //   impl T<t1...tn> for ... { ... }
+    // Add necessary impl_T_for_* --> impl_Ui_for_* edges
+    // This corresponds to instantiating the a: Dictionary_U<A> field in the comments below
+    let trait_impl_src_node = Node::TraitImpl(t.x.impl_path.clone());
+    let src_node = new_span_info_node(
+        span_infos,
+        t.x.trait_typ_arg_impls.span.clone(),
+        ": an implementation of a trait, applying the trait to some type arguments, \
+            for some `Self` type, where applying the trait to type arguments and declaring \
+            the `Self` type may depend on other trait implementations to satisfy type bounds"
+            .to_string(),
+    );
+    call_graph.add_edge(trait_impl_src_node, src_node.clone());
+    for imp in t.x.trait_typ_arg_impls.x.iter() {
+        if &t.x.impl_path != imp {
+            call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
+        }
+    }
+    // Add impl_T_for_* --> T
+    call_graph.add_edge(src_node, Node::Trait(t.x.trait_path.clone()));
 }
 
 // Check for cycles in traits
@@ -534,9 +628,10 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // We extend the call graph to represent trait declarations (T) and datatypes implementing
     // traits (D: T) using Node::Trait(T) and Node::TraitImpl(impl for D: T).
     // We add the following edges to the call graph (see recursion::expand_call_graph):
-    //   - T --> f if the requires/ensures of T's method declarations call f
+    //   - T --> f for any method f declared by T
     //   - f --> T for any function f<A: T> with type parameter A: T
     //     (more generally, f --> T for any function f with a where-bound T(...))
+    //   - f --> T for any function f that implements a method of T in D: T
     //   - D: T --> T
     //     (more generally, trait_impl -> trait)
     //   - f --> D: T where one of f's expressions instantiates A: T with D: T.
@@ -559,7 +654,7 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   }
     // We can store a Dictionary_U inside Dictionary_T:
     //   struct Dictionary_T<Self, A> {
-    //     a: Dictionary_U<A>,
+    //     a: Dictionary_U<A>, // see add_trait_impl_to_graph
     //     f: Fn(x: Self, y: Self) -> bool,
     //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
     //   }
@@ -567,6 +662,40 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   - T --> U
     // This also ensures that whenever A is used in f and g,
     // the dictionary a: Dictionary_U<A> is available.
+
+    // To handle bounds on Self like this:
+    //   trait T: U {
+    //     fn f(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // We can store a Dictionary_U inside Dictionary_T:
+    //   struct Dictionary_T<Self> {
+    //     a: Dictionary_U<Self>,
+    //     f: Fn(x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge, like for bounds on trait parameters:
+    //   - T --> U
+    // This also ensures that whenever Self is used in f and g,
+    // the dictionary a: Dictionary_U<Self> is available.
+
+    // To handle bounds on associated types:
+    //   trait T {
+    //     type Y: U;
+    //     fn f(x: Self, y: Y) -> bool;
+    //     fn g(x: Self, y: Y) -> Self { requires(f(x, y)); };
+    //   }
+    // We can store a Dictionary_U inside Dictionary_T:
+    //   struct Dictionary_T<Self> {
+    //     Y: Type, // an F* Type0
+    //     a: Dictionary_U<Y>,
+    //     f: Fn(x: Self, y: Y) -> bool,
+    //     g: Fn(x: Self, y: Y) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge, like for bounds on trait parameters:
+    //   - T --> U
+    // This also ensures that whenever Y is used in f and g,
+    // the dictionary a: Dictionary_U<Y> is available.
 
     // For bounds on datatype parameters like this:
     //   struct D<A: U> {
@@ -578,15 +707,19 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // 2) Check function definitions using value dictionaries
 
     for scc in ctx.func_call_sccs.iter() {
-        let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
-        let count = scc_nodes.len();
-        for node in scc_nodes.iter() {
+        for node in ctx.func_call_graph.get_scc_nodes(scc).iter() {
             match node {
+                // handled by decreases checking:
                 Node::Fun(_) => {}
-                _ if count == 1 => {}
-                _ => {
-                    return Err(scc_error(krate, node, &scc_nodes));
+                _ if ctx.func_call_graph.node_is_in_cycle(node) => {
+                    return Err(scc_error(
+                        krate,
+                        &ctx.datatype_graph_span_infos,
+                        node,
+                        &ctx.func_call_graph.shortest_cycle_back_to_self(node),
+                    ));
                 }
+                _ => {}
             }
         }
     }

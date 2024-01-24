@@ -94,7 +94,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_async_external_fn_accepted verus_code! {
         #[verifier(external)]
-        async fn foo(c: usize) -> Result<usize, ()> {
+        async fn foo(_c: usize) -> Result<usize, ()> {
             Ok(21)
         }
     } => Ok(())
@@ -107,5 +107,7 @@ test_verify_one_file! {
         }
 
         type OT = impl Foo;
-    } => Err(err) => assert_rust_error_msg(err, "`impl Trait` in type aliases is unstable")
+    } => Err(err) => {
+        assert!(err.errors.iter().find(|p| p.message == "`impl Trait` in type aliases is unstable").is_some());
+    }
 }

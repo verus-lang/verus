@@ -2,10 +2,12 @@ name: ci
 
 on:
   push:
+    branches:
+      - 'main'
 
   workflow_dispatch:
 
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
@@ -13,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
@@ -31,10 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        features: ['', 'singular']
+        features: ['', 'singular', 'record-history']
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: get z3
         working-directory: ./source
         run: |
@@ -53,14 +55,22 @@ jobs:
         run: |
           . ../tools/activate
           vargo clean
+
           if [ "${{ matrix.features }}" == "singular" ]; then
             vargo build --features singular
             VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p air --features singular
-            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular
+            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test integer_ring
+            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test examples -- example_integer_ring
+          elif [ "${{ matrix.features }}" == "record-history" ]; then
+            vargo build --features record-history
+            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features record-history --test basic
           else
-            vargo build
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
+            cd pervasive
+            unset -f cargo
+            cargo build
+            cd ..
           fi
       - name: build docs
         if: matrix.features == ''
@@ -78,7 +88,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: get z3
         shell: pwsh
         working-directory: .\source
@@ -100,4 +110,5 @@ jobs:
           vargo clean
           vargo build
           $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test basic
+          $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test layout
         shell: powershell

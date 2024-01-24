@@ -1,7 +1,8 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::messages::Span;
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
-use air::ast::{Commands, Ident, Span};
+use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -43,6 +44,7 @@ const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
+const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
@@ -58,6 +60,8 @@ const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const PREFIX_STATIC: &str = "static%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -175,6 +179,7 @@ pub const QID_HEIGHT_APPLY: &str = "height_apply";
 pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
+pub const QID_TRAIT_IMPL: &str = "trait_impl";
 pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -366,6 +371,10 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     ))
 }
 
+pub fn trait_bound(trait_path: &Path) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
 pub fn prefix_type_id_fun(i: usize) -> Ident {
     prefix_type_id(&prefix_lambda_type(i))
 }
@@ -392,6 +401,10 @@ pub fn prefix_requires(ident: &Ident) -> Ident {
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_ENSURES.to_string() + ident)
+}
+
+pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
+    Arc::new(format!("{}{}%{}", PREFIX_OPEN_INV, i, ident))
 }
 
 fn prefix_path(prefix: String, path: &Path) -> Path {
@@ -461,6 +474,10 @@ pub fn positional_field_ident(idx: usize) -> Ident {
     Arc::new(format!("_{}", idx))
 }
 
+pub fn field_ident_from_rust(s: &str) -> Ident {
+    Arc::new(format!("_{}", s))
+}
+
 pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
     if args.len() == 0 {
         datatype.clone()
@@ -507,12 +524,18 @@ pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
 }
 
 // Generate a unique internal quantifier ID
-pub fn new_internal_qid(name: String) -> Option<Ident> {
+pub fn new_internal_qid(ctx: &crate::context::Ctx, name: String) -> Option<Ident> {
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars
     let name = str::replace(&name, ":", "_");
     let name = str::replace(&name, "%", "__");
     let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
+
+    if let Some(fun) = ctx.fun.as_ref() {
+        let bnd_info = crate::sst::BndInfo { fun: fun.current_fun.clone(), user: None };
+        ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+    }
+
     Some(Arc::new(qid))
 }
 
@@ -560,14 +583,31 @@ impl<X: Debug> Debug for Spanned<X> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverChoice {
     DefaultProver,
-    Spinoff,
+    Nonlinear,
     BitVector,
     Singular,
 }
 
-pub struct CommandsWithContextX {
-    pub span: air::ast::Span,
+#[derive(Clone)]
+pub struct CommandContext {
+    pub fun: Fun,
+    pub span: crate::messages::Span,
     pub desc: String,
+}
+
+impl CommandContext {
+    pub fn with_desc_prefix(&self, prefix: Option<&str>) -> Self {
+        let CommandContext { fun, span, desc } = self;
+        CommandContext {
+            fun: fun.clone(),
+            span: span.clone(),
+            desc: prefix.unwrap_or("").to_string() + desc,
+        }
+    }
+}
+
+pub struct CommandsWithContextX {
+    pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
@@ -575,6 +615,7 @@ pub struct CommandsWithContextX {
 
 impl CommandsWithContextX {
     pub fn new(
+        fun: Fun,
         span: Span,
         desc: String,
         commands: Commands,
@@ -582,11 +623,10 @@ impl CommandsWithContextX {
         skip_recommends: bool,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
-            span: span,
-            desc: desc,
-            commands: commands,
-            prover_choice: prover_choice,
-            skip_recommends: skip_recommends,
+            context: CommandContext { fun, span, desc },
+            commands,
+            prover_choice,
+            skip_recommends,
         })
     }
 }
@@ -599,22 +639,6 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
         InvAtomicity::NonAtomic => Arc::new("LocalInvariant".to_string()),
     }
 }
-
-// TODO unused?
-// TODO pub fn datatype_invariant_path(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Path {
-// TODO     Arc::new(PathX {
-// TODO         krate: vstd_crate_name.clone(),
-// TODO         segments: Arc::new(if vstd_crate_name.is_some() {
-// TODO             vec![Arc::new("invariant".to_string()), atomicity_type_name(atomicity)]
-// TODO         } else {
-// TODO             vec![
-// TODO                 Arc::new("pervasive".to_string()),
-// TODO                 Arc::new("invariant".to_string()),
-// TODO                 atomicity_type_name(atomicity),
-// TODO             ]
-// TODO         }),
-// TODO     })
-// TODO }
 
 pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
@@ -705,6 +729,24 @@ pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
         segments: Arc::new(vec![
             Arc::new("pervasive".to_string()),
             Arc::new("exec_nonstatic_call".to_string()),
+        ]),
+    })
+}
+
+pub fn static_name(fun: &Fun) -> Ident {
+    Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
+}
+
+pub fn array_index_fun(vstd_crate_name: &Option<Ident>) -> Fun {
+    Arc::new(FunX { path: array_index_path(vstd_crate_name) })
+}
+
+pub fn array_index_path(vstd_crate_name: &Option<Ident>) -> Path {
+    Arc::new(PathX {
+        krate: vstd_crate_name.clone(),
+        segments: Arc::new(vec![
+            Arc::new("array".to_string()),
+            Arc::new("array_index".to_string()),
         ]),
     })
 }

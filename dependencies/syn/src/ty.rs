@@ -904,25 +904,31 @@ pub mod parsing {
                 let content;
                 let _ = parenthesized!(content in input);
 
-                // if one of the trees is a comma, this is a tuple, not a pattern return:
-                let mut triangle_brace_depth = 0;
-                for t in content.cursor().token_stream().into_iter() {
-                    if let TokenTree::Punct(p) = t {
-                        let c = p.as_char();
-                        if c == ',' && triangle_brace_depth == 0 {
-                            return Ok(false);
-                        } else if c == '<' {
-                            triangle_brace_depth += 1;
-                        } else if c == '>' {
-                            triangle_brace_depth -= 1;
-                        }
-                    }
-                }
+                // We want to support the following for pattern-returns:
+                //    -> ([ghost|tracked]? IDENT: TYPE)
+                // or
+                //    -> ([ghost|tracked]? (PATTERN): TYPE)
+                //
+                // Therefore, we parse this is a pattern-return if we see either of:
+                //    -> ([ghost|tracked]? IDENT: anything)
+                // or
+                //    -> ([ghost|tracked]? (anything): anything)
+                // Neither of these forms would be valid types
 
-                return Ok(true);
-            } else {
-                Ok(false)
+                let _tracked: Option<Token![tracked]> = content.parse()?;
+                let _ghost: Option<Token![ghost]> = content.parse()?;
+
+                if content.peek(token::Paren) {
+                    return Ok(content.peek2(token::Colon));
+                } else {
+                    let id: Result<Ident> = content.parse();
+                    if id.is_err() {
+                        return Ok(false);
+                    }
+                    return Ok(content.peek(token::Colon) && !content.peek(Token![::]));
+                }
             }
+            return Ok(false);
         }
 
         pub(crate) fn parse(input: ParseStream, allow_plus: bool) -> Result<Self> {

@@ -1,2 +1,7 @@
 /rust
 *.swp
+*.exe
+*.pdb
+/.vscode/settings.json
+/.vscode/launch.json
+/.vscode/tasks.json

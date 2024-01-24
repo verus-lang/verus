@@ -86,6 +86,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_static_fail verus_code! {
+        exec static C: u8 = 255 + 1 /* FAILS */;
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] test_literal_out_of_range verus_code! {
         const C: u8 = 256 - 1;
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
@@ -233,7 +239,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] bit_shift_overflow_arch32 ["--arch-word-bits 32"] => verus_code! {
+    #[test] bit_shift_overflow_arch32 ["vstd"] => verus_code! {
+        global size_of usize == 4;
+
         fn test_usize_overflow() {
             let x: usize = 0;
             let y: usize = 32;
@@ -251,7 +259,9 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] bit_shift_overflow_arch64 ["--arch-word-bits 64"] => verus_code! {
+    #[test] bit_shift_overflow_arch64 ["vstd"] => verus_code! {
+        global size_of usize == 8;
+
         fn test_usize_overflow() {
             let x: usize = 0;
             let y: usize = 64;
@@ -291,4 +301,32 @@ test_verify_one_file! {
             assert(1i8 >> (-1i8) == 0i8) by(bit_vector); // FAILS
         }
     } => Err(e) => assert_vir_error_msg(e, "signed integer is not supported for bit-vector reasoning")
+}
+
+test_verify_one_file! {
+    #[test] nonlinear_ops_dont_overflow_unsigned verus_code!{
+        fn test_mul(x: u16, y: u16) {
+            assert(((x as nat) * (y as nat)) as int == (x as int) * (y as int));
+        }
+
+        fn test_div(a: u32, b: u32)
+            requires b != 0
+        {
+            let x = a / b;
+            assert(x as int == a as int / b as int);
+        }
+
+        fn test_mod(a: u32, b: u32)
+            requires b != 0
+        {
+            let x = a % b;
+            assert(x as int == a as int % b as int);
+        }
+
+        // Make sure axiom about % properly accounts for 0:
+
+        proof fn test_mod_by_0(a: u32, b: u32) {
+            assert((a as int % 0 as int) < 0); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }

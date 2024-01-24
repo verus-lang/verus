@@ -4,10 +4,10 @@ use std::time::{Duration, Instant};
 
 fn mk_compiler<'a, 'b>(
     rustc_args: &'a [String],
-    verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
+    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> verus_rustc_driver::RunCompiler<'a, 'b> {
-    let mut compiler = verus_rustc_driver::RunCompiler::new(rustc_args, verifier);
+) -> rustc_driver::RunCompiler<'a, 'b> {
+    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
     compiler.set_file_loader(Some(file_loader));
     compiler
 }
@@ -16,7 +16,7 @@ fn run_compiler<'a, 'b>(
     mut rustc_args: Vec<String>,
     syntax_macro: bool,
     erase_ghost: bool,
-    verifier: &'b mut (dyn verus_rustc_driver::Callbacks + Send),
+    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     _build_test_mode: bool, // TODO is this needed?
 ) -> Result<(), ErrorGuaranteed> {
@@ -89,17 +89,17 @@ pub struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
 }
 
-impl verus_rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
+impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     fn after_parsing<'tcx>(
         &mut self,
-        _compiler: &verus_rustc_interface::interface::Compiler,
-        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
-    ) -> verus_rustc_driver::Compilation {
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
         if !self.do_compile {
             crate::lifetime::check(queries);
-            verus_rustc_driver::Compilation::Stop
+            rustc_driver::Compilation::Stop
         } else {
-            verus_rustc_driver::Compilation::Continue
+            rustc_driver::Compilation::Continue
         }
     }
 }
@@ -124,10 +124,11 @@ pub(crate) fn run_with_erase_macro_compile(
     build_test_mode: bool,
 ) -> Result<(), ErrorGuaranteed> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
-    rustc_args.extend(["--cfg", "verus_macro_erase_ghost"].map(|s| s.to_string()));
+    rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     let allow = &[
         "unused_imports",
         "unused_variables",
+        "unused_assignments",
         "unreachable_patterns",
         "unused_parens",
         "unused_braces",
@@ -274,7 +275,9 @@ where
     }
 
     let time0 = Instant::now();
-
+    let mut rustc_args_verify = rustc_args.clone();
+    rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
+    rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,
@@ -287,7 +290,7 @@ where
         build_test_mode,
     };
     let status = run_compiler(
-        rustc_args.clone(),
+        rustc_args_verify.clone(),
         true,
         false,
         &mut verifier_callbacks,

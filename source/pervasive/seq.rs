@@ -26,7 +26,7 @@ verus! {
 ///    or [`Seq::add`].
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the
-/// [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro.
+/// extensional equality operator `=~=`.
 
 #[verifier::external_body]
 #[verifier::ext_equal]
@@ -76,10 +76,7 @@ impl<A> Seq<A> {
     ///
     /// ```rust
     /// proof fn push_test() {
-    ///     assert_seqs_equal!(
-    ///           seq![10, 11, 12].push(13),
-    ///           seq![10, 11, 12, 13],
-    ///     );
+    ///     assert(seq![10, 11, 12].push(13) =~= seq![10, 11, 12, 13]);
     /// }
     /// ```
 
@@ -95,7 +92,7 @@ impl<A> Seq<A> {
     /// proof fn update_test() {
     ///     let s = seq![10, 11, 12, 13, 14];
     ///     let t = s.update(2, -5);
-    ///     assert_seqs_equal!(t, seq![10, 11, -5, 13, 14]);
+    ///     assert(t =~= seq![10, 11, -5, 13, 14]);
     /// }
     /// ```
 
@@ -130,7 +127,7 @@ impl<A> Seq<A> {
     ///     //                  ^-------^
     ///     //          0   1   2   3   4   5
     ///     let sub = s.subrange(2, 4);
-    ///     assert_seqs_equal!(sub, seq![12, 13]);
+    ///     assert(sub =~= seq![12, 13]);
     /// }
     /// ```
 
@@ -138,16 +135,28 @@ impl<A> Seq<A> {
     pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
         recommends 0 <= start_inclusive <= end_exclusive <= self.len();
 
+    /// Returns a sequence containing only the first n elements of the original sequence
+    
+    #[verifier(inline)]
+    pub open spec fn take(self, n: int) -> Seq<A>{
+        self.subrange(0,n)
+    } 
+
+    /// Returns a sequence without the first n elements of the original sequence
+    
+    #[verifier(inline)]
+    pub open spec fn skip(self, n: int) -> Seq<A>{
+        self.subrange(n,self.len() as int)
+    }
+
     /// Concatenates the sequences.
     ///
     /// ## Example
     ///
     /// ```rust
     /// proof fn add_test() {
-    ///     assert_seqs_equal!(
-    ///         seq![10, 11].push(seq![12, 13, 14]),
-    ///         seq![10, 11, 12, 13, 14],
-    ///     );
+    ///     assert(seq![10int, 11].add(seq![12, 13, 14])
+    ///             =~= seq![10, 11, 12, 13, 14]);
     /// }
     /// ```
 
@@ -168,6 +177,15 @@ impl<A> Seq<A> {
         recommends 0 < self.len()
     {
         self[self.len() as int - 1]
+    }
+
+    /// Returns the first element of the sequence.
+    
+    #[rustc_diagnostic_item = "vstd::seq::Seq::first"]
+    pub open spec fn first(self) -> A
+        recommends 0 < self.len()
+    {
+        self[0]
     }
 }
 
@@ -340,6 +358,10 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 {
 }
 
+
+
+// ------------- Macros ---------------- //
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {
@@ -368,6 +390,8 @@ macro_rules! seq {
         ::builtin_macros::verus_proof_macro_exprs!($crate::seq::seq_internal!($($tail)*))
     };
 }
+
+
 
 #[doc(hidden)]
 pub use seq_internal;

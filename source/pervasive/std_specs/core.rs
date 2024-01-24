@@ -19,9 +19,12 @@ pub struct ExOption<V>(core::option::Option<V>);
 #[verifier::reject_recursive_types_in_ground_variants(E)]
 pub struct ExResult<T, E>(core::result::Result<T, E>);
 
-#[verifier(external_type_specification)]
-#[verifier::reject_recursive_types_in_ground_variants(Idx)]
-pub struct ExRange<Idx>(core::ops::Range<Idx>);
+#[verifier::external_fn_specification]
+pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
+    ensures r == i
+{
+    i.into_iter()
+}
 
 // I don't really expect this to be particularly useful;
 // this is mostly here because I wanted an easy way to test
@@ -50,5 +53,10 @@ pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
 {
     core::intrinsics::unlikely(b)
 }
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types_in_ground_variants(V)]
+pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
 
 }

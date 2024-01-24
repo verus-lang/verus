@@ -8,22 +8,23 @@ use std::sync::{Arc, Mutex};
 use vir::ast::{SpannedTyped, Typ};
 use vir::def::Spanned;
 
-pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
+pub(crate) fn to_raw_span(span: Span) -> vir::messages::RawSpan {
     Arc::new(span.data())
 }
 
 // Note: this only returns Some for Spans in the local crate
-pub(crate) fn from_raw_span(raw_span: &air::ast::RawSpan) -> Option<Span> {
-    (**raw_span).downcast_ref::<SpanData>().map(|data| data.span())
+pub(crate) fn from_raw_span(raw_span: &vir::messages::RawSpan) -> Option<Span> {
+    let x = (&(**raw_span)) as &(dyn std::any::Any + Sync + Send); // rust subtyping limitaiton
+    x.downcast_ref::<SpanData>().map(|data| data.span())
 }
 
 // Note: this produces a span suitable for reporting immediate errors;
 // It should not be used to construct VIR AST node spans,
 // and cannot be serialized an deserialized.
-pub(crate) fn err_air_span(span: Span) -> air::ast::Span {
+pub(crate) fn err_air_span(span: Span) -> vir::messages::Span {
     let raw_span = to_raw_span(span);
     let as_string = format!("{:?}", span);
-    air::ast::Span { raw_span, id: 0, data: vec![], as_string }
+    vir::messages::Span { raw_span, id: 0, data: vec![], as_string }
 }
 
 #[derive(Debug, Clone)]
@@ -91,7 +92,7 @@ impl SpanContextX {
                     local_files.insert(source_file.src_hash.hash_bytes().to_vec(), pos);
                 }
                 ExternalSource::Foreign { .. } => {
-                    let imported_crate = tcx.stable_crate_id(source_file.cnum).to_u64();
+                    let imported_crate = tcx.stable_crate_id(source_file.cnum).as_u64();
                     let start_pos = source_file.start_pos;
                     let end_pos = source_file.end_pos;
                     let hash = source_file.src_hash.hash_bytes().to_vec();
@@ -203,7 +204,7 @@ impl SpanContextX {
         // Encode as [StableCrateId, lo_hi]
         let span_data = span.data();
         let lo_hi = ((span_data.lo.0 as u64) << 32) | (span_data.hi.0 as u64);
-        return vec![self.local_crate.to_u64(), lo_hi];
+        return vec![self.local_crate.as_u64(), lo_hi];
     }
 
     fn unpack_span(&self, packed: &Vec<u64>, source_map: Option<&SourceMap>) -> Option<Span> {
@@ -226,18 +227,18 @@ impl SpanContextX {
         Some(SpanData { lo, hi, ctxt: rustc_span::SyntaxContext::root(), parent: None }.span())
     }
 
-    pub(crate) fn to_air_span(&self, span: Span) -> air::ast::Span {
+    pub(crate) fn to_air_span(&self, span: Span) -> vir::messages::Span {
         let raw_span = to_raw_span(span);
 
         let id = self.next_span_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let data = self.pack_span(span);
         let as_string = format!("{:?}", span);
-        air::ast::Span { raw_span, id, data, as_string }
+        vir::messages::Span { raw_span, id, data, as_string }
     }
 
     pub(crate) fn from_air_span(
         &self,
-        air_span: &air::ast::Span,
+        air_span: &vir::messages::Span,
         source_map: Option<&SourceMap>,
     ) -> Option<Span> {
         if let Some(span) = from_raw_span(&air_span.raw_span) {

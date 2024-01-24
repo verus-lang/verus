@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Verify",
+            "env": { "RUST_BACKTRACE": "1" },
+            "program": "${workspaceFolder}/source/target-verus/debug/verus",
+            "args": ["--crate-type=lib", "test.rs"],
+            "cwd": "${workspaceFolder}/source",
+            "preRunCommands": [
+                "settings set target.process.stop-on-exec false",
+                "breakpoint set -n rust_panic"
+            ],
+            "preLaunchTask": "build"
+        }
+    ]
+}

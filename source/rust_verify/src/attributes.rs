@@ -4,7 +4,7 @@ use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute};
 use rustc_span::Span;
-use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr};
+use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 
 #[derive(Debug)]
 pub(crate) enum AttrTree {
@@ -92,6 +92,7 @@ fn attr_args_to_tree(span: Span, name: String, args: &AttrArgs) -> Result<AttrTr
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerusPrefix {
+    None,
     Internal,
     // Unsafe,
     // Type,
@@ -128,28 +129,27 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
             }
             [prefix_segment, segment] if prefix_segment.ident.as_str() == "verus" => {
                 let name = segment.ident.to_string();
-                let verus_prefix = match &*name {
-                    "internal" => VerusPrefix::Internal,
-                    _ => {
-                        return err_span(attr.span, "invalid verus attribute");
-                    }
-                };
-                match &item.item.args {
-                    AttrArgs::Delimited(delim) => {
-                        let trees: Box<[AttrTree]> =
-                            token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
-                                vir_err_span_str(attr.span, "invalid verus attribute")
-                            })?;
-                        if trees.len() != 1 {
-                            return err_span(attr.span, "invalid verus attribute");
+                match &*name {
+                    "internal" => match &item.item.args {
+                        AttrArgs::Delimited(delim) => {
+                            let trees: Box<[AttrTree]> =
+                                token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
+                                    vir_err_span_str(attr.span, "invalid verus attribute")
+                                })?;
+                            if trees.len() != 1 {
+                                return err_span(attr.span, "invalid verus attribute");
+                            }
+                            let mut trees = trees.into_vec().into_iter();
+                            let tree: AttrTree = trees
+                                .next()
+                                .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
+                            Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span, tree)))
                         }
-                        let mut trees = trees.into_vec().into_iter();
-                        let tree: AttrTree = trees
-                            .next()
-                            .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
-                        Ok(Some((AttrPrefix::Verus(verus_prefix), attr.span, tree)))
-                    }
-                    _ => return err_span(attr.span, "invalid verus attribute"),
+                        _ => return err_span(attr.span, "invalid verus attribute"),
+                    },
+                    _ => attr_args_to_tree(attr.span, name, &item.item.args)
+                        .map(|tree| Some((AttrPrefix::Verus(VerusPrefix::None), attr.span, tree)))
+                        .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute")),
                 }
             }
             [segment]
@@ -187,7 +187,7 @@ pub(crate) enum GhostBlockAttr {
     Wrapper,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -199,10 +199,12 @@ pub(crate) enum Attr {
     ExternalBody,
     // don't parse function; function can't be called directly from verified code
     External,
+    // opposite of External; verify item even if it's declared without VerusMacro
+    Verify,
     // hide body (from all modules) until revealed
     Opaque,
-    // publish body
-    Publish,
+    // publish body?
+    Publish(bool),
     // publish body with zero fuel
     OpaqueOutsideModule,
     // inline spec function in SMT query
@@ -224,6 +226,8 @@ pub(crate) enum Attr {
     BroadcastForall,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
     AutoTrigger,
+    // accept all possible triggers chosen by triggers_auto without printing any diagnostics
+    AllTriggers,
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
     // when used in a ghost context, redirect to a specified spec method
@@ -252,12 +256,22 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Memoize function call results during interpretation
     Memoize,
+    // Override default rlimit
+    RLimit(f32),
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
     // In order to apply a specification to a method externally
     ExternalFnSpecification,
     // In order to apply a specification to a datatype externally
     ExternalTypeSpecification,
+    // Marks a variable that's spec or ghost mode in exec code
+    UnwrappedBinding,
+    // Marks the auxiliary function constructed by reveal/hide
+    InternalRevealFn,
+    // Marks trusted code
+    Trusted,
+    // global size_of
+    SizeOfGlobal,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -274,9 +288,21 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     }
 }
 
-pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
+pub(crate) fn parse_attrs(
+    attrs: &[Attribute],
+    mut diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<Vec<Attr>, VirErr> {
+    let diagnostics = &mut diagnostics;
     let mut v: Vec<Attr> = Vec::new();
     for (prefix, span, attr) in attrs_to_trees(attrs)? {
+        let mut report_deprecated = |attr_name: &str| {
+            if let Some(diagnostics) = diagnostics {
+                diagnostics.push(VirErrAs::Warning(
+                    crate::util::err_span_bare(span, format!("#[verifier({attr_name})] is deprecated, use `open spec fn` and `closed spec fn` instead"))
+                ));
+            }
+        };
+
         match prefix {
             AttrPrefix::Verifier => match &attr {
                 AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
@@ -303,11 +329,16 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     v.push(Attr::Trigger(Some(groups)));
                 }
                 AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
+                AttrTree::Fun(_, name, None) if name == "all_triggers" => v.push(Attr::AllTriggers),
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
+                AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
-                AttrTree::Fun(_, arg, None) if arg == "publish" => v.push(Attr::Publish),
+                AttrTree::Fun(_, arg, None) if arg == "publish" => {
+                    report_deprecated("publish");
+                    v.push(Attr::Publish(true))
+                }
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
@@ -409,6 +440,16 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     v.push(Attr::SpinoffProver)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
+                AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
+                    if name == "rlimit" =>
+                {
+                    match r.parse::<f32>() {
+                        Ok(rlimit) => v.push(Attr::RLimit(rlimit)),
+                        Err(_) => {
+                            return err_span(*span, "expected number for rlimit");
+                        }
+                    }
+                }
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
                 AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
                     v.push(Attr::ExternalFnSpecification)
@@ -454,11 +495,15 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     AttrTree::Fun(_, name, None) if name == "auto_trigger" => {
                         v.push(Attr::AutoTrigger)
                     }
+                    AttrTree::Fun(_, name, None) if name == "all_triggers" => {
+                        v.push(Attr::AllTriggers)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
                     }
-                    AttrTree::Fun(_, arg, None) if arg == "publish" => v.push(Attr::Publish),
+                    AttrTree::Fun(_, arg, None) if arg == "open" => v.push(Attr::Publish(true)),
+                    AttrTree::Fun(_, arg, None) if arg == "closed" => v.push(Attr::Publish(false)),
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
                         if arg == "returns" && name == "spec" =>
                     {
@@ -477,6 +522,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     AttrTree::Fun(_, arg, None) if arg == "header_unwrap_parameter" => {
                         v.push(Attr::UnwrapParameter)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "reveal_fn" => {
+                        v.push(Attr::InternalRevealFn)
+                    }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>
                     {
@@ -488,6 +536,16 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                         }
                     }
                     AttrTree::Fun(_, arg, None) if arg == "via" => v.push(Attr::DecreasesBy),
+                    AttrTree::Fun(_, arg, None) if arg == "unwrapped_binding" => {
+                        v.push(Attr::UnwrappedBinding)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "size_of" => v.push(Attr::SizeOfGlobal),
+                    _ => {
+                        return err_span(span, "unrecognized internal attribute");
+                    }
+                },
+                VerusPrefix::None => match &attr {
+                    AttrTree::Fun(_, name, None) if name == "trusted" => v.push(Attr::Trusted),
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -498,15 +556,18 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
     Ok(v)
 }
 
-pub(crate) fn parse_attrs_opt(attrs: &[Attribute]) -> Vec<Attr> {
-    match parse_attrs(attrs) {
+pub(crate) fn parse_attrs_opt(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Vec<Attr> {
+    match parse_attrs(attrs, diagnostics) {
         Ok(attrs) => attrs,
         Err(_) => vec![],
     }
 }
 
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
-    for attr in parse_attrs_opt(attrs) {
+    for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::GhostBlock(g) => return Some(g),
             _ => {}
@@ -516,7 +577,7 @@ pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr>
 }
 
 pub(crate) fn get_mode_opt(attrs: &[Attribute]) -> Option<Mode> {
-    for attr in parse_attrs_opt(attrs) {
+    for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::Mode(m) => return Some(m),
             _ => {}
@@ -536,7 +597,7 @@ pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
 
 pub(crate) fn get_ret_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
     let mut mode = get_var_mode(function_mode, &[]);
-    for attr in parse_attrs_opt(attrs) {
+    for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::ReturnMode(m) => mode = m,
             _ => {}
@@ -547,9 +608,10 @@ pub(crate) fn get_ret_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
 
 pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>, VirErr> {
     let mut groups: Vec<TriggerAnnotation> = Vec::new();
-    for attr in parse_attrs(attrs)? {
+    for attr in parse_attrs(attrs, None)? {
         match attr {
             Attr::AutoTrigger => groups.push(TriggerAnnotation::AutoTrigger),
+            Attr::AllTriggers => groups.push(TriggerAnnotation::AllTriggers),
             Attr::Trigger(None) => groups.push(TriggerAnnotation::Trigger(None)),
             Attr::Trigger(Some(group_ids)) => {
                 groups.extend(group_ids.into_iter().map(|id| TriggerAnnotation::Trigger(Some(id))));
@@ -562,7 +624,7 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>,
 
 pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<String>, VirErr> {
     let mut v = Vec::new();
-    for attr in parse_attrs(attrs)? {
+    for attr in parse_attrs(attrs, None)? {
         match attr {
             Attr::CustomErr(s) => v.push(s),
             _ => {}
@@ -575,11 +637,14 @@ pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
     if vattrs.opaque { 0 } else { 1 }
 }
 
-pub(crate) fn get_publish(vattrs: &VerifierAttrs) -> Option<bool> {
+pub(crate) fn get_publish(
+    vattrs: &VerifierAttrs,
+) -> (Option<bool>, /* open/closed present: */ bool) {
     match (vattrs.publish, vattrs.opaque_outside_module) {
-        (false, _) => None,
-        (true, false) => Some(true),
-        (true, true) => Some(false),
+        (None, _) => (None, false),
+        (Some(false), _) => (None, true),
+        (Some(true), false) => (Some(true), true),
+        (Some(true), true) => (Some(false), true),
     }
 }
 
@@ -588,8 +653,9 @@ pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
     pub(crate) external: bool,
+    pub(crate) verify: bool,
     pub(crate) opaque: bool,
-    pub(crate) publish: bool,
+    pub(crate) publish: Option<bool>,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
     pub(crate) ext_equal: bool,
@@ -610,18 +676,41 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) memoize: bool,
+    pub(crate) rlimit: Option<f32>,
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
+    pub(crate) unwrapped_binding: bool,
+    pub(crate) sets_mode: bool,
+    pub(crate) internal_reveal_fn: bool,
+    pub(crate) trusted: bool,
+    pub(crate) size_of_global: bool,
 }
 
-pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
+impl VerifierAttrs {
+    pub(crate) fn is_external(&self, cmd_line_args: &crate::config::Args) -> bool {
+        self.external
+            || !(cmd_line_args.no_external_by_default
+                || self.verus_macro
+                || self.external_body
+                || self.external_fn_specification
+                || self.external_type_specification
+                || self.verify
+                || self.sets_mode)
+    }
+}
+
+pub(crate) fn get_verifier_attrs(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
         verus_macro: false,
         external_body: false,
         external: false,
+        verify: false,
         opaque: false,
-        publish: false,
+        publish: None,
         opaque_outside_module: false,
         inline: false,
         ext_equal: false,
@@ -641,19 +730,26 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         nonlinear: false,
         spinoff_prover: false,
         memoize: false,
+        rlimit: None,
         truncate: false,
         external_fn_specification: false,
         external_type_specification: false,
+        unwrapped_binding: false,
+        sets_mode: false,
+        internal_reveal_fn: false,
+        trusted: false,
+        size_of_global: false,
     };
-    for attr in parse_attrs(attrs)? {
+    for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
+            Attr::Verify => vs.verify = true,
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::ExternalTypeSpecification => vs.external_type_specification = true,
             Attr::Opaque => vs.opaque = true,
-            Attr::Publish => vs.publish = true,
+            Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
             Attr::ExtEqual => vs.ext_equal = true,
@@ -683,8 +779,28 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::Memoize => vs.memoize = true,
+            Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
+            Attr::UnwrappedBinding => vs.unwrapped_binding = true,
+            Attr::Mode(_) => vs.sets_mode = true,
+            Attr::InternalRevealFn => vs.internal_reveal_fn = true,
+            Attr::Trusted => vs.trusted = true,
+            Attr::SizeOfGlobal => vs.size_of_global = true,
             _ => {}
+        }
+    }
+    if attrs.len() > 0 {
+        let span = attrs[0].span;
+        let mismatches = vec![
+            ("inside verus macro", "`verify`", vs.verus_macro, vs.verify),
+            ("`external`", "`verify`", vs.external, vs.verify),
+            ("`external_body`", "`verify`", vs.external_body, vs.verify),
+            ("`external_body`", "`external`", vs.external_body, vs.external),
+        ];
+        for (msg1, msg2, flag1, flag2) in mismatches {
+            if flag1 && flag2 {
+                return err_span(span, format!("item cannot be both {msg1} and {msg2}",));
+            }
         }
     }
     Ok(vs)

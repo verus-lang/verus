@@ -45,6 +45,7 @@ where
                 ExpX::Const(_)
                 | ExpX::Var(..)
                 | ExpX::VarAt(..)
+                | ExpX::StaticVar(..)
                 | ExpX::Old(..)
                 | ExpX::VarLoc(..) => (),
                 ExpX::Loc(e0) => {
@@ -274,6 +275,7 @@ where
         ExpX::Var(..) => f(exp, map),
         ExpX::VarAt(..) => f(exp, map),
         ExpX::VarLoc(..) => f(exp, map),
+        ExpX::StaticVar(..) => f(exp, map),
         ExpX::Loc(e1) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let exp = exp_new(ExpX::Loc(expr1));
@@ -433,6 +435,9 @@ where
 
 pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>) -> Exp {
     map_exp_visitor(exp, &mut |exp| match &exp.x {
+        ExpX::VarAt(x, crate::ast::VarAt::Pre) if map.contains_key(x) => {
+            SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
+        }
         ExpX::Var(x) if map.contains_key(x) => {
             SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
         }
@@ -477,6 +482,7 @@ where
         ExpX::Var(..) => Ok(exp.clone()),
         ExpX::VarLoc(..) => Ok(exp.clone()),
         ExpX::VarAt(..) => Ok(exp.clone()),
+        ExpX::StaticVar(..) => Ok(exp.clone()),
         ExpX::Loc(e1) => ok_exp(ExpX::Loc(fe(env, e1)?)),
         ExpX::Old(..) => Ok(exp.clone()),
         ExpX::Call(fun, typs, es) => {
@@ -487,7 +493,7 @@ where
                     let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
                     CallFun::Fun(f.clone(), Some((r.clone(), Arc::new(ts?))))
                 }
-                CallFun::CheckTermination(..) | CallFun::InternalFun(..) => fun.clone(),
+                CallFun::Recursive(..) | CallFun::InternalFun(..) => fun.clone(),
             };
             let typs: Result<Vec<Typ>, VirErr> = typs.iter().map(|t| ft(env, t)).collect();
             ok_exp(ExpX::Call(fun.clone(), Arc::new(typs?), fs(env, es)?))
@@ -505,6 +511,10 @@ where
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t)) => {
             let t = ft(env, t)?;
             ok_exp(ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t)))
+        }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
+            let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
+            ok_exp(ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p.clone(), Arc::new(ts?))))
         }
         ExpX::Unary(op, e1) => ok_exp(ExpX::Unary(*op, fe(env, e1)?)),
         ExpX::UnaryOpr(op, e1) => {

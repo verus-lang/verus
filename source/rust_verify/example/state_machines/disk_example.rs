@@ -120,10 +120,10 @@ state_machine!{ TreeSM {
             require let Tree::Node(left_child, right_child) = pre.tree;
             if left {
                 require let Tree::Leaf(old_val_l) = *left_child;
-                update tree = Tree::Node(box Tree::Leaf(new_val), right_child);
+                update tree = Tree::Node(Box::new(Tree::Leaf(new_val), right_child));
             } else {
                 require let Tree::Leaf(old_val_r) = *right_child;
-                update tree = Tree::Node(left_child, box Tree::Leaf(new_val));
+                update tree = Tree::Node(left_child, Box::new(Tree::Leaf(new_val)));
             }
         }
     }
@@ -244,13 +244,13 @@ fn take_step(
                             lt_leaf_fragment);
                         let lt2 = LinearTree::Node(
                             lt_root_fragment,
-                            box LinearTree::Leaf(lt_leaf_fragment_new),
+                            Box::new(LinearTree::Leaf(lt_leaf_fragment_new)),
                             lt_right
                         );
                         let interp2 = interp;
                         let tree2 = TreeSM::State {
                             tree: Tree::Node(
-                                box Tree::Leaf(new_val),
+                                Box::new(Tree::Leaf(new_val)),
                                 tree1.get_Node_1()
                             )
                         };

@@ -111,7 +111,7 @@ test_verify_one_file! {
 
         proof fn test() {
             let s: Set<nat> = set![9];
-            reveal_with_fuel(Set::<nat>::fold::<nat>, 10);
+            reveal_with_fuel(Set::fold, 10);
             assert(s.finite());
             assert(s.len() > 0);
             assert(s.fold(0, |p: nat, a: nat| p + a) == 9);

@@ -2,7 +2,8 @@
 
 use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
-extern crate rustc_driver; // TODO(main_new) can we remove this?
+extern crate rustc_driver;
+extern crate rustc_session;
 
 #[cfg(target_family = "windows")]
 fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,7 +56,6 @@ pub fn main() {
 
                 let mut our_args: ArgsX = Default::default();
                 our_args.pervasive_path = Some(pervasive_path.to_string());
-                our_args.verify_pervasive = true;
                 our_args.no_verify = !verify;
                 our_args.no_lifetime = !verify;
                 our_args.multiple_errors = 2;
@@ -82,7 +82,9 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
-    verus_rustc_driver::init_env_logger("RUSTVERIFY_LOG");
+    let logger_handler =
+        rustc_session::EarlyErrorHandler::new(rustc_session::config::ErrorOutputType::default());
+    rustc_driver::init_env_logger(&logger_handler, "RUSTVERIFY_LOG");
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
@@ -127,33 +129,6 @@ pub fn main() {
 
     let pervasive_path = our_args.pervasive_path.clone();
 
-    if our_args.record {
-        let mut args: Vec<String> = std::env::args().collect();
-        args.remove(0);
-
-        let index = args.iter().position(|x| *x == "--record").unwrap();
-        args.remove(index);
-
-        if let Some(verusroot) = &verus_root {
-            let exe = verusroot.path.join(if cfg!(windows) {
-                "error_report.exe"
-            } else {
-                "error_report"
-            });
-            if !exe.exists() {
-                panic!("error_report binary not found");
-            }
-            let mut res = std::process::Command::new(exe)
-                .arg(&verusroot.path)
-                .args(args)
-                .spawn()
-                .expect("running error_report");
-
-            res.wait().expect("error_report failed to run");
-        }
-        return;
-    }
-
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
     let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);
@@ -167,33 +142,59 @@ pub fn main() {
 
     let times_ms_json_data = if verifier.args.time {
         let mut smt_init_times = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, v.time_smt_init.as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| (k.module(), v.time_smt_init.as_millis()))
             .collect::<Vec<_>>();
         smt_init_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_init: u128 = smt_init_times.iter().map(|(_, v)| v).sum();
 
         let mut smt_run_times: Vec<(&std::sync::Arc<vir::ast::PathX>, u128)> = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, v.time_smt_run.as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| (k.module(), v.time_smt_run.as_millis()))
             .collect::<Vec<_>>();
         smt_run_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v).sum();
 
+        let mut smt_function_breakdown = {
+            let mod_fun_times: Vec<_> = verifier
+                .func_times
+                .iter()
+                .flat_map(|(k, v)| {
+                    v.iter()
+                        .map(|(f, t)| (k.module().clone(), (f.clone(), t.as_millis())))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            let mut per_module: std::collections::HashMap<
+                vir::ast::Path,
+                Vec<(vir::ast::Fun, u128)>,
+            > = std::collections::HashMap::new();
+            for (m, f_t) in mod_fun_times {
+                per_module.entry(m).or_insert(Vec::new()).push(f_t);
+            }
+            per_module
+        };
+
         let mut air_times = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, (v.time_air - (v.time_smt_init + v.time_smt_run)).as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| {
+                (k.module(), (v.time_air - (v.time_smt_init + v.time_smt_run)).as_millis())
+            })
             .collect::<Vec<_>>();
         air_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_air: u128 = air_times.iter().map(|(_, v)| v).sum();
 
         let mut verify_times = verifier
-            .module_times
+            .bucket_times
             .iter()
-            .map(|(k, v)| (k, (v.time_verify).as_millis()))
+            .filter(|(k, _)| k.function().is_none())
+            .map(|(k, v)| (k.module(), (v.time_verify).as_millis()))
             .collect::<Vec<_>>();
         verify_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_verify: u128 = verify_times.iter().map(|(_, v)| v).sum();
@@ -227,6 +228,20 @@ pub fn main() {
         };
 
         if verifier.args.output_json {
+            assert!(
+                smt_function_breakdown
+                    .keys()
+                    .collect::<std::collections::HashSet<_>>()
+                    .difference(
+                        &smt_run_times
+                            .iter()
+                            .map(|(x, _)| *x)
+                            .collect::<std::collections::HashSet<_>>()
+                    )
+                    .next()
+                    .is_none()
+            );
+
             let mut times = serde_json::json!({
                 "verus-build": {
                     "profile": build_info.profile.to_string(),
@@ -250,7 +265,7 @@ pub fn main() {
                     }
                 },
                 "total-verify": total_verify,
-                "total-verify-module-times" : verify_times.iter().take(3).map(|(m, t)| {
+                "total-verify-module-times" : verify_times.iter().map(|(m, t)| {
                     serde_json::json!({
                         "module" : rust_verify::verifier::module_name(m),
                         "time" : t
@@ -258,7 +273,7 @@ pub fn main() {
                 }).collect::<Vec<serde_json::Value>>(),
                 "air": {
                     "total": total_air,
-                    "module-times" : air_times.iter().take(3).map(|(m, t)| {
+                    "module-times" : air_times.iter().map(|(m, t)| {
                         serde_json::json!({
                             "module" : rust_verify::verifier::module_name(m),
                             "time" : t
@@ -272,17 +287,23 @@ pub fn main() {
                     serde_json::json!({
                         "total": (total_smt_init + total_smt_run),
                         "smt-init": total_smt_init,
-                        "smt-init-module-times" : smt_init_times.iter().take(3).map(|(m, t)| {
+                        "smt-init-module-times" : smt_init_times.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
                                 "time" : t
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                         "smt-run": total_smt_run,
-                        "smt-init-module-times" : smt_run_times.iter().take(3).map(|(m, t)| {
+                        "smt-run-module-times" : smt_run_times.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
-                                "time" : t
+                                "time" : t,
+                                "function-breakdown" : smt_function_breakdown.get_mut(*m).map(|b| b.iter().map(|(f, t)| {
+                                    serde_json::json!({
+                                        "function" : vir::ast_util::fun_as_friendly_rust_name(f),
+                                        "time" : t
+                                    })
+                                 }).collect::<Vec<serde_json::Value>>()).unwrap_or_default(),
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                     }),
@@ -395,6 +416,7 @@ pub fn main() {
                 serde_json::json!({
                     "verified": verifier.count_verified,
                     "errors": verifier.count_errors,
+                    "is-verifying-entire-crate": rust_verify::driver::is_verifying_entire_crate(&verifier),
                 })
                 .as_object_mut()
                 .unwrap(),

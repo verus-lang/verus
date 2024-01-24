@@ -19,6 +19,12 @@ pub trait OptionAdditionalFns<T> : Sized {
             self.is_Some(),
         ensures
             t == self.get_Some_0();
+
+    proof fn tracked_borrow(tracked &self) -> (tracked t: &T)
+        requires
+            self.is_Some(),
+        ensures
+            t == self.get_Some_0();
 }
 
 impl<T> OptionAdditionalFns<T> for Option<T> {
@@ -38,6 +44,13 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
+        match self {
+            Option::Some(t) => t,
+            Option::None => proof_from_false(),
+        }
+    }
+
+    proof fn tracked_borrow(tracked &self) -> (tracked t: &T) {
         match self {
             Option::Some(t) => t,
             Option::None => proof_from_false(),
@@ -103,12 +116,38 @@ pub fn unwrap<T>(option: Option<T>) -> (t: T)
     requires
         option.is_Some(),
     ensures
-        t == option.get_Some_0(),
+        t == spec_unwrap(option),
 {
     option.unwrap()
 }
 
+// unwrap_or
 
+#[verifier(inline)]
+pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T
+{
+    match option {
+        Some(t) => t,
+        None => default
+    }
+}
 
+#[verifier(when_used_as_spec(spec_unwrap_or))]
+#[verifier::external_fn_specification]
+pub fn unwrap_or<T>(option: Option<T>, default: T) -> (t: T)
+    ensures
+        t == spec_unwrap_or(option, default)
+{
+    option.unwrap_or(default)
+}
+
+#[verifier::external_fn_specification]
+pub fn take<T>(option: &mut Option<T>) -> (t: Option<T>)
+    ensures
+        t == old(option),
+        *option is None,
+{
+    option.take()
+}
 
 }

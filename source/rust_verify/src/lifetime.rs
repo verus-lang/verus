@@ -115,16 +115,16 @@ use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verus_items::VerusItems;
-use air::messages::{message_bare, Message, MessageLevel};
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Write;
 use vir::ast::VirErr;
+use vir::messages::{message_bare, Message, MessageLevel};
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(queries: &'tcx verus_rustc_interface::Queries<'tcx>) {
+pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
@@ -159,6 +159,7 @@ const PRELUDE: &str = "\
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
+#![allow(unused_assignments)]
 #![allow(unreachable_patterns)]
 #![allow(unused_parens)]
 #![allow(unused_braces)]
@@ -171,6 +172,13 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 fn op<A, B>(a: A) -> B { panic!() }
+fn static_ref<T>(t: T) -> &'static T { panic!() }
+fn tracked_new<T>(t: T) -> Tracked<T> { panic!() }
+fn tracked_exec_borrow<'a, T>(t: &'a T) -> &'a Tracked<T> { panic!() }
+fn clone<T>(t: &T) -> T { panic!() }
+fn rc_new<T>(t: T) -> std::rc::Rc<T> { panic!() }
+fn arc_new<T>(t: T) -> std::sync::Arc<T> { panic!() }
+fn box_new<T>(t: T) -> Box<T> { panic!() }
 struct Tracked<A> { a: PhantomData<A> }
 impl<A> Tracked<A> {
     pub fn get(self) -> A { panic!() }
@@ -191,6 +199,7 @@ fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(
+    cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: std::sync::Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
@@ -198,6 +207,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     erasure_hints: &ErasureHints,
 ) -> State {
     let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
+        cmd_line_args,
         tcx,
         verus_items,
         krate,
@@ -213,8 +223,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
-    for a in gen_state.assoc_type_impls.iter() {
-        emit_assoc_type_impl(emit_state, a);
+    for (a, fns) in gen_state.assoc_type_impls.iter() {
+        emit_assoc_type_impl(emit_state, a, fns);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);
@@ -224,14 +234,14 @@ fn emit_check_tracked_lifetimes<'tcx>(
 
 struct LifetimeCallbacks {}
 
-impl verus_rustc_driver::Callbacks for LifetimeCallbacks {
+impl rustc_driver::Callbacks for LifetimeCallbacks {
     fn after_parsing<'tcx>(
         &mut self,
-        _compiler: &verus_rustc_interface::interface::Compiler,
-        queries: &'tcx verus_rustc_interface::Queries<'tcx>,
-    ) -> verus_rustc_driver::Compilation {
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
         check(queries);
-        verus_rustc_driver::Compilation::Stop
+        rustc_driver::Compilation::Stop
     }
 }
 
@@ -251,6 +261,11 @@ impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
     fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
         assert!(path.display().to_string() == Self::FILENAME.to_string());
         Ok(self.rust_code.clone())
+    }
+
+    fn read_binary_file(&self, path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
+        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        Ok(self.rust_code.clone().into_bytes())
     }
 }
 
@@ -273,7 +288,7 @@ pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
 
 pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
     let mut callbacks = LifetimeCallbacks {};
-    let mut compiler = verus_rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
+    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
     compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
     match compiler.run() {
         Ok(()) => (),
@@ -282,6 +297,7 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
 }
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
+    cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
@@ -290,8 +306,14 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
     let mut emit_state = EmitState::new();
-    let gen_state =
-        emit_check_tracked_lifetimes(tcx, verus_items, krate, &mut emit_state, erasure_hints);
+    let gen_state = emit_check_tracked_lifetimes(
+        cmd_line_args,
+        tcx,
+        verus_items,
+        krate,
+        &mut emit_state,
+        erasure_hints,
+    );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
         rust_code.push_str(&line.text);

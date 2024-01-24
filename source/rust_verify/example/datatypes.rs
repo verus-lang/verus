@@ -41,7 +41,7 @@ fn get_len<A>(list: &List<A>) -> (r: u64)
             List::Cons(_, tl) => {
                 iter = tl;
                 proof {
-                    reveal_with_fuel(len::<A>, 2);
+                    reveal_with_fuel(len, 2);
                 }
                 n = n + 1;
             }
@@ -63,7 +63,7 @@ fn mk_range(start: u32, length: u32) -> (r: List<u32>)
 }
 
 fn main() {
-    let x = List::Cons(100u64, box(List::Nil));
+    let x = List::Cons(100u64, Box::new(List::Nil));
     let i = match x {
         List::Nil => 1,
         List::Cons(n, _) if n < 10 => n + 2,
@@ -78,7 +78,7 @@ fn main() {
         List::Cons(n, _) => { j = n; }
     }
     assert(j == 100);
-    let k: u32 = match List::Cons(100u64, box(List::Nil)) {
+    let k: u32 = match List::Cons(100u64, Box::new(List::Nil)) {
         List::Nil => { j = 11; 6 }
         List::Cons(n, _) => { j = n + 1; 7 }
     };

@@ -90,23 +90,23 @@ where
                 self.errors.push(Error::new(span,
                     "in a tokenized state machine, `pre` cannot be used opaquely; it may only be used by accessing its fields"));
             }
-            Expr::Field(ExprField {
-                base: box Expr::Path(ExprPath { attrs: _, qself: None, path }),
-                member,
-                attrs: _,
-                dot_token: _,
-            }) if path.is_ident("pre") => match member {
-                Member::Named(ident) => {
-                    match get_field_by_ident(self.ident_to_field, span, ident) {
-                        Err(err) => self.errors.push(err),
-                        Ok(field) => {
-                            (self.user_fn)(&mut self.errors, field, node);
+            Expr::Field(ExprField { base, member, attrs: _, dot_token: _ }) => match &**base {
+                Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("pre") => {
+                    match member {
+                        Member::Named(ident) => {
+                            match get_field_by_ident(self.ident_to_field, span, ident) {
+                                Err(err) => self.errors.push(err),
+                                Ok(field) => {
+                                    (self.user_fn)(&mut self.errors, field, node);
+                                }
+                            }
+                        }
+                        _ => {
+                            self.errors.push(Error::new(span, "expected a named field"));
                         }
                     }
                 }
-                _ => {
-                    self.errors.push(Error::new(span, "expected a named field"));
-                }
+                _ => visit_mut::visit_expr_mut(self, node),
             },
             _ => visit_mut::visit_expr_mut(self, node),
         }
@@ -180,9 +180,9 @@ pub fn visit_field_accesses_all_exprs(
                     );
                     for arm in arms.iter_mut() {
                         match &mut arm.guard {
-                            Some((_, box guard_e)) => {
+                            Some((_, guard_e)) => {
                                 visit_field_accesses(
-                                    guard_e,
+                                    &mut **guard_e,
                                     |errors, field, e| f(errors, field, e, false),
                                     errors,
                                     ident_to_field,

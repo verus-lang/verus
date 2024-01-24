@@ -86,8 +86,8 @@ mod recursive_data_structures {
         decreases l
     {
         match l {
-            List::Nil => List::Cons(x, box List::Nil),
-            List::Cons(hd, tl) => List::Cons(hd, box append(*tl, x)),
+            List::Nil => List::Cons(x, Box::new(List::Nil)),
+            List::Cons(hd, tl) => List::Cons(hd, Box::new(append(*tl, x))),
         }
     }
 
@@ -103,20 +103,20 @@ mod recursive_data_structures {
     spec fn ex1() -> List<nat> {
         List::Cons(
             1,
-            box List::Cons(
+            Box::new(List::Cons(
                 2,
-                box List::Cons(3, box List::Cons(4, box List::Cons(5, box List::Nil))),
-            ),
+                Box::new(List::Cons(3, Box::new(List::Cons(4, Box::new(List::Cons(5, Box::new(List::Nil))))))),
+            )),
         )
     }
 
     spec fn ex1_rev() -> List<nat> {
         List::Cons(
             5,
-            box List::Cons(
+            Box::new(List::Cons(
                 4,
-                box List::Cons(3, box List::Cons(2, box List::Cons(1, box List::Nil))),
-            ),
+                Box::new(List::Cons(3, Box::new(List::Cons(2, Box::new(List::Cons(1, Box::new(List::Nil))))))),
+            )),
         )
     }
 
@@ -394,7 +394,7 @@ mod arch_specific {
         assert((1usize << 20usize) != 0usize) by (compute_only);
         assert((1usize << 100usize) == 0usize) by (compute_only);
 
-        // But this next assert should not work (at least without --arch-word-bits), because usize
+        // But this next assert should not work (at least without size_of usize set), because usize
         // could be either 32-bit or 64-bit.
         //
         // assert((1usize << 40usize) == 0usize) by (compute_only);

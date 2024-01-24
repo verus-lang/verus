@@ -1,7 +1,7 @@
 use crate::ast::{CallTarget, Expr, ExprX, VirErr};
 use crate::ast_visitor::{expr_visitor_dfs, VisitorControlFlow, VisitorScopeMap};
-use air::ast::Span;
-use air::messages::error;
+use crate::messages::error;
+use crate::messages::Span;
 use air::scope_map::ScopeMap;
 
 #[derive(Clone, Debug)]
@@ -21,7 +21,7 @@ pub fn assert_no_early_exit_in_inv_block(inv_span: &Span, expr: &Expr) -> Result
     if v.len() == 0 {
         Ok(())
     } else {
-        Err(error("invariant block might exit early", inv_span)
+        Err(error(inv_span, "invariant block might exit early")
             .primary_label(&v[0].span, "would exit from here"))
     }
 }
@@ -54,11 +54,13 @@ fn expr_get_early_exits_rec(
             | ExprX::VarLoc(..)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
+            | ExprX::StaticVar(..)
             | ExprX::Loc(..)
             | ExprX::Call(CallTarget::Fun(..), _)
             | ExprX::Call(CallTarget::FnSpec(..), _)
             | ExprX::Call(CallTarget::BuiltinSpecFun(..), _)
             | ExprX::Tuple(..)
+            | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)
             | ExprX::Unary(..)

@@ -6,35 +6,8 @@ use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
 
-#[derive(Copy, Clone, Debug)]
-pub enum ArchWordBits {
-    Either32Or64,
-    Exactly(u32),
-}
-
-impl ArchWordBits {
-    pub fn min_bits(&self) -> u32 {
-        match self {
-            ArchWordBits::Either32Or64 => 32,
-            ArchWordBits::Exactly(v) => *v,
-        }
-    }
-    pub fn num_bits(&self) -> Option<u32> {
-        match self {
-            ArchWordBits::Either32Or64 => None,
-            ArchWordBits::Exactly(v) => Some(*v),
-        }
-    }
-}
-
-impl Default for ArchWordBits {
-    fn default() -> Self {
-        ArchWordBits::Either32Or64
-    }
-}
-
 pub struct PreludeConfig {
-    pub arch_word_bits: ArchWordBits,
+    pub arch_word_bits: crate::ast::ArchWordBits,
 }
 
 pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
@@ -338,8 +311,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (axiom
             {
                 match config.arch_word_bits {
-                    ArchWordBits::Either32Or64 => nodes!(or (= [arch_size] 32) (= [arch_size] 64)),
-                    ArchWordBits::Exactly(bits) => nodes!(= [arch_size] {str_to_node(&bits.to_string())}),
+                    crate::ast::ArchWordBits::Either32Or64 => nodes!(or (= [arch_size] 32) (= [arch_size] 64)),
+                    crate::ast::ArchWordBits::Exactly(bits) => nodes!(= [arch_size] {str_to_node(&bits.to_string())}),
                 }
             }
         )
@@ -517,6 +490,59 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_eucmod
         )))
 
+        // These axioms are important to make sure that the nonlinear operations
+        // commute with casting-to-ints
+        // (e.g., (a * b) as int == (a as int) * (b as int))
+        // where applicable.
+        //
+        // Without these, there can be really unintuitive proof failures.
+        //
+        // Right now I'm intending these to be the minimal necessary to achieve
+        // the above goal - for anything more specific, the user can use the
+        // nonlinear_arith solver.
+
+        // Axiom to ensure multiplication of nats are in-bounds
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (<= 0 y))
+              (<= 0 ([Mul] x y))
+            )
+            :pattern (([Mul] x y))
+            :qid prelude_mul_nats
+            :skolemid skolem_prelude_mul_nats
+        )))
+
+        // Axiom to ensure division of unsigned types are in-bounds
+        // By saying that (x / y) <= x, we can ensure that if x fits in an n-bit integer
+        // for any n, then (x / y) also fits in an n-bit integer.
+        // Axiom only applies for y != 0
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (< 0 y))
+              (and
+                (<= 0 ([EucDiv] x y))
+                (<= ([EucDiv] x y) x)
+              )
+            )
+            :pattern (([EucDiv] x y))
+            :qid prelude_div_unsigned_in_bounds
+            :skolemid skolem_prelude_div_unsigned_in_bounds
+        )))
+
+        // Axiom to ensure modulo of unsigned types are in-bounds
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (< 0 y))
+              (and
+                (<= 0 ([EucMod] x y))
+                (< ([EucMod] x y) y)
+              )
+            )
+            :pattern (([EucMod] x y))
+            :qid prelude_mod_unsigned_in_bounds
+            :skolemid skolem_prelude_mod_unsigned_in_bounds
+        )))
+
         // Chars
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -540,7 +566,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_has_type_char
         )))
         (axiom (forall ((x Int)) (!
-            (= ([to_unicode] ([from_unicode] x)) x)
+            (=>
+                (and
+                    (<= 0 x)
+                    (< x ([u_hi] 32))
+                )
+                (= x ([to_unicode] ([from_unicode] x)))
+            )
             :pattern (([from_unicode] x))
             :qid prelude_char_injective
             :skolemid skolem_prelude_char_injective

@@ -6,6 +6,7 @@ use crate::ast::{
     Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
+use crate::messages::MessageInterface;
 use crate::printer::{node_to_string, Printer};
 use crate::scope_map::ScopeMap;
 use crate::util::vec_map;
@@ -21,6 +22,7 @@ pub(crate) enum DeclaredX {
 }
 
 pub struct Typing {
+    pub(crate) message_interface: Arc<dyn MessageInterface>,
     // For simplicity, global and local names must be unique (bound variables can have the same name)
     pub(crate) decls: ScopeMap<Ident, Declared>,
     pub(crate) snapshots: HashSet<Ident>,
@@ -416,7 +418,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     match result {
         Ok(t) => Ok(t),
         Err(err) => {
-            let node_str = node_to_string(&Printer::new(false).expr_to_node(expr));
+            let node_str = node_to_string(
+                &Printer::new(typing.message_interface.clone(), false).expr_to_node(expr),
+            );
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
     }
@@ -487,7 +491,9 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
     match result {
         Ok(()) => Ok(()),
         Err(err) => {
-            let node_str = node_to_string(&Printer::new(false).stmt_to_node(stmt));
+            let node_str = node_to_string(
+                &Printer::new(typing.message_interface.clone(), false).stmt_to_node(stmt),
+            );
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
     }
@@ -515,7 +521,9 @@ pub(crate) fn check_decl(
     match result {
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
-            let node_str = node_to_string(&Printer::new(false).decl_to_node(decl));
+            let node_str = node_to_string(
+                &Printer::new(context.message_interface.clone(), false).decl_to_node(decl),
+            );
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }
     }

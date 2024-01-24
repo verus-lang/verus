@@ -166,6 +166,7 @@ ast_enum_of_structs! {
     pub enum InvariantNameSet {
         Any(InvariantNameSetAny),
         None(InvariantNameSetNone),
+        List(InvariantNameSetList),
     }
 }
 
@@ -178,6 +179,13 @@ ast_struct! {
 ast_struct! {
     pub struct InvariantNameSetNone {
         pub token: Token![none],
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetList {
+        pub bracket_token: token::Bracket,
+        pub exprs: Punctuated<Expr, Token![,]>,
     }
 }
 
@@ -220,6 +228,18 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct RevealHide {
+        pub attrs: Vec<Attribute>,
+        pub reveal_token: Option<Token![reveal]>,
+        pub reveal_with_fuel_token: Option<Token![reveal_with_fuel]>,
+        pub hide_token: Option<Token![hide]>,
+        pub paren_token: token::Paren,
+        pub path: Box<ExprPath>,
+        pub fuel: Option<(Token![,], Box<Expr>)>,
+    }
+}
+
+ast_struct! {
     pub struct View {
         pub attrs: Vec<Attribute>,
         pub expr: Box<Expr>,
@@ -249,6 +269,59 @@ ast_struct! {
     pub struct BigOr {
         /// exprs.len() must be >= 1
         pub exprs: Vec<(Token![|||], Box<Expr>)>,
+    }
+}
+
+ast_struct! {
+    pub struct ExprIs {
+        pub attrs: Vec<Attribute>,
+        pub base: Box<Expr>,
+        pub is_token: Token![is],
+        pub variant_ident: Box<Ident>,
+    }
+}
+
+ast_struct! {
+    pub struct ExprHas {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub has_token: Token![has],
+        pub rhs: Box<Expr>,
+    }
+}
+
+ast_struct! {
+    pub struct GlobalSizeOf {
+        pub size_of_token: Token![size_of],
+        pub type_: Type,
+        pub eq_token: Token![==],
+        pub expr_lit: ExprLit,
+    }
+}
+
+ast_struct! {
+    pub struct GlobalLayout {
+        pub layout_token: Token![layout],
+        pub type_: Type,
+        pub is_token: Token![is],
+        pub size: (Ident, Token![==], ExprLit),
+        pub align: Option<(Token![,], Ident, Token![==], ExprLit)>,
+    }
+}
+
+ast_enum_of_structs! {
+    pub enum GlobalInner {
+        SizeOf(GlobalSizeOf),
+        Layout(GlobalLayout),
+    }
+}
+
+ast_struct! {
+    pub struct Global {
+        pub attrs: Vec<Attribute>,
+        pub global_token: Token![global],
+        pub inner: GlobalInner,
+        pub semi: Token![;],
     }
 }
 
@@ -358,10 +431,13 @@ pub mod parsing {
             let mut exprs = Punctuated::new();
             while !(input.is_empty()
                 || input.peek(token::Brace)
+                || input.peek(Token![;])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
                 || input.peek(Token![decreases])
+                || input.peek(Token![via])
+                || input.peek(Token![when])
                 || input.peek(Token![opens_invariants]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -529,6 +605,9 @@ pub mod parsing {
             } else if input.peek(Token![none]) {
                 let none = input.parse()?;
                 InvariantNameSet::None(none)
+            } else if input.peek(token::Bracket) {
+                let list = input.parse()?;
+                InvariantNameSet::List(list)
             } else {
                 return Err(input.error("invariant clause expected `any` or `none`"));
             };
@@ -549,6 +628,19 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let token_none = input.parse()?;
             Ok(InvariantNameSetNone { token: token_none })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetList {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let exprs = content.parse_terminated(Expr::parse)?;
+            Ok(InvariantNameSetList {
+                bracket_token,
+                exprs,
+            })
         }
     }
 
@@ -719,7 +811,6 @@ pub mod parsing {
             let mut attrs = Vec::new();
             let assert_token: Token![assert] = input.parse()?;
             let forall_token: Token![forall] = input.parse()?;
-            attr::parsing::parse_inner(input, &mut attrs)?;
             let or1_token: Token![|] = input.parse()?;
             let mut inputs = Punctuated::new();
             while !input.peek(Token![|]) {
@@ -742,6 +833,7 @@ pub mod parsing {
                 inputs.push_punct(comma);
             }
             let or2_token: Token![|] = input.parse()?;
+            attr::parsing::parse_inner(input, &mut attrs)?;
             let expr = input.parse()?;
             let implies = if input.peek(Token![implies]) {
                 let implies_token = input.parse()?;
@@ -766,10 +858,140 @@ pub mod parsing {
             })
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for RevealHide {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let lookahead = input.lookahead1();
+            let mut reveal_token = None;
+            let mut reveal_with_fuel_token = None;
+            let mut hide_token = None;
+            if lookahead.peek(Token![reveal]) {
+                reveal_token = input.parse()?;
+            } else if lookahead.peek(Token![reveal_with_fuel]) {
+                reveal_with_fuel_token = input.parse()?;
+            } else if lookahead.peek(Token![hide]) {
+                hide_token = input.parse()?;
+            } else {
+                return Err(lookahead.error());
+            }
+
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let path = content.parse()?;
+
+            // Parse a possible comma (either trailing for hide/reveal,
+            // or as a preface to a fuel argument
+            let comma: Option<Token![,]> = content.parse()?;
+
+            let fuel = if reveal_with_fuel_token.is_some() && comma.is_some() {
+                let f = Some((comma.unwrap(), content.parse()?));
+                let _trailing_comma: Option<Token![,]> = content.parse()?;
+                f
+            } else {
+                None
+            };
+
+            Ok(RevealHide {
+                attrs,
+                reveal_token,
+                reveal_with_fuel_token,
+                hide_token,
+                paren_token,
+                path,
+                fuel,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Global {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let global_token: Token![global] = input.parse()?;
+            let inner: GlobalInner = input.parse()?;
+            let semi: Token![;] = input.parse()?;
+
+            Ok(Global {
+                attrs,
+                global_token,
+                inner,
+                semi,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for GlobalSizeOf {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let size_of_token: Token![size_of] = input.parse()?;
+            let type_: Type = input.parse()?;
+            let eq_token: Token![==] = input.parse()?;
+            let expr_lit: ExprLit = input.parse()?;
+
+            Ok(GlobalSizeOf {
+                size_of_token,
+                type_,
+                eq_token,
+                expr_lit,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for GlobalLayout {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let layout_token: Token![layout] = input.parse()?;
+            let type_: Type = input.parse()?;
+            let is_token: Token![is] = input.parse()?;
+            let size_ident: Ident = input.parse()?;
+            if size_ident.to_string() != "size" {
+                return Err(input.error("expected `size`"));
+            }
+            let size_eq_token: Token![==] = input.parse()?;
+            let size_expr_lit: ExprLit = input.parse()?;
+            let size = (size_ident, size_eq_token, size_expr_lit);
+            let align = if input.peek(Token![,]) {
+                let comma: Token![,] = input.parse()?;
+                let align_ident: Ident = input.parse()?;
+                if align_ident.to_string() != "align" {
+                    return Err(input.error("expected `align`"));
+                }
+                let align_eq_token: Token![==] = input.parse()?;
+                let align_expr_lit: ExprLit = input.parse()?;
+                Some((comma, align_ident, align_eq_token, align_expr_lit))
+            } else {
+                None
+            };
+            Ok(GlobalLayout {
+                layout_token,
+                type_,
+                is_token,
+                size,
+                align,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for GlobalInner {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![size_of]) {
+                Ok(GlobalInner::SizeOf(input.parse()?))
+            } else if input.peek(Token![layout]) {
+                Ok(GlobalInner::Layout(input.parse()?))
+            } else {
+                Err(input.error("expected `size_of` or `layout`"))
+            }
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
 mod printing {
+    use crate::expr::printing::outer_attrs_to_tokens;
+
     use super::*;
     use proc_macro2::TokenStream;
     use quote::ToTokens;
@@ -934,6 +1156,15 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetList {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.bracket_token.surround(tokens, |tokens| {
+                self.exprs.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Assume {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
@@ -987,6 +1218,26 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for RevealHide {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
+            if let Some(reveal_token) = &self.reveal_token {
+                reveal_token.to_tokens(tokens);
+            }
+            if let Some(reveal_with_fuel_token) = &self.reveal_with_fuel_token {
+                reveal_with_fuel_token.to_tokens(tokens);
+            }
+            self.paren_token.surround(tokens, |tokens| {
+                self.path.to_tokens(tokens);
+                if let Some((comma_token, expr)) = &self.fuel {
+                    comma_token.to_tokens(tokens);
+                    expr.to_tokens(tokens);
+                }
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for View {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
@@ -1023,6 +1274,63 @@ mod printing {
                 prefix.to_tokens(tokens);
                 expr.to_tokens(tokens);
             }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprIs {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.base.to_tokens(tokens);
+            self.is_token.to_tokens(tokens);
+            self.variant_ident.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprHas {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.has_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for GlobalSizeOf {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.size_of_token.to_tokens(tokens);
+            self.type_.to_tokens(tokens);
+            self.eq_token.to_tokens(tokens);
+            self.expr_lit.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for GlobalLayout {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.layout_token.to_tokens(tokens);
+            self.type_.to_tokens(tokens);
+            self.is_token.to_tokens(tokens);
+            self.size.0.to_tokens(tokens);
+            self.size.1.to_tokens(tokens);
+            self.size.2.to_tokens(tokens);
+            if let Some(align) = &self.align {
+                align.0.to_tokens(tokens);
+                align.1.to_tokens(tokens);
+                align.2.to_tokens(tokens);
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Global {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.global_token.to_tokens(tokens);
+            self.inner.to_tokens(tokens);
+            self.semi.to_tokens(tokens);
         }
     }
 }

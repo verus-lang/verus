@@ -56,6 +56,7 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
             trait_path,
             trait_typ_args,
             typ,
+            impl_paths: _,
         } = &assoc.x;
         // forall typ_params. trait_path/name(decoration, trait_typ_args) == typ
         // Note: we assume here that the typ_params appear in trait_typ_args,

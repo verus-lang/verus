@@ -6,14 +6,14 @@ use serde::Deserialize;
 
 pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DiagnosticText {
     pub text: String,
     pub highlight_start: usize,
     pub highlight_end: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DiagnosticSpan {
     pub file_name: String,
     pub line_start: usize,
@@ -27,13 +27,13 @@ pub struct DiagnosticSpan {
     pub text: Vec<DiagnosticText>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DiagnosticCode {
     pub code: String,
     pub explanation: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Diagnostic {
     pub code: Option<DiagnosticCode>,
     pub message: String,
@@ -42,9 +42,11 @@ pub struct Diagnostic {
     pub rendered: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TestErr {
     pub errors: Vec<Diagnostic>,
+    pub warnings: Vec<Diagnostic>,
+    pub notes: Vec<Diagnostic>,
     pub expand_errors_notes: Vec<Diagnostic>, // produced by the `--expand-errors` flag
 }
 
@@ -71,6 +73,17 @@ pub fn verify_files_vstd(
     import_vstd: bool,
     options: &[&str],
 ) -> Result<(), TestErr> {
+    verify_files_vstd_all_diags(name, files, entry_file, import_vstd, options).map(|_| ())
+}
+
+#[allow(dead_code)]
+pub fn verify_files_vstd_all_diags(
+    name: &str,
+    files: impl IntoIterator<Item = (String, String)>,
+    entry_file: String,
+    import_vstd: bool,
+    options: &[&str],
+) -> Result<TestErr, TestErr> {
     THREAD_LOCAL_TEST_NAME.with(|tn| *tn.borrow_mut() = Some(name.to_string()));
 
     let files: Vec<(String, String)> = files.into_iter().collect();
@@ -102,7 +115,7 @@ pub fn verify_files_vstd(
     }
 
     let run =
-        run_verus(options, &test_input_dir, &test_input_dir.join(entry_file), import_vstd, true);
+        run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
 
     let mut errors = Vec::new();
@@ -123,6 +136,8 @@ pub fn verify_files_vstd(
     };
 
     let mut is_failure = code != 0;
+    let mut warnings = Vec::new();
+    let mut notes = Vec::new();
 
     // eprintln!("rust_output: {}", &rust_output);
     if rust_output.len() > 0 {
@@ -138,8 +153,13 @@ pub fn verify_files_vstd(
                     // TODO(main_new) define in defs
                     expand_errors_notes.push(diag);
                     continue;
-                }
-                if diag.level == "failure-note" || diag.level == "note" || diag.level == "warning" {
+                } else if diag.level == "note" {
+                    notes.push(diag);
+                    continue;
+                } else if diag.level == "warning" {
+                    warnings.push(diag);
+                    continue;
+                } else if diag.level == "failure-note" {
                     continue;
                 }
                 assert!(diag.level == "error");
@@ -156,9 +176,22 @@ pub fn verify_files_vstd(
 
     if !is_failure {
         std::fs::remove_dir_all(&test_input_dir).unwrap();
+    } else {
+        eprintln!("the input directory is {}", test_input_dir.to_string_lossy());
+        eprintln!("{}", yansi::Paint::blue("rerun this test with:"));
+        eprintln!(
+            "vargo run -p rust_verify -- --crate-type=lib {} {}",
+            options.join(" "),
+            test_input_dir.join(entry_file).to_string_lossy()
+        );
+        eprintln!();
     }
 
-    if is_failure { Err(TestErr { errors, expand_errors_notes }) } else { Ok(()) }
+    if is_failure {
+        Err(TestErr { errors, warnings, notes, expand_errors_notes })
+    } else {
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
+    }
 }
 
 pub fn run_verus(
@@ -218,6 +251,7 @@ pub fn run_verus(
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
     let mut verus_args = Vec::new();
+    let mut external_by_default = false;
     verus_args.push("--internal-test-mode".to_string());
 
     for option in options.iter() {
@@ -225,21 +259,22 @@ pub fn run_verus(
             verus_args.push("--expand-errors".to_string());
             verus_args.push("--multiple-errors".to_string());
             verus_args.push("2".to_string());
-        } else if *option == "--arch-word-bits 32" {
-            verus_args.push("--arch-word-bits".to_string());
-            verus_args.push("32".to_string());
-        } else if *option == "--arch-word-bits 64" {
-            verus_args.push("--arch-word-bits".to_string());
-            verus_args.push("64".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
             verus_args.push("-o".to_string());
             verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
+        } else if *option == "--external-by-default" {
+            external_by_default = true;
+        } else if *option == "--no-lifetime" {
+            verus_args.push("--no-lifetime".to_string());
         } else if *option == "vstd" {
             // ignore
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
+    }
+    if !external_by_default {
+        verus_args.push("--no-external-by-default".to_string());
     }
 
     verus_args.extend(
@@ -286,8 +321,22 @@ pub fn run_verus(
     }
 
     let mut child = std::process::Command::new(bin);
-    #[cfg(not(target_os = "windows"))]
-    let child = child.env("VERUS_Z3_PATH", "../z3");
+    child.env(
+        "VERUS_Z3_PATH",
+        std::env::var("VERUS_Z3_PATH")
+            .map(|p| {
+                let p = std::path::PathBuf::from(p);
+                (if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p })
+                    .into_os_string()
+            })
+            .unwrap_or({
+                if cfg!(target_os = "windows") {
+                    std::ffi::OsString::from("..\\z3.exe")
+                } else {
+                    std::ffi::OsString::from("../z3")
+                }
+            }),
+    );
     let child = child
         .args(&verus_args[..])
         .stdout(std::process::Stdio::piped())
@@ -312,7 +361,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 };
 
 #[allow(dead_code)]
-pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<(), TestErr> {
+pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<TestErr, TestErr> {
     let o: Vec<&str>;
     let (no_prelude, options) = if options.contains(&"no-auto-import-builtin") {
         o = options.iter().filter(|opt| **opt != "no-auto-import-builtin").map(|x| *x).collect();
@@ -325,7 +374,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<(),
     let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
 
     let files = vec![("test.rs".to_string(), code)];
-    verify_files_vstd(name, files, "test.rs".to_string(), vstd, options)
+    verify_files_vstd_all_diags(name, files, "test.rs".to_string(), vstd, options)
 }
 
 #[macro_export]
@@ -346,8 +395,12 @@ macro_rules! test_verify_one_file_with_options {
         $(#[$attrs])*
         fn $name() {
             let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            let result_unit = result.as_ref().map(|_| ());
             #[allow(irrefutable_let_patterns)]
-            if let $result = result {
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
             } else {
                 assert!(false, "Err(_) does not match $result");
             }

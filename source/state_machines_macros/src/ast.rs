@@ -594,3 +594,26 @@ impl SimplStmt {
         }
     }
 }
+
+impl SM {
+    pub fn get_label_generics<'a>(&'a self, is_init: bool) -> &'a Generics {
+        let l = if is_init { &self.init_label } else { &self.transition_label };
+        match l {
+            Some(Item::Struct(s)) => &s.generics,
+            Some(Item::Enum(s)) => &s.generics,
+            Some(Item::Type(s)) => &s.generics,
+            _ => panic!("get_label_generics failed"),
+        }
+    }
+
+    pub fn get_label_generics_opt<'a>(&'a self, is_init: bool) -> Option<&'a Generics> {
+        let l = if is_init { &self.init_label } else { &self.transition_label };
+        match l {
+            Some(Item::Struct(s)) => Some(&s.generics),
+            Some(Item::Enum(s)) => Some(&s.generics),
+            Some(Item::Type(s)) => Some(&s.generics),
+            None => None,
+            _ => panic!("get_label_generics failed"),
+        }
+    }
+}

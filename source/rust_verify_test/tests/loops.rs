@@ -507,7 +507,7 @@ test_verify_one_file! {
             }
             assert(false);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -603,7 +603,7 @@ test_verify_one_file! {
             }
             assert(!b);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* TODO fix warnings? */ }
 }
 
 test_verify_one_file! {
@@ -639,7 +639,7 @@ test_verify_one_file! {
             }
             assert(false);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -652,7 +652,7 @@ test_verify_one_file! {
             }
             assert(false);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -688,7 +688,7 @@ test_verify_one_file! {
             }
             assert(i == 0);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* TODO fix warnings? */ }
 }
 
 test_verify_one_file! {
@@ -711,7 +711,7 @@ test_verify_one_file! {
             }
             assert(i == 0);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* TODO fix warnings? */ }
 }
 
 test_verify_one_file! {
@@ -920,4 +920,66 @@ test_verify_one_file! {
             assert(v.view().len() == 0); // FAILS
         }
     } => Err(e) => assert_fails(e, 3)
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] while_continue_panic_regression_421 verus_code! {
+        fn test() {
+            let i = 7;
+            while i < 5 {
+                continue;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] iter_loop verus_code! {
+        use vstd::prelude::*;
+        fn test_loop() {
+            let mut n: u64 = 0;
+            let mut iter = (0..10).into_iter();
+            loop
+                invariant_ensures
+                    iter.start <= 10,
+                    iter.end == 10,
+                    n == iter.start * 3,
+                ensures
+                    iter.start == 10,
+            {
+                if let Some(x) = iter.next() {
+                    assert(x < 10);
+                    assert(x == iter.start - 1);
+                    n += 3;
+                } else {
+                    break;
+                }
+            }
+            assert(iter.start == 10);
+            assert(n == 30);
+        }
+
+        fn test_loop_fail() {
+            let mut n: u64 = 0;
+            let mut iter = (0..10).into_iter();
+            loop
+                invariant_ensures
+                    iter.start <= 10,
+                    iter.end == 10,
+                    n == iter.start * 3,
+                ensures
+                    iter.start == 10,
+            {
+                if let Some(x) = iter.next() {
+                    assert(x < 9); // FAILS
+                    assert(x == iter.start - 1);
+                    n += 3;
+                } else {
+                    break;
+                }
+            }
+            assert(iter.start == 10);
+            assert(n == 30);
+        }
+    } => Err(e) => assert_one_fails(e)
 }

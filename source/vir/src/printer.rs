@@ -142,7 +142,7 @@ impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
 impl ToDebugSNode for String {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(match self.is_ascii() {
-            true => format!("\"{}\"", self),
+            true => format!("\"{}\"", self.replace("\n", "\\n")),
             false => "non_ascii_string".to_string(),
         })
     }
@@ -210,6 +210,12 @@ impl ToDebugSNode for usize {
     }
 }
 
+impl ToDebugSNode for f32 {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
+    }
+}
+
 impl ToDebugSNode for num_bigint::BigInt {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(self.to_string())
@@ -258,13 +264,9 @@ impl<A: ToDebugSNode + Clone> ToDebugSNode for Binder<A> {
 }
 
 impl ToDebugSNode for Quant {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        let Quant { quant, boxed_params } = self;
-        let nodes = vec![
-            Node::Atom(format!("{:?}", quant)),
-            Node::Atom(":boxed_params".to_string()),
-            boxed_params.to_node(opts),
-        ];
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        let Quant { quant } = self;
+        let nodes = vec![Node::Atom(format!("{:?}", quant))];
         Node::List(nodes)
     }
 }
@@ -340,10 +342,11 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         traits,
         trait_impls,
         assoc_type_impls,
-        module_ids,
+        modules,
         external_fns,
         external_types,
         path_as_rust_names: _,
+        arch,
     } = &**vir_crate;
     for datatype in datatypes.iter() {
         if opts.no_span {
@@ -377,8 +380,8 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts)))
             .expect("cannot write to vir write");
     }
-    for module_id in module_ids.iter() {
-        let module_id_node = nodes!(module_id {path_to_node(module_id)});
+    for module in modules.iter() {
+        let module_id_node = nodes!(module_id {path_to_node(&module.x.path)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&module_id_node))
             .expect("cannot write to vir write");
     }
@@ -392,4 +395,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         writeln!(&mut write, "{}\n", nw.node_to_string(&external_type_node))
             .expect("cannot write to vir write");
     }
+    let arch_nodes = nodes!(arch_word_bits {arch.word_bits.to_node(opts)});
+    writeln!(&mut write, "{}\n", nw.node_to_string(&arch_nodes))
+        .expect("cannot write to vir write");
 }

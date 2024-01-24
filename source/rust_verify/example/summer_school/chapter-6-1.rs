@@ -128,14 +128,12 @@ state_machine!{
         }
 
         #[invariant]
-        #[verifier(publish)]
-        pub fn num_hosts(&self) -> bool {
+        pub open fn num_hosts(&self) -> bool {
             self.maps.len() == self.map_count
         }
 
         #[invariant]
-        #[verifier(publish)]
-        pub fn inv_no_dupes(&self) -> bool {
+        pub open fn inv_no_dupes(&self) -> bool {
             forall |i: int, j: int, key: Key|
                 self.host_has_key(i, key) && self.host_has_key(j, key) ==> i == j
         }

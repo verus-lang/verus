@@ -4,17 +4,17 @@ use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility, mk_visibility_from_vis,
 };
 use crate::unsupported_err_unless;
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::err_span;
 use crate::verus_items::{PervasiveItem, VerusItem};
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{SubstsRef, TyKind};
+use rustc_middle::ty::{GenericArgsRef, TyKind};
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Variant, VirErr};
 use vir::ast_util::ident_binder;
-use vir::def::positional_field_ident;
+use vir::def::field_ident_from_rust;
 
 // The `rustc_hir::VariantData` is optional here because we won't have it available
 // when handling external datatype definitions.
@@ -30,7 +30,7 @@ fn check_variant_data<'tcx, 'fd>(
     name: &Ident,
     variant_data_opt: Option<&'tcx rustc_hir::VariantData<'tcx>>,
     field_defs: impl Iterator<Item = &'fd rustc_middle::ty::FieldDef>,
-    substs: Option<SubstsRef<'tcx>>,
+    substs: Option<GenericArgsRef<'tcx>>,
     visibility: &vir::ast::Visibility,
 ) -> Result<(Variant, vir::ast::Visibility), VirErr>
 where
@@ -68,18 +68,11 @@ where
             }
             None => {
                 // For normal datatypes, this seems to work fine.
-                ctxt.tcx.type_of(field_def.did)
+                ctxt.tcx.type_of(field_def.did).skip_binder()
             }
         };
 
-        // Only way I can see to determine if the field is positional using rustc_middle
-        let use_positional = field_def.name.as_str().bytes().nth(0).unwrap().is_ascii_digit();
-
-        let ident = if use_positional {
-            positional_field_ident(idx)
-        } else {
-            str_ident(&field_def_ident.as_str())
-        };
+        let ident = field_ident_from_rust(&field_def_ident.as_str());
 
         let typ = mid_ty_to_vir(
             ctxt.tcx,
@@ -123,7 +116,7 @@ pub fn check_item_struct<'tcx>(
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     let is_strslice_struct = matches!(
         ctxt.verus_items.id_to_name.get(&id.owner_id.to_def_id()),
@@ -161,6 +154,7 @@ pub fn check_item_struct<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
     let name = path.segments.last().expect("unexpected struct path");
@@ -230,7 +224,7 @@ pub fn check_item_enum<'tcx>(
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
 
-    let vattrs = get_verifier_attrs(attrs)?;
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");
@@ -244,6 +238,7 @@ pub fn check_item_enum<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
     let mut total_vis = visibility.clone();
@@ -270,6 +265,97 @@ pub fn check_item_enum<'tcx>(
         DatatypeTransparency::Never
     } else {
         DatatypeTransparency::WhenVisible(total_vis)
+    };
+    vir.datatypes.push(ctxt.spanned_new(
+        span,
+        DatatypeX {
+            path,
+            proxy: None,
+            visibility,
+            owning_module: Some(module_path.clone()),
+            transparency,
+            typ_params,
+            typ_bounds,
+            variants: Arc::new(variants),
+            mode: get_mode(Mode::Exec, attrs),
+            ext_equal: vattrs.ext_equal,
+        },
+    ));
+    Ok(())
+}
+
+pub fn check_item_union<'tcx>(
+    ctxt: &Context<'tcx>,
+    vir: &mut KrateX,
+    module_path: &Path,
+    span: Span,
+    id: &ItemId,
+    visibility: vir::ast::Visibility,
+    attrs: &[Attribute],
+    variant_data: &'tcx VariantData<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+    adt_def: &rustc_middle::ty::AdtDef,
+) -> Result<(), VirErr> {
+    assert!(adt_def.is_union());
+
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+
+    if vattrs.external_fn_specification {
+        return err_span(span, "`external_fn_specification` attribute not supported here");
+    }
+
+    let mode = get_mode(Mode::Exec, attrs);
+    if mode != Mode::Exec {
+        return err_span(span, "a 'union' can only be exec-mode");
+    }
+    let VariantData::Struct(hir_fields, _) = variant_data else {
+        return err_span(span, "check_item_union: wrong VariantData");
+    };
+    for hir_field_def in hir_fields.iter() {
+        let mode = get_mode(Mode::Exec, ctxt.tcx.hir().attrs(hir_field_def.hir_id));
+        if mode != Mode::Exec {
+            return err_span(span, "a union field can only be exec-mode");
+        }
+    }
+
+    let def_id = id.owner_id.to_def_id();
+    let (typ_params, typ_bounds) = check_generics_bounds(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        generics,
+        vattrs.external_body,
+        def_id,
+        Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
+    )?;
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+
+    let (variants, transparency) = if vattrs.external_body {
+        let name = path.segments.last().expect("unexpected struct path");
+        let variant_name = Arc::new(name.clone());
+        (vec![ident_binder(&variant_name, &Arc::new(vec![]))], DatatypeTransparency::Never)
+    } else {
+        let mut variants: Vec<_> = vec![];
+        let mut total_vis = visibility.clone();
+        assert!(adt_def.variants().len() == 1);
+        let variant_def = adt_def.variants().iter().next().unwrap();
+        for field_def in variant_def.fields.iter() {
+            let variant_name = str_ident(field_def.ident(ctxt.tcx).as_str());
+            let field_name = field_ident_from_rust(&variant_name);
+
+            let vis = mk_visibility_from_vis(ctxt, field_def.vis);
+            total_vis = total_vis.join(&vis);
+
+            let field_ty = ctxt.tcx.type_of(field_def.did).skip_binder();
+            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, span, &field_ty, false)?;
+
+            let field = (typ, Mode::Exec, vis);
+            let variant =
+                ident_binder(&variant_name, &Arc::new(vec![ident_binder(&field_name, &field)]));
+
+            variants.push(variant);
+        }
+        (variants, DatatypeTransparency::WhenVisible(total_vis))
     };
     vir.datatypes.push(ctxt.spanned_new(
         span,
@@ -331,7 +417,7 @@ pub(crate) fn check_item_external<'tcx>(
     if fields_iter.next().is_some() {
         return err_span(span, "external_type_specification should look like `struct X(Type)`");
     }
-    let external_ty = ctxt.tcx.type_of(first_field.did);
+    let external_ty = ctxt.tcx.type_of(first_field.did).skip_binder();
     let (external_adt_def, substs_ref) = match external_ty.kind() {
         TyKind::Adt(adt_def, substs_ref) => (adt_def, substs_ref),
         _ => {
@@ -368,7 +454,7 @@ pub(crate) fn check_item_external<'tcx>(
         };
         use rustc_hir::GenericParamKind;
         use rustc_hir::LifetimeParamKind;
-        use rustc_middle::ty::subst::GenericArgKind;
+        use rustc_middle::ty::GenericArgKind;
 
         match (generic_arg.unpack(), &generic_param.kind) {
             (
@@ -419,7 +505,7 @@ pub(crate) fn check_item_external<'tcx>(
     }
     let preds1 = external_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
     let preds2 = proxy_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
-    let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, preds1, preds2);
+    let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2);
     if !preds_match {
         println!("external_predicates: {:#?}", external_predicates.predicates);
         println!("proxy_predicates: {:#?}", proxy_predicates.predicates);
@@ -448,6 +534,7 @@ pub(crate) fn check_item_external<'tcx>(
         vattrs.external_body,
         def_id,
         Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let mode = Mode::Exec;
 

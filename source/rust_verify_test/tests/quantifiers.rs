@@ -234,7 +234,7 @@ test_verify_one_file! {
 
         proof fn test(z:int)
         {
-            assert forall #![trigger f(k, z)] |k:int| f(k, z) && g(z, k) ==> f(z, i(z, k)) by { };
+            assert forall |k:int| #![trigger f(k, z)] f(k, z) && g(z, k) ==> f(z, i(z, k)) by { };
         }
     } => Ok(())
 }
@@ -248,7 +248,7 @@ test_verify_one_file! {
 
         proof fn test(z:int)
         {
-            assert forall #![auto] |k:int| f(k, z) && g(z, k) ==> f(z, i(z, k)) by { };
+            assert forall |k:int| #![auto] f(k, z) && g(z, k) ==> f(z, i(z, k)) by { };
         }
     } => Ok(())
 }
@@ -259,7 +259,7 @@ test_verify_one_file! {
 
         proof fn test(z:int)
         {
-            assert forall #![autos] |k:int| f(k) by { };
+            assert forall |k:int| #![autos] f(k) by { };
         }
     } => Err(err) => assert_vir_error_msg(err, "expected trigger")
 }

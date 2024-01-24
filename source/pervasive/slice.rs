@@ -4,13 +4,16 @@ use builtin_macros::*;
 use crate::view::*;
 use crate::seq::*;
 
+#[cfg(verus_keep_ghost)]
+#[cfg(feature = "alloc")]
 pub use super::std_specs::vec::VecAdditionalSpecFns;
 
 verus!{
 
 pub trait SliceAdditionalSpecFns<T> {
-   spec fn view(&self) -> Seq<T>;
-   spec fn spec_index(&self, i: int) -> T;
+    spec fn view(&self) -> Seq<T>;
+    spec fn spec_index(&self, i: int) -> T
+        recommends 0 <= i < self.view().len();
 }
 
 impl<T> SliceAdditionalSpecFns<T> for [T] {
@@ -30,9 +33,9 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
     &slice[i]
 }
 
-#[cfg(not(feature = "no_global_allocator"))] 
+#[cfg(feature = "alloc")]
 #[verifier(external_body)]
-pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: Vec<T>)
+pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
     ensures out@ == slice@
 {
     slice.to_vec()
@@ -44,6 +47,15 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     ensures out@ == slice@.subrange(i as int, j as int)
 {
     &slice[i .. j]
+}
+
+#[verifier(external_fn_specification)]
+pub exec fn slice_len<T>(slice: &[T]) -> (length: usize)
+    ensures 
+        length >=0,
+        length == slice@.len()
+{
+    slice.len()
 }
 
 }

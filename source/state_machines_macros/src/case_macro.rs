@@ -1,12 +1,12 @@
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
-use syn_verus::parse;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_macro_input;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{braced, parenthesized, Error, Expr, ExprBlock, ExprPath, Ident, Path, Token};
+use syn_verus::{parse, PathArguments};
 
 pub fn case_on(
     input: proc_macro::TokenStream,
@@ -15,7 +15,7 @@ pub fn case_on(
 ) -> proc_macro::TokenStream {
     assert!(!is_init || !is_strong);
 
-    let (pre_post, label, name, arms) = if is_init {
+    let (pre_post, label, mut name, arms) = if is_init {
         let m: MatchPost = parse_macro_input!(input as MatchPost);
         let MatchPost { post, label, name, arms } = m;
         let pre_post = quote! {#post};
@@ -27,7 +27,22 @@ pub fn case_on(
         (pre_post, label, name, arms)
     };
 
+    let mut name_path_last = name.segments.last_mut();
+    let name_path_args = &mut name_path_last.as_mut().unwrap().arguments;
+    let path_arguments = name_path_args.clone();
+    *name_path_args = PathArguments::None;
+
     let next_by = if is_init {
+        quote! { #name::State#path_arguments::init_by }
+    } else {
+        if is_strong {
+            quote! { #name::State#path_arguments::next_strong_by }
+        } else {
+            quote! { #name::State#path_arguments::next_by }
+        }
+    };
+
+    let reveal_next_by = if is_init {
         quote! { #name::State::init_by }
     } else {
         if is_strong {
@@ -37,7 +52,7 @@ pub fn case_on(
         }
     };
 
-    let next = if is_init {
+    let reveal_next = if is_init {
         quote! { #name::State::init }
     } else {
         if is_strong {
@@ -48,9 +63,9 @@ pub fn case_on(
     };
 
     let step = if is_init {
-        quote! { #name::Config }
+        quote! { #name::Config#path_arguments }
     } else {
-        quote! { #name::Step }
+        quote! { #name::Step#path_arguments }
     };
 
     let label_arg = match label {
@@ -70,7 +85,7 @@ pub fn case_on(
             quote! {
                 #step::#step_name(#(#params),*) => {
                     ::builtin::assert_by(#name::State::#relation_name(#pre_post, #label_arg #(#params),*), {
-                        ::builtin::reveal(#next_by);
+                        reveal(#reveal_next_by);
                     });
                     #block
                 }
@@ -81,11 +96,11 @@ pub fn case_on(
     let res = quote! {
         ::builtin_macros::verus_proof_expr!{
             {
-                ::builtin::reveal(#next);
+                reveal(#reveal_next);
                 match (choose |step: #step| #next_by(#pre_post, #label_arg step)) {
                     #step::dummy_to_use_type_params(_) => {
                         ::builtin::assert_by(false, {
-                            ::builtin::reveal(#next_by);
+                            reveal(#reveal_next_by);
                         });
                     }
                     #( #arms )*

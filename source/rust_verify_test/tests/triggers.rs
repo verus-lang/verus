@@ -211,6 +211,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_bitwise_trigger verus_code! {
+        spec fn f(u: u8) -> bool;
+        proof fn test() {
+            assert(forall|i: u8| #[trigger]f(i) || #[trigger](i >> 2) == i >> 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_recommends_regression_163 verus_code! {
         spec fn some_fn(a: int) -> bool;
 
@@ -276,6 +285,37 @@ test_verify_one_file! {
             assert(prop_1(s));
             assert(prop_2(s));
           }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trigger_all verus_code! {
+        spec fn bar(i: nat) -> bool;
+        spec fn baz(i: nat) -> bool;
+        spec fn qux(j: nat) -> bool;
+        spec fn mux(j: nat) -> bool;
+        spec fn res(i : nat, j : nat) -> bool;
+
+        proof fn foo()
+            requires
+                forall|i : nat, j : nat| #![all_triggers]
+                    (bar(i) && qux(j)) ==> res(i, j) && (baz(j) && mux(i)),
+                bar(3),
+                qux(4),
+            ensures
+                baz(4)
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_broadcast_arith_trigger verus_code! {
+        #[verifier::broadcast_forall]
+        pub proof fn testb(x: int, y: int)
+            ensures
+                #[trigger] (2 * x + 2 * y) == (x + y) * 2
+        {
         }
     } => Ok(())
 }
