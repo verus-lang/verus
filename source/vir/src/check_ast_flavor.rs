@@ -90,7 +90,7 @@ pub fn check_krate_simplified(krate: &Krate) {
     for datatype in datatypes {
         let typ_params = Arc::new(datatype.x.typ_params.iter().map(|(id, _)| id.clone()).collect());
         for variant in datatype.x.variants.iter() {
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 let (typ, _, _) = &field.a;
                 typ_visitor_check(typ, &mut |t| check_typ_simplified(t, &typ_params))
                     .expect("datatype field typ uses node that should have been simplified");

@@ -931,8 +931,23 @@ pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// For tuple-style variants, the fields appear in order and are named "0", "1", etc.
 /// For struct-style variants, the fields may appear in any order
 pub type Fields = Binders<(Typ, Mode, Visibility)>;
-pub type Variant = Binder<Fields>;
-pub type Variants = Binders<Fields>;
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum CtorPrintStyle {
+    Tuple,  // actual tuple (a, b)
+    Parens, // tuple style: Ctor(a, b)
+    Braces, // struct: Ctor { a: ... }
+    Const,  // just Ctor
+}
+
+pub type Variants = Arc<Vec<Variant>>;
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct Variant {
+    pub name: Ident,
+    pub fields: Fields,
+    pub ctor_style: CtorPrintStyle,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum DatatypeTransparency {

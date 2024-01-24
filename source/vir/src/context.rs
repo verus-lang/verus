@@ -145,7 +145,7 @@ fn datatypes_invs(
         if is_datatype_transparent(module, datatype) {
             let container_path = &datatype.x.path;
             for variant in datatype.x.variants.iter() {
-                for field in variant.a.iter() {
+                for field in variant.fields.iter() {
                     match &*crate::ast_util::undecorate_typ(&field.a.0) {
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}

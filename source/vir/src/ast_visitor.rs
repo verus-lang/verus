@@ -1175,12 +1175,13 @@ where
     let mut variants: Vec<Variant> = Vec::new();
     for variant in datatypex.variants.iter() {
         let mut fields: Vec<Field> = Vec::new();
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let (typ, mode, vis) = &field.a;
             let typ = map_typ_visitor_env(typ, env, ft)?;
             fields.push(field.new_a((typ, *mode, vis.clone())));
         }
-        variants.push(variant.new_a(Arc::new(fields)));
+        let variant = Variant { fields: Arc::new(fields), ..variant.clone() };
+        variants.push(variant);
     }
     let variants = Arc::new(variants);
     Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, typ_bounds, ..datatypex }))

@@ -23,7 +23,7 @@ fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype) -> air::ast::Data
     let mut variants: Vec<air::ast::Variant> = Vec::new();
     for variant in datatype.x.variants.iter() {
         let mut fields: Vec<air::ast::Field> = Vec::new();
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let id =
                 variant_field_ident_internal(&datatype.x.path, &variant.name, &field.name, true);
             fields.push(ident_binder(&id, &typ_to_air(ctx, &field.a.0)));
@@ -284,14 +284,14 @@ fn datatype_or_fun_to_air_commands(
             //   forall typs, arg1 ... argn.
             //     inv1 && ... && invn => has_type(box(ctor(arg1 ... argn)), T(typs))
             // trigger on has_type(box(ctor(arg1 ... argn)), T(typs))
-            let params = vec_map(&*variant.a, |f| field_to_par(span, f));
+            let params = vec_map(&*variant.fields, |f| field_to_par(span, f));
             let params = Arc::new(params);
             let ctor_args = func_def_args(&Arc::new(vec![]), &params);
             let ctor = ident_apply(&variant_ident(&dpath, &variant.name), &ctor_args);
             let box_ctor = ident_apply(&prefix_box(&dpath), &vec![ctor]);
             let has_ctor = expr_has_type(&box_ctor, &datatype_id(&dpath, &typ_args));
             let mut pre: Vec<Expr> = Vec::new();
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 let (typ, _, _) = &field.a;
                 let name = suffix_local_stmt_id(&field.name);
                 if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
@@ -305,7 +305,7 @@ fn datatype_or_fun_to_air_commands(
             let axiom = Arc::new(DeclX::Axiom(forall));
             axiom_commands.push(Arc::new(CommandX::Global(axiom)));
         }
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let id = variant_field_ident(&dpath, &variant.name, &field.name);
             let internal_id =
                 variant_field_ident_internal(&dpath, &variant.name, &field.name, true);
@@ -368,7 +368,7 @@ fn datatype_or_fun_to_air_commands(
     // (make sure that this stays in sync with recursive_types::check_well_founded)
     if add_height {
         for variant in variants.iter() {
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 use crate::recursive_types::TypNode;
                 let typ = &field.a.0;
                 let mut recursion_or_tparam = |t: &Typ| match &**t {
@@ -507,7 +507,7 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(ident_apply(&vid, &vec![unbox_x.clone()]));
                 pre.push(ident_apply(&vid, &vec![unbox_y.clone()]));
             }
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 use crate::recursive_types::TypNode;
                 let (typ, _, _) = &field.a;
                 let mut is_recursive = |t: &Typ| match &**t {

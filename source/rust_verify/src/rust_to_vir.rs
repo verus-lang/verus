@@ -192,7 +192,7 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 enum_def,
                 generics,
-                &adt_def,
+                adt_def,
             )?;
         }
         ItemKind::Union(variant_data, generics) => {
@@ -217,7 +217,7 @@ fn check_item<'tcx>(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 variant_data,
                 generics,
-                &adt_def,
+                adt_def,
             )?;
         }
         ItemKind::Impl(impll) => {

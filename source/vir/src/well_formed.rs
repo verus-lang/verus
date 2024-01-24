@@ -285,7 +285,7 @@ fn check_one_expr(
                 }
                 if let Some((source_module, reason)) = disallow_private_access {
                     let variant = dt.x.get_variant(variant);
-                    let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
+                    let (_, _, vis) = &crate::ast_util::get_field(&variant.fields, &field).a;
                     if !is_visible_to_opt(vis, source_module) {
                         let msg = format!(
                             "in {reason:}, cannot access any field of a datatype where one or more fields are private"
@@ -853,7 +853,7 @@ fn check_function(
 
 fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
     for variant in dt.x.variants.iter() {
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span)?;
         }

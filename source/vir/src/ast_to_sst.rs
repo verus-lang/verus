@@ -1866,7 +1866,8 @@ pub(crate) fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_expr = eval_expr(
+            let interp_exp = eval_expr(
+                &ctx.global,
                 &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
                 state.diagnostics,
                 &mut state.fun_ssts,
@@ -1878,10 +1879,10 @@ pub(crate) fn expr_to_stm_opt(
             let err = error_with_label(
                 &expr.span.clone(),
                 "assertion failed",
-                format!("simplified to {}", interp_expr),
+                format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
             );
             if matches!(mode, ComputeMode::Z3) {
-                let assert = Spanned::new(expr.span.clone(), StmX::Assert(Some(err), interp_expr));
+                let assert = Spanned::new(expr.span.clone(), StmX::Assert(Some(err), interp_exp));
                 stms.push(assert);
             }
             let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
