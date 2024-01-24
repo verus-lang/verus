@@ -14,15 +14,15 @@ use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
     visit_impl_item_method_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
-    visit_item_static_mut, visit_item_struct_mut, visit_local_mut, visit_specification_mut,
-    visit_trait_item_method_mut, VisitMut,
+    visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
+    visit_specification_mut, visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemMethod,
     Invariant, InvariantEnsures, InvariantNameSet, InvariantNameSetList, Item, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, Lit, Local, ModeSpec,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, ModeSpec,
     ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends, Requires,
     ReturnType, Signature, SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem,
     TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
@@ -2635,6 +2635,12 @@ impl VisitMut for Visitor {
         visit_item_enum_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
+        self.filter_attrs(&mut item.attrs);
+    }
+
+    fn visit_item_union_mut(&mut self, item: &mut ItemUnion) {
+        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        visit_item_union_mut(self, item);
         self.filter_attrs(&mut item.attrs);
     }
 

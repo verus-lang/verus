@@ -14,7 +14,7 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Variant, VirErr};
 use vir::ast_util::ident_binder;
-use vir::def::positional_field_ident;
+use vir::def::field_ident_from_rust;
 
 // The `rustc_hir::VariantData` is optional here because we won't have it available
 // when handling external datatype definitions.
@@ -72,14 +72,7 @@ where
             }
         };
 
-        // Only way I can see to determine if the field is positional using rustc_middle
-        let use_positional = field_def.name.as_str().bytes().nth(0).unwrap().is_ascii_digit();
-
-        let ident = if use_positional {
-            positional_field_ident(idx)
-        } else {
-            str_ident(&field_def_ident.as_str())
-        };
+        let ident = field_ident_from_rust(&field_def_ident.as_str());
 
         let typ = mid_ty_to_vir(
             ctxt.tcx,
@@ -272,6 +265,97 @@ pub fn check_item_enum<'tcx>(
         DatatypeTransparency::Never
     } else {
         DatatypeTransparency::WhenVisible(total_vis)
+    };
+    vir.datatypes.push(ctxt.spanned_new(
+        span,
+        DatatypeX {
+            path,
+            proxy: None,
+            visibility,
+            owning_module: Some(module_path.clone()),
+            transparency,
+            typ_params,
+            typ_bounds,
+            variants: Arc::new(variants),
+            mode: get_mode(Mode::Exec, attrs),
+            ext_equal: vattrs.ext_equal,
+        },
+    ));
+    Ok(())
+}
+
+pub fn check_item_union<'tcx>(
+    ctxt: &Context<'tcx>,
+    vir: &mut KrateX,
+    module_path: &Path,
+    span: Span,
+    id: &ItemId,
+    visibility: vir::ast::Visibility,
+    attrs: &[Attribute],
+    variant_data: &'tcx VariantData<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+    adt_def: &rustc_middle::ty::AdtDef,
+) -> Result<(), VirErr> {
+    assert!(adt_def.is_union());
+
+    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+
+    if vattrs.external_fn_specification {
+        return err_span(span, "`external_fn_specification` attribute not supported here");
+    }
+
+    let mode = get_mode(Mode::Exec, attrs);
+    if mode != Mode::Exec {
+        return err_span(span, "a 'union' can only be exec-mode");
+    }
+    let VariantData::Struct(hir_fields, _) = variant_data else {
+        return err_span(span, "check_item_union: wrong VariantData");
+    };
+    for hir_field_def in hir_fields.iter() {
+        let mode = get_mode(Mode::Exec, ctxt.tcx.hir().attrs(hir_field_def.hir_id));
+        if mode != Mode::Exec {
+            return err_span(span, "a union field can only be exec-mode");
+        }
+    }
+
+    let def_id = id.owner_id.to_def_id();
+    let (typ_params, typ_bounds) = check_generics_bounds(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        generics,
+        vattrs.external_body,
+        def_id,
+        Some(&vattrs),
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
+    )?;
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+
+    let (variants, transparency) = if vattrs.external_body {
+        let name = path.segments.last().expect("unexpected struct path");
+        let variant_name = Arc::new(name.clone());
+        (vec![ident_binder(&variant_name, &Arc::new(vec![]))], DatatypeTransparency::Never)
+    } else {
+        let mut variants: Vec<_> = vec![];
+        let mut total_vis = visibility.clone();
+        assert!(adt_def.variants().len() == 1);
+        let variant_def = adt_def.variants().iter().next().unwrap();
+        for field_def in variant_def.fields.iter() {
+            let variant_name = str_ident(field_def.ident(ctxt.tcx).as_str());
+            let field_name = field_ident_from_rust(&variant_name);
+
+            let vis = mk_visibility_from_vis(ctxt, field_def.vis);
+            total_vis = total_vis.join(&vis);
+
+            let field_ty = ctxt.tcx.type_of(field_def.did).skip_binder();
+            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, span, &field_ty, false)?;
+
+            let field = (typ, Mode::Exec, vis);
+            let variant =
+                ident_binder(&variant_name, &Arc::new(vec![ident_binder(&field_name, &field)]));
+
+            variants.push(variant);
+        }
+        (variants, DatatypeTransparency::WhenVisible(total_vis))
     };
     vir.datatypes.push(ctxt.spanned_new(
         span,

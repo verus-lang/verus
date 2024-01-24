@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
-    Quant, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr,
+    Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
 };
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
@@ -51,6 +51,19 @@ fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
         _ => Ok(t.clone()),
     })
     .expect("subst_typ")
+}
+
+pub fn subst_typ_for_datatype(
+    typ_params: &crate::ast::TypPositives,
+    args: &Typs,
+    typ: &Typ,
+) -> Typ {
+    assert!(typ_params.len() == args.len());
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    for (typ_param, arg) in typ_params.iter().zip(args.iter()) {
+        typ_substs.insert(typ_param.0.clone(), arg.clone());
+    }
+    subst_typ(&typ_substs, typ)
 }
 
 fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(

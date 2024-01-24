@@ -6,12 +6,12 @@ use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr,
     Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
-    PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
-    Visibility,
+    PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VariantCheck,
+    VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
-use crate::ast_util::{conjoin, disjoin, if_then_else, wrap_in_trigger};
+use crate::ast_util::{conjoin, disjoin, if_then_else, typ_args_for_datatype_typ, wrap_in_trigger};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
 use crate::def::{
@@ -19,6 +19,7 @@ use crate::def::{
 };
 use crate::messages::error;
 use crate::messages::Span;
+use crate::sst_util::subst_typ_for_datatype;
 use crate::util::vec_map_result;
 use air::ast::BinderX;
 use air::ast::Binders;
@@ -164,6 +165,7 @@ fn pattern_to_exprs_rec(
                     variant: variant.clone(),
                     field: prefix_tuple_field(i),
                     get_variant: false,
+                    check: VariantCheck::None,
                 });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &pat.typ, field_op);
                 let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, pat, decls)?;
@@ -183,6 +185,7 @@ fn pattern_to_exprs_rec(
                     variant: variant.clone(),
                     field: binder.name.clone(),
                     get_variant: false,
+                    check: VariantCheck::None,
                 });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &binder.a.typ, field_op);
                 let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, &binder.a, decls)?;
@@ -330,9 +333,10 @@ fn simplify_one_expr(
                 }
                 decls.extend(temp_decl.into_iter());
             }
-            let datatype = &ctx.datatypes[path];
-            assert_eq!(datatype.len(), 1);
-            let fields = &datatype[0].a;
+            let (typ_positives, variants) = &ctx.datatypes[path];
+            assert_eq!(variants.len(), 1);
+            let fields = &variants[0].a;
+            let typ_args = typ_args_for_datatype_typ(&expr.typ);
             // replace ..update
             // with f1: update.f1, f2: update.f2, ...
             for field in fields.iter() {
@@ -342,9 +346,11 @@ fn simplify_one_expr(
                         variant: variant.clone(),
                         field: field.name.clone(),
                         get_variant: false,
+                        check: VariantCheck::None,
                     });
                     let exprx = ExprX::UnaryOpr(op, update.clone());
-                    let field_exp = SpannedTyped::new(&expr.span, &field.a.0, exprx);
+                    let ty = subst_typ_for_datatype(&typ_positives, typ_args, &field.a.0);
+                    let field_exp = SpannedTyped::new(&expr.span, &ty, exprx);
                     binders.push(ident_binder(&field.name, &field_exp));
                 }
             }
@@ -530,7 +536,13 @@ fn tuple_get_field_expr(
     let datatype = state.tuple_type_name(tuple_arity);
     let variant = prefix_tuple_variant(tuple_arity);
     let field = prefix_tuple_field(field);
-    let op = UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: false });
+    let op = UnaryOpr::Field(FieldOpr {
+        datatype,
+        variant,
+        field,
+        get_variant: false,
+        check: VariantCheck::None,
+    });
     let field_expr = SpannedTyped::new(span, typ, ExprX::UnaryOpr(op, tuple_expr.clone()));
     field_expr
 }
@@ -903,8 +915,12 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     state.tuple_type_name(0);
 
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
-    ctx.datatypes =
-        Arc::new(datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect());
+    ctx.datatypes = Arc::new(
+        datatypes
+            .iter()
+            .map(|d| (d.x.path.clone(), (d.x.typ_params.clone(), d.x.variants.clone())))
+            .collect(),
+    );
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
     let assoc_type_impls =

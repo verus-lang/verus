@@ -1,7 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
     IntRange, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr, Visibility,
+    SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr,
+    Visibility,
 };
 use crate::ast_util::{
     bitwidth_from_type, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -28,7 +29,6 @@ use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX,
     UniqueIdent,
 };
-use crate::sst_util::{subst_exp, subst_stm};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -41,7 +41,7 @@ use air::ast_util::{
     mk_option_command, mk_or, mk_sub, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use num_bigint::BigInt;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -535,7 +535,7 @@ pub(crate) fn ctor_to_apply<'a>(
     variant: &Ident,
     binders: &'a Binders<Exp>,
 ) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
-    let fields = &get_variant(&ctx.global.datatypes[path], variant).a;
+    let fields = &get_variant(&ctx.global.datatypes[path].1, variant).a;
     (variant_ident(path, &variant), fields.iter().map(move |f| get_field(binders, &f.name)))
 }
 
@@ -875,7 +875,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
             }
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(
                     variant_field_ident(datatype, variant, field),
@@ -1149,10 +1149,23 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     Ok(result)
 }
 
-pub(crate) enum PostConditionKind {
+#[derive(Clone, Copy)]
+pub enum PostConditionKind {
     Ensures,
     DecreasesImplicitLemma,
     DecreasesBy,
+}
+
+pub struct PostConditionSst {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
+    pub dest: Option<UniqueIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    pub ens_exps: Vec<Exp>,
+    /// Recommends checks (only used in recommends-checking mode)
+    pub ens_spec_precondition_stms: Vec<Stm>,
+    /// Extra info about PostCondition for error reporting
+    pub kind: PostConditionKind,
 }
 
 struct PostConditionInfo {
@@ -1337,12 +1350,12 @@ fn assume_other_fields_unchanged_inner(
         [f] if f.len() == 0 => Ok(vec![]),
         _ => {
             let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let FieldOpr { datatype, variant, field: _, get_variant: _ } = &updates[0][0];
+            let FieldOpr { datatype, variant, field: _, get_variant: _, check: _ } = &updates[0][0];
             for u in updates {
                 assert!(u[0].datatype == *datatype && u[0].variant == *variant);
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
-            let datatype_fields = &get_variant(&ctx.global.datatypes[datatype], variant).a;
+            let datatype_fields = &get_variant(&ctx.global.datatypes[datatype].1, variant).a;
             let dt =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
                     let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
@@ -1367,6 +1380,7 @@ fn assume_other_fields_unchanged_inner(
                                 variant: variant.clone(),
                                 field: field.name.clone(),
                                 get_variant: false,
+                                check: VariantCheck::None,
                             }),
                             base_exp,
                         ),
@@ -2247,22 +2261,17 @@ fn mk_static_prelude(ctx: &Ctx, statics: &Vec<Fun>) -> Vec<Stmt> {
 pub(crate) fn body_stm_to_air(
     ctx: &Ctx,
     func_span: &Span,
-    trait_typ_substs: &HashMap<Ident, Typ>,
     typ_params: &Idents,
     params: &Params,
     local_decls: &Vec<LocalDecl>,
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
-    enss: &Vec<Exp>,
-    inherit_enss: &Vec<Exp>,
-    ens_spec_precondition_stms: &Vec<Stm>,
+    post_condition: &PostConditionSst,
     mask_set: &MaskSet,
     stm: &Stm,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
-    dest: Option<UniqueIdent>,
-    post_condition_kind: PostConditionKind,
     statics: &Vec<Fun>,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     // Verifying a single function can generate multiple SMT queries.
@@ -2316,7 +2325,7 @@ pub(crate) fn body_stm_to_air(
     let initial_sid = Arc::new("0_entry".to_string());
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
-    for ens in enss {
+    for ens in post_condition.ens_exps.iter() {
         let e = if is_bit_vector_mode {
             let bv_expr_ctxt = &BvExprCtxt::new();
             bv_exp_to_expr(ctx, &ens, bv_expr_ctxt)?
@@ -2326,22 +2335,6 @@ pub(crate) fn body_stm_to_air(
         };
         ens_exprs.push((ens.span.clone(), e));
     }
-    for ens in inherit_enss {
-        let ens = subst_exp(&trait_typ_substs, &HashMap::new(), ens);
-        let e = if is_bit_vector_mode {
-            let bv_expr_ctxt = &BvExprCtxt::new();
-            bv_exp_to_expr(ctx, &ens, bv_expr_ctxt)?
-        } else {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
-            exp_to_expr(ctx, &ens, expr_ctxt)?
-        };
-        ens_exprs.push((ens.span.clone(), e));
-    }
-
-    let ens_spec_precondition_stms: Vec<_> = ens_spec_precondition_stms
-        .iter()
-        .map(|ens_recommend_stm| subst_stm(&trait_typ_substs, &HashMap::new(), ens_recommend_stm))
-        .collect();
 
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
@@ -2361,10 +2354,10 @@ pub(crate) fn body_stm_to_air(
         assign_map: indexmap::IndexMap::new(),
         mask: mask_set.clone(),
         post_condition_info: PostConditionInfo {
-            dest,
+            dest: post_condition.dest.clone(),
             ens_exprs,
-            ens_spec_precondition_stms: ens_spec_precondition_stms.clone(),
-            kind: post_condition_kind,
+            ens_spec_precondition_stms: post_condition.ens_spec_precondition_stms.clone(),
+            kind: post_condition.kind,
         },
         loop_infos: Vec::new(),
         static_prelude: mk_static_prelude(ctx, statics),
@@ -2415,7 +2408,6 @@ pub(crate) fn body_stm_to_air(
     }
 
     for req in reqs {
-        let req = subst_exp(&trait_typ_substs, &HashMap::new(), req);
         let e = if is_bit_vector_mode {
             let bv_expr_ctxt = &BvExprCtxt::new();
             bv_exp_to_expr(ctx, &req, bv_expr_ctxt)?
@@ -2448,7 +2440,7 @@ pub(crate) fn body_stm_to_air(
             let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
             singular_stmts.push(assert_stm);
         }
-        for ens in enss {
+        for ens in post_condition.ens_exps.iter() {
             let error = error_with_label(
                 &ens.span,
                 "Failed to translate this expression into a singular query".to_string(),

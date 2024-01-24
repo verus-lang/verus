@@ -126,6 +126,7 @@ pub(crate) enum ExprItem {
     ChooseTuple,
     Old,
     GetVariantField,
+    GetUnionField,
     IsVariant,
     StrSliceLen,
     StrSliceGetChar,
@@ -354,6 +355,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
         ("verus::builtin::old",                     VerusItem::Expr(ExprItem::Old)),
         ("verus::builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
+        ("verus::builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
         ("verus::builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
         ("verus::builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
@@ -548,6 +550,7 @@ pub(crate) enum RustItem {
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
     TryTraitBranch,
+    ResidualTraitFromResidual,
     IntoIterFn,
     Destruct,
 }
@@ -583,6 +586,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().branch_fn() == Some(def_id) {
         return Some(RustItem::TryTraitBranch);
+    }
+    if tcx.lang_items().from_residual_fn() == Some(def_id) {
+        return Some(RustItem::ResidualTraitFromResidual);
     }
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);

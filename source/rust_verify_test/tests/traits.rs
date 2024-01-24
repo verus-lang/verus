@@ -668,6 +668,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_termination_5_fail_8 verus_code! {
+        trait T { type A: T; }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_9 verus_code! {
+        trait T1 { type A: T2; }
+        trait T2 { type A: T1; }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
     #[ignore] #[test] test_termination_bounds_1 verus_code! {
         trait T {
             spec fn f(&self) -> bool;
@@ -880,6 +893,46 @@ test_verify_one_file! {
             type Y = S;
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_assoc_bounds_2_pass verus_code! {
+        trait Z { type Y; }
+        trait T {
+            type X: Z;
+
+            fn val() -> <Self::X as Z>::Y;
+        }
+        struct ZZ { }
+        impl Z for ZZ {
+            type Y = u64;
+        }
+        struct TT { }
+        impl T for TT {
+            type X = ZZ;
+
+            fn val() -> <Self::X as Z>::Y {
+                3
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_assoc_bounds_regression_955 verus_code! {
+        use vstd::prelude::View;
+
+        pub trait A {
+            type Input: View;
+            type Output: View;
+        }
+
+        pub trait B {
+            type MyA: A;
+
+            fn foo(input: <Self::MyA as A>::Input) -> <Self::MyA as A>::Output;
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

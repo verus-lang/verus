@@ -18,6 +18,7 @@ use crate::sst::{
     UniqueIdent,
 };
 use crate::sst_to_air::PostConditionKind;
+use crate::sst_to_air::PostConditionSst;
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast::Binder;
@@ -32,6 +33,9 @@ pub enum Node {
     Datatype(Path),
     Trait(Path),
     TraitImpl(Path),
+    // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
+    // to give more precise span information than X or Y alone provide
+    SpanInfo { span_infos_index: usize, text: String },
 }
 
 #[derive(Clone)]
@@ -286,26 +290,26 @@ pub(crate) fn check_termination_commands(
     let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
-        &HashMap::new(),
         &function.x.typ_params,
         &function.x.params,
         &Arc::new(local_decls),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
+        &PostConditionSst {
+            dest: None,
+            kind: if uses_decreases_by {
+                PostConditionKind::DecreasesBy
+            } else {
+                PostConditionKind::DecreasesImplicitLemma
+            },
+            ens_exps: vec![],
+            ens_spec_precondition_stms: vec![],
+        },
         &MaskSet::empty(),
         &stm_block,
         false,
         false,
         false,
-        None,
-        if uses_decreases_by {
-            PostConditionKind::DecreasesBy
-        } else {
-            PostConditionKind::DecreasesImplicitLemma
-        },
         &vec![],
     )?;
 
@@ -419,6 +423,7 @@ pub(crate) fn check_termination_stm(
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
     call_graph: &mut Graph<Node>,
+    span_infos: &mut Vec<Span>,
     function: &Function,
 ) -> Result<(), VirErr> {
     // See recursive_types::check_traits for more documentation
@@ -487,7 +492,15 @@ pub(crate) fn expand_call_graph(
                             continue;
                         }
                     }
-                    call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
+                    let expr_node = crate::recursive_types::new_span_info_node(
+                        span_infos,
+                        expr.span.clone(),
+                        ": application of a function to some type arguments, which may depend on \
+                            other trait implementations to satisfy trait bounds"
+                            .to_string(),
+                    );
+                    call_graph.add_edge(f_node.clone(), expr_node.clone());
+                    call_graph.add_edge(expr_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
 
                 // f --> f2

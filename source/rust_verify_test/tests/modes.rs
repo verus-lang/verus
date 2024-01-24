@@ -950,9 +950,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(utaal) issue with tracked rewrite, I believe
-    #[ignore] #[test] test_struct_pattern_fields_out_of_order_fail_issue_348 verus_code! {
-        struct Foo {
+    #[test] test_struct_pattern_fields_out_of_order_fail_issue_348 verus_code! {
+        tracked struct Foo {
             ghost a: u64,
             tracked b: u64,
         }
@@ -990,6 +989,24 @@ test_verify_one_file! {
             some_call(b);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_struct_pattern_fields_numeric_out_of_order_fail verus_code! {
+        tracked struct Foo(ghost u64, tracked u64);
+
+        proof fn some_call(tracked y: u64) { }
+
+        proof fn t() {
+            let tracked foo = Foo(5, 6);
+            let tracked Foo { 1: b, 0: a } = foo;
+
+            // Variable 'a' has the mode of field '0' (that is, spec)
+            // some_call requires 'proof'
+            // So this should fail
+            some_call(a);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {
@@ -1429,4 +1446,12 @@ test_verify_one_file! {
             use_g(g);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] old_in_exec_mode_issue922 verus_code! {
+        fn stuff(x: &mut u8) {
+            let y = *old(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `old` in exec-code")
 }

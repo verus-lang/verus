@@ -15,9 +15,11 @@ use crate::def::{
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst_to_air::PostConditionSst;
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
+use crate::sst_util::{subst_exp, subst_stm};
 use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
 use air::ast::{
@@ -298,7 +300,7 @@ fn func_body_to_air(
         // Example: f calls g, g calls f, so shortest cycle f --> g --> f has len 2
         // We use this as the minimum default fuel for f
         let fun_node = crate::recursion::Node::Fun(function.x.name.clone());
-        let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node);
+        let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node).len();
         assert!(cycle_len >= 1);
 
         let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&name)));
@@ -885,19 +887,22 @@ pub fn func_def_to_air(
     for e in req_ens_function.x.require.iter() {
         let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
         if ctx.checking_spec_preconditions() {
+            // TODO: apply trait_typs_substs here?
             let (stms, exp) =
                 crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, &e_with_req_ens_params)?;
             req_stms.extend(stms);
             req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
         } else {
             // skip checks because we call expr_to_pure_exp_check above
-            reqs.push(crate::ast_to_sst::expr_to_exp_skip_checks(
+            let exp = crate::ast_to_sst::expr_to_exp_skip_checks(
                 ctx,
                 diagnostics,
                 &state.fun_ssts,
                 &req_pars,
                 &e_with_req_ens_params,
-            )?);
+            )?;
+            let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
+            reqs.push(exp);
         }
     }
 
@@ -944,25 +949,28 @@ pub fn func_def_to_air(
     }
     let mut ens_spec_precondition_stms: Vec<Stm> = Vec::new();
     let mut enss: Vec<Exp> = Vec::new();
-    let mut enss_inherit: Vec<Exp> = Vec::new();
     if inherit {
         for e in req_ens_function.x.ensure.iter() {
             let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
             if ctx.checking_spec_preconditions() {
-                ens_spec_precondition_stms.extend(crate::ast_to_sst::check_pure_expr(
-                    ctx,
-                    &mut state,
-                    &e_with_req_ens_params,
-                )?);
+                let stms =
+                    crate::ast_to_sst::check_pure_expr(ctx, &mut state, &e_with_req_ens_params)?;
+                let stms: Vec<_> = stms
+                    .iter()
+                    .map(|stm| subst_stm(&trait_typ_substs, &HashMap::new(), &stm))
+                    .collect();
+                ens_spec_precondition_stms.extend(stms);
             } else {
                 // skip checks because we call expr_to_pure_exp_check above
-                enss_inherit.push(crate::ast_to_sst::expr_to_exp_skip_checks(
+                let exp = crate::ast_to_sst::expr_to_exp_skip_checks(
                     ctx,
                     diagnostics,
                     &state.fun_ssts,
                     &ens_pars,
                     &e_with_req_ens_params,
-                )?);
+                )?;
+                let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
+                enss.push(exp);
             }
         }
     }
@@ -981,7 +989,6 @@ pub fn func_def_to_air(
             )?);
         }
     }
-    let enss = Arc::new(enss);
 
     // AST --> SST
     let mut stm = crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
@@ -1042,22 +1049,22 @@ pub fn func_def_to_air(
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
-        &trait_typ_substs,
         &function.x.typ_params,
         &function.x.params,
         &state.local_decls,
         &function.x.attrs.hidden,
         &reqs,
-        &enss,
-        &enss_inherit,
-        &ens_spec_precondition_stms,
+        &PostConditionSst {
+            dest,
+            ens_exps: enss,
+            ens_spec_precondition_stms,
+            kind: PostConditionKind::Ensures,
+        },
         &mask_set,
         &stm,
         function.x.attrs.integer_ring,
         function.x.attrs.bit_vector,
         function.x.attrs.nonlinear,
-        dest,
-        PostConditionKind::Ensures,
         &state.statics.iter().cloned().collect(),
     )?;
 
