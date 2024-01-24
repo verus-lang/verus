@@ -79,7 +79,6 @@ pub open spec fn div_auto(n: int) -> bool
 }
 
 /// Ensures that div_auto is true 
-#[verifier::spinoff_prover]
 pub proof fn lemma_div_auto(n: int)
     requires n > 0
     ensures
@@ -99,36 +98,36 @@ pub proof fn lemma_div_auto(n: int)
          (  (0 <= z < n && #[trigger]((x + y) / n) == x / n + y / n)
              || (n <= z < n + n && #[trigger]((x + y) / n) == x / n + y / n + 1))} by
     {
-    let f = |xx:int, yy:int|
-        {let z = (xx % n) + (yy % n);
-            (  (0 <= z < n && ((xx + yy) / n) == xx / n + yy / n)
-                || (n <= z < 2 * n && ((xx + yy) / n) == xx / n + yy / n + 1))};
+        let f = |xx:int, yy:int|
+            {let z = (xx % n) + (yy % n);
+                (  (0 <= z < n && ((xx + yy) / n) == xx / n + yy / n)
+                    || (n <= z < 2 * n && ((xx + yy) / n) == xx / n + yy / n + 1))};
     
-    assert forall |i: int, j: int| {
-        // changing this from j + n to mod's addition speeds up the verification
-        // otherwise you need higher rlimit
-        // might be a good case for profilers
-        &&& ( j >= 0 && #[trigger]f(i, j) ==> f(i, add1(j, n)))
-        &&& ( i < n  && f(i, j) ==> f(i - n, j))
-        &&& ( j < n  && f(i, j) ==> f(i, j - n))
-        &&& ( i >= 0 && f(i, j) ==> f(i + n, j))
-    } by
-    {
-        assert(((i + n) + j) / n == ((i + j) + n) / n);
-        assert((i + (j + n)) / n == ((i + j) + n) / n);
-        assert(((i - n) + j) / n == ((i + j) - n) / n);
-        assert((i + (j - n)) / n == ((i + j) - n) / n);
-    }
-    assert forall |i: int, j: int| 0 <= i < n && 0 <= j < n ==> #[trigger]f(i, j) by
-    {
-        assert(((i + n) + j) / n == ((i + j) + n) / n);
-        assert((i + (j + n)) / n == ((i + j) + n) / n);
-        assert(((i - n) + j) / n == ((i + j) - n) / n);
-        assert((i + (j - n)) / n == ((i + j) - n) / n);
-    }
+        assert forall |i: int, j: int| {
+            // changing this from j + n to mod's addition speeds up the verification
+            // otherwise you need higher rlimit
+            // might be a good case for profilers
+            &&& ( j >= 0 && #[trigger]f(i, j) ==> f(i, add1(j, n)))
+            &&& ( i < n  && f(i, j) ==> f(i - n, j))
+            &&& ( j < n  && f(i, j) ==> f(i, j - n))
+            &&& ( i >= 0 && f(i, j) ==> f(i + n, j))
+        } by
+        {
+            assert(((i + n) + j) / n == ((i + j) + n) / n);
+            assert((i + (j + n)) / n == ((i + j) + n) / n);
+            assert(((i - n) + j) / n == ((i + j) - n) / n);
+            assert((i + (j - n)) / n == ((i + j) - n) / n);
+        }
+        assert forall |i: int, j: int| 0 <= i < n && 0 <= j < n ==> #[trigger]f(i, j) by
+        {
+            assert(((i + n) + j) / n == ((i + j) + n) / n);
+            assert((i + (j + n)) / n == ((i + j) + n) / n);
+            assert(((i - n) + j) / n == ((i + j) - n) / n);
+            assert((i + (j - n)) / n == ((i + j) - n) / n);
+        }
 
-    lemma_mod_induction_forall2(n, f);
-    assert(f(x, y));
+        lemma_mod_induction_forall2(n, f);
+        assert(f(x, y));
     }
 
     assert forall |x:int, y:int|
@@ -136,32 +135,32 @@ pub proof fn lemma_div_auto(n: int)
         (  (0 <= z < n && #[trigger]((x - y) / n) == x / n - y / n)
             || (-n <= z < 0  && #[trigger]((x - y) / n) == x / n - y / n - 1))} by
     {
-    let f = |xx:int, yy:int|
-        {let z = (xx % n) - (yy % n);
-            (  (0 <= z < n &&((xx - yy) / n) == xx / n - yy / n)
-                || (-n <= z < 0 && (xx - yy) / n == xx / n - yy / n - 1))};
-    
-    assert forall |i: int, j: int| {
-        &&& ( j >= 0 && #[trigger]f(i, j) ==> f(i, j + n))
-        &&& ( i < n  && f(i, j) ==> f(i - n, j))
-        &&& ( j < n  && f(i, j) ==> f(i, j - n))
-        &&& ( i >= 0 && f(i, j) ==> f(i + n, j))
-    } by
-    {
-        assert(((i + n) - j) / n == ((i - j) + n) / n);
-        assert((i - (j - n)) / n == ((i - j) + n) / n);
-        assert(((i - n) - j) / n == ((i - j) - n) / n);
-        assert((i - (j + n)) / n == ((i - j) - n) / n);
-    }
-    assert forall |i: int, j: int| 0 <= i < n && 0 <= j < n ==> #[trigger]f(i, j) by
-    {
-        assert(((i + n) - j) / n == ((i - j) + n) / n);
-        assert((i - (j - n)) / n == ((i - j) + n) / n);
-        assert(((i - n) - j) / n == ((i - j) - n) / n);
-        assert((i - (j + n)) / n == ((i - j) - n) / n);
-    }
-    lemma_mod_induction_forall2(n, f);
-    assert(f(x, y));
+        let f = |xx:int, yy:int|
+            {let z = (xx % n) - (yy % n);
+                (  (0 <= z < n &&((xx - yy) / n) == xx / n - yy / n)
+                    || (-n <= z < 0 && (xx - yy) / n == xx / n - yy / n - 1))};
+
+        assert forall |i: int, j: int| {
+            &&& (j >= 0 && #[trigger]f(i, j) ==> f(i, add1(j, n)))
+            &&& (i < n && f(i, j) ==> f(sub1(i, n), j))
+            &&& (j < n && f(i, j) ==> f(i, sub1(j, n)))
+            &&& (i >= 0 && f(i, j) ==> f(add1(i, n), j))
+        } by
+        {
+            assert(((i + n) - j) / n == ((i - j) + n) / n);
+            assert((i - (j - n)) / n == ((i - j) + n) / n);
+            assert(((i - n) - j) / n == ((i - j) - n) / n);
+            assert((i - (j + n)) / n == ((i - j) - n) / n);
+        }
+        assert forall |i: int, j: int| 0 <= i < n && 0 <= j < n implies #[trigger]f(i, j) by
+        {
+            assert(((i + n) - j) / n == ((i - j) + n) / n);
+            assert((i - (j - n)) / n == ((i - j) + n) / n);
+            assert(((i - n) - j) / n == ((i - j) - n) / n);
+            assert((i - (j + n)) / n == ((i - j) - n) / n);
+        }
+        lemma_mod_induction_forall2(n, f);
+        assert(f(x, y));
     }
 }
 

@@ -17,6 +17,7 @@ use crate::nonlinear_arith::internals::general_internals::{is_le};
 use crate::nonlinear_arith::modulus::*;
 use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
+
 /// Division using `/` is equivalent to division through [`div_recursive`]
 // #[verifier::spinoff_prover]
 pub proof fn lemma_div_is_div_recursive(x: int, d: int)
@@ -422,6 +423,7 @@ pub proof fn lemma_small_mod(x: nat, m: nat)
 /// `y` and `z` is equivalent to dividing `x` by `y`, dividing the quotient by `z`, multiplying
 /// the remainder by `y`, and then adding the product to the remainder of `x` divided by `y`.
 // #[verifier::spinoff_prover]
+#[verifier::broadcast_forall]
 pub proof fn lemma_breakdown(x: int, y: int, z: int)
     requires 
         0 <= x,
@@ -429,7 +431,7 @@ pub proof fn lemma_breakdown(x: int, y: int, z: int)
         0 < z,
     ensures 
         0 < y * z,
-        x % (y * z) == y * ((x / y) % z) + x % y,
+        #[trigger] (x % (y * z)) == y * ((x / y) % z) + x % y,
 {
     lemma_mul_strictly_positive_auto();
     lemma_div_pos_is_pos(x, y);
@@ -478,21 +480,25 @@ pub proof fn lemma_breakdown(x: int, y: int, z: int)
     }
 }
 
-#[verifier::spinoff_prover]
+/* This function doesn't reliably work due to Z3 instability.
+   Fortunately, it's obviated by broadcast_forall. You can now
+   get this functionality by doing reveal(lemma_breakdown);
 pub proof fn lemma_breakdown_auto()
     ensures 
         forall |x: int, y: int, z: int| 
-        #![trigger (y * z), (x % (y * z)), (y * ((x / y) % z) + x % y)] 
+        #![trigger y * z, x % (y * z), y * ((x / y) % z) + x % y] 
         0 <= x && 0 < y && 0 < z ==> 
         0 < y * z && x % (y * z) == y * ((x / y) % z) + x % y,
 {
-    assert forall |x: int, y: int, z: int|(0 <= x && 0 < y && 0 < z) implies 0 < #[trigger](y * z) && #[trigger](x % (y * z)) == #[trigger](y * ((x / y) % z) + x % y) by
+    assert forall |x: int, y: int, z: int| 
+        #![trigger y * z, x % (y * z), y * ((x / y) % z) + x % y] 
+        0 <= x && 0 < y && 0 < z implies
+        0 < y * z && x % (y * z) == y * ((x / y) % z) + x % y by
     {
-        if (0 <= x && 0 < y && 0 < z) {
-            lemma_breakdown(x, y, z);
-        }
+        lemma_breakdown(x, y, z);
     }
 }
+    */
 
 /// The difference between a nonnegative integer `x` and a positive integer `d` must
 /// be strictly less than the quotient of `x` divided by `d` and then multiplied by `d`.
@@ -600,7 +606,7 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
         c * d != 0,
         (x / c) / d == x / (c * d)
 {
-    lemma_mul_strictly_positive_auto();
+    lemma_mul_strictly_positive(c, d);
     let r = x % (c as int * d as int);
     lemma_mod_properties_auto();
 
@@ -823,7 +829,6 @@ pub proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
     }
 }
 
-#[verifier::spinoff_prover]
 pub proof fn lemma_div_multiples_vanish_quotient_auto()
     ensures forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> 0 < x * d && a / d == (x * a) / (x * d)
 {
@@ -838,8 +843,8 @@ pub proof fn lemma_div_multiples_vanish_quotient_auto()
     {
         lemma_div_multiples_vanish_quotient(x, a, d);
     }
-    
-    assert(forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> 0 < x * d && a * 1 == a);
+
+    assert(forall |x: int, a: int, d: int| #![trigger (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> 0 < x * d && a * 1 == a);
     assert(forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> a / d == (x * a) / (x * d));
 
 }
@@ -878,9 +883,27 @@ pub proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
     ensures 
         (d * x + b) / d == x
 {
-    lemma_div_auto(d);
     let f = |u: int| (d * u + b) / d == u;
-    
+  
+    assert(f(0)) by { lemma_div_auto(d); }
+    assert forall |i: int| i >= 0 && #[trigger] f(i) implies #[trigger] f(add1(i, 1)) by {
+        assert(d * (i + 1) + b == d * i + b + d) by {
+            assert(d * (i + 1) == d * i + d) by {
+                lemma_mul_is_distributive_add(d, i, 1);
+                lemma_mul_basics(d);
+            }
+        }
+        crate::nonlinear_arith::internals::div_internals::lemma_div_basics(d);
+    }
+    assert forall |i: int| i <= 0 && #[trigger] f(i) implies #[trigger] f(sub1(i, 1)) by {
+        assert(d * (i - 1) + b == d * i + b - d) by {
+            assert(d * (i - 1) == d * i - d) by {
+                lemma_mul_is_distributive_sub(d, i, 1);
+                lemma_mul_basics(d);
+            }
+        }
+        crate::nonlinear_arith::internals::div_internals::lemma_div_basics(d);
+    }
     lemma_mul_auto();
     lemma_mul_induction(f);
     assert(f(x));
@@ -965,7 +988,7 @@ pub proof fn lemma_div_by_multiple_is_strongly_ordered_auto()
 
 /// If an integer a is less than or equal to the product of two other integers b and c, then the 
 /// quotient of a/b will be less than or equal to c
-#[verifier::spinoff_prover]
+//#[verifier::spinoff_prover]
 pub proof fn lemma_multiply_divide_le(a: int, b: int, c: int)
     requires
         0 < b,
@@ -990,7 +1013,7 @@ proof fn lemma_multiply_divide_le_auto()
 
 /// If an integer a is less than the product of two other integers b and c, then the quotient 
 /// of a/b will be less than c
-#[verifier::spinoff_prover]
+//#[verifier::spinoff_prover]
 pub proof fn lemma_multiply_divide_lt(a: int, b: int, c: int)
     requires 
         0 < b,
@@ -1071,16 +1094,13 @@ pub proof fn lemma_part_bound1(a: int, b: int, c: int)
         { lemma_mul_is_commutative_auto(); lemma_mul_inequality_auto(); };
 }
 
-#[verifier::spinoff_prover]
+//#[verifier::spinoff_prover]
 pub proof fn lemma_part_bound1_auto()
     ensures forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c ==> 0 < b * c && (b * (a / b) % (b * c)) <= b * (c - 1),
 {
-    assert forall |a: int, b: int, c: int| 0 <= a && 0 < b && 0 < c implies 0 < #[trigger](b * c) && #[trigger](b * (a / b) % (b * c)) <= b * (c - 1) by
+    assert forall |a: int, b: int, c: int| 0 <= a && 0 < b && 0 < c implies 0 < (b * c) && #[trigger](b * (a / b) % (b * c)) <= b * (c - 1) by
     {
-        // OBSERVE: the verifiers forgets the antecedent
-        if  0 <= a && 0 < b && 0 < c {
-            lemma_part_bound1(a, b, c);
-        }
+        lemma_part_bound1(a, b, c);
     }
 }
 

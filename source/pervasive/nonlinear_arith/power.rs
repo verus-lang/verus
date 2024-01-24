@@ -7,7 +7,7 @@ use crate::calc_macro::*;
 
 verus! {
 
-    use crate::nonlinear_arith::div::*;
+use crate::nonlinear_arith::div::*;
 use crate::nonlinear_arith::modulus::*;
 use crate::nonlinear_arith::internals::general_internals::{is_le};
 use crate::nonlinear_arith::mul::{lemma_mul_inequality, lemma_mul_nonnegative_auto, lemma_mul_strictly_increases, lemma_mul_left_inequality, lemma_mul_basics_auto, lemma_mul_increases_auto, lemma_mul_strictly_increases_auto, lemma_mul_is_commutative_auto, lemma_mul_is_distributive_auto, lemma_mul_is_associative_auto, lemma_mul_nonnegative};

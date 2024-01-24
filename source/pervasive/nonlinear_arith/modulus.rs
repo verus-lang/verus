@@ -9,8 +9,9 @@ use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 verus! {
 use crate::nonlinear_arith::mul::*;
 use crate::nonlinear_arith::div::*;
-use crate::nonlinear_arith::internals::div_internals::lemma_div_auto;
-use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_auto, mod_recursive};
+use crate::nonlinear_arith::internals::div_internals::{lemma_div_auto};
+use crate::nonlinear_arith::internals::div_internals_nonlinear::{lemma_small_div};
+use crate::nonlinear_arith::internals::mod_internals::{lemma_div_add_denominator, lemma_mod_auto, mod_recursive};
 use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_induction_auto, lemma_mul_auto, lemma_mul_induction};
 
 /// Modulus using `%` is equivalent to the modulus through [`mod_recursive`].
@@ -374,8 +375,72 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
     lemma_mul_auto();
 }
 
+proof fn lemma_fundamental_div_mod_converse_helper_1(u: int, d: int, r: int)
+    requires
+        d != 0,
+        0 <= r < d
+    ensures
+        u == (u * d + r) / d
+    decreases
+        if u >= 0 { u } else { -u }
+{
+    if u < 0 {
+        lemma_fundamental_div_mod_converse_helper_1(u + 1, d, r);
+        lemma_div_add_denominator(d, u * d + r);
+        lemma_mul_is_distributive_add_other_way(d, u + 1, -1);
+        assert (u == (u * d + r) / d);
+    }
+    else if u == 0 {
+        lemma_small_div();
+        assert (u == 0 ==> u * d == 0) by (nonlinear_arith);
+        assert (u == (u * d + r) / d);
+    }
+    else {
+        lemma_fundamental_div_mod_converse_helper_1(u - 1, d, r);
+        lemma_div_add_denominator(d, (u - 1) * d + r);
+        lemma_mul_is_distributive_add_other_way(d, u - 1, 1);
+        assert (u * d + r == (u - 1) * d + r + d);
+        assert (u == (u * d + r) / d);
+    }
+}
+
+proof fn lemma_fundamental_div_mod_converse_helper_2(u: int, d: int, r: int)
+    requires
+        d != 0,
+        0 <= r < d
+    ensures
+        r == (u * d + r) % d
+    decreases
+        if u >= 0 { u } else { -u }
+{
+    if u < 0 {
+        lemma_fundamental_div_mod_converse_helper_2(u + 1, d, r);
+        lemma_mod_add_multiples_vanish(u * d + r, d);
+        lemma_mul_is_distributive_add_other_way(d, u + 1, -1);
+        assert (u * d == (u + 1) * d + (-1) * d);
+        assert (u * d + r == (u + 1) * d + r - d);
+        assert (r == (u * d + r) % d);
+    }
+    else if u == 0 {
+        assert (u == 0 ==> u * d == 0) by (nonlinear_arith);
+        if d > 0 {
+            lemma_small_mod(r as nat, d as nat);
+        }
+        else {
+            lemma_small_mod(r as nat, (-d) as nat);
+        }
+        assert (r == (u * d + r) % d);
+    }
+    else {
+        lemma_fundamental_div_mod_converse_helper_2(u - 1, d, r);
+        lemma_mod_add_multiples_vanish((u - 1) * d + r, d);
+        lemma_mul_is_distributive_add_other_way(d, u - 1, 1);
+        assert (u * d + r == (u - 1) * d + r + d);
+        assert (r == (u * d + r) % d);
+    }
+}
+
 /// Proves the validity of the quotient and remainder
-#[verifier::spinoff_prover]
 pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
     requires 
         d != 0,
@@ -385,10 +450,9 @@ pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
         q == x / d,
         r == x % d
 {
-    lemma_mul_auto();
-    lemma_div_auto(d);
-    lemma_mul_induction_auto(q, |u: int| u == (u * d + r) / d);
-    lemma_mul_induction_auto(q, |u: int| r == (u * d + r) % d);
+    lemma_fundamental_div_mod_converse_helper_1(q, d, r);
+    assert (q == (q * d + r) / d);
+    lemma_fundamental_div_mod_converse_helper_2(q, d, r);
 }
 
 // {:timeLimitMultiplier 5}
@@ -542,6 +606,7 @@ pub proof fn lemma_mod_equivalence_auto()
     {
         lemma_mod_equivalence(x, y, m);
     }
+    assert(forall |x: int, y: int, m: int| #![trigger (x % m), (y % m)] 0 < m ==> (x % m == y % m <==> (x - y) % m == 0));
 }
 
 // // TODO: the following two proofs are styled very differently from dafny
@@ -665,11 +730,13 @@ pub proof fn lemma_mod_mod(x: int, a: int, b: int)
     lemma_fundamental_div_mod_converse(x, a, b * (x / (a * b)) + x % (a * b) / a, (x % (a * b)) % a);
 }
 
-#[verifier::spinoff_prover]
 pub proof fn lemma_mod_mod_auto()
-    ensures forall |x: int, a: int, b: int| #![trigger (a * b), (x % a)](0 < a && 0 < b) ==> ((0 < a * b) && ((x % (a * b)) % a == (x % a))),
+    // It would be preferable to use the multi-trigger #[trigger a * b, x % a] but a Z3 bug precludes it.
+    ensures forall |x: int, a: int, b: int| #![trigger x % (a * b)](0 < a && 0 < b) ==> ((0 < a * b) && ((x % (a * b)) % a == (x % a))),
 {
-    assert forall |x: int, a: int, b: int| 0 < a && 0 < b implies 0 < #[trigger](a * b) && ((x % (a * b)) % a == #[trigger](x % a)) by
+    assert forall |x: int, a: int, b: int| #![trigger x % (a * b)]
+        (0 < a && 0 < b) implies
+        ((0 < a * b) && ((x % (a * b)) % a == (x % a))) by
     {
         lemma_mod_mod(x, a, b);
     }
@@ -765,11 +832,12 @@ pub proof fn lemma_mod_breakdown(x: int, y: int, z: int)
     }
 }
 
-#[verifier::spinoff_prover]
 pub proof fn lemma_mod_breakdown_auto()
-    ensures forall |x: int, y: int, z: int| 0 <= x && 0 < y && 0 < z ==> y * z > 0 && #[trigger](x % (y * z)) == y * ((x / y) % z) + x % y,
+    ensures forall |x: int, y: int, z: int| #![trigger x % (y * z)] 0 <= x && 0 < y && 0 < z ==> y * z > 0 && (x % (y * z)) == y * ((x / y) % z) + x % y,
 {
-    assert forall |x: int, y: int, z: int| 0 <= x && 0 < y && 0 < z implies y * z > 0 && #[trigger](x % (y * z)) == y * ((x / y) % z) + x % y by
+    assert forall |x: int, y: int, z: int| #![trigger x % (y * z)]
+        0 <= x && 0 < y && 0 < z implies
+        y * z > 0 && (x % (y * z)) == y * ((x / y) % z) + x % y by
     {
         lemma_mod_breakdown(x, y, z);
     }
