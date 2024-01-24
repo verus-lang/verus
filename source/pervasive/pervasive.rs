@@ -32,6 +32,55 @@ pub proof fn affirm(b: bool)
 {
 }
 
+// TODO: when default trait methods are supported, most of these should be given defaults
+pub trait ForLoopGhostIterator {
+    type ExecIter;
+    type Item;
+    type Decrease;
+
+    // Connect the ExecIter to the GhostIter
+    // Always enabled
+    // Always true before and after each loop iteration
+    spec fn exec_invariant(&self, exec_iter: &Self::ExecIter) -> bool;
+
+    // Additional optional invariants about the GhostIter
+    // May be disabled with #[verifier::no_auto_loop_invariant]
+    // If enabled, always true before and after each loop iteration
+    // (When the analysis can infer a spec initial value, the analysis places the value in init)
+    spec fn ghost_invariant(&self, init: Option<&Self>) -> bool;
+
+    // True upon loop exit
+    spec fn ghost_ensures(&self) -> bool;
+
+    // Value used by default for decreases clause when no explicit decreases clause is provided
+    // (the user can override this with an explicit decreases clause).
+    // (If there's no appropriate decrease, this can return None,
+    // and the user will have to provide an explicit decreases clause.)
+    spec fn ghost_decrease(&self) -> Option<Self::Decrease>;
+
+    // If there will be Some next value, and we can make a useful guess as to what the next value
+    // will be, return Some of it.
+    // Otherwise, return None.
+    // TODO: in the long term, we could have VIR insert an assertion (or warning)
+    // that ghost_peek_next returns non-null if it is used in the invariants.
+    // (this will take a little bit of engineering since the syntax macro blindly inserts
+    // let bindings using ghost_peek_next, even if they aren't needed, and we only learn
+    // what is actually needed later in VIR.)
+    spec fn ghost_peek_next(&self) -> Option<Self::Item>;
+
+    // At the end of the for loop, advance to the next position.
+    // Future TODO: this may be better as a proof function
+    spec fn ghost_advance(&self, exec_iter: &Self::ExecIter) -> Self where Self: Sized;
+}
+
+pub trait ForLoopGhostIteratorNew {
+    type GhostIter;
+
+    // Create a new ghost iterator from an exec iterator
+    // Future TODO: this may be better as a proof function
+    spec fn ghost_iter(&self) -> Self::GhostIter;
+}
+
 #[cfg(verus_keep_ghost)]
 pub trait FnWithRequiresEnsures<Args, Output> : Sized {
     spec fn requires(self, args: Args) -> bool;

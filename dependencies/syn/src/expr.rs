@@ -462,7 +462,10 @@ ast_struct! {
         pub for_token: Token![for],
         pub pat: Pat,
         pub in_token: Token![in],
+        pub expr_name: Option<Box<(Ident, Token![:])>>,
         pub expr: Box<Expr>,
+        pub invariant: Option<Invariant>,
+        pub decreases: Option<Decreases>,
         pub body: Block,
     }
 }
@@ -2435,7 +2438,14 @@ pub(crate) mod parsing {
             let pat = pat::parsing::multi_pat_with_leading_vert(input)?;
 
             let in_token: Token![in] = input.parse()?;
+            let expr_name = if input.peek2(Token![:]) && input.peek(Ident) {
+                Some(Box::new((input.parse()?, input.parse()?)))
+            } else {
+                None
+            };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
+            let invariant = input.parse()?;
+            let decreases = input.parse()?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2448,7 +2458,10 @@ pub(crate) mod parsing {
                 for_token,
                 pat,
                 in_token,
+                expr_name,
                 expr: Box::new(expr),
+                invariant,
+                decreases,
                 body: Block { brace_token, stmts },
             })
         }
@@ -3444,7 +3457,14 @@ pub(crate) mod printing {
             self.for_token.to_tokens(tokens);
             self.pat.to_tokens(tokens);
             self.in_token.to_tokens(tokens);
+            if let Some(expr_name) = &self.expr_name {
+                let (name, colon) = &**expr_name;
+                name.to_tokens(tokens);
+                colon.to_tokens(tokens);
+            }
             wrap_bare_struct(tokens, &self.expr);
+            self.invariant.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);
                 tokens.append_all(&self.body.stmts);

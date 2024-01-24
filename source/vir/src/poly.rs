@@ -398,6 +398,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
+                UnaryOp::InferSpecForLoopIter => {
+                    // e1 will be the argument to spec Option::Some(...)
+                    let e1 = coerce_expr_to_poly(ctx, &e1);
+                    mk_expr(ExprX::Unary(*op, e1))
+                }
                 UnaryOp::HeightTrigger => panic!("direct access to 'height' is not allowed"),
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
@@ -661,7 +666,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr_typ(&t, ExprX::If(e0, e1.clone(), Some(e2)))
         }
         ExprX::Match(..) => panic!("Match should already be removed"),
-        ExprX::Loop { label, cond, body, invs } => {
+        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
             let cond = cond.as_ref().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
             let body = poly_expr(ctx, state, body);
             let invs = invs.iter().map(|inv| crate::ast::LoopInvariant {
@@ -669,7 +674,13 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 ..inv.clone()
             });
             let invs = Arc::new(invs.collect());
-            mk_expr(ExprX::Loop { label: label.clone(), cond, body, invs })
+            mk_expr(ExprX::Loop {
+                is_for_loop: *is_for_loop,
+                label: label.clone(),
+                cond,
+                body,
+                invs,
+            })
         }
         ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             let inv = coerce_expr_to_poly(ctx, &poly_expr(ctx, state, inv));

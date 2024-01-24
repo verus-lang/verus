@@ -11,8 +11,11 @@ pub trait StepSpec where Self: Sized {
     // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
     spec fn spec_is_lt(self, other: Self) -> bool;
     spec fn spec_steps_between(self, end: Self) -> Option<usize>;
+    spec fn spec_steps_between_int(self, end: Self) -> int;
     spec fn spec_forward_checked(self, count: usize) -> Option<Self>;
+    spec fn spec_forward_checked_int(self, count: int) -> Option<Self>;
     spec fn spec_backward_checked(self, count: usize) -> Option<Self>;
+    spec fn spec_backward_checked_int(self, count: int) -> Option<Self>;
 }
 
 pub spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
@@ -22,6 +25,75 @@ pub fn ex_range_next<A: core::iter::Step>(range: &mut Range<A>) -> (r: Option<A>
     ensures (*range, r) == spec_range_next(*old(range))
 {
     range.next()
+}
+
+pub struct RangeGhostIterator<A> {
+    pub start: A,
+    pub cur: A,
+    pub end: A,
+}
+
+impl<A: StepSpec> crate::pervasive::ForLoopGhostIteratorNew for Range<A> {
+    type GhostIter = RangeGhostIterator<A>;
+
+    open spec fn ghost_iter(&self) -> RangeGhostIterator<A> {
+        RangeGhostIterator {
+            start: self.start,
+            cur: self.start,
+            end: self.end,
+        }
+    }
+}
+
+impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for RangeGhostIterator<A> {
+    type ExecIter = Range<A>;
+    type Item = A;
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &Range<A>) -> bool {
+        &&& self.cur == exec_iter.start
+        &&& self.end == exec_iter.end
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        &&& self.start.spec_is_lt(self.cur) || self.start == self.cur
+        &&& self.cur.spec_is_lt(self.end) || self.cur == self.end
+        // TODO (not important): use new "matches ==>" syntax here
+        &&& if let Some(init) = init {
+                &&& init.start == init.cur
+                &&& init.start == self.start
+                &&& init.end == self.end
+            } else {
+                true
+            }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        !self.cur.spec_is_lt(self.end)
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.cur.spec_steps_between_int(self.end))
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<A> {
+        Some(self.cur)
+    }
+
+    open spec fn ghost_advance(&self, _exec_iter: &Range<A>) -> RangeGhostIterator<A> {
+        RangeGhostIterator { cur: self.cur.spec_forward_checked(1).unwrap(), ..*self }
+    }
+}
+
+impl<A: StepSpec + core::iter::Step> crate::view::View for RangeGhostIterator<A> {
+    type V = Seq<A>;
+    // generate seq![start, start + 1, start + 2, ..., cur - 1]
+    open spec fn view(&self) -> Seq<A> {
+        Seq::new(
+            self.start.spec_steps_between_int(self.cur) as nat,
+            |i: int| self.start.spec_forward_checked_int(i).unwrap(),
+        )
+    }
 }
 
 } // verus!
@@ -41,7 +113,13 @@ macro_rules! step_specs {
                     None
                 }
             }
+            open spec fn spec_steps_between_int(self, end: Self) -> int {
+                end - self
+            }
             open spec fn spec_forward_checked(self, count: usize) -> Option<Self> {
+                self.spec_forward_checked_int(count as int)
+            }
+            open spec fn spec_forward_checked_int(self, count: int) -> Option<Self> {
                 if self + count <= $t::MAX {
                     Some((self + count) as $t)
                 } else {
@@ -49,6 +127,9 @@ macro_rules! step_specs {
                 }
             }
             open spec fn spec_backward_checked(self, count: usize) -> Option<Self> {
+                self.spec_backward_checked_int(count as int)
+            }
+            open spec fn spec_backward_checked_int(self, count: int) -> Option<Self> {
                 if self - count >= $t::MIN {
                     Some((self - count) as $t)
                 } else {

@@ -574,7 +574,10 @@ impl Clone for ExprForLoop {
             for_token: self.for_token.clone(),
             pat: self.pat.clone(),
             in_token: self.in_token.clone(),
+            expr_name: self.expr_name.clone(),
             expr: self.expr.clone(),
+            invariant: self.invariant.clone(),
+            decreases: self.decreases.clone(),
             body: self.body.clone(),
         }
     }

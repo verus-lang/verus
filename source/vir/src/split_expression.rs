@@ -672,7 +672,7 @@ fn visit_split_stm(
             state.pop_fuel_scope();
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
-        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm = visit_split_stm(ctx, state, diagnostics, cond_stm)?;
                 Some((cond_stm, cond_exp.clone()))
@@ -685,6 +685,7 @@ fn visit_split_stm(
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
+                    is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond,
                     body,

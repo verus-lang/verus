@@ -312,9 +312,10 @@ impl ExpX {
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(99)), 90),
                 UnaryOp::StrIsAscii => (format!("{}.is_ascii()", exp.x.to_string_prec(99)), 90),
                 UnaryOp::CharToInt => (format!("{} as char", exp.x.to_string_prec(99)), 90),
-                UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
-                    ("".to_string(), 0)
-                }
+                UnaryOp::Trigger(..)
+                | UnaryOp::CoerceMode { .. }
+                | UnaryOp::MustBeFinalized
+                | UnaryOp::InferSpecForLoopIter => ("".to_string(), 0),
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;

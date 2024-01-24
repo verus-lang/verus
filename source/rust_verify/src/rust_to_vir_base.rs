@@ -620,6 +620,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     Ok(t)
 }
 
+/*
 pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -630,6 +631,7 @@ pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
 ) -> Result<Typ, VirErr> {
     Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, &ty, true, allow_mut_ref)?.0)
 }
+*/
 
 // TODO: rename this back to mid_ty_to_vir
 pub(crate) fn mid_ty_to_vir<'tcx>(

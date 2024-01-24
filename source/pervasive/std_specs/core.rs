@@ -19,7 +19,12 @@ pub struct ExOption<V>(core::option::Option<V>);
 #[verifier::reject_recursive_types_in_ground_variants(E)]
 pub struct ExResult<T, E>(core::result::Result<T, E>);
 
+pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
+    i
+}
+
 #[verifier::external_fn_specification]
+#[verifier::when_used_as_spec(iter_into_iter_spec)]
 pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
     ensures r == i
 {

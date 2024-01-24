@@ -568,7 +568,9 @@ impl Eq for ExprForLoop {}
 impl PartialEq for ExprForLoop {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.label == other.label && self.pat == other.pat
-            && self.expr == other.expr && self.body == other.body
+            && self.expr_name == other.expr_name && self.expr == other.expr
+            && self.invariant == other.invariant && self.decreases == other.decreases
+            && self.body == other.body
     }
 }
 #[cfg(feature = "full")]

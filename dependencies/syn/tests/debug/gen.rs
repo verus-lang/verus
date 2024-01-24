@@ -948,7 +948,55 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("label", Print::ref_cast(val));
                 }
                 formatter.field("pat", Lite(&_val.pat));
+                if let Some(val) = &_val.expr_name {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<(proc_macro2::Ident, syn::token::Colon)>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("expr_name", Print::ref_cast(val));
+                }
                 formatter.field("expr", Lite(&_val.expr));
+                if let Some(val) = &_val.invariant {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Invariant);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("invariant", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.decreases {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Decreases);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("decreases", Print::ref_cast(val));
+                }
                 formatter.field("body", Lite(&_val.body));
                 formatter.finish()
             }
@@ -1890,7 +1938,55 @@ impl Debug for Lite<syn::ExprForLoop> {
             formatter.field("label", Print::ref_cast(val));
         }
         formatter.field("pat", Lite(&_val.pat));
+        if let Some(val) = &_val.expr_name {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<(proc_macro2::Ident, syn::token::Colon)>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("expr_name", Print::ref_cast(val));
+        }
         formatter.field("expr", Lite(&_val.expr));
+        if let Some(val) = &_val.invariant {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Invariant);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariant", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.decreases {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Decreases);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("decreases", Print::ref_cast(val));
+        }
         formatter.field("body", Lite(&_val.body));
         formatter.finish()
     }

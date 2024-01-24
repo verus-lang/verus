@@ -130,6 +130,9 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::CharToInt => panic!(
                     "internal error: matching for bit vector ops on this match should be impossible"
                 ),
+                UnaryOp::InferSpecForLoopIter { .. } => {
+                    panic!("internal error: unexpected Option type (from InferSpecForLoopIter)")
+                }
             }
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {

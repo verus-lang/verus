@@ -1,8 +1,6 @@
 use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
 use crate::erase::{ErasureHints, ResolvedCall};
-use crate::rust_to_vir_base::{
-    def_id_to_vir_path, local_to_var, mid_ty_const_to_vir, mid_ty_to_vir_datatype,
-};
+use crate::rust_to_vir_base::{def_id_to_vir_path, local_to_var, mid_ty_const_to_vir};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
@@ -239,9 +237,9 @@ impl State {
         }
     }
 
-    fn reach_fun(&mut self, self_path: Option<Path>, id: DefId) {
-        if id.as_local().is_none() && !self.reached.contains(&(self_path.clone(), id)) {
-            self.reached.insert((self_path.clone(), id));
+    fn reach_fun(&mut self, id: DefId) {
+        if id.as_local().is_none() && !self.reached.contains(&(None, id)) {
+            self.reached.insert((None, id));
             self.imported_fun_worklist.push(id);
         }
     }
@@ -716,7 +714,6 @@ fn erase_call<'tcx>(
     state: &mut State,
     expect_spec: bool,
     expr: &Expr<'tcx>,
-    self_path: Option<Path>,
     expr_fun: Option<&Expr<'tcx>>,
     fn_def_id: Option<DefId>,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
@@ -848,7 +845,7 @@ fn erase_call<'tcx>(
                 }
             }
 
-            state.reach_fun(self_path, fn_def_id);
+            state.reach_fun(fn_def_id);
 
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
@@ -1016,26 +1013,6 @@ fn erase_inv_block<'tcx>(
     Box::new((span, ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, mid_body)))
 }
 
-fn call_self_path(ctxt: &Context, qpath: &rustc_hir::QPath) -> Option<vir::ast::Path> {
-    match qpath {
-        rustc_hir::QPath::Resolved(_, _) => None,
-        rustc_hir::QPath::LangItem(_, _, _) => None,
-        rustc_hir::QPath::TypeRelative(ty, _) => match &ty.kind {
-            rustc_hir::TyKind::Path(qpath) => match ctxt.types().qpath_res(&qpath, ty.hir_id) {
-                rustc_hir::def::Res::Def(_, def_id) => {
-                    crate::rust_to_vir_base::def_id_to_vir_path_option(
-                        ctxt.tcx,
-                        &ctxt.verus_items,
-                        def_id,
-                    )
-                }
-                _ => None,
-            },
-            _ => None,
-        },
-    }
-}
-
 fn erase_expr<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
@@ -1154,23 +1131,17 @@ fn erase_expr<'tcx>(
                 }
                 _ => false,
             };
-            let (self_path, fn_def_id) = if let ExprKind::Path(qpath) = &e0.kind {
-                let self_path = call_self_path(ctxt, qpath);
+            let fn_def_id = if let ExprKind::Path(qpath) = &e0.kind {
                 let def = ctxt.types().qpath_res(&qpath, e0.hir_id);
-                if let Res::Def(_, fn_def_id) = def {
-                    (self_path, Some(fn_def_id))
-                } else {
-                    (self_path, None)
-                }
+                if let Res::Def(_, fn_def_id) = def { Some(fn_def_id) } else { None }
             } else {
-                (None, None)
+                None
             };
             erase_call(
                 ctxt,
                 state,
                 expect_spec,
                 expr,
-                self_path,
                 Some(e0),
                 fn_def_id,
                 ctxt.types().node_args(e0.hir_id),
@@ -1183,25 +1154,11 @@ fn erase_expr<'tcx>(
         }
         ExprKind::MethodCall(segment, receiver, args, _call_span) => {
             let fn_def_id = ctxt.types().type_dependent_def_id(expr.hir_id).expect("method id");
-            let rcvr_typ = mid_ty_to_vir_datatype(
-                ctxt.tcx,
-                &ctxt.verus_items,
-                state.enclosing_fun_id.expect("enclosing_fun_id"),
-                receiver.span,
-                ctxt.types().node_type(receiver.hir_id),
-                true,
-            )
-            .expect("type");
-            let self_path = match &*vir::ast_util::undecorate_typ(&rcvr_typ) {
-                vir::ast::TypX::Datatype(path, _, _) => Some(path.clone()),
-                _ => None,
-            };
             erase_call(
                 ctxt,
                 state,
                 expect_spec,
                 expr,
-                self_path,
                 None,
                 Some(fn_def_id),
                 ctxt.types().node_args(expr.hir_id),
