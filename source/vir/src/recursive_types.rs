@@ -32,7 +32,7 @@ fn check_well_founded(
         typ_param_accept.insert(x.clone(), *accept_rec);
     }
     'variants: for variant in datatype.x.variants.iter() {
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let (typ, _, _) = &field.a;
             if !check_well_founded_typ(datatypes, datatypes_well_founded, &typ_param_accept, typ) {
                 // inductive case
@@ -359,7 +359,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
             tparams,
         };
         for variant in datatype.x.variants.iter() {
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 // Check that field type only uses SCC siblings in positive positions
                 let (typ, _, _) = &field.a;
                 check_positive_uses(&global, &local, Some(true), typ)?;

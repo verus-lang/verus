@@ -4,10 +4,10 @@ use crate::ast::Quant;
 use crate::ast::Typs;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
-    Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field, FieldOpr,
-    Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
-    PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, VariantCheck,
-    VirErr, Visibility,
+    Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
+    FieldOpr, Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp,
+    Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr,
+    Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
@@ -335,7 +335,7 @@ fn simplify_one_expr(
             }
             let (typ_positives, variants) = &ctx.datatypes[path];
             assert_eq!(variants.len(), 1);
-            let fields = &variants[0].a;
+            let fields = &variants[0].fields;
             let typ_args = typ_args_for_datatype_typ(&expr.typ);
             // replace ..update
             // with f1: update.f1, f2: update.f2, ...
@@ -942,7 +942,11 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             // Note: the mode is irrelevant at this stage, so we arbitrarily use Mode::Exec
             fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec, vis)));
         }
-        let variant = ident_binder(&prefix_tuple_variant(arity), &Arc::new(fields));
+        let variant = Variant {
+            name: prefix_tuple_variant(arity),
+            fields: Arc::new(fields),
+            ctor_style: CtorPrintStyle::Tuple,
+        };
         let variants = Arc::new(vec![variant]);
         let datatypex = DatatypeX {
             path,

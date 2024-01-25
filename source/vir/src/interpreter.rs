@@ -10,6 +10,7 @@ use crate::ast::{
     InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
+use crate::context::GlobalCtx;
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
@@ -155,6 +156,7 @@ struct Ctx<'a> {
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
     arch: ArchWordBits,
+    global: &'a GlobalCtx,
 }
 
 /// Interpreter-internal expressions
@@ -840,7 +842,10 @@ fn eval_seq(
                 },
             }
         }
-        _ => panic!("Expected sequence expression to be a Call.  Got {:} instead.", exp),
+        _ => panic!(
+            "Expected sequence expression to be a Call.  Got {:} instead.",
+            exp.x.to_user_string(&ctx.global)
+        ),
     }
 }
 
@@ -855,7 +860,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.iterations > ctx.max_iterations {
         return Err(error(&exp.span, "assert_by_compute timed out"));
     }
-    state.log(format!("{}Evaluating {:}", "\t".repeat(state.depth), exp));
+    state.log(format!(
+        "{}Evaluating {:}",
+        "\t".repeat(state.depth),
+        exp.x.to_user_string(&ctx.global)
+    ));
     let ok = Ok(exp.clone());
     if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
@@ -1490,7 +1499,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     };
     let res = r?;
     state.depth -= 1;
-    state.log(format!("{}=> {:}", "\t".repeat(state.depth), &res));
+    state.log(format!("{}=> {:}", "\t".repeat(state.depth), res.x.to_user_string(&ctx.global)));
     if state.enable_simplified_cache {
         state.simplified.insert(&res);
     }
@@ -1612,6 +1621,7 @@ fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Simplificati
 
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
+    global: &GlobalCtx,
     exp: Exp,
     fun_ssts: &HashMap<Fun, SstInfo>,
     rlimit: f32,
@@ -1642,7 +1652,7 @@ fn eval_expr_launch(
     };
     // Don't run for too long
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch };
+    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch, global };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
@@ -1660,7 +1670,10 @@ fn eval_expr_launch(
             let small_exp = cleanup_exp(&small_exp)?;
             return Err(error(
                 &exp.span,
-                format!("expression simplifies to `{}`, which evaluates to false", small_exp),
+                format!(
+                    "expression simplifies to `{}`, which evaluates to false",
+                    small_exp.x.to_user_string(&ctx.global)
+                ),
             ));
         }
         SimplificationResult::Complex(res) => match mode {
@@ -1668,8 +1681,10 @@ fn eval_expr_launch(
                 let res = cleanup_exp(&res)?;
                 // Send partial result to Z3
                 if exp.definitely_eq(&res) {
-                    let msg =
-                        format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
+                    let msg = format!(
+                        "Failed to simplify expression <<{}>> before sending to Z3",
+                        exp.x.to_user_string(&ctx.global)
+                    );
                     state.msgs.push(warning(&exp.span, msg));
                 }
                 Ok((res, state.msgs))
@@ -1681,7 +1696,7 @@ fn eval_expr_launch(
                     &exp.span,
                     &format!(
                         "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
-                        res
+                        res.x.to_user_string(&ctx.global)
                     )
                     .to_string(),
                 ))
@@ -1692,6 +1707,7 @@ fn eval_expr_launch(
 
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
+    global: &GlobalCtx,
     exp: &Exp,
     diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
@@ -1700,6 +1716,9 @@ pub fn eval_expr(
     mode: ComputeMode,
     log: &mut Option<File>,
 ) -> Result<Exp, VirErr> {
+    // Make a new global so we can move it into the new thread
+    let global = global.from_self_with_log(global.interpreter_log.clone());
+
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
     let mut taken_log = log.take();
@@ -1709,7 +1728,15 @@ pub fn eval_expr(
             let exp = exp.clone();
             builder
                 .spawn(move || {
-                    let res = eval_expr_launch(exp, &fun_ssts, rlimit, arch, mode, &mut taken_log);
+                    let res = eval_expr_launch(
+                        &global,
+                        exp,
+                        &fun_ssts,
+                        rlimit,
+                        arch,
+                        mode,
+                        &mut taken_log,
+                    );
                     (fun_ssts, (taken_log, res))
                 })
                 .unwrap()

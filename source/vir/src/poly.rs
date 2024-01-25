@@ -79,7 +79,7 @@ use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp,
     Param, ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr,
+    UnaryOpr, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -368,7 +368,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::Ctor(path, variant, binders, update) => {
             assert!(update.is_none()); // removed by ast_simplify
-            let fields = &ctx.datatype_map[path].x.get_variant(variant).a;
+            let fields = &ctx.datatype_map[path].x.get_variant(variant).fields;
             let mut bs: Vec<Binder<Expr>> = Vec::new();
             for binder in binders.iter() {
                 let field = crate::ast_util::get_field(fields, &binder.name);
@@ -434,7 +434,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     get_variant: _,
                     check: _,
                 }) => {
-                    let fields = &ctx.datatype_map[datatype].x.get_variant(variant).a;
+                    let fields = &ctx.datatype_map[datatype].x.get_variant(variant).fields;
                     let field = crate::ast_util::get_field(fields, field);
 
                     // Force an expression of the form unbox(...) to match triggers with unbox:
@@ -945,12 +945,11 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 }
 
 fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
-    let variants = vec_map(&*datatype.x.variants, |v| {
-        v.map_a(|fields| {
-            Arc::new(vec_map(fields, |f| {
-                f.map_a(|(t, m, v)| (coerce_typ_to_native(ctx, t), *m, v.clone()))
-            }))
-        })
+    let variants = vec_map(&*datatype.x.variants, |v| Variant {
+        fields: Arc::new(vec_map(&v.fields, |f| {
+            f.map_a(|(t, m, v)| (coerce_typ_to_native(ctx, t), *m, v.clone()))
+        })),
+        ..v.clone()
     });
     let variants = Arc::new(variants);
     let datatypex = DatatypeX { variants, ..datatype.x.clone() };

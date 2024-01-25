@@ -908,7 +908,7 @@ fn erase_call<'tcx>(
                 let variant = datatype.x.get_variant(variant_name);
                 let typ_args = mk_typ_args(ctxt, state, node_substs);
                 let mut args: Vec<Exp> = Vec::new();
-                for (field, arg) in variant.a.iter().zip(args_slice.iter()) {
+                for (field, arg) in variant.fields.iter().zip(args_slice.iter()) {
                     let (_, field_mode, _) = field.a;
                     let e = if field_mode == Mode::Spec {
                         phantom_data_expr(ctxt, state, arg)
@@ -1188,7 +1188,7 @@ fn erase_expr<'tcx>(
                 let mut fs: Vec<(Id, Exp)> = Vec::new();
                 for f in fields.iter() {
                     let vir_field_name = field_ident_from_rust(f.ident.as_str());
-                    let (_, field_mode, _) = get_field(&variant.a, &vir_field_name).a;
+                    let (_, field_mode, _) = get_field(&variant.fields, &vir_field_name).a;
                     let name = state.field(f.ident.to_string());
                     let e = if field_mode == Mode::Spec {
                         phantom_data_expr(ctxt, state, &f.expr)

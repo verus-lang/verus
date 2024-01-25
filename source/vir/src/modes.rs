@@ -377,7 +377,7 @@ fn add_pattern_rec(
             let variant =
                 datatype.x.variants.iter().find(|v| v.name == *variant).expect("missing variant");
             for binder in patterns.iter() {
-                let field = get_field(&variant.a, &binder.name);
+                let field = get_field(&variant.fields, &binder.name);
                 let (_, field_mode, _) = field.a;
                 add_pattern_rec(
                     ctxt,
@@ -501,7 +501,7 @@ fn get_var_loc_mode(
             let datatype = &ctxt.datatypes[datatype].x;
             assert!(datatype.variants.len() == 1);
             let (_, field_mode, _) = &datatype.variants[0]
-                .a
+                .fields
                 .iter()
                 .find(|x| x.name == *field)
                 .expect("datatype field valid")
@@ -762,7 +762,7 @@ fn check_expr_handle_mut_arg(
                 mode = mode_join(mode, check_expr(ctxt, record, typing, outer_mode, update)?);
             }
             for arg in binders.iter() {
-                let (_, field_mode, _) = get_field(&variant.a, &arg.name).a;
+                let (_, field_mode, _) = get_field(&variant.fields, &arg.name).a;
                 let mode_arg =
                     check_expr(ctxt, record, typing, mode_join(outer_mode, field_mode), &arg.a)?;
                 if !mode_le(mode_arg, field_mode) {
@@ -844,7 +844,7 @@ fn check_expr_handle_mut_arg(
             let (e1_mode_read, e1_mode_write) =
                 check_expr_handle_mut_arg(ctxt, record, typing, outer_mode, e1)?;
             let datatype = &ctxt.datatypes[datatype];
-            let field = get_field(&datatype.x.get_variant(variant).a, field);
+            let field = get_field(&datatype.x.get_variant(variant).fields, field);
             let field_mode = field.a.1;
             let mode_read =
                 if *get_variant { Mode::Spec } else { mode_join(e1_mode_read, field_mode) };
