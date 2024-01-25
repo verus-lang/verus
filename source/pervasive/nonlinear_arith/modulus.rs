@@ -599,14 +599,15 @@ pub proof fn lemma_mod_equivalence(x: int, y: int, m: int)
 }
 
 // #[verifier::spinoff_prover]
+// The Dafny standard library uses the triggers `x % m, y % m`. But this can lead to a trigger loop,
+// so we don't do that here.
 pub proof fn lemma_mod_equivalence_auto()
-    ensures forall |x: int, y: int, m: int| #![trigger (x % m), (y % m)] 0 < m ==> (x % m == y % m <==> (x - y) % m == 0),
+    ensures forall |x: int, y: int, m: int| #![trigger (x - y) % m] 0 < m ==> (x % m == y % m <==> (x - y) % m == 0),
 {
-    assert forall |x: int, y: int, m: int| 0 < m implies (#[trigger](x % m) == #[trigger](y % m) <==> (x - y) % m == 0) by
+    assert forall |x: int, y: int, m: int| #![trigger (x - y) % m] 0 < m implies ((x % m) == (y % m) <==> (x - y) % m == 0) by
     {
         lemma_mod_equivalence(x, y, m);
     }
-    assert(forall |x: int, y: int, m: int| #![trigger (x % m), (y % m)] 0 < m ==> (x % m == y % m <==> (x - y) % m == 0));
 }
 
 // // TODO: the following two proofs are styled very differently from dafny
@@ -731,12 +732,16 @@ pub proof fn lemma_mod_mod(x: int, a: int, b: int)
 }
 
 pub proof fn lemma_mod_mod_auto()
-    // It would be preferable to use the multi-trigger #[trigger a * b, x % a] but a Z3 bug precludes it.
-    ensures forall |x: int, a: int, b: int| #![trigger x % (a * b)](0 < a && 0 < b) ==> ((0 < a * b) && ((x % (a * b)) % a == (x % a))),
+    ensures
+        forall |a: int, b: int| #![trigger a * b] 0 < a && 0 < b ==> 0 < a * b,
+        forall |x: int, a: int, b: int| #![trigger (x % (a * b)) % a, x % a] 0 < a && 0 < b ==> (x % (a * b)) % a == x % a,
 {
+    assert forall |a: int, b: int| #![trigger a * b] 0 < a && 0 < b implies 0 < a * b by {
+        lemma_mul_strictly_positive_auto();
+    }
     assert forall |x: int, a: int, b: int| #![trigger x % (a * b)]
-        (0 < a && 0 < b) implies
-        ((0 < a * b) && ((x % (a * b)) % a == (x % a))) by
+        0 < a && 0 < b implies
+        (x % (a * b)) % a == x % a by
     {
         lemma_mod_mod(x, a, b);
     }
@@ -833,6 +838,25 @@ pub proof fn lemma_mod_breakdown(x: int, y: int, z: int)
 }
 
 pub proof fn lemma_mod_breakdown_auto()
+    ensures
+        forall |y: int, z: int| #![trigger y * z] 0 < y && 0 < z ==> y * z > 0,
+        forall |x: int, y: int, z: int| #![trigger x % (y * z)]
+            0 <= x && 0 < y && 0 < z ==> x % (y * z) == y * ((x / y) % z) + x % y,
+{
+    assert forall |y: int, z: int| #![trigger y * z] 0 < y && 0 < z implies y * z > 0 by
+    {
+        lemma_mul_strictly_positive_auto();
+    }
+    assert forall |x: int, y: int, z: int| #![trigger x % (y * z)]
+        0 <= x && 0 < y && 0 < z implies
+        x % (y * z) == y * ((x / y) % z) + x % y by
+    {
+        lemma_mod_breakdown(x, y, z);
+    }
+}
+
+    /*
+pub proof fn lemma_mod_breakdown_auto()
     ensures forall |x: int, y: int, z: int| #![trigger x % (y * z)] 0 <= x && 0 < y && 0 < z ==> y * z > 0 && (x % (y * z)) == y * ((x / y) % z) + x % y,
 {
     assert forall |x: int, y: int, z: int| #![trigger x % (y * z)]
@@ -841,7 +865,7 @@ pub proof fn lemma_mod_breakdown_auto()
     {
         lemma_mod_breakdown(x, y, z);
     }
-    assert(forall |x: int, y: int, z: int| #![trigger x % (y * z)] 0 <= x && 0 < y && 0 < z ==> y * z > 0 && (x % (y * z)) == y * ((x / y) % z) + x % y);
 }
+    */
 
 }

@@ -1105,13 +1105,19 @@ pub proof fn lemma_part_bound1(a: int, b: int, c: int)
 
 #[verifier::spinoff_prover]
 pub proof fn lemma_part_bound1_auto()
-    ensures forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c ==> 0 < b * c && (b * (a / b) % (b * c)) <= b * (c - 1),
+    ensures
+        forall |b: int, c: int| #![trigger b * c] 0 < b && 0 < c ==> 0 < b * c,
+        forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c ==> b * (a / b) % (b * c) <= b * (c - 1),
 {
-    assert forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c implies 0 < (b * c) && (b * (a / b) % (b * c)) <= b * (c - 1) by
+    assert forall |b: int, c: int| #![trigger b * c] 0 < b && 0 < c implies 0 < b * c by {
+        lemma_mul_strictly_positive_auto();
+    }
+    assert forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))]
+        0 <= a && 0 < b && 0 < c implies
+        b * (a / b) % (b * c) <= b * (c - 1) by
     {
         lemma_part_bound1(a, b, c);
     }
-    assert(forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c ==> 0 < b * c && (b * (a / b) % (b * c)) <= b * (c - 1));
 }
 
 }
