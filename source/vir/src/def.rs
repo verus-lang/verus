@@ -55,7 +55,6 @@ const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
-const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
@@ -347,10 +346,6 @@ pub fn prefix_tuple_param(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_PARAM, i))
 }
 
-pub fn prefix_tuple_field(i: usize) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_TUPLE_FIELD, i))
-}
-
 pub fn prefix_lambda_type(i: usize) -> Path {
     let ident = Arc::new(format!("{}{}", PREFIX_LAMBDA_TYPE, i));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
@@ -471,11 +466,11 @@ pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> I
 }
 
 pub fn positional_field_ident(idx: usize) -> Ident {
-    Arc::new(format!("_{}", idx))
+    Arc::new(format!("{}", idx))
 }
 
 pub fn field_ident_from_rust(s: &str) -> Ident {
-    Arc::new(format!("_{}", s))
+    Arc::new(format!("{}", s))
 }
 
 pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {

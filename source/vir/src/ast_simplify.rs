@@ -15,7 +15,7 @@ use crate::ast_util::{conjoin, disjoin, if_then_else, typ_args_for_datatype_typ,
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
 use crate::def::{
-    prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
+    positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
 };
 use crate::messages::error;
 use crate::messages::Span;
@@ -163,7 +163,7 @@ fn pattern_to_exprs_rec(
                 let field_op = UnaryOpr::Field(FieldOpr {
                     datatype: path.clone(),
                     variant: variant.clone(),
-                    field: prefix_tuple_field(i),
+                    field: positional_field_ident(i),
                     get_variant: false,
                     check: VariantCheck::None,
                 });
@@ -308,7 +308,7 @@ fn simplify_one_expr(
             let variant = prefix_tuple_variant(arity);
             let mut binders: Vec<Binder<Expr>> = Vec::new();
             for (i, arg) in args.iter().enumerate() {
-                let field = prefix_tuple_field(i);
+                let field = positional_field_ident(i);
                 binders.push(ident_binder(&field, &arg));
             }
             let binders = Arc::new(binders);
@@ -535,7 +535,7 @@ fn tuple_get_field_expr(
 ) -> Expr {
     let datatype = state.tuple_type_name(tuple_arity);
     let variant = prefix_tuple_variant(tuple_arity);
-    let field = prefix_tuple_field(field);
+    let field = positional_field_ident(field);
     let op = UnaryOpr::Field(FieldOpr {
         datatype,
         variant,
@@ -940,7 +940,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
             let vis = Visibility { restricted_to: None };
             // Note: the mode is irrelevant at this stage, so we arbitrarily use Mode::Exec
-            fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec, vis)));
+            fields.push(ident_binder(&positional_field_ident(i), &(typ, Mode::Exec, vis)));
         }
         let variant = Variant {
             name: prefix_tuple_variant(arity),
