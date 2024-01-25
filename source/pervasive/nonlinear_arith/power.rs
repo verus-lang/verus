@@ -472,6 +472,9 @@ pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
     }
     }
     lemma_mul_induction_auto(e2 - e1, f);
+    assert(pow(b as int, e1) <= pow(b as int, e2 as nat));
+    assert(e2 as nat == e2);
+    assert(pow(b as int, e1) <= pow(b as int, e2));
 }
 
 // #[verifier::spinoff_prover]
