@@ -85,7 +85,7 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertBy { .. }
             | ExprX::RevealString(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
-            ExprX::Loop { label: _, cond, body, invs: _ } => {
+            ExprX::Loop { is_for_loop: _, label: _, cond, body, invs: _ } => {
                 if let Some(cond) = cond {
                     expr_get_early_exits_rec(cond, in_loop, scope_map, results);
                 }

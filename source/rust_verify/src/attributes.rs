@@ -244,6 +244,8 @@ pub(crate) enum Attr {
     Atomic,
     // specifies an invariant block
     InvariantBlock,
+    // mark that a loop was desugared from a for-loop in the syntax macro
+    ForLoop,
     // this proof function is a termination proof
     DecreasesBy,
     // in a spec function, check the body for violations of recommends
@@ -525,6 +527,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "reveal_fn" => {
                         v.push(Attr::InternalRevealFn)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "for_loop" => v.push(Attr::ForLoop),
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>
                     {
@@ -669,6 +672,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
+    pub(crate) for_loop: bool,
     pub(crate) atomic: bool,
     pub(crate) integer_ring: bool,
     pub(crate) decreases_by: bool,
@@ -723,6 +727,7 @@ pub(crate) fn get_verifier_attrs(
         autospec: None,
         custom_req_err: None,
         bit_vector: false,
+        for_loop: false,
         atomic: false,
         integer_ring: false,
         decreases_by: false,
@@ -772,6 +777,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
+            Attr::ForLoop => vs.for_loop = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IntegerRing => vs.integer_ring = true,
             Attr::DecreasesBy => vs.decreases_by = true,

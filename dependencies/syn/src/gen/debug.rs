@@ -983,7 +983,10 @@ impl Debug for ExprForLoop {
         formatter.field("for_token", &self.for_token);
         formatter.field("pat", &self.pat);
         formatter.field("in_token", &self.in_token);
+        formatter.field("expr_name", &self.expr_name);
         formatter.field("expr", &self.expr);
+        formatter.field("invariant", &self.invariant);
+        formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
         formatter.finish()
     }

@@ -899,7 +899,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
-                        | CharToInt => ok,
+                        | CharToInt
+                        | InferSpecForLoopIter => ok,
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -1008,7 +1009,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
-                        | CharToInt => ok,
+                        | CharToInt
+                        | InferSpecForLoopIter => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner

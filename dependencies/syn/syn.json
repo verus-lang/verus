@@ -1560,9 +1560,33 @@
         "in_token": {
           "token": "In"
         },
+        "expr_name": {
+          "option": {
+            "box": {
+              "tuple": [
+                {
+                  "proc_macro2": "Ident"
+                },
+                {
+                  "token": "Colon"
+                }
+              ]
+            }
+          }
+        },
         "expr": {
           "box": {
             "syn": "Expr"
+          }
+        },
+        "invariant": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
           }
         },
         "body": {
