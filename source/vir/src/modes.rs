@@ -951,7 +951,7 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Exec)
         }
         ExprX::ExecFnByName(fun) => {
-            let function = typing.funs.get(fun).unwrap();
+            let function = ctxt.funs.get(fun).unwrap();
             if function.x.mode != Mode::Exec {
                 // Could probably support 'proof' functions (in ghost code) as well
                 return Err(error(
@@ -960,7 +960,7 @@ fn check_expr_handle_mut_arg(
                 ));
             }
 
-            typing.erasure_modes.var_modes.push((expr.span.clone(), Mode::Exec));
+            record.erasure_modes.var_modes.push((expr.span.clone(), Mode::Exec));
 
             Ok(outer_mode)
         }

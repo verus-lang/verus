@@ -133,12 +133,10 @@ fn check_well_founded_typ(
 // REVIEW: should we also have Trait(Path) here?
 pub(crate) enum TypNode {
     Datatype(Path),
-    TraitImpl(Path),
+    TraitImpl(ImplPath),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },
-    TraitImpl(Path),
-    TraitImpl(ImplPath),
 }
 
 struct CheckPositiveGlobal {
@@ -470,7 +468,7 @@ fn type_scc_error(
     err
 }
 
-fn scc_error(krate: &Krate, head: &Node, head: &Node, nodes: &Vec<Node>) -> VirErr {
+fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Node>) -> VirErr {
     // Special case this error message because it doesn't look like
     // a 'trait' error to the user (even though we conceptualize it as a trait
     // error in VIR)
@@ -482,6 +480,7 @@ fn scc_error(krate: &Krate, head: &Node, head: &Node, nodes: &Vec<Node>) -> VirE
                 has_req_ens = true;
             }
             Node::Fun(_) => {}
+            Node::SpanInfo { .. } => {}
             _ => {
                 is_only_req_ens = false;
             }

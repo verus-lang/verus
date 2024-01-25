@@ -5,7 +5,7 @@ use crate::ast::Typs;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
-    FieldOpr, Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp,
+    FieldOpr, Fun, Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp,
     Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr,
     Variant, VariantCheck, VirErr, Visibility,
 };

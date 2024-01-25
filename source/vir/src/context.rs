@@ -279,7 +279,12 @@ impl GlobalCtx {
 
             func_call_graph.add_edge(fun_node, fndef_impl_node);
 
-            crate::recursion::expand_call_graph(&func_map, &mut func_call_graph, &mut span_infos, f)?;
+            crate::recursion::expand_call_graph(
+                &func_map,
+                &mut func_call_graph,
+                &mut span_infos,
+                f,
+            )?;
         }
 
         func_call_graph.compute_sccs();
