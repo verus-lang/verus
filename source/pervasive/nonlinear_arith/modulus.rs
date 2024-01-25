@@ -841,6 +841,7 @@ pub proof fn lemma_mod_breakdown_auto()
     {
         lemma_mod_breakdown(x, y, z);
     }
+    assert(forall |x: int, y: int, z: int| #![trigger x % (y * z)] 0 <= x && 0 < y && 0 < z ==> y * z > 0 && (x % (y * z)) == y * ((x / y) % z) + x % y);
 }
 
 }

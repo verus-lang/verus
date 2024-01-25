@@ -1021,10 +1021,19 @@ pub proof fn lemma_multiply_divide_lt(a: int, b: int, c: int)
     ensures
         a / b < c
 {
-    lemma_mod_multiples_basic(c, b);
-    let f = |i: int| 0 < i && (i + a) % b == 0 ==> a / b < (i + a) / b;
-    lemma_div_induction_auto(b, b * c - a, f);
-    lemma_div_multiples_vanish(c, b);
+    assert(((b * c - a) + a) % b == 0 ==> a / b < ((b * c - a) + a) / b) by {
+        let f = |i: int| 0 < i && (i + a) % b == 0 ==> a / b < (i + a) / b;
+        lemma_div_induction_auto(b, b * c - a, f);
+    }
+    assert(b * c == c * b) by {
+        lemma_mul_is_commutative(b, c);
+    }
+    assert((b * c) % b == 0) by {
+        lemma_mod_multiples_basic(c, b);
+    }
+    assert((b * c) / b == c) by {
+        lemma_div_multiples_vanish(c, b);
+    }
 }
 
 // #[verifier::spinoff_prover]
@@ -1094,14 +1103,15 @@ pub proof fn lemma_part_bound1(a: int, b: int, c: int)
         { lemma_mul_is_commutative_auto(); lemma_mul_inequality_auto(); };
 }
 
-//#[verifier::spinoff_prover]
+#[verifier::spinoff_prover]
 pub proof fn lemma_part_bound1_auto()
     ensures forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c ==> 0 < b * c && (b * (a / b) % (b * c)) <= b * (c - 1),
 {
-    assert forall |a: int, b: int, c: int| 0 <= a && 0 < b && 0 < c implies 0 < (b * c) && #[trigger](b * (a / b) % (b * c)) <= b * (c - 1) by
+    assert forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c implies 0 < (b * c) && (b * (a / b) % (b * c)) <= b * (c - 1) by
     {
         lemma_part_bound1(a, b, c);
     }
+    assert(forall |a: int, b: int, c: int| #![trigger (b * (a / b) % (b * c))] 0 <= a && 0 < b && 0 < c ==> 0 < b * c && (b * (a / b) % (b * c)) <= b * (c - 1));
 }
 
 }
