@@ -544,10 +544,6 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
-    // Represented req%fn_name and ens%fn_name in AIR.
-    // Only used internally
-    StaticReq(Fun),
-    StaticEns(Fun),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]

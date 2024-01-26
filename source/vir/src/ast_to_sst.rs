@@ -1102,8 +1102,6 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
-                BuiltinSpecFun::StaticReq(fun) => InternalFun::StaticReq(fun.clone()),
-                BuiltinSpecFun::StaticEns(fun) => InternalFun::StaticEns(fun.clone()),
             };
             Ok((
                 check_stms,

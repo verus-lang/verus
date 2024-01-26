@@ -760,8 +760,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 match func {
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
-                    InternalFun::StaticReq(fun) => prefix_requires(&fun_to_air_ident(fun)),
-                    InternalFun::StaticEns(fun) => prefix_ensures(&fun_to_air_ident(fun)),
                     InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)

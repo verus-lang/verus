@@ -49,8 +49,6 @@ pub struct UniqueIdent {
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
-    StaticReq(Fun),
-    StaticEns(Fun),
     CheckDecreaseInt,
     CheckDecreaseHeight,
     HasType,
