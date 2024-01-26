@@ -69,6 +69,8 @@ struct Visitor {
     inside_ghost: u32,
     // inside_type > 0 means we're currently visiting a type
     inside_type: u32,
+    // inside_external_code > 0 means we're currently visiting an external or external_body body
+    inside_external_code: u32,
     // Widen means we're a direct subexpression in an arithmetic expression that will widen the result.
     // (e.g. "x" or "3" in x + 3 or in x < (3), but not in f(x) + g(3)).
     // When we see a constant in inside_arith, we preemptively give it type "int" rather than
@@ -1394,7 +1396,7 @@ impl Visitor {
             attrs.remove(i);
         }
 
-        if !self.erase_ghost.keep() {
+        if !self.erase_ghost.keep() || self.inside_external_code > 0 {
             return Expr::ForLoop(syn_verus::ExprForLoop {
                 attrs,
                 label,
@@ -2541,7 +2543,14 @@ impl VisitMut for Visitor {
             self.visit_fn(&mut fun.attrs, Some(&fun.vis), &mut fun.sig, fun.semi_token, false);
         fun.block.stmts.splice(0..0, stmts);
         fun.semi_token = None;
+        let is_external_code = has_external_code(&fun.attrs);
+        if is_external_code {
+            self.inside_external_code += 1;
+        }
         visit_item_fn_mut(self, fun);
+        if is_external_code {
+            self.inside_external_code -= 1;
+        }
     }
 
     fn visit_impl_item_method_mut(&mut self, method: &mut ImplItemMethod) {
@@ -2558,7 +2567,14 @@ impl VisitMut for Visitor {
         );
         method.block.stmts.splice(0..0, stmts);
         method.semi_token = None;
+        let is_external_code = has_external_code(&method.attrs);
+        if is_external_code {
+            self.inside_external_code += 1;
+        }
         visit_impl_item_method_mut(self, method);
+        if is_external_code {
+            self.inside_external_code -= 1;
+        }
     }
 
     fn visit_trait_item_method_mut(&mut self, method: &mut TraitItemMethod) {
@@ -2582,7 +2598,14 @@ impl VisitMut for Visitor {
         if self.erase_ghost.keep() && is_spec_method {
             method.semi_token = None;
         }
+        let is_external_code = has_external_code(&method.attrs);
+        if is_external_code {
+            self.inside_external_code += 1;
+        }
         visit_trait_item_method_mut(self, method);
+        if is_external_code {
+            self.inside_external_code -= 1;
+        }
     }
 
     fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
@@ -3013,6 +3036,7 @@ pub(crate) fn rewrite_items(
         use_spec_traits,
         inside_ghost: 0,
         inside_type: 0,
+        inside_external_code: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3042,6 +3066,7 @@ pub(crate) fn rewrite_expr(
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
+        inside_external_code: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3058,6 +3083,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
+        inside_external_code: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3171,6 +3197,7 @@ pub(crate) fn proof_macro_exprs(
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
+        inside_external_code: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3200,6 +3227,7 @@ pub(crate) fn inv_macro_exprs(
         use_spec_traits: true,
         inside_ghost: 1,
         inside_type: 0,
+        inside_external_code: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3231,6 +3259,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
+        inside_external_code: 0,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3246,6 +3275,20 @@ pub(crate) fn proof_macro_explicit_exprs(
     }
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)
+}
+
+fn has_external_code(attrs: &Vec<Attribute>) -> bool {
+    attrs.iter().any(|attr| {
+        // verifier::external
+        attr.path.segments.len() == 2
+            && attr.path.segments[0].ident.to_string() == "verifier"
+            && (attr.path.segments[1].ident.to_string() == "external"
+                || attr.path.segments[1].ident.to_string() == "external_body")
+        // verifier(external)
+        || attr.path.segments.len() == 1
+            && attr.path.segments[0].ident.to_string() == "verifier"
+            && matches!(attr.tokens.to_string().as_str(), "(external)" | "(external_body)")
+    })
 }
 
 /// Constructs #[name(tokens)]
