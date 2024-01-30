@@ -557,6 +557,11 @@ pub enum PatternX {
         name: VarIdent,
         mutable: bool,
     },
+    Binding {
+        name: VarIdent,
+        mutable: bool,
+        sub_pat: Pattern,
+    },
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident

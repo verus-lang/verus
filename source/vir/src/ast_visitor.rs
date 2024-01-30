@@ -191,6 +191,10 @@ where
     let patternx = match &pattern.x {
         PatternX::Wildcard(dd) => PatternX::Wildcard(*dd),
         PatternX::Var { name, mutable } => PatternX::Var { name: name.clone(), mutable: *mutable },
+        PatternX::Binding { name, mutable, sub_pat } => {
+            let p = map_pattern_visitor_env(sub_pat, env, ft)?;
+            PatternX::Binding { name: name.clone(), mutable: *mutable, sub_pat: p }
+        }
         PatternX::Tuple(ps) => {
             let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, env, ft))?;
             PatternX::Tuple(Arc::new(ps))
@@ -214,6 +218,10 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
     match &pattern.x {
         PatternX::Wildcard(_) => {}
         PatternX::Var { name, mutable } => {
+            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+        }
+        PatternX::Binding { name, mutable, sub_pat } => {
+            insert_pattern_vars(map, sub_pat, init);
             let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
         }
         PatternX::Tuple(ps) => {

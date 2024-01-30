@@ -168,6 +168,11 @@ fn pattern_to_exprs_rec(
             decls.push(PatternBoundDecl { name: x.clone(), mutable: *mutable, expr: expr.clone() });
             Ok(SpannedTyped::new(&expr.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
+        PatternX::Binding { name: x, mutable, sub_pat } => {
+            let pattern_test = pattern_to_exprs_rec(ctx, state, expr, sub_pat, decls)?;
+            decls.push(PatternBoundDecl { name: x.clone(), mutable: *mutable, expr: expr.clone() });
+            Ok(pattern_test)
+        }
         PatternX::Tuple(patterns) => {
             let arity = patterns.len();
             let path = state.tuple_type_name(arity);
