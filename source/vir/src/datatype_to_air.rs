@@ -47,7 +47,7 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
     Spanned::new(
         span.clone(),
         ParX {
-            name: f.name.clone(),
+            name: Arc::new("_".to_string() + &f.name),
             typ: f.a.0.clone(),
             mode: f.a.1,
             purpose: ParPurpose::Regular,
@@ -293,7 +293,7 @@ fn datatype_or_fun_to_air_commands(
             let mut pre: Vec<Expr> = Vec::new();
             for field in variant.fields.iter() {
                 let (typ, _, _) = &field.a;
-                let name = suffix_local_stmt_id(&field.name);
+                let name = suffix_local_stmt_id(&Arc::new("_".to_string() + &field.name));
                 if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
                     pre.push(inv);
                 }

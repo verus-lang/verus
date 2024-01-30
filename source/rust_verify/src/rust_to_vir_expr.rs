@@ -494,39 +494,6 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 binders.push(binder);
             }
 
-            if n_wildcards > 0 {
-                // Have to get the type for each wildcard to create the vir::Pattern
-                let substs = match bctx.types.node_type(pat.hir_id).kind() {
-                    TyKind::Adt(_, substs) => substs,
-                    _ => {
-                        return err_span(pat.span, "Verus internal error: expected Adt type");
-                    }
-                };
-                let mut wildcard_binders = vec![];
-                for i in 0..n_wildcards {
-                    let actual_idx = i + pos_to_insert_wildcards;
-                    let field_def = &variant_def.fields[actual_idx.into()];
-                    let typ = field_def.ty(bctx.ctxt.tcx, substs);
-                    let vir_typ = mid_ty_to_vir(
-                        bctx.ctxt.tcx,
-                        &bctx.ctxt.verus_items,
-                        bctx.fun_id,
-                        pat.span,
-                        &typ,
-                        false,
-                    )?;
-                    let pattern =
-                        bctx.spanned_typed_new(pat.span, &vir_typ, PatternX::Wildcard(true));
-                    wildcard_binders
-                        .push(ident_binder(&positional_field_ident(actual_idx), &pattern));
-                }
-
-                binders.splice(
-                    pos_to_insert_wildcards..pos_to_insert_wildcards,
-                    wildcard_binders.into_iter(),
-                );
-            }
-
             PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
         }
         PatKind::Struct(qpath, pats, _) => {
