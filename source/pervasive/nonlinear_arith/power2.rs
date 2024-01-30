@@ -128,8 +128,10 @@ pub proof fn lemma2_to64()
         pow2(30) == 0x40000000,
         pow2(31) == 0x80000000,
         pow2(32) == 0x100000000,
-        pow2(64) == 0x10000000000000000
+        pow2(64) == 0x10000000000000000,
 {
+    reveal(pow2);
+    reveal(pow);
     assert(
         pow2(0) == 0x1 &&
         pow2(1) == 0x2 &&

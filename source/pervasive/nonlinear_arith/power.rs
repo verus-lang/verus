@@ -12,6 +12,7 @@ use crate::nonlinear_arith::modulus::*;
 use crate::nonlinear_arith::internals::general_internals::{is_le};
 use crate::nonlinear_arith::mul::{lemma_mul_inequality, lemma_mul_nonnegative_auto, lemma_mul_strictly_increases, lemma_mul_left_inequality, lemma_mul_basics_auto, lemma_mul_increases_auto, lemma_mul_strictly_increases_auto, lemma_mul_is_commutative_auto, lemma_mul_is_distributive_auto, lemma_mul_is_associative_auto, lemma_mul_nonnegative};
 use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction_auto};
+use crate::nonlinear_arith::math::{sub as sub1};
 
 #[verifier(opaque)]
 pub open spec fn pow(b: int, e: nat) -> int
@@ -221,7 +222,7 @@ pub proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
     lemma_pow_adds(b, (e1 - e2) as nat, e2);
 }
 
-proof fn lemma_pow_sub_add_cancel_auto()
+pub proof fn lemma_pow_sub_add_cancel_auto()
     ensures forall |x: int, y: nat, z: nat| y >= z ==> #[trigger]pow(x, (y - z) as nat) * pow(x, z) == pow(x, y),
 
 {
@@ -568,7 +569,7 @@ pub proof fn lemma_pull_out_pows_auto()
 }
 
 /// Inequality due to smaller numerator, same denominator.
-proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
+pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
     requires 
         b > 0,
         e2 <= e1,
@@ -592,20 +593,16 @@ proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
     };
 }
 
-spec fn sub(x: int, y: int) -> int {
-    x - y
-}
-
 // #[verifier::spinoff_prover]
-proof fn lemma_pow_division_inequality_auto()
+pub proof fn lemma_pow_division_inequality_auto()
     ensures
         forall |b: int, e2: nat| b > 0 && e2 <= e2 ==> pow(b, e2) > 0,
-        forall |x: nat, b: int, e1: nat, e2: nat| b > 0 && e2 <= e1 && x < pow(b, e1) ==> #[trigger](x as int / pow(b, e2)) < #[trigger]pow(b, (sub(e1 as int, e2 as int)) as nat),
+        forall |x: nat, b: int, e1: nat, e2: nat| b > 0 && e2 <= e1 && x < pow(b, e1) ==> #[trigger](x as int / pow(b, e2)) < #[trigger]pow(b, (sub1(e1 as int, e2 as int)) as nat),
 {
     reveal(pow);
     lemma_pow_positive_auto();
 
-    assert forall |x: nat, b: int, e1: nat, e2: nat| b > 0 && e2 <= e1 && x < pow(b, e1) implies #[trigger](x as int / pow(b, e2)) < #[trigger]pow(b, (sub(e1 as int, e2 as int)) as nat) by
+    assert forall |x: nat, b: int, e1: nat, e2: nat| b > 0 && e2 <= e1 && x < pow(b, e1) implies #[trigger](x as int / pow(b, e2)) < #[trigger]pow(b, (sub1(e1 as int, e2 as int)) as nat) by
     {
         lemma_pow_division_inequality(x, b as nat, e1, e2);
     };
@@ -613,7 +610,7 @@ proof fn lemma_pow_division_inequality_auto()
 
 /// `b^e % b = 0`
 // #[verifier::spinoff_prover]
-proof fn lemma_pow_mod(b: nat, e: nat)
+pub proof fn lemma_pow_mod(b: nat, e: nat)
     requires 
         b > 0,
         e > 0
@@ -647,7 +644,7 @@ proof fn lemma_pow_mod(b: nat, e: nat)
     // }
 }
 
-proof fn lemma_pow_mod_auto()
+pub proof fn lemma_pow_mod_auto()
     ensures forall |b: nat, e: nat| b > 0 && e > 0 ==> #[trigger]pow(b as int, e) % b as int == 0,
 {
     assert forall |b: nat, e: nat| b > 0 && e > 0 implies #[trigger]pow(b as int, e) % b as int == 0 by
