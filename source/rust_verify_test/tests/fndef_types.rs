@@ -648,6 +648,50 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] exec_calling verus_code! {
+        use vstd::*;
+        fn a() {
+            let x = b;
+            x(0);
+        }
+
+        fn b(i: u8)
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_calling2 verus_code! {
+        use vstd::*;
+        fn a() {
+            let x = b;
+            x();
+        }
+
+        fn b()
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_recursion_mutual verus_code! {
+        use vstd::*;
+
+        fn a() {
+            let x = b;
+            x();
+        }
+
+        fn b() {
+            let y = a;
+            y();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_function_takes_trait_bound verus_code! {
         trait Tr {
             spec fn foo(&self) -> bool;

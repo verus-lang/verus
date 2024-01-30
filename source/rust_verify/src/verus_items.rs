@@ -668,3 +668,15 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
 
     None
 }
+
+impl VerusItems {
+    pub(crate) fn exec_nonstatic_call_def_id(&self) -> DefId {
+        *self
+            .name_to_id
+            .get(&VerusItem::Pervasive(
+                PervasiveItem::ExecNonstaticCall,
+                Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())),
+            ))
+            .unwrap()
+    }
+}

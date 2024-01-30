@@ -6,9 +6,9 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    auto_deref_supported_for_ty, def_id_to_vir_path, get_range, is_smt_arith, is_smt_equality,
-    local_to_var, mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    auto_deref_supported_for_ty, def_id_to_vir_path, get_impl_paths, get_range, is_smt_arith,
+    is_smt_equality, local_to_var, mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range,
+    typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::spans::err_air_span;
 use crate::util::{
@@ -29,7 +29,7 @@ use rustc_hir::{
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
-use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
+use rustc_middle::ty::{AdtDef, GenericArg, TyCtxt, TyKind, VariantDef};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -1174,7 +1174,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // decoration, so call mid_ty_to_vir for these
                         // Compute `tup_typ` with the correct decoration:
                         let mut arg_typs = vec![];
-                        for arg in args {
+                        for arg in args.iter() {
                             arg_typs.push(mid_ty_to_vir(
                                 tcx,
                                 &bctx.ctxt.verus_items,
@@ -1200,13 +1200,37 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             true,
                         )?;
 
+                        // Create the node_substs for a fictional exec_nonstatic_call
+                        // based on the type arguments for exec_nonstatic_call
+                        let generic_arg0 = GenericArg::from(
+                            tcx.mk_ty_from_kind(TyKind::Tuple(
+                                tcx.mk_type_list(
+                                    &args
+                                        .iter()
+                                        .map(|arg| bctx.types.expr_ty_adjusted(arg))
+                                        .collect::<Vec<_>>(),
+                                ),
+                            )),
+                        );
+                        let generic_arg1 = GenericArg::from(bctx.types.expr_ty_adjusted(expr));
+                        let generic_arg2 = GenericArg::from(fun_ty);
+                        let node_substs = tcx.mk_args(&[generic_arg0, generic_arg1, generic_arg2]);
+
+                        let impl_paths = get_impl_paths(
+                            tcx,
+                            &bctx.ctxt.verus_items,
+                            bctx.fun_id,
+                            bctx.ctxt.verus_items.exec_nonstatic_call_def_id(),
+                            node_substs,
+                        );
+
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
                         (
                             CallTarget::Fun(
                                 vir::ast::CallTargetKind::Static,
                                 helper_fun,
                                 typ_args,
-                                Arc::new(vec![]),
+                                impl_paths,
                                 AutospecUsage::Final,
                             ),
                             vec![vir_fun, tup],
