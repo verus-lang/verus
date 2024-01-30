@@ -36,4 +36,9 @@ verus! {
         a - b
     }
 
+    pub open spec fn div (a: int, b: int) -> int
+    {
+        a / b
+    }
+
 }

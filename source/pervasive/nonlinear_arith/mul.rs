@@ -88,9 +88,9 @@ pub proof fn lemma_mul_nonzero_auto()
 /// Any integer multiplied by 0 results in a product of 0
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_by_zero_is_zero_auto()
-    ensures forall |x: int| (#[trigger](x * 0) == 0 && #[trigger](0 * x) == 0)
+    ensures forall |x: int| #![trigger x * 0] #![trigger 0 * x] x * 0 == 0 && 0 * x == 0
 {
-    assert forall |x: int| #[trigger](x * 0) == 0 && #[trigger](0 * x) == 0 by
+    assert forall |x: int| #![trigger x * 0] #![trigger 0 * x] x * 0 == 0 && 0 * x == 0 by
     {
         lemma_mul_basics(x);
     }
@@ -107,11 +107,11 @@ pub proof fn lemma_mul_is_associative(x: int, y: int, z: int)
 /// Multiplication is always associative for all integers
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_is_associative_auto()
-    ensures forall |x: int, y: int, z: int| 
-        #[trigger](x * (y * z)) == #[trigger]((x * y) * z)
+    ensures forall |x: int, y: int, z: int| #![trigger x * (y * z)] #![trigger (x * y) * z]
+        (x * (y * z)) == ((x * y) * z)
 {
-    assert forall |x: int, y: int, z: int| 
-        #[trigger](x * (y * z)) == #[trigger]((x * y) * z) by 
+    assert forall |x: int, y: int, z: int| #![trigger x * (y * z)] #![trigger (x * y) * z]
+        (x * (y * z)) == ((x * y) * z) by
     {
         lemma_mul_is_associative(x, y, z);
     }
@@ -147,7 +147,7 @@ pub proof fn lemma_mul_ordering(x: int, y: int)
 // #[verifier::spinoff_prover]
 proof fn lemma_mul_ordering_auto()
     ensures forall |x: int, y: int| (0 != x && 0 != y && #[trigger] (x * y) >= 0) 
-        ==> x * y >= x && #[trigger] (x * y) >= y,
+        ==> x * y >= x && (x * y) >= y,
 {
     assert forall |x: int, y: int| 0 != x && 0 != y && x * y >= 0 
         implies #[trigger](x * y) >= x && #[trigger](x * y) >= y
@@ -293,10 +293,10 @@ pub proof fn lemma_mul_left_inequality(x: int, y: int, z: int)
 
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_left_inequality_auto()
-    ensures forall |x: int, y: int, z: int| x > 0 ==> (y <= z ==> #[trigger](x * y) <= #[trigger](x * z)) && (y < z ==> #[trigger](x * y) < #[trigger](x * z))
+    ensures forall |x: int, y: int, z: int| x > 0 ==> (y <= z ==> #[trigger](x * y) <= #[trigger](x * z)) && (y < z ==> (x * y) < (x * z))
 {
     assert forall |x: int, y: int, z: int | (y <= z || y < z) && 0 < x 
-        implies (y <= z ==> #[trigger](x * y) <= #[trigger](x * z)) && (y < z ==> #[trigger](x * y) < #[trigger](x * z)) by
+        implies (y <= z ==> #[trigger](x * y) <= #[trigger](x * z)) && (y < z ==> (x * y) < (x * z)) by
     {
         lemma_mul_left_inequality(x, y, z);
     }
@@ -572,9 +572,9 @@ pub proof fn lemma_mul_unary_negation(x: int, y: int)
 /// Shows the equivalent forms of using the unary negation operator for any integers
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_unary_negation_auto()
-    ensures forall |x: int, y: int| #[trigger]((-x) * y) ==  #[trigger](-(x * y)) == x * (-y),
+    ensures forall |x: int, y: int| #![trigger (-x) * y] #![trigger x * (-y)] ((-x) * y) == (-(x * y)) == x * (-y),
 {
-    assert forall |x: int, y: int| #[trigger]((-x) * y) ==  #[trigger](-(x * y)) == x * (-y) by
+    assert forall |x: int, y: int| #![trigger (-x) * y] #![trigger x * (-y)] ((-x) * y) == (-(x * y)) == x * (-y) by
     {
         lemma_mul_unary_negation(x, y);
     }
@@ -604,17 +604,17 @@ pub proof fn lemma_mul_cancels_negatives_auto()
 pub proof fn lemma_mul_properties()
     ensures 
     forall |x: int, y: int| #[trigger](x * y) == y * x,
-    forall |x: int| #[trigger](x * 1) == x && #[trigger](1 * x) == x,
+    forall |x: int| #![trigger x * 1] #![trigger 1 * x] x * 1 == 1 * x == x,
     forall |x: int, y: int, z: int| x < y && z > 0 ==>  #[trigger](x * z) < #[trigger](y * z),
     forall |x: int, y: int, z: int| x <= y && z >= 0 ==> #[trigger](x * z) <= #[trigger](y * z),
     forall |x: int, y: int, z: int| #[trigger](x * (y + z)) == x * y + x * z,
     forall |x: int, y: int, z: int| #[trigger](x * (y - z)) == x * y - x * z,
     forall |x: int, y: int, z: int| #[trigger]((y + z) * x) == y * x + z * x,
     forall |x: int, y: int, z: int| #[trigger]((y - z) * x) == y * x - z * x,
-    forall |x: int, y: int, z: int| #[trigger](x * (y * z)) == #[trigger]((x * y) * z),
+    forall |x: int, y: int, z: int| #![trigger x * (y * z)] #![trigger (x * y) * z] x * (y * z) == (x * y) * z,
     forall |x: int, y: int| #[trigger](x * y) != 0 <==> x != 0 && y != 0,
     forall |x: int, y: int| 0 <= x && 0 <= y ==> 0 <= #[trigger](x * y),
-    forall |x: int, y: int| 0 < x && 0 < y && 0 <= x * y ==> x <= #[trigger](x * y) && y <= #[trigger](x * y),
+    forall |x: int, y: int| 0 < x && 0 < y && 0 <= x * y ==> x <= #[trigger](x * y) && y <= (x * y),
     forall |x: int, y: int| (1 < x && 0 < y) ==> (y < #[trigger](x * y)),
     forall |x: int, y: int| (0 < x && 0 < y) ==> (y <= #[trigger](x * y)),
     forall |x: int, y: int| (0 < x && 0 < y) ==> (0 < #[trigger](x * y)),

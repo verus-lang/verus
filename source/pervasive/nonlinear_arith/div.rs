@@ -15,7 +15,7 @@ use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto, lemma_mul
 use crate::nonlinear_arith::mul::*;
 use crate::nonlinear_arith::internals::general_internals::{is_le};
 use crate::nonlinear_arith::modulus::*;
-use crate::nonlinear_arith::math::{add as add1, sub as sub1};
+use crate::nonlinear_arith::math::{add as add1, sub as sub1, div as div1};
 
 
 /// Division using `/` is equivalent to division through [`div_recursive`]
@@ -82,7 +82,12 @@ pub proof fn lemma_div_basics_auto()
         forall |x: int, y: int| x >= 0 && y > 0 ==> #[trigger](x / y) >= 0,
         forall |x: int, y: int| x >= 0 && y > 0 ==> #[trigger](x / y) <= x,
 {
-    assert forall |x: int| (x != 0 ==> #[trigger](0int / x) / x == 0) && (#[trigger](x / 1) == x) by
+    assert forall |x: int| x != 0 implies #[trigger](0int / x) / x == 0 by
+    {
+        lemma_div_basics(x);
+    };
+    
+    assert forall |x: int| x != 0 implies #[trigger](x / 1) == x by
     {
         lemma_div_basics(x);
     };
@@ -128,12 +133,6 @@ pub proof fn lemma_div_non_zero_auto()
     }
 }
 
-spec fn div (x:int, y: int) -> int
-    recommends y != 0
-{
-    x / y
-}
-
 /// Given two fractions with the same numerator, the order of numbers is determined by 
 /// the denominators. However, if the numerator is 0, the fractions are equal regardless of 
 /// the denominators' values
@@ -150,7 +149,8 @@ pub proof fn lemma_div_is_ordered_by_denominator(x: int, y: int, z: int)
     reveal(div_pos);
     lemma_div_is_div_recursive_auto();
 
-    assert(forall |u: int, d: int| d > 0 ==> #[trigger]div_recursive(u, d) == #[trigger](div(u, d)));
+    assert(forall |u: int, d: int| #![trigger div_recursive(u, d)] #![trigger div1(u, d)]
+               d > 0 ==> div_recursive(u, d) == div1(u, d));
 
     if (x < z)
     {
@@ -174,8 +174,7 @@ pub proof fn lemma_div_is_ordered_by_denominator_auto()
     }
 }
 
-/// Given two fractions with the same numerator, the order of numbers is strictly determined by 
-/// the denominators.
+/// A number gets strictly smaller when divided by a number greater than one.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_div_is_strictly_smaller(x: int, d: int)
     requires 
@@ -423,7 +422,6 @@ pub proof fn lemma_small_mod(x: nat, m: nat)
 /// `y` and `z` is equivalent to dividing `x` by `y`, dividing the quotient by `z`, multiplying
 /// the remainder by `y`, and then adding the product to the remainder of `x` divided by `y`.
 // #[verifier::spinoff_prover]
-#[verifier::broadcast_forall]
 pub proof fn lemma_breakdown(x: int, y: int, z: int)
     requires 
         0 <= x,
@@ -431,7 +429,7 @@ pub proof fn lemma_breakdown(x: int, y: int, z: int)
         0 < z,
     ensures 
         0 < y * z,
-        #[trigger] (x % (y * z)) == y * ((x / y) % z) + x % y,
+        (x % (y * z)) == y * ((x / y) % z) + x % y,
 {
     lemma_mul_strictly_positive_auto();
     lemma_div_pos_is_pos(x, y);
@@ -480,25 +478,20 @@ pub proof fn lemma_breakdown(x: int, y: int, z: int)
     }
 }
 
-/* This function doesn't reliably work due to Z3 instability.
-   Fortunately, it's obviated by broadcast_forall. You can now
-   get this functionality by doing reveal(lemma_breakdown);
 pub proof fn lemma_breakdown_auto()
-    ensures 
-        forall |x: int, y: int, z: int| 
-        #![trigger y * z, x % (y * z), y * ((x / y) % z) + x % y] 
-        0 <= x && 0 < y && 0 < z ==> 
-        0 < y * z && x % (y * z) == y * ((x / y) % z) + x % y,
+    ensures
+        forall |y: int, z: int| #![trigger y * z] 0 < y && 0 < z ==> 0 < y * z,
+        forall |x: int, y: int, z: int| #![trigger y * z, x % (y * z), y * ((x / y) % z) + x % y]
+                0 <= x && 0 < y && 0 < z ==> x % (y * z) == y * ((x / y) % z) + x % y,
 {
-    assert forall |x: int, y: int, z: int| 
-        #![trigger y * z, x % (y * z), y * ((x / y) % z) + x % y] 
-        0 <= x && 0 < y && 0 < z implies
-        0 < y * z && x % (y * z) == y * ((x / y) % z) + x % y by
-    {
+    assert forall |y: int, z: int| #![trigger y * z] 0 < y && 0 < z implies 0 < y * z by {
+        lemma_mul_strictly_positive_auto();
+    }
+    assert forall |x: int, y: int, z: int| #![trigger y * z, x % (y * z), y * ((x / y) % z) + x % y]
+               0 <= x && 0 < y && 0 < z implies x % (y * z) == y * ((x / y) % z) + x % y by {
         lemma_breakdown(x, y, z);
     }
 }
-    */
 
 /// The difference between a nonnegative integer `x` and a positive integer `d` must
 /// be strictly less than the quotient of `x` divided by `d` and then multiplied by `d`.
@@ -608,17 +601,17 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
 {
     lemma_mul_strictly_positive(c, d);
     let r = x % (c as int * d as int);
-    lemma_mod_properties_auto();
+//    lemma_mod_properties_auto();
 
     lemma_div_pos_is_pos(r, c as int);
     if (r / c as int >= d) {
-    ModINL::lemma_fundamental_div_mod(r, c as int);
-    lemma_mul_inequality(d as int, r / c as int, c as int);
-    lemma_mul_is_commutative_auto();
+        ModINL::lemma_fundamental_div_mod(r, c as int);
+        lemma_mul_inequality(d as int, r / c as int, c as int);
+        lemma_mul_is_commutative(d, c);
     }
     assert(r / (c as int) < d);
 
-    lemma_mul_basics_auto();
+//    lemma_mul_basics_auto();
 
     lemma_fundamental_div_mod_converse(r / c, d, 0, r / c);
 
@@ -638,14 +631,18 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
     calc! {
         (==)
         c * ((x / c) % d) + x % c;
-        { lemma_mod_multiples_vanish(-k, x / c, d); lemma_mul_is_commutative_auto(); }
+        {
+            lemma_mod_multiples_vanish(-k, x / c, d);
+            lemma_mul_is_commutative_auto();
+        }
         c * ((x / c + (-k) * d) % d) + x % c;
         { lemma_hoist_over_denominator(x, (-k) * d, c as nat); }
         c * (((x + (((-k) * d) * c)) / c) % d) + x % c;
         { lemma_mul_is_associative(-k, d, c); }
         c * (((x + ((-k) * (d * c))) / c) % d) + x % c;
         { lemma_mul_unary_negation(k, d * c); }
-        c * (((x + (-(k * (d * c)))) / c) % d) + x % c;    { lemma_mul_is_associative(k, d, c); }
+        c * (((x + (-(k * (d * c)))) / c) % d) + x % c;
+        { lemma_mul_is_associative(k, d, c); }
         c * (((x + (-(k * d * c))) / c) % d) + x % c;
         { }
         c * (((x - k * d * c) / c) % d) + x % c;
@@ -656,13 +653,14 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
         c * ((r / c) % d) + x % c;
         { }
         c * (r / c) + x % c;
-        { lemma_fundamental_div_mod(r, c);
+        {
+            lemma_fundamental_div_mod(r, c);
             assert(r == c * (r / c) + r % c);
             lemma_mod_mod(x, c, d);
             assert(r % c == x % c);
         }
         r;
-        { lemma_mod_is_mod_recursive_auto(); }
+        { lemma_mod_properties_auto(); lemma_mod_is_mod_recursive_auto(); }
         r % (c * d);
         { }
         (x - (c * d) * k) % (c * d);
@@ -672,15 +670,25 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
         x % (c * d);
     }
     
-    assert (c * (x / c) + x % c - r == c * (x / c) - c * ((x / c) % d) ==> x - r == c * (x / c) - c * ((x / c) % d)) by {
+    assert (c * (x / c) + x % c - r == c * (x / c) - c * ((x / c) % d) ==>
+            x - r == c * (x / c) - c * ((x / c) % d)) by {
         lemma_fundamental_div_mod(x, c);
     };
+
+    assert(c * (x / c) + x % c - r == c * (x / c) - c * ((x / c) % d));
+    assert(x - r == c * (x / c) - c * ((x / c) % d));
     
     assert((x / c) / d == x / (c * d)) by {
         lemma_fundamental_div_mod(x / c, d);
-        lemma_mul_is_associative_auto();
-        lemma_mul_is_distributive_auto();
+        assert(d * ((x / c) / d) == x / c - ((x / c) % d));
         lemma_fundamental_div_mod(x, c * d);
+        assert(x == (c * d) * (x / (c * d)) + (x % (c * d)));
+        lemma_mul_is_distributive_sub(c, x / c, (x / c) % d);
+        assert(c * (d * ((x / c) / d)) == c * (x / c) - c * ((x / c) % d));
+        lemma_mul_is_associative(c, d, (x / c) / d);
+        assert((c * d) * ((x / c) / d) == c * (x / c) - c * ((x / c) % d));
+        assert((c * d) * ((x / c) / d) == x - r);
+        assert((c * d) * ((x / c) / d) == (c * d) * (x / (c * d)));
         lemma_mul_equality_converse(c * d, (x / c) / d, x / (c * d));
     }
 
@@ -693,7 +701,7 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
 pub proof fn lemma_div_denominator_auto()
     ensures
         forall |c: int, d: int| 0 < c && 0 < d ==> #[trigger](c * d) != 0,
-        forall |x: int, c: int, d: int| 0 <= x && 0 < c && 0 < d ==> #[trigger]((x / c) / d) == x / (c * d)
+        forall |x: int, c: int, d: int| 0 <= x && 0 < c && 0 < d ==> #[trigger]((x / c) / d) == x / (c * d),
 {
     lemma_mul_nonzero_auto();
     assert forall |x: int, c: int, d: int| 0 <= x && 0 < c && 0 < d implies #[trigger]((x / c) / d) == x / (c * d) by

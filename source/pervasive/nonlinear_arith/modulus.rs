@@ -464,16 +464,12 @@ pub proof fn lemma_fundamental_div_mod_converse_auto()
         forall |x: int, d: int, q: int, r: int| d != 0 && 0 <= r < d && x == #[trigger](q * d + r) ==> q == #[trigger](x / d),
         forall |x: int, d: int, q: int, r: int| d != 0 && 0 <= r < d && x == #[trigger](q * d + r) ==> r == #[trigger](x % d),
 {
-    // assert forall |x: int, d: int, q: int, r: int| d != 0 && 0 <= r < d && x == #[trigger](q * d + r) implies q == (x / d) && r == #[trigger](x % d) by
-    // {
-    //     if ( d != 0 && 0 <= r < d && x == (q * d + r)) {
-    //     lemma_fundamental_div_mod_converse(x, d, q, r);
-    //     }
-    // }
-    assert forall |x: int, d: int, q: int, r: int| d != 0 && 0 <= r < d && x == #[trigger](q * d + r) implies q == #[trigger](x / d) by {
+    assert forall |x: int, d: int, q: int, r: int|
+        d != 0 && 0 <= r < d && x == #[trigger](q * d + r) implies q == #[trigger](x / d) by {
         lemma_fundamental_div_mod_converse(x, d, q, r);
     };
-    assert forall |x: int, d: int, q: int, r: int| d != 0 && 0 <= r < d && x == #[trigger](q * d + r) implies r == #[trigger](x % d) by {
+    assert forall |x: int, d: int, q: int, r: int|
+        d != 0 && 0 <= r < d && x == #[trigger](q * d + r) implies r == #[trigger](x % d) by {
         lemma_fundamental_div_mod_converse(x, d, q, r);
     };
 }
@@ -610,19 +606,10 @@ pub proof fn lemma_mod_equivalence_auto()
     }
 }
 
-// // TODO: the following two proofs are styled very differently from dafny
-// /// true if x%n and y%n are equal */
-// pub open spec fn is_mod_equivalent(x: int, y: int, m: int) -> bool
-//     recommends m > 0
-//     // ensures x % m == y % m <==> (x - y) % m == 0
-// {
-//     // lemma_mod_equivalence(x, y, m);
-//     x % m == y % m <==> (x - y) % m == 0 // same as x % n == y % n, but easier to do induction on x - y than x and y separately
-// }
-
 /// True if x%n and y%n are equal
-#[verifier::opaque]
-pub closed spec fn is_mod_equivalent(x: int, y: int, m: int) -> bool
+pub open spec fn is_mod_equivalent(x: int, y: int, m: int) -> bool
+    recommends
+        m > 0
 {
     x % m == y % m <==> (x - y) % m == 0
 }
@@ -636,7 +623,6 @@ pub proof fn lemma_mod_mul_equivalent(x: int, y: int, z: int, m: int)
     ensures
         is_mod_equivalent(x * z, y * z, m),
 {
-    reveal(is_mod_equivalent);
     lemma_mul_mod_noop_left(x, z, m);
     lemma_mul_mod_noop_left(y, z, m);
     lemma_mod_equivalence(x, y, m);
@@ -647,7 +633,6 @@ pub proof fn lemma_mod_mul_equivalent(x: int, y: int, z: int, m: int)
 pub proof fn lemma_mod_mul_equivalent_auto()
     ensures forall |x: int, y: int, z: int, m: int|  m > 0 && ( x % m == y % m <==> (x - y) % m == 0) ==> #[trigger]is_mod_equivalent(x * z, y * z, m),
 {
-    reveal(is_mod_equivalent);
     assert forall |x: int, y: int, z: int, m: int| m > 0 && is_mod_equivalent(x, y, m) implies #[trigger]is_mod_equivalent(x * z, y * z, m) by
     {
         lemma_mod_mul_equivalent(x, y, z, m);
@@ -854,18 +839,5 @@ pub proof fn lemma_mod_breakdown_auto()
         lemma_mod_breakdown(x, y, z);
     }
 }
-
-    /*
-pub proof fn lemma_mod_breakdown_auto()
-    ensures forall |x: int, y: int, z: int| #![trigger x % (y * z)] 0 <= x && 0 < y && 0 < z ==> y * z > 0 && (x % (y * z)) == y * ((x / y) % z) + x % y,
-{
-    assert forall |x: int, y: int, z: int| #![trigger x % (y * z)]
-        0 <= x && 0 < y && 0 < z implies
-        y * z > 0 && (x % (y * z)) == y * ((x / y) % z) + x % y by
-    {
-        lemma_mod_breakdown(x, y, z);
-    }
-}
-    */
 
 }
