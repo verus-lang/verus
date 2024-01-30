@@ -648,7 +648,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_calling verus_code! {
+    #[test] exec_calling1 verus_code! {
         use vstd::*;
         fn a() {
             let x = b;
@@ -689,6 +689,19 @@ test_verify_one_file! {
             y();
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_calling_no_vstd verus_code! {
+        fn a() {
+            let x = b;
+            x(0);
+        }
+
+        fn b(i: u8)
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Non-static calls are not supported with --no-vstd")
 }
 
 test_verify_one_file! {

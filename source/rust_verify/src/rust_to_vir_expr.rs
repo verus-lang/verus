@@ -1162,6 +1162,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let (target, vir_args, resolved_call) = if is_spec_fn {
                         (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::Spec)
                     } else {
+                        if bctx.ctxt.no_vstd {
+                            return err_span(expr.span, "Non-static calls are not supported with --no-vstd");
+                        }
+
                         // non-static calls are translated into a static call to
                         // `exec_nonstatic_call` which is defined in the pervasive lib.
                         let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
