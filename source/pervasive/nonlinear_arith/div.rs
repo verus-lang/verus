@@ -683,6 +683,10 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
         lemma_fundamental_div_mod(x, c * d);
         lemma_mul_equality_converse(c * d, (x / c) / d, x / (c * d));
     }
+
+    assert(c * d != 0) by {
+        assert(0 < c * d);
+    }
 }
 
 // #[verifier::spinoff_prover]
@@ -830,23 +834,14 @@ pub proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
 }
 
 pub proof fn lemma_div_multiples_vanish_quotient_auto()
-    ensures forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> 0 < x * d && a / d == (x * a) / (x * d)
+    ensures
+        forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)]
+            0 < x && 0 <= a && 0 < d ==> 0 < x * d && a / d == (x * a) / (x * d)
 {
-    // OBSERVE: need to manually split this
-    assert forall |x: int, a: int, d: int| 0 < x && 0 <= a && 0 < d implies 
-        0 < #[trigger](x * d) && #[trigger](a * 1) == a by
-    {
+    assert forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)]
+            0 < x && 0 <= a && 0 < d implies 0 < x * d && a / d == (x * a) / (x * d) by {
         lemma_div_multiples_vanish_quotient(x, a, d);
     }
-
-    assert forall |x: int, a: int, d: int| 0 < x && 0 <= a && 0 < d implies #[trigger](a / d) == #[trigger](x * a) / #[trigger](x * d) by
-    {
-        lemma_div_multiples_vanish_quotient(x, a, d);
-    }
-
-    assert(forall |x: int, a: int, d: int| #![trigger (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> 0 < x * d && a * 1 == a);
-    assert(forall |x: int, a: int, d: int| #![trigger (a / d), (x * a), (x * d)] 0 < x && 0 <= a && 0 < d ==> a / d == (x * a) / (x * d));
-
 }
 
 /// Rounds down when adding an integer r to the dividend a that is smaller than the divisor d, and then

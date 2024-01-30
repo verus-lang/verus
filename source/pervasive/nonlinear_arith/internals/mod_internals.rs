@@ -35,9 +35,6 @@ pub proof fn lemma_mod_induction_forall(n: int, f: FnSpec(int) -> bool)
         forall |i: int| 0 <= i < n ==> #[trigger]f(i),
         forall |i: int| i >= 0 && #[trigger]f(i) ==> #[trigger]f(add1(i, n)),
         forall |i: int| i < n  && #[trigger]f(i) ==> #[trigger]f(sub1(i, n)),
-        // TODO: this definition breaks lemma_mod_induction_forall2
-        // forall |i: int, j:int| (i >= 0 && j == i + n && #[trigger] f(i)) ==> #[trigger] f(j),
-        // forall |i: int, j:int| (i < n  && j == i - n && #[trigger] f(i)) ==> #[trigger] f(j),
     ensures  
         forall |i| #[trigger]f(i)
 {
@@ -162,7 +159,7 @@ pub proof fn lemma_mod_below_denominator(n: int, x: int)
 
 /// proves the basics of the modulus operation
 // #[verifier::spinoff_prover]
-pub proof fn lemma_mod_basics_auto(n: int)
+pub proof fn lemma_mod_basics(n: int)
     requires n > 0
     ensures  
         forall |x: int| #[trigger]((x + n) % n) == x % n,
@@ -208,7 +205,7 @@ pub proof fn lemma_quotient_and_remainder(x: int, q: int, r: int, n: int)
         r == x % n,
     decreases (if q > 0 { q } else { -q })
 {
-    lemma_mod_basics_auto(n);
+    lemma_mod_basics(n);
 
     if q > 0 {
         mul_internals_nonlinear::lemma_mul_is_distributive_add(n, q - 1, 1);
@@ -228,6 +225,28 @@ pub proof fn lemma_quotient_and_remainder(x: int, q: int, r: int, n: int)
     }
 }
 
+pub open spec fn mod_auto_plus(n: int) -> bool
+    recommends
+        n > 0,
+{
+    forall |x: int, y: int| {
+        let z = (x % n) + (y % n);
+        (  (0 <= z < n && #[trigger]((x + y) % n) == z)
+            || (n <= z < n + n && ((x + y) % n) == z - n))
+    }
+}
+
+pub open spec fn mod_auto_minus(n: int) -> bool
+    recommends
+        n > 0,
+{
+    forall |x: int, y: int| {
+        let z = (x % n) - (y % n);
+        (  (0 <= z < n && #[trigger]((x - y) % n) == z)
+            || (-n <= z < 0  && ((x - y) % n) == z + n))
+    }
+}
+
 /// automates the modulus operator process
 // #[verifier::spinoff_prover]
 pub open spec fn mod_auto(n: int) -> bool
@@ -236,14 +255,8 @@ pub open spec fn mod_auto(n: int) -> bool
     &&& (n % n == 0 && (-n) % n == 0)
     &&& (forall |x: int| #[trigger]((x % n) % n) == x % n)
     &&& (forall |x: int| 0 <= x < n <==> #[trigger](x % n) == x)
-    &&& (forall |x: int, y: int|
-         {let z = (x % n) + (y % n);
-         (  (0 <= z < n && #[trigger]((x + y) % n) == z)
-             || (n <= z < n + n && #[trigger]((x + y) % n) == z - n))})
-    &&& (forall |x: int, y: int|
-        {let z = (x % n) - (y % n);
-        (  (0 <= z < n && #[trigger]((x - y) % n) == z)
-            || (-n <= z < 0  && #[trigger]((x - y) % n) == z + n))})
+    &&& mod_auto_plus(n)
+    &&& mod_auto_minus(n)
 }
 
 /// ensures that mod_auto is true
@@ -252,13 +265,14 @@ pub proof fn lemma_mod_auto(n: int)
     requires n > 0
     ensures mod_auto(n)        
 {
-    lemma_mod_basics_auto(n);
+    lemma_mod_basics(n);
     lemma_mul_auto();
 
-    assert forall |x: int, y: int|
-    {let z = (x % n) + (y % n);
+    assert forall |x: int, y: int| {
+        let z = (x % n) + (y % n);
         (  (0 <= z < n &&  #[trigger]((x + y) % n) == z)
-            || (n <= z < n + n && #[trigger]((x + y) % n) == z - n))} by
+            || (n <= z < n + n && ((x + y) % n) == z - n))
+    } by
     {
         let xq = x / n;
         let xr = x % n;
@@ -276,10 +290,11 @@ pub proof fn lemma_mod_auto(n: int)
         }
     }
 
-    assert forall |x: int, y: int|
-    {let z = (x % n) - (y % n);
+    assert forall |x: int, y: int| {
+        let z = (x % n) - (y % n);
         (  (0 <= z < n &&  #[trigger]((x - y) % n) == z)
-            || (-n <= z < 0 && #[trigger]((x - y) % n) == z + n))} by
+            || (-n <= z < 0 && ((x - y) % n) == z + n))
+    } by
     {
         let xq = x / n;
         let xr = x % n;
@@ -321,21 +336,22 @@ pub proof fn lemma_mod_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
     assert(f(x));
 }
 
-// // not used in any other files, especially divmod
-// /* performs auto induction on modulus for all i s.t. f(i) exists */
-// proof fn lemma_mod_induction_auto_forall(n: int, f: int -> bool)
-//     requires n > 0
-//      mod_auto(n) ==> && (forall i {:trigger IsLe(0, i)} :: IsLe(0, i) && i < n ==> f(i))
-//                             && (forall i {:trigger IsLe(0, i)} :: IsLe(0, i) && f(i) ==> f(i + n))
-//                             && (forall i {:trigger IsLe(i + 1, n)} :: IsLe(i + 1, n) && f(i) ==> f(i - n))
-//     ensures  mod_auto(n)
-//     ensures  forall i {:trigger f(i)} :: f(i)
-// {
-//     lemma_mod_auto(n);
-//     assert forall i :: IsLe(0, i) && i < n ==> f(i);
-//     assert forall i {:trigger f(i), f(i + n)} :: IsLe(0, i) && f(i) ==> f(i + n);
-//     assert forall i {:trigger f(i), f(i - n)} :: IsLe(i + 1, n) && f(i) ==> f(i - n);
-//     lemma_mod_induction_forall(n, f);
-// }
+pub proof fn lemma_mod_induction_auto_forall(n: int, f: FnSpec(int) -> bool)
+    requires 
+        n > 0,
+        mod_auto(n) ==>{&&& (forall |i: int| #[trigger]is_le(0, i) && i < n ==> f(i))
+                        &&& (forall |i: int| #[trigger]is_le(0, i) && f(i) ==> f(i + n))
+                        &&& (forall |i: int| #[trigger]is_le(i + 1, n) && f(i) ==> f(i - n))}
+    ensures 
+        mod_auto(n),
+        forall |i| #[trigger] f(i)
+{
+    assert(mod_auto(n)) by {
+        lemma_mod_induction_auto(n, 0, f);
+    }
+    assert forall |i| #[trigger] f(i) by {
+        lemma_mod_induction_auto(n, i, f);
+    }
+}
 
 }

@@ -25,7 +25,7 @@ pub proof fn lemma_fundamental_div_mod(x:int, d:int)
 
 /* the remained of 0 divided by any integer is always 0 */
 // #[verifier::spinoff_prover]
-proof fn lemma_0_mod_any()
+proof fn lemma_0_mod_anything()
     ensures forall |m: int| m > 0 ==> #[trigger] modulus(0, m) == 0
 {}
 

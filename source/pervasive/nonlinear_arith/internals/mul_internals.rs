@@ -41,9 +41,6 @@ pub proof fn lemma_mul_induction(f: FnSpec(int) -> bool)
         f(0),
         forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1)),
         forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)),
-        // TODO how about this proof style? seems to distablize one or two proofs
-        // forall |i: int, j:int| i >= 0 && j == i + 1 && #[trigger] f(i) ==> #[trigger] f(j),
-        // forall |i: int, j:int| i <= 0 && j == i - 1 && #[trigger] f(i) ==> #[trigger] f(j),
     ensures
         forall |i: int| #[trigger] f(i)
 {
@@ -155,20 +152,20 @@ pub proof fn lemma_mul_induction_auto(x: int, f: FnSpec(int) -> bool)
     lemma_mul_induction(f);
 }
 
-// not called anywhere else
-// /// performs auto induction on multiplication for all i s.t. f(i) exists
-// lemma LemmaMulInductionAutoForall(f: int -> bool)
-//     requires MulAuto() ==> f(0)
-//                         && (forall i {:trigger IsLe(0, i)} :: IsLe(0, i) && f(i) ==> f(i + 1))
-//                         && (forall i {:trigger IsLe(i, 0)} :: IsLe(i, 0) && f(i) ==> f(i - 1))
-//     ensures  MulAuto()
-//     ensures  forall i {:trigger f(i)} :: f(i)
-// {
-//     LemmaMulCommutes();
-//     LemmaMulDistributes();
-//     assert forall i {:trigger f(i)} :: IsLe(0, i) && f(i) ==> f(i + 1);
-//     assert forall i {:trigger f(i)} :: IsLe(i, 0) && f(i) ==> f(i - 1);
-//     LemmaMulInduction(f);
-// }
+pub proof fn lemma_mul_induction_auto_forall(f: FnSpec(int) -> bool)
+    requires mul_auto() ==> { &&&  f(0)
+                              &&& (forall |i| #[trigger] is_le(0, i) && f(i) ==> f(i + 1))
+                              &&& (forall |i| #[trigger] is_le(i, 0) && f(i) ==> f(i - 1))}
+    ensures  
+        mul_auto(),
+        forall |i| #[trigger] f(i),
+{
+    assert(mul_auto()) by {
+        lemma_mul_induction_auto(0, f);
+    }
+    assert forall |i| #[trigger] f(i) by {
+        lemma_mul_induction_auto(i, f);
+    }
+}
 
 }

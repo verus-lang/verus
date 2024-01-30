@@ -4,7 +4,7 @@ use builtin_macros::*;
 
 verus! {
 use crate::nonlinear_arith::internals::general_internals::{is_le};
-use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_induction_forall, lemma_mod_induction_forall2, mod_auto, lemma_mod_auto, lemma_mod_basics_auto};
+use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_induction_forall, lemma_mod_induction_forall2, mod_auto, lemma_mod_auto, lemma_mod_basics};
 use crate::nonlinear_arith::internals::mod_internals_nonlinear;
 use crate::nonlinear_arith::internals::div_internals_nonlinear;
 use crate::nonlinear_arith::math::{add as add1, sub as sub1};
@@ -50,12 +50,30 @@ pub proof fn lemma_div_basics(n: int)
         forall |x:int| #[trigger]((x - n) / n) == x / n - 1,
 {
     lemma_mod_auto(n);
-    lemma_mod_basics_auto(n);
+    lemma_mod_basics(n);
     div_internals_nonlinear::lemma_small_div();
     div_internals_nonlinear::lemma_div_by_self(n);
     
     assert forall |x:int| 0 <= x < n <== #[trigger](x / n) == 0 by {
         mod_internals_nonlinear::lemma_fundamental_div_mod(x, n);
+    }
+}
+
+pub open spec fn div_auto_plus(n: int) -> bool
+{
+    forall |x: int, y: int| #![trigger ((x + y) / n)] {
+        let z = (x % n) + (y % n);
+        (  (0 <= z < n && ((x + y) / n) == x / n + y / n)
+             || (n <= z < n + n && ((x + y) / n) == x / n + y / n + 1))
+    }
+}
+
+pub open spec fn div_auto_minus(n: int) -> bool
+{
+    forall |x: int, y: int| #![trigger ((x - y) / n)] {
+        let z = (x % n) - (y % n);
+        (  (0 <= z < n && ((x - y) / n) == x / n - y / n)
+            || (-n <= z < 0  && ((x - y) / n) == x / n - y / n - 1))
     }
 }
 
@@ -68,35 +86,24 @@ pub open spec fn div_auto(n: int) -> bool
     &&& mod_auto(n)
     &&& (n / n == -((-n) / n) == 1)
     &&& forall |x: int| 0 <= x < n <==> #[trigger](x / n) == 0
-    &&& (forall |x: int, y: int| #![trigger ((x + y) / n)]
-         {let z = (x % n) + (y % n);
-         (  (0 <= z < n && ((x + y) / n) == x / n + y / n)
-             || (n <= z < n + n && ((x + y) / n) == x / n + y / n + 1))})
-    &&& (forall |x: int, y: int| #![trigger ((x - y) / n)]
-        {let z = (x % n) - (y % n);
-        (  (0 <= z < n && ((x - y) / n) == x / n - y / n)
-            || (-n <= z < 0  && ((x - y) / n) == x / n - y / n - 1))})
+    &&& div_auto_plus(n)
+    &&& div_auto_minus(n)
 }
 
-/// Ensures that div_auto is true 
-pub proof fn lemma_div_auto(n: int)
-    requires n > 0
+proof fn lemma_div_auto_plus(n: int)
+    requires
+        n > 0,
     ensures
-        div_auto(n)
+        div_auto_plus(n),
 {
     lemma_mod_auto(n);
     lemma_div_basics(n);
 
-    assert forall |x: int| 0 <= x < n <==> #[trigger](x / n) == 0 by {
-        lemma_div_basics(n);
-    }
-    assert ((0 + n) / n == 1);
-    assert ((0 - n) / n == -1);
-
-    assert forall |x: int, y: int|
-         {let z = (x % n) + (y % n);
+    assert forall |x: int, y: int| {
+        let z = (x % n) + (y % n);
          (  (0 <= z < n && #[trigger]((x + y) / n) == x / n + y / n)
-             || (n <= z < n + n && #[trigger]((x + y) / n) == x / n + y / n + 1))} by
+             || (n <= z < n + n && ((x + y) / n) == x / n + y / n + 1))
+    } by
     {
         let f = |xx:int, yy:int|
             {let z = (xx % n) + (yy % n);
@@ -129,11 +136,22 @@ pub proof fn lemma_div_auto(n: int)
         lemma_mod_induction_forall2(n, f);
         assert(f(x, y));
     }
+}
 
-    assert forall |x:int, y:int|
-        {let z = (x % n) - (y % n);
+proof fn lemma_div_auto_minus(n: int)
+    requires
+        n > 0,
+    ensures
+        div_auto_minus(n),
+{
+    lemma_mod_auto(n);
+    lemma_div_basics(n);
+
+    assert forall |x:int, y:int| {
+        let z = (x % n) - (y % n);
         (  (0 <= z < n && #[trigger]((x - y) / n) == x / n - y / n)
-            || (-n <= z < 0  && #[trigger]((x - y) / n) == x / n - y / n - 1))} by
+            || (-n <= z < 0  && ((x - y) / n) == x / n - y / n - 1))
+    } by
     {
         let f = |xx:int, yy:int|
             {let z = (xx % n) - (yy % n);
@@ -164,6 +182,25 @@ pub proof fn lemma_div_auto(n: int)
     }
 }
 
+/// Ensures that div_auto is true 
+pub proof fn lemma_div_auto(n: int)
+    requires n > 0
+    ensures
+        div_auto(n)
+{
+    lemma_mod_auto(n);
+    lemma_div_basics(n);
+
+    assert forall |x: int| 0 <= x < n <==> #[trigger](x / n) == 0 by {
+        lemma_div_basics(n);
+    }
+    assert ((0 + n) / n == 1);
+    assert ((0 - n) / n == -1);
+
+    lemma_div_auto_plus(n);
+    lemma_div_auto_minus(n);
+}
+
 /// Performs auto induction for division 
 // #[verifier::spinoff_prover]
 pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
@@ -190,21 +227,22 @@ pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
     assert(f(x));
 }
 
-// same as the mod case, it is not invoked anywhere else
-// /// Performs auto induction on division for all i s.t. f(i) exists 
-// proof fn lemma_div_induction_auto_forall(n:int, f:int->bool)
-//     requires n > 0
-//     requires div_auto(n) ==> && (forall i {:trigger IsLe(0, i)} :: IsLe(0, i) && i < n ==> f(i))
-//                             && (forall i {:trigger IsLe(0, i)} :: IsLe(0, i) && f(i) ==> f(i + n))
-//                             && (forall i {:trigger IsLe(i + 1, n)} :: IsLe(i + 1, n) && f(i) ==> f(i - n))
-//     ensures  div_auto(n)
-//     ensures  forall i {:trigger f(i)} :: f(i)
-// {
-//     lemma_div_auto(n);
-//     assert forall i :: IsLe(0, i) && i < n ==> f(i);
-//     assert forall i {:trigger f(i), f(i + n)} :: IsLe(0, i) && f(i) ==> f(i + n);
-//     assert forall i {:trigger f(i), f(i - n)} :: IsLe(i + 1, n) && f(i) ==> f(i - n);
-//     lemma_mod_induction_forall(n, f);
-// }
+pub proof fn lemma_div_induction_auto_forall(n: int, f: FnSpec(int) -> bool)
+    requires
+        n > 0,
+        div_auto(n) ==>{&&& (forall |i: int| #[trigger]is_le(0, i) && i < n ==> f(i))
+                        &&& (forall |i: int| #[trigger]is_le(0, i) && f(i) ==> f(i + n))
+                        &&& (forall |i: int| #[trigger]is_le(i + 1, n) && f(i) ==> f(i - n))}
+    ensures  
+        div_auto(n),
+        forall |i| #[trigger] f(i)
+{
+    assert(div_auto(n)) by {
+        lemma_div_induction_auto(n, 0, f);
+    }
+    assert forall |i| #[trigger] f(i) by {
+        lemma_div_induction_auto(n, i, f);
+    }
+}
 
 }
