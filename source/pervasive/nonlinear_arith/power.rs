@@ -454,27 +454,15 @@ pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
     ensures 
         pow(b as int, e1) <= pow(b as int, e2)
 {
-    lemma_pow_auto();
-    let f = |e: int| 0 <= e ==> pow(b as int, e1) <= pow(b as int, (e1 + e) as nat);
-    assert forall |i: int| #[trigger]is_le(0, i) && f(i) implies f(i + 1) by
-    {
-    calc! { (<=)
-        pow(b as int, (e1 + i) as nat);
-        (<=) { 
-            lemma_pow_positive(b as int, (e1 + i) as nat);
-            lemma_mul_left_inequality(pow(b as int, (e1 + i) as nat), 1, b as int);
+    if e1 != e2 {
+        if b > 1 {
+            lemma_pow_strictly_increases(b, e1, e2);
         }
-        pow(b as int, (e1 + i) as nat) * b;
-        (<=) { lemma_pow1(b as int); }
-        pow(b as int, (e1 + i) as nat) * pow(b as int, 1nat);
-        (<=) { lemma_pow_adds(b as int, (e1 + i) as nat, 1); }
-        pow(b as int, (e1 + i + 1) as nat);
+        else {
+            lemma1_pow(e1);
+            lemma1_pow(e2);
+        }
     }
-    }
-    lemma_mul_induction_auto(e2 - e1, f);
-    assert(pow(b as int, e1) <= pow(b as int, e2 as nat));
-    assert(e2 as nat == e2);
-    assert(pow(b as int, e1) <= pow(b as int, e2));
 }
 
 // #[verifier::spinoff_prover]
