@@ -1,3 +1,17 @@
+//! This file contains proofs related to modulo. These are internal
+//! functions used within the math standard library.
+//!
+//! It's based on the following file from the Dafny math standard library:
+//! `Source/DafnyStandardLibraries/src/Std/Arithmetic/Internal/ModInternals.dfy`.
+//! That file has the following copyright notice:
+//! /*******************************************************************************
+//! *  Original: Copyright (c) Microsoft Corporation
+//! *  SPDX-License-Identifier: MIT
+//! *  
+//! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
+//! *  SPDX-License-Identifier: MIT 
+//! *******************************************************************************/
+
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -12,7 +26,7 @@ use crate::nonlinear_arith::internals::mod_internals_nonlinear::{lemma_fundament
 use crate::nonlinear_arith::internals::div_internals_nonlinear;
 use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
-/// Performs modulus recursively
+/// This function performs the modulus operation recursively.
 #[verifier(opaque)]
 pub open spec fn mod_recursive(x: int, d: int) -> int
     recommends d > 0
@@ -27,8 +41,27 @@ pub open spec fn mod_recursive(x: int, d: int) -> int
     }
 }
 
-/// performs induction on modulus
-// #[verifier::spinoff_prover]
+/// This utility function helps prove a mathematical property by
+/// induction. The caller supplies an integer predicate, proves the
+/// predicate holds in certain base cases, and proves correctness of
+/// inductive steps both upward and downward from the base cases. This
+/// lemma invokes induction to establish that the predicate holds for
+/// all possible inputs.
+///
+/// `f`: The integer predicate
+///
+/// `n`: Upper bound on the base cases. Specifically, the caller
+/// establishes `f(i)` for every value `i` satisfying `0 <= i < n`.
+///
+/// To prove inductive steps upward from the base cases, the caller
+/// must establish that, for any `i >= 0`, `f(i) ==> f(add1(i, n))`.
+/// `add1(i, n)` is just `i + n`, but written in a functional style
+/// so that it can be used where functional triggers are required.
+///
+/// To prove inductive steps downward from the base cases, the caller
+/// must establish that, for any `i < n`, `f(i) ==> f(sub1(i, n))`.
+/// `sub1(i, n)` is just `i - n`, but written in a functional style
+/// so that it can be used where functional triggers are required.
 pub proof fn lemma_mod_induction_forall(n: int, f: FnSpec(int) -> bool)
     requires 
         n > 0,
@@ -43,10 +76,33 @@ pub proof fn lemma_mod_induction_forall(n: int, f: FnSpec(int) -> bool)
     };
 }
 
-// same as dafny
-/// given an integer x and divisor n, the remainder of x%n is equivalent to the remainder of (x+m)%n
-/// where m is a multiple of n
-// #[verifier::spinoff_prover]
+/// This utility function helps prove a mathematical property of a
+/// pair of integers by induction. The caller supplies a predicate
+/// over a pair of integers, proves the predicate holds in certain
+/// base cases, and proves correctness of inductive steps both upward
+/// and downward from the base cases. This lemma invokes induction to
+/// establish that the predicate holds for all possible inputs.
+///
+/// `f`: The integer predicate
+///
+/// `n`: Upper bound on the base cases. Specifically, the caller
+/// establishes `f(i, j)` for every pair of values `i, j` satisfying
+/// `0 <= i < n` and `0 <= j < n`.
+///
+/// To prove inductive steps from the base cases, the caller must
+/// establish that:
+///
+/// 1) For any `i >= 0`, `f(i, j) ==> f(add1(i, n), j)`. `add1(i, n)`
+/// is just `i + n`, but written in a functional style so that it can
+/// be used where functional triggers are required.
+///
+/// 2) For any `j >= 0`, `f(i, j) ==> f(i, add1(j, n))`
+///
+/// 3) For any `i < n`, `f(i) ==> f(sub1(i, n))`. `sub1(i, n)` is just
+/// `i - n`, but written in a functional style so that it can be used
+/// where functional triggers are required.
+///
+/// 4) For any `j < n`, `f(j) ==> f(i, sub1(j, n))`.
 pub proof fn lemma_mod_induction_forall2(n: int, f:FnSpec(int, int)->bool)
     requires
         n > 0,
@@ -70,8 +126,9 @@ pub proof fn lemma_mod_induction_forall2(n: int, f:FnSpec(int, int)->bool)
     };
 }
 
-// same as dafny now
-// #[verifier::spinoff_prover]
+/// Proof that when dividing, adding the denominator to the numerator
+/// increases the result by 1. Specifically, for the given `n` and `x`,
+/// `(x + n) / n == x / n + 1`.
 pub proof fn lemma_div_add_denominator(n: int, x: int)
     requires n > 0
     ensures (x + n) / n == x / n + 1
@@ -88,7 +145,9 @@ pub proof fn lemma_div_add_denominator(n: int, x: int)
     if (zp < 0) { lemma_mul_inequality(zp, -1, n); }
 }
 
-// same as dafny now
+/// Proof that when dividing, subtracting the denominator from the numerator
+/// decreases the result by 1. Specifically, for the given `n` and `x`,
+/// `(x - n) / n == x / n - 1`.
 // #[verifier::spinoff_prover]
 pub proof fn lemma_div_sub_denominator(n: int, x: int)
     requires n > 0
@@ -105,7 +164,9 @@ pub proof fn lemma_div_sub_denominator(n: int, x: int)
     if (zm < 0) { lemma_mul_inequality(zm, -1, n); }
 }
 
-// slightly longer than dafny
+/// Proof that when dividing, adding the denominator to the numerator
+/// doesn't change the remainder. Specifically, for the given `n` and
+/// `x`, `(x + n) % n == x % n`.
 #[verifier::spinoff_prover]
 pub proof fn lemma_mod_add_denominator(n: int, x: int)
     requires n > 0
@@ -128,8 +189,9 @@ pub proof fn lemma_mod_add_denominator(n: int, x: int)
     if (zp < 0) { lemma_mul_inequality(zp, -1, n); }
 }
 
-// slightly longer than dafny
-// #[verifier::spinoff_prover]
+/// Proof that when dividing, subtracting the denominator from the
+/// numerator doesn't change the remainder. Specifically, for the
+/// given `n` and `x`, `(x - n) % n == x % n`.
 pub proof fn lemma_mod_sub_denominator(n: int, x: int)
     requires n > 0
     ensures (x - n) % n == x % n
@@ -145,7 +207,8 @@ pub proof fn lemma_mod_sub_denominator(n: int, x: int)
     if (zm < 0) { lemma_mul_inequality(zm, -1, n); }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that for the given `n` and `x`, `x % n == x` if and only if
+/// `0 <= x < n`.
 pub proof fn lemma_mod_below_denominator(n: int, x: int)
     requires n > 0
     ensures 0 <= x < n <==> x % n == x
@@ -157,8 +220,16 @@ pub proof fn lemma_mod_below_denominator(n: int, x: int)
     }
 }
 
-/// proves the basics of the modulus operation
-// #[verifier::spinoff_prover]
+/// Proof of basic properties of the division given the divisor `n`:
+///
+/// 1) Adding the denominator to the numerator increases the quotient
+/// by 1 and doesn't change the remainder.
+///
+/// 2) Subtracting the denominator from the numerator decreases the
+/// quotient by 1 and doesn't change the remainder.
+///
+/// 3) The numerator is the same as the result if and only if the
+/// numerator is in the half-open range `[0, n)`.
 pub proof fn lemma_mod_basics(n: int)
     requires n > 0
     ensures  
@@ -193,8 +264,9 @@ pub proof fn lemma_mod_basics(n: int)
     };
 }
 
-/// proves the quotient remainder theorem
-// #[verifier::spinoff_prover]
+/// Proof that if `x == q * r + n` and `0 <= r < n`, then `q == x / n`
+/// and `r == x % n`. Essentially, this is the converse of the
+/// fundamental theorem of division and modulo.
 pub proof fn lemma_quotient_and_remainder(x: int, q: int, r: int, n: int)
     requires 
         n > 0,
@@ -225,6 +297,10 @@ pub proof fn lemma_quotient_and_remainder(x: int, q: int, r: int, n: int)
     }
 }
 
+/// This function says that for any `x` and `y`, there are two
+/// possibilities for the sum `x % n + y % n`: (1) It's in the range
+/// `[0, n)` and it's equal to `(x + y) % n`. (2) It's in the range
+/// `[n, n + n)` and it's equal to `(x + y) % n + n`.
 pub open spec fn mod_auto_plus(n: int) -> bool
     recommends
         n > 0,
@@ -236,6 +312,10 @@ pub open spec fn mod_auto_plus(n: int) -> bool
     }
 }
 
+/// This function says that for any `x` and `y`, there are two
+/// possibilities for the difference `x % n - y % n`: (1) It's in the
+/// range `[0, n)` and it's equal to `(x - y) % n`. (2) It's in the
+/// range `[-n, 0)` and it's equal to `(x + y) % n - n`.
 pub open spec fn mod_auto_minus(n: int) -> bool
     recommends
         n > 0,
@@ -247,8 +327,8 @@ pub open spec fn mod_auto_minus(n: int) -> bool
     }
 }
 
-/// automates the modulus operator process
-// #[verifier::spinoff_prover]
+/// This function states various useful properties about the modulo
+/// operator when the divisor is `n`.
 pub open spec fn mod_auto(n: int) -> bool
     recommends n > 0,
 {
@@ -259,8 +339,9 @@ pub open spec fn mod_auto(n: int) -> bool
     &&& mod_auto_minus(n)
 }
 
-/// ensures that mod_auto is true
-// #[verifier::spinoff_prover]
+/// Proof of `mod_auto(n)`, which states various useful properties
+/// about the modulo operator when the divisor is the positive number
+/// `n`
 pub proof fn lemma_mod_auto(n: int)
     requires n > 0
     ensures mod_auto(n)        
@@ -313,8 +394,33 @@ pub proof fn lemma_mod_auto(n: int)
     }
 }
 
-/// performs auto induction for modulus
-// #[verifier::spinoff_prover]
+/// This utility function helps prove a mathematical property by
+/// induction. The caller supplies an integer predicate, proves the
+/// predicate holds in certain base cases, and proves correctness of
+/// inductive steps both upward and downward from the base cases. This
+/// lemma invokes induction to establish that the predicate holds for
+/// the given arbitrary input `x`.
+///
+/// `f`: The integer predicate
+///
+/// `n`: Upper bound on the base cases. Specifically, the caller
+/// establishes `f(i)` for every value `i` satisfying `is_le(0, i) &&
+/// i < n`.
+///
+/// `x`: The desired case established by this lemma. Its postcondition
+/// thus includes `f(x)`.
+///
+/// To prove inductive steps upward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(0, i) && f(i) ==> f(i +
+/// n)`. `is_le(0, i)` is just `0 <= i`, but written in a functional
+/// style so that it can be used where functional triggers are
+/// required.
+///
+/// To prove inductive steps downward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(i + 1, n) && f(i) ==> f(i
+/// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
+/// functional style so that it can be used where functional triggers
+/// are required.
 pub proof fn lemma_mod_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
     requires 
         n > 0,
@@ -336,6 +442,30 @@ pub proof fn lemma_mod_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
     assert(f(x));
 }
 
+/// This utility function helps prove a mathematical property by
+/// induction. The caller supplies an integer predicate, proves the
+/// predicate holds in certain base cases, and proves correctness of
+/// inductive steps both upward and downward from the base cases. This
+/// lemma invokes induction to establish that the predicate holds for
+/// all integer values.
+///
+/// `f`: The integer predicate
+///
+/// `n`: Upper bound on the base cases. Specifically, the caller
+/// establishes `f(i)` for every value `i` satisfying `is_le(0, i) &&
+/// i < n`.
+///
+/// To prove inductive steps upward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(0, i) && f(i) ==> f(i +
+/// n)`. `is_le(0, i)` is just `0 <= i`, but written in a functional
+/// style so that it can be used where functional triggers are
+/// required.
+///
+/// To prove inductive steps downward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(i + 1, n) && f(i) ==> f(i
+/// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
+/// functional style so that it can be used where functional triggers
+/// are required.
 pub proof fn lemma_mod_induction_auto_forall(n: int, f: FnSpec(int) -> bool)
     requires 
         n > 0,

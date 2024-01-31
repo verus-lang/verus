@@ -1,3 +1,17 @@
+//! This file contains proofs related to division. These are internal
+//! functions used within the math standard library.
+//!
+//! It's based on the following file from the Dafny math standard library:
+//! `Source/DafnyStandardLibraries/src/Std/Arithmetic/Internal/DivInternals.dfy`.
+//! That file has the following copyright notice:
+//! /*******************************************************************************
+//! *  Original: Copyright (c) Microsoft Corporation
+//! *  SPDX-License-Identifier: MIT
+//! *  
+//! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
+//! *  SPDX-License-Identifier: MIT 
+//! *******************************************************************************/
+
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -9,7 +23,8 @@ use crate::nonlinear_arith::internals::mod_internals_nonlinear;
 use crate::nonlinear_arith::internals::div_internals_nonlinear;
 use crate::nonlinear_arith::math::{add as add1, sub as sub1};
 
-/// Performs division recursively with positive denominator.
+/// This function recursively computes the quotient resulting from
+/// dividing two numbers `x` and `d`, in the case where `d > 0`
 #[verifier(opaque)]
 pub open spec fn div_pos(x: int, d: int) -> int
     recommends d > 0
@@ -26,7 +41,9 @@ pub open spec fn div_pos(x: int, d: int) -> int
     }
 }
 
-/// Performs division recursively.
+/// This function recursively computes the quotient resulting from
+/// dividing two numbers `x` and `d`. It's only meaningful when `d !=
+/// 0`, of course.
 #[verifier(opaque)]
 pub open spec fn div_recursive(x: int, d: int) -> int
     recommends d != 0
@@ -39,8 +56,8 @@ pub open spec fn div_recursive(x: int, d: int) -> int
     }
 }
 
-/// Proves the basics of the division operation
-// #[verifier::spinoff_prover]
+/// Proof of basic properties of integer division when the divisor is
+/// the given positive integer `n`
 pub proof fn lemma_div_basics(n: int)
     requires n > 0
     ensures  
@@ -59,6 +76,10 @@ pub proof fn lemma_div_basics(n: int)
     }
 }
 
+/// This function says that for any `x` and `y`, there are two
+/// possibilities for the sum `x % n + y % n`: (1) It's in the range
+/// `[0, n)` and `(x + y) / n == x / n + y / n`. (2) It's in the range
+/// `[n, n + n)` and `(x + y) / n = x / n + y / n + 1`.
 pub open spec fn div_auto_plus(n: int) -> bool
 {
     forall |x: int, y: int| #![trigger ((x + y) / n)] {
@@ -68,6 +89,10 @@ pub open spec fn div_auto_plus(n: int) -> bool
     }
 }
 
+/// This function says that for any `x` and `y`, there are two
+/// possibilities for the difference `x % n - y % n`: (1) It's in the
+/// range `[0, n)` and `(x - y) / n == x / n - y / n`. (2) It's in the
+/// range `[-n, 0)` and `(x - y) / n = x / n - y / n - 1`.
 pub open spec fn div_auto_minus(n: int) -> bool
 {
     forall |x: int, y: int| #![trigger ((x - y) / n)] {
@@ -77,9 +102,10 @@ pub open spec fn div_auto_minus(n: int) -> bool
     }
 }
 
-/// Automates the division operator process. Contains the identity property, a
-/// fact about when quotients are zero, and facts about adding and subtracting
-/// integers over a common denominator.
+/// This function states various properties of integer division when
+/// the denominator is `n`, including the identity property, a fact
+/// about when quotients are zero, and facts about adding and
+/// subtracting integers over this common denominator
 pub open spec fn div_auto(n: int) -> bool
     recommends n > 0
 {
@@ -90,6 +116,8 @@ pub open spec fn div_auto(n: int) -> bool
     &&& div_auto_minus(n)
 }
 
+/// Proof of `div_auto_plus(n)`, not exported publicly because it's
+/// just used as part of `lemma_div_auto` to prove `div_auto(n)`
 proof fn lemma_div_auto_plus(n: int)
     requires
         n > 0,
@@ -138,6 +166,8 @@ proof fn lemma_div_auto_plus(n: int)
     }
 }
 
+/// Proof of `div_auto_mius(n)`, not exported publicly because it's
+/// just used as part of `lemma_div_auto` to prove `div_auto(n)`
 proof fn lemma_div_auto_minus(n: int)
     requires
         n > 0,
@@ -182,7 +212,8 @@ proof fn lemma_div_auto_minus(n: int)
     }
 }
 
-/// Ensures that div_auto is true 
+/// Proof of `div_auto(n)`, which expresses many useful properties of
+/// division when the denominator is the given positive integer `n`.
 pub proof fn lemma_div_auto(n: int)
     requires n > 0
     ensures
@@ -201,8 +232,33 @@ pub proof fn lemma_div_auto(n: int)
     lemma_div_auto_minus(n);
 }
 
-/// Performs auto induction for division 
-// #[verifier::spinoff_prover]
+/// This utility function helps prove a mathematical property by
+/// induction. The caller supplies an integer predicate, proves the
+/// predicate holds in certain base cases, and proves correctness of
+/// inductive steps both upward and downward from the base cases. This
+/// lemma invokes induction to establish that the predicate holds for
+/// the given arbitrary input `x`.
+///
+/// `f`: The integer predicate
+///
+/// `n`: Upper bound on the base cases. Specifically, the caller
+/// establishes `f(i)` for every value `i` satisfying `is_le(0, i) &&
+/// i < n`.
+///
+/// `x`: The desired case established by this lemma. Its postcondition
+/// thus includes `f(x)`.
+///
+/// To prove inductive steps upward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(0, i) && f(i) ==> f(i +
+/// n)`. `is_le(0, i)` is just `0 <= i`, but written in a functional
+/// style so that it can be used where functional triggers are
+/// required.
+///
+/// To prove inductive steps downward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(i + 1, n) && f(i) ==> f(i
+/// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
+/// functional style so that it can be used where functional triggers
+/// are required.
 pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
     requires
         n > 0,
@@ -227,6 +283,30 @@ pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
     assert(f(x));
 }
 
+/// This utility function helps prove a mathematical property by
+/// induction. The caller supplies an integer predicate, proves the
+/// predicate holds in certain base cases, and proves correctness of
+/// inductive steps both upward and downward from the base cases. This
+/// lemma invokes induction to establish that the predicate holds for
+/// all integer values.
+///
+/// `f`: The integer predicate
+///
+/// `n`: Upper bound on the base cases. Specifically, the caller
+/// establishes `f(i)` for every value `i` satisfying `is_le(0, i) &&
+/// i < n`.
+///
+/// To prove inductive steps upward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(0, i) && f(i) ==> f(i +
+/// n)`. `is_le(0, i)` is just `0 <= i`, but written in a functional
+/// style so that it can be used where functional triggers are
+/// required.
+///
+/// To prove inductive steps downward from the base cases, the caller
+/// must establish that, for any `i`, `is_le(i + 1, n) && f(i) ==> f(i
+/// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
+/// functional style so that it can be used where functional triggers
+/// are required.
 pub proof fn lemma_div_induction_auto_forall(n: int, f: FnSpec(int) -> bool)
     requires
         n > 0,
