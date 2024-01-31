@@ -1,26 +1,9 @@
 use crate::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, DeclX, Expr, ExprX, Exprs,
-    Ident, MultiOp, Qid, Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
+    Ident, MultiOp, Qid, Quant, Trigger, Typ, TypX, Typs, UnaryOp,
 };
-use crate::messages::MessageX;
 use std::fmt::Debug;
 use std::sync::Arc;
-
-impl Debug for Span {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        f.debug_tuple("Span").field(&self.as_string).finish()
-    }
-}
-
-pub fn empty_raw_span() -> crate::ast::RawSpan {
-    Arc::new(())
-}
-
-impl Debug for MessageX {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "{}", self.note)
-    }
-}
 
 impl Debug for Constant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {

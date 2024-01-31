@@ -1,6 +1,6 @@
 use air::ast::Ident;
 use regex::Regex;
-use rustc_middle::ty::{DefIdTree, TyCtxt, TyKind};
+use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use std::{collections::HashMap, sync::Arc};
 
@@ -52,6 +52,8 @@ fn ty_to_stable_string_partial<'tcx>(
     })
 }
 
+/// NOTE: do not use this to determine if something is a well known / rust lang item
+/// use verus_items::get_rust_item instead
 pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<String> {
     let def_path = tcx.def_path(def_id);
     let mut segments: Vec<String> = Vec::with_capacity(def_path.data.len());
@@ -70,7 +72,7 @@ pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId)
                     return None;
                 }
                 one_impl_block_in_path = true;
-                let self_ty = tcx.type_of(tcx.parent(def_id));
+                let self_ty = tcx.type_of(tcx.parent(def_id)).skip_binder();
                 let path = ty_to_stable_string_partial(tcx, &self_ty)?;
                 segments.clear();
                 segments.push(path);
@@ -107,16 +109,14 @@ pub(crate) enum SpecItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum QuantItem {
     Forall,
-    ForallArith,
     Exists,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum DirectiveItem {
     ExtraDependency,
-    Hide,
-    Reveal,
-    RevealFuel,
+    RevealHide,
+    RevealHideInternalPath,
     RevealStrlit,
 }
 
@@ -126,6 +126,7 @@ pub(crate) enum ExprItem {
     ChooseTuple,
     Old,
     GetVariantField,
+    GetUnionField,
     IsVariant,
     StrSliceLen,
     StrSliceGetChar,
@@ -138,6 +139,7 @@ pub(crate) enum ExprItem {
     IsSmallerThan,
     IsSmallerThanLexicographic,
     IsSmallerThanRecursiveFunctionField,
+    InferSpecForLoopIter,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -292,8 +294,13 @@ pub(crate) enum BuiltinTypeItem {
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinFunctionItem {
-    FnWithSpecificationRequires,
-    FnWithSpecificationEnsures,
+    CallRequires,
+    CallEnsures,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum GlobalItem {
+    SizeOf,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -313,6 +320,7 @@ pub(crate) enum VerusItem {
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
     BuiltinFunction(BuiltinFunctionItem),
+    Global(GlobalItem),
 }
 
 #[rustfmt::skip]
@@ -337,18 +345,17 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
         ("verus::builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),
-        ("verus::builtin::forall_arith",            VerusItem::Quant(QuantItem::ForallArith)),
 
         ("verus::builtin::extra_dependency",        VerusItem::Directive(DirectiveItem::ExtraDependency)),
-        ("verus::builtin::hide",                    VerusItem::Directive(DirectiveItem::Hide)),
-        ("verus::builtin::reveal",                  VerusItem::Directive(DirectiveItem::Reveal)),
-        ("verus::builtin::reveal_with_fuel",        VerusItem::Directive(DirectiveItem::RevealFuel)),
+        ("verus::builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
+        ("verus::builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
         ("verus::builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
 
         ("verus::builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
         ("verus::builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
         ("verus::builtin::old",                     VerusItem::Expr(ExprItem::Old)),
         ("verus::builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
+        ("verus::builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
         ("verus::builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
         ("verus::builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
@@ -361,6 +368,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::is_smaller_than",         VerusItem::Expr(ExprItem::IsSmallerThan)),
         ("verus::builtin::is_smaller_than_lexicographic", VerusItem::Expr(ExprItem::IsSmallerThanLexicographic)),
         ("verus::builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
+        ("verus::builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
 
         ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
@@ -388,7 +396,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::SpecOrd::spec_ge",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Ge))),
         ("verus::builtin::SpecOrd::spec_lt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Lt))),
         ("verus::builtin::SpecOrd::spec_gt",        VerusItem::BinaryOp(BinaryOpItem::SpecOrd(SpecOrdItem::Gt))),
-        
+
         ("verus::builtin::SpecAdd::spec_add",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Add))),
         ("verus::builtin::SpecSub::spec_sub",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Sub))),
         ("verus::builtin::SpecMul::spec_mul",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Mul))),
@@ -419,7 +427,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
 
         ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
-        
+
         ("verus::builtin::spec_literal_integer",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Integer))),
         ("verus::builtin::spec_literal_int",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Int))),
         ("verus::builtin::spec_literal_nat",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Nat))),
@@ -460,8 +468,10 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
 
-        ("verus::builtin::FnWithSpecification::requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationRequires)),
-        ("verus::builtin::FnWithSpecification::ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::FnWithSpecificationEnsures)),
+        ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
+        ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
+        
+        ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
     ]
 }
 
@@ -524,6 +534,9 @@ pub(crate) enum RustItem {
     Panic,
     Box,
     Fn,
+    FnOnce,
+    FnMut,
+    Drop,
     StructuralEq,
     StructuralPartialEq,
     Eq,
@@ -537,6 +550,9 @@ pub(crate) enum RustItem {
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
     TryTraitBranch,
+    ResidualTraitFromResidual,
+    IntoIterFn,
+    Destruct,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -550,6 +566,15 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().fn_trait() == Some(def_id) {
         return Some(RustItem::Fn);
     }
+    if tcx.lang_items().fn_mut_trait() == Some(def_id) {
+        return Some(RustItem::FnMut);
+    }
+    if tcx.lang_items().fn_once_trait() == Some(def_id) {
+        return Some(RustItem::FnOnce);
+    }
+    if tcx.lang_items().drop_trait() == Some(def_id) {
+        return Some(RustItem::Drop);
+    }
     if tcx.lang_items().structural_teq_trait() == Some(def_id) {
         return Some(RustItem::StructuralEq);
     }
@@ -561,6 +586,15 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().branch_fn() == Some(def_id) {
         return Some(RustItem::TryTraitBranch);
+    }
+    if tcx.lang_items().from_residual_fn() == Some(def_id) {
+        return Some(RustItem::ResidualTraitFromResidual);
+    }
+    if tcx.lang_items().into_iter_fn() == Some(def_id) {
+        return Some(RustItem::IntoIterFn);
+    }
+    if tcx.lang_items().destruct_trait() == Some(def_id) {
+        return Some(RustItem::Destruct);
     }
 
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);

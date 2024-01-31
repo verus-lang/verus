@@ -2,11 +2,11 @@ use crate::ast::{
     BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use crate::ast_util::{error, path_as_friendly_rust_name};
+use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
+use crate::messages::{error, Span};
 use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
-use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -29,6 +29,12 @@ and then programmers can use manual triggers to make the quantifiers more libera
 rather than the defaults causing timeouts,
 and programmers having to use manual triggers to eliminate the timeouts.
 */
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AutoType {
+    Regular,
+    All,
+    None,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum App {
@@ -41,6 +47,8 @@ enum App {
     Other(u64),
     VarAt(UniqueIdent, VarAt),
     BitOp(BitOpName),
+    StaticVar(Fun),
+    ExecFnByName(Fun),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -91,6 +99,12 @@ impl std::fmt::Debug for TermX {
             }
             TermX::App(App::BitOp(bop), _) => {
                 write!(f, "BitOp: {:?}", bop)
+            }
+            TermX::App(App::StaticVar(fun), _) => {
+                write!(f, "StaticVar: {:?}", fun)
+            }
+            TermX::App(App::ExecFnByName(fun), _) => {
+                write!(f, "ExecFnByName: {:?}", fun)
             }
         }
     }
@@ -181,10 +195,10 @@ struct Timer {
 
 fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     if timer.timeout_countdown == 0 {
-        error(
+        Err(error(
             &timer.span,
             "could not infer triggers, because quantifier is too large (use manual #[trigger] instead)",
-        )
+        ))
     } else {
         timer.timeout_countdown -= 1;
         Ok(())
@@ -259,6 +273,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::VarAt(x, _) => {
             (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
         }
+        ExpX::StaticVar(x) => {
+            (true, Arc::new(TermX::App(App::StaticVar(x.clone()), Arc::new(vec![]))))
+        }
+        ExpX::ExecFnByName(fun) => {
+            (true, Arc::new(TermX::App(App::ExecFnByName(fun.clone()), Arc::new(vec![]))))
+        }
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
@@ -284,7 +304,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     }
                     _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
                 },
-                CallFun::CheckTermination(_) => panic!("internal error: CheckTermination"),
+                CallFun::Recursive(_) => panic!("internal error: CheckTermination"),
                 CallFun::InternalFun(_) => {
                     (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                 }
@@ -318,6 +338,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CharToInt => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
+                UnaryOp::InferSpecForLoopIter => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
@@ -346,7 +367,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             panic!("internal error: TupleField should have been removed before here")
         }
         ExpX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }),
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),
             lhs,
         ) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
@@ -494,7 +515,9 @@ type Trigger = Vec<(Term, Span)>;
 struct State {
     remaining_vars: HashSet<Ident>,
     accumulated_terms: HashMap<Term, Span>,
-    best_so_far: Vec<Trigger>,
+    // if AutoType::All, chosen_triggers will contain all minimal covers of the variable set
+    // if AutoType::Auto, chosen_triggers will contain a single minimal cover chosen by Score heuristic
+    chosen_triggers: Vec<Trigger>,
     // If we relied on Score to break a tie, we consider this a low-confidence trigger
     // and we emit a report to the user.
     low_confidence: bool,
@@ -512,24 +535,60 @@ fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
     total
 }
 
-// Find the best trigger that covers all the trigger variables.
-// This is a variant of minimum-set-cover, which is NP-complete.
-fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result<(), VirErr> {
+/// Compute a set of covering triggers
+/// If all_triggers is false, Find the best trigger that covers all the trigger variables.
+/// If all_triggers is true, Return all minimal covering triggers
+/// This is a variant of minimum-set-cover, which is NP-complete.
+fn compute_triggers(
+    ctxt: &Ctxt,
+    state: &mut State,
+    timer: &mut Timer,
+    all_triggers: bool,
+) -> Result<(), VirErr> {
     if state.remaining_vars.len() == 0 {
         let trigger: Vec<(Term, Span)> =
             state.accumulated_terms.iter().map(|(t, s)| (t.clone(), s.clone())).collect();
         // println!("found: {:?} {}", trigger, trigger_score(ctxt, &trigger));
-        if state.best_so_far.len() > 0 {
+        if all_triggers {
+            // when trying to compute all minimal triggers, we need only concern
+            // ourselves with ensuring
+            // 1) the new trigger isn't a (proper) subset of an existing one
+            //    in which case we remove the existing one
+            // 2) there isn't an existing trigger that is a subset of the new one
+            //    in which case we don't add the new one
+            // claim: it is impossible for both to be true
+            // proof:
+            // inductive invariant -- all triggers in state.computed_triggers incomparable
+            // preserved as if we have subset in either direction, exactly one is removed
+            // assume now we have a new trigger t that is proper subset of to1 and such that to2 is a subset of t.
+            // we have that to2 is a subset of t1, a contradiction of inductive invariant
+            // maybe we can formalize this someday :)
+            let mut old_sub_new = false;
+            let trig_exp_set: HashSet<Arc<TermX>> =
+                trigger.iter().map(|(term, _)| term.clone()).collect();
+            state.chosen_triggers.retain(|old_trig| {
+                let old_trig_exp_set: HashSet<Arc<TermX>> =
+                    old_trig.iter().map(|(term, _)| term.clone()).collect();
+                old_sub_new = old_sub_new || old_trig_exp_set.is_subset(&trig_exp_set);
+                !(trig_exp_set.is_subset(&old_trig_exp_set)
+                    && trig_exp_set.len() < old_trig_exp_set.len())
+            });
+            if !old_sub_new {
+                state.chosen_triggers.push(trigger);
+            }
+            return Ok(());
+        }
+        if state.chosen_triggers.len() > 0 {
             // If we're better than what came before, drop what came before
-            if state.best_so_far[0].len() > trigger.len() {
-                state.best_so_far.clear();
+            if state.chosen_triggers[0].len() > trigger.len() {
+                state.chosen_triggers.clear();
                 state.low_confidence = false;
             } else {
-                let prev_score = trigger_score(ctxt, &state.best_so_far[0]).lex();
+                let prev_score = trigger_score(ctxt, &state.chosen_triggers[0]).lex();
                 let new_score = trigger_score(ctxt, &trigger).lex();
                 if prev_score > new_score {
                     state.low_confidence = true;
-                    state.best_so_far.clear();
+                    state.chosen_triggers.clear();
                 } else if prev_score < new_score {
                     state.low_confidence = true;
                     // If we're worse, return
@@ -537,11 +596,15 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result
                 }
             }
         }
-        state.best_so_far.push(trigger);
+        state.chosen_triggers.push(trigger);
         return Ok(());
     }
-    if state.best_so_far.len() > 0 && state.best_so_far[0].len() <= state.accumulated_terms.len() {
+    if state.chosen_triggers.len() > 0
+        && !all_triggers
+        && state.chosen_triggers[0].len() <= state.accumulated_terms.len()
+    {
         // We've already found something better
+        // this early exit optimization only necessary when not computing full set
         return Ok(());
     }
     check_timeout(timer)?;
@@ -560,7 +623,7 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result
                     removed.push(y.clone());
                 }
             }
-            compute_triggers(ctxt, state, timer)?;
+            compute_triggers(ctxt, state, timer, all_triggers)?;
             // restore vars
             for y in removed {
                 state.remaining_vars.insert(y);
@@ -576,7 +639,7 @@ pub(crate) fn build_triggers(
     span: &Span,
     vars: &Vec<Ident>,
     exp: &Exp,
-    auto_trigger: bool,
+    auto_trigger: AutoType,
 ) -> Result<Trigs, VirErr> {
     let mut ctxt = Ctxt {
         trigger_vars: vars.iter().cloned().collect(),
@@ -622,17 +685,17 @@ pub(crate) fn build_triggers(
     let mut state = State {
         remaining_vars: ctxt.trigger_vars.iter().cloned().collect(),
         accumulated_terms: HashMap::new(),
-        best_so_far: Vec::new(),
+        chosen_triggers: Vec::new(),
         low_confidence: false,
     };
-    compute_triggers(&ctxt, &mut state, &mut timer)?;
+    compute_triggers(&ctxt, &mut state, &mut timer, auto_trigger == AutoType::All)?;
 
     // To stabilize the order of the chosen triggers,
     // sort the triggers by the position of their terms in exp
-    for trigger in &mut state.best_so_far {
+    for trigger in &mut state.chosen_triggers {
         trigger.sort_by_key(|(term, _)| ctxt.pure_terms[term].1);
     }
-    state.best_so_far.sort_by_key(|trig| vec_map(trig, |(term, _)| ctxt.pure_terms[term].1));
+    state.chosen_triggers.sort_by_key(|trig| vec_map(trig, |(term, _)| ctxt.pure_terms[term].1));
 
     /*
     for found in &state.best_so_far {
@@ -641,7 +704,7 @@ pub(crate) fn build_triggers(
     }
     */
     let mut chosen_triggers_vec = ctx.global.chosen_triggers.borrow_mut();
-    let found_triggers: Vec<Vec<(Span, String)>> = vec_map(&state.best_so_far, |trig| {
+    let found_triggers: Vec<Vec<(Span, String)>> = vec_map(&state.chosen_triggers, |trig| {
         vec_map(&trig, |(term, span)| (span.clone(), format!("{:?}", term)))
     });
     let module = match &ctx.fun {
@@ -652,18 +715,18 @@ pub(crate) fn build_triggers(
         module,
         span: span.clone(),
         triggers: found_triggers,
-        low_confidence: state.low_confidence && !auto_trigger,
+        low_confidence: state.low_confidence && (auto_trigger == AutoType::None),
     };
     chosen_triggers_vec.push(chosen_triggers);
-    if state.best_so_far.len() >= 1 {
-        let trigs: Vec<Trig> = vec_map(&state.best_so_far, |trig| {
+    if state.chosen_triggers.len() >= 1 {
+        let trigs: Vec<Trig> = vec_map(&state.chosen_triggers, |trig| {
             Arc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].0.clone()))
         });
         Ok(Arc::new(trigs))
     } else {
-        error(
+        Err(error(
             span,
             "Could not automatically infer triggers for this quantifer.  Use #[trigger] annotations to manually mark trigger terms instead.",
-        )
+        ))
     }
 }

@@ -720,6 +720,9 @@ define_keywords! {
     "invariant_ensures"   pub struct InvariantEnsures    /// `invariant_ensures`
     "assert"      pub struct Assert       /// `assert`
     "assume"      pub struct Assume       /// `assume`
+    "reveal"      pub struct Reveal       /// `assume`
+    "reveal_with_fuel" pub struct RevealWithFuel /// `reveal_with_fuel`
+    "hide"        pub struct Hide         /// `hide`
     "implies"     pub struct Implies      /// `implies`
     "by"          pub struct By           /// `by`
     "forall"      pub struct Forall       /// `forall`
@@ -729,8 +732,12 @@ define_keywords! {
     "FnSpec"      pub struct FnSpec       /// `FnSpec`
     "via"         pub struct Via          /// `via`
     "when"        pub struct When         /// `when`
-    "any"         pub struct InvAny          /// `any`
-    "none"         pub struct InvNone          /// `none`
+    "any"         pub struct InvAny       /// `any`
+    "none"        pub struct InvNone      /// `none`
+    "has"         pub struct Has          /// `has`
+    "global"      pub struct Global       /// `global`
+    "size_of"     pub struct SizeOf       /// `size_of`
+    "layout"      pub struct Layout       /// `layout`
 }
 
 define_punctuation! {
@@ -931,6 +938,9 @@ macro_rules! export_token_macro {
             [invariant_ensures]   => { $crate::token::InvariantEnsures };
             [assert]      => { $crate::token::Assert };
             [assume]      => { $crate::token::Assume };
+            [reveal]      => { $crate::token::Reveal };
+            [reveal_with_fuel] => { $crate::token::RevealWithFuel };
+            [hide]        => { $crate::token::Hide };
             [implies]     => { $crate::token::Implies };
             [by]          => { $crate::token::By };
             [via]         => { $crate::token::Via };
@@ -941,6 +951,10 @@ macro_rules! export_token_macro {
             [exists]      => { $crate::token::Exists };
             [choose]      => { $crate::token::Choose };
             [is]          => { $crate::token::Is };
+            [has]         => { $crate::token::Has };
+            [global]      => { $crate::token::Global };
+            [size_of]     => { $crate::token::SizeOf };
+            [layout]      => { $crate::token::Layout };
             [FnSpec]      => { $crate::token::FnSpec };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };

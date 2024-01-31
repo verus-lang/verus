@@ -101,10 +101,12 @@ struct SingularEncoder {
 
 impl SingularEncoder {
     fn new(user_vars: Vec<String>) -> Self {
+        let message_interface = Arc::new(vir::messages::VirMessageInterface {});
+        let pp = Printer::new(message_interface.clone(), false);
         SingularEncoder {
             tmp_idx: 0,
             node_map: HashMap::new(),
-            pp: Printer::new(false),
+            pp,
             user_vars,
             polys: vec!["0".to_string()],
             mod_poly: None,
@@ -319,7 +321,7 @@ impl SingularEncoder {
 pub fn check_singular_valid(
     context: &mut air::context::Context,
     command: &Command,
-    func_span: &air::ast::Span,
+    func_span: &vir::messages::Span,
     _query_context: QueryContext<'_, '_>,
 ) -> ValidityResult {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
@@ -351,6 +353,8 @@ pub fn check_singular_valid(
 
     for stmt in &*stmts {
         if let air::ast::StmtX::Assert(err, expr) = &**stmt {
+            let err: vir::messages::Message =
+                err.clone().downcast().expect("unexpected value in Any -> Message conversion");
             assert_eq!(err.labels.len(), 1);
             let span = &err.spans[0];
             let label = &err.labels[0].note;
@@ -367,7 +371,7 @@ pub fn check_singular_valid(
                         );
                     }
                     Ok(query) => {
-                        air::singular_manager::log_singular(context, &query, func_span);
+                        air::singular_manager::log_singular(context, &query, &func_span.as_string);
                         let res = singular_process.send_commands(query.as_bytes().to_vec());
                         if (res.len() == 1) && (res[0] == "0") {
                             continue;

@@ -6,20 +6,20 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents, InequalityOp, IntRange,
-    IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
+    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents,
+    InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
 };
-use crate::ast_util::{error, path_as_vstd_name, undecorate_typ};
+use crate::ast_util::{path_as_vstd_name, undecorate_typ};
+use crate::context::GlobalCtx;
 use crate::func_to_air::{SstInfo, SstMap};
-use crate::prelude::ArchWordBits;
+use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Span};
-use air::messages::{warning, Diagnostics, Message};
+use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
-use num_bigint::{BigInt, Sign};
+use num_bigint::BigInt;
 use num_traits::identities::Zero;
-use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
+use num_traits::{Euclid, FromPrimitive, One, ToPrimitive};
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -156,6 +156,7 @@ struct Ctx<'a> {
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
     arch: ArchWordBits,
+    global: &'a GlobalCtx,
 }
 
 /// Interpreter-internal expressions
@@ -504,43 +505,16 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
                 InterpExp::Closure(e, _ctx) => dohash!(2; hash_exp(e)),
             }
         }
+        StaticVar(f) => dohash!(16, f),
+        ExecFnByName(fun) => {
+            dohash!(16, fun);
+        }
     }
 }
 
 /**********************
  * Utility functions  *
  **********************/
-
-// Based on Dafny's C# implementation:
-// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
-/// Proper Euclidean division on BigInt
-fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
-    // Note: Can be replaced with an inbuilt method on BigInts once
-    // https://github.com/rust-num/num-bigint/pull/245 is merged.
-    use Sign::*;
-    match (i1.sign(), i2.sign()) {
-        (Plus | NoSign, Plus | NoSign) => i1 / i2,
-        (Plus | NoSign, Minus) => -(i1 / (-i2)),
-        (Minus, Plus | NoSign) => -(((-i1) - BigInt::one()) / i2) - BigInt::one(),
-        (Minus, Minus) => (((-i1) - BigInt::one()) / (-i2)) + 1,
-    }
-}
-
-// Based on Dafny's C# implementation:
-// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
-/// Proper Euclidean mod on BigInt
-fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
-    // Note: Can be replaced with an inbuilt method on BigInts once
-    // https://github.com/rust-num/num-bigint/pull/245 is merged.
-    use Sign::*;
-    match i1.sign() {
-        Plus | NoSign => i1 % i2.abs(),
-        Minus => {
-            let c = (-i1) % i2.abs();
-            if c.is_zero() { BigInt::zero() } else { i2.abs() - c }
-        }
-    }
-}
 
 /// Truncate a u128 to a fixed width BigInt
 fn u128_to_fixed_width(u: u128, width: u32) -> BigInt {
@@ -824,7 +798,7 @@ fn eval_seq(
                             Const(Constant::Int(index)) => match BigInt::to_usize(index) {
                                 None => {
                                     let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
-                                    state.msgs.push(warning(msg, &exp.span));
+                                    state.msgs.push(warning(&exp.span, msg));
                                     ok_seq(&args[0], &s, &args[1..])
                                 }
                                 Some(index) => {
@@ -832,7 +806,7 @@ fn eval_seq(
                                         Ok(s[index].clone())
                                     } else {
                                         let msg = "Computation tried to index past the length of a sequence";
-                                        state.msgs.push(warning(msg, &exp.span));
+                                        state.msgs.push(warning(&exp.span, msg));
                                         ok_seq(&args[0], &s, &args[1..])
                                     }
                                 }
@@ -871,7 +845,10 @@ fn eval_seq(
                 },
             }
         }
-        _ => panic!("Expected sequence expression to be a Call.  Got {:} instead.", exp),
+        _ => panic!(
+            "Expected sequence expression to be a Call.  Got {:} instead.",
+            exp.x.to_user_string(&ctx.global)
+        ),
     }
 }
 
@@ -884,9 +861,13 @@ fn eval_seq(
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     state.iterations += 1;
     if state.iterations > ctx.max_iterations {
-        return error(&exp.span, "assert_by_compute timed out");
+        return Err(error(&exp.span, "assert_by_compute timed out"));
     }
-    state.log(format!("{}Evaluating {:}", "\t".repeat(state.depth), exp));
+    state.log(format!(
+        "{}Evaluating {:}",
+        "\t".repeat(state.depth),
+        exp.x.to_user_string(&ctx.global)
+    ));
     let ok = Ok(exp.clone());
     if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
@@ -930,7 +911,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
-                        | CharToInt => ok,
+                        | CharToInt
+                        | InferSpecForLoopIter => ok,
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -972,10 +954,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 if !in_range(lower, upper) {
                                     let msg =
                                         "Computation clipped an integer that was out of range";
-                                    state.msgs.push(warning(msg, &exp.span));
+                                    state.msgs.push(warning(&exp.span, msg));
                                     ok.clone()
                                 } else {
-                                    Ok(e.clone())
+                                    // Use the type of clip, not the inner expression,
+                                    // to reflect the type change imposed by clip
+                                    Ok(SpannedTyped::new(&e.span, &exp.typ, e.x.clone()))
                                 }
                             };
                             match range {
@@ -1002,7 +986,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower, upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
                                                 ok.clone()
                                             }
                                         }
@@ -1019,7 +1003,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower(32), upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning("Computation clipped an arch-dependent integer that was out of range", &exp.span));
+                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
                                                 ok.clone()
                                             }
                                         }
@@ -1037,7 +1021,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
-                        | CharToInt => ok,
+                        | CharToInt
+                        | InferSpecForLoopIter => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1221,14 +1206,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
-                                        int_new(euclidean_div(i1, i2))
+                                        int_new(i1.div_euclid(i2))
                                     }
                                 }
                                 EuclideanMod => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
-                                        int_new(euclidean_mod(i1, i2))
+                                        int_new(i1.rem_euclid(i2))
                                     }
                                 }
                             }
@@ -1369,7 +1354,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         eval_expr_internal(ctx, state, e3)
                     }
                 }
-                _ => exp_new(If(e1, e2.clone(), e3.clone())),
+                _ => {
+                    // We still try to simplify both branches, if we can
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
+                    let e3 = eval_expr_internal(ctx, state, e3)?;
+                    exp_new(If(e1, e2, e3))
+                }
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
@@ -1429,7 +1419,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
-        Call(CallFun::CheckTermination(_), _, _) => ok,
+        Call(CallFun::Recursive(_), _, _) => ok,
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
@@ -1508,22 +1498,137 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
+        ExecFnByName(_) => ok,
     };
     let res = r?;
     state.depth -= 1;
-    state.log(format!("{}=> {:}", "\t".repeat(state.depth), &res));
+    state.log(format!("{}=> {:}", "\t".repeat(state.depth), res.x.to_user_string(&ctx.global)));
     if state.enable_simplified_cache {
         state.simplified.insert(&res);
     }
     Ok(res)
 }
 
+/// Restore the free variables we hid during interpretation
+/// and any sequence expressions we partially simplified during interpretation
+fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
+    crate::sst_visitor::map_exp_visitor_result(exp, &mut |e| match &e.x {
+        ExpX::Interp(InterpExp::FreeVar(v)) => {
+            Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
+        }
+        ExpX::Interp(InterpExp::Seq(v)) => {
+            match &*e.typ {
+                TypX::Datatype(_, typs, _) => {
+                    // Grab the type the sequence holds
+                    let inner_type = typs[0].clone();
+                    // Convert back to a standard SST sequence representation
+                    let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                    // Wrap the sequence construction in unbox to account for the Poly
+                    // type of the sequence functions
+                    let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
+                    let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
+                    let unboxed_e = SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
+                    Ok(unboxed_e)
+                }
+                TypX::Boxed(t) => {
+                    match &**t {
+                        TypX::Datatype(_, typs, _) => {
+                            // Grab the type the sequence holds
+                            let inner_type = typs[0].clone();
+                            // Convert back to a standard SST sequence representation
+                            let s = seq_to_sst(&e.span, inner_type.clone(), v);
+                            Ok(s)
+                        }
+                        _ => Err(error(
+                            &e.span,
+                            format!(
+                                "Internal error: Expected to find a sequence type but found: {:?}",
+                                e.typ,
+                            ),
+                        )),
+                    }
+                }
+                _ => Err(error(
+                    &e.span,
+                    format!(
+                        "Internal error: Expected to find a sequence type but found: {:?}",
+                        e.typ
+                    ),
+                )),
+            }
+        }
+        ExpX::Interp(InterpExp::Closure(..)) => Err(error(
+            &e.span,
+            "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
+        )),
+        _ => Ok(e.clone()),
+    })
+}
+
+enum SimplificationResult {
+    /// Expression evaluated to true.
+    True,
+    /// Expression evaluated to false.
+    /// If the optional argument is given, then it is equivalent
+    /// to the original and also simplifies to 'false'.
+    False(Option<Exp>),
+    /// Expression evaluates to something that we can't simplify
+    /// further via the interpreter.
+    Complex(Exp),
+}
+
+/// Evaluate the result
+///
+/// Includes a special case when the top-level operation is a binary op.
+/// For example, if the user tries to prove `a == b`, and it evaluates
+/// to `7 == 5` which evaluates to false, we return
+///     SimplificationResult::False(Some(`7 == 5`))
+/// This lets the caller report a nicer error message
+fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SimplificationResult, VirErr> {
+    use BinaryOp::*;
+    use ExpX::*;
+    match &exp.x {
+        Binary(op @ (Eq(_) | Ne | Inequality(_)), e1, e2) => {
+            let e1 = eval_expr_internal(ctx, state, e1)?;
+            let e2 = eval_expr_internal(ctx, state, e2)?;
+
+            let simpl_exp = exp.new_x(Binary(*op, e1, e2));
+
+            // This should only take one step to simplify the binary expression
+            let final_exp = eval_expr_internal(ctx, state, &simpl_exp)?;
+
+            if let ExpX::Const(Constant::Bool(b)) = final_exp.x {
+                if b {
+                    Ok(SimplificationResult::True)
+                } else {
+                    Ok(SimplificationResult::False(Some(simpl_exp)))
+                }
+            } else {
+                Ok(SimplificationResult::Complex(final_exp))
+            }
+        }
+        _ => {
+            let final_exp = eval_expr_internal(ctx, state, exp)?;
+            if let ExpX::Const(Constant::Bool(b)) = final_exp.x {
+                if b {
+                    Ok(SimplificationResult::True)
+                } else {
+                    Ok(SimplificationResult::False(None))
+                }
+            } else {
+                Ok(SimplificationResult::Complex(final_exp))
+            }
+        }
+    }
+}
+
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
+    global: &GlobalCtx,
     exp: Exp,
     fun_ssts: &HashMap<Fun, SstInfo>,
-    rlimit: u32,
+    rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
@@ -1550,88 +1655,74 @@ fn eval_expr_launch(
         fun_calls: HashMap::new(),
     };
     // Don't run for too long
-    let max_iterations =
-        if rlimit == 0 { std::u64::MAX } else { rlimit as u64 * RLIMIT_MULTIPLIER };
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch };
-    let res = eval_expr_internal(&ctx, &mut state, &exp)?;
+    let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
+    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch, global };
+    let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
         log.replace(state.log.unwrap());
     }
-    if let ExpX::Const(Constant::Bool(false)) = res.x {
-        error(&exp.span, "assert simplifies to false")
-    } else {
-        match mode {
-            // Send partial result to Z3
+
+    match result {
+        SimplificationResult::True => {
+            return Ok((crate::sst_util::sst_bool(&exp.span, true), state.msgs));
+        }
+        SimplificationResult::False(None) => {
+            return Err(error(&exp.span, "expression simplifies to false"));
+        }
+        SimplificationResult::False(Some(small_exp)) => {
+            let small_exp = cleanup_exp(&small_exp)?;
+            return Err(error(
+                &exp.span,
+                format!(
+                    "expression simplifies to `{}`, which evaluates to false",
+                    small_exp.x.to_user_string(&ctx.global)
+                ),
+            ));
+        }
+        SimplificationResult::Complex(res) => match mode {
             ComputeMode::Z3 => {
-                // Restore the free variables we hid during interpretation
-                // and any sequence expressions we partially simplified during interpretation
-                let res = crate::sst_visitor::map_exp_visitor_result(&res, &mut |e| match &e.x {
-                    ExpX::Interp(InterpExp::FreeVar(v)) => {
-                        Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
-                    }
-                    ExpX::Interp(InterpExp::Seq(v)) => {
-                        match &*e.typ {
-                            TypX::Datatype(_, typs, _) => {
-                                // Grab the type the sequence holds
-                                let inner_type = typs[0].clone();
-                                let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                                // Wrap the sequence construction in unwrap to account for the Poly
-                                // type of the sequence functions
-                                let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
-                                let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
-                                let unboxed_e =
-                                    SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
-                                Ok(unboxed_e)
-                            }
-                            _ => error(
-                                &e.span,
-                                format!(
-                                    "Internal error: Expected to find a sequence type but found: {:?}",
-                                    e.typ
-                                ),
-                            ),
-                        }
-                    }
-                    ExpX::Interp(InterpExp::Closure(..)) => error(
-                        &e.span,
-                        "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
-                    ),
-                    _ => Ok(e.clone()),
-                })?;
+                let res = cleanup_exp(&res)?;
+                // Send partial result to Z3
                 if exp.definitely_eq(&res) {
-                    let msg =
-                        format!("Failed to simplify expression <<{}>> before sending to Z3", exp);
-                    state.msgs.push(warning(msg, &exp.span));
+                    let msg = format!(
+                        "Failed to simplify expression <<{}>> before sending to Z3",
+                        exp.x.to_user_string(&ctx.global)
+                    );
+                    state.msgs.push(warning(&exp.span, msg));
                 }
                 Ok((res, state.msgs))
             }
-            // Proof must succeed purely through computation
-            ComputeMode::ComputeOnly => match res.x {
-                ExpX::Const(Constant::Bool(true)) => Ok((res, state.msgs)),
-                _ => error(
+            ComputeMode::ComputeOnly => {
+                // Proof must succeed purely through computation
+                let res = cleanup_exp(&res)?;
+                Err(error(
                     &exp.span,
                     &format!(
                         "assert_by_compute_only failed to simplify down to true.  Instead got: {}.",
-                        res
+                        res.x.to_user_string(&ctx.global)
                     )
                     .to_string(),
-                ),
-            },
-        }
+                ))
+            }
+        },
     }
 }
 
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
+    global: &GlobalCtx,
     exp: &Exp,
-    diagnostics: &(impl Diagnostics + ?Sized),
+    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     fun_ssts: &mut SstMap,
-    rlimit: u32,
+    rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
 ) -> Result<Exp, VirErr> {
+    // Make a new global so we can move it into the new thread
+    let global = global.from_self_with_log(global.interpreter_log.clone());
+
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
     let mut taken_log = log.take();
@@ -1641,7 +1732,15 @@ pub fn eval_expr(
             let exp = exp.clone();
             builder
                 .spawn(move || {
-                    let res = eval_expr_launch(exp, &fun_ssts, rlimit, arch, mode, &mut taken_log);
+                    let res = eval_expr_launch(
+                        &global,
+                        exp,
+                        &fun_ssts,
+                        rlimit,
+                        arch,
+                        mode,
+                        &mut taken_log,
+                    );
                     (fun_ssts, (taken_log, res))
                 })
                 .unwrap()
@@ -1650,6 +1749,6 @@ pub fn eval_expr(
     });
     *log = taken_log;
     let (e, msgs) = res?;
-    msgs.iter().for_each(|m| diagnostics.report(m));
+    msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
     Ok(e)
 }

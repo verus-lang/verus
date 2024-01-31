@@ -210,7 +210,7 @@ fn start_thread(counter: PPtr<u64>, Tracked(perm): Tracked<PointsTo<u64>>)
     requires
         counter.id() == perm@.pptr, perm@.value === None,
 {
-    send_pointer(counter.clone());
+    send_pointer(counter);
 
     let tracked mut perm: PointsTo<u64> = perm;
 

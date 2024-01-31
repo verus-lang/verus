@@ -145,7 +145,7 @@ test_verify_one_file! {
                 r1 == r2
             }) by (compute_only);     // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "assert simplifies to false")
+    } => Err(err) => assert_vir_error_msg(err, "expression simplifies to false")
 }
 
 test_verify_one_file! {
@@ -421,10 +421,9 @@ test_verify_one_file! {
                 g(&z, x).len() == 6
             }) by (compute);
             assert({
-                let z = seq![4, 5, 6];
-                // TODO: see https://github.com/verus-lang/verus/issues/294
-                y.ext_equal(z) &&
-                z.ext_equal(y)
+                let z: Seq<int> = seq![4, 5, 6];
+                y == z &&
+                z == y
             }) by (compute);
             assert({
                 let z = seq![4int, 5int, 6int];
@@ -454,7 +453,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] arch_specific_handling_1_test_regression_380 verus_code! {
         // GitHub issue 380: we should make sure not to make incorrect assumptions on size of
-        // usize/isize when `--arch-word-bits` is not set.
+        // usize/isize when `size_of usize` is not set.
         fn test() {
             assert((1usize << 40usize) == 0usize) by (compute_only); // FAILS
         }
@@ -464,7 +463,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] arch_specific_handling_2_test_regression_380 verus_code! {
         // GitHub issue 380: we should make sure not to make incorrect assumptions on size of
-        // usize/isize when `--arch-word-bits` is not set.
+        // usize/isize when `size_of usize` is not set.
         //
         // Note that we should not be able to deduce `!= 0` here either.
         fn test() {
@@ -476,7 +475,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] arch_specific_handling_3_test_regression_380 verus_code! {
         // GitHub issue 380: we should make sure not to make incorrect assumptions on size of
-        // usize/isize when `--arch-word-bits` is not set.
+        // usize/isize when `size_of usize` is not set.
         //
         // Note that we still do know that it is either 32-bit or 64-bit, so we should still be able
         // to deduce things about values that remain consistent amongst the two.
@@ -485,4 +484,48 @@ test_verify_one_file! {
             assert((1usize << 100usize) == 0usize) by (compute_only);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] partially_simplified_boxed_sequence_699 verus_code! {
+        #[allow(unused_imports)]
+        use vstd::seq::*;
+
+        // GitHub issue 699: When converting partially simplified
+        // sequences to SST, handle boxed sequence types as well
+        proof fn test() {
+            let s: Seq<int> = seq![1, 2, 3, 4, 5];
+            let even: Seq<int> = s.filter(|x: int| x % 2 == 0);
+            assert(even =~= seq![2, 4]) by (compute);   // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] shift_regression_928_1 ["vstd"] => verus_code! {
+        pub open spec fn id(x:int) -> int;
+
+        pub proof fn bar() {
+            assert(
+                { (10 as u64 >> (id(5) as u64)) as int }
+                == 0) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] shift_regression_928_2 ["vstd"] => verus_code! {
+        spec fn foo(size: int) -> int {
+            let bits = usize::BITS as int;
+            if bits == 1 {
+                0
+            } else {
+                bits
+            }
+        }
+
+        proof fn bar() {
+            assert(foo(0) == 0) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

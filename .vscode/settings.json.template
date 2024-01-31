@@ -1,0 +1,18 @@
+// Copy to .vscode/settings.json and adjust as necessary
+{
+    "rust-analyzer.cargo.buildScripts.enable": true,
+    "rust-analyzer.cargo.features": ["record-history"],
+    "rust-analyzer.cargo.extraEnv": {
+        "RUSTC_BOOTSTRAP": "1",
+        "RUSTFLAGS": "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations"
+    },
+    "rust-analyzer.runnableEnv": {
+        "RUSTC_BOOTSTRAP": "1"
+    },
+    // Use .exe extension for Windows, otherwise remove
+    "rust-analyzer.runnables.command": "../tools/vargo/target/release/vargo[.exe]",
+    "rust-analyzer.procMacro.enable": true,
+    "rust-analyzer.rustc.source": "discover",
+    "rust-analyzer.workspace.symbol.search.scope": "workspace_and_dependencies",
+    "rust-analyzer.diagnostics.disabled": ["unresolved-extern-crate", "syntax-error"]
+}

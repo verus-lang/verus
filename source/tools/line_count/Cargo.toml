@@ -1,0 +1,17 @@
+[package]
+name = "line_count"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+syn_verus = { path = "../../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+prettyplease_verus = { path = "../../../dependencies/prettyplease" }
+getopts = "*"
+toml = "0.8"
+serde = { version = "1.0", features = ["std", "derive", "rc"] }
+proc-macro2 = { version = "1.0.39", default-features = false }
+tabled = "0.14.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+regex = "1.10"

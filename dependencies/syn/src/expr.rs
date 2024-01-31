@@ -229,9 +229,12 @@ ast_enum_of_structs! {
         Assume(Assume),
         Assert(Assert),
         AssertForall(AssertForall),
+        RevealHide(RevealHide),
         View(View),
         BigAnd(BigAnd),
         BigOr(BigOr),
+        Is(ExprIs),
+        Has(ExprHas),
 
         // Not public API.
         //
@@ -459,7 +462,10 @@ ast_struct! {
         pub for_token: Token![for],
         pub pat: Pat,
         pub in_token: Token![in],
+        pub expr_name: Option<Box<(Ident, Token![:])>>,
         pub expr: Box<Expr>,
+        pub invariant: Option<Invariant>,
+        pub decreases: Option<Decreases>,
         pub body: Block,
     }
 }
@@ -854,7 +860,10 @@ impl Expr {
             | Expr::Assume(Assume { attrs, .. })
             | Expr::Assert(Assert { attrs, .. })
             | Expr::AssertForall(AssertForall { attrs, .. })
+            | Expr::RevealHide(RevealHide { attrs, .. })
             | Expr::View(View { attrs, .. })
+            | Expr::Is(ExprIs { attrs, .. })
+            | Expr::Has(ExprHas { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
@@ -1100,14 +1109,9 @@ ast_enum! {
 #[cfg(feature = "full")]
 pub(crate) fn requires_terminator(expr: &Expr) -> bool {
     // see https://github.com/rust-lang/rust/blob/2679c38fc/src/librustc_ast/util/classify.rs#L7-L25
-    match *expr {
+    match &*expr {
         Expr::Unsafe(..)
         | Expr::Block(..)
-        | Expr::Unary(ExprUnary {
-            expr: box Expr::Block(..),
-            op: UnOp::Proof(..),
-            ..
-        })
         | Expr::Assert(Assert {
             by_token: Some(..),
             body: Some(..),
@@ -1121,6 +1125,14 @@ pub(crate) fn requires_terminator(expr: &Expr) -> bool {
         | Expr::ForLoop(..)
         | Expr::Async(..)
         | Expr::TryBlock(..) => false,
+        Expr::Unary(ExprUnary {
+            expr,
+            op: UnOp::Proof(..),
+            ..
+        }) => match &**expr {
+            Expr::Block(..) => false,
+            _ => true,
+        },
         _ => true,
     }
 }
@@ -1160,6 +1172,7 @@ pub(crate) mod parsing {
         Arithmetic,
         Term,
         Cast,
+        HasIs,
     }
 
     #[derive(PartialEq, Eq, Clone, Copy)]
@@ -1228,7 +1241,8 @@ pub(crate) mod parsing {
                 | Precedence::Shift
                 | Precedence::Arithmetic
                 | Precedence::Term
-                | Precedence::Cast => Associativity::Left,
+                | Precedence::Cast
+                | Precedence::HasIs => Associativity::Left,
             }
         }
     }
@@ -1478,6 +1492,24 @@ pub(crate) mod parsing {
                     colon_token,
                     ty: Box::new(ty),
                 });
+            } else if Precedence::HasIs >= base && input.peek(Token![is]) {
+                let is_token: Token![is] = input.parse()?;
+                let variant_ident = input.parse()?;
+                lhs = Expr::Is(ExprIs {
+                    attrs: Vec::new(),
+                    base: Box::new(lhs),
+                    is_token,
+                    variant_ident,
+                });
+            } else if Precedence::HasIs >= base && input.peek(Token![has]) {
+                let has_token: Token![has] = input.parse()?;
+                let rhs = unary_expr(input, allow_struct)?;
+                lhs = Expr::Has(ExprHas {
+                    attrs: Vec::new(),
+                    lhs: Box::new(lhs),
+                    has_token,
+                    rhs: Box::new(rhs),
+                });
             } else {
                 break;
             }
@@ -1549,7 +1581,9 @@ pub(crate) mod parsing {
         if input.peek(Token![&&&]) || input.peek(Token![|||]) {
             return Precedence::Any;
         }
-        if let Ok(op) = input.fork().parse() {
+        if input.peek(Token![is]) || input.peek(Token![has]) {
+            Precedence::HasIs
+        } else if let Ok(op) = input.fork().parse() {
             Precedence::of(&op)
         } else if input.peek(Token![=]) && !input.peek(Token![=>]) {
             Precedence::Assign
@@ -1882,6 +1916,11 @@ pub(crate) mod parsing {
             input.parse().map(Expr::AssertForall)
         } else if input.peek(Token![assert]) {
             input.parse().map(Expr::Assert)
+        } else if input.peek(Token![reveal])
+            || input.peek(Token![reveal_with_fuel])
+            || input.peek(Token![hide])
+        {
+            input.parse().map(Expr::RevealHide)
         } else if input.peek(Token![match]) {
             input.parse().map(Expr::Match)
         } else if input.peek(Token![yield]) {
@@ -2206,6 +2245,11 @@ pub(crate) mod parsing {
             Expr::AssertForall(input.parse()?)
         } else if input.peek(Token![assert]) {
             Expr::Assert(input.parse()?)
+        } else if input.peek(Token![reveal])
+            || input.peek(Token![reveal_with_fuel])
+            || input.peek(Token![hide])
+        {
+            Expr::RevealHide(input.parse()?)
         } else if input.peek(Token![match]) {
             Expr::Match(input.parse()?)
         } else if input.peek(Token![try]) && input.peek2(token::Brace) {
@@ -2394,7 +2438,14 @@ pub(crate) mod parsing {
             let pat = pat::parsing::multi_pat_with_leading_vert(input)?;
 
             let in_token: Token![in] = input.parse()?;
+            let expr_name = if input.peek2(Token![:]) && input.peek(Ident) {
+                Some(Box::new((input.parse()?, input.parse()?)))
+            } else {
+                None
+            };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
+            let invariant = input.parse()?;
+            let decreases = input.parse()?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2407,7 +2458,10 @@ pub(crate) mod parsing {
                 for_token,
                 pat,
                 in_token,
+                expr_name,
                 expr: Box::new(expr),
+                invariant,
+                decreases,
                 body: Block { brace_token, stmts },
             })
         }
@@ -3403,7 +3457,14 @@ pub(crate) mod printing {
             self.for_token.to_tokens(tokens);
             self.pat.to_tokens(tokens);
             self.in_token.to_tokens(tokens);
+            if let Some(expr_name) = &self.expr_name {
+                let (name, colon) = &**expr_name;
+                name.to_tokens(tokens);
+                colon.to_tokens(tokens);
+            }
             wrap_bare_struct(tokens, &self.expr);
+            self.invariant.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);
                 tokens.append_all(&self.body.stmts);

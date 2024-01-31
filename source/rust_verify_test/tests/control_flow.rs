@@ -166,7 +166,7 @@ test_verify_one_file! {
             let r = if b { let mut x = 5; x = 7; x } else { return; };
             assert(r == 7);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -451,7 +451,7 @@ test_verify_one_file! {
             foo({ return; });
             assert(false);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -464,7 +464,7 @@ test_verify_one_file! {
             foo({ return; });
             assert(false);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -478,7 +478,7 @@ test_verify_one_file! {
             foo({ return; bar(); });
             assert(false);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -505,7 +505,7 @@ test_verify_one_file! {
             };
             assert(x == 1);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {
@@ -654,7 +654,7 @@ test_verify_one_file_with_options! {
               ({ assert(false); false })
             );
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
 test_verify_one_file! {

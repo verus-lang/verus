@@ -6,9 +6,8 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::Span;
+use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
-use air::messages::Message;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -37,7 +36,7 @@ pub struct PathX {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunX {
     /// Path of function
     pub path: Path,
@@ -61,10 +60,6 @@ pub enum Mode {
     /// Non-ghost (compiled code)
     Exec,
 }
-
-/// Mode that gets filled in by the mode checker.
-/// (A unique id marks the place that needs to be filled in.)
-pub type InferMode = u64;
 
 /// Describes integer types
 #[derive(
@@ -164,6 +159,14 @@ pub enum TypX {
     Lambda(Typs, Typ),
     /// Executable function types (with a requires and ensures)
     AnonymousClosure(Typs, Typ, usize),
+    /// Corresponds to Rust's FnDef type
+    /// Typs are generic type args
+    /// If Fun is a trait function, then the Option<Fun> has the statically resolved
+    /// function if it exists. Similar to ImplPaths, this is technically redundant
+    /// (because it follows from the types), but it is not easy to compute without
+    /// storing it here. We need it because it is useful for determining which
+    /// FnDef axioms to introduce.
+    FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs, ImplPaths),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
@@ -200,6 +203,7 @@ pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
     /// with no diagnostics printed
     AutoTrigger,
+    AllTriggers,
     /// Each trigger group is named by either Some integer, or the unnamed group None.
     /// (None is just another name; it is no different from an integer-named group.)
     /// Example: #[trigger] expr is translated into Trigger(None) applied to expr
@@ -224,6 +228,8 @@ pub enum ModeCoercion {
 pub enum NullaryOpr {
     /// convert a const generic into an expression, as in fn f<const N: usize>() -> usize { N }
     ConstGeneric(Typ),
+    /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
+    TraitBound(Path, Typs),
 }
 
 /// Primitive unary operations
@@ -256,6 +262,22 @@ pub enum UnaryOp {
     StrIsAscii,
     /// Used only for handling casts from chars to ints
     CharToInt,
+    /// Given an exec/proof expression used to construct a loop iterator,
+    /// try to infer a pure specification for the loop iterator.
+    /// Evaluate to Some(spec) if successful, None otherwise.
+    /// (Note: this is just used as a hint for loop invariants;
+    /// regardless of whether it is Some(spec) or None, it should not affect soundness.)
+    /// For an exec/proof expression e, the spec s should be chosen so that the value v
+    /// that e evaluates to is immutable and v == s, where v may contain local variables.
+    /// For example, if v == (n..m), then n and m must be immutable local variables.
+    InferSpecForLoopIter,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
+pub enum VariantCheck {
+    None,
+    //Recommends,
+    Yes,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -264,6 +286,7 @@ pub struct FieldOpr {
     pub variant: Ident,
     pub field: Ident,
     pub get_variant: bool,
+    pub check: VariantCheck,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -371,9 +394,7 @@ pub enum BinaryOp {
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
-    /// (None for InferMode means always mode Spec)
-    /// TODO: if the syntax macro can tell us the Mode, can we get rid of InferMode?
-    Arith(ArithOp, Option<InferMode>),
+    Arith(ArithOp, Mode),
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),
@@ -484,8 +505,8 @@ pub enum PatternX {
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
-    /// For tuple-style variants, the patterns appear in order and are named "0", "1", etc.
-    /// For struct-style variants, the patterns may appear in any order.
+    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// Fields can appear **in any order** even for tuple variants.
     Constructor(Path, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
 }
@@ -517,17 +538,28 @@ pub struct LoopInvariant {
     pub inv: Expr,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum BuiltinSpecFun {
+    // Note that this now applies to any supported function type, e.g., FnDef types,
+    // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
+pub enum ImplPath {
+    /// the usual `impl X for Trait`. The 'Path' is to the 'impl' block
+    TraitImplPath(Path),
+    /// Declaration of a function `f` which conceptually implements a trait bound
+    /// `FnDef(f) : FnOnce`
+    FnDefImplPath(Fun),
 }
 
 /// Path of each impl that is used to satisfy a trait bound when instantiating the type parameter
 /// This is used to name the "dictionary" that is (conceptually) passed along with the
 /// type argument (see recursive_types.rs)
 // REVIEW: should trait_typ_args also have ImplPaths?
-pub type ImplPaths = Arc<Vec<Path>>;
+pub type ImplPaths = Arc<Vec<ImplPath>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTargetKind {
@@ -544,7 +576,7 @@ pub enum CallTarget {
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
-    BuiltinSpecFun(BuiltinSpecFun, Typs),
+    BuiltinSpecFun(BuiltinSpecFun, Typs, ImplPaths),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Hash)]
@@ -567,7 +599,6 @@ pub enum AssertQueryMode {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Quant {
     pub quant: air::ast::Quant,
-    pub boxed_params: bool,
 }
 
 /// Computation mode for assert_by_compute
@@ -605,7 +636,9 @@ pub enum ExprX {
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(Ident, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
-    ConstVar(Fun),
+    ConstVar(Fun, AutospecUsage),
+    /// Use of a static variable.
+    StaticVar(Fun),
     /// Mutable reference (location)
     Loc(Expr),
     /// Call to a function passing some expression arguments
@@ -614,8 +647,8 @@ pub enum ExprX {
     Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the field initializers appear in order and are named "_0", "_1", etc.
-    /// For struct-style variants, the field initializers may appear in any order.
+    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// Fields can appear **in any order** even for tuple variants.
     Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
@@ -645,6 +678,10 @@ pub enum ExprX {
         /// can assume about a closure object after it is created.
         external_spec: Option<(Ident, Expr)>,
     },
+    /// Array literal (can also be used for sequence literals in the future)
+    ArrayLiteral(Exprs),
+    /// Executable function (declared with 'fn' and referred to by name)
+    ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
     Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
@@ -654,6 +691,8 @@ pub enum ExprX {
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
+    /// Reveal a string
+    RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
@@ -662,12 +701,22 @@ pub enum ExprX {
     AssertAssume { is_assume: bool, expr: Expr },
     /// Assert-forall or assert-by statement
     AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Assertion discharged via computation
+    AssertCompute(Expr, ComputeMode),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
     Match(Expr, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
-    Loop { label: Option<String>, cond: Option<Expr>, body: Expr, invs: LoopInvariants },
+    Loop {
+        is_for_loop: bool,
+        label: Option<String>,
+        cond: Option<Expr>,
+        body: Expr,
+        invs: LoopInvariants,
+    },
     /// Open invariant
     OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
     /// Return from function
@@ -682,12 +731,6 @@ pub enum ExprX {
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
-    /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
-    /// Assertion discharged via computation
-    AssertCompute(Expr, ComputeMode),
-    /// Reveal a string
-    RevealString(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -784,6 +827,8 @@ pub struct FunctionAttrsX {
     pub spinoff_prover: bool,
     /// Memoize function call results during interpretation
     pub memoize: bool,
+    /// override default rlimit
+    pub rlimit: Option<f32>,
 }
 
 /// Function specification of its invariant mask
@@ -862,13 +907,15 @@ pub struct FunctionX {
     /// For broadcast_forall functions, poly sets this to Some((params, reqs ==> enss))
     /// where params and reqs ==> enss use coerce_typ_to_poly rather than coerce_typ_to_native
     pub broadcast_forall: Option<(Params, Expr)>,
+    /// Axioms (similar to broadcast axioms) for the FnDef type corresponding to
+    /// this function, if one is generated for this particular function.
+    /// Similar to 'external_spec' in the ExecClosure node, this is filled
+    /// in during ast_simplify.
+    pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
-    /// is_const == true means that this function is actually a const declaration;
-    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
-    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
-    /// and the body is restricted to a subset of expressions that are spec-safe.
-    pub is_const: bool,
+    /// Allows the item to be a const declaration or static
+    pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private
     /// even though the function is public, the bool indicates false = opaque, true = visible
     /// the body is public
@@ -882,14 +929,51 @@ pub struct FunctionX {
     pub extra_dependencies: Vec<Fun>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
+pub enum ItemKind {
+    Function,
+    /// This function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    Const,
+    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
+    /// The main difference is what happens when you reference the static or const.
+    /// For a const, it's as if you call the function every time you reference it.
+    /// For a static, it's as if you call the function once at the beginning of the program.
+    /// The difference is most obvious when the item of a type that is not Copy.
+    /// For example, if a const/static has type PCell, then:
+    ///  - If it's a const, it will get a different id() every time it is referenced from code
+    ///  - If it's a static, every use will have the same id()
+    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
+    /// so they can only be deterministic, right? But for something like cell, the 'id'
+    /// (the nondeterministic part) is purely ghost.
+    Static,
+}
+
 /// Single field in a variant
 pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// List of fields in a variant
 /// For tuple-style variants, the fields appear in order and are named "0", "1", etc.
 /// For struct-style variants, the fields may appear in any order
 pub type Fields = Binders<(Typ, Mode, Visibility)>;
-pub type Variant = Binder<Fields>;
-pub type Variants = Binders<Fields>;
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum CtorPrintStyle {
+    Tuple,  // actual tuple (a, b)
+    Parens, // tuple style: Ctor(a, b)
+    Braces, // struct: Ctor { a: ... }
+    Const,  // just Ctor
+}
+
+pub type Variants = Arc<Vec<Variant>>;
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct Variant {
+    pub name: Ident,
+    pub fields: Fields,
+    pub ctor_style: CtorPrintStyle,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum DatatypeTransparency {
@@ -925,10 +1009,12 @@ pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
     pub name: Path,
+    pub visibility: Visibility,
     // REVIEW: typ_params does not yet explicitly include Self (right now, Self is implicit)
     pub typ_params: TypPositives,
     pub typ_bounds: GenericBounds,
     pub assoc_typs: Arc<Vec<Ident>>,
+    pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
 }
 
@@ -942,8 +1028,10 @@ pub struct AssocTypeImplX {
     pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
-    pub trait_typ_args: Arc<Vec<Typ>>,
+    pub trait_typ_args: Typs,
     pub typ: Typ,
+    /// Paths of the impls that are used to satisfy the bounds on the associated type
+    pub impl_paths: ImplPaths,
 }
 
 pub type TraitImpl = Arc<Spanned<TraitImplX>>;
@@ -951,12 +1039,61 @@ pub type TraitImpl = Arc<Spanned<TraitImplX>>;
 pub struct TraitImplX {
     /// Path of the impl (e.g. "impl2")
     pub impl_path: Path,
+    // typ_params of impl (unrelated to typ_params of trait)
+    pub typ_params: Idents,
+    pub typ_bounds: GenericBounds,
     pub trait_path: Path,
+    pub trait_typ_args: Typs,
+    pub trait_typ_arg_impls: Arc<Spanned<ImplPaths>>,
+}
+
+#[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
+pub enum WellKnownItem {
+    DropTrait,
+}
+
+pub type Module = Arc<Spanned<ModuleX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct ModuleX {
+    pub path: Path,
+    // add attrs here
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
+pub enum ArchWordBits {
+    Either32Or64,
+    Exactly(u32),
+}
+
+impl ArchWordBits {
+    pub fn min_bits(&self) -> u32 {
+        match self {
+            ArchWordBits::Either32Or64 => 32,
+            ArchWordBits::Exactly(v) => *v,
+        }
+    }
+    pub fn num_bits(&self) -> Option<u32> {
+        match self {
+            ArchWordBits::Either32Or64 => None,
+            ArchWordBits::Exactly(v) => Some(*v),
+        }
+    }
+}
+
+impl Default for ArchWordBits {
+    fn default() -> Self {
+        ArchWordBits::Either32Or64
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct Arch {
+    pub word_bits: ArchWordBits,
 }
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
@@ -969,11 +1106,13 @@ pub struct KrateX {
     /// All associated type impls in the crate
     pub assoc_type_impls: Vec<AssocTypeImpl>,
     /// List of all modules in the crate
-    pub module_ids: Vec<Path>,
+    pub modules: Vec<Module>,
     /// List of all 'external' functions in the crate (only useful for diagnostics)
     pub external_fns: Vec<Fun>,
     /// List of all 'external' types in the crate (only useful for diagnostics)
     pub external_types: Vec<Path>,
     /// Map rustc-based internal paths to friendlier names for error messages
     pub path_as_rust_names: Vec<(Path, String)>,
+    /// Arch info
+    pub arch: Arch,
 }

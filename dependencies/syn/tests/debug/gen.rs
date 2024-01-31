@@ -642,6 +642,9 @@ impl Debug for Lite<syn::Ensures> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("Ensures");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
         formatter.field("exprs", Lite(&_val.exprs));
         formatter.finish()
     }
@@ -945,7 +948,55 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("label", Print::ref_cast(val));
                 }
                 formatter.field("pat", Lite(&_val.pat));
+                if let Some(val) = &_val.expr_name {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<(proc_macro2::Ident, syn::token::Colon)>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("expr_name", Print::ref_cast(val));
+                }
                 formatter.field("expr", Lite(&_val.expr));
+                if let Some(val) = &_val.invariant {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Invariant);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("invariant", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.decreases {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Decreases);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("decreases", Print::ref_cast(val));
+                }
                 formatter.field("body", Lite(&_val.body));
                 formatter.finish()
             }
@@ -1498,6 +1549,13 @@ impl Debug for Lite<syn::Expr> {
                 formatter.write_str(")")?;
                 Ok(())
             }
+            syn::Expr::RevealHide(_val) => {
+                formatter.write_str("RevealHide")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             syn::Expr::View(_val) => {
                 formatter.write_str("View")?;
                 formatter.write_str("(")?;
@@ -1518,6 +1576,24 @@ impl Debug for Lite<syn::Expr> {
                 Debug::fmt(Lite(_val), formatter)?;
                 formatter.write_str(")")?;
                 Ok(())
+            }
+            syn::Expr::Is(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::Is");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("base", Lite(&_val.base));
+                formatter.field("variant_ident", Lite(&_val.variant_ident));
+                formatter.finish()
+            }
+            syn::Expr::Has(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::Has");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("lhs", Lite(&_val.lhs));
+                formatter.field("rhs", Lite(&_val.rhs));
+                formatter.finish()
             }
             _ => unreachable!(),
         }
@@ -1862,7 +1938,55 @@ impl Debug for Lite<syn::ExprForLoop> {
             formatter.field("label", Print::ref_cast(val));
         }
         formatter.field("pat", Lite(&_val.pat));
+        if let Some(val) = &_val.expr_name {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<(proc_macro2::Ident, syn::token::Colon)>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("expr_name", Print::ref_cast(val));
+        }
         formatter.field("expr", Lite(&_val.expr));
+        if let Some(val) = &_val.invariant {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Invariant);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariant", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.decreases {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Decreases);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("decreases", Print::ref_cast(val));
+        }
         formatter.field("body", Lite(&_val.body));
         formatter.finish()
     }
@@ -1875,6 +1999,18 @@ impl Debug for Lite<syn::ExprGroup> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("expr", Lite(&_val.expr));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprHas> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ExprHas");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("lhs", Lite(&_val.lhs));
+        formatter.field("rhs", Lite(&_val.rhs));
         formatter.finish()
     }
 }
@@ -1915,6 +2051,18 @@ impl Debug for Lite<syn::ExprIndex> {
         }
         formatter.field("expr", Lite(&_val.expr));
         formatter.field("index", Lite(&_val.index));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprIs> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ExprIs");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("base", Lite(&_val.base));
+        formatter.field("variant_ident", Lite(&_val.variant_ident));
         formatter.finish()
     }
 }
@@ -2985,6 +3133,74 @@ impl Debug for Lite<syn::Generics> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Global> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Global");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("inner", Lite(&_val.inner));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::GlobalInner> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::GlobalInner::SizeOf(_val) => {
+                formatter.write_str("SizeOf")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::GlobalInner::Layout(_val) => {
+                formatter.write_str("Layout")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+        }
+    }
+}
+impl Debug for Lite<syn::GlobalLayout> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("GlobalLayout");
+        formatter.field("type_", Lite(&_val.type_));
+        formatter.field("size", &(Lite(&&_val.size.0), Lite(&&_val.size.2)));
+        if let Some(val) = &_val.align {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(
+                (syn::token::Comma, proc_macro2::Ident, syn::token::EqEq, syn::ExprLit),
+            );
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(&(Lite(&_val.1), Lite(&_val.3)), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("align", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::GlobalSizeOf> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("GlobalSizeOf");
+        formatter.field("type_", Lite(&_val.type_));
+        formatter.field("expr_lit", Lite(&_val.expr_lit));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ImplItem> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -3252,6 +3468,13 @@ impl Debug for Lite<syn::InvariantNameSet> {
                 let mut formatter = formatter.debug_struct("InvariantNameSet::None");
                 formatter.finish()
             }
+            syn::InvariantNameSet::List(_val) => {
+                let mut formatter = formatter.debug_struct("InvariantNameSet::List");
+                if !_val.exprs.is_empty() {
+                    formatter.field("exprs", Lite(&_val.exprs));
+                }
+                formatter.finish()
+            }
         }
     }
 }
@@ -3259,6 +3482,16 @@ impl Debug for Lite<syn::InvariantNameSetAny> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("InvariantNameSetAny");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::InvariantNameSetList> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("InvariantNameSetList");
+        if !_val.exprs.is_empty() {
+            formatter.field("exprs", Lite(&_val.exprs));
+        }
         formatter.finish()
     }
 }
@@ -3283,7 +3516,78 @@ impl Debug for Lite<syn::Item> {
                 formatter.field("mode", Lite(&_val.mode));
                 formatter.field("ident", Lite(&_val.ident));
                 formatter.field("ty", Lite(&_val.ty));
-                formatter.field("expr", Lite(&_val.expr));
+                if let Some(val) = &_val.ensures {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Ensures);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("ensures", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.eq_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::Eq);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("eq_token", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.block {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<syn::Block>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("block", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.expr {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<syn::Expr>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("expr", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.semi_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::Semi);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("semi_token", Print::ref_cast(val));
+                }
                 formatter.finish()
             }
             syn::Item::Enum(_val) => {
@@ -3524,6 +3828,8 @@ impl Debug for Lite<syn::Item> {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
                 formatter.field("vis", Lite(&_val.vis));
+                formatter.field("publish", Lite(&_val.publish));
+                formatter.field("mode", Lite(&_val.mode));
                 if let Some(val) = &_val.mutability {
                     #[derive(RefCast)]
                     #[repr(transparent)]
@@ -3538,7 +3844,78 @@ impl Debug for Lite<syn::Item> {
                 }
                 formatter.field("ident", Lite(&_val.ident));
                 formatter.field("ty", Lite(&_val.ty));
-                formatter.field("expr", Lite(&_val.expr));
+                if let Some(val) = &_val.ensures {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Ensures);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("ensures", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.eq_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::Eq);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("eq_token", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.block {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<syn::Block>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("block", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.expr {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<syn::Expr>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("expr", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.semi_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::Semi);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("semi_token", Print::ref_cast(val));
+                }
                 formatter.finish()
             }
             syn::Item::Struct(_val) => {
@@ -3680,6 +4057,13 @@ impl Debug for Lite<syn::Item> {
                 formatter.write_str("`)")?;
                 Ok(())
             }
+            syn::Item::Global(_val) => {
+                formatter.write_str("Global")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             _ => unreachable!(),
         }
     }
@@ -3696,7 +4080,78 @@ impl Debug for Lite<syn::ItemConst> {
         formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("ty", Lite(&_val.ty));
-        formatter.field("expr", Lite(&_val.expr));
+        if let Some(val) = &_val.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.eq_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Eq);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("eq_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.block {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<syn::Block>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("block", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.expr {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<syn::Expr>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("expr", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.semi_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Semi);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("semi_token", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -3964,6 +4419,8 @@ impl Debug for Lite<syn::ItemStatic> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("publish", Lite(&_val.publish));
+        formatter.field("mode", Lite(&_val.mode));
         if let Some(val) = &_val.mutability {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -3978,7 +4435,78 @@ impl Debug for Lite<syn::ItemStatic> {
         }
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("ty", Lite(&_val.ty));
-        formatter.field("expr", Lite(&_val.expr));
+        if let Some(val) = &_val.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.eq_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Eq);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("eq_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.block {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<syn::Block>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("block", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.expr {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<syn::Expr>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("expr", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.semi_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Semi);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("semi_token", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -5363,6 +5891,69 @@ impl Debug for Lite<syn::ReturnType> {
                 formatter.finish()
             }
         }
+    }
+}
+impl Debug for Lite<syn::RevealHide> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("RevealHide");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        if let Some(val) = &_val.reveal_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Reveal);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("reveal_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.reveal_with_fuel_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::RevealWithFuel);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("reveal_with_fuel_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.hide_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Hide);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("hide_token", Print::ref_cast(val));
+        }
+        formatter.field("path", Lite(&_val.path));
+        if let Some(val) = &_val.fuel {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::Comma, Box<syn::Expr>));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("fuel", Print::ref_cast(val));
+        }
+        formatter.finish()
     }
 }
 impl Debug for Lite<syn::Signature> {

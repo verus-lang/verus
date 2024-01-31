@@ -37,6 +37,7 @@ macro_rules! make_unsigned_integer_atomic {
         } // verus!
 
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
@@ -71,6 +72,7 @@ macro_rules! make_signed_integer_atomic {
         } // verus!
 
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
@@ -82,6 +84,7 @@ macro_rules! make_signed_integer_atomic {
 macro_rules! make_bool_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
             atomic_bool_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
@@ -133,7 +136,7 @@ macro_rules! atomic_common_methods {
 
         #[inline(always)]
         #[verifier::external_body] /* vattr */
-        pub fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
+        pub const fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
             ensures
                 equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
         {

@@ -537,4 +537,30 @@ trait T {
             j <= r;
 }
 
+enum ThisOrThat {
+    This(nat),
+    That { v: int },
+}
+
+proof fn uses_is(t: ThisOrThat) {
+    match t {
+        ThisOrThat::This(..) => assert(t is This),
+        ThisOrThat::That {..} => assert(t is That),
+    }
+}
+
+#[verifier::external_body]
+struct Collection { }
+
+impl Collection {
+    pub spec fn spec_has(&self, v: nat) -> bool;
+}
+
+proof fn uses_spec_has(c: Collection)
+    requires c has 3,
+{
+    assert(c has 3);
+    assert(c has 3 == c has 3);
+}
+
 } // verus!

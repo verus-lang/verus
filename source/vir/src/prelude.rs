@@ -6,35 +6,8 @@ use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
 
-#[derive(Copy, Clone, Debug)]
-pub enum ArchWordBits {
-    Either32Or64,
-    Exactly(u32),
-}
-
-impl ArchWordBits {
-    pub fn min_bits(&self) -> u32 {
-        match self {
-            ArchWordBits::Either32Or64 => 32,
-            ArchWordBits::Exactly(v) => *v,
-        }
-    }
-    pub fn num_bits(&self) -> Option<u32> {
-        match self {
-            ArchWordBits::Either32Or64 => None,
-            ArchWordBits::Exactly(v) => Some(*v),
-        }
-    }
-}
-
-impl Default for ArchWordBits {
-    fn default() -> Self {
-        ArchWordBits::Either32Or64
-    }
-}
-
 pub struct PreludeConfig {
-    pub arch_word_bits: ArchWordBits,
+    pub arch_word_bits: crate::ast::ArchWordBits,
 }
 
 pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
@@ -80,8 +53,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let Height = str_to_node(T_HEIGHT);
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
+    let box_fndef = str_to_node(BOX_FNDEF);
     let unbox_int = str_to_node(UNBOX_INT);
     let unbox_bool = str_to_node(UNBOX_BOOL);
+    let unbox_fndef = str_to_node(UNBOX_FNDEF);
+
+    #[allow(non_snake_case)]
+    let FnDef = str_to_node(FNDEF_TYPE);
+    #[allow(non_snake_case)]
+    let FnDefSingleton = str_to_node(FNDEF_SINGLETON);
 
     let box_strslice = str_to_node(BOX_STRSLICE);
     let unbox_strslice = str_to_node(UNBOX_STRSLICE);
@@ -169,13 +149,18 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [new_strlit] (Int) [strslice])
         (declare-fun [from_strlit] ([strslice]) Int)
 
+        // FnDef
+        (declare-datatypes (([FnDef] 0)) ((([FnDefSingleton]))))
+
         // Polymorphism
         (declare-sort [Poly] 0)
         (declare-sort [Height] 0)
         (declare-fun [box_int] (Int) [Poly])
         (declare-fun [box_bool] (Bool) [Poly])
+        (declare-fun [box_fndef] ([FnDef]) [Poly])
         (declare-fun [unbox_int] ([Poly]) Int)
         (declare-fun [unbox_bool] ([Poly]) Bool)
+        (declare-fun [unbox_fndef] ([Poly]) [FnDef])
         (declare-fun [box_strslice] ([strslice]) [Poly])
         (declare-fun [unbox_strslice] ([Poly]) [strslice])
         (declare-fun [box_char] ([Char]) [Poly])
@@ -338,8 +323,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (axiom
             {
                 match config.arch_word_bits {
-                    ArchWordBits::Either32Or64 => nodes!(or (= [arch_size] 32) (= [arch_size] 64)),
-                    ArchWordBits::Exactly(bits) => nodes!(= [arch_size] {str_to_node(&bits.to_string())}),
+                    crate::ast::ArchWordBits::Either32Or64 => nodes!(or (= [arch_size] 32) (= [arch_size] 64)),
+                    crate::ast::ArchWordBits::Exactly(bits) => nodes!(= [arch_size] {str_to_node(&bits.to_string())}),
                 }
             }
         )
@@ -517,6 +502,59 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_eucmod
         )))
 
+        // These axioms are important to make sure that the nonlinear operations
+        // commute with casting-to-ints
+        // (e.g., (a * b) as int == (a as int) * (b as int))
+        // where applicable.
+        //
+        // Without these, there can be really unintuitive proof failures.
+        //
+        // Right now I'm intending these to be the minimal necessary to achieve
+        // the above goal - for anything more specific, the user can use the
+        // nonlinear_arith solver.
+
+        // Axiom to ensure multiplication of nats are in-bounds
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (<= 0 y))
+              (<= 0 ([Mul] x y))
+            )
+            :pattern (([Mul] x y))
+            :qid prelude_mul_nats
+            :skolemid skolem_prelude_mul_nats
+        )))
+
+        // Axiom to ensure division of unsigned types are in-bounds
+        // By saying that (x / y) <= x, we can ensure that if x fits in an n-bit integer
+        // for any n, then (x / y) also fits in an n-bit integer.
+        // Axiom only applies for y != 0
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (< 0 y))
+              (and
+                (<= 0 ([EucDiv] x y))
+                (<= ([EucDiv] x y) x)
+              )
+            )
+            :pattern (([EucDiv] x y))
+            :qid prelude_div_unsigned_in_bounds
+            :skolemid skolem_prelude_div_unsigned_in_bounds
+        )))
+
+        // Axiom to ensure modulo of unsigned types are in-bounds
+        (axiom (forall ((x Int) (y Int)) (!
+            (=>
+              (and (<= 0 x) (< 0 y))
+              (and
+                (<= 0 ([EucMod] x y))
+                (< ([EucMod] x y) y)
+              )
+            )
+            :pattern (([EucMod] x y))
+            :qid prelude_mod_unsigned_in_bounds
+            :skolemid skolem_prelude_mod_unsigned_in_bounds
+        )))
+
         // Chars
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -540,7 +578,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_has_type_char
         )))
         (axiom (forall ((x Int)) (!
-            (= ([to_unicode] ([from_unicode] x)) x)
+            (=>
+                (and
+                    (<= 0 x)
+                    (< x ([u_hi] 32))
+                )
+                (= x ([to_unicode] ([from_unicode] x)))
+            )
             :pattern (([from_unicode] x))
             :qid prelude_char_injective
             :skolemid skolem_prelude_char_injective
@@ -621,9 +665,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         //  - the closure
         //  - param value (as tuple)
         //  - ret value (for closure_ens only)
+        //
+        // Also for the closure type param, we exclude the decoration.
+        // This is useful because it's pretty easy to write code that instantiates
+        // type parameters with either `F` or `&F` (where F: Fn(...))
+        // So we need to be able to handle both.
 
-        (declare-fun [closure_req] ([decoration] [typ] [decoration] [typ] [Poly] [Poly]) Bool)
-        (declare-fun [closure_ens] ([decoration] [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+        (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
+        (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
     )
 }
 

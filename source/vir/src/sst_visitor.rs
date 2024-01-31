@@ -45,7 +45,9 @@ where
                 ExpX::Const(_)
                 | ExpX::Var(..)
                 | ExpX::VarAt(..)
+                | ExpX::StaticVar(..)
                 | ExpX::Old(..)
+                | ExpX::ExecFnByName(_)
                 | ExpX::VarLoc(..) => (),
                 ExpX::Loc(e0) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e0, map, f));
@@ -174,7 +176,15 @@ where
                 StmX::AssertQuery { body, mode: _, typ_inv_vars: _ } => {
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
-                StmX::Loop { label: _, cond, body, invs: _, typ_inv_vars: _, modified_vars: _ } => {
+                StmX::Loop {
+                    is_for_loop: _,
+                    label: _,
+                    cond,
+                    body,
+                    invs: _,
+                    typ_inv_vars: _,
+                    modified_vars: _,
+                } => {
                     if let Some((cond_stm, _cond_exp)) = cond {
                         expr_visitor_control_flow!(stm_visitor_dfs(cond_stm, f));
                     }
@@ -243,7 +253,15 @@ where
             StmX::If(exp, _s1, _s2) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::Loop { label: _, cond, body: _, invs, typ_inv_vars: _, modified_vars: _ } => {
+            StmX::Loop {
+                is_for_loop: _,
+                label: _,
+                cond,
+                body: _,
+                invs,
+                typ_inv_vars: _,
+                modified_vars: _,
+            } => {
                 if let Some((_cond_stm, cond_exp)) = cond {
                     expr_visitor_control_flow!(exp_visitor_dfs(cond_exp, &mut ScopeMap::new(), f));
                 }
@@ -274,6 +292,8 @@ where
         ExpX::Var(..) => f(exp, map),
         ExpX::VarAt(..) => f(exp, map),
         ExpX::VarLoc(..) => f(exp, map),
+        ExpX::StaticVar(..) => f(exp, map),
+        ExpX::ExecFnByName(_) => f(exp, map),
         ExpX::Loc(e1) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let exp = exp_new(ExpX::Loc(expr1));
@@ -433,6 +453,9 @@ where
 
 pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>) -> Exp {
     map_exp_visitor(exp, &mut |exp| match &exp.x {
+        ExpX::VarAt(x, crate::ast::VarAt::Pre) if map.contains_key(x) => {
+            SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
+        }
         ExpX::Var(x) if map.contains_key(x) => {
             SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
         }
@@ -477,8 +500,10 @@ where
         ExpX::Var(..) => Ok(exp.clone()),
         ExpX::VarLoc(..) => Ok(exp.clone()),
         ExpX::VarAt(..) => Ok(exp.clone()),
+        ExpX::StaticVar(..) => Ok(exp.clone()),
         ExpX::Loc(e1) => ok_exp(ExpX::Loc(fe(env, e1)?)),
         ExpX::Old(..) => Ok(exp.clone()),
+        ExpX::ExecFnByName(_) => Ok(exp.clone()),
         ExpX::Call(fun, typs, es) => {
             use crate::sst::CallFun;
             let fun = match fun {
@@ -487,7 +512,7 @@ where
                     let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
                     CallFun::Fun(f.clone(), Some((r.clone(), Arc::new(ts?))))
                 }
-                CallFun::CheckTermination(..) | CallFun::InternalFun(..) => fun.clone(),
+                CallFun::Recursive(..) | CallFun::InternalFun(..) => fun.clone(),
             };
             let typs: Result<Vec<Typ>, VirErr> = typs.iter().map(|t| ft(env, t)).collect();
             ok_exp(ExpX::Call(fun.clone(), Arc::new(typs?), fs(env, es)?))
@@ -505,6 +530,10 @@ where
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t)) => {
             let t = ft(env, t)?;
             ok_exp(ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(t)))
+        }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
+            let ts: Result<Vec<Typ>, VirErr> = ts.iter().map(|t| ft(env, t)).collect();
+            ok_exp(ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p.clone(), Arc::new(ts?))))
         }
         ExpX::Unary(op, e1) => ok_exp(ExpX::Unary(*op, fe(env, e1)?)),
         ExpX::UnaryOpr(op, e1) => {
@@ -594,7 +623,7 @@ where
             let stm = Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs));
             fs(&stm)
         }
-        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm = map_stm_visitor(cond_stm, fs)?;
                 Some((cond_stm, cond_exp.clone()))
@@ -605,6 +634,7 @@ where
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
+                    is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond,
                     body,
@@ -673,7 +703,7 @@ where
             let rhs = rhs.as_ref().map(|rhs| fs(rhs)).transpose()?;
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
-        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm = fs(cond_stm)?;
                 Some((cond_stm, cond_exp.clone()))
@@ -684,6 +714,7 @@ where
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
+                    is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond,
                     body,
@@ -754,7 +785,7 @@ where
                 },
             ))
         }
-        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
             let mut typ_inv_vars2 = vec![];
             for (uid, typ) in typ_inv_vars.iter() {
                 typ_inv_vars2.push((uid.clone(), ft(typ)?));
@@ -762,6 +793,7 @@ where
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
+                    is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond: cond.clone(),
                     body: body.clone(),
@@ -860,7 +892,7 @@ where
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
-            StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
                 let cond = if let Some((cond_stm, cond_exp)) = cond {
                     let cond_exp = fe(cond_exp)?;
                     Some((cond_stm.clone(), cond_exp))
@@ -874,6 +906,7 @@ where
                 Spanned::new(
                     span,
                     StmX::Loop {
+                        is_for_loop: *is_for_loop,
                         label: label.clone(),
                         cond,
                         body: body.clone(),

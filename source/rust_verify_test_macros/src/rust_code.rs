@@ -10,7 +10,7 @@ pub(crate) fn rust_code_core(input: TokenStream) -> String {
     }
 
     let src = span.source_text().unwrap();
-    let n = span.start().column - 1;
+    let n = span.start().column() - 1;
     let original_src = src;
     let mut src = String::new();
     let mut lines = original_src.lines();

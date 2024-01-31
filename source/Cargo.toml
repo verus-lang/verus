@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
   "air",
   "builtin",
@@ -12,7 +13,12 @@ members = [
   "state_machines_macros",
   "verusdoc",
   "vstd_build",
-  "error_report",
+  "tools/internals_interface",
+  "tools/line_count",
+  "tools/qi-graph",
+]
+exclude = [
+  "pervasive",
 ]
 
 # do not modify the following two lines

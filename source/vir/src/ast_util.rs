@@ -1,43 +1,34 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX, GenericBound,
-    GenericBoundX, Ident, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
-    TriggerAnnotation, Typ, TypX, Typs, UnaryOp, Variant, Variants, VirErr, Visibility,
+    ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
+    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
+    PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
+    Variant, Variants, VirErr, Visibility,
 };
-use crate::prelude::ArchWordBits;
+use crate::messages::{error, Span};
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
-use air::ast::{Binder, BinderX, Binders, Span};
+use air::ast::{Binder, BinderX, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
-pub use air::messages::error as msg_error;
 use num_bigint::{BigInt, Sign};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-/// Construct an Error and wrap it in Err.
-/// For more complex Error objects, use the builder functions in air::errors
-
-pub fn error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
-    Err(msg_error(msg, span))
-}
-
-pub fn internal_error<A, S: Into<String>>(span: &Span, msg: S) -> Result<A, VirErr> {
-    Err(air::messages::internal_error(msg, span))
-}
-
-pub fn error_with_help<A, S: Into<String>, H: Into<String>>(
-    span: &Span,
-    msg: S,
-    help: H,
-) -> Result<A, VirErr> {
-    Err(msg_error(msg, span).help(help))
-}
-
 impl PathX {
+    pub fn last_segment(&self) -> Ident {
+        self.segments[self.segments.len() - 1].clone()
+    }
+
     pub fn pop_segment(&self) -> Path {
         let mut segments = (*self.segments).clone();
         segments.pop();
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn push_segment(&self, ident: Ident) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments.push(ident);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
@@ -103,6 +94,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::StrSlice, TypX::StrSlice) => true,
         (TypX::Char, TypX::Char) => true,
+        (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
+            f1 == f2 && n_types_equal(ts1, ts2)
+        }
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -120,6 +114,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(_), _) => false,
         (TypX::StrSlice, _) => false,
         (TypX::Char, _) => false,
+        (TypX::FnDef(..), _) => false,
     }
 }
 
@@ -127,7 +122,17 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
     typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
 }
 
-pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+pub fn typ_args_for_datatype_typ(typ: &Typ) -> &Typs {
+    match &**typ {
+        TypX::Decorate(_, t) => typ_args_for_datatype_typ(t),
+        TypX::Datatype(_, args, _) => args,
+        _ => {
+            panic!("typ_args_for_datatype_typ expected datatype type");
+        }
+    }
+}
+
+pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall };
 
 pub fn params_equal_opt(
     param1: &Param,
@@ -411,10 +416,12 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
     expr
 }
 
-pub fn const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
+pub fn fuel_const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
     let (sign, digits) = i.to_u32_digits();
-    if sign != Sign::Plus || digits.len() != 1 {
-        return error(span, "Fuel must be a u32 value");
+    if sign == Sign::NoSign && digits.len() == 0 {
+        return Ok(0);
+    } else if sign != Sign::Plus || digits.len() != 1 {
+        return Err(error(span, "Fuel must be a u32 value"));
     }
     let n = digits[0];
     Ok(n)
@@ -549,7 +556,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "bool".to_owned(),
         TypX::Int(IntRange::Nat) => "nat".to_owned(),
-        TypX::Int(IntRange::Int) => "nat".to_owned(),
+        TypX::Int(IntRange::Int) => "int".to_owned(),
         TypX::Int(IntRange::ISize) => "isize".to_owned(),
         TypX::Int(IntRange::USize) => "usize".to_owned(),
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
@@ -581,8 +588,24 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
-        TypX::Decorate(decoration, typ) => {
-            format!("{:?}{}", decoration, typ_to_diagnostic_str(typ))
+        TypX::Decorate(TypDecoration::Ref, typ) => {
+            format!("&{}", typ_to_diagnostic_str(typ))
+        }
+        TypX::Decorate(TypDecoration::MutRef, typ) => {
+            format!("&mut {}", typ_to_diagnostic_str(typ))
+        }
+        TypX::Decorate(
+            decoration @ (TypDecoration::Box
+            | TypDecoration::Rc
+            | TypDecoration::Arc
+            | TypDecoration::Ghost
+            | TypDecoration::Tracked),
+            typ,
+        ) => {
+            format!("{:?}<{}>", decoration, typ_to_diagnostic_str(typ))
+        }
+        TypX::Decorate(TypDecoration::Never, _typ) => {
+            format!("!")
         }
         TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
         TypX::TypParam(ident) => (**ident).clone(),
@@ -603,5 +626,24 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::StrSlice => format!("StrSlice"),
         TypX::Char => format!("char"),
+        TypX::FnDef(f, typs, _res) => format!(
+            "FnDef({}){}",
+            path_as_friendly_rust_name(&f.path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
+    }
+}
+
+impl ItemKind {
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            ItemKind::Function => "function",
+            ItemKind::Const => "const item",
+            ItemKind::Static => "static item",
+        }
     }
 }

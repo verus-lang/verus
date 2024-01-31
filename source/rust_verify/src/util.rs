@@ -2,10 +2,13 @@ use std::fmt::Display;
 
 use rustc_span::Span;
 use vir::ast::VirErr;
-use vir::ast_util::error as vir_error;
 
 pub(crate) fn err_span<A, S: Into<String>>(span: Span, msg: S) -> Result<A, VirErr> {
-    vir_error(&crate::spans::err_air_span(span), msg)
+    Err(vir::messages::error(&crate::spans::err_air_span(span), msg))
+}
+
+pub(crate) fn err_span_bare<S: Into<String>>(span: Span, msg: S) -> VirErr {
+    vir::messages::error(&crate::spans::err_air_span(span), msg)
 }
 
 pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
@@ -13,7 +16,7 @@ pub(crate) fn vir_err_span_str(span: Span, msg: &str) -> VirErr {
 }
 
 pub(crate) fn vir_err_span_string(span: Span, msg: String) -> VirErr {
-    air::messages::error(msg, &crate::spans::err_air_span(span))
+    vir::messages::error(&crate::spans::err_air_span(span), msg)
 }
 
 pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
@@ -24,11 +27,13 @@ pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirE
 macro_rules! unsupported_err {
     ($span: expr, $msg: expr) => {{
         dbg!();
-        unsupported_err_span($span, $msg.to_string())?
+        unsupported_err_span($span, $msg.to_string())?;
+        unreachable!()
     }};
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        unsupported_err_span($span, $msg.to_string())?
+        unsupported_err_span($span, $msg.to_string())?;
+        unreachable!()
     }};
 }
 
@@ -37,13 +42,13 @@ macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
             dbg!();
-            unsupported_err_span($span, $msg.to_string())?;
+            crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
     ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            unsupported_err_span($span, $msg.to_string())?;
+            crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
 }
@@ -66,7 +71,7 @@ macro_rules! err_unless {
 
 /// Basic error, with just a message
 pub fn error<S: Into<String>>(msg: S) -> VirErr {
-    air::messages::error_bare(msg)
+    vir::messages::error_bare(msg)
 }
 
 #[allow(dead_code)]
@@ -200,3 +205,38 @@ pub const fn const_str_equal(lhs: &str, rhs: &str) -> bool {
     true
 }
 // ==================================================================================================
+
+// this is unfortunate, but when processing a reveal we cannot get the type of the
+// corresponding node in HIR because the body of the reveal closure cannot be
+// successfully typechecked, and I did not find a public interface to this in rustc
+// NOTE: do not use this if you have a body context with `types` or can otherwise obtain TypeckResults
+pub fn hir_prim_ty_to_mir_ty<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    prim_ty: &rustc_hir::PrimTy,
+) -> rustc_middle::ty::Ty<'tcx> {
+    match prim_ty {
+        rustc_hir::PrimTy::Int(int_ty) => match int_ty {
+            rustc_ast::IntTy::Isize => tcx.types.isize,
+            rustc_ast::IntTy::I8 => tcx.types.i8,
+            rustc_ast::IntTy::I16 => tcx.types.i16,
+            rustc_ast::IntTy::I32 => tcx.types.i32,
+            rustc_ast::IntTy::I64 => tcx.types.i64,
+            rustc_ast::IntTy::I128 => tcx.types.i128,
+        },
+        rustc_hir::PrimTy::Uint(uint_ty) => match uint_ty {
+            rustc_ast::UintTy::Usize => tcx.types.usize,
+            rustc_ast::UintTy::U8 => tcx.types.u8,
+            rustc_ast::UintTy::U16 => tcx.types.u16,
+            rustc_ast::UintTy::U32 => tcx.types.u32,
+            rustc_ast::UintTy::U64 => tcx.types.u64,
+            rustc_ast::UintTy::U128 => tcx.types.u128,
+        },
+        rustc_hir::PrimTy::Float(float_ty) => match float_ty {
+            rustc_ast::FloatTy::F32 => tcx.types.f32,
+            rustc_ast::FloatTy::F64 => tcx.types.f64,
+        },
+        rustc_hir::PrimTy::Str => tcx.types.str_,
+        rustc_hir::PrimTy::Bool => tcx.types.bool,
+        rustc_hir::PrimTy::Char => tcx.types.char,
+    }
+}

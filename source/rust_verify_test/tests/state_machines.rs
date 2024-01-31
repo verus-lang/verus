@@ -3581,20 +3581,20 @@ test_verify_one_file! {
         spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
             &&& pre.opt === Option::Some(5)
 
-            &&& map![0 => 1].le(pre.map)
-            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1int].dom()))
+            &&& map![0 => 1].submap_of(pre.map)
+            &&& map![2 => 3].submap_of(pre.map.remove_keys(map![0 => 1int].dom()))
             &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
 
             ==> {
 
-            &&& Multiset::singleton(10).le(pre.mset)
-            &&& Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            &&& Multiset::singleton(10).subset_of(pre.mset)
+            &&& Multiset::singleton(11).subset_of(pre.mset.sub(Multiset::singleton(10)))
 
             &&& (pre.storage_opt === Option::Some(13)
 
             ==>
 
-            (map![15 => 16].le(pre.storage_map)
+            (map![15 => 16].submap_of(pre.storage_map)
 
             ==>
 
@@ -3616,20 +3616,20 @@ test_verify_one_file! {
             &&& pre.opt === Option::Some(5)
             &&& post.opt === Option::Some(8)
 
-            &&& map![0 => 1].le(pre.map)
-            &&& map![2 => 3].le(pre.map.remove_keys(map![0 => 1int].dom()))
+            &&& map![0 => 1].submap_of(pre.map)
+            &&& map![2 => 3].submap_of(pre.map.remove_keys(map![0 => 1int].dom()))
             &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
             &&& post.map === pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
 
-            &&& Multiset::singleton(10).le(pre.mset)
-            &&& Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            &&& Multiset::singleton(10).subset_of(pre.mset)
+            &&& Multiset::singleton(11).subset_of(pre.mset.sub(Multiset::singleton(10)))
             &&& post.mset ===
                 pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
 
             &&& pre.storage_opt === Option::Some(13)
             &&& post.storage_opt === Option::Some(14)
 
-            &&& map![15 => 16].le(pre.storage_map)
+            &&& map![15 => 16].submap_of(pre.storage_map)
             &&& pre.storage_map.remove_keys(map![15 => 16int].dom()).dom().disjoint(map![17 => 18int].dom())
             &&& post.storage_map ===
                 pre.storage_map.remove_keys(map![15 => 16int].dom()).union_prefer_right(map![17 => 18])
@@ -5210,7 +5210,7 @@ test_verify_one_file! {
 
             if rel_tr3(pre, post) {
                 assert(
-                  Map::empty().insert(5, 9).insert(12, 15).le(pre.c)
+                  Map::empty().insert(5, 9).insert(12, 15).submap_of(pre.c)
                 );
                 assert(Y::State::tr3(pre, post));
             }
@@ -7076,4 +7076,122 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] label_generics IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<U> = Option<U>;
+
+            pub type Label<T> = Option<T>;
+
+            init!{
+                g(l: InitLabel<U>, t: T, u: U) {
+                    init x = t;
+                    init y = u;
+                }
+            }
+
+
+            transition!{
+                f(l: Label<T>) {
+                }
+            }
+
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail1 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<U> = Option<U>;
+
+            pub type Label<T> = Option<T>;
+
+            init!{
+                g(l: InitLabel<T>, t: T, u: U) {
+                    init x = t;
+                    init y = u;
+                }
+            }
+
+
+            transition!{
+                f(l: Label<T>) {
+                }
+            }
+
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "the first param to an 'init' definition must be 'InitLabel'")
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail2 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<U> = Option<U>;
+
+            pub type Label<T> = Option<T>;
+
+            init!{
+                g(l: InitLabel<U>, t: T, u: U) {
+                    init x = t;
+                    init y = u;
+                }
+            }
+
+
+            transition!{
+                f(l: Label<U>) {
+                }
+            }
+
+        }}
+
+    } => Err(e) => assert_vir_error_msg(e, "the first param to a 'transition' must be 'Label'")
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail3 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type Label<J> = Option<J>;
+
+        }}
+
+    } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
+}
+
+test_verify_one_file! {
+    #[test] label_generics_fail4 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ X<T, U> {
+            fields {
+                pub x: T,
+                pub y: U,
+            }
+
+            pub type InitLabel<J> = Option<J>;
+
+        }}
+
+    } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
 }

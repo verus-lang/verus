@@ -1,15 +1,16 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
-    Quant, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, CtorPrintStyle, InequalityOp, IntRange,
+    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
 };
+use crate::ast_util::get_variant;
+use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
-use crate::prelude::ArchWordBits;
-use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Ident, Span};
+use crate::messages::Span;
+use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
+use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::Arc;
 
 pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
@@ -51,6 +52,19 @@ fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
         _ => Ok(t.clone()),
     })
     .expect("subst_typ")
+}
+
+pub fn subst_typ_for_datatype(
+    typ_params: &crate::ast::TypPositives,
+    args: &Typs,
+    typ: &Typ,
+) -> Typ {
+    assert!(typ_params.len() == args.len());
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    for (typ_param, arg) in typ_params.iter().zip(args.iter()) {
+        typ_substs.insert(typ_param.0.clone(), arg.clone());
+    }
+    subst_typ(&typ_substs, typ)
 }
 
 fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
@@ -102,6 +116,7 @@ fn subst_exp_rec(
     match &exp.x {
         ExpX::Const(..)
         | ExpX::Loc(..)
+        | ExpX::StaticVar(..)
         | ExpX::Old(..)
         | ExpX::Call(..)
         | ExpX::CallLambda(..)
@@ -112,6 +127,7 @@ fn subst_exp_rec(
         | ExpX::Binary(..)
         | ExpX::BinaryOpr(..)
         | ExpX::If(..)
+        | ExpX::ExecFnByName(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
             &mut (substs, free_vars),
@@ -266,7 +282,11 @@ impl BinaryOp {
 }
 
 impl ExpX {
-    fn to_string_prec(&self, precedence: u32) -> String {
+    pub fn to_user_string(&self, global: &GlobalCtx) -> String {
+        self.to_string_prec(global, 5)
+    }
+
+    fn to_string_prec(&self, global: &GlobalCtx, precedence: u32) -> String {
         use ExpX::*;
         let (s, inner_precedence) = match &self {
             Const(c) => match c {
@@ -277,42 +297,67 @@ impl ExpX {
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
-            Loc(exp) => (format!("{}", exp), 99), // REVIEW: Additional decoration required?
-            Call(CallFun::Fun(fun, _) | CallFun::CheckTermination(fun), _, exps) => {
-                let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+            StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
+            Loc(exp) => {
+                return exp.x.to_string_prec(global, precedence);
+            }
+            Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
+                let args =
+                    exps.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
             }
             Call(CallFun::InternalFun(func), _, exps) => {
-                let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                let args =
+                    exps.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
                 (format!("{:?}({})", func, args), 90)
             }
+            ExecFnByName(func) => (format!("{:?}", func), 99),
             NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
                 ("const_generic".to_string(), 99)
             }
+            NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("trait_bound".to_string(), 99),
             Unary(op, exp) => match op {
-                UnaryOp::Not | UnaryOp::BitNot => (format!("!{}", exp.x.to_string_prec(99)), 90),
-                UnaryOp::Clip { .. } => (format!("clip({})", exp), 99),
-                UnaryOp::HeightTrigger => (format!("height_trigger({})", exp), 99),
-                UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(99)), 90),
-                UnaryOp::StrIsAscii => (format!("{}.is_ascii()", exp.x.to_string_prec(99)), 90),
-                UnaryOp::CharToInt => (format!("{} as char", exp.x.to_string_prec(99)), 90),
-                UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
-                    ("".to_string(), 0)
+                UnaryOp::Not | UnaryOp::BitNot => {
+                    (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
                 }
+                UnaryOp::Clip { .. } => (format!("clip({})", exp.x.to_user_string(global)), 99),
+                UnaryOp::HeightTrigger => {
+                    (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
+                }
+                UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
+                UnaryOp::StrIsAscii => {
+                    (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
+                }
+                UnaryOp::CharToInt => (format!("{} as char", exp.x.to_string_prec(global, 99)), 90),
+                UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
+                    return exp.x.to_string_prec(global, precedence);
+                }
+                UnaryOp::InferSpecForLoopIter => ("InferSpecForLoopIter".to_string(), 0),
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
-                    Box(_) => (format!("box({})", exp), 99),
-                    Unbox(_) => (format!("unbox({})", exp), 99),
-                    HasType(t) => (format!("{}.has_type({:?})", exp, t), 99),
-                    IntegerTypeBound(kind, mode) => (format!("{:?}.{:?}({})", kind, mode, exp), 99),
-                    IsVariant { datatype: _, variant } => {
-                        (format!("{}.is_type({})", exp, variant), 99)
+                    Box(_) | Unbox(_) => {
+                        return exp.x.to_string_prec(global, precedence);
                     }
-                    TupleField { tuple_arity: _, field } => (format!("{}.{}", exp, field), 99),
-                    Field(field) => (format!("{}.{}", exp, field.field), 99),
-                    CustomErr(_msg) => (format!("with_diagnostic({})", exp), 99),
+                    HasType(t) => {
+                        (format!("{}.has_type({:?})", exp.x.to_user_string(global), t), 99)
+                    }
+                    IntegerTypeBound(kind, mode) => {
+                        (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
+                    }
+                    IsVariant { datatype: _, variant } => {
+                        (format!("{}.is_type({})", exp.x.to_user_string(global), variant), 99)
+                    }
+                    TupleField { tuple_arity: _, field } => {
+                        (format!("{}.{}", exp.x.to_user_string(global), field), 99)
+                    }
+                    Field(field) => {
+                        (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
+                    }
+                    CustomErr(_msg) => {
+                        (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
+                    }
                 }
             }
             Binary(op, e1, e2) => {
@@ -321,8 +366,8 @@ impl ExpX {
                 use BinaryOp::*;
                 use BitwiseOp::*;
                 use InequalityOp::*;
-                let left = e1.x.to_string_prec(prec_left);
-                let right = e2.x.to_string_prec(prec_right);
+                let left = e1.x.to_string_prec(global, prec_left);
+                let right = e2.x.to_string_prec(global, prec_right);
                 let op_str = match op {
                     And => "&&",
                     Or => "||",
@@ -354,26 +399,41 @@ impl ExpX {
                     StrGetChar => "ignored", // This is our only non-inline BinaryOp, so it needs special handling below
                 };
                 if let BinaryOp::StrGetChar = op {
-                    (format!("{}.get_char({})", left, e2), prec_exp)
+                    (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
             }
-            BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
-                (format!("ext_eq({}, {})", e1.x.to_string(), e2.x.to_string()), 99)
-            }
-            If(e1, e2, e3) => (format!("if {} {{ {} }} else {{ {} }}", e1, e2, e3), 99),
+            BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => (
+                format!("ext_eq({}, {})", e1.x.to_user_string(global), e2.x.to_user_string(global)),
+                99,
+            ),
+            If(e1, e2, e3) => (
+                format!(
+                    "if {} {{ {} }} else {{ {} }}",
+                    e1.x.to_user_string(global),
+                    e2.x.to_user_string(global),
+                    e3.x.to_user_string(global)
+                ),
+                99,
+            ),
             Bind(bnd, exp) => {
                 let s = match &bnd.x {
                     BndX::Let(bnds) => {
                         let assigns = bnds
                             .iter()
-                            .map(|b| format!("{} = {}", user_local_name(&b.name), b.a))
+                            .map(|b| {
+                                format!(
+                                    "{} = {}",
+                                    user_local_name(&b.name),
+                                    b.a.x.to_user_string(global)
+                                )
+                            })
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("let {} in {}", assigns, exp)
+                        format!("let {} in {}", assigns, exp.x.to_user_string(global))
                     }
                     BndX::Quant(Quant { quant: q, .. }, bnds, _trigs) => {
                         let q_str = match q {
@@ -386,7 +446,7 @@ impl ExpX {
                             .collect::<Vec<_>>()
                             .join(", ");
 
-                        format!("({} |{}| {})", q_str, vars, exp)
+                        format!("({} |{}| {})", q_str, vars, exp.x.to_user_string(global))
                     }
                     BndX::Lambda(bnds, _trigs) => {
                         let assigns = bnds
@@ -394,7 +454,7 @@ impl ExpX {
                             .map(|b| format!("{}", user_local_name(&b.name)))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("(|{}| {})", assigns, exp)
+                        format!("(|{}| {})", assigns, exp.x.to_user_string(global))
                     }
                     BndX::Choose(bnds, _trigs, cond) => {
                         let vars = bnds
@@ -402,39 +462,72 @@ impl ExpX {
                             .map(|b| format!("{}", user_local_name(&b.name)))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("(choose |{}| {}, {})", vars, cond, exp)
+                        format!(
+                            "(choose |{}| {}, {})",
+                            vars,
+                            cond.x.to_user_string(global),
+                            exp.x.to_user_string(global)
+                        )
                     }
                 };
                 (s, 99)
             }
-            Ctor(_path, id, bnds) => {
-                let args = bnds.iter().map(|b| b.a.to_string()).collect::<Vec<_>>().join(", ");
-                (format!("{}({})", id, args), 99)
+            Ctor(path, variant_id, bnds) => {
+                let style = match global.datatypes.get(path) {
+                    Some((_, variants)) => get_variant(variants, variant_id).ctor_style,
+                    _ => CtorPrintStyle::Braces,
+                };
+                match style {
+                    CtorPrintStyle::Parens => {
+                        let args = bnds
+                            .iter()
+                            .map(|b| b.a.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        (format!("{}({})", variant_id, args), 99)
+                    }
+                    CtorPrintStyle::Tuple => {
+                        let args = bnds
+                            .iter()
+                            .map(|b| b.a.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        (format!("({})", args), 99)
+                    }
+                    CtorPrintStyle::Const => (format!("{}", variant_id), 99),
+                    CtorPrintStyle::Braces => {
+                        let args = bnds
+                            .iter()
+                            .map(|b| format!("{}: {}", b.name, b.a.x.to_user_string(global)))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        (format!("{} {} {} {}", variant_id, "{", args, "}"), 99)
+                    }
+                }
             }
             CallLambda(_typ, e, args) => {
-                let args = args.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-                (format!("{}({})", e, args), 99)
+                let args =
+                    args.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
+                (format!("{}({})", e.x.to_user_string(global), args), 99)
             }
             Interp(e) => {
                 use InterpExp::*;
                 match e {
                     FreeVar(id) => (format!("{}", user_local_name(&id.name)), 99),
                     Seq(s) => {
-                        let v = s.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                        let v = s
+                            .iter()
+                            .map(|e| e.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ");
                         (format!("[{}]", v), 99)
                     }
-                    Closure(e, _ctx) => (format!("{}", e), 99),
+                    Closure(e, _ctx) => (format!("{}", e.x.to_user_string(global)), 99),
                 }
             }
             Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
         };
         if precedence <= inner_precedence { s } else { format!("({})", s) }
-    }
-}
-
-impl fmt::Display for ExpX {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string_prec(5))
     }
 }
 
@@ -457,7 +550,7 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
 ///   - If the input type is `u8`, then it returns a constant `8`
 ///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
 
-pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &ArchWordBits) -> Exp {
+pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &crate::ast::ArchWordBits) -> Exp {
     let bitwidth = crate::ast_util::bitwidth_from_type(t)
         .expect("bitwidth_sst_from_typ expects bounded integer type");
     match bitwidth.to_exact(arch) {
@@ -492,10 +585,58 @@ pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
+pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::Eq(Mode::Spec);
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
 pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
     SpannedTyped::new(
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::Const(crate::ast_util::const_int_from_i128(i)),
+    )
+}
+
+pub fn sst_array_index(ctx: &crate::context::Ctx, span: &Span, ar: &Exp, idx: &Exp) -> Exp {
+    let t = match &*ar.typ {
+        TypX::Boxed(t) => t,
+        _ => {
+            panic!("sst_array_index expected boxed Array type");
+        }
+    };
+    let (elem_ty, n_ty) = match &**t {
+        TypX::Primitive(crate::ast::Primitive::Array, typs) => (&typs[0], &typs[1]),
+        _ => {
+            panic!("sst_array_index expected boxed Array type");
+        }
+    };
+
+    let idx_boxed = SpannedTyped::new(
+        &idx.span,
+        &Arc::new(TypX::Boxed(idx.typ.clone())),
+        ExpX::UnaryOpr(UnaryOpr::Box(idx.typ.clone()), idx.clone()),
+    );
+
+    SpannedTyped::new(
+        span,
+        elem_ty,
+        ExpX::Call(
+            CallFun::Fun(crate::def::array_index_fun(&ctx.global.vstd_crate_name), None),
+            Arc::new(vec![elem_ty.clone(), n_ty.clone()]),
+            Arc::new(vec![ar.clone(), idx_boxed]),
+        ),
+    )
+}
+
+pub fn sst_has_type(span: &Span, e: &Exp, typ: &Typ) -> Exp {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExpX::Call(
+            CallFun::InternalFun(InternalFun::HasType),
+            Arc::new(vec![typ.clone()]),
+            Arc::new(vec![e.clone()]),
+        ),
     )
 }

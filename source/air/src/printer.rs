@@ -3,7 +3,6 @@ use crate::ast::{
     MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::def::mk_skolem_id;
-use crate::messages::all_msgs_from_error;
 use crate::util::vec_map;
 use sise::{Node, Writer};
 use std::sync::Arc;
@@ -75,13 +74,17 @@ macro_rules! nodes_vec {
 }
 
 pub struct Printer {
+    message_interface: Arc<dyn crate::messages::MessageInterface>,
     // print as SMT, not as AIR
     print_as_smt: bool,
 }
 
 impl Printer {
-    pub fn new(print_as_smt: bool) -> Self {
-        Printer { print_as_smt }
+    pub fn new(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        print_as_smt: bool,
+    ) -> Self {
+        Printer { message_interface, print_as_smt }
     }
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
@@ -274,7 +277,9 @@ impl Printer {
                 }
             }
             ExprX::LabeledAxiom(labels, expr) => {
-                let spans = vec_map(labels, |s| Node::Atom(format!("\"{}\"", s.note)));
+                let spans = vec_map(labels, |s| {
+                    Node::Atom(format!("\"{}\"", self.message_interface.get_message_label_note(s)))
+                });
                 if spans.len() == 0 {
                     self.expr_to_node(expr)
                 } else {
@@ -282,8 +287,9 @@ impl Printer {
                 }
             }
             ExprX::LabeledAssertion(error, expr) => {
-                let spans =
-                    vec_map(&all_msgs_from_error(error), |s| Node::Atom(format!("\"{}\"", s)));
+                let spans = vec_map(&self.message_interface.all_msgs(error), |s| {
+                    Node::Atom(format!("\"{}\"", s))
+                });
                 if spans.len() == 0 {
                     self.expr_to_node(expr)
                 } else {
@@ -369,8 +375,9 @@ impl Printer {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
             StmtX::Assert(labels, expr) => {
-                let spans =
-                    vec_map(&all_msgs_from_error(labels), |s| Node::Atom(format!("\"{}\"", s)));
+                let spans = vec_map(&self.message_interface.all_msgs(labels), |s| {
+                    Node::Atom(format!("\"{}\"", s))
+                });
                 if spans.len() == 0 {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {

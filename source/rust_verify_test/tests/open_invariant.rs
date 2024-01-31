@@ -405,5 +405,111 @@ test_verify_one_file! {
                 loop { }
             });
         }
-    } => Ok(())
+    } => Ok(_err) => { /* allow unreachable warnings */ }
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_concrete verus_code! {
+        use vstd::invariant::*;
+
+        fn stuff()
+          opens_invariants [ 0int ]
+        {
+            stuff2();
+        }
+
+        fn stuff2()
+          opens_invariants [ 0int, 1int ] // FAILS
+        {
+        }
+
+        fn stuff3()
+          opens_invariants [ 0int ]
+        {
+        }
+
+        fn stuff4()
+          opens_invariants [ 0int, 1int ]
+        {
+            stuff3();
+        }
+
+        fn stuff5()
+        {
+            stuff3();
+        }
+
+        fn stuff6()
+          opens_invariants [ 0int, 1int ]
+        {
+            stuff5(); // FAILS
+        }
+
+        fn symbolic(x: u8)
+          opens_invariants [ x ] // FAILS
+        {
+        }
+
+        fn symbolic_caller(x: u8, y: u8)
+          opens_invariants [ y ]
+        {
+          symbolic(x);
+        }
+
+        fn symbolic2(x: u8)
+          opens_invariants [ x ]
+        {
+        }
+
+        fn symbolic2_caller(x: u8, y: u8)
+          requires x == y,
+          opens_invariants [ y ]
+        {
+          symbolic2(x);
+        }
+
+        fn test_inside_open()
+          opens_invariants [ 1int ]
+        {
+        }
+
+        fn test_inside_open_caller<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>)
+          requires i.namespace() == 1,
+          opens_invariants [ 1int ]
+        {
+            open_local_invariant!(&i => inner => { // FAILS
+                test_inside_open();
+            });
+        }
+
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_old_fail verus_code! {
+        fn stuff6(x: &mut u8)
+          opens_invariants [ ((*x) as int) ]
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in opens_invariants clause, use `old(x)` to refer to the pre-state of an &mut variable")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_wrong_type verus_code! {
+        fn stuff6(x: &mut u8)
+          opens_invariants [ true ]
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "opens_invariants needs an int expression")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_private_fn verus_code! {
+        spec fn some_inv() -> int { 5 }
+
+        pub fn test(x: &mut u8)
+          opens_invariants [ some_inv() ]
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in 'opens_invariants' clause of public function, cannot refer to private function")
 }

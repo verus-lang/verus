@@ -248,3 +248,107 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
+
+test_verify_one_file! {
+    #[test] test_step verus_code! {
+        use vstd::std_specs::range::*;
+        spec fn and_then<A, B>(o: Option<A>, f: FnSpec(A) -> Option<B>) -> Option<B> {
+            if let Some(a) = o {
+                f(a)
+            } else {
+                None
+            }
+        }
+        spec fn checked_add_usize(a: usize, b: usize) -> Option<usize> {
+            if 0 <= a + b <= usize::MAX { Some((a + b) as usize) } else { None }
+        }
+        proof fn step_properties_u8(a: u8, b: u8, n: usize, m: usize) {
+            // These are specified by `pub trait Step` in Rust's range.rs:
+            assert(a.spec_steps_between(b) == Some(n) <==> a.spec_forward_checked(n) == Some(b));
+            assert(a.spec_steps_between(b) == Some(n) <==> b.spec_backward_checked(n) == Some(a));
+            assert(a.spec_steps_between(b) == Some(n) ==> a <= b);
+            assert(a.spec_steps_between(b) == None::<usize> <==> a > b);
+            assert(and_then(a.spec_forward_checked(n), |x: u8| x.spec_forward_checked(m))
+                == and_then(a.spec_forward_checked(m), |x: u8| x.spec_forward_checked(n)));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_forward_checked(n), |x: u8| x.spec_forward_checked(m))
+                == a.spec_forward_checked((n + m) as usize));
+            assert(n + m > usize::MAX ==> and_then(a.spec_forward_checked(n), |x: u8| x.spec_forward_checked(m))
+                == None::<u8>);
+            assert(and_then(a.spec_backward_checked(n), |x: u8| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize| a.spec_backward_checked(x)));
+            assert(and_then(a.spec_backward_checked(n), |x: u8| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize|
+                    if let Some(z) = checked_add_usize(n, m) { a.spec_backward_checked(z) } else { None }));
+            // Additional checks:
+            assert(a < 255 ==> a.spec_forward_checked(1) == Some((a + 1) as u8));
+            assert(a >= 255 ==> a.spec_forward_checked(1) == None::<u8>);
+            assert(a >= 1 ==> a.spec_backward_checked(1) == Some((a - 1) as u8));
+            assert(a < 1 ==> a.spec_backward_checked(1) == None::<u8>);
+        }
+        proof fn step_properties_i8(a: i8, b: i8, n: usize, m: usize) {
+            // These are specified by `pub trait Step` in Rust's range.rs:
+            assert(a.spec_steps_between(b) == Some(n) <==> a.spec_forward_checked(n) == Some(b));
+            assert(a.spec_steps_between(b) == Some(n) <==> b.spec_backward_checked(n) == Some(a));
+            assert(a.spec_steps_between(b) == Some(n) ==> a <= b);
+            assert(a.spec_steps_between(b) == None::<usize> <==> a > b);
+            assert(and_then(a.spec_forward_checked(n), |x: i8| x.spec_forward_checked(m))
+                == and_then(a.spec_forward_checked(m), |x: i8| x.spec_forward_checked(n)));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_forward_checked(n), |x: i8| x.spec_forward_checked(m))
+                == a.spec_forward_checked((n + m) as usize));
+            assert(n + m > usize::MAX ==> and_then(a.spec_forward_checked(n), |x: i8| x.spec_forward_checked(m))
+                == None::<i8>);
+            assert(and_then(a.spec_backward_checked(n), |x: i8| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize| a.spec_backward_checked(x)));
+            assert(and_then(a.spec_backward_checked(n), |x: i8| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize|
+                    if let Some(z) = checked_add_usize(n, m) { a.spec_backward_checked(z) } else { None }));
+            // Additional checks:
+            assert(a < 127 ==> a.spec_forward_checked(1) == Some((a + 1) as i8));
+            assert(a >= 127 ==> a.spec_forward_checked(1) == None::<i8>);
+            assert(a >= -127 ==> a.spec_backward_checked(1) == Some((a - 1) as i8));
+            assert(a < -127 ==> a.spec_backward_checked(1) == None::<i8>);
+        }
+        proof fn step_properties_u128(a: u128, b: u128, n: usize, m: usize) {
+            // These are specified by `pub trait Step` in Rust's range.rs:
+            assert(a.spec_steps_between(b) == Some(n) <==> a.spec_forward_checked(n) == Some(b));
+            assert(a.spec_steps_between(b) == Some(n) <==> b.spec_backward_checked(n) == Some(a));
+            assert(a.spec_steps_between(b) == Some(n) ==> a <= b);
+            assert(a.spec_steps_between(b) == None::<usize> <== a > b);
+            assert(and_then(a.spec_forward_checked(n), |x: u128| x.spec_forward_checked(m))
+                == and_then(a.spec_forward_checked(m), |x: u128| x.spec_forward_checked(n)));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_forward_checked(n), |x: u128| x.spec_forward_checked(m))
+                == a.spec_forward_checked((n + m) as usize));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_backward_checked(n), |x: u128| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize| a.spec_backward_checked(x)));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_backward_checked(n), |x: u128| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize|
+                    if let Some(z) = checked_add_usize(n, m) { a.spec_backward_checked(z) } else { None }));
+            // Additional checks:
+            assert(a < 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff ==> a.spec_forward_checked(1) == Some((a + 1) as u128));
+            assert(a >= 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff ==> a.spec_forward_checked(1) == None::<u128>);
+            assert(a >= 1 ==> a.spec_backward_checked(1) == Some((a - 1) as u128));
+            assert(a < 1 ==> a.spec_backward_checked(1) == None::<u128>);
+        }
+        proof fn step_properties_i128(a: i128, b: i128, n: usize, m: usize) {
+            // These are specified by `pub trait Step` in Rust's range.rs:
+            assert(a.spec_steps_between(b) == Some(n) <==> a.spec_forward_checked(n) == Some(b));
+            assert(a.spec_steps_between(b) == Some(n) <==> b.spec_backward_checked(n) == Some(a));
+            assert(a.spec_steps_between(b) == Some(n) ==> a <= b);
+            assert(a.spec_steps_between(b) == None::<usize> <== a > b);
+            assert(and_then(a.spec_forward_checked(n), |x: i128| x.spec_forward_checked(m))
+                == and_then(a.spec_forward_checked(m), |x: i128| x.spec_forward_checked(n)));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_forward_checked(n), |x: i128| x.spec_forward_checked(m))
+                == a.spec_forward_checked((n + m) as usize));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_backward_checked(n), |x: i128| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize| a.spec_backward_checked(x)));
+            assert(n + m <= usize::MAX ==> and_then(a.spec_backward_checked(n), |x: i128| x.spec_backward_checked(m))
+                == and_then(checked_add_usize(n, m), |x: usize|
+                    if let Some(z) = checked_add_usize(n, m) { a.spec_backward_checked(z) } else { None }));
+            // Additional checks:
+            assert(a < 0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffff ==> a.spec_forward_checked(1) == Some((a + 1) as i128));
+            assert(a >= 0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffff ==> a.spec_forward_checked(1) == None::<i128>);
+            assert(a >= -0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffff ==> a.spec_backward_checked(1) == Some((a - 1) as i128));
+            assert(a < -0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffff ==> a.spec_backward_checked(1) == None::<i128>);
+        }
+    } => Ok(())
+}

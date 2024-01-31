@@ -346,6 +346,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_builtin_get_variant_field_invalid_3 IS_VARIANT_MAYBE.to_string() + verus_code_str! {
+        struct T { }
+        proof fn test_fail(tracked u: Maybe<T>) {
+            let tracked j = get_variant_field::<_, T>(u, "Some", "0");
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
     #[test] test_is_variant_not_enum verus_code! {
         #[is_variant]
         pub struct Maybe<T> {
@@ -1030,4 +1039,140 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+const IS_SYNTAX_COMMON: &'static str = verus_code_str! {
+    enum ThisOrThat {
+        This(nat),
+        That { v: int },
+    }
+};
+
+test_verify_one_file! {
+    #[test] is_syntax_pass IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t is This),
+                ThisOrThat::That {..} => assert(t is That),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_valid_fail IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t is That), // FAILS
+                ThisOrThat::That {..} => assert(t is That),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_invalid IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat) {
+            assert(t is Unknown);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no variant `Unknown` for this datatype")
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_precedence IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat)
+            requires t is This,
+        {
+            assert(t is This != t is That);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] is_syntax_implies IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat)
+            requires t is This,
+        {
+            assert(t is This ==> true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] struct_syntax_with_numeric_field_names verus_code! {
+        #[is_variant]
+        enum Foo {
+            Bar(u32, u32),
+            Qux,
+        }
+
+        fn test() {
+            let b = Foo::Bar { 1: 30, 0: 20 };
+            assert(b.get_Bar_0() == 20);
+            assert(b.get_Bar_1() == 30);
+        }
+
+        fn test2() {
+            let b = Foo::Bar { 1: 30, 0: 20 };
+            assert(b.get_Bar_1() == 20); // FAILS
+        }
+
+
+        fn test_pat(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, 0: b } => {
+                    assert(b == 20);
+                    assert(a == 40);
+                }
+                Foo::Qux => { assert(false); }
+            }
+        }
+
+        fn test_pat2(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, 0: b } => {
+                    assert(b == 40); // FAILS
+                }
+                Foo::Qux => { }
+            }
+        }
+
+        fn test_pat_not_all_fields(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, .. } => {
+                    assert(a == 40);
+                }
+                Foo::Qux => { assert(false); }
+            }
+        }
+
+        fn test_pat_not_all_fields2(foo: Foo) {
+            let foo = Foo::Bar(20, 40);
+            match foo {
+                Foo::Bar { 1: a, .. } => {
+                    assert(a == 20); // FAILS
+                }
+                Foo::Qux => { }
+            }
+        }
+
+        spec fn sfn(foo: Foo) -> (u32, u32) {
+            match foo {
+                Foo::Bar { 1: a, 0: b } => (b, a),
+                Foo::Qux => (0, 0),
+            }
+        }
+
+        proof fn test_sfn(foo: Foo) {
+            assert(sfn(Foo::Bar(20, 30)) == (20u32, 30u32));
+            assert(sfn(Foo::Qux) == (0u32, 0u32));
+        }
+
+        proof fn test_sfn2(foo: Foo) {
+            assert(sfn(Foo::Bar(20, 30)).0 == 30); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }

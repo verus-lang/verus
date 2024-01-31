@@ -197,6 +197,9 @@ pub trait Visit<'ast> {
     fn visit_expr_group(&mut self, i: &'ast ExprGroup) {
         visit_expr_group(self, i);
     }
+    fn visit_expr_has(&mut self, i: &'ast ExprHas) {
+        visit_expr_has(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_if(&mut self, i: &'ast ExprIf) {
         visit_expr_if(self, i);
@@ -204,6 +207,9 @@ pub trait Visit<'ast> {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_expr_index(&mut self, i: &'ast ExprIndex) {
         visit_expr_index(self, i);
+    }
+    fn visit_expr_is(&mut self, i: &'ast ExprIs) {
+        visit_expr_is(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_expr_let(&mut self, i: &'ast ExprLet) {
@@ -364,6 +370,18 @@ pub trait Visit<'ast> {
     fn visit_generics(&mut self, i: &'ast Generics) {
         visit_generics(self, i);
     }
+    fn visit_global(&mut self, i: &'ast Global) {
+        visit_global(self, i);
+    }
+    fn visit_global_inner(&mut self, i: &'ast GlobalInner) {
+        visit_global_inner(self, i);
+    }
+    fn visit_global_layout(&mut self, i: &'ast GlobalLayout) {
+        visit_global_layout(self, i);
+    }
+    fn visit_global_size_of(&mut self, i: &'ast GlobalSizeOf) {
+        visit_global_size_of(self, i);
+    }
     fn visit_ident(&mut self, i: &'ast Ident) {
         visit_ident(self, i);
     }
@@ -402,6 +420,9 @@ pub trait Visit<'ast> {
     }
     fn visit_invariant_name_set_any(&mut self, i: &'ast InvariantNameSetAny) {
         visit_invariant_name_set_any(self, i);
+    }
+    fn visit_invariant_name_set_list(&mut self, i: &'ast InvariantNameSetList) {
+        visit_invariant_name_set_list(self, i);
     }
     fn visit_invariant_name_set_none(&mut self, i: &'ast InvariantNameSetNone) {
         visit_invariant_name_set_none(self, i);
@@ -691,6 +712,9 @@ pub trait Visit<'ast> {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_return_type(&mut self, i: &'ast ReturnType) {
         visit_return_type(self, i);
+    }
+    fn visit_reveal_hide(&mut self, i: &'ast RevealHide) {
+        visit_reveal_hide(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_signature(&mut self, i: &'ast Signature) {
@@ -1328,6 +1352,9 @@ pub fn visit_ensures<'ast, V>(v: &mut V, node: &'ast Ensures)
 where
     V: Visit<'ast> + ?Sized,
 {
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
     tokens_helper(v, &node.token.span);
     v.visit_specification(&node.exprs);
 }
@@ -1466,6 +1493,9 @@ where
         Expr::AssertForall(_binding_0) => {
             v.visit_assert_forall(_binding_0);
         }
+        Expr::RevealHide(_binding_0) => {
+            v.visit_reveal_hide(_binding_0);
+        }
         Expr::View(_binding_0) => {
             v.visit_view(_binding_0);
         }
@@ -1474,6 +1504,12 @@ where
         }
         Expr::BigOr(_binding_0) => {
             v.visit_big_or(_binding_0);
+        }
+        Expr::Is(_binding_0) => {
+            v.visit_expr_is(_binding_0);
+        }
+        Expr::Has(_binding_0) => {
+            v.visit_expr_has(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -1705,7 +1741,17 @@ where
     tokens_helper(v, &node.for_token.span);
     v.visit_pat(&node.pat);
     tokens_helper(v, &node.in_token.span);
+    if let Some(it) = &node.expr_name {
+        v.visit_ident(&(**it).0);
+        tokens_helper(v, &(**it).1.spans);
+    }
     v.visit_expr(&*node.expr);
+    if let Some(it) = &node.invariant {
+        v.visit_invariant(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_decreases(it);
+    }
     v.visit_block(&node.body);
 }
 #[cfg(feature = "full")]
@@ -1718,6 +1764,17 @@ where
     }
     tokens_helper(v, &node.group_token.span);
     v.visit_expr(&*node.expr);
+}
+pub fn visit_expr_has<'ast, V>(v: &mut V, node: &'ast ExprHas)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.lhs);
+    tokens_helper(v, &node.has_token.span);
+    v.visit_expr(&*node.rhs);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_if<'ast, V>(v: &mut V, node: &'ast ExprIf)
@@ -1746,6 +1803,17 @@ where
     v.visit_expr(&*node.expr);
     tokens_helper(v, &node.bracket_token.span);
     v.visit_expr(&*node.index);
+}
+pub fn visit_expr_is<'ast, V>(v: &mut V, node: &'ast ExprIs)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.base);
+    tokens_helper(v, &node.is_token.span);
+    v.visit_ident(&*node.variant_ident);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_let<'ast, V>(v: &mut V, node: &'ast ExprLet)
@@ -2367,6 +2435,56 @@ where
         v.visit_where_clause(it);
     }
 }
+pub fn visit_global<'ast, V>(v: &mut V, node: &'ast Global)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.global_token.span);
+    v.visit_global_inner(&node.inner);
+    tokens_helper(v, &node.semi.spans);
+}
+pub fn visit_global_inner<'ast, V>(v: &mut V, node: &'ast GlobalInner)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        GlobalInner::SizeOf(_binding_0) => {
+            v.visit_global_size_of(_binding_0);
+        }
+        GlobalInner::Layout(_binding_0) => {
+            v.visit_global_layout(_binding_0);
+        }
+    }
+}
+pub fn visit_global_layout<'ast, V>(v: &mut V, node: &'ast GlobalLayout)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.layout_token.span);
+    v.visit_type(&node.type_);
+    tokens_helper(v, &node.is_token.span);
+    v.visit_ident(&(node.size).0);
+    tokens_helper(v, &(node.size).1.spans);
+    v.visit_expr_lit(&(node.size).2);
+    if let Some(it) = &node.align {
+        tokens_helper(v, &(it).0.spans);
+        v.visit_ident(&(it).1);
+        tokens_helper(v, &(it).2.spans);
+        v.visit_expr_lit(&(it).3);
+    }
+}
+pub fn visit_global_size_of<'ast, V>(v: &mut V, node: &'ast GlobalSizeOf)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.size_of_token.span);
+    v.visit_type(&node.type_);
+    tokens_helper(v, &node.eq_token.spans);
+    v.visit_expr_lit(&node.expr_lit);
+}
 pub fn visit_ident<'ast, V>(v: &mut V, node: &'ast Ident)
 where
     V: Visit<'ast> + ?Sized,
@@ -2503,6 +2621,9 @@ where
         InvariantNameSet::None(_binding_0) => {
             v.visit_invariant_name_set_none(_binding_0);
         }
+        InvariantNameSet::List(_binding_0) => {
+            v.visit_invariant_name_set_list(_binding_0);
+        }
     }
 }
 pub fn visit_invariant_name_set_any<'ast, V>(v: &mut V, node: &'ast InvariantNameSetAny)
@@ -2510,6 +2631,22 @@ where
     V: Visit<'ast> + ?Sized,
 {
     tokens_helper(v, &node.token.span);
+}
+pub fn visit_invariant_name_set_list<'ast, V>(
+    v: &mut V,
+    node: &'ast InvariantNameSetList,
+)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.bracket_token.span);
+    for el in Punctuated::pairs(&node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
 }
 pub fn visit_invariant_name_set_none<'ast, V>(
     v: &mut V,
@@ -2577,6 +2714,9 @@ where
         Item::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }
+        Item::Global(_binding_0) => {
+            v.visit_global(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2596,9 +2736,21 @@ where
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);
     v.visit_type(&*node.ty);
-    tokens_helper(v, &node.eq_token.spans);
-    v.visit_expr(&*node.expr);
-    tokens_helper(v, &node.semi_token.spans);
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.eq_token {
+        tokens_helper(v, &it.spans);
+    }
+    if let Some(it) = &node.block {
+        v.visit_block(&**it);
+    }
+    if let Some(it) = &node.expr {
+        v.visit_expr(&**it);
+    }
+    if let Some(it) = &node.semi_token {
+        tokens_helper(v, &it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_enum<'ast, V>(v: &mut V, node: &'ast ItemEnum)
@@ -2757,6 +2909,8 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    v.visit_publish(&node.publish);
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.static_token.span);
     if let Some(it) = &node.mutability {
         tokens_helper(v, &it.span);
@@ -2764,9 +2918,21 @@ where
     v.visit_ident(&node.ident);
     tokens_helper(v, &node.colon_token.spans);
     v.visit_type(&*node.ty);
-    tokens_helper(v, &node.eq_token.spans);
-    v.visit_expr(&*node.expr);
-    tokens_helper(v, &node.semi_token.spans);
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.eq_token {
+        tokens_helper(v, &it.spans);
+    }
+    if let Some(it) = &node.block {
+        v.visit_block(&**it);
+    }
+    if let Some(it) = &node.expr {
+        v.visit_expr(&**it);
+    }
+    if let Some(it) = &node.semi_token {
+        tokens_helper(v, &it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_struct<'ast, V>(v: &mut V, node: &'ast ItemStruct)
@@ -3654,6 +3820,29 @@ where
             }
             v.visit_type(&**_binding_3);
         }
+    }
+}
+pub fn visit_reveal_hide<'ast, V>(v: &mut V, node: &'ast RevealHide)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    if let Some(it) = &node.reveal_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.reveal_with_fuel_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.hide_token {
+        tokens_helper(v, &it.span);
+    }
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_expr_path(&*node.path);
+    if let Some(it) = &node.fuel {
+        tokens_helper(v, &(it).0.spans);
+        v.visit_expr(&*(it).1);
     }
 }
 #[cfg(feature = "full")]

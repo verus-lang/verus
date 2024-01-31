@@ -63,7 +63,7 @@ macro_rules! declare_atomic_type {
             }
 
             #[inline(always)]
-            pub fn new(Ghost(k): Ghost<K>, u: $value_ty, Tracked(g): Tracked<G>) -> (t: Self)
+            pub const fn new(Ghost(k): Ghost<K>, u: $value_ty, Tracked(g): Tracked<G>) -> (t: Self)
                 requires Pred::atomic_inv(k, u, g),
                 ensures t.well_formed() && t.constant() == k,
             {

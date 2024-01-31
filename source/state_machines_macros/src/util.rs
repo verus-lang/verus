@@ -52,7 +52,7 @@ pub fn pat_from_tokens(t: TokenStream) -> Pat {
 pub fn is_definitely_irrefutable(pat: &Pat) -> bool {
     match pat {
         Pat::Ident(PatIdent { subpat: None, .. }) => true,
-        Pat::Ident(PatIdent { subpat: Some((_, box s)), .. }) => is_definitely_irrefutable(s),
+        Pat::Ident(PatIdent { subpat: Some((_, s)), .. }) => is_definitely_irrefutable(&**s),
         Pat::Tuple(PatTuple { elems, .. }) => {
             for elem in elems.iter() {
                 if !is_definitely_irrefutable(elem) {

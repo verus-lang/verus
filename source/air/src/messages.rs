@@ -1,13 +1,25 @@
-use crate::ast::Span;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MessageLabel {
-    pub span: Span,
-    pub note: String,
+use serde::{Deserialize, Serialize};
+
+pub type ArcDynMessage = Arc<dyn Any + Send + Sync>;
+pub type ArcDynMessageLabel = Arc<dyn Any + Send + Sync>;
+
+pub trait MessageInterface {
+    fn empty(&self) -> ArcDynMessage;
+    fn message_label_from_air_span(&self, air_span: &str, note: &str) -> ArcDynMessage;
+    fn all_msgs(&self, message: &ArcDynMessage) -> Vec<String>;
+    fn bare(&self, level: MessageLevel, notes: &str) -> ArcDynMessage;
+    fn unexpected_z3_version(&self, expected: &str, found: &str) -> ArcDynMessage;
+    fn get_note<'b>(&self, message: &'b ArcDynMessage) -> &'b str;
+    fn from_labels(&self, labels: &Vec<ArcDynMessageLabel>) -> ArcDynMessage;
+    fn append_labels(
+        &self,
+        message: &ArcDynMessage,
+        labels: &Vec<ArcDynMessageLabel>,
+    ) -> ArcDynMessage;
+    fn get_message_label_note<'b>(&self, message_label: &'b ArcDynMessageLabel) -> &'b str;
 }
-pub type MessageLabels = Arc<Vec<MessageLabel>>;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum MessageLevel {
@@ -16,62 +28,133 @@ pub enum MessageLevel {
     Note,
 }
 
-/// If you just want to build a simple message, see the builders below.
-///
-/// Our Message type is designed to resemble Rust's MultiSpan,
-/// with an additional 'note' String to provide a top-level description.
-/// A Message should typically have at least one 'span' which represents
-/// the primary point described. It is possible to have more
-/// than one span, and it is possible to have additional label information.
-///
-/// Here's an example message:
-///
-/// error: precondition not satisfied                 // note (String)
-///   --> filename.rs:18:5
-///    |
-/// 14 |     requires(b);
-///    |              - failed precondition           // label (Span, String)
-/// ...
-/// 18 |     has_expectations(false);
-///    |     ^^^^^^^^^^^^^^^^^^^^^^^                  // primary span (Span)
-///
-/// Note that if you want to get a message that is rendered with ^^^^ AND has a label
-/// it needs to BOTH be in the primary spans list AND in the labels.
-
-#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
-pub struct MessageX {
-    pub level: MessageLevel,
-    pub note: String,
-    pub spans: Vec<Span>,          // "primary" spans
-    pub labels: Vec<MessageLabel>, // additional spans, with string annotations
-    pub help: Option<String>,
-}
-pub type Message = Arc<MessageX>;
-
 pub trait Diagnostics {
     /// Display the corresponding message
-    fn report(&self, msg: &Message) {
-        self.report_as(msg, msg.level)
-    }
+    fn report(&self, msg: &ArcDynMessage);
 
     /// Immediately display the message, regardless of which module is currently printing
-    fn report_now(&self, msg: &Message) {
-        self.report_as_now(msg, msg.level);
-    }
+    fn report_now(&self, msg: &ArcDynMessage);
 
     /// Override the msg's reporting level
-    fn report_as(&self, msg: &Message, msg_as: MessageLevel);
+    fn report_as(&self, msg: &ArcDynMessage, msg_as: MessageLevel);
 
     /// Override the msg's reporting level and immediately display the message
-    fn report_as_now(&self, msg: &Message, msg_as: MessageLevel) {
-        self.report_as(msg, msg_as);
-    }
+    fn report_as_now(&self, msg: &ArcDynMessage, msg_as: MessageLevel);
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AirSpan {
+    pub as_string: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AirMessageLabel {
+    pub span: AirSpan,
+    pub note: String,
 }
 
 /// Very simple implementation of Diagnostics for use in AIR
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AirMessage {
+    pub level: MessageLevel,
+    pub note: String,
+    pub span: Option<AirSpan>,
+    pub labels: Vec<AirMessageLabel>,
+}
+
+pub struct AirMessageInterface {}
+
+impl MessageInterface for AirMessageInterface {
+    fn empty(&self) -> ArcDynMessage {
+        Arc::new(AirMessage {
+            level: MessageLevel::Error,
+            labels: Vec::new(),
+            note: "".to_owned(),
+            span: None,
+        })
+    }
+
+    fn all_msgs(&self, message: &ArcDynMessage) -> Vec<String> {
+        let message = message.downcast_ref::<AirMessage>().unwrap();
+        Some(message.note.clone())
+            .into_iter()
+            .chain(message.labels.iter().map(|l| l.note.clone()))
+            .collect()
+    }
+
+    fn bare(&self, level: MessageLevel, msg: &str) -> ArcDynMessage {
+        Arc::new(AirMessage { level, note: msg.to_owned(), labels: Vec::new(), span: None })
+    }
+
+    fn unexpected_z3_version(&self, expected: &str, found: &str) -> ArcDynMessage {
+        Arc::new(AirMessage {
+            level: MessageLevel::Error,
+            note: format!("expected z3 version {expected}, found {found}"),
+            labels: Vec::new(),
+            span: None,
+        })
+    }
+
+    fn get_message_label_note<'b>(&self, message_label: &'b ArcDynMessageLabel) -> &'b str {
+        let message_label = message_label.downcast_ref::<AirMessageLabel>().unwrap();
+        &message_label.note
+    }
+
+    fn append_labels(
+        &self,
+        message: &ArcDynMessage,
+        labels: &Vec<ArcDynMessageLabel>,
+    ) -> ArcDynMessage {
+        let message = message.downcast_ref::<AirMessage>().unwrap();
+        let mut m = message.clone();
+        for l in labels {
+            let l = l.downcast_ref::<AirMessageLabel>().unwrap().clone();
+            m.labels.push(l.clone());
+        }
+        Arc::new(m)
+    }
+
+    fn get_note<'b>(&self, message: &'b ArcDynMessage) -> &'b str {
+        let message = message.downcast_ref::<AirMessage>().unwrap();
+        &message.note
+    }
+
+    fn message_label_from_air_span(&self, air_span: &str, note: &str) -> ArcDynMessageLabel {
+        Arc::new(AirMessageLabel {
+            span: AirSpan { as_string: air_span.to_owned() },
+            note: note.to_owned(),
+        })
+    }
+
+    fn from_labels(&self, labels: &Vec<ArcDynMessageLabel>) -> ArcDynMessage {
+        if labels.len() == 0 {
+            Arc::new(AirMessage {
+                level: MessageLevel::Error,
+                labels: Vec::new(),
+                note: "".to_owned(),
+                span: None,
+            })
+        } else {
+            let AirMessageLabel { span, note } =
+                labels[0].downcast_ref::<AirMessageLabel>().unwrap().clone();
+            Arc::new(AirMessage {
+                span: Some(span),
+                level: MessageLevel::Error,
+                note: note.clone(),
+                labels: labels[1..]
+                    .iter()
+                    .map(|l| l.downcast_ref::<AirMessageLabel>().unwrap().clone())
+                    .collect(),
+            })
+        }
+    }
+}
+
 pub struct Reporter {}
+
 impl Diagnostics for Reporter {
-    fn report_as(&self, msg: &Message, level: MessageLevel) {
+    fn report_as(&self, msg: &ArcDynMessage, level: MessageLevel) {
+        let msg = msg.downcast_ref::<AirMessage>().unwrap();
         use MessageLevel::*;
         match level {
             Note => println!("Note: {}", msg.note),
@@ -79,187 +162,18 @@ impl Diagnostics for Reporter {
             Error => eprintln!("Error: {}", msg.note),
         }
     }
-}
 
-// Basic Message constructors
-
-/// Basic message, with a note and a single span to be highlighted with ^^^^^^
-pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Message {
-    Arc::new(MessageX {
-        level,
-        note: note.into(),
-        spans: vec![span.clone()],
-        labels: Vec::new(),
-        help: None,
-    })
-}
-
-/// Bare message without any span
-pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S) -> Message {
-    Arc::new(MessageX { level, note: note.into(), spans: vec![], labels: Vec::new(), help: None })
-}
-
-/// Message with a span to be highlighted with ^^^^^^, and a label for that span
-pub fn message_with_label<S: Into<String>, T: Into<String>>(
-    level: MessageLevel,
-    note: S,
-    span: &Span,
-    label: T,
-) -> Message {
-    Arc::new(MessageX {
-        level,
-        note: note.into(),
-        spans: vec![span.clone()],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
-        help: None,
-    })
-}
-
-// Convenience functions
-
-/// Bare note without any spans
-pub fn note_bare<S: Into<String>>(note: S) -> Message {
-    message_bare(MessageLevel::Note, note)
-}
-
-/// Basic note, with a message and a single span to be highlighted with ^^^^^^
-pub fn note<S: Into<String>>(note: S, span: &Span) -> Message {
-    message(MessageLevel::Note, note, span)
-}
-
-/// Bare warning without any spans
-pub fn warning_bare<S: Into<String>>(note: S) -> Message {
-    message_bare(MessageLevel::Warning, note)
-}
-
-/// Basic warning, with a message and a single span to be highlighted with ^^^^^^
-pub fn warning<S: Into<String>>(note: S, span: &Span) -> Message {
-    message(MessageLevel::Warning, note, span)
-}
-
-/// Bare error without any spans; use the builders below to add spans and labels
-pub fn error_bare<S: Into<String>>(note: S) -> Message {
-    message_bare(MessageLevel::Error, note)
-}
-
-/// Basic error, with a message and a single span to be highlighted with ^^^^^^
-pub fn error<S: Into<String>>(note: S, span: &Span) -> Message {
-    message(MessageLevel::Error, note, span)
-}
-
-/// Prepend the error with "Verus Internal Error"
-/// Helpful for distinguishing user errors from Verus bugs.
-pub fn internal_error<S: Into<String>>(note: S, span: &Span) -> Message {
-    let msg = format!("Verus Internal Error: {:}", note.into());
-    message(MessageLevel::Error, msg, span)
-}
-
-/// Error message with a span to be highlighted with ^^^^^^, and a label for that span
-pub fn error_with_label<S: Into<String>, T: Into<String>>(
-    note: S,
-    span: &Span,
-    label: T,
-) -> Message {
-    message_with_label(MessageLevel::Error, note, span, label)
-}
-
-// Add additional stuff with the "builders" below.
-
-impl MessageX {
-    /// Add a new primary span (rendered with ^^^^^^)
-    pub fn primary_span(&self, span: &Span) -> Message {
-        let mut e = self.clone();
-        e.spans.push(span.clone());
-        Arc::new(e)
+    fn report(&self, msg: &ArcDynMessage) {
+        let air_msg = msg.downcast_ref::<AirMessage>().unwrap();
+        self.report_as(msg, air_msg.level)
     }
 
-    /// Add a new primary span with a label (rendered with ^^^^^^)
-    pub fn primary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
-        let mut e = self.clone();
-        e.spans.push(span.clone());
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
-        Arc::new(e)
+    fn report_now(&self, msg: &ArcDynMessage) {
+        let air_msg = msg.downcast_ref::<AirMessage>().unwrap();
+        self.report_as(msg, air_msg.level)
     }
 
-    /// Add a secondary_span to be highlighted, with no label (rendered with ------)
-    pub fn secondary_span(&self, span: &Span) -> Message {
-        let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: "".to_string() });
-        Arc::new(e)
+    fn report_as_now(&self, msg: &ArcDynMessage, msg_as: MessageLevel) {
+        self.report_as(msg, msg_as)
     }
-
-    /// Add a secondary_span to be highlighted, with a label (rendered with ------)
-    pub fn secondary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
-        let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
-        Arc::new(e)
-    }
-
-    /// Append secondary labels
-    pub fn append_labels(&self, labels: &Vec<MessageLabel>) -> Message {
-        let mut l = self.labels.clone();
-        for label in labels {
-            l.push(label.clone());
-        }
-        Arc::new(MessageX {
-            level: self.level,
-            note: self.note.clone(),
-            spans: self.spans.clone(),
-            labels: l,
-            help: None,
-        })
-    }
-
-    pub fn help(&self, help: impl Into<String>) -> Message {
-        let MessageX { level, note, spans, labels, help: _ } = &self;
-        Arc::new(MessageX {
-            level: *level,
-            note: note.clone(),
-            spans: spans.clone(),
-            labels: labels.clone(),
-            help: Some(help.into()),
-        })
-    }
-}
-
-/// (Lossy) conversions between the complicated Message format and the simpler format used by air
-
-pub fn error_from_spans(spans: Vec<Span>) -> Message {
-    Arc::new(MessageX {
-        level: MessageLevel::Error,
-        note: "".to_string(),
-        spans: spans,
-        labels: Vec::new(),
-        help: None,
-    })
-}
-
-pub fn error_from_labels(labels: MessageLabels) -> Message {
-    if labels.len() == 0 {
-        Arc::new(MessageX {
-            level: MessageLevel::Error,
-            note: "".to_string(),
-            spans: Vec::new(),
-            labels: Vec::new(),
-            help: None,
-        })
-    } else {
-        // Choose the first label to make the "primary" span.
-        let MessageLabel { note, span } = labels[0].clone();
-        Arc::new(MessageX {
-            level: MessageLevel::Error,
-            note: note,
-            spans: vec![span],
-            labels: labels[1..].to_vec(),
-            help: None,
-        })
-    }
-}
-
-pub fn all_msgs_from_error(error: &Message) -> Vec<String> {
-    let mut v = vec![error.note.clone()];
-    for l in &error.labels {
-        v.push(l.note.clone());
-    }
-    v
 }

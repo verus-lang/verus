@@ -4,7 +4,7 @@ use crate::ast::{
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
-use crate::messages::{error_bare, warning_bare, Diagnostics, Message, MessageLabel};
+use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -107,7 +107,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 }
 
 pub type ReportLongRunning<'a> =
-    (std::time::Duration, Box<dyn FnMut(std::time::Duration) -> () + 'a>);
+    (std::time::Duration, Box<dyn FnMut(std::time::Duration, bool) -> () + 'a>);
 
 const GET_VERSION_RESPONSE_PREFIX: &str = "(:version";
 
@@ -155,9 +155,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
                 let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
-                    diagnostics.report(&error_bare(
-                        format!("The verifier expects z3 version \"{expected_version}\", found version \"{version}\""))
-                        .help("update z3 using tools/get-z3.(sh|ps1) and re-build verus")
+                    diagnostics.report(
+                        &context
+                            .message_interface
+                            .unexpected_z3_version(&expected_version, version),
                     );
                     panic!(
                         "The verifier expects z3 version \"{}\", found version \"{}\"",
@@ -166,7 +167,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 }
             }
         } else if context.ignore_unexpected_smt {
-            diagnostics.report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
+            diagnostics.report(&context.message_interface.bare(
+                crate::messages::MessageLevel::Warning,
+                format!("warning: unexpected SMT output: {}", line).as_str(),
+            ));
         } else {
             return ValidityResult::UnexpectedOutput(line);
         }
@@ -176,8 +180,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
         context.smt_log.log_assert(&disabled_expr);
     }
 
-    let mut discovered_error: Option<Message> = None;
-    let mut discovered_additional_info: Vec<MessageLabel> = Vec::new();
+    let mut discovered_error = None;
+    let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
@@ -188,15 +192,15 @@ pub(crate) fn smt_check_assertion<'ctx>(
     // Run SMT solver
     let smt_run_start_time = std::time::Instant::now();
     let smt_data = context.smt_log.take_pipe_data();
-    let mut commands_handle = context.get_smt_process().send_commands_async(smt_data);
-    let smt_output = if let Some((report_interval, report_fn)) = report_long_running {
-        loop {
-            match commands_handle.wait_timeout(*report_interval) {
-                Ok(smt_output) => break smt_output,
-                Err(handle) => {
-                    report_fn(smt_run_start_time.elapsed());
-                    commands_handle = handle;
-                }
+    let commands_handle = context.get_smt_process().send_commands_async(smt_data);
+    let smt_output = if let Some((report_threshold, report_fn)) = report_long_running {
+        match commands_handle.wait_timeout(*report_threshold) {
+            Ok(smt_output) => smt_output,
+            Err(handle) => {
+                report_fn(smt_run_start_time.elapsed(), false);
+                let smt_output = handle.wait();
+                report_fn(smt_run_start_time.elapsed(), true);
+                smt_output
             }
         }
     } else {
@@ -224,7 +228,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
-            diagnostics.report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
+            diagnostics.report(&context.message_interface.bare(
+                crate::messages::MessageLevel::Warning,
+                format!("warning: unexpected SMT output: {}", line).as_str(),
+            ));
         } else {
             return ValidityResult::UnexpectedOutput(line);
         }
@@ -268,8 +275,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if context.ignore_unexpected_smt {
-                    diagnostics
-                        .report(&warning_bare(format!("warning: unexpected SMT output: {}", line)));
+                    diagnostics.report(&context.message_interface.bare(
+                        crate::messages::MessageLevel::Warning,
+                        format!("warning: unexpected SMT output: {}", line).as_str(),
+                    ));
                 } else {
                     return ValidityResult::UnexpectedOutput(line);
                 }
@@ -301,7 +310,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
             return ValidityResult::Canceled;
         };
 
-        let model = crate::parser::Parser::new().lines_to_model(&smt_output);
+        let model = crate::parser::Parser::new(context.message_interface.clone())
+            .lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
         for def in model.iter() {
             model_defs.insert(def.name.clone(), def.clone());
@@ -323,7 +333,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         for (_, info) in context.axiom_infos.map().iter() {
             if let Some(def) = model_defs.get(&info.label) {
                 if *def.body == "true" {
-                    discovered_additional_info.append(&mut (*info.labels).clone());
+                    discovered_additional_info.append(&mut info.labels.clone());
                     break;
                 }
             }
@@ -341,7 +351,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         // to the function precondition)
 
         let error = discovered_error.expect("discovered_error");
-        let e = error.append_labels(&discovered_additional_info);
+        let e = context.message_interface.append_labels(&error, &discovered_additional_info);
         context.state = ContextState::FoundInvalid(infos, air_model.clone());
         ValidityResult::Invalid(Some(air_model), e)
     }
@@ -379,7 +389,7 @@ pub(crate) fn smt_check_query<'ctx>(
     let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
     let labeled_assertion = label_asserts(context, &mut infos, &mut axiom_infos, &assertion);
     for info in &infos {
-        context.smt_log.comment(&info.error.note);
+        context.smt_log.comment(&context.message_interface.get_note(&info.error));
         if let Err(err) = crate::typecheck::add_decl(context, &info.decl, false) {
             return ValidityResult::TypeError(err);
         }

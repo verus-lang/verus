@@ -846,6 +846,11 @@
         "any": []
       },
       "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
         "token": {
           "token": "Ensures"
         },
@@ -1078,6 +1083,11 @@
             "syn": "AssertForall"
           }
         ],
+        "RevealHide": [
+          {
+            "syn": "RevealHide"
+          }
+        ],
         "View": [
           {
             "syn": "View"
@@ -1091,6 +1101,16 @@
         "BigOr": [
           {
             "syn": "BigOr"
+          }
+        ],
+        "Is": [
+          {
+            "syn": "ExprIs"
+          }
+        ],
+        "Has": [
+          {
+            "syn": "ExprHas"
           }
         ]
       },
@@ -1540,9 +1560,33 @@
         "in_token": {
           "token": "In"
         },
+        "expr_name": {
+          "option": {
+            "box": {
+              "tuple": [
+                {
+                  "proc_macro2": "Ident"
+                },
+                {
+                  "token": "Colon"
+                }
+              ]
+            }
+          }
+        },
         "expr": {
           "box": {
             "syn": "Expr"
+          }
+        },
+        "invariant": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
           }
         },
         "body": {
@@ -1567,6 +1611,32 @@
           "group": "Group"
         },
         "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprHas",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "lhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "has_token": {
+          "token": "Has"
+        },
+        "rhs": {
           "box": {
             "syn": "Expr"
           }
@@ -1638,6 +1708,32 @@
         "index": {
           "box": {
             "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprIs",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "base": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "is_token": {
+          "token": "Is"
+        },
+        "variant_ident": {
+          "box": {
+            "proc_macro2": "Ident"
           }
         }
       }
@@ -2768,6 +2864,114 @@
       }
     },
     {
+      "ident": "Global",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "global_token": {
+          "token": "Global"
+        },
+        "inner": {
+          "syn": "GlobalInner"
+        },
+        "semi": {
+          "token": "Semi"
+        }
+      }
+    },
+    {
+      "ident": "GlobalInner",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "SizeOf": [
+          {
+            "syn": "GlobalSizeOf"
+          }
+        ],
+        "Layout": [
+          {
+            "syn": "GlobalLayout"
+          }
+        ]
+      }
+    },
+    {
+      "ident": "GlobalLayout",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "layout_token": {
+          "token": "Layout"
+        },
+        "type_": {
+          "syn": "Type"
+        },
+        "is_token": {
+          "token": "Is"
+        },
+        "size": {
+          "tuple": [
+            {
+              "proc_macro2": "Ident"
+            },
+            {
+              "token": "EqEq"
+            },
+            {
+              "syn": "ExprLit"
+            }
+          ]
+        },
+        "align": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Comma"
+              },
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "EqEq"
+              },
+              {
+                "syn": "ExprLit"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "GlobalSizeOf",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "size_of_token": {
+          "token": "SizeOf"
+        },
+        "type_": {
+          "syn": "Type"
+        },
+        "eq_token": {
+          "token": "EqEq"
+        },
+        "expr_lit": {
+          "syn": "ExprLit"
+        }
+      }
+    },
+    {
       "ident": "ImplItem",
       "features": {
         "any": [
@@ -3011,6 +3215,11 @@
           {
             "syn": "InvariantNameSetNone"
           }
+        ],
+        "List": [
+          {
+            "syn": "InvariantNameSetList"
+          }
         ]
       }
     },
@@ -3022,6 +3231,25 @@
       "fields": {
         "token": {
           "token": "InvAny"
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSetList",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "exprs": {
+          "punctuated": {
+            "element": {
+              "syn": "Expr"
+            },
+            "punct": "Comma"
+          }
         }
       }
     },
@@ -3128,6 +3356,11 @@
           {
             "proc_macro2": "TokenStream"
           }
+        ],
+        "Global": [
+          {
+            "syn": "Global"
+          }
         ]
       },
       "exhaustive": false
@@ -3168,16 +3401,34 @@
             "syn": "Type"
           }
         },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
         "eq_token": {
-          "token": "Eq"
+          "option": {
+            "token": "Eq"
+          }
+        },
+        "block": {
+          "option": {
+            "box": {
+              "syn": "Block"
+            }
+          }
         },
         "expr": {
-          "box": {
-            "syn": "Expr"
+          "option": {
+            "box": {
+              "syn": "Expr"
+            }
           }
         },
         "semi_token": {
-          "token": "Semi"
+          "option": {
+            "token": "Semi"
+          }
         }
       }
     },
@@ -3496,6 +3747,12 @@
         "vis": {
           "syn": "Visibility"
         },
+        "publish": {
+          "syn": "Publish"
+        },
+        "mode": {
+          "syn": "FnMode"
+        },
         "static_token": {
           "token": "Static"
         },
@@ -3515,16 +3772,34 @@
             "syn": "Type"
           }
         },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
         "eq_token": {
-          "token": "Eq"
+          "option": {
+            "token": "Eq"
+          }
+        },
+        "block": {
+          "option": {
+            "box": {
+              "syn": "Block"
+            }
+          }
         },
         "expr": {
-          "box": {
-            "syn": "Expr"
+          "option": {
+            "box": {
+              "syn": "Expr"
+            }
           }
         },
         "semi_token": {
-          "token": "Semi"
+          "option": {
+            "token": "Semi"
+          }
         }
       }
     },
@@ -5126,6 +5401,56 @@
       }
     },
     {
+      "ident": "RevealHide",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "reveal_token": {
+          "option": {
+            "token": "Reveal"
+          }
+        },
+        "reveal_with_fuel_token": {
+          "option": {
+            "token": "RevealWithFuel"
+          }
+        },
+        "hide_token": {
+          "option": {
+            "token": "Hide"
+          }
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "path": {
+          "box": {
+            "syn": "ExprPath"
+          }
+        },
+        "fuel": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Comma"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "ident": "Signature",
       "features": {
         "any": [
@@ -6489,7 +6814,10 @@
     "Forall": "forall",
     "Ge": ">=",
     "Ghost": "ghost",
+    "Global": "global",
     "Gt": ">",
+    "Has": "has",
+    "Hide": "hide",
     "If": "if",
     "Impl": "impl",
     "Implies": "implies",
@@ -6501,6 +6829,7 @@
     "InvariantEnsures": "invariant_ensures",
     "Is": "is",
     "LArrow": "<-",
+    "Layout": "layout",
     "Le": "<=",
     "Let": "let",
     "Loop": "loop",
@@ -6531,6 +6860,8 @@
     "RemEq": "%=",
     "Requires": "requires",
     "Return": "return",
+    "Reveal": "reveal",
+    "RevealWithFuel": "reveal_with_fuel",
     "SelfType": "Self",
     "SelfValue": "self",
     "Semi": ";",
@@ -6538,6 +6869,7 @@
     "ShlEq": "<<=",
     "Shr": ">>",
     "ShrEq": ">>=",
+    "SizeOf": "size_of",
     "Spec": "spec",
     "Star": "*",
     "Static": "static",

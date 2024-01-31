@@ -12,9 +12,13 @@ const IMPORTS: &str = code_str! {
 
 /// With contradiction_smoke_test, add a final `assert(false)` that is expected to fail at the end
 /// of the test, as a cheap way to check that the trusted specs aren't contradictory
-fn test_body(tests: &str, contradiction_smoke_test: bool) -> String {
+fn test_body(tests: &str, contradiction_smoke_test: bool, usize_size: Option<u32>) -> String {
+    let usize_size = usize_size.map(|x| format!("    global size_of usize == {};\n", x));
+    let usize_size = usize_size.as_ref().map(|x| x.as_str());
     IMPORTS.to_string()
-        + "    verus!{ fn test() {"
+        + "    verus!{ \n"
+        + usize_size.unwrap_or("")
+        + "    fn test() {"
         + tests
         + if contradiction_smoke_test { "assert(false); // FAILS\n" } else { "" }
         + "    } }"
@@ -106,11 +110,11 @@ const ATOMIC_U64: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_u64_pass test_body(ATOMIC_U64, false) => Ok(())
+    #[test] test_atomic_u64_pass test_body(ATOMIC_U64, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_u64_smoke test_body(ATOMIC_U64, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u64_smoke test_body(ATOMIC_U64, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_U32: &str = code_str! {
@@ -199,11 +203,11 @@ const ATOMIC_U32: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_u32_pass test_body(ATOMIC_U32, false) => Ok(())
+    #[test] test_atomic_u32_pass test_body(ATOMIC_U32, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_u32_smoke test_body(ATOMIC_U32, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u32_smoke test_body(ATOMIC_U32, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_U16: &str = code_str! {
@@ -292,11 +296,11 @@ const ATOMIC_U16: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_u16_pass test_body(ATOMIC_U16, false) => Ok(())
+    #[test] test_atomic_u16_pass test_body(ATOMIC_U16, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_u16_smoke test_body(ATOMIC_U16, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u16_smoke test_body(ATOMIC_U16, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_U8: &str = code_str! {
@@ -385,11 +389,11 @@ const ATOMIC_U8: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_u8_pass test_body(ATOMIC_U8, false) => Ok(())
+    #[test] test_atomic_u8_pass test_body(ATOMIC_U8, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_u8_smoke test_body(ATOMIC_U8, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_u8_smoke test_body(ATOMIC_U8, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I64: &str = code_str! {
@@ -486,11 +490,11 @@ const ATOMIC_I64: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_i64_pass test_body(ATOMIC_I64, false) => Ok(())
+    #[test] test_atomic_i64_pass test_body(ATOMIC_I64, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_i64_smoke test_body(ATOMIC_I64, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i64_smoke test_body(ATOMIC_I64, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I32: &str = code_str! {
@@ -587,11 +591,11 @@ const ATOMIC_I32: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_i32_pass test_body(ATOMIC_I32, false) => Ok(())
+    #[test] test_atomic_i32_pass test_body(ATOMIC_I32, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_i32_smoke test_body(ATOMIC_I32, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i32_smoke test_body(ATOMIC_I32, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I16: &str = code_str! {
@@ -688,11 +692,11 @@ const ATOMIC_I16: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_i16_pass test_body(ATOMIC_I16, false) => Ok(())
+    #[test] test_atomic_i16_pass test_body(ATOMIC_I16, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_i16_smoke test_body(ATOMIC_I16, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i16_smoke test_body(ATOMIC_I16, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_I8: &str = code_str! {
@@ -789,11 +793,11 @@ const ATOMIC_I8: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_i8_pass test_body(ATOMIC_I8, false) => Ok(())
+    #[test] test_atomic_i8_pass test_body(ATOMIC_I8, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_i8_smoke test_body(ATOMIC_I8, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_i8_smoke test_body(ATOMIC_I8, true, None) => Err(e) => assert_one_fails(e)
 }
 
 const ATOMIC_BOOL: &str = code_str! {
@@ -911,135 +915,131 @@ const ATOMIC_BOOL: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[test] test_atomic_bool_pass test_body(ATOMIC_BOOL, false) => Ok(())
+    #[test] test_atomic_bool_pass test_body(ATOMIC_BOOL, false, None) => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_atomic_bool_smoke test_body(ATOMIC_BOOL, true) => Err(e) => assert_one_fails(e)
+    #[test] test_atomic_bool_smoke test_body(ATOMIC_BOOL, true, None) => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
     #[test] test_unsigned_add_overflow_fail
-    IMPORTS.to_string() + code_str! {
-        verus!{
+    IMPORTS.to_string() + verus_code_str! {
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicU32::new(0xf000_0000);
 
             at.fetch_add(Tracked(&mut perm), 0xf000_0000); // FAILS
-        }
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_unsigned_sub_underflow_fail
-    IMPORTS.to_string() + code_str! {
-        verus!{
+    IMPORTS.to_string() + verus_code_str! {
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicU32::new(5);
 
             at.fetch_sub(Tracked(&mut perm), 6); // FAILS
-        }
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_signed_add_overflow_fail
-    IMPORTS.to_string() + code_str! {
-        verus!{
+    IMPORTS.to_string() + verus_code_str! {
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(0x7000_0000);
 
             at.fetch_add(Tracked(&mut perm), 0x7000_0000); // FAILS
-        }
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_signed_add_underflow_fail
-    IMPORTS.to_string() + code_str! {
-        verus!{
+    IMPORTS.to_string() + verus_code_str! {
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(-0x7000_0000);
 
             at.fetch_add(Tracked(&mut perm), -0x7000_0000); // FAILS
-        }
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_signed_sub_overflow_fail
-    IMPORTS.to_string() + code_str! {
-        verus!{
+    IMPORTS.to_string() + verus_code_str! {
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(0x7000_0000);
 
             at.fetch_sub(Tracked(&mut perm), -0x7000_0000); // FAILS
-        }
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] test_signed_sub_underflow_fail
-    IMPORTS.to_string() + code_str! {
-        verus!{
+    IMPORTS.to_string() + verus_code_str! {
         pub fn do_nothing() {
             let (at, Tracked(mut perm)) = PAtomicI32::new(-0x7000_0000);
 
             at.fetch_sub(Tracked(&mut perm), 0x7000_0000); // FAILS
-        }
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 // 32-bit
 
-test_verify_one_file_with_options! {
-    #[test] test_atomic_usize_32_pass ["--arch-word-bits 32"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_usize_32_pass test_body(
       &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
-      false) => Ok(())
+      false,
+      Some(4)) => Ok(())
 }
-test_verify_one_file_with_options! {
-    #[test] test_atomic_usize_32_fail ["--arch-word-bits 32"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_usize_32_fail  test_body(
       &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
-      true) => Err(e) => assert_one_fails(e)
+      true,
+      Some(4)) => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file_with_options! {
-    #[test] test_atomic_isize_32_pass ["--arch-word-bits 32"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_isize_32_pass test_body(
       &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
-      false) => Ok(())
+      false,
+      Some(4)) => Ok(())
 }
-test_verify_one_file_with_options! {
-    #[test] test_atomic_isize_32_fail ["--arch-word-bits 32"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_isize_32_fail test_body(
       &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
-      true) => Err(e) => assert_one_fails(e)
+      true,
+      Some(4)) => Err(e) => assert_one_fails(e)
 }
 
 // 64-bit
 
-test_verify_one_file_with_options! {
-    #[test] test_atomic_usize_64_pass ["--arch-word-bits 64"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_usize_64_pass  test_body(
       &ATOMIC_U64.replace("u64", "usize").replace("PAtomicU64", "PAtomicUsize"),
-      false) => Ok(())
+      false,
+    Some(8)) => Ok(())
 }
-test_verify_one_file_with_options! {
-    #[test] test_atomic_usize_64_fail ["--arch-word-bits 64"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_usize_64_fail  test_body(
       &ATOMIC_U64.replace("u64", "usize").replace("PAtomicU64", "PAtomicUsize"),
-      true) => Err(e) => assert_one_fails(e)
+      true,
+    Some(8)) => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file_with_options! {
-    #[test] test_atomic_isize_64_pass ["--arch-word-bits 64"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_isize_64_pass  test_body(
       &ATOMIC_I64.replace("i64", "isize").replace("PAtomicI64", "PAtomicIsize"),
-      false) => Ok(())
+      false,
+    Some(8)) => Ok(())
 }
-test_verify_one_file_with_options! {
-    #[test] test_atomic_isize_64_fail ["--arch-word-bits 64"] => test_body(
+test_verify_one_file! {
+    #[test] test_atomic_isize_64_fail  test_body(
       &ATOMIC_I64.replace("i64", "isize").replace("PAtomicI64", "PAtomicIsize"),
-      true) => Err(e) => assert_one_fails(e)
+      true,
+    Some(8)) => Err(e) => assert_one_fails(e)
 }

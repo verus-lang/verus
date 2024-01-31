@@ -122,11 +122,20 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+    pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures pt.1@@ ===
             pcell_opt![ pt.0.id() => Option::None ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
+        (p, Tracked::assume_new())
+    }
+
+    #[inline(always)]
+    #[verifier(external_body)]
+    pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
+    {
+        let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
         (p, Tracked::assume_new())
     }
 
@@ -141,7 +150,6 @@ impl<V> PCell<V> {
               pcell_opt![ self.id() => Option::Some(v) ],
         opens_invariants none
     {
-
         unsafe {
             *(self.ucell.get()) = MaybeUninit::new(v);
         }
@@ -220,14 +228,16 @@ impl<V> PCell<V> {
         self.take(Tracked(&mut perm))
     }
 
-    #[inline(always)]
-    pub fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
-        ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
-    {
-        let (p, Tracked(mut t)) = Self::empty();
-        p.put(Tracked(&mut t), v);
-        (p, Tracked(t))
-    }
+    // TODO this should replace the external_body implementation of `new` above;
+    // however it requires unstable features: const_mut_refs and const_refs_to_cell
+    //#[inline(always)]
+    //pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
+    //    ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
+    //{
+    //    let (p, Tracked(mut t)) = Self::empty();
+    //    p.put(Tracked(&mut t), v);
+    //    (p, Tracked(t))
+    //}
 }
 
 impl<V: Copy> PCell<V> {
@@ -248,7 +258,7 @@ impl<V: Copy> PCell<V> {
 
 struct InvCellPred { }
 impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
-    spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
+    closed spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k; {
           &&& perm@.value.is_Some()
           &&& possible_values.contains(perm@.value.get_Some_0())

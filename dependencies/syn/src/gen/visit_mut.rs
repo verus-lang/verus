@@ -198,6 +198,9 @@ pub trait VisitMut {
     fn visit_expr_group_mut(&mut self, i: &mut ExprGroup) {
         visit_expr_group_mut(self, i);
     }
+    fn visit_expr_has_mut(&mut self, i: &mut ExprHas) {
+        visit_expr_has_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_if_mut(&mut self, i: &mut ExprIf) {
         visit_expr_if_mut(self, i);
@@ -205,6 +208,9 @@ pub trait VisitMut {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_expr_index_mut(&mut self, i: &mut ExprIndex) {
         visit_expr_index_mut(self, i);
+    }
+    fn visit_expr_is_mut(&mut self, i: &mut ExprIs) {
+        visit_expr_is_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_expr_let_mut(&mut self, i: &mut ExprLet) {
@@ -365,6 +371,18 @@ pub trait VisitMut {
     fn visit_generics_mut(&mut self, i: &mut Generics) {
         visit_generics_mut(self, i);
     }
+    fn visit_global_mut(&mut self, i: &mut Global) {
+        visit_global_mut(self, i);
+    }
+    fn visit_global_inner_mut(&mut self, i: &mut GlobalInner) {
+        visit_global_inner_mut(self, i);
+    }
+    fn visit_global_layout_mut(&mut self, i: &mut GlobalLayout) {
+        visit_global_layout_mut(self, i);
+    }
+    fn visit_global_size_of_mut(&mut self, i: &mut GlobalSizeOf) {
+        visit_global_size_of_mut(self, i);
+    }
     fn visit_ident_mut(&mut self, i: &mut Ident) {
         visit_ident_mut(self, i);
     }
@@ -403,6 +421,9 @@ pub trait VisitMut {
     }
     fn visit_invariant_name_set_any_mut(&mut self, i: &mut InvariantNameSetAny) {
         visit_invariant_name_set_any_mut(self, i);
+    }
+    fn visit_invariant_name_set_list_mut(&mut self, i: &mut InvariantNameSetList) {
+        visit_invariant_name_set_list_mut(self, i);
     }
     fn visit_invariant_name_set_none_mut(&mut self, i: &mut InvariantNameSetNone) {
         visit_invariant_name_set_none_mut(self, i);
@@ -692,6 +713,9 @@ pub trait VisitMut {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_return_type_mut(&mut self, i: &mut ReturnType) {
         visit_return_type_mut(self, i);
+    }
+    fn visit_reveal_hide_mut(&mut self, i: &mut RevealHide) {
+        visit_reveal_hide_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_signature_mut(&mut self, i: &mut Signature) {
@@ -1329,6 +1353,9 @@ pub fn visit_ensures_mut<V>(v: &mut V, node: &mut Ensures)
 where
     V: VisitMut + ?Sized,
 {
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
     tokens_helper(v, &mut node.token.span);
     v.visit_specification_mut(&mut node.exprs);
 }
@@ -1467,6 +1494,9 @@ where
         Expr::AssertForall(_binding_0) => {
             v.visit_assert_forall_mut(_binding_0);
         }
+        Expr::RevealHide(_binding_0) => {
+            v.visit_reveal_hide_mut(_binding_0);
+        }
         Expr::View(_binding_0) => {
             v.visit_view_mut(_binding_0);
         }
@@ -1475,6 +1505,12 @@ where
         }
         Expr::BigOr(_binding_0) => {
             v.visit_big_or_mut(_binding_0);
+        }
+        Expr::Is(_binding_0) => {
+            v.visit_expr_is_mut(_binding_0);
+        }
+        Expr::Has(_binding_0) => {
+            v.visit_expr_has_mut(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -1706,7 +1742,17 @@ where
     tokens_helper(v, &mut node.for_token.span);
     v.visit_pat_mut(&mut node.pat);
     tokens_helper(v, &mut node.in_token.span);
+    if let Some(it) = &mut node.expr_name {
+        v.visit_ident_mut(&mut (**it).0);
+        tokens_helper(v, &mut (**it).1.spans);
+    }
     v.visit_expr_mut(&mut *node.expr);
+    if let Some(it) = &mut node.invariant {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
     v.visit_block_mut(&mut node.body);
 }
 #[cfg(feature = "full")]
@@ -1719,6 +1765,17 @@ where
     }
     tokens_helper(v, &mut node.group_token.span);
     v.visit_expr_mut(&mut *node.expr);
+}
+pub fn visit_expr_has_mut<V>(v: &mut V, node: &mut ExprHas)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_expr_mut(&mut *node.lhs);
+    tokens_helper(v, &mut node.has_token.span);
+    v.visit_expr_mut(&mut *node.rhs);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_if_mut<V>(v: &mut V, node: &mut ExprIf)
@@ -1747,6 +1804,17 @@ where
     v.visit_expr_mut(&mut *node.expr);
     tokens_helper(v, &mut node.bracket_token.span);
     v.visit_expr_mut(&mut *node.index);
+}
+pub fn visit_expr_is_mut<V>(v: &mut V, node: &mut ExprIs)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_expr_mut(&mut *node.base);
+    tokens_helper(v, &mut node.is_token.span);
+    v.visit_ident_mut(&mut *node.variant_ident);
 }
 #[cfg(feature = "full")]
 pub fn visit_expr_let_mut<V>(v: &mut V, node: &mut ExprLet)
@@ -2365,6 +2433,56 @@ where
         v.visit_where_clause_mut(it);
     }
 }
+pub fn visit_global_mut<V>(v: &mut V, node: &mut Global)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut node.global_token.span);
+    v.visit_global_inner_mut(&mut node.inner);
+    tokens_helper(v, &mut node.semi.spans);
+}
+pub fn visit_global_inner_mut<V>(v: &mut V, node: &mut GlobalInner)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        GlobalInner::SizeOf(_binding_0) => {
+            v.visit_global_size_of_mut(_binding_0);
+        }
+        GlobalInner::Layout(_binding_0) => {
+            v.visit_global_layout_mut(_binding_0);
+        }
+    }
+}
+pub fn visit_global_layout_mut<V>(v: &mut V, node: &mut GlobalLayout)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.layout_token.span);
+    v.visit_type_mut(&mut node.type_);
+    tokens_helper(v, &mut node.is_token.span);
+    v.visit_ident_mut(&mut (node.size).0);
+    tokens_helper(v, &mut (node.size).1.spans);
+    v.visit_expr_lit_mut(&mut (node.size).2);
+    if let Some(it) = &mut node.align {
+        tokens_helper(v, &mut (it).0.spans);
+        v.visit_ident_mut(&mut (it).1);
+        tokens_helper(v, &mut (it).2.spans);
+        v.visit_expr_lit_mut(&mut (it).3);
+    }
+}
+pub fn visit_global_size_of_mut<V>(v: &mut V, node: &mut GlobalSizeOf)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.size_of_token.span);
+    v.visit_type_mut(&mut node.type_);
+    tokens_helper(v, &mut node.eq_token.spans);
+    v.visit_expr_lit_mut(&mut node.expr_lit);
+}
 pub fn visit_ident_mut<V>(v: &mut V, node: &mut Ident)
 where
     V: VisitMut + ?Sized,
@@ -2503,6 +2621,9 @@ where
         InvariantNameSet::None(_binding_0) => {
             v.visit_invariant_name_set_none_mut(_binding_0);
         }
+        InvariantNameSet::List(_binding_0) => {
+            v.visit_invariant_name_set_list_mut(_binding_0);
+        }
     }
 }
 pub fn visit_invariant_name_set_any_mut<V>(v: &mut V, node: &mut InvariantNameSetAny)
@@ -2510,6 +2631,19 @@ where
     V: VisitMut + ?Sized,
 {
     tokens_helper(v, &mut node.token.span);
+}
+pub fn visit_invariant_name_set_list_mut<V>(v: &mut V, node: &mut InvariantNameSetList)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.bracket_token.span);
+    for el in Punctuated::pairs_mut(&mut node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
 }
 pub fn visit_invariant_name_set_none_mut<V>(v: &mut V, node: &mut InvariantNameSetNone)
 where
@@ -2574,6 +2708,9 @@ where
         Item::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }
+        Item::Global(_binding_0) => {
+            v.visit_global_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2593,9 +2730,21 @@ where
     v.visit_ident_mut(&mut node.ident);
     tokens_helper(v, &mut node.colon_token.spans);
     v.visit_type_mut(&mut *node.ty);
-    tokens_helper(v, &mut node.eq_token.spans);
-    v.visit_expr_mut(&mut *node.expr);
-    tokens_helper(v, &mut node.semi_token.spans);
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.eq_token {
+        tokens_helper(v, &mut it.spans);
+    }
+    if let Some(it) = &mut node.block {
+        v.visit_block_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.expr {
+        v.visit_expr_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.semi_token {
+        tokens_helper(v, &mut it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_enum_mut<V>(v: &mut V, node: &mut ItemEnum)
@@ -2754,6 +2903,8 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_publish_mut(&mut node.publish);
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.static_token.span);
     if let Some(it) = &mut node.mutability {
         tokens_helper(v, &mut it.span);
@@ -2761,9 +2912,21 @@ where
     v.visit_ident_mut(&mut node.ident);
     tokens_helper(v, &mut node.colon_token.spans);
     v.visit_type_mut(&mut *node.ty);
-    tokens_helper(v, &mut node.eq_token.spans);
-    v.visit_expr_mut(&mut *node.expr);
-    tokens_helper(v, &mut node.semi_token.spans);
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.eq_token {
+        tokens_helper(v, &mut it.spans);
+    }
+    if let Some(it) = &mut node.block {
+        v.visit_block_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.expr {
+        v.visit_expr_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.semi_token {
+        tokens_helper(v, &mut it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_struct_mut<V>(v: &mut V, node: &mut ItemStruct)
@@ -3651,6 +3814,29 @@ where
             }
             v.visit_type_mut(&mut **_binding_3);
         }
+    }
+}
+pub fn visit_reveal_hide_mut<V>(v: &mut V, node: &mut RevealHide)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    if let Some(it) = &mut node.reveal_token {
+        tokens_helper(v, &mut it.span);
+    }
+    if let Some(it) = &mut node.reveal_with_fuel_token {
+        tokens_helper(v, &mut it.span);
+    }
+    if let Some(it) = &mut node.hide_token {
+        tokens_helper(v, &mut it.span);
+    }
+    tokens_helper(v, &mut node.paren_token.span);
+    v.visit_expr_path_mut(&mut *node.path);
+    if let Some(it) = &mut node.fuel {
+        tokens_helper(v, &mut (it).0.spans);
+        v.visit_expr_mut(&mut *(it).1);
     }
 }
 #[cfg(feature = "full")]

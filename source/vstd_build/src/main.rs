@@ -29,7 +29,10 @@ fn main() {
 
     let mut release = false;
     let mut no_verify = false;
+    let mut no_std = false;
+    let mut no_alloc = false;
     let mut verbose = false;
+    let mut trace = false;
     for arg in args {
         if arg == "--release" {
             release = true;
@@ -37,9 +40,19 @@ fn main() {
             no_verify = true;
         } else if arg == "--verbose" {
             verbose = true;
+        } else if arg == "--no-std" {
+            no_std = true;
+        } else if arg == "--no-alloc" {
+            no_alloc = true;
+        } else if arg == "--trace" {
+            trace = true;
         } else {
             panic!("unexpected argument: {:}", arg)
         }
+    }
+
+    if !no_std && no_alloc {
+        panic!("--no-alloc must be specified along with --no-std");
     }
 
     #[cfg(target_os = "macos")]
@@ -72,6 +85,7 @@ fn main() {
         VSTD_VIR.to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
         (if no_verify { "no-verify" } else { "verify" }).to_string(),
+        (if trace { "trace" } else { "no-trace" }).to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
         "--extern".to_string(),
@@ -88,6 +102,14 @@ fn main() {
     if release {
         child_args.push("-C".to_string());
         child_args.push("opt-level=3".to_string());
+    }
+    if !no_std {
+        child_args.push("--cfg".to_string());
+        child_args.push("feature=\"std\"".to_string());
+    }
+    if !no_alloc {
+        child_args.push("--cfg".to_string());
+        child_args.push("feature=\"alloc\"".to_string());
     }
     child_args.push(VSTD_RS_PATH.to_string());
 

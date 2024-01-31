@@ -54,7 +54,7 @@ test_verify_one_file! {
 }
 
 const PTR_TEST: &str = code_str! {
-    let (ptr, Tracked(mut token)) = PPtr::<u32>::empty();
+    let (ptr, Tracked(mut token), Tracked(dealloc)) = PPtr::<u32>::empty();
     assert(equal(token.view().pptr, ptr.id()));
     assert(equal(token.view().value, Option::None));
 
@@ -75,7 +75,7 @@ const PTR_TEST: &str = code_str! {
     assert(equal(token.view().value, Option::None));
     assert(equal(x, 7));
 
-    ptr.dispose(Tracked(token));
+    ptr.dispose(Tracked(token), Tracked(dealloc));
 };
 
 test_verify_one_file! {
@@ -172,8 +172,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_mismatch_put IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
+            let (ptr2, Tracked(mut token2), Tracked(dealloc)) = PPtr::<u32>::empty();
             ptr1.put(Tracked(&mut token2), 5); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -182,8 +182,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_mismatch_take IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = PPtr::<u32>::empty();
+            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = PPtr::<u32>::empty();
             ptr1.put(Tracked(&mut token1), 5);
             ptr2.put(Tracked(&mut token2), 5);
             let x = ptr1.take(Tracked(&mut token2)); // FAILS
@@ -194,8 +194,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_mismatch_replace IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
+            let (ptr2, Tracked(mut token2), Tracked(dealloc)) = PPtr::<u32>::empty();
             ptr1.put(Tracked(&mut token1), 5);
             ptr2.put(Tracked(&mut token2), 5);
             let x = ptr1.replace(Tracked(&mut token2), 7); // FAILS
@@ -206,8 +206,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_mismatch_borrow IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
+            let (ptr2, Tracked(mut token2), Tracked(dealloc)) = PPtr::<u32>::empty();
             ptr1.put(Tracked(&mut token1), 5);
             ptr2.put(Tracked(&mut token2), 5);
             let x = ptr1.borrow(Tracked(&token2)); // FAILS
@@ -218,9 +218,19 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_mismatch_dispose IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2)) = PPtr::<u32>::empty();
-            ptr1.dispose(Tracked(token2)); // FAILS
+            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = PPtr::<u32>::empty();
+            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = PPtr::<u32>::empty();
+            ptr1.dispose(Tracked(token2), Tracked(dealloc1)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] ptr_mismatch_dispose2 IMPORTS.to_string() + verus_code_str! {
+        pub fn f() {
+            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = PPtr::<u32>::empty();
+            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = PPtr::<u32>::empty();
+            ptr1.dispose(Tracked(token1), Tracked(dealloc2)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -228,7 +238,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_some_put IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
             ptr1.put(Tracked(&mut token1), 7);
             ptr1.put(Tracked(&mut token1), 5); // FAILS
         }
@@ -238,7 +248,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_none_take IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
             let x = ptr1.take(Tracked(&mut token1)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -247,7 +257,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_none_replace IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
             let x = ptr1.replace(Tracked(&mut token1), 7); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -256,7 +266,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_none_borrow IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
             let x = ptr1.borrow(Tracked(&token1)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -265,9 +275,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] ptr_some_dispose IMPORTS.to_string() + verus_code_str! {
         pub fn f() {
-            let (ptr1, Tracked(mut token1)) = PPtr::<u32>::empty();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
             ptr1.put(Tracked(&mut token1), 5);
-            ptr1.dispose(Tracked(token1)); // FAILS
+            ptr1.dispose(Tracked(token1), Tracked(dealloc)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

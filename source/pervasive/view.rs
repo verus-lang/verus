@@ -17,41 +17,49 @@ pub trait View {
 
 impl<A: View> View for &A {
     type V = A::V;
-    #[verifier::external_body]
-    spec fn view(&self) -> A::V {
+    #[verifier::inline]
+    open spec fn view(&self) -> A::V {
         (**self).view()
     }
 }
 
-impl<A: View> View for Box<A> {
+#[cfg(feature = "alloc")]
+impl<A: View> View for alloc::boxed::Box<A> {
     type V = A::V;
-    #[verifier::external_body]
-    spec fn view(&self) -> A::V {
+    #[verifier::inline]
+    open spec fn view(&self) -> A::V {
         (**self).view()
     }
 }
 
-impl<A: View> View for std::rc::Rc<A> {
+#[cfg(feature = "alloc")]
+impl<A: View> View for alloc::rc::Rc<A> {
     type V = A::V;
-    #[verifier::external_body]
-    spec fn view(&self) -> A::V {
+    #[verifier::inline]
+    open spec fn view(&self) -> A::V {
         (**self).view()
     }
 }
 
-impl<A: View> View for std::sync::Arc<A> {
+#[cfg(feature = "alloc")]
+impl<A: View> View for alloc::sync::Arc<A> {
     type V = A::V;
-    #[verifier::external_body]
-    spec fn view(&self) -> A::V {
+    #[verifier::inline]
+    open spec fn view(&self) -> A::V {
         (**self).view()
     }
 }
 
-macro_rules! declare_identify_view {
+macro_rules! declare_identity_view {
     ($t:ty) => {
+        #[cfg_attr(verus_keep_ghost, verifier::verify)]
         impl View for $t {
             type V = $t;
-            #[verifier::spec]
+
+            #[cfg(verus_keep_ghost)]
+            #[verus::internal(spec)]
+            #[verus::internal(open)]
+            #[verifier::inline]
             fn view(&self) -> $t {
                 *self
             }
@@ -59,26 +67,29 @@ macro_rules! declare_identify_view {
     }
 }
 
-// TODO: declare_identify_view!(());
-declare_identify_view!(bool);
-declare_identify_view!(u8);
-declare_identify_view!(u16);
-declare_identify_view!(u32);
-declare_identify_view!(u64);
-declare_identify_view!(u128);
-declare_identify_view!(usize);
-declare_identify_view!(i8);
-declare_identify_view!(i16);
-declare_identify_view!(i32);
-declare_identify_view!(i64);
-declare_identify_view!(i128);
-declare_identify_view!(isize);
+declare_identity_view!(());
+declare_identity_view!(bool);
+declare_identity_view!(u8);
+declare_identity_view!(u16);
+declare_identity_view!(u32);
+declare_identity_view!(u64);
+declare_identity_view!(u128);
+declare_identity_view!(usize);
+declare_identity_view!(i8);
+declare_identity_view!(i16);
+declare_identity_view!(i32);
+declare_identity_view!(i64);
+declare_identity_view!(i128);
+declare_identity_view!(isize);
 
 macro_rules! declare_tuple_view {
     ([$($n:tt)*], [$($a:ident)*]) => {
+        #[cfg_attr(verus_keep_ghost, verifier::verify)]
         impl<$($a: View, )*> View for ($($a, )*) {
             type V = ($($a::V, )*);
-            #[verifier::spec]
+            #[cfg(verus_keep_ghost)]
+            #[verus::internal(spec)]
+            #[verus::internal(open)]
             fn view(&self) -> ($($a::V, )*) {
                 ($(self.$n.view(), )*)
             }

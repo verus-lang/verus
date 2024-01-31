@@ -1,8 +1,8 @@
 #![feature(rustc_attrs)]
 #![allow(unused_imports)]
 
-extern crate alloc;
-use alloc::string;
+#[cfg(feature = "alloc")]
+use alloc::string::{self, ToString};
 
 use crate::view::*;
 use super::seq::Seq;
@@ -12,20 +12,21 @@ use crate::prelude::*;
 
 verus! {
 
-#[verifier(external_body)]
+#[cfg(feature = "alloc")]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
 pub struct String {
     inner: string::String,
 }
 
-#[rustc_diagnostic_item = "verus::pervasive::string::StrSlice"]
-#[verifier(external_body)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::pervasive::string::StrSlice")]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
 pub struct StrSlice<'a> {
     inner: &'a str,
 }
 
 
-#[rustc_diagnostic_item = "verus::pervasive::string::new_strlit"]
-#[verifier(external_body)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::pervasive::string::new_strlit")]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
 pub const fn new_strlit<'a>(s: &'a str) -> StrSlice<'a> {
     StrSlice { inner: s }
 }
@@ -106,6 +107,7 @@ impl<'a> StrSlice<'a> {
         }
     }
 
+    #[cfg(feature = "alloc")]
     pub fn to_string(self) -> (ret: String)
         ensures
             self@ == ret@,
@@ -130,14 +132,15 @@ impl<'a> StrSlice<'a> {
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
 
+    #[cfg(feature = "alloc")]
     #[verifier(external_body)]
-    pub fn as_bytes(&self) -> (ret: Vec<u8>)
+    pub fn as_bytes(&self) -> (ret: alloc::vec::Vec<u8>)
         requires
             self.is_ascii()
         ensures
             ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8)
     {
-        let mut v = Vec::new();
+        let mut v = alloc::vec::Vec::new();
         for c in self.inner.as_bytes().iter() {
             v.push(*c);
         }
@@ -179,6 +182,7 @@ pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
         #[trigger] s@.index(i) == builtin::strslice_get_char(s, i),
 { }
 
+#[cfg(feature = "alloc")]
 impl String {
     pub spec fn view(&self) -> Seq<char>;
 
@@ -237,19 +241,19 @@ impl String {
     }
 
     #[verifier(external)]
-    pub fn from_rust_string(inner: std::string::String) -> String
+    pub fn from_rust_string(inner: alloc::string::String) -> String
     {
         String { inner }
     }
 
     #[verifier(external)]
-    pub fn into_rust_string(self) -> std::string::String
+    pub fn into_rust_string(self) -> alloc::string::String
     {
         self.inner
     }
 
     #[verifier(external)]
-    pub fn as_rust_string_ref(&self) -> &std::string::String
+    pub fn as_rust_string_ref(&self) -> &alloc::string::String
     {
         &self.inner
     }

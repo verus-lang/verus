@@ -12,16 +12,21 @@ use crate::ast::{
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
-use air::ast::{Binders, Ident, Span};
-use air::messages::Message;
+use crate::messages::{Message, Span};
+use air::ast::{Binders, Ident};
 use std::sync::Arc;
 
 pub type Trig = Exps;
 pub type Trigs = Arc<Vec<Trig>>;
 
-pub struct BndInfo {
+pub struct BndInfoUser {
     pub span: Span,
     pub trigs: Trigs,
+}
+
+pub struct BndInfo {
+    pub fun: Fun,
+    pub user: Option<BndInfoUser>,
 }
 
 pub type Bnd = Arc<Spanned<BndX>>;
@@ -40,19 +45,20 @@ pub struct UniqueIdent {
     pub local: Option<u64>,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
     CheckDecreaseInt,
     CheckDecreaseHeight,
+    HasType,
 }
 
 #[derive(Debug, Clone, Hash)]
 pub enum CallFun {
     // static/method Fun, plus an optional resolved Fun for methods
     Fun(Fun, Option<(Fun, Typs)>),
-    CheckTermination(Fun),
+    Recursive(Fun),
     InternalFun(InternalFun),
 }
 
@@ -62,6 +68,7 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
+    StaticVar(Fun),
     VarLoc(UniqueIdent),
     VarAt(UniqueIdent, VarAt),
     Loc(Exp),
@@ -79,6 +86,7 @@ pub enum ExpX {
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
+    ExecFnByName(Fun),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
 }
@@ -122,7 +130,7 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    // call to exec/proof function (or spec function for checking_recommends)
+    // call to exec/proof function (or spec function for checking_spec_preconditions)
     Call {
         fun: Fun,
         resolved_method: Option<(Fun, Typs)>,
@@ -164,6 +172,7 @@ pub enum StmX {
         // 1. cond = Some(...), all invs are true on entry and exit, no break statements
         // 2. cond = None, invs may have false at_entry/at_exit, may have break statements
         // Any while loop not satisfying (1) is converted to (2).
+        is_for_loop: bool,
         label: Option<String>,
         cond: Option<(Stm, Exp)>,
         body: Stm,
