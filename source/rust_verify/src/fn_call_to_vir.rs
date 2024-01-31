@@ -207,7 +207,7 @@ fn verus_item_to_vir<'tcx, 'a>(
     verus_item: &VerusItem,
     args: &'a Vec<&'tcx Expr<'tcx>>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
-    node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     f: DefId,
     outer_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -1374,8 +1374,10 @@ fn verus_item_to_vir<'tcx, 'a>(
             typ_args.swap(0, 1);
             let typ_args = Arc::new(typ_args);
 
+            let impl_paths = get_impl_paths(bctx, f, node_substs);
+
             return mk_expr(ExprX::Call(
-                CallTarget::BuiltinSpecFun(bsf, typ_args),
+                CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
                 Arc::new(vir_args),
             ));
         }

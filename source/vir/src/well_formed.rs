@@ -372,6 +372,30 @@ fn check_one_expr(
                 ));
             }
         }
+        ExprX::ExecFnByName(fun) => {
+            let func = check_path_and_get_function(ctxt, fun, disallow_private_access, &expr.span)?;
+            for param in func.x.params.iter() {
+                if param.x.is_mut {
+                    return Err(error(
+                        &expr.span,
+                        "not supported: using a function that takes '&mut' params as a value",
+                    ));
+                }
+            }
+
+            let typs = match &*expr.typ {
+                TypX::FnDef(_fun, typs, _resolved_fun) => typs,
+                _ => {
+                    return Err(error(
+                        &expr.span,
+                        "internal Verus error: expected FnDef type here",
+                    ));
+                }
+            };
+            for typ in typs.iter() {
+                check_typ(ctxt, typ, &expr.span)?;
+            }
+        }
         _ => {}
     }
     Ok(())

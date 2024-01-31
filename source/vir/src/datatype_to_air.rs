@@ -76,6 +76,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Char => false,
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
+        TypX::FnDef(..) => false,
     }
 }
 
@@ -673,6 +674,22 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             is_transparent && datatype.x.ext_equal,
         );
     }
+
+    for fun in &ctx.fndef_types {
+        let func = ctx.func_map.get(fun).expect("expected fndef function in pruned crate");
+        let tparams = &func.x.typ_params;
+        let mut args: Vec<air::ast::Typ> = Vec::new();
+        for _ in tparams.iter() {
+            args.extend(crate::def::types().iter().map(|s| str_typ(s)));
+        }
+        let decl_type_id = Arc::new(DeclX::fun_or_const(
+            crate::def::prefix_fndef_type_id(fun),
+            Arc::new(args),
+            str_typ(crate::def::TYPE),
+        ));
+        token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
+    }
+
     let mut commands: Vec<Command> = Vec::new();
     commands.append(&mut opaque_sort_commands);
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(

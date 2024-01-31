@@ -506,6 +506,9 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
             }
         }
         StaticVar(f) => dohash!(16, f),
+        ExecFnByName(fun) => {
+            dohash!(16, fun);
+        }
     }
 }
 
@@ -1496,6 +1499,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
+        ExecFnByName(_) => ok,
     };
     let res = r?;
     state.depth -= 1;

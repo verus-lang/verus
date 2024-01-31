@@ -79,6 +79,11 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
+                TypX::FnDef(_fun, ts, _res_fun) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
                 TypX::Projection { trait_typ_args, trait_path: _, name: _ } => {
                     for t in trait_typ_args.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
@@ -137,6 +142,10 @@ where
             let trait_path = trait_path.clone();
             let name = name.clone();
             ft(env, &Arc::new(TypX::Projection { trait_typ_args, trait_path, name }))
+        }
+        TypX::FnDef(fun, ts, res_fun) => {
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            ft(env, &Arc::new(TypX::FnDef(fun.clone(), Arc::new(ts), res_fun.clone())))
         }
         TypX::Decorate(d, t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
@@ -270,7 +279,7 @@ where
                 ExprX::Call(target, es) => {
                     match target {
                         CallTarget::Fun(_, _, _, _, _) => (),
-                        CallTarget::BuiltinSpecFun(_, _) => (),
+                        CallTarget::BuiltinSpecFun(_, _, _) => (),
                         CallTarget::FnSpec(fun) => {
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
                         }
@@ -363,6 +372,7 @@ where
                         }
                     }
                 }
+                ExprX::ExecFnByName(_fun) => {}
                 ExprX::Choose { params, cond, body } => {
                     map.push_scope(true);
                     for binder in params.iter() {
@@ -509,13 +519,19 @@ where
     VisitorControlFlow::Recurse
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FunctionPlace {
+    Signature,
+    Internal,
+}
+
 pub(crate) fn function_visitor_dfs<T, MF>(
     function: &Function,
     map: &mut VisitorScopeMap,
     mf: &mut MF,
 ) -> VisitorControlFlow<T>
 where
-    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    MF: FnMut(FunctionPlace, &mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
 {
     let FunctionX {
         name: _,
@@ -535,6 +551,7 @@ where
         decrease_when,
         decrease_by: _,
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind: _,
         publish: _,
@@ -542,32 +559,58 @@ where
         body,
         extra_dependencies: _,
     } = &function.x;
+
     map.push_scope(true);
     for p in params.iter() {
         let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
     }
     for e in require.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
+            FunctionPlace::Signature,
+            e,
+            fp
+        )));
     }
     for e in ensure.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
+            FunctionPlace::Signature,
+            e,
+            fp
+        )));
     }
     for e in decrease.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
+            FunctionPlace::Signature,
+            e,
+            fp
+        )));
     }
     if let Some(e) = decrease_when {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
+            FunctionPlace::Signature,
+            e,
+            fp
+        )));
     }
     match mask_spec {
         MaskSpec::NoSpec => {}
         MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
             for e in es.iter() {
-                expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
+                    FunctionPlace::Signature,
+                    e,
+                    fp
+                )));
             }
         }
     }
+
     if let Some(e) = body {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
+            FunctionPlace::Internal,
+            e,
+            fp
+        )));
     }
     map.pop_scope();
 
@@ -576,8 +619,22 @@ where
         for p in params.iter() {
             let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
         }
-        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
+        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, &mut |e, fp| mf(
+            FunctionPlace::Internal,
+            e,
+            fp
+        )));
         map.pop_scope();
+    }
+
+    if let Some(es) = fndef_axioms {
+        for e in es.iter() {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
+                FunctionPlace::Internal,
+                e,
+                fp
+            )));
+        }
     }
 
     VisitorControlFlow::Recurse
@@ -585,10 +642,12 @@ where
 
 pub(crate) fn function_visitor_check<E, MF>(function: &Function, mf: &mut MF) -> Result<(), E>
 where
-    MF: FnMut(&Expr) -> Result<(), E>,
+    MF: FnMut(FunctionPlace, &Expr) -> Result<(), E>,
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
-    match function_visitor_dfs(function, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
+    match function_visitor_dfs(function, &mut scope_map, &mut |fp, _scope_map, expr| match mf(
+        fp, expr,
+    ) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(e) => VisitorControlFlow::Stop(e),
     }) {
@@ -638,9 +697,11 @@ where
                         *autospec_usage,
                     )
                 }
-                CallTarget::BuiltinSpecFun(x, typs) => {
-                    CallTarget::BuiltinSpecFun(x.clone(), map_typs_visitor_env(typs, env, ft)?)
-                }
+                CallTarget::BuiltinSpecFun(x, typs, impl_paths) => CallTarget::BuiltinSpecFun(
+                    x.clone(),
+                    map_typs_visitor_env(typs, env, ft)?,
+                    impl_paths.clone(),
+                ),
                 CallTarget::FnSpec(fun) => {
                     let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
                     CallTarget::FnSpec(fun)
@@ -783,6 +844,7 @@ where
                 external_spec,
             }
         }
+        ExprX::ExecFnByName(fun) => ExprX::ExecFnByName(fun.clone()),
         ExprX::Choose { params, cond, body } => {
             let params =
                 vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
@@ -1049,6 +1111,7 @@ where
         decrease_when,
         decrease_by,
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind,
         publish,
@@ -1134,6 +1197,17 @@ where
         None
     };
 
+    let fndef_axioms = if let Some(es) = fndef_axioms {
+        let mut es2 = vec![];
+        for e in es.iter() {
+            let e2 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            es2.push(e2);
+        }
+        Some(Arc::new(es2))
+    } else {
+        None
+    };
+
     let functionx = FunctionX {
         name,
         proxy,
@@ -1152,6 +1226,7 @@ where
         decrease_when,
         decrease_by,
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind,
         publish,
