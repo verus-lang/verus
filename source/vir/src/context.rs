@@ -276,9 +276,7 @@ impl GlobalCtx {
             let fndef_impl_node = Node::TraitImpl(ImplPath::FnDefImplPath(f.x.name.clone()));
             func_call_graph.add_node(fun_node.clone());
             func_call_graph.add_node(fndef_impl_node.clone());
-
-            func_call_graph.add_edge(fun_node, fndef_impl_node);
-
+            func_call_graph.add_edge(fndef_impl_node, fun_node);
             crate::recursion::expand_call_graph(
                 &func_map,
                 &mut func_call_graph,

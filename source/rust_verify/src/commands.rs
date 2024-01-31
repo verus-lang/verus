@@ -199,16 +199,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             match node {
                 Node::Fun(f) => {
                     if let Some(pair) = self.func_map.get(&f) {
-                        if pair.0.x.mode != Mode::Exec {
-                            scc_functions.push(pair.clone());
-                        }
-                    }
-                }
-                Node::TraitImpl(ImplPath::FnDefImplPath(f)) => {
-                    if let Some(pair) = self.func_map.get(&f) {
-                        if pair.0.x.mode == Mode::Exec {
-                            scc_functions.push(pair.clone());
-                        }
+                        scc_functions.push(pair.clone());
                     }
                 }
                 _ => {}

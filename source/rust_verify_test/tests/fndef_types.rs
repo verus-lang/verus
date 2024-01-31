@@ -675,6 +675,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// TODO this is kind of a bad error message, but we should revisit and allow this
 test_verify_one_file! {
     #[test] exec_recursion_mutual verus_code! {
         use vstd::*;
@@ -688,7 +689,7 @@ test_verify_one_file! {
             let y = a;
             y();
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency in the requires/ensures of function")
 }
 
 // ignore; no-vstd flag doesn't work with test harness right now

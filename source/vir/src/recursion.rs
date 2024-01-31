@@ -1,10 +1,9 @@
 use crate::ast::{
     AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    ImplPath, IntRange, Mode, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::typ_to_diagnostic_str;
-use crate::ast_visitor::FunctionPlace;
 use crate::context::Ctx;
 use crate::def::{
     decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
@@ -469,12 +468,7 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> f2 edges where f calls f2
     // Add f --> D: T where one of f's expressions instantiates A: T with D: T
-    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |fp, expr| {
-        let f_node = if fp == FunctionPlace::Signature && function.x.mode == Mode::Exec {
-            Node::TraitImpl(ImplPath::FnDefImplPath(function.x.name.clone()))
-        } else {
-            f_node.clone()
-        };
+    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |_fp, expr| {
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
