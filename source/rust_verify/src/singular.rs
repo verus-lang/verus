@@ -5,6 +5,7 @@ use air::singular_manager::SingularManager;
 use sise::Node;
 use std::collections::HashMap;
 use std::sync::Arc;
+use vir::messages::error;
 
 // Singular reserved keyword
 const RING_DECL: &str = "ring";
@@ -14,9 +15,6 @@ const GROEBNER_APPLY: &str = "groebner";
 const REDUCE_APPLY: &str = "reduce";
 const TO_INTEGER_RING: &str = "integer";
 const QUIT_SINGULAR: &str = "quit";
-
-// this is only used in print command
-pub const DONE: &str = "<<DONE>>";
 
 // Verus-side reserved variable names for encoding purposes
 const RING_R: &str = "ring_R";
@@ -69,14 +67,14 @@ fn assert_not_reserved(name: &str) -> Result<(), String> {
     for keyword in RESERVED_KEYWORDS {
         if name == keyword {
             return Err(format!(
-                "Integer_ring/Singular: Usage of reserved keyword at variable name: {}",
+                "usage of reserved keyword at variable name: {} in integer_ring",
                 name
             ));
         }
     }
     if name.starts_with(TMP_PREFIX) {
         return Err(format!(
-            "Integer_ring/Singular: Usage of reserved prefix `{}` at {}",
+            "usage of reserved prefix `{}` at {} in in integer_ring",
             TMP_PREFIX, name
         ));
     }
@@ -128,7 +126,7 @@ impl SingularEncoder {
                 return Ok(sanitized);
             }
             ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
-                // x % y ->  x - y*tmp
+                // x % y ->  x - y * tmp
                 let key = self.pp.expr_to_node(expr);
                 let value = self.node_map.get(&key);
                 let t = match value {
@@ -235,7 +233,7 @@ impl SingularEncoder {
                     self.polys.push(format!("({}) - ({}) - {} * ({})", a1, a2, t, m1));
                     return Ok(());
                 }
-                return Err(format!("integer_ring requires not sharing divisor: {:?}", expr));
+                return Err(format!("requires not sharing divisor in integer_ring"));
             }
 
             let lhs = self.expr_to_singular(lhs)?;
@@ -243,7 +241,7 @@ impl SingularEncoder {
             self.polys.push(format!("{} - {}", lhs, rhs));
             return Ok(());
         }
-        return Err(format!("Integer_ring requires/ensures not in equational form: {:?}", expr));
+        return Err(format!("requires not in equational form in integer_ring"));
     }
 
     fn encode_ensures_poly_inner(&mut self, expr: &Expr) -> Result<String, String> {
@@ -277,7 +275,7 @@ impl SingularEncoder {
             return Ok(format!("({}) - ({})", lhs, rhs));
         }
 
-        return Err(format!("Integer_ring requires/ensures not in equational form: {:?}", expr));
+        return Err(format!("integer_ring ensures not in equational form"));
     }
 
     fn encode_ensures_poly(&mut self, ens: &Expr) -> Result<String, String> {
@@ -309,34 +307,51 @@ impl SingularEncoder {
             format!("{} {} = {}({})", IDEAL_DECL, IDEAL_G, GROEBNER_APPLY, IDEAL_I);
         let reduce_string = format!("{}({}, {})", REDUCE_APPLY, goal, IDEAL_G);
 
-        // ask for acknowledgement
         let res = format!(
-            "{};\n{};\n{};\n{};\nprint(\"{}\");\n",
-            ring_string, ideal_string, ideal_to_groebner, reduce_string, DONE
+            "{};\n{};\n{};\n{};\n",
+            ring_string, ideal_string, ideal_to_groebner, reduce_string
         );
         Ok(res)
     }
 }
 
-pub fn check_singular_valid(
-    context: &mut air::context::Context,
+fn encode_singular_queries(
     command: &Command,
     func_span: &vir::messages::Span,
-    _query_context: QueryContext<'_, '_>,
-) -> ValidityResult {
+    queries: &mut Vec<(String, vir::messages::Message)>,
+) -> Result<(), ValidityResult> {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
         query.clone()
     } else {
         panic!("internal error: integer_ring")
     };
 
-    let decl = query.local.clone();
-    let statement = query.assertion.clone();
-    let stmts: air::ast::Stmts = if let air::ast::StmtX::Block(stmts) = &*statement {
-        stmts.clone()
+    let reqs_enss: air::ast::Stmts =
+        if let air::ast::StmtX::Block(stmts) = &*query.assertion.clone() {
+            stmts.clone()
+        } else {
+            panic!("internal error: integer_ring")
+        };
+
+    if reqs_enss.len() != 2 {
+        // we expect exactly two block statements
+        // one for requires and one for ensures
+        panic!("internal error: integer_ring")
+    }
+
+    let reqs = if let air::ast::StmtX::Block(stmts) = &*reqs_enss[0] {
+        stmts
     } else {
         panic!("internal error: integer_ring")
     };
+
+    let enss = if let air::ast::StmtX::Block(stmts) = &*reqs_enss[1] {
+        stmts
+    } else {
+        panic!("internal error: integer_ring")
+    };
+
+    let decl = query.local.clone();
 
     let mut vars: Vec<String> = vec![];
     for d in &**decl {
@@ -348,56 +363,81 @@ pub fn check_singular_valid(
     }
 
     let mut encoder = SingularEncoder::new(vars);
-    let singular_manager = SingularManager::new();
-    let mut singular_process = singular_manager.launch();
 
-    for stmt in &*stmts {
+    // encode requires
+    for stmt in &**reqs {
         if let air::ast::StmtX::Assert(err, expr) = &**stmt {
             let err: vir::messages::Message =
                 err.clone().downcast().expect("unexpected value in Any -> Message conversion");
-            assert_eq!(err.labels.len(), 1);
-            let span = &err.spans[0];
-            let label = &err.labels[0].note;
-            if label.contains("require") {
-                if let Err(info) = encoder.encode_requires_poly(expr) {
-                    return ValidityResult::Invalid(None, err.clone().secondary_label(span, info));
-                }
-            } else if label.contains("ensure") {
-                match encoder.encode_ensures_poly(expr) {
-                    Err(info) => {
-                        return ValidityResult::Invalid(
-                            None,
-                            err.clone().secondary_label(span, info),
-                        );
-                    }
-                    Ok(query) => {
-                        air::singular_manager::log_singular(context, &query, &func_span.as_string);
-                        let res = singular_process.send_commands(query.as_bytes().to_vec());
-                        if (res.len() == 1) && (res[0] == "0") {
-                            continue;
-                        } else if (res.len() == 2) && (res[1] == "0") {
-                            assert!(res[0].contains("// ** redefining"));
-                            continue;
-                        } else if res[0].contains("?") {
-                            return ValidityResult::UnexpectedOutput(String::from(format!(
-                                "{} \ngenerated singular query: {}",
-                                res[0].as_str(),
-                                query
-                            )));
-                        } else {
-                            return ValidityResult::Invalid(
-                                None,
-                                err.clone().secondary_label(
-                                    span,
-                                    format!("Singular returned:\n {}", res.join("\n")),
-                                ),
-                            );
-                        }
-                    }
-                }
-            } else {
-                panic!("internal error: integer_ring")
+            if let Err(info) = encoder.encode_requires_poly(expr) {
+                return Err(ValidityResult::Invalid(
+                    None,
+                    err.clone().secondary_label(func_span, info),
+                ));
             }
+        }
+    }
+
+    // each ensures is a separate query string
+    for stmts in &**enss {
+        if let air::ast::StmtX::Assert(err, expr) = &**stmts {
+            let err: vir::messages::Message =
+                err.clone().downcast().expect("unexpected value in Any -> Message conversion");
+            let res = encoder.encode_ensures_poly(expr);
+            if let Err(info) = res {
+                return Err(ValidityResult::Invalid(
+                    None,
+                    err.clone().secondary_label(func_span, info),
+                ));
+            }
+            queries.push((res.unwrap(), err.clone()));
+        }
+    }
+    return Ok(());
+}
+
+pub fn check_singular_valid(
+    context: &mut air::context::Context,
+    command: &Command,
+    func_span: &vir::messages::Span,
+    _query_context: QueryContext<'_, '_>,
+) -> ValidityResult {
+    let mut queries = vec![];
+    if let Err(res) = encode_singular_queries(command, func_span, &mut queries) {
+        // in case of any encoding error, skip running Singular
+        return res;
+    }
+
+    let singular_manager = SingularManager::new();
+    let mut singular_process = singular_manager.launch();
+
+    for (query, err) in queries {
+        air::singular_manager::log_singular(context, &query, &func_span.as_string);
+        let res = singular_process.send_commands(query.as_bytes().to_vec());
+        if (res.len() == 1) && (res[0] == "0") {
+            // this query is ok (poly reduced to 0)
+            continue;
+        } else if (res.len() == 2) && (res[1] == "0") {
+            // this query is switching from the previous one
+            // this will redefine the ring
+            // ignore the first line of the output
+            assert!(res[0].contains("// ** redefining"));
+            continue;
+        } else if res[0].contains("?") {
+            // this query does not parse
+            return ValidityResult::UnexpectedOutput(String::from(format!(
+                "{} \ngenerated singular query: {}",
+                res[0].as_str(),
+                query
+            )));
+        } else {
+            let err = error(
+                &err.spans[0],
+                "postcondition not satisfied, Singular cannot prove one of the the ensures"
+                    .to_string(),
+            )
+            .primary_label(&err.spans[0], "Singular cannot prove this");
+            return ValidityResult::Invalid(None, err);
         }
     }
 

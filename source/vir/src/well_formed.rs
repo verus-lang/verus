@@ -677,38 +677,6 @@ fn check_function(
                 }
             }
         }
-        if function.x.ensure.len() != 1 {
-            return Err(error(
-                &function.span,
-                "only a single ensures is allowed in integer_ring mode",
-            ));
-        } else {
-            let ens = function.x.ensure[0].clone();
-            if let crate::ast::ExprX::Binary(crate::ast::BinaryOp::Eq(_), lhs, rhs) = &ens.x {
-                if let crate::ast::ExprX::Binary(
-                    crate::ast::BinaryOp::Arith(crate::ast::ArithOp::EuclideanMod, _),
-                    _,
-                    _,
-                ) = &lhs.x
-                {
-                    match &rhs.x {
-                        crate::ast::ExprX::Const(crate::ast::Constant::Int(zero))
-                            if "0" == zero.to_string() => {}
-                        _ => {
-                            return Err(error(
-                                &function.span,
-                                "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
-                            ));
-                        }
-                    }
-                }
-            } else {
-                return Err(error(
-                    &function.span,
-                    "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
-                ));
-            }
-        }
         if function.x.has_return() {
             return Err(error(
                 &function.span,

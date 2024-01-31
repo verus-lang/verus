@@ -2,28 +2,31 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{ChildStdin, ChildStdout};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
+// this is only used in print command
+pub const DONE: &str = "<<Singular DONE>>";
+
 pub struct SingularManager {
     pub singular_executable_name: String,
 }
 
 pub struct SingularProcess {
-    requests: Sender<Vec<u8>>,
+    requests: Option<Sender<Vec<u8>>>,
     singular_pipe_stdout: BufReader<ChildStdout>,
+    child: std::process::Child,
 }
 
-/// A separate thread writes data to the Singular solver over a pipe.
-/// (Rust's documentation says you need a separate thread; otherwise, it lets the pipes deadlock.)
-pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
+/// this is similar to writer_thread in smt_process.rs
+/// the way we ask for acknowledgement is slightly different
+fn singular_writer_thread(requests: Receiver<Vec<u8>>, mut singular_pipe_stdin: ChildStdin) {
     while let Ok(req) = requests.recv() {
-        smt_pipe_stdin
+        singular_pipe_stdin
             .write_all(&req)
-            .and_then(|_| writeln!(&smt_pipe_stdin))
-            .and_then(|_| smt_pipe_stdin.flush())
-            // The Singular process could die unexpectedly.  In that case, we die too:
-            // TODO: https://github.com/verus-lang/verus/pull/730
+            // ask for acknowledgement
+            .and_then(|_| writeln!(&singular_pipe_stdin, "print (\"{}\");", DONE))
+            .and_then(|_| singular_pipe_stdin.flush())
             .expect("IO error: failure when sending data to Singular process across pipe");
     }
-    // Exit when the other side closes the channel
+    // singular_pipe_stdin.write_all(b"quit;\n").expect("IO error: failure quitting Singular process");
 }
 
 impl SingularManager {
@@ -49,27 +52,18 @@ impl SingularManager {
         let child_stdin = child.stdin.take().expect("take stdin");
         let (sender, receiver) = channel();
         std::thread::spawn(move || singular_writer_thread(receiver, child_stdin));
-        SingularProcess { requests: sender, singular_pipe_stdout }
+        SingularProcess { requests: Some(sender), singular_pipe_stdout, child }
     }
-}
-
-fn singular_writer_thread(requests: Receiver<Vec<u8>>, mut singular_pipe_stdin: ChildStdin) {
-    while let Ok(req) = requests.recv() {
-        singular_pipe_stdin
-            .write_all(&req)
-            .and_then(|_| writeln!(&singular_pipe_stdin))
-            .and_then(|_| singular_pipe_stdin.flush())
-            // The Singular process could die unexpectedly. In that case, we die too:
-            .expect("IO error: failure when sending data to Singular process across pipe");
-    }
-    // Exit when the other side closes the channel
-    singular_pipe_stdin.write_all(b"quit;\n").expect("IO error: failure quitting Singular process");
 }
 
 impl SingularProcess {
     pub fn send_commands(&mut self, commands: Vec<u8>) -> Vec<String> {
         // Send request to writer thread
-        self.requests.send(commands).expect("internal error: failed to send to writer thread");
+        self.requests
+            .as_mut()
+            .unwrap()
+            .send(commands)
+            .expect("internal error: failed to send to writer thread");
         let mut lines = Vec::new();
         loop {
             let mut line = String::new();
@@ -77,12 +71,21 @@ impl SingularProcess {
                 .read_line(&mut line)
                 .expect("IO error: failure when receiving data to singular process across pipe");
             line = line.replace("\n", "").replace("\r", "");
-            if line == "<<DONE>>" || line == "" {
+            if line == DONE || line == "" {
                 break;
             }
             lines.push(line);
         }
         lines
+    }
+}
+
+impl Drop for SingularProcess {
+    fn drop(&mut self) {
+        std::mem::drop(self.requests.take());
+        if let Err(e) = self.child.wait() {
+            panic!("Singular process exited with error: {:?}", e);
+        }
     }
 }
 
