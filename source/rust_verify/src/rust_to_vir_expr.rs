@@ -6,9 +6,9 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    auto_deref_supported_for_ty, def_id_to_vir_path, get_impl_paths, get_range, is_smt_arith,
-    is_smt_equality, local_to_var, mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range,
-    typ_of_node, typ_of_node_expect_mut_ref,
+    auto_deref_supported_for_ty, def_id_to_vir_path, get_impl_paths_for_clauses, get_range,
+    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mid_ty_to_vir,
+    mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::spans::err_air_span;
 use crate::util::{
@@ -29,7 +29,10 @@ use rustc_hir::{
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
-use rustc_middle::ty::{AdtDef, GenericArg, TyCtxt, TyKind, VariantDef};
+use rustc_middle::ty::{
+    AdtDef, ClauseKind, GenericArg, ImplPolarity, ToPredicate, TraitPredicate, TraitRef, TyCtxt,
+    TyKind, VariantDef,
+};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -1163,7 +1166,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::Spec)
                     } else {
                         if bctx.ctxt.no_vstd {
-                            return err_span(expr.span, "Non-static calls are not supported with --no-vstd");
+                            return err_span(
+                                expr.span,
+                                "Non-static calls are not supported with --no-vstd",
+                            );
                         }
 
                         // non-static calls are translated into a static call to
@@ -1204,9 +1210,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             true,
                         )?;
 
-                        // Create the node_substs for a fictional exec_nonstatic_call
-                        // based on the type arguments for exec_nonstatic_call
-                        let generic_arg0 = GenericArg::from(
+                        // Get impl_paths for the trait bound
+                        // fun_ty : FnOnce<Args>
+                        let generic_arg0 = GenericArg::from(fun_ty);
+                        let generic_arg1 = GenericArg::from(
                             tcx.mk_ty_from_kind(TyKind::Tuple(
                                 tcx.mk_type_list(
                                     &args
@@ -1216,16 +1223,22 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 ),
                             )),
                         );
-                        let generic_arg1 = GenericArg::from(bctx.types.expr_ty_adjusted(expr));
-                        let generic_arg2 = GenericArg::from(fun_ty);
-                        let node_substs = tcx.mk_args(&[generic_arg0, generic_arg1, generic_arg2]);
-
-                        let impl_paths = get_impl_paths(
+                        let clauses = vec![
+                            rustc_middle::ty::Binder::dummy(ClauseKind::Trait(TraitPredicate {
+                                trait_ref: TraitRef::new(
+                                    tcx,
+                                    tcx.lang_items().fn_once_trait().unwrap(),
+                                    [generic_arg0, generic_arg1],
+                                ),
+                                polarity: ImplPolarity::Positive,
+                            }))
+                            .to_predicate(tcx),
+                        ];
+                        let impl_paths = get_impl_paths_for_clauses(
                             tcx,
                             &bctx.ctxt.verus_items,
                             bctx.fun_id,
-                            bctx.ctxt.verus_items.exec_nonstatic_call_def_id(),
-                            node_substs,
+                            clauses,
                         );
 
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);

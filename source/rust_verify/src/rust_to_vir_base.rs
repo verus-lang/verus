@@ -199,9 +199,19 @@ pub(crate) fn get_impl_paths<'tcx>(
     target_id: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
 ) -> vir::ast::ImplPaths {
+    let preds = tcx.predicates_of(target_id);
+    let clauses = preds.instantiate(tcx, node_substs).predicates;
+    get_impl_paths_for_clauses(tcx, verus_items, param_env_src, clauses)
+}
+
+pub(crate) fn get_impl_paths_for_clauses<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    param_env_src: DefId,
+    clauses: Vec<rustc_middle::ty::Clause<'tcx>>,
+) -> vir::ast::ImplPaths {
     let mut impl_paths = Vec::new();
     let param_env = tcx.param_env(param_env_src);
-    let preds = tcx.predicates_of(target_id);
 
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
@@ -214,8 +224,7 @@ pub(crate) fn get_impl_paths<'tcx>(
     // impls once you start nesting?
     // So I'm implementing this with a predicate worklist to be safe.
 
-    let mut predicate_worklist: Vec<rustc_middle::ty::Clause> =
-        preds.instantiate(tcx, node_substs).predicates;
+    let mut predicate_worklist: Vec<rustc_middle::ty::Clause> = clauses;
 
     let mut idx = 0;
     while idx < predicate_worklist.len() {
@@ -236,9 +245,11 @@ pub(crate) fn get_impl_paths<'tcx>(
             let mut regions = HashMap::new();
             let delegate = rustc_middle::ty::fold::FnMutDelegate {
                 regions: &mut |br| {
-                    *regions
-                        .entry(br)
-                        .or_insert(rustc_middle::ty::Region::new_free(tcx, target_id, br.kind))
+                    *regions.entry(br).or_insert(rustc_middle::ty::Region::new_free(
+                        tcx,
+                        param_env_src,
+                        br.kind,
+                    ))
                 },
                 types: &mut |b| panic!("unexpected bound ty in binder: {:?}", b),
                 consts: &mut |b, ty| panic!("unexpected bound ct in binder: {:?} {}", b, ty),
