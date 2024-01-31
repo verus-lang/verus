@@ -519,19 +519,13 @@ where
     VisitorControlFlow::Recurse
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum FunctionPlace {
-    Signature,
-    Internal,
-}
-
 pub(crate) fn function_visitor_dfs<T, MF>(
     function: &Function,
     map: &mut VisitorScopeMap,
     mf: &mut MF,
 ) -> VisitorControlFlow<T>
 where
-    MF: FnMut(FunctionPlace, &mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
 {
     let FunctionX {
         name: _,
@@ -565,52 +559,28 @@ where
         let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
     }
     for e in require.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     for e in ensure.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     for e in decrease.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     if let Some(e) = decrease_when {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     match mask_spec {
         MaskSpec::NoSpec => {}
         MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
             for e in es.iter() {
-                expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-                    FunctionPlace::Signature,
-                    e,
-                    fp
-                )));
+                expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
         }
     }
 
     if let Some(e) = body {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Internal,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
 
@@ -619,21 +589,13 @@ where
         for p in params.iter() {
             let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
         }
-        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, &mut |e, fp| mf(
-            FunctionPlace::Internal,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
         map.pop_scope();
     }
 
     if let Some(es) = fndef_axioms {
         for e in es.iter() {
-            expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-                FunctionPlace::Internal,
-                e,
-                fp
-            )));
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
         }
     }
 
@@ -642,12 +604,10 @@ where
 
 pub(crate) fn function_visitor_check<E, MF>(function: &Function, mf: &mut MF) -> Result<(), E>
 where
-    MF: FnMut(FunctionPlace, &Expr) -> Result<(), E>,
+    MF: FnMut(&Expr) -> Result<(), E>,
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
-    match function_visitor_dfs(function, &mut scope_map, &mut |fp, _scope_map, expr| match mf(
-        fp, expr,
-    ) {
+    match function_visitor_dfs(function, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(e) => VisitorControlFlow::Stop(e),
     }) {

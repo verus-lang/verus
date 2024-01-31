@@ -468,7 +468,7 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> f2 edges where f calls f2
     // Add f --> D: T where one of f's expressions instantiates A: T with D: T
-    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |_fp, expr| {
+    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
