@@ -691,8 +691,9 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// ignore; no-vstd flag doesn't work with test harness right now
 test_verify_one_file! {
-    #[test] exec_calling_no_vstd verus_code! {
+    #[ignore] #[test] exec_calling_no_vstd verus_code! {
         fn a() {
             let x = b;
             x(0);

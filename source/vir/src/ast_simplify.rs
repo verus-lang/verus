@@ -817,6 +817,7 @@ fn add_fndef_axioms_to_function(
         .x
         .params
         .iter()
+        .filter(|p| &**p.x.name != crate::def::DUMMY_PARAM)
         .map(|p| Arc::new(BinderX { name: p.x.name.clone(), a: p.x.typ.clone() }))
         .collect();
     let params = Arc::new(params);
