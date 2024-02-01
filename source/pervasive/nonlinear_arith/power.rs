@@ -1,4 +1,16 @@
-//! Lemma for Exponentials
+//! This file contains proofs related to exponentiation. These are
+//! part of the math standard library.
+//!
+//! It's based on the following file from the Dafny math standard library:
+//! `Source/DafnyStandardLibraries/src/Std/Arithmetic/Power.dfy`.
+//! That file has the following copyright notice:
+//! /*******************************************************************************
+//! *  Original: Copyright (c) Microsoft Corporation
+//! *  SPDX-License-Identifier: MIT
+//! *  
+//! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
+//! *  SPDX-License-Identifier: MIT 
+//! *******************************************************************************/
 
 #[allow(unused_imports)]
 use builtin::*;
@@ -14,7 +26,8 @@ use crate::nonlinear_arith::mul::{lemma_mul_inequality, lemma_mul_nonnegative_au
 use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction_auto};
 use crate::nonlinear_arith::math::{sub as sub1};
 
-#[verifier(opaque)]
+/// This function performs exponentiation recursively, to compute `b`
+/// to the power of a natural number `e`
 pub open spec fn pow(b: int, e: nat) -> int
     decreases e
 {
@@ -25,23 +38,21 @@ pub open spec fn pow(b: int, e: nat) -> int
     }
 }
 
-/// A number raised to the power of 0 equals
-// #[verifier::spinoff_prover]
+/// Proof that the given integer `b` to the power of 0 is 1
 pub proof fn lemma_pow0(b: int)
     ensures pow(b, 0) == 1
 {
     reveal(pow);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that any integer to the power of 0 is 1
 pub proof fn lemma_pow0_auto()
     ensures forall |b: int| #[trigger]pow(b, 0 as nat) == 1
 {
     reveal(pow);
 }
 
-/// A number raised to the power of 1 equals the number itself.
-// #[verifier::spinoff_prover]
+/// Proof that the given integer `b` to the power of 1 is `b`
 pub proof fn lemma_pow1(b: int)
     ensures pow(b, 1) == b
 {
@@ -56,7 +67,7 @@ pub proof fn lemma_pow1(b: int)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that any integer to the power of 1 is itself
 pub proof fn lemma_pow1_auto()
     ensures 
         forall |b: int| #[trigger]pow(b, 1) == b,
@@ -68,8 +79,7 @@ pub proof fn lemma_pow1_auto()
     };
 }
 
-/// 0 raised to a positive power equals 0.
-// #[verifier::spinoff_prover]
+/// Proof that 0 to the power of the given positive integer `e` is 0
 pub proof fn lemma0_pow(e: nat)
     requires e > 0
     ensures pow(0, e) == 0
@@ -82,7 +92,7 @@ pub proof fn lemma0_pow(e: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that 0 to the power of any positive integer is 0
 pub proof fn lemma0_pow_auto()
     ensures forall |e: nat| e > 0 ==> #[trigger]pow(0, e) == 0
 {
@@ -93,8 +103,7 @@ pub proof fn lemma0_pow_auto()
     }
 }
 
-/// 1 raised to any power equals 1.
-// #[verifier::spinoff_prover]
+/// Proof that 1 to the power of the given natural number `e` is 1
 pub proof fn lemma1_pow(e: nat)
     ensures pow(1, e) == 1
     decreases e
@@ -106,7 +115,7 @@ pub proof fn lemma1_pow(e: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that 1 to the power of any natural number is 1
 pub proof fn lemma1_pow_auto()
     ensures forall |e: nat| e > 0 ==> #[trigger]pow(1, e) == 1
 {
@@ -118,8 +127,7 @@ pub proof fn lemma1_pow_auto()
     }
 }
 
-/// Squaring a number is equal to raising it to the power of 2.
-// #[verifier::spinoff_prover]
+/// Proof that taking the given number `x` to the power of 2 produces `x * x`
 pub proof fn lemma_square_is_pow2(x: int)
 ensures pow(x, 2) == x * x
 {
@@ -133,7 +141,8 @@ ensures pow(x, 2) == x * x
     assert(x as int * pow(x as int, 1) == x * (x as int * pow(x as int, 0)));
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that taking any positive integer to the power of 2 is
+/// equivalent to multiplying that integer by itself
 pub proof fn lemma_square_is_pow2_auto()
     ensures forall |x: int| x > 0 ==> #[trigger]pow(x, 2) == x * x,
 {
@@ -145,8 +154,8 @@ pub proof fn lemma_square_is_pow2_auto()
     }
 }
 
-/// A positive number raised to any power is positive.
-// #[verifier::spinoff_prover]
+/// Proof that taking the given positive integer `b` to the power of
+/// the given natural number `n` produces a positive result
 pub proof fn lemma_pow_positive(b: int, e: nat)
     requires b > 0
     ensures 0 < pow(b, e)
@@ -159,7 +168,8 @@ pub proof fn lemma_pow_positive(b: int, e: nat)
     lemma_mul_induction_auto(e as int, |u: int| 0 <= u ==> 0 < pow(b, u as nat));
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that taking any positive integer to any natural number power
+/// produces a positive result
 pub proof fn lemma_pow_positive_auto()
     ensures 
         forall |b: int, e: nat| b > 0 ==> 0 < #[trigger] pow(b, e)
@@ -171,8 +181,9 @@ pub proof fn lemma_pow_positive_auto()
     }
 }
 
-/// Add exponents when multiplying powers with the same base.
-// #[verifier::spinoff_prover]
+/// Proof that taking an integer `b` to the power of the sum of two
+/// natural numbers `e1` and `e2` is equivalent to multiplying `b` to
+/// the power of `e1` by `b` to the power of `e2`
 pub proof fn lemma_pow_adds(b: int, e1: nat, e2: nat)
     ensures pow(b, e1 + e2) == pow(b, e1) * pow(b, e2),
     decreases e1
@@ -201,7 +212,9 @@ pub proof fn lemma_pow_adds(b: int, e1: nat, e2: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that taking an integer to the power of the sum of two
+/// natural numbers is equivalent to taking it to the power of each of
+/// those numbers and multiplying the results
 pub proof fn lemma_pow_adds_auto()
     ensures forall |x: int, y: nat, z: nat| #[trigger] pow(x, y + z) == pow(x, y) * pow(x, z),
 {
@@ -211,9 +224,9 @@ pub proof fn lemma_pow_adds_auto()
     }
 }
 
-/// Subtracting a natural number `e2` from an exponent `e1` and then multiplying
-/// by the same base `b` to the exponent `e2` is the same as just `b` to the exponent `e2`.
-// #[verifier::spinoff_prover]
+/// Proof that if `e1 >= e2`, then `b` to the power of `e1` is equal
+/// to the product of `b` to the power of `e1 - e2` and `b` to the
+/// power of `e2`
 pub proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
     requires e1 >= e2
     ensures pow(b, (e1 - e2) as nat) * pow(b, e2) == pow(b, e1)
@@ -222,6 +235,9 @@ pub proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
     lemma_pow_adds(b, (e1 - e2) as nat, e2);
 }
 
+/// Proof that, for any `x`, `y`, and `z` such that `y >= z`, we know
+/// `x` to the power of `y` is equal to the product of `x` to the
+/// power of `y - z` and `x` to the power of `z`
 pub proof fn lemma_pow_sub_add_cancel_auto()
     ensures forall |x: int, y: nat, z: nat| y >= z ==> #[trigger]pow(x, (y - z) as nat) * pow(x, z) == pow(x, y),
 
@@ -232,8 +248,9 @@ pub proof fn lemma_pow_sub_add_cancel_auto()
     }
 }
 
-/// Subtract exponents when dividing powers.
-// #[verifier::spinoff_prover]
+/// Proof that, as long as `e1 <= e2`, taking a positive integer `b`
+/// to the power of `e2 - e1` is equivalent to dividing `b` to the
+/// power of `e2` by `b` to the power of `e1`.
 pub proof fn lemma_pow_subtracts(b: int, e1: nat, e2: nat)
     requires 
         b > 0,
@@ -253,7 +270,10 @@ pub proof fn lemma_pow_subtracts(b: int, e1: nat, e2: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that, for all `b`, `e1`, and `e2`, as long as `b` is
+/// positive and `e1 <= e2`, taking `b` to the power of `e2 - e1` is
+/// equivalent to dividing `b` to the power of `e2` by `b` to the
+/// power of `e1`.
 pub proof fn lemma_pow_subtracts_auto()
 ensures 
     forall |b: int, e1: nat| b > 0 ==> pow(b, e1) > 0,
@@ -267,8 +287,9 @@ ensures
     }
 }
 
-/// Multiply exponents when finding the power of a power.
-// #[verifier::spinoff_prover]
+/// Proof that `a` to the power of `b * c` is equal to the result of
+/// taking `a` to the power of `b`, then taking that to the power of
+/// `c`.
 pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
     ensures 
         0 <= b * c,
@@ -314,7 +335,9 @@ pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that, for any `a`, `b`, and `c`, `a` to the power of `b * c`
+/// is equal to the result of taking `a` to the power of `b`, then
+/// taking that to the power of `c`.
 pub proof fn lemma_pow_multiplies_auto()
     ensures forall |b: nat, c: nat| 0 <= #[trigger](b * c),
             forall |a: int, b: nat, c: nat| #[trigger]pow(pow(a, b), c) == pow(a, b * c),
@@ -325,8 +348,8 @@ pub proof fn lemma_pow_multiplies_auto()
     };
 }
 
-/// Distribute the power to factors of a product.
-// #[verifier::spinoff_prover]
+/// Proof that `a * b` to the power of `e` is equal to the product of
+/// `a` to the power of `e` and `b` to the power of `e`
 pub proof fn lemma_pow_distributes(a: int, b: int, e: nat)
     ensures 
         pow(a * b, e) == pow(a, e) * pow(b, e)
@@ -351,7 +374,9 @@ pub proof fn lemma_pow_distributes(a: int, b: int, e: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that, for any `x`, `y`, and `z`, `x * y` to the power of `z`
+/// is equal to the product of `x` to the power of `z` and `y` to the
+/// power of `z`
 pub proof fn lemma_pow_distributes_auto()
     ensures forall |x: int, y: nat, z: nat| #[trigger]pow(x * y, z) == pow(x, z) * pow(y as int, z),
 {
@@ -362,9 +387,7 @@ pub proof fn lemma_pow_distributes_auto()
     }
 }
 
-/// Group properties of powers
-/// A convenience function to introduce basic properties about powers.
-// #[verifier::spinoff_prover]
+/// Proof of various useful properties of `pow` (exponentiation)
 pub proof fn lemma_pow_auto()
     ensures 
         forall |x: int| pow(x, 0) == 1,
@@ -391,10 +414,10 @@ pub proof fn lemma_pow_auto()
     lemma_mul_strictly_increases_auto();
 }
 
-// TODO: quite longer than dafny
-/// A positive number raised to a power strictly increases as the power
-/// strictly increases.
-// #[verifier::spinoff_prover]
+/// Proof that a number greater than 1 raised to a power strictly
+/// increases as the power strictly increases. Specifically, given
+/// that `b > 1` and `e1 < e2`, we can conclude that `pow(b, e1) <
+/// pow(b, e2)`.
 pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
     requires 
         1 < b,
@@ -435,7 +458,8 @@ pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
     lemma_mul_induction_auto(e2 - e1, f);
 } 
 
-// #[verifier::spinoff_prover]
+/// Proof that any number greater than 1 raised to a power strictly
+/// increases as the power strictly increases
 pub proof fn lemma_pow_strictly_increases_auto()
     ensures forall |b: int, e1: nat, e2: nat| 1 < b && e1 < e2 ==> #[trigger]pow(b, e1) < #[trigger]pow(b, e2),
 {
@@ -446,8 +470,9 @@ pub proof fn lemma_pow_strictly_increases_auto()
     }
 }
 
-/// A positive number raised to a power increases as the power increases.
-// #[verifier::spinoff_prover]
+/// Proof that a positive number raised to a power increases as the
+/// power increases. Specifically, since `e1 <= e2`, we know `pow(b,
+/// e1) <= pow(b, e2)`.
 pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
     requires 
         b > 0,
@@ -466,7 +491,8 @@ pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that a positive number raised to a power increases as the
+/// power increases
 pub proof fn lemma_pow_increases_auto()
     ensures forall |b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 ==> #[trigger]pow(b, e1) <= #[trigger]pow(b, e2),
 {
@@ -477,9 +503,9 @@ pub proof fn lemma_pow_increases_auto()
     }
 }
 
-/// A power strictly increases as a positive number raised to the power
-/// strictly increases.
-// #[verifier::spinoff_prover]
+/// Proof that if an exponentiation result strictly increases when the
+/// exponent changes, then the change is an increase. Specifically, if
+/// we know `pow(b, e1) < pow(b, e2)`, then we can conclude `e1 < e2`.
 pub proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2: nat)
     requires 
         b > 0,
@@ -494,8 +520,10 @@ pub proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2: nat)
     }
 }
 
-// seems like automatic trigger selection works well in this case
-// #[verifier::spinoff_prover]
+/// Proof that if an exponentiation result strictly increases when the
+/// exponent changes, then the change is an increase. That is,
+/// whenever we know `b > 0` and `pow(b, e1) < pow(b, e2)`, we can
+/// conclude `e1 < e2`.
 pub proof fn lemma_pow_strictly_increases_converse_auto()
     ensures
         forall |b: nat, e1: nat, e2: nat| b > 0 && pow(b as int, e1) < pow(b as int, e2) ==> e1 < e2,
@@ -507,8 +535,10 @@ pub proof fn lemma_pow_strictly_increases_converse_auto()
     }
 }
 
-/// A power increases as a positive number raised to the power increases.
-// #[verifier::spinoff_prover]
+/// Proof that if the exponentiation of a number greater than 1
+/// doesn't decrease when the exponent changes, then the change isn't
+/// a decrease. Specifically, given that `b > 1` and `pow(b, e1) <=
+/// pow(b, e2)`, we can conclude that `e1 <= e2`.
 pub proof fn lemma_pow_increases_converse(b: nat, e1: nat, e2: nat)
     requires 
         1 < b,
@@ -522,7 +552,9 @@ pub proof fn lemma_pow_increases_converse(b: nat, e1: nat, e2: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that whenever the exponentiation of a number greater than 1
+/// doesn't decrease when the exponent changes, then the change isn't
+/// a decrease
 pub proof fn lemma_pow_increases_converse_auto()
     ensures forall |b: nat, e1: nat, e2: nat| 1 < b && pow(b as int, e1) <= pow(b as int, e2) ==> e1 <= e2,
 {
@@ -532,8 +564,8 @@ pub proof fn lemma_pow_increases_converse_auto()
     }
 }
 
-/// `(b^xy)^z = (b^x)^yz`
-// #[verifier::spinoff_prover]
+/// Proof that `(b^(xy))^z = (b^x)^(yz)`, given that `x * y` and `y *
+/// z` are nonnegative and `b` is positive
 pub proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
     requires 
         b > 0,
@@ -554,7 +586,8 @@ pub proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that for any `b`, `x`, `y`, and `z` such that `x * y >= 0`
+/// and `y * z >= 0` and `b > 0`, we know `(b^(xy))^z = (b^x)^(yz)`
 pub proof fn lemma_pull_out_pows_auto()
     ensures 
         forall |y: nat, z: nat| 0 <= #[trigger](z * y) && 0 <= y * z,        
@@ -568,7 +601,8 @@ pub proof fn lemma_pull_out_pows_auto()
     }
 }
 
-/// Inequality due to smaller numerator, same denominator.
+/// Proof that if `e2 <= e1` and `x < pow(b, e1)`, then dividing `x`
+/// by `pow(b, e2)` produces a result less than `pow(b, e1 - e2)`
 pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
     requires 
         b > 0,
@@ -593,7 +627,9 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
     };
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that for all `x`, `b`, `e1`, and `e2` such that `e2 <= e1`
+/// and `x < pow(b, e1)`, we know that dividing `x` by `pow(b, e2)`
+/// produces a result less than `pow(b, e1 - e2)`
 pub proof fn lemma_pow_division_inequality_auto()
     ensures
         forall |b: int, e2: nat| b > 0 && e2 <= e2 ==> pow(b, e2) > 0,
@@ -608,8 +644,7 @@ pub proof fn lemma_pow_division_inequality_auto()
     };
 }
 
-/// `b^e % b = 0`
-// #[verifier::spinoff_prover]
+/// Proof that `pow(b, e)` modulo `b` is 0
 pub proof fn lemma_pow_mod(b: nat, e: nat)
     requires 
         b > 0,
@@ -644,6 +679,7 @@ pub proof fn lemma_pow_mod(b: nat, e: nat)
     // }
 }
 
+/// Proof that for any `b` and `e`, we know `pow(b, e)` modulo `b` is 0
 pub proof fn lemma_pow_mod_auto()
     ensures forall |b: nat, e: nat| b > 0 && e > 0 ==> #[trigger]pow(b as int, e) % b as int == 0,
 {
@@ -653,7 +689,9 @@ pub proof fn lemma_pow_mod_auto()
     }
 }
 
-/// `((b % e)^e) % m = b^e % m`
+/// Proof that exponentiation then modulo produces the same result as
+/// doing the modulo first, then doing the exponentiation, then doing
+/// the modulo again. Specifically, `((b % m)^e) % m == b^e % m`.
 pub proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     requires m > 0
     ensures pow(b % m, e) % m == pow(b, e) % m
@@ -677,6 +715,9 @@ pub proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     }
 }
 
+/// Proof that exponentiation then modulo produces the same result as
+/// doing the modulo first, then doing the exponentiation, then doing
+/// the modulo again
 pub proof fn lemma_pow_mod_noop_auto()
     ensures forall |b: int, e: nat, m: int| m > 0 ==> #[trigger]pow(b % m, e) % m == pow(b, e) % m,
 {

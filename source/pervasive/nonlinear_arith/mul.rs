@@ -1,4 +1,17 @@
-//! Lemma for multiplication
+//! This file contains proofs related to integer multiplication. These are
+//! part of the math standard library.
+//!
+//! It's based on the first part (since the second part is about
+//! modulo) of the following file from the Dafny math standard
+//! library:
+//! `Source/DafnyStandardLibraries/src/Std/Arithmetic/Mul.dfy`.
+//! That file has the following copyright notice:
+//! /*******************************************************************************
+//! * Original: Copyright (c) Microsoft Corporation *
+//! SPDX-License-Identifier: MIT * * Modifications and Extensions:
+//! Copyright by the contributors to the Dafny Project *
+//! SPDX-License-Identifier: MIT
+//! *******************************************************************************/
 
 #[allow(unused_imports)]
 use builtin::*;
@@ -9,9 +22,9 @@ verus! {
 use crate::nonlinear_arith::internals::mul_internals_nonlinear as MulINL;
 use crate::nonlinear_arith::internals::mul_internals::*;
 
-/// Multiplication using `*` is equivalent to the multiplication through [`mul_recursive`].
-// #[verifier::spinoff_prover]
-// #[verifier::spinoff_prover]
+/// Proof that multiplication using `*` is equivalent to the
+/// multiplication using [`mul_recursive`]. Specifically,
+/// `x * y == mul_recursive(x, y)`.
 pub proof fn lemma_mul_is_mul_recursive(x: int, y: int)
     ensures (x * y) == mul_recursive(x, y)
 {
@@ -27,7 +40,8 @@ pub proof fn lemma_mul_is_mul_recursive(x: int, y: int)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that multiplication using `*` is equivalent to the
+/// multiplication using [`mul_recursive`]
 pub proof fn lemma_mul_is_mul_recursive_auto()
     ensures forall |x: int, y: int| x * y == mul_recursive(x, y)
 {
@@ -35,9 +49,9 @@ pub proof fn lemma_mul_is_mul_recursive_auto()
         lemma_mul_is_mul_recursive(x, y) };
 }
 
-/// Multiplying two positive integers with `*` results in the same product as 
-/// [`mul_pos`], which is achieved by recursive addition
-// #[verifier::spinoff_prover]
+/// Proof that multiplying two positive integers with `*` results in
+/// the same product as [`mul_pos`], which is achieved by recursive
+/// addition. Specifically, `x * y == mul_pos(x, y)`.
 pub proof fn lemma_mul_is_mul_pos(x: int, y: int)
     requires x >= 0
     ensures x * y == mul_pos(x, y)
@@ -46,8 +60,8 @@ pub proof fn lemma_mul_is_mul_pos(x: int, y: int)
     lemma_mul_induction_auto(x, |u: int| u >= 0 ==> u * y == mul_pos(u, y));
 }
 
-/// Ensures that the basic properties of multiplication, including the identity and zero properties
-// #[verifier::spinoff_prover]
+/// Proof of basic properties of multiplication by `x`, specifically
+/// what happens when multiplying by 0 or 1
 pub proof fn lemma_mul_basics(x: int)
     ensures 
         0 * x == 0,
@@ -56,25 +70,24 @@ pub proof fn lemma_mul_basics(x: int)
         1 * x == x,
 {}
 
-// #[verifier::spinoff_prover]
+/// Proof of basic properties of multiplication, specifically what
+/// happens when multiplying by 0 or 1
 pub proof fn lemma_mul_basics_auto()
     ensures 
         forall |x: int| #[trigger](0 * x) == 0,
         forall |x: int| #[trigger](x * 0) == 0,
         forall |x: int| #[trigger](1 * x) == x,
-        forall |x: int| #[trigger](x * 1)  == x,
+        forall |x: int| #[trigger](x * 1) == x,
 {}
 
-/// Multiplying two nonzero integers will never result in 0 as the poduct
-/// (i.e. property of int is an integral domain)
-// #[verifier::spinoff_prover]
+/// Proof that `x * y` is nonzero if and only if both `x` and `y` are nonzero
 pub proof fn lemma_mul_nonzero(x: int, y: int)
     ensures x * y != 0 <==> x != 0 && y != 0
 {
     MulINL::lemma_mul_nonzero(x, y);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that a product is nonzero if and only if both factors are nonzero
 pub proof fn lemma_mul_nonzero_auto()
     ensures forall |x: int, y: int| #[trigger] (x * y) != 0 <==> x != 0 && y != 0
 {
@@ -85,8 +98,7 @@ pub proof fn lemma_mul_nonzero_auto()
     }
 }
 
-/// Any integer multiplied by 0 results in a product of 0
-// #[verifier::spinoff_prover]
+/// Proof that any integer multiplied by 0 results in a product of 0
 pub proof fn lemma_mul_by_zero_is_zero_auto()
     ensures forall |x: int| #![trigger x * 0] #![trigger 0 * x] x * 0 == 0 && 0 * x == 0
 {
@@ -96,16 +108,15 @@ pub proof fn lemma_mul_by_zero_is_zero_auto()
     }
 }
 
-/// Multiplication is associative
-// #[verifier::spinoff_prover]
+/// Proof that multiplication is associative, specifically that
+/// `x * (y * z) == (x * y) * z`.
 pub proof fn lemma_mul_is_associative(x: int, y: int, z: int)
     ensures x * (y * z) == (x * y) * z
 {
     MulINL::lemma_mul_is_associative(x, y, z);
 }
 
-/// Multiplication is always associative for all integers
-// #[verifier::spinoff_prover]
+/// Proof that multiplication is associative
 pub proof fn lemma_mul_is_associative_auto()
     ensures forall |x: int, y: int, z: int| #![trigger x * (y * z)] #![trigger (x * y) * z]
         (x * (y * z)) == ((x * y) * z)
@@ -117,20 +128,20 @@ pub proof fn lemma_mul_is_associative_auto()
     }
 }
 
-/// Multiplication is commutative
-// #[verifier::spinoff_prover]
+/// Proof that multiplication is commutative, specifically that
+/// `x * y == y * x`.
 pub proof fn lemma_mul_is_commutative(x: int, y: int)
     ensures x * y == y * x
 {}
 
-/// Multiplication is always commutative for all integers
-// #[verifier::spinoff_prover]
+/// Proof that multiplication is commutative
 pub proof fn lemma_mul_is_commutative_auto()
     ensures forall |x: int, y: int| #[trigger](x * y) == (y * x)
 {}
 
-/// The product of two integers is greater than the value of each individual integer
-// #[verifier::spinoff_prover]
+/// Proof that, since the product of the two integers `x` and `y` is
+/// nonnegative, that product is greater than or equal to each of `x`
+/// and `y`
 pub proof fn lemma_mul_ordering(x: int, y: int)
     requires 
         x != 0,
@@ -142,9 +153,8 @@ pub proof fn lemma_mul_ordering(x: int, y: int)
     MulINL::lemma_mul_ordering(x, y);
 }
 
-/// The product of two positive integers is always greater than the individual value of either 
-/// multiplied integer
-// #[verifier::spinoff_prover]
+/// Proof that if the product of two integers is nonnegative, then
+/// that product is greater than or equal to each of the two integers
 proof fn lemma_mul_ordering_auto()
     ensures forall |x: int, y: int| (0 != x && 0 != y && #[trigger] (x * y) >= 0) 
         ==> x * y >= x && (x * y) >= y,
@@ -157,15 +167,15 @@ proof fn lemma_mul_ordering_auto()
     };
 }
 
-/// If two integers `x` and `y` are equal, then their products with
-/// any integer `z` are also equal.
-// #[verifier::spinoff_prover]
+/// Proof that since two integers `x` and `y` are equal, their
+/// respective products with `z` are also equal
 pub proof fn lemma_mul_equality(x: int, y: int, z: int)
     requires x == y
     ensures x * z == y * z
 {}
 
-// #[verifier::spinoff_prover]
+/// Proof that whenever two integers are equal, their respective
+/// products with another integer are also equal
 pub proof fn lemma_mul_equality_auto()
     ensures forall |x: int, y: int, z: int| x == y ==> #[trigger](x * z) == #[trigger](y * z)
 {
@@ -175,8 +185,7 @@ pub proof fn lemma_mul_equality_auto()
     { lemma_mul_equality(x, y, z); } 
 }
 
-/// Two integers that are multiplied by a positive number will maintain their numerical order
-// #[verifier::spinoff_prover]
+/// Proof that, since `x <= y` and `z >= 0`, `x * z <= y * z`
 pub proof fn lemma_mul_inequality(x: int, y: int, z: int)
     requires 
         x <= y,
@@ -186,8 +195,8 @@ pub proof fn lemma_mul_inequality(x: int, y: int, z: int)
     lemma_mul_induction_auto(z, |u: int| u >= 0 ==> x * u <= y * u);
 }
 
-/// Any two integers that are multiplied by a positive number will maintain their numerical order
-// #[verifier::spinoff_prover]
+/// Proof that any two integers, when each multiplied by a positive
+/// number, will maintain their numerical order
 pub proof fn lemma_mul_inequality_auto()
     ensures forall |x: int, y: int, z: int| x <= y && z >= 0 ==> #[trigger](x * z) <= #[trigger](y * z)
 {
@@ -198,8 +207,7 @@ pub proof fn lemma_mul_inequality_auto()
     }
 }
 
-/// Multiplying by a positive integer preserves inequality
-// #[verifier::spinoff_prover]
+/// Proof that since `x < y` and `z > 0`, `x * z < y * z`.
 pub proof fn lemma_mul_strict_inequality(x: int, y: int, z: int)
     requires 
         x < y,
@@ -210,8 +218,8 @@ pub proof fn lemma_mul_strict_inequality(x: int, y: int, z: int)
     MulINL::lemma_mul_strict_inequality(x, y, z);
 }
 
-/// Multiplying by a positive integer preserves inequality for all integers
-// #[verifier::spinoff_prover]
+/// Proof that any two distinct integers, when each multiplied by a
+/// positive integer, preserves their numerical order
 pub proof fn lemma_mul_strict_inequality_auto()
     ensures  forall |x: int, y: int, z: int| x < y && z > 0 ==> #[trigger](x * z) < #[trigger](y * z)
 {
@@ -223,8 +231,9 @@ pub proof fn lemma_mul_strict_inequality_auto()
     }
 }
 
-/// The product of two bounded integers is less than or equal to the product of their upper bounds
-// #[verifier::spinoff_prover]
+/// Proof that since `x` is bounded above by `xbound` and `y` is
+/// bounded above by `ybound`, the product of `x` and `y` is bounded
+/// above by the product of the bounds
 pub proof fn lemma_mul_upper_bound(x: int, xbound: int, y: int, ybound: int)
     requires 
         x <= xbound,
@@ -238,7 +247,8 @@ pub proof fn lemma_mul_upper_bound(x: int, xbound: int, y: int, ybound: int)
     lemma_mul_inequality(y, ybound, xbound);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that when two integers have upper bounds, their product is
+/// bounded above by the product of their upper bounds
 pub proof fn lemma_mul_upper_bound_auto()
     ensures forall |x: int, xbound: int, y: int, ybound: int|
     x <= xbound && y <= ybound && 0 <= x && 0 <= y ==> #[trigger](x * y) <= #[trigger](xbound * ybound),
@@ -252,8 +262,10 @@ pub proof fn lemma_mul_upper_bound_auto()
     }
 }
 
-/// The product of two strictly upper bounded integers is less than the product of their upper bounds */
-// #[verifier::spinoff_prover]
+/// Proof that when `x` has an exclusive upper bound `xbound` and `y`
+/// has an exclusive upper bound `ybound`, that the product of `x` and
+/// `y` is bounded above by the product of the predecessors of their
+/// upper bounds. In other words, `x * y <= (xbound - 1) * (ybound - 1)`.
 pub proof fn lemma_mul_strict_upper_bound(x: int, xbound: int, y: int, ybound: int)
     requires 
         x < xbound,
@@ -267,7 +279,9 @@ pub proof fn lemma_mul_strict_upper_bound(x: int, xbound: int, y: int, ybound: i
     lemma_mul_inequality(y, ybound - 1, xbound - 1);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that when two integers have exclusive upper bounds, their
+/// product has, as an upper bound, the product of the predecessors of
+/// their upper bounds
 pub proof fn lemma_mul_strict_upper_bound_auto()
     ensures forall |x: int, xbound: int, y: int, ybound: int| x < xbound && y < ybound && 0 < x && 0 < y ==> #[trigger](x * y) <= #[trigger]((xbound - 1) * (ybound - 1))
 {
@@ -279,8 +293,9 @@ pub proof fn lemma_mul_strict_upper_bound_auto()
     }
 }
 
-/// Any two integers that are multiplied by a positive number will maintain their numerical order
-// #[verifier::spinoff_prover]
+/// Proof that multiplying the positive integer `x` by respectively
+/// `y` and `z` maintains the order of `y` and `z`. Specifically, `y
+/// <= z ==> x * y <= x * z` and `y < z ==> x * y < x * z`.
 pub proof fn lemma_mul_left_inequality(x: int, y: int, z: int)
     requires 0 < x
     ensures 
@@ -291,7 +306,9 @@ pub proof fn lemma_mul_left_inequality(x: int, y: int, z: int)
     lemma_mul_induction_auto(x, |u: int| u > 0 ==> y < z ==> u * y < u * z);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that, for all `y`, `z`, and positive `x`, multiplying `x` by
+/// respectively `y` and `z` maintains the order of `y` and `z`.
+/// Specifically, `y <= z ==> x * y <= x * z` and `y < z ==> x * y < x * z`.
 pub proof fn lemma_mul_left_inequality_auto()
     ensures forall |x: int, y: int, z: int| x > 0 ==> (y <= z ==> #[trigger](x * y) <= #[trigger](x * z)) && (y < z ==> (x * y) < (x * z))
 {
@@ -302,9 +319,8 @@ pub proof fn lemma_mul_left_inequality_auto()
     }
 }
 
-/// If two seperate integers are each multiplied by a common integer and the products are equal, the 
-/// two original integers are equal
-// #[verifier::spinoff_prover]
+/// Proof that if `x` and `y` have equal results when multiplied by
+/// nonzero `m`, then they're equal
 pub proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
     requires 
         m != 0,
@@ -318,9 +334,9 @@ pub proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
     lemma_mul_induction_auto(m, |u: int| x < y && 0 > u ==> x * u > y * u);
 }
 
-/// If any two seperate integers are each multiplied by a common integer and the products are equal, the 
-/// two original integers are equal
-// #[verifier::spinoff_prover]
+/// Proof that if any two integers are each multiplied by a common
+/// nonzero integer and the products are equal, the two original
+/// integers are equal
 pub proof fn lemma_mul_equality_converse_auto()
     ensures forall |m: int, x: int, y: int| (m != 0 && #[trigger](m * x) == #[trigger](m * y)) ==> x == y,
 {
@@ -331,7 +347,7 @@ pub proof fn lemma_mul_equality_converse_auto()
     }
 }
 
-/// When two integers, x and y, are each multiplied by a positive integer, z, if x <= z then the x*z <= y*z
+/// Proof that since `x * z <= y * z` and `z > 0`, that `x <= y`
 pub proof fn lemma_mul_inequality_converse(x: int, y: int, z: int)
     requires 
         x * z <= y * z,
@@ -341,9 +357,9 @@ pub proof fn lemma_mul_inequality_converse(x: int, y: int, z: int)
     lemma_mul_induction_auto(z, |u: int| x * u <= y * u && u > 0 ==> x <= y);
 }
 
-/// When two integers, x and y, are each multiplied by a positive integer, z, if x <= z then the x*z <= y*z 
-/// for all valid values of x, y, and z
-// #[verifier::spinoff_prover]
+/// Proof that whenever two integers have a less-than-or-equal
+/// relationship to each other when multiplied by a positive integer,
+/// they have that relationship themselves.
 pub proof fn lemma_mul_inequality_converse_auto()
     ensures forall |x: int, y: int, z: int| #[trigger](x * z) <= #[trigger](y * z) && z > 0 ==> x <= y,
 {
@@ -354,8 +370,7 @@ pub proof fn lemma_mul_inequality_converse_auto()
     }
 }
 
-/// When two integers, x and y, are each multiplied by a positive integer, z, if x < z then the x*z < y*z
-// #[verifier::spinoff_prover]
+/// Proof that since `x * z < y * z` and `z >= 0`, we know `x < y`
 pub proof fn lemma_mul_strict_inequality_converse(x: int, y: int, z: int)
     requires 
         x * z < y * z,
@@ -366,9 +381,9 @@ pub proof fn lemma_mul_strict_inequality_converse(x: int, y: int, z: int)
     lemma_mul_induction_auto(z, |u: int| x * u < y * u && u >= 0 ==> x < y);
 }
 
-/// When two integers, x and y, are each multiplied by a positive integer, z, if x < z then the x*z < y*z 
-/// for all valid values of x, y, and z
-// #[verifier::spinoff_prover]
+/// Proof that whenever two integers have a less-than relationship to
+/// each other when multiplied by a nonnegative integer, they have
+/// that relationship themselves
 pub proof fn lemma_mul_strict_inequality_converse_auto()
     ensures  forall |x: int, y: int, z: int| #[trigger](x * z) < #[trigger](y * z) && z >= 0 ==> x < y,
 {
@@ -379,16 +394,15 @@ pub proof fn lemma_mul_strict_inequality_converse_auto()
     }
 }
 
-/// Multiplication is distributive
-// #[verifier::spinoff_prover]
+/// Proof that multiplication distributes over addition, specifically that
+/// `x * (y + z) == x * y + x * z`
 pub proof fn lemma_mul_is_distributive_add(x: int, y: int, z: int)
     ensures x * (y + z) == x * y + x * z
 {
     MulINL::lemma_mul_is_distributive_add(x, y, z);
 }
 
-/// For all integers, multiplication is distributive with addition in the form x * (y + z)
-// #[verifier::spinoff_prover]
+/// Proof that multiplication distributes over addition
 pub proof fn lemma_mul_is_distributive_add_auto()
     ensures forall |x: int, y: int, z: int| #[trigger](x * (y + z)) == x * y + x * z,
 {
@@ -399,15 +413,17 @@ pub proof fn lemma_mul_is_distributive_add_auto()
     }
 }
 
-/// For all integers, multiplication is distributive with addition in the form (y + z) * x
-// #[verifier::spinoff_prover]
+/// Proof that multiplication distributes over addition, specifically that
+/// `(y + z) * x == y * x + z * x`
 pub proof fn lemma_mul_is_distributive_add_other_way(x: int, y: int, z: int)
     ensures (y + z) * x == y * x + z * x
 {
     lemma_mul_auto();
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that multiplication distributes over addition when the
+/// addition happens in the multiplicand (i.e., in the left-hand
+/// argument to `*`)
 proof fn lemma_mul_is_distributive_add_other_way_auto()
     ensures forall |x: int, y: int, z: int| #[trigger]((y + z) * x) == y * x + z * x,
 {
@@ -418,16 +434,15 @@ proof fn lemma_mul_is_distributive_add_other_way_auto()
     }
 }
 
-/// Multiplication is distributive with subtraction
-// #[verifier::spinoff_prover]
+/// Proof that multiplication distributes over subtraction, specifically that
+/// `x * (y - z) == x * y - x * z`
 pub proof fn lemma_mul_is_distributive_sub(x: int, y: int, z: int)
     ensures x * (y - z) == x * y - x * z
 {
     lemma_mul_auto();
 }
 
-/// For all integers, multiplication is distributive with subtraction
-// #[verifier::spinoff_prover]
+/// Proof that multiplication distributes over subtraction
 pub proof fn lemma_mul_is_distributive_sub_auto()
     ensures forall |x: int, y: int, z: int| #[trigger](x * (y - z)) == x * y - x * z,
 {
@@ -438,8 +453,10 @@ pub proof fn lemma_mul_is_distributive_sub_auto()
     }
 }
 
-/// Proves the overall distributive nature of multiplication
-// #[verifier::spinoff_prover]
+/// Proof that multiplication is commutative, distributes over
+/// addition, and distributes over subtraction, in the specific cases
+/// where one of the arguments to the multiplication is `x` and the
+/// other arguments are `y` and `z`
 pub proof fn lemma_mul_is_distributive(x: int, y: int, z: int)
     ensures 
         x * (y + z) == x * y + x * z,
@@ -454,8 +471,9 @@ pub proof fn lemma_mul_is_distributive(x: int, y: int, z: int)
     lemma_mul_auto();
 }
 
-/// For all integers, multiplication is distributive
-// #[verifier::spinoff_prover]
+/// Proof that multiplication distributes over addition and
+/// subtraction, whether the addition or subtraction happens in the
+/// first or the second argument to the multiplication
 pub proof fn lemma_mul_is_distributive_auto()
     ensures
         forall |x: int, y: int, z: int| #[trigger](x * (y + z)) == x * y + x * z,
@@ -468,16 +486,16 @@ pub proof fn lemma_mul_is_distributive_auto()
     lemma_mul_is_commutative_auto();
 }
 
-/// Multiplying two positive integers will result in a positive integer
-// #[verifier::spinoff_prover]
+/// Proof that if `x` and `y` are both positive, then their product is
+/// also positive
 pub proof fn lemma_mul_strictly_positive(x: int, y: int)
     ensures (0 < x && 0 < y) ==> (0 < x * y)
 {
     MulINL::lemma_mul_strictly_positive(x, y);
 }
 
-/// Multiplying any two positive integers will result in a positive integer
-// #[verifier::spinoff_prover]
+/// Proof that multiplying any two positive integers will result in a
+/// positive integer
 pub proof fn lemma_mul_strictly_positive_auto()
     ensures forall |x: int, y: int| (0 < x && 0 < y) ==> (0 < #[trigger](x * y)),
 {
@@ -487,9 +505,7 @@ pub proof fn lemma_mul_strictly_positive_auto()
     }
 }
 
-/// Multiplying a positive integer by an integer greater than 1 will result in a product that 
-/// is greater than the original integer
-// #[verifier::spinoff_prover]
+/// Proof that since `x > 1` and `y > 0`, `y < x * y`
 pub proof fn lemma_mul_strictly_increases(x: int, y: int)
     requires 
         1 < x,
@@ -500,9 +516,9 @@ pub proof fn lemma_mul_strictly_increases(x: int, y: int)
     lemma_mul_induction_auto(x, |u: int| 1 < u ==> y < u * y);
 }
 
-/// Multiplying any positive integer by any integer greater than 1 will result in a product that 
-/// is greater than the original integer
-// #[verifier::spinoff_prover]
+/// Proof that multiplying any positive integer by any integer greater
+/// than 1 will result in a product that is greater than the original
+/// integer
 pub proof fn lemma_mul_strictly_increases_auto()
     ensures forall |x: int, y: int| 1 < x && 0 < y  ==> y < #[trigger](x * y)
 {
@@ -512,9 +528,8 @@ pub proof fn lemma_mul_strictly_increases_auto()
     }
 }
 
-/// Multiplying an integer by a positive integer will result in a product that is greater than or
-/// equal to the original integer
-// #[verifier::spinoff_prover]
+/// Proof that since `x` and `y` are both positive, their product is
+/// greater than or equal to `y`
 pub proof fn lemma_mul_increases(x: int, y: int)
     requires 
         0 < x,
@@ -525,9 +540,8 @@ pub proof fn lemma_mul_increases(x: int, y: int)
     lemma_mul_induction_auto(x, |u: int| 0 < u ==> y <= u * y);
 }
 
-/// Multiplying any integer by any positive integer will result in a product that is greater than or
-/// equal to the original integer
-// #[verifier::spinoff_prover]
+/// Proof that multiplying any two positive integers will result in a
+/// product that is greater than or equal to each original integer
 pub proof fn lemma_mul_increases_auto()
     ensures forall |x: int, y: int| (0 < x && 0 < y) ==> (y <= #[trigger](x * y))
 {
@@ -538,8 +552,8 @@ pub proof fn lemma_mul_increases_auto()
     }
 }
 
-/// Multiplying two positive numbers will result in a positive product
-// #[verifier::spinoff_prover]
+/// Proof that since `x` and `y` are non-negative, their product is
+/// non-negative
 pub proof fn lemma_mul_nonnegative(x: int, y: int)
     requires 
         0 <= x,
@@ -549,8 +563,8 @@ pub proof fn lemma_mul_nonnegative(x: int, y: int)
     lemma_mul_induction_auto(x, |u: int| 0 <= u ==> 0 <= u * y);
 }
 
-/// Multiplying any two positive numbers will result in a positive product
-// #[verifier::spinoff_prover]
+/// Proof that multiplying any two non-negative integers produces a
+/// non-negative integer
 pub proof fn lemma_mul_nonnegative_auto()
     ensures forall |x: int, y: int| 0 <= x && 0 <= y ==> 0 <= #[trigger](x * y)
 {
@@ -560,8 +574,8 @@ pub proof fn lemma_mul_nonnegative_auto()
     }
 }
 
-/// Shows the equivalent forms of using the unary negation operator
-// #[verifier::spinoff_prover]
+/// Proof that negating `x` or `y` before multiplying them together
+/// produces the negation of the product of `x` and `y`
 pub proof fn lemma_mul_unary_negation(x: int, y: int)
     ensures 
         (-x) * y == -(x * y) == x * (-y)
@@ -569,8 +583,8 @@ pub proof fn lemma_mul_unary_negation(x: int, y: int)
     lemma_mul_induction_auto(x, |u: int| (-u) * y == - (u * y) == u * (-y));
 }
 
-/// Shows the equivalent forms of using the unary negation operator for any integers
-// #[verifier::spinoff_prover]
+/// Proof that negating one of two integers before multiplying them
+/// together produces the negation of their product
 pub proof fn lemma_mul_unary_negation_auto()
     ensures forall |x: int, y: int| #![trigger (-x) * y] #![trigger x * (-y)] ((-x) * y) == (-(x * y)) == x * (-y),
 {
@@ -580,16 +594,15 @@ pub proof fn lemma_mul_unary_negation_auto()
     }
 }
 
-/// Multiplying two negative integers, -x and -y, is equivalent to multiplying x and y
-// #[verifier::spinoff_prover]
+/// Proof that multiplying `-x` and `-y` produces the same product as multiplying `x` and `y`
 pub proof fn lemma_mul_cancels_negatives(x: int, y: int)
     ensures x * y == (-x) * (-y)
 {
     lemma_mul_induction_auto(x, |u: int| (-u) * y == - (u * y) == u * (-y));
 }
 
-/// Multiplying two negative integers, -x and -y, is equivalent to multiplying x and y
-// #[verifier::spinoff_prover]
+/// Proof that for any two integers `x` and `y`, multiplying `-x` and
+/// `-y` produces the same product as multiplying `x` and `y`
 pub proof fn lemma_mul_cancels_negatives_auto()
     ensures forall |x: int, y: int| #[trigger](x * y) == (-x) * (-y)
 {
@@ -599,8 +612,7 @@ pub proof fn lemma_mul_cancels_negatives_auto()
     }
 }
 
-/// Includes all properties of multiplication
-// #[verifier::spinoff_prover]
+/// Proof establishing many useful properties of negation
 pub proof fn lemma_mul_properties()
     ensures 
     forall |x: int, y: int| #[trigger](x * y) == y * x,

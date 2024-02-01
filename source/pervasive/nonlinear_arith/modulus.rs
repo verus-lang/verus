@@ -1,4 +1,17 @@
-//! Lemma for modulus operation
+//! This file contains proofs related to integer modulo operations.
+//! These are part of the math standard library.
+//!
+//! It's based on the second part (since the first part is about
+//! division) of the following file from the Dafny math standard
+//! library:
+//! `Source/DafnyStandardLibraries/src/Std/Arithmetic/DivMod.dfy`.
+//! That file has the following copyright notice:
+//! /*******************************************************************************
+//! * Original: Copyright (c) Microsoft Corporation *
+//! SPDX-License-Identifier: MIT * * Modifications and Extensions:
+//! Copyright by the contributors to the Dafny Project *
+//! SPDX-License-Identifier: MIT
+//! *******************************************************************************/
 
 #[allow(unused_imports)]
 use builtin::*;
@@ -14,8 +27,9 @@ use crate::nonlinear_arith::internals::div_internals_nonlinear::{lemma_small_div
 use crate::nonlinear_arith::internals::mod_internals::{lemma_div_add_denominator, lemma_mod_auto, mod_recursive};
 use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_induction_auto, lemma_mul_auto, lemma_mul_induction};
 
-/// Modulus using `%` is equivalent to the modulus through [`mod_recursive`].
-// #[verifier::spinoff_prover]
+/// Proof that computing the modulus using `%` is equivalent to
+/// computing it with [`mod_recursive`]. Specifically,
+/// `x % m == mod_recursive(x, m)`.
 pub proof fn lemma_mod_is_mod_recursive(x: int, m: int)
     requires m > 0
     ensures mod_recursive(x, m) == x % m
@@ -55,7 +69,8 @@ pub proof fn lemma_mod_is_mod_recursive(x: int, m: int)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that computing the modulus using `%` is equivalent to
+/// computing it with [`mod_recursive`]
 pub proof fn lemma_mod_is_mod_recursive_auto()
     ensures forall |x: int, d: int| d > 0 ==> mod_recursive(x, d) == #[trigger](x % d)
 {
@@ -66,9 +81,9 @@ pub proof fn lemma_mod_is_mod_recursive_auto()
     };
 }
 
-/// Proves basic properties of the modulus operation: any integer divided by itself does not have a
-/// remainder; performing (x % m) % m gives the same result as simply perfoming x % m 
-// #[verifier::spinoff_prover]
+/// Proof of basic properties of the modulus operation: any integer
+/// divided by itself produces a remainder of 0; performing `(x % m) %
+/// m` gives the same result as simply perfoming `x % m`.
 pub proof fn lemma_mod_basics_auto()
     ensures 
         forall |m: int|  m > 0 ==> #[trigger](m % m) == 0,
@@ -82,9 +97,10 @@ pub proof fn lemma_mod_basics_auto()
     };
 }
 
-/// Describes the properties of the modulus operation including those described in lemma_mod_basics_auto. 
-/// This lemma also states that the remainder of any division will be less than the divisor's value
-// #[verifier::spinoff_prover]
+/// Proof of properties of the modulus operation including those
+/// described in `lemma_mod_basics_auto`. This lemma also states that
+/// the remainder of any division will be less than the divisor's
+/// value.
 pub proof fn lemma_mod_properties_auto()
     ensures 
         forall |m: int| m > 0 ==> #[trigger](m % m) == 0,
@@ -99,9 +115,8 @@ pub proof fn lemma_mod_properties_auto()
     }
 }
 
-/// The remainder of a natural number x divided by a natural number d will be less
-/// than or equal to x
-// #[verifier::spinoff_prover]
+/// Proof that when natural number `x` is divided by natural number
+/// `m`, the remainder will be less than or equal to `x`.
 pub proof fn lemma_mod_decreases(x: nat, m: nat)
     requires 0 < m
     ensures x % m <= x
@@ -109,7 +124,8 @@ pub proof fn lemma_mod_decreases(x: nat, m: nat)
     lemma_mod_auto(m as int);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that dividing any natural number `x` by any divisor produces
+/// a quotient less than or equal to `x`.
 pub proof fn lemma_mod_decreases_auto()
     ensures forall |x: nat, m: nat| 0 < m ==> #[trigger](x % m) <= x,
 {
@@ -119,8 +135,7 @@ pub proof fn lemma_mod_decreases_auto()
     }
 }
 
-/// If x % y is zero and x is greater than zero, x is greater than y.
-// #[verifier::spinoff_prover]
+/// Proof that if `x % m` is zero and `x` is positive, then `x >= m`.
 pub proof fn lemma_mod_is_zero(x: nat, m: nat)
     requires
         x > 0 && m > 0,
@@ -133,7 +148,9 @@ pub proof fn lemma_mod_is_zero(x: nat, m: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that if a remainder is zero and the dividend is positive,
+/// then the dividend is greater than or equal to the divisor. In
+/// other words, if `x % m == 0` and `x > 0`, then `x >= m`.
 pub proof fn lemma_mod_is_zero_auto()
     ensures forall |x: nat, m: nat| x > 0 && m > 0 && #[trigger](x % m) == 0 ==> x >= m,
 {
@@ -143,8 +160,8 @@ pub proof fn lemma_mod_is_zero_auto()
     }
 }
 
-/// A dividend that is any multiple of the divisor will result in a remainder of 0
-// #[verifier::spinoff_prover]
+/// Proof that multiplying by a number then dividing by that same
+/// number produces a remainder of 0. Specifically, `(x * m) % m == 0`.
 pub proof fn lemma_mod_multiples_basic(x: int, m: int)
     requires m > 0
     ensures (x * m) % m == 0
@@ -156,7 +173,8 @@ pub proof fn lemma_mod_multiples_basic(x: int, m: int)
     assert(f(x));
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that multiplying by a number then dividing by that same
+/// number produces a remainder of 0
 pub proof fn lemma_mod_multiples_basic_auto()
     ensures forall |x: int, m: int| m > 0 ==> #[trigger]((x * m) % m) == 0,
 {
@@ -166,9 +184,8 @@ pub proof fn lemma_mod_multiples_basic_auto()
     }
 }
 
-/// The remainder of adding the divisor m to the dividend b will be the same
-/// as simply performing b % m
-// #[verifier::spinoff_prover]
+/// Proof that adding the divisor to the dividend doesn't change the
+/// remainder. Specifically, `(m + b) % m == b % m`.
 pub proof fn lemma_mod_add_multiples_vanish(b: int, m: int)
     requires 0 < m
     ensures (m + b) % m == b % m
@@ -176,7 +193,8 @@ pub proof fn lemma_mod_add_multiples_vanish(b: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that adding the divisor to the dividend doesn't change the
+/// remainder. In other words, for all `m` and `b`, `(m + b) % m == b % m`.
 pub proof fn lemma_mod_add_multiples_vanish_auto()
     ensures forall |b: int, m: int| m > 0 ==> ((m + b) % m) == #[trigger](b % m),
 {
@@ -186,9 +204,8 @@ pub proof fn lemma_mod_add_multiples_vanish_auto()
     }
 }
 
-/// The remainder of subtracting the divisor m from the dividend b will be the same
-/// as simply performing b % m
-// #[verifier::spinoff_prover]
+/// Proof that subtracting the divisor from the dividend doesn't
+/// change the remainder. Specifically, `(-m + b) % m == b % m`.
 pub proof fn lemma_mod_sub_multiples_vanish(b: int, m: int)
     requires 0 < m
     ensures (-m + b) % m == b % m
@@ -196,7 +213,9 @@ pub proof fn lemma_mod_sub_multiples_vanish(b: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that subtracting the divisor from the dividend doesn't
+/// change the remainder. In other words, for all `m` and `b`,
+/// `(-m + b) % m == b % m`.
 pub proof fn lemma_mod_sub_multiples_vanish_auto()
     ensures forall |b: int, m: int| m > 0 ==> ((-m + b) % m) == #[trigger](b % m),
 {
@@ -206,9 +225,8 @@ pub proof fn lemma_mod_sub_multiples_vanish_auto()
     }
 }
 
-/// The remainder of adding any multiple of the divisor m to the dividend b will be the same
-/// as simply performing b % m
-// #[verifier::spinoff_prover]
+/// Proof that adding any multiple of the divisor to the dividend will produce the
+/// same remainder. In other words, `(m * a + b) % m == b % m`.
 pub proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
     requires 0 < m
     ensures (m * a + b) % m == b % m
@@ -221,7 +239,9 @@ pub proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
     assert(f(a));
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that adding any multiple of the divisor to the dividend will produce the
+/// same remainder. In other words, for all `m`, `a`, and `b`,
+/// `(m * a + b) % m == b % m`.
 pub proof fn lemma_mod_multiples_vanish_auto()
     ensures forall |a: int, b: int, m: int| m > 0 ==> #[trigger]((m * a + b) % m) == b % m,
 {
@@ -231,8 +251,10 @@ pub proof fn lemma_mod_multiples_vanish_auto()
     }
 }
 
-/// Proves equivalent forms of modulus subtraction
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over subtraction if the subtracted value is
+/// less than or equal to the modulo of the number it's being subtracted from.
+/// Specifically, because `0 <= s <= x % d`, we can conclude that
+/// `x % d - s % d == (x - s) % d`.
 pub proof fn lemma_mod_subtraction(x: nat, s: nat, d: nat)
     requires 
         0 < d, 
@@ -243,7 +265,11 @@ pub proof fn lemma_mod_subtraction(x: nat, s: nat, d: nat)
     lemma_mod_auto(d as int);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over subtraction if the subtracted
+/// value is less than or equal to the modulo of the number it's being
+/// subtracted from. In other words, for all `s`, `x`, and `d`
+/// satisfying `0 <= s <= x % d`, we can conclude that `x % d - s % d
+/// == (x - s) % d`.
 pub proof fn lemma_mod_subtraction_auto()
     ensures forall |x: nat, s: nat, d: nat| #![trigger ((x - s) % d as int)] 0 < d && 0 <= s <= x % d ==> x % d - s % d == (x - s) % d as int,
 {
@@ -253,8 +279,8 @@ pub proof fn lemma_mod_subtraction_auto()
     }
 }
 
-/// Describes expanded and succinct version of modulus operator in relation to addition (read "ensures")
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over addition, provided you do an extra modulo after adding the remainders.
+/// Specifically, `((x % m) + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop(x: int, y: int, m: int)
     requires 0 < m
     ensures ((x % m) + (y % m)) % m == (x + y) % m
@@ -262,7 +288,8 @@ pub proof fn lemma_add_mod_noop(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over addition, provided you do an extra modulo after adding the remainders.
+/// In other words, for all `x`, `y`, and `m`, `((x % m) + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop_auto()
     ensures forall |x: int, y: int, m: int| #![trigger (x + y) % m] 0 < m ==> ((x % m) + (y % m)) % m == (x + y) % m,
 {
@@ -272,8 +299,8 @@ pub proof fn lemma_add_mod_noop_auto()
     }
 }
 
-/// Describes expanded and succinct version of modulus operator in relation to addition (read "ensures")
-// #[verifier::spinoff_prover]
+/// Proof that describes an expanded and succinct version of modulus operator in relation to addition.
+/// Specifically, `(x + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop_right(x: int, y: int, m: int)
     requires 0 < m
     ensures (x + (y % m)) % m == (x + y) % m
@@ -281,7 +308,8 @@ pub proof fn lemma_add_mod_noop_right(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that describes an expanded and succinct version of modulus operator in relation to addition.
+/// That is, for all `x`, `y`, and `m`, `(x + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop_right_auto()
     ensures forall |x: int, y: int, m: int| #![trigger (x + y) % m] 0 < m ==> (x + (y % m)) % m == (x + y) % m,
 {
@@ -291,8 +319,8 @@ pub proof fn lemma_add_mod_noop_right_auto()
     }
 }
 
-/// Describes expanded and succinct version of modulus operator in relation to subtraction (read "ensures")
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over subtraction provided you do an extra modulo operation after
+/// subtracting the remainders. Specifically, `((x % m) - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop(x: int, y: int, m: int)
     requires 0 < m
     ensures ((x % m) - (y % m)) % m == (x - y) % m
@@ -300,7 +328,9 @@ pub proof fn lemma_sub_mod_noop(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over subtraction provided you do an extra modulo operation after
+/// subtracting the remainders. In other words, for all `x`, `y`, and `m`,
+/// `((x % m) - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop_auto()
     ensures forall |x: int, y: int, m: int| #![trigger (x - y) % m] 0 < m ==> ((x % m) - (y % m)) % m == (x - y) % m,
 {
@@ -310,8 +340,8 @@ pub proof fn lemma_sub_mod_noop_auto()
     }
 }
 
-/// Describes expanded and succinct version of modulus operator in relation to subtraction (read "ensures")
-// #[verifier::spinoff_prover]
+/// Proof that describes an expanded and succinct version of modulus operator in relation to subtraction.
+/// Specifically, `(x - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop_right(x: int, y: int, m: int)
     requires 0 < m
     ensures (x - (y % m)) % m == (x - y) % m
@@ -319,7 +349,8 @@ pub proof fn lemma_sub_mod_noop_right(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that describes an expanded and succinct version of modulus operator in relation to subtraction.
+/// That is, for all `x`, `y`, and `m`, `(x - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop_right_auto()
     ensures forall |x: int, y: int, m: int| #![trigger ((x - y) % m)] 0 < m ==> (x - (y % m)) % m == (x - y) % m,
 {
@@ -329,8 +360,9 @@ pub proof fn lemma_sub_mod_noop_right_auto()
     }
 }
 
-/// Proves equivalent forms of modulus addition
-// #[verifier::spinoff_prover]
+/// Proof of two properties of the sum of two remainders with the same dividend:
+/// 1) `a % d + b % d == (a + b) % d + d * ((a % d + b % d) / d)`.
+/// 2) `(a % d + b % d) < d ==> a % d + b % d == (a + b) % d`.
 pub proof fn lemma_mod_adds(a: int, b: int, d: int)
     requires 0 < d
     ensures 
@@ -341,7 +373,10 @@ pub proof fn lemma_mod_adds(a: int, b: int, d: int)
     lemma_div_auto(d);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof of two properties of the sum of two remainders with the same dividend,
+/// i.e., that for all `a`, `b`, and `d`:
+/// 1) `a % d + b % d == (a + b) % d + d * ((a % d + b % d) / d)`.
+/// 2) `(a % d + b % d) < d ==> a % d + b % d == (a + b) % d`.
 pub proof fn lemma_mod_adds_auto()
     ensures forall |a: int, b: int, d: int| #![trigger ((a + b) % d)] 0 < d ==> a % d + b % d == (a + b) % d + d * ((a % d + b % d) / d),
 {
@@ -351,9 +386,9 @@ pub proof fn lemma_mod_adds_auto()
     }
 }
 
-// {:vcs_split_on_every_assert}
-/// The remainder of an integer `x` by a positive integer `d` is equivalent to
-/// the remainder of `x * (1 - d)` by `d`.
+/// Proof that the remainder when dividing integer `x` by positive
+/// integer `d` is equivalent to the remainder of `x * (1 - d)` by
+/// `d`.
 #[verifier::spinoff_prover]
 pub proof fn lemma_mod_neg_neg(x: int, d: int)
     requires 0 < d
@@ -375,6 +410,8 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
     lemma_mul_auto();
 }
 
+/// This proof isn't exported from this module. It's just used in
+/// the proof of `lemma_fundamental_div_mod_converse`.
 proof fn lemma_fundamental_div_mod_converse_helper_1(u: int, d: int, r: int)
     requires
         d != 0,
@@ -404,6 +441,8 @@ proof fn lemma_fundamental_div_mod_converse_helper_1(u: int, d: int, r: int)
     }
 }
 
+/// This proof isn't exported from this module. It's just used in
+/// the proof of `lemma_fundamental_div_mod_converse`.
 proof fn lemma_fundamental_div_mod_converse_helper_2(u: int, d: int, r: int)
     requires
         d != 0,
@@ -440,7 +479,9 @@ proof fn lemma_fundamental_div_mod_converse_helper_2(u: int, d: int, r: int)
     }
 }
 
-/// Proves the validity of the quotient and remainder
+/// Proof of the converse of the fundamental property of division and modulo.
+/// Specifically, if we know `0 <= r < d` and `x == q * d + r`, then we
+/// know that `q` is the quotient `x / d` and `r` is the remainder `x % d`.
 pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
     requires 
         d != 0,
@@ -455,9 +496,9 @@ pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
     lemma_fundamental_div_mod_converse_helper_2(q, d, r);
 }
 
-// {:timeLimitMultiplier 5}
-// TO DO, fails when conjuncting
-// #[verifier::spinoff_prover]
+/// Proof of the converse of the fundamental property of division and
+/// modulo. That is, whenever `0 <= r < d` and `x == q * d + r`, we
+/// know that `q` is the quotient `x / d` and `r` is the remainder `x % d`.
 pub proof fn lemma_fundamental_div_mod_converse_auto()
     ensures 
         // forall |x: int, d: int, q: int, r: int| d != 0 && 0 <= r < d && x == #[trigger](q * d + r) ==> q == (x / d) && r == #[trigger](x % d),
@@ -474,9 +515,8 @@ pub proof fn lemma_fundamental_div_mod_converse_auto()
     };
 }
 
-
-/// The remainder of any natural number x divided by a positive integer m is always less than m
-// #[verifier::spinoff_prover]
+/// Proof that the remainder, when natural number `x` is divided by
+/// positive integer `m`, is less than `m`.
 pub proof fn lemma_mod_pos_bound(x: int, m: int)
     requires 
         0 <= x,
@@ -487,7 +527,8 @@ pub proof fn lemma_mod_pos_bound(x: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that the remainder, when any natural number `x` is divided by
+/// any positive integer `m`, is less than `m`.
 pub proof fn lemma_mod_pos_bound_auto()
     ensures forall |x: int, m: int| 0 <= x && 0 < m ==> 0 <= #[trigger](x % m) < m,
 {
@@ -497,9 +538,8 @@ pub proof fn lemma_mod_pos_bound_auto()
     }
 }
 
-/// For any integers `x` and `y` and positive integer `m`, the remainder of `x * y` divided by `m`
-/// is equivalent to the remainder of `x` divided by `m` times the remainder of `y` divided by `m`.
-// #[verifier::spinoff_prover]
+/// Proof that the remainder when `x * y` is divided by `m` is
+/// equivalent to the remainder when `(x % m) * y` is divided by `m`
 pub proof fn lemma_mul_mod_noop_left(x: int, y: int, m: int)
     requires 0 < m
     ensures (x % m) * y % m == x * y % m
@@ -508,7 +548,9 @@ pub proof fn lemma_mul_mod_noop_left(x: int, y: int, m: int)
     lemma_mul_induction_auto(y, |u: int| (x % m) * u % m == x * u % m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that for any `x`, `y`, and `m`, the remainder when `x * y`
+/// is divided by `m` is equivalent to the remainder when `(x % m) *
+/// y` is divided by `m`
 pub proof fn lemma_mul_mod_noop_left_auto()
     ensures forall |x: int, y: int, m: int| 0 < m ==> (x % m) * y % m == #[trigger](x * y % m),
 {
@@ -518,9 +560,8 @@ pub proof fn lemma_mul_mod_noop_left_auto()
     }
 }
 
-/// For any integers `x` and `y` and positive integer `m`, the remainder of `x * y` divided by `m`
-/// is equivalent to the remainder of `x * (y % m)` divided by `m`.
-// #[verifier::spinoff_prover]
+/// Proof that the remainder when `x * y` is divided by `m` is
+/// equivalent to the remainder when `x * (y % m)` is divided by `m`.
 pub proof fn lemma_mul_mod_noop_right(x: int, y: int, m: int)
     requires 0 < m
     ensures x * (y % m) % m == (x * y) % m
@@ -529,7 +570,9 @@ pub proof fn lemma_mul_mod_noop_right(x: int, y: int, m: int)
     lemma_mul_induction_auto(x, |u: int| u * (y % m) % m == (u * y) % m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that for all `x`, `y`, and `m`, the remainder when `x * y`
+/// is divided by `m` is equivalent to the remainder when `x * (y % m)`
+/// is divided by `m`.
 pub proof fn lemma_mul_mod_noop_right_auto()
     ensures forall |x: int, y: int, m: int| 0 < m ==> x * (y % m) % m == #[trigger]((x * y) % m),
 {
@@ -539,8 +582,9 @@ pub proof fn lemma_mul_mod_noop_right_auto()
     }
 }
 
-/// Combines previous no-op mod lemmas into a general, overarching lemma
-// #[verifier::spinoff_prover]
+/// Proof of various properties about modulo equivalence with respect
+/// to multiplication, specifically various expressions that `(x * y)
+/// % m` is equivalent to.
 pub proof fn lemma_mul_mod_noop_general(x: int, y: int, m: int)
     requires 0 < m
     ensures 
@@ -554,7 +598,7 @@ pub proof fn lemma_mul_mod_noop_general(x: int, y: int, m: int)
     lemma_mul_mod_noop_right(x % m, y, m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof of various properties about modulo equivalence with respect to multiplication
 pub proof fn lemma_mul_mod_noop_general_auto()
     ensures forall |x: int, y: int, m: int| 0 < m ==> (((x % m) * y) % m == (x * (y % m)) % m == ((x % m) * (y % m)) % m == #[trigger]((x * y) % m)),
 {
@@ -564,10 +608,9 @@ pub proof fn lemma_mul_mod_noop_general_auto()
     }
 }
 
-/// For any integers `x` and `y` and positive integer `m`, the product of 
-/// `x` modulus `m` and `y` modulus `m`, all modulus `m`, is the same as just
-/// the product of `x` and `y` modulus `m`.
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over multiplication, provided you do
+/// an extra modulo operation after multiplying the remainders. Specifically,
+/// `(x % m) * (y % m) % m == (x * y) % m`.
 pub proof fn lemma_mul_mod_noop(x: int, y: int, m: int)
     requires 0 < m
     ensures (x % m) * (y % m) % m == (x * y) % m
@@ -575,7 +618,8 @@ pub proof fn lemma_mul_mod_noop(x: int, y: int, m: int)
     lemma_mul_mod_noop_general(x, y, m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that modulo distributes over multiplication, provided you do
+/// an extra modulo operation after multiplying the remainders
 pub proof fn lemma_mul_mod_noop_auto()
     ensures forall |x: int, y: int, m: int| 0 < m ==> ((x % m) * (y % m) % m == #[trigger]((x * y) % m)),
 {
@@ -585,8 +629,9 @@ pub proof fn lemma_mul_mod_noop_auto()
     }
 }
 
-/// Proves modulus equivalence in two forms
-// #[verifier::spinoff_prover]
+/// Proof that `x` and `y` are congruent modulo `m` if and only if `x
+/// - y` is congruent to 0 modulo `m`. In other words, `x % m == y % m
+/// <==> (x - y) % m == 0`.
 pub proof fn lemma_mod_equivalence(x: int, y: int, m: int)
     requires 0 < m
     ensures x % m == y % m <==> (x - y) % m == 0
@@ -594,9 +639,13 @@ pub proof fn lemma_mod_equivalence(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-// #[verifier::spinoff_prover]
-// The Dafny standard library uses the triggers `x % m, y % m`. But this can lead to a trigger loop,
-// so we don't do that here.
+/// Proof that for all `x`, `y`, and `m`, `x` and `y` are congruent
+/// modulo `m` if and only if `x - y` is congruent to 0 modulo `m`. In
+/// other words, `x % m == y % m <==> (x - y) % m == 0`.
+///
+/// Note: The Dafny standard library uses the triggers `x % m, y % m`
+/// for this forall quantifier. But this can lead to a trigger loop,
+/// so we don't do that here.
 pub proof fn lemma_mod_equivalence_auto()
     ensures forall |x: int, y: int, m: int| #![trigger (x - y) % m] 0 < m ==> (x % m == y % m <==> (x - y) % m == 0),
 {
@@ -606,7 +655,8 @@ pub proof fn lemma_mod_equivalence_auto()
     }
 }
 
-/// True if x%n and y%n are equal
+/// This function says that `x` is congruent to `y` modulo `m` if and
+/// only if their difference `x - y` is congruent to 0 modulo `m`.
 pub open spec fn is_mod_equivalent(x: int, y: int, m: int) -> bool
     recommends
         m > 0
@@ -614,8 +664,8 @@ pub open spec fn is_mod_equivalent(x: int, y: int, m: int) -> bool
     x % m == y % m <==> (x - y) % m == 0
 }
 
-/// If x % m == y % m, then (x * z) % m == (y * z) % m.
-// #[verifier::spinoff_prover]
+/// Proof that if `is_mod_equivalent` holds for `x`, `y`, and `m`,
+/// then it holds for `x * z`, `y * z`, and `m`
 pub proof fn lemma_mod_mul_equivalent(x: int, y: int, z: int, m: int)
     requires
         m > 0,
@@ -629,7 +679,8 @@ pub proof fn lemma_mod_mul_equivalent(x: int, y: int, z: int, m: int)
     lemma_mod_equivalence(x * z, y * z, m);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that if `is_mod_equivalent` holds for any `x`, `y`, and `m`,
+/// then it holds for `x * z`, `y * z`, and `m`
 pub proof fn lemma_mod_mul_equivalent_auto()
     ensures forall |x: int, y: int, z: int, m: int|  m > 0 && ( x % m == y % m <==> (x - y) % m == 0) ==> #[trigger]is_mod_equivalent(x * z, y * z, m),
 {
@@ -639,8 +690,9 @@ pub proof fn lemma_mod_mul_equivalent_auto()
     }
 }
 
-/// The remainder can increase with a larger divisor
-// #[verifier::spinoff_prover]
+/// Proof that multiplying the divisor by a positive number can't
+/// decrease the remainder. Specifically, because `k > 0`, we have
+/// `x % d <= x % (d * k)`.
 pub proof fn lemma_mod_ordering(x: int, k: int, d: int)
     requires 
         1 < d,
@@ -678,7 +730,9 @@ pub proof fn lemma_mod_ordering(x: int, k: int, d: int)
     };
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that multiplying the divisor by a positive number can't
+/// decrease the remainder. That is, for any `x`, `d > 1`, and `k > 0`,
+/// `x % d <= x % (d * k)`.
 pub proof fn lemma_mod_ordering_auto()
     ensures forall |x: int, k: int, d: int| 1 < d && 0 < k ==> (x % d <= #[trigger](x % (d * k))),
 {
@@ -688,8 +742,9 @@ pub proof fn lemma_mod_ordering_auto()
     }
 }
 
-/// For any integer `x` and positive integers `a` and `b`, the remainder of `x` divided by `a * b`
-/// modulus `a` is equivalent to the remainder of `x` divided by `a`.
+/// Proof that the remainder when `x` is divided by `a * b`, taken
+/// modulo `a`, is equivalent to `x` modulo `a`. That is,
+/// `(x % (a * b)) % a == x % a`.
 #[verifier::spinoff_prover]
 pub proof fn lemma_mod_mod(x: int, a: int, b: int)
     requires 
@@ -716,6 +771,10 @@ pub proof fn lemma_mod_mod(x: int, a: int, b: int)
     lemma_fundamental_div_mod_converse(x, a, b * (x / (a * b)) + x % (a * b) / a, (x % (a * b)) % a);
 }
 
+/// Proof that for any integer `x` and positive integers `a` and `b`,
+/// the remainder when `x` is divided by `a * b`, taken modulo `a`,
+/// is equivalent to `x` modulo `a`. In other words,
+/// `(x % (a * b)) % a == x % a`.
 pub proof fn lemma_mod_mod_auto()
     ensures
         forall |a: int, b: int| #![trigger a * b] 0 < a && 0 < b ==> 0 < a * b,
@@ -732,7 +791,7 @@ pub proof fn lemma_mod_mod_auto()
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that `(x % y) % (y * z) < y`.
 pub proof fn lemma_part_bound2(x: int, y: int, z: int)
     requires 
         0 <= x,
@@ -754,10 +813,7 @@ pub proof fn lemma_part_bound2(x: int, y: int, z: int)
     assert((x % y) % (y * z) == x % y);
 }
 
-/// The product of positive integers `y` and `z` is always positive
-/// The remainder of nonnegative integer `x` modulus `y` divided by `y * z` is
-/// strictly less than `y`
-// #[verifier::spinoff_prover]
+/// Proof that any nonnegative integer `x` modulo `y` modulo `y * z` is less than `y`
 pub proof fn lemma_part_bound2_auto()
     ensures 
         forall |y: int, z: int| (0 < y && 0 < z) ==> #[trigger](y * z) > 0,
@@ -773,9 +829,8 @@ pub proof fn lemma_part_bound2_auto()
     };
 }
 
-/// Ensures the validity of an expanded form of the modulus operation,
-/// as expressed in the pre and post conditions
-// #[verifier::spinoff_prover]
+/// Proof of the validity of an expanded form of the modulus operation.
+/// Specifically, `x % (y * z) == y * ((x / y) % z) + x % y`.
 pub proof fn lemma_mod_breakdown(x: int, y: int, z: int)
     requires
         0 <= x,
@@ -822,6 +877,9 @@ pub proof fn lemma_mod_breakdown(x: int, y: int, z: int)
     }
 }
 
+/// Proof of the validity of an expanded form of the modulus operation.
+/// That is, for any nonnegative `x`, positive `y`, and positive `z`, we know
+/// `x % (y * z) == y * ((x / y) % z) + x % y`.
 pub proof fn lemma_mod_breakdown_auto()
     ensures
         forall |y: int, z: int| #![trigger y * z] 0 < y && 0 < z ==> y * z > 0,

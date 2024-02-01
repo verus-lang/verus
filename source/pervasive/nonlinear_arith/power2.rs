@@ -1,4 +1,16 @@
-//! Lemmas for powerz of 2.
+//! This file contains proofs related to powers of 2. These are part
+//! of the math standard library.
+//!
+//! It's based on the following file from the Dafny math standard library:
+//! `Source/DafnyStandardLibraries/src/Std/Arithmetic/Power2.dfy`.
+//! That file has the following copyright notice:
+//! /*******************************************************************************
+//! *  Original: Copyright (c) Microsoft Corporation
+//! *  SPDX-License-Identifier: MIT
+//! *  
+//! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
+//! *  SPDX-License-Identifier: MIT 
+//! *******************************************************************************/
 
 #[allow(unused_imports)]
 use builtin::*;
@@ -10,6 +22,9 @@ use crate::nonlinear_arith::power::{pow, lemma_pow_positive, lemma_pow_auto};
 use crate::nonlinear_arith::internals::mul_internals::lemma_mul_induction_auto; 
 use crate::nonlinear_arith::internals::general_internals::is_le; 
 
+/// This function computes 2 to the power of the given natural number
+/// `e`. It's opaque so that the SMT solver doesn't waste time
+/// repeatedly recursively unfolding it.
 #[verifier(opaque)]
 pub open spec fn pow2(e: nat) -> nat
     decreases e
@@ -23,8 +38,8 @@ pub open spec fn pow2(e: nat) -> nat
     pow(2, e) as nat
 }
 
-/// 2 to the power of any natural number will always be positive
-// #[verifier::spinoff_prover]
+/// Proof that 2 to the power of any natural number (specifically,
+/// `e`) is positive
 pub proof fn lemma_pow2_pos(e: nat)
     ensures pow2(e) > 0
 {
@@ -32,7 +47,7 @@ pub proof fn lemma_pow2_pos(e: nat)
     lemma_pow_positive(2, e);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that 2 to the power of any natural number is positive
 pub proof fn lemma_pow2_pos_auto()
     ensures forall |e: nat| #[trigger]pow2(e) > 0
 {
@@ -42,8 +57,7 @@ pub proof fn lemma_pow2_pos_auto()
     }
 }
 
-/// pow2() is equivalent to pow() with base 2.
-// #[verifier::spinoff_prover]
+/// Proof that `pow2(e)` is equivalent to `pow(2, e)`
 pub proof fn lemma_pow2(e: nat)
     ensures pow2(e) == pow(2, e) as int
     decreases e
@@ -55,7 +69,7 @@ pub proof fn lemma_pow2(e: nat)
     }
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that `pow2(e)` is equivalent to `pow(2, e)` for all `e`
 pub proof fn lemma_pow2_auto()
     ensures forall |e: nat| #[trigger]pow2(e) == pow(2, e)
 {
@@ -65,8 +79,7 @@ pub proof fn lemma_pow2_auto()
     }
 }
 
-/// `(2^e - 1) / 2 = 2^(e - 1) - 1`
-// #[verifier::spinoff_prover]
+/// Proof that, for the given positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
 pub proof fn lemma_pow2_mask_div2(e: nat)
     requires 0 < e
     ensures (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1
@@ -79,7 +92,7 @@ pub proof fn lemma_pow2_mask_div2(e: nat)
     lemma_mul_induction_auto(e as int, f);
 }
 
-// #[verifier::spinoff_prover]
+/// Proof that, for any positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
 pub proof fn lemma_pow2_mask_div2_auto()
     ensures 
         forall |e: nat| #![trigger pow2(e)] 0 < e ==> (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1
@@ -91,8 +104,7 @@ pub proof fn lemma_pow2_mask_div2_auto()
     }
 }
 
-/// Lays out the powers of 2 from 0 to 32 and also 2^64
-// #[verifier::spinoff_prover]
+/// This lemma establishes the concrete values for all powers of 2 from 0 to 32 and also 2^64.
 pub proof fn lemma2_to64()
     ensures 
         pow2(0) == 0x1,
