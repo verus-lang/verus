@@ -47,6 +47,7 @@ where
                 | ExpX::VarAt(..)
                 | ExpX::StaticVar(..)
                 | ExpX::Old(..)
+                | ExpX::ExecFnByName(_)
                 | ExpX::VarLoc(..) => (),
                 ExpX::Loc(e0) => {
                     expr_visitor_control_flow!(exp_visitor_dfs(e0, map, f));
@@ -292,6 +293,7 @@ where
         ExpX::VarAt(..) => f(exp, map),
         ExpX::VarLoc(..) => f(exp, map),
         ExpX::StaticVar(..) => f(exp, map),
+        ExpX::ExecFnByName(_) => f(exp, map),
         ExpX::Loc(e1) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let exp = exp_new(ExpX::Loc(expr1));
@@ -501,6 +503,7 @@ where
         ExpX::StaticVar(..) => Ok(exp.clone()),
         ExpX::Loc(e1) => ok_exp(ExpX::Loc(fe(env, e1)?)),
         ExpX::Old(..) => Ok(exp.clone()),
+        ExpX::ExecFnByName(_) => Ok(exp.clone()),
         ExpX::Call(fun, typs, es) => {
             use crate::sst::CallFun;
             let fun = match fun {

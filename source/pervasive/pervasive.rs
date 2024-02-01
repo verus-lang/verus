@@ -113,8 +113,8 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output=Output>> FnWithRe
 #[rustc_diagnostic_item = "verus::pervasive::pervasive::exec_nonstatic_call"]
 fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -> (output: Output)
     where F: FnOnce<Args, Output=Output>
-    requires f.requires(args)
-    ensures f.ensures(args, output)
+    requires call_requires(f, args)
+    ensures call_ensures(f, args, output)
 {
     unimplemented!();
 }

@@ -6,9 +6,9 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    auto_deref_supported_for_ty, def_id_to_vir_path, get_range, is_smt_arith, is_smt_equality,
-    local_to_var, mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    auto_deref_supported_for_ty, def_id_to_vir_path, get_impl_paths_for_clauses, get_range,
+    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mid_ty_to_vir,
+    mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::spans::err_air_span;
 use crate::util::{
@@ -29,15 +29,18 @@ use rustc_hir::{
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
-use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, VariantDef};
+use rustc_middle::ty::{
+    AdtDef, ClauseKind, GenericArg, ImplPolarity, ToPredicate, TraitPredicate, TraitRef, TyCtxt,
+    TyKind, VariantDef,
+};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
-    HeaderExprX, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts,
-    Typ, TypX, UnaryOp, UnaryOpr, VariantCheck, VirErr,
+    HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped,
+    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VariantCheck, VirErr,
 };
 use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::{field_ident_from_rust, positional_field_ident};
@@ -1162,6 +1165,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let (target, vir_args, resolved_call) = if is_spec_fn {
                         (CallTarget::FnSpec(vir_fun), vir_args, ResolvedCall::Spec)
                     } else {
+                        if bctx.ctxt.no_vstd {
+                            return err_span(
+                                expr.span,
+                                "Non-static calls are not supported with --no-vstd",
+                            );
+                        }
+
                         // non-static calls are translated into a static call to
                         // `exec_nonstatic_call` which is defined in the pervasive lib.
                         let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
@@ -1174,7 +1184,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // decoration, so call mid_ty_to_vir for these
                         // Compute `tup_typ` with the correct decoration:
                         let mut arg_typs = vec![];
-                        for arg in args {
+                        for arg in args.iter() {
                             arg_typs.push(mid_ty_to_vir(
                                 tcx,
                                 &bctx.ctxt.verus_items,
@@ -1200,13 +1210,44 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             true,
                         )?;
 
+                        // Get impl_paths for the trait bound
+                        // fun_ty : FnOnce<Args>
+                        let generic_arg0 = GenericArg::from(fun_ty);
+                        let generic_arg1 = GenericArg::from(
+                            tcx.mk_ty_from_kind(TyKind::Tuple(
+                                tcx.mk_type_list(
+                                    &args
+                                        .iter()
+                                        .map(|arg| bctx.types.expr_ty_adjusted(arg))
+                                        .collect::<Vec<_>>(),
+                                ),
+                            )),
+                        );
+                        let clauses = vec![
+                            rustc_middle::ty::Binder::dummy(ClauseKind::Trait(TraitPredicate {
+                                trait_ref: TraitRef::new(
+                                    tcx,
+                                    tcx.lang_items().fn_once_trait().unwrap(),
+                                    [generic_arg0, generic_arg1],
+                                ),
+                                polarity: ImplPolarity::Positive,
+                            }))
+                            .to_predicate(tcx),
+                        ];
+                        let impl_paths = get_impl_paths_for_clauses(
+                            tcx,
+                            &bctx.ctxt.verus_items,
+                            bctx.fun_id,
+                            clauses,
+                        );
+
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
                         (
                             CallTarget::Fun(
                                 vir::ast::CallTargetKind::Static,
                                 helper_fun,
                                 typ_args,
-                                Arc::new(vec![]),
+                                impl_paths,
                                 AutospecUsage::Final,
                             ),
                             vec![vir_fun, tup],
@@ -1427,8 +1468,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let fun = FunX { path };
                     mk_expr(ExprX::StaticVar(Arc::new(fun)))
                 }
-                Res::Def(DefKind::Fn | DefKind::AssocFn, _) => {
-                    unsupported_err!(expr.span, "using functions as values");
+                Res::Def(DefKind::Fn, id) | Res::Def(DefKind::AssocFn, id) => {
+                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let fun = Arc::new(vir::ast::FunX { path });
+                    mk_expr(ExprX::ExecFnByName(fun))
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let gparam = if let Some(local_id) = id.as_local() {
@@ -1810,7 +1853,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Arc::new(fun),
                 typ_args,
                 // arbitrary impl_path
-                Arc::new(vec![vir::def::prefix_lambda_type(0)]),
+                // REVIEW: why is this needed?
+                Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_lambda_type(0))]),
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);

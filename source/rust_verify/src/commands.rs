@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::Visibility;
-use vir::ast::{Fun, Function, ItemKind, Krate, Mode, Path, TraitImpl, VirErr};
+use vir::ast::{Fun, Function, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
@@ -157,11 +157,15 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         let (mut ops, post_ops) = self.handle_specs_scc_component(&scc_rep)?;
 
         for node in self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
-            if let Node::Fun(f) = node {
-                if let Some((f, _)) = self.func_map.get(&f) {
-                    let f_ops = self.handle_proof_body_normal_for_proof_and_exec(f.clone())?;
-                    ops.extend(f_ops);
+            match &node {
+                Node::Fun(f) => {
+                    if let Some((func, _)) = self.func_map.get(f) {
+                        let f_ops =
+                            self.handle_proof_body_normal_for_proof_and_exec(func.clone())?;
+                        ops.extend(f_ops);
+                    }
                 }
+                _ => {}
             }
         }
 
@@ -169,7 +173,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         // are only sound at the end of the SCC, after obligations have been satisfied:
         ops.extend(post_ops);
         for node in self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
-            if let Node::TraitImpl(impl_path) = node {
+            if let Node::TraitImpl(ImplPath::TraitImplPath(impl_path)) = node {
                 if let Some(imp) = self.trait_impl_map.get(&impl_path) {
                     let cmds = vir::traits::trait_impl_to_air(&self.ctx, imp);
                     ops.push(Op::context(ContextOp::TraitImpl, cmds, None));
@@ -182,10 +186,22 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
     fn handle_specs_scc_component(&mut self, scc_rep: &Node) -> Result<(Vec<Op>, Vec<Op>), VirErr> {
         let scc_nodes = self.ctx.global.func_call_graph.get_scc_nodes(scc_rep);
-        let mut scc_fun_nodes: Vec<Fun> = Vec::new();
+        let mut scc_functions: Vec<(Function, Visibility)> = Vec::new();
+
+        // In an 'exec' function, the req% and ens% definitions conceptually go with
+        // the FnDefImplPath node, which represents the trait bound
+        // FnDef(f) : FnOnce(_) -> _
+        // This is true even if the FnDef type or the trait bound isn't actually
+        // used anywhere (which is most of the time).
+        // So: req% and ens% definitions go with the Fun(f) node for non-exec functions
+        // and with the FnDefImplPath(f) node for exec functions.
         for node in scc_nodes.into_iter() {
             match node {
-                Node::Fun(f) => scc_fun_nodes.push(f),
+                Node::Fun(f) => {
+                    if let Some(pair) = self.func_map.get(&f) {
+                        scc_functions.push(pair.clone());
+                    }
+                }
                 _ => {}
             }
         }
@@ -195,13 +211,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         let mut query_ops = vec![];
         let mut post_ops = vec![];
 
-        for f in scc_fun_nodes.iter() {
-            let (function, _vis_abs) = if let Some(f) = self.func_map.get(f) {
-                f.clone()
-            } else {
-                continue;
-            };
-
+        for (function, _vis_abs) in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx(&function, false);
             let decl_commands = vir::func_to_air::func_decl_to_air(
                 self.ctx,
@@ -214,13 +224,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
         }
 
-        for f in scc_fun_nodes.iter() {
-            let (function, vis_abs) = if let Some(f) = self.func_map.get(f) {
-                f.clone()
-            } else {
-                continue;
-            };
-
+        for (function, vis_abs) in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx_dec(&function, true, true);
             let not_verifying_owning_bucket = !self.bucket.contains(&function.x.name);
 

@@ -1,6 +1,6 @@
 use crate::ast::{
     AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::typ_to_diagnostic_str;
@@ -32,7 +32,7 @@ pub enum Node {
     Fun(Fun),
     Datatype(Path),
     Trait(Path),
-    TraitImpl(Path),
+    TraitImpl(ImplPath),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },
@@ -61,9 +61,9 @@ pub(crate) fn get_callee(
 
 fn is_recursive_call(ctxt: &Ctxt, target: &Fun, resolved_method: &Option<(Fun, Typs)>) -> bool {
     if let Some(callee) = get_callee(ctxt.ctx, target, resolved_method) {
+        let callee_node = Node::Fun(callee.clone());
         callee == ctxt.recursive_function_name
-            || ctxt.ctx.global.func_call_graph.get_scc_rep(&Node::Fun(callee.clone()))
-                == ctxt.scc_rep
+            || ctxt.ctx.global.func_call_graph.get_scc_rep(&callee_node) == ctxt.scc_rep
     } else {
         false
     }
@@ -189,8 +189,10 @@ fn check_decrease_call(
     check_decrease(ctxt, span, &decreases_exps)
 }
 
-pub(crate) fn fun_is_recursive(ctx: &Ctx, name: &Fun) -> bool {
-    ctx.global.func_call_graph.node_is_in_cycle(&Node::Fun(name.clone()))
+pub(crate) fn fun_is_recursive(ctx: &Ctx, function: &Function) -> bool {
+    let name = &function.x.name;
+    let node = Node::Fun(name.clone());
+    ctx.global.func_call_graph.node_is_in_cycle(&node)
 }
 
 fn mk_decreases_at_entry(
@@ -229,8 +231,9 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     function: &Function,
     body: &Exp,
 ) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
-    let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
-    if !fun_is_recursive(ctx, &function.x.name) {
+    let caller_node = Node::Fun(function.x.name.clone());
+    let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
+    if !fun_is_recursive(ctx, function) {
         return Ok((false, body.clone(), scc_rep));
     }
     let num_decreases = function.x.decrease.len();
@@ -272,7 +275,7 @@ pub(crate) fn check_termination_commands(
     body: &Stm,
     uses_decreases_by: bool,
 ) -> Result<Vec<CommandsWithContext>, VirErr> {
-    if !fun_is_recursive(ctx, &function.x.name) {
+    if !fun_is_recursive(ctx, function) {
         return Ok(vec![]);
     }
 
@@ -407,7 +410,7 @@ pub(crate) fn check_termination_stm(
     function: &Function,
     body: &Stm,
 ) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
-    if !fun_is_recursive(ctx, &function.x.name) {
+    if !fun_is_recursive(ctx, &function) {
         return Ok((vec![], body.clone()));
     }
 
@@ -438,7 +441,7 @@ pub(crate) fn expand_call_graph(
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
     if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
-        let impl_node = Node::TraitImpl(impl_path.clone());
+        let impl_node = Node::TraitImpl(ImplPath::TraitImplPath(impl_path.clone()));
         call_graph.add_edge(impl_node, f_node.clone());
         call_graph.add_edge(f_node.clone(), t_node);
     }
@@ -488,7 +491,9 @@ pub(crate) fn expand_call_graph(
                         FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
                     ) = (&function.x.kind, &f2.x.kind)
                     {
-                        if caller_impl == impl_path && callee_impl == impl_path {
+                        if &ImplPath::TraitImplPath(caller_impl.clone()) == impl_path
+                            && &ImplPath::TraitImplPath(callee_impl.clone()) == impl_path
+                        {
                             continue;
                         }
                     }
@@ -505,6 +510,14 @@ pub(crate) fn expand_call_graph(
 
                 // f --> f2
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
+            }
+            ExprX::ConstVar(callee, _) => {
+                call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
+            }
+            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _) => {
+                for impl_path in impl_paths.iter() {
+                    call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
+                }
             }
             ExprX::Fuel(callee, fuel) if *fuel >= 1 => {
                 let f2 = &func_map[callee];

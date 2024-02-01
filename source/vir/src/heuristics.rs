@@ -23,6 +23,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Char => false,
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
+        TypX::FnDef(..) => false,
     }
 }
 
@@ -117,6 +118,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
         | ExpX::CallLambda(..)
         | ExpX::Ctor(..)
         | ExpX::NullaryOpr(_)
+        | ExpX::ExecFnByName(_)
         | ExpX::Interp(_) => exp.clone(),
     }
 }

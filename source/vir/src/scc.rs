@@ -200,6 +200,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
+    /// Returns true if the given element is part of a cycle (including self-loops)
     pub fn node_is_in_cycle(&self, t: &T) -> bool {
         self.node_has_direct_edge_to_itself(t) || self.get_scc_size(t) > 1
     }

@@ -97,6 +97,7 @@ impl ToString for TypX {
                 format!("<{} as {}>::{}", self_typ.to_string(), tr.to_string(), name.to_string())
             }
             TypX::Closure => "_".to_string(),
+            TypX::FnDef => "_".to_string(),
         }
     }
 }

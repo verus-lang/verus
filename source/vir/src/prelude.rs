@@ -53,8 +53,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let Height = str_to_node(T_HEIGHT);
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
+    let box_fndef = str_to_node(BOX_FNDEF);
     let unbox_int = str_to_node(UNBOX_INT);
     let unbox_bool = str_to_node(UNBOX_BOOL);
+    let unbox_fndef = str_to_node(UNBOX_FNDEF);
+
+    #[allow(non_snake_case)]
+    let FnDef = str_to_node(FNDEF_TYPE);
+    #[allow(non_snake_case)]
+    let FnDefSingleton = str_to_node(FNDEF_SINGLETON);
 
     let box_strslice = str_to_node(BOX_STRSLICE);
     let unbox_strslice = str_to_node(UNBOX_STRSLICE);
@@ -142,13 +149,18 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [new_strlit] (Int) [strslice])
         (declare-fun [from_strlit] ([strslice]) Int)
 
+        // FnDef
+        (declare-datatypes (([FnDef] 0)) ((([FnDefSingleton]))))
+
         // Polymorphism
         (declare-sort [Poly] 0)
         (declare-sort [Height] 0)
         (declare-fun [box_int] (Int) [Poly])
         (declare-fun [box_bool] (Bool) [Poly])
+        (declare-fun [box_fndef] ([FnDef]) [Poly])
         (declare-fun [unbox_int] ([Poly]) Int)
         (declare-fun [unbox_bool] ([Poly]) Bool)
+        (declare-fun [unbox_fndef] ([Poly]) [FnDef])
         (declare-fun [box_strslice] ([strslice]) [Poly])
         (declare-fun [unbox_strslice] ([Poly]) [strslice])
         (declare-fun [box_char] ([Char]) [Poly])
