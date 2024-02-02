@@ -11,7 +11,6 @@
 //! Copyright by the contributors to the Dafny Project *
 //! SPDX-License-Identifier: MIT
 //! *******************************************************************************/
-
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -19,7 +18,12 @@ use builtin_macros::*;
 verus! {
 
 use crate::calc_macro::*;
-use crate::arithmetic::div_mod::{lemma_div_pos_is_pos_auto, lemma_div_decreases_auto, lemma_div_is_ordered_auto, lemma_div_multiples_vanish};
+use crate::arithmetic::div_mod::{
+    lemma_div_pos_is_pos_auto,
+    lemma_div_decreases_auto,
+    lemma_div_is_ordered_auto,
+    lemma_div_multiples_vanish,
+};
 use crate::arithmetic::math::{div as div1};
 use crate::arithmetic::mul::{lemma_mul_increases, lemma_mul_is_commutative};
 use crate::arithmetic::power::{pow, lemma_pow_positive};
@@ -32,8 +36,7 @@ pub open spec fn log(base: int, pow: int) -> int
     recommends
         base > 1,
         pow >= 0,
-    decreases
-        pow,
+    decreases pow,
 {
     // In Dafny, we can invoke lemmas in functions to establish
     // termination. Here in Verus, instead, we add the second
@@ -41,8 +44,7 @@ pub open spec fn log(base: int, pow: int) -> int
     // termination.
     if pow < base || pow / base >= pow || pow / base < 0 {
         0
-    }
-    else {
+    } else {
         1 + log(base, pow / base)
     }
 }
@@ -53,7 +55,7 @@ pub proof fn lemma_log0(base: int, pow: int)
         base > 1,
         0 <= pow < base,
     ensures
-        log(base, pow) == 0
+        log(base, pow) == 0,
 {
     reveal(log);
 }
@@ -67,7 +69,7 @@ pub proof fn lemma_log_s(base: int, pow: int)
         pow >= base,
     ensures
         pow / base >= 0,
-        log(base, pow) == 1 + log(base, pow / base)
+        log(base, pow) == 1 + log(base, pow / base),
 {
     lemma_div_pos_is_pos_auto();
     lemma_div_decreases_auto();
@@ -79,11 +81,19 @@ pub proof fn lemma_log_s(base: int, pow: int)
 /// of that value divided by the base
 pub proof fn lemma_log_s_auto()
     ensures
-        forall |base: int, pow: int| #![trigger log(base, div1(pow, base))] base > 1 && pow >= base ==>
-            div1(pow, base) >= 0 && log(base, pow) == 1 + log(base, div1(pow, base))
+        forall|base: int, pow: int|
+            #![trigger log(base, div1(pow, base))]
+            base > 1 && pow >= base ==> div1(pow, base) >= 0 && log(base, pow) == 1 + log(
+                base,
+                div1(pow, base),
+            ),
 {
-    assert forall |base: int, pow: int| #![trigger log(base, div1(pow, base))] base > 1 && pow >= base implies
-            div1(pow, base) >= 0 && log(base, pow) == 1 + log(base, div1(pow, base)) by {
+    assert forall|base: int, pow: int|
+        #![trigger log(base, div1(pow, base))]
+        base > 1 && pow >= base implies div1(pow, base) >= 0 && log(base, pow) == 1 + log(
+        base,
+        div1(pow, base),
+    ) by {
         lemma_log_s(base, pow);
     }
 }
@@ -96,11 +106,10 @@ pub proof fn lemma_log_nonnegative(base: int, pow: int)
         0 <= pow,
     ensures
         log(base, pow) >= 0,
-    decreases
-        pow,
+    decreases pow,
 {
     reveal(log);
-    if !(pow < base || pow / base >= pow || pow / base < 0) {
+    if !(pow < base || pow / base >= pow || pow / base < 0)  {
         lemma_log_nonnegative(base, pow / base);
     }
 }
@@ -113,9 +122,8 @@ pub proof fn lemma_log_is_ordered(base: int, pow1: int, pow2: int)
         base > 1,
         0 <= pow1 <= pow2,
     ensures
-        log(base, pow1) <= log(base, pow2)
-    decreases
-        pow1,
+        log(base, pow1) <= log(base, pow2),
+    decreases pow1,
 {
     reveal(log);
     if pow2 < base {
@@ -137,14 +145,12 @@ pub proof fn lemma_log_pow(base: int, n: nat)
         base > 1,
     ensures
         log(base, pow(base, n)) == n,
-    decreases
-        n,
+    decreases n,
 {
     if n == 0 {
         reveal(pow);
         reveal(log);
-    }
-    else {
+    } else {
         let n_minus_1: nat = (n - 1) as nat;
         lemma_pow_positive(base, n);
         calc! {
@@ -168,4 +174,4 @@ pub proof fn lemma_log_pow(base: int, n: nat)
     }
 }
 
-}
+} // verus!

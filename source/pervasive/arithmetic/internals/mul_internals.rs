@@ -7,11 +7,10 @@
 //! /*******************************************************************************
 //! *  Original: Copyright (c) Microsoft Corporation
 //! *  SPDX-License-Identifier: MIT
-//! *  
+//! *
 //! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
-//! *  SPDX-License-Identifier: MIT 
+//! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
-
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
@@ -26,21 +25,24 @@ verus! {
 /// when `x` is non-negative.
 #[verifier(opaque)]
 pub open spec fn mul_pos(x: int, y: int) -> int
-    recommends x >= 0
-    decreases x
+    recommends
+        x >= 0,
+    decreases x,
 {
     if x <= 0 {
-        0 
+        0
     } else {
-        y + mul_pos(x - 1, y) 
+        y + mul_pos(x - 1, y)
     }
 }
 
 /// This function performs multiplication recursively.
-pub open spec fn mul_recursive(x: int, y: int) -> int
-{
-    if x >= 0 { mul_pos(x, y) }
-    else { -1 * mul_pos(-1 * x, y) }
+pub open spec fn mul_recursive(x: int, y: int) -> int {
+    if x >= 0 {
+        mul_pos(x, y)
+    } else {
+        -1 * mul_pos(-1 * x, y)
+    }
 }
 
 /// This utility function helps prove a mathematical property by
@@ -60,35 +62,41 @@ pub open spec fn mul_recursive(x: int, y: int) -> int
 /// `sub1(i, 1)` is just `i - 1`, but written in a functional style
 /// so that it can be used where functional triggers are required.
 pub proof fn lemma_mul_induction(f: FnSpec(int) -> bool)
-    requires 
+    requires
         f(0),
-        forall |i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1)),
-        forall |i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)),
+        forall|i: int|
+            i >= 0 && #[trigger]
+            f(i) ==> #[trigger]
+            f(add1(i, 1)),
+        forall|i: int|
+            i <= 0 && #[trigger]
+            f(i) ==> #[trigger]
+            f(sub1(i, 1)),
     ensures
-        forall |i: int| #[trigger] f(i)
+        forall|i: int| #[trigger] f(i),
 {
-    assert forall |i: int| #[trigger] f(i) by { lemma_induction_helper(1, f, i) };
+    assert forall|i: int| #[trigger] f(i) by { lemma_induction_helper(1, f, i) };
 }
 
 /// Proof that multiplication is always commutative
 proof fn lemma_mul_commutes()
-    ensures 
-        forall |x: int, y: int| #[trigger](x * y) == y * x
-{}
+    ensures
+        forall|x: int, y: int| #[trigger] (x * y) == y * x,
+{
+}
 
 /// Proof that multiplication distributes over addition by 1 and
 /// over subtraction by 1
 proof fn lemma_mul_successor()
-    ensures 
-        forall |x: int, y: int| #[trigger] ((x + 1) * y) == x * y + y,
-        forall |x: int, y: int| #[trigger] ((x - 1) * y) == x * y - y,
+    ensures
+        forall|x: int, y: int| #[trigger] ((x + 1) * y) == x * y + y,
+        forall|x: int, y: int| #[trigger] ((x - 1) * y) == x * y - y,
 {
-    assert forall |x:int, y:int| #[trigger]((x + 1) * y) == x * y + y by {
+    assert forall|x: int, y: int| #[trigger] ((x + 1) * y) == x * y + y by {
         MulINL::lemma_mul_is_distributive_add(y, x, 1);
     }
-    
-    assert forall |x:int, y:int| #[trigger]((x - 1) * y) == x * y - y by {
-        assert((x - 1) * y  == y * (x - 1));
+    assert forall|x: int, y: int| #[trigger] ((x - 1) * y) == x * y - y by {
+        assert((x - 1) * y == y * (x - 1));
         MulINL::lemma_mul_is_distributive_add(y, x, -1);
         assert(y * (x - 1) == y * x + y * -1);
         assert(-1 * y == -y);
@@ -101,60 +109,66 @@ proof fn lemma_mul_successor()
 #[verifier(spinoff_prover)]
 proof fn lemma_mul_distributes()
     ensures
-    forall |x: int, y: int, z: int| #[trigger]((x + y) * z) == (x * z + y * z),
-    forall |x: int, y: int, z: int| #[trigger]((x - y) * z) == (x * z - y * z),
+        forall|x: int, y: int, z: int| #[trigger] ((x + y) * z) == (x * z + y * z),
+        forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z),
 {
     lemma_mul_successor();
-
-    assert forall |x:int, y:int, z:int| #[trigger]((x + y) * z) == (x * z + y * z)
-        by
-    {
+    assert forall|x: int, y: int, z: int| #[trigger] ((x + y) * z) == (x * z + y * z) by {
         let f1 = |i: int| ((x + i) * z) == (x * z + i * z);
         assert(f1(0));
-        assert forall |i: int| i >= 0 && #[trigger] f1(i) implies #[trigger]f1(add1(i, 1)) by {
-            assert(  (x + (i + 1)) * z == ((x + i) + 1) * z == (x + i) * z + z);
-
+        assert forall|i: int|
+            i >= 0 && #[trigger]
+            f1(i) implies #[trigger]
+        f1(add1(i, 1)) by {
+            assert((x + (i + 1)) * z == ((x + i) + 1) * z == (x + i) * z + z);
         };
-        assert forall |i: int| i <= 0 && #[trigger] f1(i) implies #[trigger]f1(sub1(i, 1)) by {
+        assert forall|i: int|
+            i <= 0 && #[trigger]
+            f1(i) implies #[trigger]
+        f1(sub1(i, 1)) by {
             assert((x + (i - 1)) * z == ((x + i) - 1) * z == (x + i) * z - z);
         };
         lemma_mul_induction(f1);
         assert(f1(y));
-
-
     }
-
-    assert forall |x:int, y:int, z:int| #[trigger]((x - y) * z) == (x * z - y * z) by {
+    assert forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z) by {
         let f2 = |i: int| ((x - i) * z) == (x * z - i * z);
         assert(f2(0));
-        assert forall |i: int| i >= 0 && #[trigger] f2(i) implies #[trigger]f2(add1(i, 1)) by {
-            assert(  (x - (i + 1)) * z == ((x - i) - 1) * z == (x - i) * z - z);
-
+        assert forall|i: int|
+            i >= 0 && #[trigger]
+            f2(i) implies #[trigger]
+        f2(add1(i, 1)) by {
+            assert((x - (i + 1)) * z == ((x - i) - 1) * z == (x - i) * z - z);
         };
-        assert forall |i: int| i <= 0 && #[trigger] f2(i) implies #[trigger]f2(sub1(i, 1)) by {
+        assert forall|i: int|
+            i <= 0 && #[trigger]
+            f2(i) implies #[trigger]
+        f2(sub1(i, 1)) by {
             assert((x - (i - 1)) * z == ((x - i) + 1) * z == (x - i) * z + z);
         };
-
         lemma_mul_induction(f2);
         assert(f2(y));
     }
-
 }
 
 /// This function expresses that multiplication is commutative,
 /// distributes over addition, and distributes over subtraction
-pub open spec fn mul_auto() -> bool
-{
-    &&& forall |x:int, y:int| #[trigger](x * y) == (y * x)
-    &&& forall |x:int, y:int, z:int| #[trigger]((x + y) * z) == (x * z + y * z)
-    &&& forall |x:int, y:int, z:int| #[trigger]((x - y) * z) == (x * z - y * z)
+pub open spec fn mul_auto() -> bool {
+    &&& forall|x: int, y: int|
+        #[trigger]
+        (x * y) == (y * x)
+        &&& forall|x: int, y: int, z: int|
+            #[trigger]
+            ((x + y) * z) == (x * z + y * z)
+            &&& forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z)
 }
 
 /// Proof that multiplication is commutative, distributes over
 /// addition, and distributes over subtraction
 // #[verifier::spinoff_prover]
 pub proof fn lemma_mul_auto()
-    ensures  mul_auto()
+    ensures
+        mul_auto(),
 {
     lemma_mul_commutes();
     lemma_mul_distributes();
@@ -175,16 +189,23 @@ pub proof fn lemma_mul_auto()
 /// must establish that, for any `i`, `is_le(i, 0)` implies `f(i) ==>
 /// f(i - 1)`.
 pub proof fn lemma_mul_induction_auto(x: int, f: FnSpec(int) -> bool)
-    requires mul_auto() ==> { &&&  f(0)
-                              &&& (forall |i| #[trigger] is_le(0, i) && f(i) ==> f(i + 1))
-                              &&& (forall |i| #[trigger] is_le(i, 0) && f(i) ==> f(i - 1))}
-    ensures  
+    requires
+        mul_auto() ==> {
+            &&& f(0)
+            &&& (forall|i| #[trigger] is_le(0, i) && f(i) ==> f(i + 1))
+            &&& (forall|i| #[trigger] is_le(i, 0) && f(i) ==> f(i - 1))
+        },
+    ensures
         mul_auto(),
         f(x),
 {
     lemma_mul_auto();
-    assert (forall |i| is_le(0, i) && #[trigger] f(i) ==> f(i + 1));
-    assert (forall |i| is_le(i, 0) && #[trigger] f(i) ==> f(i - 1));
+    assert(forall|i|
+        is_le(0, i) && #[trigger]
+        f(i) ==> f(i + 1));
+    assert(forall|i|
+        is_le(i, 0) && #[trigger]
+        f(i) ==> f(i - 1));
     lemma_mul_induction(f);
 }
 
@@ -203,19 +224,22 @@ pub proof fn lemma_mul_induction_auto(x: int, f: FnSpec(int) -> bool)
 /// must establish that, for any `i`, `is_le(i, 0)` implies `f(i) ==>
 /// f(i - 1)`.
 pub proof fn lemma_mul_induction_auto_forall(f: FnSpec(int) -> bool)
-    requires mul_auto() ==> { &&&  f(0)
-                              &&& (forall |i| #[trigger] is_le(0, i) && f(i) ==> f(i + 1))
-                              &&& (forall |i| #[trigger] is_le(i, 0) && f(i) ==> f(i - 1))}
-    ensures  
+    requires
+        mul_auto() ==> {
+            &&& f(0)
+            &&& (forall|i| #[trigger] is_le(0, i) && f(i) ==> f(i + 1))
+            &&& (forall|i| #[trigger] is_le(i, 0) && f(i) ==> f(i - 1))
+        },
+    ensures
         mul_auto(),
-        forall |i| #[trigger] f(i),
+        forall|i| #[trigger] f(i),
 {
     assert(mul_auto()) by {
         lemma_mul_induction_auto(0, f);
     }
-    assert forall |i| #[trigger] f(i) by {
+    assert forall|i| #[trigger] f(i) by {
         lemma_mul_induction_auto(i, f);
     }
 }
 
-}
+} // verus!

@@ -7,16 +7,15 @@
 //! /*******************************************************************************
 //! *  Original: Copyright (c) Microsoft Corporation
 //! *  SPDX-License-Identifier: MIT
-//! *  
+//! *
 //! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
-//! *  SPDX-License-Identifier: MIT 
+//! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
-
 //! Declares helper lemmas and predicates for non-linear arithmetic
+use crate::arithmetic::math::{add as add1, sub as sub1};
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use crate::arithmetic::math::{add as add1, sub as sub1};
 
 verus! {
 
@@ -24,8 +23,7 @@ verus! {
 /// trigger on a `<=` operator but we need a functional rather than a
 /// mathematical trigger. (A trigger must be fully functional or fully
 /// mathematical.)
-pub open spec fn is_le(x: int, y: int) -> bool
-{
+pub open spec fn is_le(x: int, y: int) -> bool {
     x <= y
 }
 
@@ -33,21 +31,28 @@ pub open spec fn is_le(x: int, y: int) -> bool
 /// `lemma_induction_helper` by covering only the case of nonnegative
 /// values of `x`.
 proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
-    requires 
+    requires
         x >= 0,
         n > 0,
-        forall |i : int| 0 <= i < n ==> #[trigger] f(i),
-        forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add1(i, n)),
-        forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub1(i, n))
+        forall|i: int|
+            0 <= i < n ==> #[trigger]
+            f(i),
+        forall|i: int|
+            i >= 0 && #[trigger]
+            f(i) ==> #[trigger]
+            f(add1(i, n)),
+        forall|i: int|
+            i < n && #[trigger]
+            f(i) ==> #[trigger]
+            f(sub1(i, n)),
     ensures
-        f(x)
-    decreases x
+        f(x),
+    decreases x,
 {
-    if (x >= n)
-    {
+    if (x >= n) {
         assert(x - n < x);
         lemma_induction_helper_pos(n, f, x - n);
-        assert (f (add1(x - n, n)));
+        assert(f(add1(x - n, n)));
         assert(f((x - n) + n));
     }
 }
@@ -56,24 +61,31 @@ proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
 /// `lemma_induction_helper` by covering only the case of negative
 /// values of `x`.
 proof fn lemma_induction_helper_neg(n: int, f: FnSpec(int) -> bool, x: int)
-    requires 
+    requires
         x < 0,
         n > 0,
-        forall |i : int| 0 <= i < n ==> #[trigger] f(i),
-        forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add1(i, n)),
-        forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub1(i, n))
+        forall|i: int|
+            0 <= i < n ==> #[trigger]
+            f(i),
+        forall|i: int|
+            i >= 0 && #[trigger]
+            f(i) ==> #[trigger]
+            f(add1(i, n)),
+        forall|i: int|
+            i < n && #[trigger]
+            f(i) ==> #[trigger]
+            f(sub1(i, n)),
     ensures
-        f(x)
-    decreases -x
+        f(x),
+    decreases -x,
 {
     if (-x <= n) {
         lemma_induction_helper_pos(n, f, x + n);
-        assert (f (sub1(x + n, n)));
+        assert(f(sub1(x + n, n)));
         assert(f((x + n) - n));
-    }
-    else {
+    } else {
         lemma_induction_helper_neg(n, f, x + n);
-        assert (f (sub1(x + n, n)));
+        assert(f(sub1(x + n, n)));
         assert(f((x + n) - n));
     }
 }
@@ -103,21 +115,27 @@ proof fn lemma_induction_helper_neg(n: int, f: FnSpec(int) -> bool, x: int)
 /// `sub1(i, n)` is just `i - n`, but written in a functional style
 /// so that it can be used where functional triggers are required.
 pub proof fn lemma_induction_helper(n: int, f: FnSpec(int) -> bool, x: int)
-requires 
-    n > 0,
-    forall |i : int| 0 <= i < n ==> #[trigger] f(i),
-    forall |i : int| i >= 0 && #[trigger] f(i) ==> #[trigger] f (add1(i, n)),
-    forall |i : int| i < n  && #[trigger] f(i) ==> #[trigger] f (sub1(i, n))
-ensures
-    f(x)
+    requires
+        n > 0,
+        forall|i: int|
+            0 <= i < n ==> #[trigger]
+            f(i),
+        forall|i: int|
+            i >= 0 && #[trigger]
+            f(i) ==> #[trigger]
+            f(add1(i, n)),
+        forall|i: int|
+            i < n && #[trigger]
+            f(i) ==> #[trigger]
+            f(sub1(i, n)),
+    ensures
+        f(x),
 {
     if (x >= 0) {
         lemma_induction_helper_pos(n, f, x);
-    }
-    else {
+    } else {
         lemma_induction_helper_neg(n, f, x);
     }
 }
 
-}
-
+} // verus!

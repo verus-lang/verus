@@ -7,30 +7,30 @@
 //! /*******************************************************************************
 //! *  Original: Copyright (c) Microsoft Corporation
 //! *  SPDX-License-Identifier: MIT
-//! *  
+//! *
 //! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
-//! *  SPDX-License-Identifier: MIT 
+//! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
-
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
 
 verus! {
 
-use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto}; 
-use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto; 
-use crate::arithmetic::internals::general_internals::is_le; 
+use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto};
+use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
+use crate::arithmetic::internals::general_internals::is_le;
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
 /// repeatedly recursively unfolding it.
 #[verifier(opaque)]
 pub open spec fn pow2(e: nat) -> nat
-    decreases e
-    // ensures pow2(e) > 0  
-    // cannot have ensurs clause in spec functions
-    // a workaround is the lemma_pow2_pos below
+    decreases
+            e// ensures pow2(e) > 0
+            // cannot have ensurs clause in spec functions
+            // a workaround is the lemma_pow2_pos below
+            ,
 {
     // you cannot reveal in a spec function, which cause more reveals clauses
     // for the proof
@@ -41,7 +41,8 @@ pub open spec fn pow2(e: nat) -> nat
 /// Proof that 2 to the power of any natural number (specifically,
 /// `e`) is positive
 pub proof fn lemma_pow2_pos(e: nat)
-    ensures pow2(e) > 0
+    ensures
+        pow2(e) > 0,
 {
     reveal(pow2);
     lemma_pow_positive(2, e);
@@ -49,18 +50,19 @@ pub proof fn lemma_pow2_pos(e: nat)
 
 /// Proof that 2 to the power of any natural number is positive
 pub proof fn lemma_pow2_pos_auto()
-    ensures forall |e: nat| #[trigger]pow2(e) > 0
+    ensures
+        forall|e: nat| #[trigger] pow2(e) > 0,
 {
-    assert forall |e: nat| #[trigger]pow2(e) > 0 by
-    {
+    assert forall|e: nat| #[trigger] pow2(e) > 0 by {
         lemma_pow2_pos(e);
     }
 }
 
 /// Proof that `pow2(e)` is equivalent to `pow(2, e)`
 pub proof fn lemma_pow2(e: nat)
-    ensures pow2(e) == pow(2, e) as int
-    decreases e
+    ensures
+        pow2(e) == pow(2, e) as int,
+    decreases e,
 {
     reveal(pow);
     reveal(pow2);
@@ -71,21 +73,23 @@ pub proof fn lemma_pow2(e: nat)
 
 /// Proof that `pow2(e)` is equivalent to `pow(2, e)` for all `e`
 pub proof fn lemma_pow2_auto()
-    ensures forall |e: nat| #[trigger]pow2(e) == pow(2, e)
+    ensures
+        forall|e: nat| #[trigger] pow2(e) == pow(2, e),
 {
-    assert forall |e: nat| #[trigger]pow2(e) == pow(2, e) by
-    {
-    lemma_pow2(e);
+    assert forall|e: nat| #[trigger] pow2(e) == pow(2, e) by {
+        lemma_pow2(e);
     }
 }
 
 /// Proof that, for the given positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
 pub proof fn lemma_pow2_mask_div2(e: nat)
-    requires 0 < e
-    ensures (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1
+    requires
+        0 < e,
+    ensures
+        (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
 {
     let f = |e: int| 0 < e ==> (pow2(e as nat) - 1) / 2 == pow2((e - 1) as nat) - 1;
-    assert forall |i: int|  #[trigger]is_le(0, i) && f(i) implies f(i + 1) by {
+    assert forall|i: int| #[trigger] is_le(0, i) && f(i) implies f(i + 1) by {
         lemma_pow_auto();
         lemma_pow2_auto();
     };
@@ -94,19 +98,19 @@ pub proof fn lemma_pow2_mask_div2(e: nat)
 
 /// Proof that, for any positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
 pub proof fn lemma_pow2_mask_div2_auto()
-    ensures 
-        forall |e: nat| #![trigger pow2(e)] 0 < e ==> (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1
+    ensures
+        forall|e: nat| #![trigger pow2(e)] 0 < e ==> (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
 {
     reveal(pow2);
-    assert forall |e: nat| 0 < e implies (#[trigger](pow2(e)) - 1) / 2 == pow2((e - 1) as nat) - 1 by
-    {
+    assert forall|e: nat| 0 < e implies (#[trigger]
+    (pow2(e)) - 1) / 2 == pow2((e - 1) as nat) - 1 by {
         lemma_pow2_mask_div2(e);
     }
 }
 
 /// This lemma establishes the concrete values for all powers of 2 from 0 to 32 and also 2^64.
 pub proof fn lemma2_to64()
-    ensures 
+    ensures
         pow2(0) == 0x1,
         pow2(1) == 0x2,
         pow2(2) == 0x4,
@@ -252,4 +256,4 @@ pub proof fn lemma2_to64()
     */
 }
 
-}
+} // verus!
