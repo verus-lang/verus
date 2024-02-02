@@ -133,8 +133,8 @@ pub open spec fn div_auto(n: int) -> bool
     &&& forall|x: int|
         0 <= x < n <==> #[trigger]
         (x / n) == 0
-        &&& div_auto_plus(n)
-        &&& div_auto_minus(n)
+    &&& div_auto_plus(n)
+    &&& div_auto_minus(n)
 }
 
 /// Proof of `div_auto_plus(n)`, not exported publicly because it's

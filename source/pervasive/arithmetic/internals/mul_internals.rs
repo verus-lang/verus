@@ -157,10 +157,10 @@ pub open spec fn mul_auto() -> bool {
     &&& forall|x: int, y: int|
         #[trigger]
         (x * y) == (y * x)
-        &&& forall|x: int, y: int, z: int|
-            #[trigger]
-            ((x + y) * z) == (x * z + y * z)
-            &&& forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z)
+    &&& forall|x: int, y: int, z: int|
+        #[trigger]
+        ((x + y) * z) == (x * z + y * z)
+    &&& forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z)
 }
 
 /// Proof that multiplication is commutative, distributes over
