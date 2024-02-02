@@ -319,7 +319,7 @@ macro_rules! atomic_with_ghost_store {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res:pat, $g:ident, $b:block) => {
         ::builtin_macros::verus_exec_expr!{ {
             let atomic = &($e);
-            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
+            $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (mut perm, mut $g) = pair;
                 let ghost $prev = perm.view().value;
@@ -343,7 +343,7 @@ macro_rules! atomic_with_ghost_load {
         ::builtin_macros::verus_exec_expr!{ {
             let result;
             let atomic = &($e);
-            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
+            $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (perm, mut $g) = pair;
                 result = atomic.patomic.load(Tracked(&perm));
@@ -368,7 +368,7 @@ macro_rules! atomic_with_ghost_no_op {
     ($e:expr, $prev:pat, $next: pat, $res: pat, $g:ident, $b:block) => {
         ::builtin_macros::verus_exec_expr!{ {
             let atomic = &($e);
-            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
+            $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (perm, mut $g) = pair;
                 let ghost $res = result;
@@ -393,7 +393,7 @@ macro_rules! atomic_with_ghost_update_with_1_operand {
             let result;
             let atomic = &($e);
             let operand = $operand;
-            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
+            $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (mut perm, mut $g) = pair;
                 let ghost $prev = perm.view().value;
@@ -421,7 +421,7 @@ macro_rules! atomic_with_ghost_update_with_2_operand {
             let atomic = &($e);
             let operand1 = $operand1;
             let operand2 = $operand2;
-            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
+            $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (mut perm, mut $g) = pair;
                 let ghost $prev = perm.view().value;
@@ -448,7 +448,7 @@ macro_rules! atomic_with_ghost_update_fetch_add {
             let result;
             let atomic = &($e);
             let operand = $operand;
-            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
+            $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (mut perm, mut $g) = pair;
 
@@ -479,7 +479,7 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
             let result;
             let atomic = &($e);
             let operand = $operand;
-            crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
+            $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (mut perm, mut $g) = pair;
 
