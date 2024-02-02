@@ -18,6 +18,7 @@
 extern crate alloc;
 
 pub mod pervasive;
+pub mod arithmetic;
 pub mod array;
 pub mod bytes;
 pub mod calc_macro;
@@ -40,9 +41,6 @@ pub mod layout;
 pub mod multiset;
 pub mod function;
 pub mod state_machine_internal;
-/// Lemmas about nonlinear arithmetic. All lemmas have an “_auto” form, where the
-/// formal parameters are universally quantified.
-pub mod nonlinear_arith;
 #[cfg(feature = "std")]
 pub mod thread;
 #[cfg(feature = "alloc")]

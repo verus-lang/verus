@@ -1,8 +1,7 @@
-//! This file contains proofs related to integer multiplication. These are
-//! part of the math standard library.
+//! This file contains proofs related to integer multiplication (`*`).
+//! These are part of the math standard library.
 //!
-//! It's based on the first part (since the second part is about
-//! modulo) of the following file from the Dafny math standard
+//! It's based on the following file from the Dafny math standard
 //! library:
 //! `Source/DafnyStandardLibraries/src/Std/Arithmetic/Mul.dfy`.
 //! That file has the following copyright notice:
@@ -19,8 +18,8 @@ use builtin_macros::*;
 
 verus! {
 
-use crate::nonlinear_arith::internals::mul_internals_nonlinear as MulINL;
-use crate::nonlinear_arith::internals::mul_internals::*;
+use crate::arithmetic::internals::mul_internals_nonlinear as MulINL;
+use crate::arithmetic::internals::mul_internals::*;
 
 /// Proof that multiplication using `*` is equivalent to the
 /// multiplication using [`mul_recursive`]. Specifically,

@@ -16,9 +16,9 @@
 use builtin::*;
 use builtin_macros::*;
 
-use crate::nonlinear_arith::internals::general_internals::{is_le, lemma_induction_helper};
-use crate::nonlinear_arith::internals::mul_internals_nonlinear as MulINL;
-use crate::nonlinear_arith::math::{add as add1, sub as sub1};
+use crate::arithmetic::internals::general_internals::{is_le, lemma_induction_helper};
+use crate::arithmetic::internals::mul_internals_nonlinear as MulINL;
+use crate::arithmetic::math::{add as add1, sub as sub1};
 
 verus! {
 

@@ -16,7 +16,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use crate::nonlinear_arith::math::{add as add1, sub as sub1};
+use crate::arithmetic::math::{add as add1, sub as sub1};
 
 verus! {
 

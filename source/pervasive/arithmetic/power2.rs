@@ -18,9 +18,9 @@ use builtin_macros::*;
 
 verus! {
 
-use crate::nonlinear_arith::power::{pow, lemma_pow_positive, lemma_pow_auto}; 
-use crate::nonlinear_arith::internals::mul_internals::lemma_mul_induction_auto; 
-use crate::nonlinear_arith::internals::general_internals::is_le; 
+use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto}; 
+use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto; 
+use crate::arithmetic::internals::general_internals::is_le; 
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time

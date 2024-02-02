@@ -17,11 +17,11 @@ use builtin::*;
 use builtin_macros::*;
 
 verus! {
-use crate::nonlinear_arith::internals::general_internals::{is_le};
-use crate::nonlinear_arith::internals::mod_internals::{lemma_mod_induction_forall, lemma_mod_induction_forall2, mod_auto, lemma_mod_auto, lemma_mod_basics};
-use crate::nonlinear_arith::internals::mod_internals_nonlinear;
-use crate::nonlinear_arith::internals::div_internals_nonlinear;
-use crate::nonlinear_arith::math::{add as add1, sub as sub1};
+use crate::arithmetic::internals::general_internals::{is_le};
+use crate::arithmetic::internals::mod_internals::{lemma_mod_induction_forall, lemma_mod_induction_forall2, mod_auto, lemma_mod_auto, lemma_mod_basics};
+use crate::arithmetic::internals::mod_internals_nonlinear;
+use crate::arithmetic::internals::div_internals_nonlinear;
+use crate::arithmetic::math::{add as add1, sub as sub1};
 
 /// This function recursively computes the quotient resulting from
 /// dividing two numbers `x` and `d`, in the case where `d > 0`

@@ -18,13 +18,13 @@ use builtin_macros::*;
 
 verus! {
 
-use crate::nonlinear_arith::internals::general_internals::*;
-use crate::nonlinear_arith::mul::*;
-use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto};
-use crate::nonlinear_arith::internals::mul_internals_nonlinear;
-use crate::nonlinear_arith::internals::mod_internals_nonlinear::{lemma_fundamental_div_mod, lemma_mod_range, lemma_small_mod};
-use crate::nonlinear_arith::internals::div_internals_nonlinear;
-use crate::nonlinear_arith::math::{add as add1, sub as sub1};
+use crate::arithmetic::internals::general_internals::*;
+use crate::arithmetic::mul::*;
+use crate::arithmetic::internals::mul_internals::{lemma_mul_auto};
+use crate::arithmetic::internals::mul_internals_nonlinear;
+use crate::arithmetic::internals::mod_internals_nonlinear::{lemma_fundamental_div_mod, lemma_mod_range, lemma_small_mod};
+use crate::arithmetic::internals::div_internals_nonlinear;
+use crate::arithmetic::math::{add as add1, sub as sub1};
 
 /// This function performs the modulus operation recursively.
 #[verifier(opaque)]

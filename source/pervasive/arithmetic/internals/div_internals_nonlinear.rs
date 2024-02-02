@@ -20,7 +20,7 @@ use builtin_macros::*;
 verus! {
 
 /// Proof that 0 divided by any given integer `d` is 0
-#[verifier(nonlinear)]
+#[verifier::nonlinear]
 pub proof fn lemma_div_of0(d: int)
     requires d != 0 as int
     ensures 0 as int / d == 0 as int
@@ -33,7 +33,7 @@ pub proof fn lemma_div_by_self(d: int)
 {}
 
 /// Proof that dividing a non-negative integer by a larger integer results in a quotient of 0
-#[verifier(nonlinear)]
+#[verifier::nonlinear]
 pub proof fn lemma_small_div()
     ensures forall |x: int, d: int| 0 <= x < d && d > 0 ==> #[trigger](x / d) == 0
 {}

@@ -1,8 +1,8 @@
-//! This file contains proofs related to integer division. These are
-//! part of the math standard library.
+//! This file contains proofs related to integer division (`/`). These
+//! are part of the math standard library.
 //!
 //! It's based on the first part (since the second part is about
-//! modulo) of the following file from the Dafny math standard
+//! remainders) of the following file from the Dafny math standard
 //! library:
 //! `Source/DafnyStandardLibraries/src/Std/Arithmetic/DivMod.dfy`.
 //! That file has the following copyright notice:
@@ -21,14 +21,14 @@ use crate::calc_macro::*;
 verus! {
 
 #[allow(unused_imports)]
-use crate::nonlinear_arith::internals::div_internals::{div_recursive, lemma_div_induction_auto, div_auto, div_pos, lemma_div_auto};
-use crate::nonlinear_arith::internals::div_internals_nonlinear as DivINL;
-use crate::nonlinear_arith::internals::mod_internals_nonlinear as ModINL;
-use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction};
-use crate::nonlinear_arith::mul::*;
-use crate::nonlinear_arith::internals::general_internals::{is_le};
-use crate::nonlinear_arith::modulus::*;
-use crate::nonlinear_arith::math::{add as add1, sub as sub1, div as div1};
+use crate::arithmetic::internals::div_internals::{div_recursive, lemma_div_induction_auto, div_auto, div_pos, lemma_div_auto};
+use crate::arithmetic::internals::div_internals_nonlinear as DivINL;
+use crate::arithmetic::internals::mod_internals_nonlinear as ModINL;
+use crate::arithmetic::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction};
+use crate::arithmetic::mul::*;
+use crate::arithmetic::internals::general_internals::{is_le};
+use crate::arithmetic::remainder::*;
+use crate::arithmetic::math::{add as add1, sub as sub1, div as div1};
 
 /// Proof that, for the case of `x / d`, division using `/` is
 /// equivalent to division using [`div_recursive`]
@@ -941,7 +941,7 @@ pub proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
                 lemma_mul_basics(d);
             }
         }
-        crate::nonlinear_arith::internals::div_internals::lemma_div_basics(d);
+        crate::arithmetic::internals::div_internals::lemma_div_basics(d);
     }
     assert forall |i: int| i <= 0 && #[trigger] f(i) implies #[trigger] f(sub1(i, 1)) by {
         assert(d * (i - 1) + b == d * i + b - d) by {
@@ -950,7 +950,7 @@ pub proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
                 lemma_mul_basics(d);
             }
         }
-        crate::nonlinear_arith::internals::div_internals::lemma_div_basics(d);
+        crate::arithmetic::internals::div_internals::lemma_div_basics(d);
     }
     lemma_mul_auto();
     lemma_mul_induction(f);
@@ -1147,7 +1147,10 @@ pub proof fn lemma_part_bound1(a: int, b: int, c: int)
         0 < b * c,
         (b * (a / b) % (b * c)) <= b * (c - 1)
 {
-    lemma_mul_strictly_positive_auto();
+    lemma_mul_strictly_positive(b, a / b);
+    lemma_mul_strictly_positive(b, c);
+    lemma_mul_strictly_positive(b, c - 1);
+
     calc! {
         (==)
         b * (a / b) % (b * c);

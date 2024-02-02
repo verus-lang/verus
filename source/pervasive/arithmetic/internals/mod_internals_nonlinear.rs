@@ -39,7 +39,7 @@ proof fn lemma_mod_of_zero_is_zero(m:int)
 /// Proof of the fundamental theorem of division and modulo: That for
 /// any positive divisor `d` and any integer `x`, `x` is equal to `d`
 /// times `x / d` plus `x % d`.
-#[verifier(nonlinear)]
+#[verifier::nonlinear]
 pub proof fn lemma_fundamental_div_mod(x:int, d:int)
     requires d != 0
     ensures  x == d * (x / d) + (x % d)

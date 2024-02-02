@@ -1,4 +1,4 @@
-//! This file contains proofs related to integer modulo operations.
+//! This file contains proofs related to integer remainder operations (`%`).
 //! These are part of the math standard library.
 //!
 //! It's based on the second part (since the first part is about
@@ -17,15 +17,16 @@
 use builtin::*;
 use builtin_macros::*;
 use crate::calc_macro::*;
-use crate::nonlinear_arith::math::{add as add1, sub as sub1};
+use crate::arithmetic::math::{add as add1, sub as sub1};
 
 verus! {
-use crate::nonlinear_arith::mul::*;
-use crate::nonlinear_arith::div::*;
-use crate::nonlinear_arith::internals::div_internals::{lemma_div_auto};
-use crate::nonlinear_arith::internals::div_internals_nonlinear::{lemma_small_div};
-use crate::nonlinear_arith::internals::mod_internals::{lemma_div_add_denominator, lemma_mod_auto, mod_recursive};
-use crate::nonlinear_arith::internals::mul_internals::{lemma_mul_induction_auto, lemma_mul_auto, lemma_mul_induction};
+use crate::arithmetic::mul::*;
+use crate::arithmetic::div::*;
+use crate::arithmetic::internals::div_internals::{lemma_div_auto};
+use crate::arithmetic::internals::div_internals_nonlinear::{lemma_small_div};
+use crate::arithmetic::internals::mod_internals::{lemma_div_add_denominator, lemma_mod_auto, mod_recursive};
+use crate::arithmetic::internals::mod_internals_nonlinear::{lemma_mod_range};
+use crate::arithmetic::internals::mul_internals::{lemma_mul_induction_auto, lemma_mul_auto, lemma_mul_induction};
 
 /// Proof that computing the modulus using `%` is equivalent to
 /// computing it with [`mod_recursive`]. Specifically,
@@ -522,9 +523,18 @@ pub proof fn lemma_mod_pos_bound(x: int, m: int)
         0 <= x,
         0 < m,
     ensures  0 <= x % m < m
-    decreases x
 {
     lemma_mod_auto(m);
+}
+
+/// Proof that the remainder, when any number `x` is divided by
+/// positive integer `m`, is less than `m`.
+pub proof fn lemma_mod_bound(x: int, m: int)
+    requires 
+        0 < m,
+    ensures  0 <= x % m < m
+{
+    lemma_mod_range(x, m);
 }
 
 /// Proof that the remainder, when any natural number `x` is divided by
