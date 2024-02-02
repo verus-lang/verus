@@ -11,36 +11,35 @@ While wonderful when they work, these heuristics can lead to unstable proofs.
 So, Verus turns nonlinear arithmetic reasoning off by default when it invokes
 the SMT solver. One can override this by annotating functions with
 `#[verifier::nonlinear]`, but users shouldn't have to take on this danger. So,
-users can instead invoke the lemmas in this library to verify facts that
-normally would require nonlinear arithmetic.
+users can instead invoke the lemmas in this library to verify facts that would
+normally require nonlinear arithmetic.
 
-Furthermore, to keep the proofs in the library itself stable, the library uses
-nonlinear arithmetic sparingly. It uses nonlinear arithmetic only in the
-`internals/*_nonlinear.rs` files, and those files only contain simple, basic
-proofs that are unlikely to lead the SMT solver on a wild search.
+Furthermore, to keep the proofs in the library itself stable, the library only
+sparingly uses SMT nonlinear-arithmetic reasoning. It uses nonlinear
+arithmetic only in the `internals/*_nonlinear.rs` files, and those files only
+contain simple, basic proofs that are unlikely to lead the SMT solver on a
+wild search.
 
 # Files
 
-The files with proofs the user may want to use are:
+The files with proofs that Verus users may want to use are:
 
-* `div.rs`: Proofs about integer division (`/`)
-* `logarithm.rs`: Proofs about integer logarithms (and its definition as `log`)
+* `div_mod.rs`: Proofs about integer division (`/`) and remainder aka mod (`%`)
+* `logarithm.rs`: Proofs about integer logarithm (and its definition as `log`)
 * `mul.rs`: Proofs about integer multiplication (`*`)
 * `power.rs`: Proofs about integer exponentiation (and its definition as `pow`)
 * `power2.rs`: Proofs about powers of 2 (and its definition as `pow2`)
-* `remainder.rs`: Proofs about integer remainder, aka mod ('%')
 
-There are also internal files in `internals`, but they aren't meant to be
-invoked directly by the user.
+There are also internal files in `internals/*.rs`, but they aren't meant to be
+invoked directly by Verus users.
 
 # Usage
 
 Here's an example use of the arithmetic standard library:
 
 ```
-use vstd::arithmetic::div::{lemma_fundamental_div_mod};
+use vstd::arithmetic::div_mod::{lemma_fundamental_div_mod, lemma_mod_bound};
 use vstd::arithmetic::mul::{lemma_mul_inequality, lemma_mul_is_commutative, lemma_mul_is_distributive_sub};
-use vstd::arithmetic::remainder::{lemma_mod_bound};
 
 verus! {
     pub proof fn lemma_mul_is_distributive_sub_other_way(x: int, y: int, z: int)

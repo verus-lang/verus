@@ -19,7 +19,7 @@ use builtin_macros::*;
 verus! {
 
 use crate::calc_macro::*;
-use crate::arithmetic::div::{lemma_div_pos_is_pos_auto, lemma_div_decreases_auto, lemma_div_is_ordered_auto, lemma_div_multiples_vanish};
+use crate::arithmetic::div_mod::{lemma_div_pos_is_pos_auto, lemma_div_decreases_auto, lemma_div_is_ordered_auto, lemma_div_multiples_vanish};
 use crate::arithmetic::math::{div as div1};
 use crate::arithmetic::mul::{lemma_mul_increases, lemma_mul_is_commutative};
 use crate::arithmetic::power::{pow, lemma_pow_positive};
