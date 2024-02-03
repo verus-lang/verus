@@ -39,7 +39,7 @@ Here's an example use of the arithmetic standard library:
 
 ```
 use vstd::arithmetic::div_mod::{lemma_fundamental_div_mod, lemma_mod_bound};
-use vstd::arithmetic::mul::{lemma_mul_inequality, lemma_mul_is_commutative, lemma_mul_is_distributive_sub, lemma_mul_is_distributive_sub_other_way};
+use vstd::arithmetic::mul::{lemma_mul_inequality, lemma_mul_is_commutative, lemma_mul_is_distributive_sub_other_way};
 
 verus! {
     pub proof fn lemma_div_relation_when_mods_have_same_order(d: int, x: int, y: int)
