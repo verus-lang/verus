@@ -688,7 +688,9 @@ pub proof fn lemma_fundamental_div_mod(x: int, d: int)
     ensures
         x == d * (x / d) + (x % d),
 {
-    ModINL::lemma_fundamental_div_mod(x, d);
+    assert(x == d * (x / d) + (x % d)) by {
+        ModINL::lemma_fundamental_div_mod(x, d);
+    }
 }
 
 /// Proof of the fundamental theorem of division and modulo, namely
