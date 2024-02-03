@@ -180,31 +180,8 @@ proof fn lemma_mul_ordering_auto()
     };
 }
 
-/// Proof that since two integers `x` and `y` are equal, their
-/// respective products with `z` are also equal
-pub proof fn lemma_mul_equality(x: int, y: int, z: int)
-    requires
-        x == y,
-    ensures
-        x * z == y * z,
-{
-}
-
-/// Proof that whenever two integers are equal, their respective
-/// products with another integer are also equal
-pub proof fn lemma_mul_equality_auto()
-    ensures
-        forall|x: int, y: int, z: int|
-            x == y ==> #[trigger]
-            (x * z) == #[trigger]
-            (y * z),
-{
-    assert forall|x: int, y: int, z: int| x == y implies #[trigger]
-    (x * z) == #[trigger]
-    (y * z) by {
-        lemma_mul_equality(x, y, z);
-    }
-}
+/// We don't port LemmaMulEquality or LemmaMulEqualityAuto from the
+/// Dafny standard library for arithmetic, since they're never useful.
 
 /// Proof that, since `x <= y` and `z >= 0`, `x * z <= y * z`
 pub proof fn lemma_mul_inequality(x: int, y: int, z: int)
@@ -508,6 +485,41 @@ pub proof fn lemma_mul_is_distributive_sub_auto()
 {
     assert forall|x: int, y: int, z: int| #[trigger] (x * (y - z)) == x * y - x * z by {
         lemma_mul_is_distributive_sub(x, y, z);
+    }
+}
+
+/// Proof that multiplication distributes over subtraction when the
+/// subtraction happens in the multiplicand (i.e., in the left-hand
+/// argument to `*`). Specifically, `(y - z) * x == y * x - z * x`.
+/*
+    Note: This isn't in the Dafny standard library, but it's a logical
+    extension of [`lemma_mul_is_distributive_sub`] and
+    [`lemma_mul_is_distributive_add_other_way`].
+*/
+pub proof fn lemma_mul_is_distributive_sub_other_way(x: int, y: int, z: int)
+    ensures
+        (y - z) * x == y * x - z * x,
+{
+    lemma_mul_is_distributive_sub(x, y, z);
+    lemma_mul_is_commutative(x, y - z);
+    lemma_mul_is_commutative(x, y);
+    lemma_mul_is_commutative(x, z);
+}
+
+/// Proof that multiplication distributes over subtraction when the
+/// subtraction happens in the multiplicand (i.e., in the left-hand
+/// argument to `*`)
+/*
+    Note: This isn't in the Dafny standard library, but it's a logical
+    extension of [`lemma_mul_is_distributive_sub_auto`] and
+    [`lemma_mul_is_distributive_add_other_way`].
+*/
+pub proof fn lemma_mul_is_distributive_sub_other_way_auto()
+    ensures
+        forall |x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,
+{
+    assert forall |x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x by {
+        lemma_mul_is_distributive_sub_other_way(x, y, z)
     }
 }
 

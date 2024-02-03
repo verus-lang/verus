@@ -1932,17 +1932,6 @@ pub proof fn lemma_mod_pos_bound(x: int, m: int)
     lemma_mod_auto(m);
 }
 
-/// Proof that the remainder, when any number `x` is divided by
-/// positive integer `m`, is less than `m`.
-pub proof fn lemma_mod_bound(x: int, m: int)
-    requires
-        0 < m,
-    ensures
-        0 <= x % m < m,
-{
-    ModINL::lemma_mod_range(x, m);
-}
-
 /// Proof that the remainder, when any natural number `x` is divided by
 /// any positive integer `m`, is less than `m`.
 pub proof fn lemma_mod_pos_bound_auto()
@@ -1955,6 +1944,17 @@ pub proof fn lemma_mod_pos_bound_auto()
     (x % m) < m by {
         lemma_mod_pos_bound(x, m);
     }
+}
+
+/// Proof that the remainder, when any number `x` is divided by
+/// positive integer `m`, is less than `m`.
+pub proof fn lemma_mod_bound(x: int, m: int)
+    requires
+        0 < m,
+    ensures
+        0 <= x % m < m,
+{
+    ModINL::lemma_mod_range(x, m);
 }
 
 /// Proof that the remainder when `x * y` is divided by `m` is
