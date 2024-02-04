@@ -473,30 +473,14 @@ pub(crate) fn expand_call_graph(
             ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
                 use crate::ast::CallTargetKind;
-                let callee = if let CallTargetKind::Method(Some((x_resolved, _, _))) = kind {
-                    x_resolved
-                } else {
-                    x
-                };
-                let f2 = &func_map[callee];
+                let (callee, impl_paths) =
+                    if let CallTargetKind::Method(Some((x_resolved, _, x_impl_paths))) = kind {
+                        (x_resolved, x_impl_paths)
+                    } else {
+                        (x, impl_paths)
+                    };
 
                 for impl_path in impl_paths.iter() {
-                    // f --> D: T
-                    // (However: if we can directly resolve a call from f1 inside impl to f2 inside
-                    // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
-                    // This is a useful special case where we can avoid a spurious cyclic dependency
-                    // error.)
-                    if let (
-                        FunctionKind::TraitMethodImpl { impl_path: caller_impl, .. },
-                        FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
-                    ) = (&function.x.kind, &f2.x.kind)
-                    {
-                        if &ImplPath::TraitImplPath(caller_impl.clone()) == impl_path
-                            && &ImplPath::TraitImplPath(callee_impl.clone()) == impl_path
-                        {
-                            continue;
-                        }
-                    }
                     let expr_node = crate::recursive_types::new_span_info_node(
                         span_infos,
                         expr.span.clone(),

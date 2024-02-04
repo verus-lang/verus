@@ -652,6 +652,10 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //     f: dictionary_T_for_D_f,
     //     g: dictionary_T_for_D_g,
     //   };
+    // (Note that since the members dictionary_T_for_D_f and dictionary_T_for_D_g precede the
+    // construction of the Dictionary_T value, they do not depend on the implementation
+    // of T for D, and they can be called as ordinary functions without needing
+    // the implementation of T for D.  They can also call each other.)
     // A trait bound A: T is treated as an argument of type Dictionary_T<A>.
     // In other words, we have to justify any instantiation of a trait bound A: T
     // by passing in a dictionary that represents the implementation of T for A.
