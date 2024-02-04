@@ -543,15 +543,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_for_loop_387_discussioncomment_5683342 verus_code! {
-        struct T{}
-        fn f(v: Vec<T>) {
-            for t in v {}
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support IntoIterator::into_iter")
-}
-
-test_verify_one_file! {
     #[test] test_empty_recommends_387_discussioncomment_5670055 verus_code! {
         pub open spec fn foo() -> bool
           recommends
@@ -1183,6 +1174,64 @@ test_verify_one_file! {
 
         spec fn f2<DT: T>(l: L<DT>) -> FnSpec(L<DT>)->DT::X {
             |ll: L<DT>| ll.x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] parsing_unit_ret_type_issue937 verus_code! {
+        fn stuff() -> () { }
+
+        fn stuff_fn_once<F: FnOnce(u8) -> ()>() { }
+
+        fn pat_ret_colons() -> (x: ::std::primitive::bool)
+        {
+            true
+        }
+
+        fn pat_ret_colons2() -> (::std::primitive::bool)
+        {
+            true
+        }
+
+        fn pat_ret_colons3() -> (std::primitive::bool)
+        {
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] struct_with_updater_and_tuple_type_in_field_issue857 verus_code! {
+        use vstd::prelude::*;
+        use vstd::set::*;
+
+        pub struct S {
+            pub n: int,
+            pub s: Set<(int, int)>,
+        }
+
+        pub open spec fn f(s1: S, s2: S) -> bool {
+            s2 == S { n: s1.n + 1, ..s1 }
+        }
+
+        pub proof fn test(se: Set<(int, int)>) {
+            let s1 = S { n: 20, s: se };
+            let s2 = S { n: 21, s: se };
+            assert(f(s1, s2));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] struct_with_updater_and_typ_subst_in_field_issue956 verus_code! {
+        struct X<T> {
+            a: int,
+            b: T,
+        }
+
+        proof fn stuff(x: X<bool>) {
+            let y = X { a: x.a + 1, .. x };
         }
     } => Ok(())
 }

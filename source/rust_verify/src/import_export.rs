@@ -39,8 +39,14 @@ pub(crate) fn import_crates(args: &Args) -> Result<ImportOutput, VirErr> {
                 ));
             }
         });
-        let CrateWithMetadata { krate, metadata } =
-            bincode::deserialize_from(file).expect("read crate from file");
+        let CrateWithMetadata { krate, metadata } = match bincode::deserialize_from(file) {
+            Ok(crate_with_metadata) => crate_with_metadata,
+            Err(_e) => {
+                return Err(crate::util::error(format!(
+                    "failed to deserialize imported library file `{file_path}` - it may need to be rebuilt by Verus"
+                )));
+            }
+        };
         //   let libcrate: Krate = serde_json::from_reader(file).expect("read crate from file");
         // We can also look at other packages: https://github.com/djkoloski/rust_serialization_benchmark
         vir_crates.push(krate);

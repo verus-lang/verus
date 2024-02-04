@@ -45,7 +45,7 @@ pub struct UniqueIdent {
     pub local: Option<u64>,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
@@ -86,6 +86,7 @@ pub enum ExpX {
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
+    ExecFnByName(Fun),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
 }
@@ -171,6 +172,7 @@ pub enum StmX {
         // 1. cond = Some(...), all invs are true on entry and exit, no break statements
         // 2. cond = None, invs may have false at_entry/at_exit, may have break statements
         // Any while loop not satisfying (1) is converted to (2).
+        is_for_loop: bool,
         label: Option<String>,
         cond: Option<(Stm, Exp)>,
         body: Stm,

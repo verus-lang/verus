@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX, SpannedTyped,
-    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
@@ -492,8 +492,10 @@ fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
 
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Loop { label, cond: None, body, invs: _ } => loop_body_has_break(label, body),
-        ExprX::Loop { label: _, cond: Some(_), body: _, invs: _ } => true,
+        ExprX::Loop { is_for_loop: _, label, cond: None, body, invs: _ } => {
+            loop_body_has_break(label, body)
+        }
+        ExprX::Loop { is_for_loop: _, label: _, cond: Some(_), body: _, invs: _ } => true,
         _ => {
             panic!("expected while loop");
         }
@@ -550,7 +552,7 @@ fn expr_get_call(
                     },
                 )))
             }
-            CallTarget::BuiltinSpecFun(_, _) => {
+            CallTarget::BuiltinSpecFun(_, _, _) => {
                 panic!("internal error: CallTarget::BuiltinSpecFn");
             }
         },
@@ -1089,7 +1091,7 @@ pub(crate) fn expr_to_stm_opt(
             let call = ExpX::CallLambda(expr.typ.clone(), e0, Arc::new(arg_exps));
             Ok((check_stms, ReturnValue::Some(mk_exp(call))))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts), args) => {
+        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args) => {
             let mut check_stms: Vec<Stm> = Vec::new();
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1204,6 +1206,11 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::NullaryOpr(op.clone())))))
         }
+        ExprX::Unary(UnaryOp::InferSpecForLoopIter, spec_expr) => {
+            let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
+            let infer_exp = mk_exp(ExpX::Unary(UnaryOp::InferSpecForLoopIter, spec_exp));
+            Ok((vec![], ReturnValue::Some(infer_exp)))
+        }
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = unwrap_or_return_never!(exp, stms);
@@ -1224,8 +1231,36 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
         ExprX::UnaryOpr(op, expr) => {
-            let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             let exp = unwrap_or_return_never!(exp, stms);
+            match (op, state.checking_recommends(ctx)) {
+                (
+                    UnaryOpr::Field(FieldOpr {
+                        datatype,
+                        variant,
+                        field: _,
+                        get_variant: _,
+                        check: VariantCheck::Yes,
+                    }),
+                    false,
+                ) => {
+                    let unary = UnaryOpr::IsVariant {
+                        datatype: datatype.clone(),
+                        variant: variant.clone(),
+                    };
+                    let is_variant = ExpX::UnaryOpr(unary, exp.clone());
+                    let is_variant =
+                        SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), is_variant);
+                    let error = crate::messages::error(
+                        &expr.span,
+                        "requirement not met: to access this field, the union must be in the correct variant",
+                    );
+                    let assert = StmX::Assert(Some(error), is_variant);
+                    let assert = Spanned::new(expr.span.clone(), assert);
+                    stms.push(assert);
+                }
+                _ => {}
+            }
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::UnaryOpr(op.clone(), exp)))))
         }
         ExprX::Binary(op, e1, e2) => {
@@ -1491,6 +1526,10 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, ReturnValue::Some(v)))
         }
+        ExprX::ExecFnByName(fun) => {
+            let v = mk_exp(ExpX::ExecFnByName(fun.clone()));
+            Ok((vec![], ReturnValue::Some(v)))
+        }
         ExprX::Choose { params, cond, body } => {
             let mut check_stms = check_pure_expr_bind(ctx, state, params, cond)?;
             check_stms.extend(check_pure_expr_bind(ctx, state, params, body)?);
@@ -1574,6 +1613,7 @@ pub(crate) fn expr_to_stm_opt(
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with expr_to_stm_or_error
                 let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
+                let exp = crate::heuristics::insert_ext_eq_in_assert(ctx, &exp);
                 let small = is_small_exp_or_loc(&exp);
                 let exp = if small || split {
                     exp.clone()
@@ -1830,7 +1870,8 @@ pub(crate) fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_expr = eval_expr(
+            let interp_exp = eval_expr(
+                &ctx.global,
                 &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
                 state.diagnostics,
                 &mut state.fun_ssts,
@@ -1842,10 +1883,10 @@ pub(crate) fn expr_to_stm_opt(
             let err = error_with_label(
                 &expr.span.clone(),
                 "assertion failed",
-                format!("simplified to {}", interp_expr),
+                format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
             );
             if matches!(mode, ComputeMode::Z3) {
-                let assert = Spanned::new(expr.span.clone(), StmX::Assert(Some(err), interp_expr));
+                let assert = Spanned::new(expr.span.clone(), StmX::Assert(Some(err), interp_exp));
                 stms.push(assert);
             }
             let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
@@ -1868,7 +1909,7 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Match(..) => {
             panic!("internal error: Match should have been simplified by ast_simplify")
         }
-        ExprX::Loop { label, cond, body, invs } => {
+        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
             let has_break = loop_body_has_break(label, body);
             let simple_invs = invs.iter().all(|inv| inv.kind == LoopInvariantKind::Invariant);
             let simple_while = !has_break && simple_invs && cond.is_some();
@@ -1925,6 +1966,7 @@ pub(crate) fn expr_to_stm_opt(
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
+                    is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond: cnd,
                     body: stms_to_one_stm(&body.span, stms1),

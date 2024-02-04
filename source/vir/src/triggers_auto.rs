@@ -48,6 +48,7 @@ enum App {
     VarAt(UniqueIdent, VarAt),
     BitOp(BitOpName),
     StaticVar(Fun),
+    ExecFnByName(Fun),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -101,6 +102,9 @@ impl std::fmt::Debug for TermX {
             }
             TermX::App(App::StaticVar(fun), _) => {
                 write!(f, "StaticVar: {:?}", fun)
+            }
+            TermX::App(App::ExecFnByName(fun), _) => {
+                write!(f, "ExecFnByName: {:?}", fun)
             }
         }
     }
@@ -272,6 +276,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::StaticVar(x) => {
             (true, Arc::new(TermX::App(App::StaticVar(x.clone()), Arc::new(vec![]))))
         }
+        ExpX::ExecFnByName(fun) => {
+            (true, Arc::new(TermX::App(App::ExecFnByName(fun.clone()), Arc::new(vec![]))))
+        }
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
@@ -331,6 +338,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CharToInt => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
+                UnaryOp::InferSpecForLoopIter => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
@@ -359,7 +367,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             panic!("internal error: TupleField should have been removed before here")
         }
         ExpX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }),
+            UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),
             lhs,
         ) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);

@@ -932,3 +932,308 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] iter_loop verus_code! {
+        use vstd::prelude::*;
+        fn test_loop() {
+            let mut n: u64 = 0;
+            let mut iter = (0..10).into_iter();
+            loop
+                invariant_ensures
+                    iter.start <= 10,
+                    iter.end == 10,
+                    n == iter.start * 3,
+                ensures
+                    iter.start == 10,
+            {
+                if let Some(x) = iter.next() {
+                    assert(x < 10);
+                    assert(x == iter.start - 1);
+                    n += 3;
+                } else {
+                    break;
+                }
+            }
+            assert(iter.start == 10);
+            assert(n == 30);
+        }
+
+        fn test_loop_fail() {
+            let mut n: u64 = 0;
+            let mut iter = (0..10).into_iter();
+            loop
+                invariant_ensures
+                    iter.start <= 10,
+                    iter.end == 10,
+                    n == iter.start * 3,
+                ensures
+                    iter.start == 10,
+            {
+                if let Some(x) = iter.next() {
+                    assert(x < 9); // FAILS
+                    assert(x == iter.start - 1);
+                    n += 3;
+                } else {
+                    break;
+                }
+            }
+            assert(iter.start == 10);
+            assert(n == 30);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] for_loop1 verus_code! {
+        use vstd::prelude::*;
+        fn test_loop() {
+            let mut n: u64 = 0;
+            for x in iter: 0..10
+                invariant n == iter.cur * 3,
+            {
+                assert(x < 10);
+                assert(x == iter.cur);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+
+        fn test_loop_peek() {
+            let mut n: u64 = 0;
+            for x in 0..10
+                invariant n == x * 3,
+            {
+                assert(x < 10);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+
+        fn test_loop_fail() {
+            let mut n: u64 = 0;
+            for x in iter: 0..10
+                invariant n == iter.cur * 3,
+            {
+                assert(x < 9); // FAILS
+                assert(x == iter.cur);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] for_loop2 verus_code! {
+        use vstd::prelude::*;
+        fn test_loop() {
+            let mut n: u64 = 0;
+            let mut end = 10;
+            for x in iter: 0..end
+                invariant
+                    n == iter.cur * 3,
+                    end == 10,
+            {
+                assert(x < 10);
+                assert(x == iter.cur);
+                n += 3;
+            }
+            assert(n == 30);
+        }
+
+        fn test_loop_fail() {
+            let mut n: u64 = 0;
+            let mut end = 10;
+            for x in iter: 0..end
+                invariant
+                    n == iter.cur * 3,
+                    end == 10,
+            {
+                assert(x < 10); // FAILS
+                assert(x == iter.cur);
+                n += 3;
+                end = end + 0; // causes end to be non-constant, so loop needs more invariants
+            }
+        }
+
+        fn non_spec() {}
+
+        fn test_loop_modes_transient_state() {
+            let mut n: u64 = 0;
+            let mut end = 10;
+            // test Typing::snapshot_transient_state
+            for x in iter: 0..({let z = end; non_spec(); z})
+                invariant
+                    n == iter.cur * 3,
+                    end == 10,
+            {
+                n += 3;
+                end = end + 0; // causes end to be non-constant
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] for_loop3 verus_code! {
+        use vstd::prelude::*;
+        fn test_loop(n: u32) -> (v: Vec<u32>)
+            ensures
+                v.len() == n,
+                forall|i: int| 0 <= i < n ==> v[i] == i,
+        {
+            let mut v: Vec<u32> = Vec::new();
+            for i in iter: 0..n
+                invariant
+                    v@ =~= iter@,
+            {
+                v.push(i);
+            }
+            v
+        }
+
+        fn test_loop_fail(n: u32) -> (v: Vec<u32>)
+            ensures
+                v.len() == n,
+                forall|i: int| 0 <= i < n ==> v[i] == i,
+        {
+            let mut v: Vec<u32> = Vec::new();
+            for i in iter: 0..n
+                invariant
+                    v@ =~= iter@, // FAILS
+            {
+                v.push(0);
+            }
+            v
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] for_loop_vec_custom_iterator verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        pub closed spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V> {
+            core::marker::PhantomData::default()
+        }
+
+        pub struct VecIterCopy<'a, T: 'a> {
+            pub vec: &'a Vec<T>,
+            pub cur: usize,
+        }
+
+        impl<'a, T: Copy> Iterator for VecIterCopy<'a, T> {
+            type Item = T;
+            fn next(&mut self) -> (item: Option<T>)
+                ensures
+                    self.vec == old(self).vec,
+                    old(self).cur < self.vec.len() ==> self.cur == old(self).cur + 1,
+                    old(self).cur < self.vec.len() ==> item == Some(self.vec[old(self).cur as int]),
+                    old(self).cur >= self.vec.len() ==> item.is_none() && self.cur == old(self).cur,
+            {
+                if self.cur < self.vec.len() {
+                    let item = self.vec[self.cur];
+                    self.cur = self.cur + 1;
+                    Some(item)
+                } else {
+                    None
+                }
+            }
+        }
+
+        pub struct VecGhostIterCopy<'a, T> {
+            pub seq: Seq<T>,
+            pub cur: int,
+            pub phantom: core::marker::PhantomData<&'a T>,
+        }
+
+        impl<'a, T: 'a> vstd::pervasive::ForLoopGhostIteratorNew for VecIterCopy<'a, T> {
+            type GhostIter = VecGhostIterCopy<'a, T>;
+
+            open spec fn ghost_iter(&self) -> VecGhostIterCopy<'a, T> {
+                VecGhostIterCopy {
+                    seq: self.vec@,
+                    cur: 0,
+                    phantom: spec_phantom_data(),
+                }
+            }
+        }
+
+        impl<'a, T: 'a> vstd::pervasive::ForLoopGhostIterator for VecGhostIterCopy<'a, T> {
+            type ExecIter = VecIterCopy<'a, T>;
+            type Item = T;
+            type Decrease = int;
+
+            open spec fn exec_invariant(&self, exec_iter: &VecIterCopy<'a, T>) -> bool {
+                &&& self.seq == exec_iter.vec@
+                &&& self.cur == exec_iter.cur
+            }
+
+            open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+                &&& 0 <= self.cur <= self.seq.len()
+                &&& if let Some(init) = init {
+                        init.seq == self.seq
+                    } else {
+                        true
+                    }
+            }
+
+            open spec fn ghost_ensures(&self) -> bool {
+                self.cur >= self.seq.len()
+            }
+
+            open spec fn ghost_decrease(&self) -> Option<int> {
+                Some(self.seq.len() - self.cur)
+            }
+
+            open spec fn ghost_peek_next(&self) -> Option<T> {
+                if 0 <= self.cur < self.seq.len() {
+                    Some(self.seq[self.cur])
+                } else {
+                    None
+                }
+            }
+
+            open spec fn ghost_advance(&self, _exec_iter: &VecIterCopy<T>) -> VecGhostIterCopy<'a, T> {
+                VecGhostIterCopy { cur: self.cur + 1, ..*self }
+            }
+        }
+
+        impl<'a, T: 'a> vstd::view::View for VecGhostIterCopy<'a, T> {
+            type V = Seq<T>;
+
+            open spec fn view(&self) -> Seq<T> {
+                self.seq.subrange(0, self.cur)
+            }
+        }
+
+        spec fn vec_iter_copy_spec<'a, T: 'a>(vec: &'a Vec<T>) -> VecIterCopy<'a, T> {
+            VecIterCopy { vec, cur: 0 }
+        }
+
+        #[verifier::when_used_as_spec(vec_iter_copy_spec)]
+        fn vec_iter_copy<'a, T: 'a>(vec: &'a Vec<T>) -> (iter: VecIterCopy<'a, T>)
+            ensures
+                iter == (VecIterCopy { vec, cur: 0 }),
+        {
+            VecIterCopy { vec, cur: 0 }
+        }
+
+        fn all_positive(v: &Vec<u8>) -> (b: bool)
+            ensures
+                b <==> (forall|i: int| 0 <= i < v.len() ==> v[i] > 0),
+        {
+            let mut b: bool = true;
+
+            for x in iter: vec_iter_copy(v)
+                invariant
+                    b <==> (forall|i: int| 0 <= i < iter.cur ==> v[i] > 0),
+            {
+                b = b && x > 0;
+            }
+            b
+        }
+    } => Ok(())
+}

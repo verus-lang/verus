@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, IntRange, Krate, Mode, Path,
-    Primitive, Trait, TypX, Variants, VirErr,
+    ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, ImplPath, IntRange, Krate, Mode,
+    Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -34,13 +34,14 @@ pub struct ChosenTriggers {
 /// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
-    pub(crate) datatypes: Arc<HashMap<Path, Variants>>,
+    pub(crate) datatypes: Arc<HashMap<Path, (TypPositives, Variants)>>,
     pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Arc<Graph<Node>>,
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
+    pub(crate) datatype_graph_span_infos: Vec<Span>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -72,6 +73,8 @@ pub struct Ctx {
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) lambda_types: Vec<usize>,
     pub(crate) bound_traits: HashSet<Path>,
+    pub(crate) fndef_types: Vec<Fun>,
+    pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
     // Ensure a unique identifier for each quantifier in a given function
@@ -144,7 +147,7 @@ fn datatypes_invs(
         if is_datatype_transparent(module, datatype) {
             let container_path = &datatype.x.path;
             for variant in datatype.x.variants.iter() {
-                for field in variant.a.iter() {
+                for field in variant.fields.iter() {
                     match &*crate::ast_util::undecorate_typ(&field.a.0) {
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
@@ -166,6 +169,7 @@ fn datatypes_invs(
                                 }
                             }
                         }
+                        TypX::FnDef(..) => {}
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
@@ -198,8 +202,11 @@ impl GlobalCtx {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
 
-        let datatypes: HashMap<Path, Variants> =
-            krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
+        let datatypes: HashMap<Path, (TypPositives, Variants)> = krate
+            .datatypes
+            .iter()
+            .map(|d| (d.x.path.clone(), (d.x.typ_params.clone(), d.x.variants.clone())))
+            .collect();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
         for function in krate.functions.iter() {
             assert!(!func_map.contains_key(&function.x.name));
@@ -215,7 +222,7 @@ impl GlobalCtx {
             // This is currently needed because external_body broadcast_forall functions
             // are currently implicitly imported.
             // In the future, this might become less important; we could remove this heuristic.
-            if f.x.body.is_none() {
+            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
         }
@@ -250,11 +257,17 @@ impl GlobalCtx {
             // then test might fail because the broadcast_forall b for s isn't enabled
             // without S: View.  The programmer would have to provide some explicit ordering,
             // such as using s.view() in test so that test depends on S: View, to fix this.
-            func_call_graph.add_node(Node::TraitImpl(t.x.impl_path.clone()));
+            func_call_graph
+                .add_node(Node::TraitImpl(ImplPath::TraitImplPath(t.x.impl_path.clone())));
         }
 
+        let mut span_infos: Vec<Span> = Vec::new();
         for t in &krate.trait_impls {
-            crate::recursive_types::add_trait_impl_to_graph(&mut func_call_graph, t);
+            crate::recursive_types::add_trait_impl_to_graph(
+                &mut span_infos,
+                &mut func_call_graph,
+                t,
+            );
         }
 
         // map (method, impl) to impl Fun
@@ -269,11 +282,16 @@ impl GlobalCtx {
 
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
-            func_call_graph.add_node(Node::Fun(f.x.name.clone()));
+            let fun_node = Node::Fun(f.x.name.clone());
+            let fndef_impl_node = Node::TraitImpl(ImplPath::FnDefImplPath(f.x.name.clone()));
+            func_call_graph.add_node(fun_node.clone());
+            func_call_graph.add_node(fndef_impl_node.clone());
+            func_call_graph.add_edge(fndef_impl_node, fun_node);
             crate::recursion::expand_call_graph(
                 &func_map,
                 &trait_impl_map,
                 &mut func_call_graph,
+                &mut span_infos,
                 f,
             )?;
         }
@@ -281,8 +299,8 @@ impl GlobalCtx {
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
         for f in &krate.functions {
+            let f_node = Node::Fun(f.x.name.clone());
             if f.x.attrs.is_decrease_by {
-                let f_node = Node::Fun(f.x.name.clone());
                 for g_node in func_call_graph.get_scc_nodes(&f_node) {
                     if f_node != g_node {
                         let g =
@@ -296,15 +314,15 @@ impl GlobalCtx {
                 }
             }
             if f.x.attrs.atomic {
-                let f_node = Node::Fun(f.x.name.clone());
-                if func_call_graph.node_is_in_cycle(&f_node) {
+                let fun_node = Node::Fun(f.x.name.clone());
+                if func_call_graph.node_is_in_cycle(&fun_node) {
                     return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
                 }
             }
         }
         let qid_map = RefCell::new(HashMap::new());
 
-        let datatype_graph = crate::recursive_types::build_datatype_graph(krate);
+        let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -314,6 +332,7 @@ impl GlobalCtx {
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
+            datatype_graph_span_infos: span_infos,
             qid_map,
             rlimit,
             interpreter_log,
@@ -334,6 +353,7 @@ impl GlobalCtx {
             no_span: self.no_span.clone(),
             func_call_graph: self.func_call_graph.clone(),
             datatype_graph: self.datatype_graph.clone(),
+            datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
             qid_map,
             rlimit: self.rlimit,
@@ -352,6 +372,13 @@ impl GlobalCtx {
     pub fn get_chosen_triggers(&self) -> Vec<ChosenTriggers> {
         self.chosen_triggers.borrow().clone()
     }
+
+    pub fn set_interpreter_log_file(
+        &mut self,
+        interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    ) {
+        self.interpreter_log = interpreter_log;
+    }
 }
 
 impl Ctx {
@@ -362,6 +389,7 @@ impl Ctx {
         mono_types: Vec<MonoTyp>,
         lambda_types: Vec<usize>,
         bound_traits: HashSet<Path>,
+        fndef_types: Vec<Fun>,
         debug: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
@@ -388,6 +416,12 @@ impl Ctx {
         }
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
+
+        let mut fndef_type_set = HashSet::new();
+        for fndef_type in fndef_types.iter() {
+            fndef_type_set.insert(fndef_type.clone());
+        }
+
         Ok(Ctx {
             module,
             datatype_is_transparent,
@@ -395,6 +429,8 @@ impl Ctx {
             mono_types,
             lambda_types,
             bound_traits,
+            fndef_types,
+            fndef_type_set,
             functions,
             func_map,
             quantifier_count,

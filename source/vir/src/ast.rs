@@ -159,6 +159,14 @@ pub enum TypX {
     Lambda(Typs, Typ),
     /// Executable function types (with a requires and ensures)
     AnonymousClosure(Typs, Typ, usize),
+    /// Corresponds to Rust's FnDef type
+    /// Typs are generic type args
+    /// If Fun is a trait function, then the Option<Fun> has the statically resolved
+    /// function if it exists. Similar to ImplPaths, this is technically redundant
+    /// (because it follows from the types), but it is not easy to compute without
+    /// storing it here. We need it because it is useful for determining which
+    /// FnDef axioms to introduce.
+    FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs, ImplPaths),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
@@ -254,6 +262,22 @@ pub enum UnaryOp {
     StrIsAscii,
     /// Used only for handling casts from chars to ints
     CharToInt,
+    /// Given an exec/proof expression used to construct a loop iterator,
+    /// try to infer a pure specification for the loop iterator.
+    /// Evaluate to Some(spec) if successful, None otherwise.
+    /// (Note: this is just used as a hint for loop invariants;
+    /// regardless of whether it is Some(spec) or None, it should not affect soundness.)
+    /// For an exec/proof expression e, the spec s should be chosen so that the value v
+    /// that e evaluates to is immutable and v == s, where v may contain local variables.
+    /// For example, if v == (n..m), then n and m must be immutable local variables.
+    InferSpecForLoopIter,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
+pub enum VariantCheck {
+    None,
+    //Recommends,
+    Yes,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -262,6 +286,7 @@ pub struct FieldOpr {
     pub variant: Ident,
     pub field: Ident,
     pub get_variant: bool,
+    pub check: VariantCheck,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -480,8 +505,8 @@ pub enum PatternX {
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
-    /// For tuple-style variants, the patterns appear in order and are named "0", "1", etc.
-    /// For struct-style variants, the patterns may appear in any order.
+    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// Fields can appear **in any order** even for tuple variants.
     Constructor(Path, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
 }
@@ -513,17 +538,28 @@ pub struct LoopInvariant {
     pub inv: Expr,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum BuiltinSpecFun {
+    // Note that this now applies to any supported function type, e.g., FnDef types,
+    // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
+pub enum ImplPath {
+    /// the usual `impl X for Trait`. The 'Path' is to the 'impl' block
+    TraitImplPath(Path),
+    /// Declaration of a function `f` which conceptually implements a trait bound
+    /// `FnDef(f) : FnOnce`
+    FnDefImplPath(Fun),
 }
 
 /// Path of each impl that is used to satisfy a trait bound when instantiating the type parameter
 /// This is used to name the "dictionary" that is (conceptually) passed along with the
 /// type argument (see recursive_types.rs)
 // REVIEW: should trait_typ_args also have ImplPaths?
-pub type ImplPaths = Arc<Vec<Path>>;
+pub type ImplPaths = Arc<Vec<ImplPath>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTargetKind {
@@ -540,7 +576,7 @@ pub enum CallTarget {
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
-    BuiltinSpecFun(BuiltinSpecFun, Typs),
+    BuiltinSpecFun(BuiltinSpecFun, Typs, ImplPaths),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Hash)]
@@ -611,8 +647,8 @@ pub enum ExprX {
     Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the field initializers appear in order and are named "_0", "_1", etc.
-    /// For struct-style variants, the field initializers may appear in any order.
+    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// Fields can appear **in any order** even for tuple variants.
     Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
@@ -644,6 +680,8 @@ pub enum ExprX {
     },
     /// Array literal (can also be used for sequence literals in the future)
     ArrayLiteral(Exprs),
+    /// Executable function (declared with 'fn' and referred to by name)
+    ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
     Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
@@ -672,7 +710,13 @@ pub enum ExprX {
     /// Match (Note: ast_simplify replaces Match with other expressions)
     Match(Expr, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
-    Loop { label: Option<String>, cond: Option<Expr>, body: Expr, invs: LoopInvariants },
+    Loop {
+        is_for_loop: bool,
+        label: Option<String>,
+        cond: Option<Expr>,
+        body: Expr,
+        invs: LoopInvariants,
+    },
     /// Open invariant
     OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
     /// Return from function
@@ -866,6 +910,11 @@ pub struct FunctionX {
     /// For broadcast_forall functions, poly sets this to Some((params, reqs ==> enss))
     /// where params and reqs ==> enss use coerce_typ_to_poly rather than coerce_typ_to_native
     pub broadcast_forall: Option<(Params, Expr)>,
+    /// Axioms (similar to broadcast axioms) for the FnDef type corresponding to
+    /// this function, if one is generated for this particular function.
+    /// Similar to 'external_spec' in the ExecClosure node, this is filled
+    /// in during ast_simplify.
+    pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
     /// Allows the item to be a const declaration or static
@@ -911,8 +960,23 @@ pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// For tuple-style variants, the fields appear in order and are named "0", "1", etc.
 /// For struct-style variants, the fields may appear in any order
 pub type Fields = Binders<(Typ, Mode, Visibility)>;
-pub type Variant = Binder<Fields>;
-pub type Variants = Binders<Fields>;
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum CtorPrintStyle {
+    Tuple,  // actual tuple (a, b)
+    Parens, // tuple style: Ctor(a, b)
+    Braces, // struct: Ctor { a: ... }
+    Const,  // just Ctor
+}
+
+pub type Variants = Arc<Vec<Variant>>;
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct Variant {
+    pub name: Ident,
+    pub fields: Fields,
+    pub ctor_style: CtorPrintStyle,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum DatatypeTransparency {
@@ -983,7 +1047,7 @@ pub struct TraitImplX {
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,
-    pub trait_typ_arg_impls: ImplPaths,
+    pub trait_typ_arg_impls: Arc<Spanned<ImplPaths>>,
     pub owning_module: Option<Path>,
 }
 

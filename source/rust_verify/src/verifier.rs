@@ -1624,7 +1624,7 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits) =
+        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
             vir::prune::prune_krate_for_module(
                 &krate,
                 bucket_id.module(),
@@ -1638,6 +1638,7 @@ impl Verifier {
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
+            fndef_types,
             self.args.debugger,
         )?;
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
@@ -1683,18 +1684,11 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let interpreter_log_file = Arc::new(std::sync::Mutex::new(
-            if self.args.log_all || self.args.log_args.log_interpreter {
-                Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
-            } else {
-                None
-            },
-        ));
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             air_no_span.clone(),
             self.args.rlimit,
-            interpreter_log_file,
+            Arc::new(std::sync::Mutex::new(None)),
             self.vstd_crate_name.clone(),
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
@@ -1763,7 +1757,7 @@ impl Verifier {
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
                 // give each bucket its own log file
                 let interpreter_log_file = Arc::new(std::sync::Mutex::new(
-                    if self.args.log_all || self.args.log_args.log_vir_simple {
+                    if self.args.log_all || self.args.log_args.log_interpreter {
                         Some(self.create_log_file(
                             Some(bucket_id),
                             crate::config::INTERPRETER_FILE_SUFFIX,
@@ -2129,6 +2123,14 @@ impl Verifier {
                 }
             }
         } else {
+            global_ctx.set_interpreter_log_file(Arc::new(std::sync::Mutex::new(
+                if self.args.log_all || self.args.log_args.log_interpreter {
+                    Some(self.create_log_file(None, crate::config::INTERPRETER_FILE_SUFFIX)?)
+                } else {
+                    None
+                },
+            )));
+
             for bucket_id in &bucket_ids {
                 global_ctx = self.verify_bucket_outer(
                     &reporter,
@@ -2371,8 +2373,8 @@ impl Verifier {
         }
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let erasure_modes =
-            vir::modes::check_crate(&vir_crate, true).map_err(|e| (e, Vec::new()))?;
+        let (vir_crate, erasure_modes) =
+            vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);

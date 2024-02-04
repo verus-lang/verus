@@ -23,7 +23,7 @@ fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype) -> air::ast::Data
     let mut variants: Vec<air::ast::Variant> = Vec::new();
     for variant in datatype.x.variants.iter() {
         let mut fields: Vec<air::ast::Field> = Vec::new();
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let id =
                 variant_field_ident_internal(&datatype.x.path, &variant.name, &field.name, true);
             fields.push(ident_binder(&id, &typ_to_air(ctx, &field.a.0)));
@@ -47,7 +47,7 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
     Spanned::new(
         span.clone(),
         ParX {
-            name: f.name.clone(),
+            name: Arc::new("_".to_string() + &f.name),
             typ: f.a.0.clone(),
             mode: f.a.1,
             purpose: ParPurpose::Regular,
@@ -74,7 +74,9 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::StrSlice => false,
         TypX::Char => false,
-        TypX::Primitive(_, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Array, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
+        TypX::FnDef(..) => false,
     }
 }
 
@@ -283,16 +285,16 @@ fn datatype_or_fun_to_air_commands(
             //   forall typs, arg1 ... argn.
             //     inv1 && ... && invn => has_type(box(ctor(arg1 ... argn)), T(typs))
             // trigger on has_type(box(ctor(arg1 ... argn)), T(typs))
-            let params = vec_map(&*variant.a, |f| field_to_par(span, f));
+            let params = vec_map(&*variant.fields, |f| field_to_par(span, f));
             let params = Arc::new(params);
             let ctor_args = func_def_args(&Arc::new(vec![]), &params);
             let ctor = ident_apply(&variant_ident(&dpath, &variant.name), &ctor_args);
             let box_ctor = ident_apply(&prefix_box(&dpath), &vec![ctor]);
             let has_ctor = expr_has_type(&box_ctor, &datatype_id(&dpath, &typ_args));
             let mut pre: Vec<Expr> = Vec::new();
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 let (typ, _, _) = &field.a;
-                let name = suffix_local_stmt_id(&field.name);
+                let name = suffix_local_stmt_id(&Arc::new("_".to_string() + &field.name));
                 if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
                     pre.push(inv);
                 }
@@ -304,7 +306,7 @@ fn datatype_or_fun_to_air_commands(
             let axiom = Arc::new(DeclX::Axiom(forall));
             axiom_commands.push(Arc::new(CommandX::Global(axiom)));
         }
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let id = variant_field_ident(&dpath, &variant.name, &field.name);
             let internal_id =
                 variant_field_ident_internal(&dpath, &variant.name, &field.name, true);
@@ -367,7 +369,7 @@ fn datatype_or_fun_to_air_commands(
     // (make sure that this stays in sync with recursive_types::check_well_founded)
     if add_height {
         for variant in variants.iter() {
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 use crate::recursive_types::TypNode;
                 let typ = &field.a.0;
                 let mut recursion_or_tparam = |t: &Typ| match &**t {
@@ -506,7 +508,7 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(ident_apply(&vid, &vec![unbox_x.clone()]));
                 pre.push(ident_apply(&vid, &vec![unbox_y.clone()]));
             }
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 use crate::recursive_types::TypNode;
                 let (typ, _, _) = &field.a;
                 let mut is_recursive = |t: &Typ| match &**t {
@@ -672,6 +674,22 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             is_transparent && datatype.x.ext_equal,
         );
     }
+
+    for fun in &ctx.fndef_types {
+        let func = ctx.func_map.get(fun).expect("expected fndef function in pruned crate");
+        let tparams = &func.x.typ_params;
+        let mut args: Vec<air::ast::Typ> = Vec::new();
+        for _ in tparams.iter() {
+            args.extend(crate::def::types().iter().map(|s| str_typ(s)));
+        }
+        let decl_type_id = Arc::new(DeclX::fun_or_const(
+            crate::def::prefix_fndef_type_id(fun),
+            Arc::new(args),
+            str_typ(crate::def::TYPE),
+        ));
+        token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
+    }
+
     let mut commands: Vec<Command> = Vec::new();
     commands.append(&mut opaque_sort_commands);
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(

@@ -200,6 +200,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
+    /// Returns true if the given element is part of a cycle (including self-loops)
     pub fn node_is_in_cycle(&self, t: &T) -> bool {
         self.node_has_direct_edge_to_itself(t) || self.get_scc_size(t) > 1
     }
@@ -223,31 +224,31 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         scc.nodes.iter().map(|i| self.nodes[*i].t.clone()).collect()
     }
 
-    pub fn shortest_cycle_back_to_self(&self, t: &T) -> usize {
+    pub fn shortest_cycle_back_to_self(&self, t: &T) -> Vec<T> {
         assert!(self.has_run);
         assert!(self.h.contains_key(&t));
         let root: NodeIndex = *self.h.get(t).expect("key not present");
-        let mut at_depth: Vec<NodeIndex> = vec![root];
+        let mut paths_at_depth: Vec<Vec<NodeIndex>> = vec![vec![root]];
         let mut reached: HashSet<NodeIndex> = HashSet::new();
         reached.insert(root);
-        let mut depth: usize = 1;
         loop {
-            let mut at_next_depth: Vec<NodeIndex> = Vec::new();
-            assert!(at_depth.len() != 0);
-            for i in at_depth.into_iter() {
-                for edge in self.nodes[i].edges.iter() {
+            let mut paths_at_next_depth: Vec<Vec<NodeIndex>> = Vec::new();
+            assert!(paths_at_depth.len() != 0);
+            for p in paths_at_depth.into_iter() {
+                for edge in self.nodes[*p.last().expect("path")].edges.iter() {
                     if *edge == root {
                         // reached the root, found cycle
-                        return depth;
+                        return p.into_iter().map(|i| self.nodes[i].t.clone()).collect();
                     }
                     if !reached.contains(edge) {
                         reached.insert(*edge);
-                        at_next_depth.push(*edge);
+                        let mut p_edge = p.clone();
+                        p_edge.push(*edge);
+                        paths_at_next_depth.push(p_edge);
                     }
                 }
             }
-            depth += 1;
-            at_depth = at_next_depth;
+            paths_at_depth = paths_at_next_depth;
         }
     }
 }

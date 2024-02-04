@@ -201,6 +201,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
                     decrease_when: None,
                     decrease_by: None,
                     broadcast_forall: None,
+                    fndef_axioms: None,
                     mask_spec: crate::ast::MaskSpec::NoSpec,
                     item_kind: default_function.x.item_kind,
                     publish: None,

@@ -12,6 +12,12 @@ pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> S
         IdKind::Fun => format!("f{}_{}", rename_count, raw_id),
         IdKind::Local => format!("x{}_{}", rename_count, vir::def::user_local_name(raw_id)),
         IdKind::Builtin => raw_id.clone(),
+
+        // Numeric fields need to be emitted as numeric fields.
+        // Non-numeric fields need to be unique-ified to avoid conflict with method names.
+        // Therefore, we only use the rename_count for non-numeric fields.
+        IdKind::Field if raw_id.bytes().nth(0).unwrap().is_ascii_digit() => raw_id.clone(),
+        IdKind::Field => format!("y{}_{}", rename_count, vir::def::user_local_name(raw_id)),
     }
 }
 
@@ -91,6 +97,7 @@ impl ToString for TypX {
                 format!("<{} as {}>::{}", self_typ.to_string(), tr.to_string(), name.to_string())
             }
             TypX::Closure => "_".to_string(),
+            TypX::FnDef => "_".to_string(),
         }
     }
 }
@@ -664,10 +671,12 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     }
 }
 
-fn emit_generic_bound(bound: &GenericBound) -> String {
+fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
     let mut buf = String::new();
-    buf += &bound.typ.to_string();
-    buf += ": ";
+    if !bare {
+        buf += &bound.typ.to_string();
+        buf += ": ";
+    }
     if !bound.bound_vars.is_empty() {
         buf += "for<";
         for b in bound.bound_vars.iter() {
@@ -707,7 +716,7 @@ fn emit_generic_bounds(state: &mut EmitState, bounds: &Vec<GenericBound>) {
     if bounds.len() > 0 {
         state.write(" where ");
         for bound in bounds.iter() {
-            state.write(emit_generic_bound(bound));
+            state.write(emit_generic_bound(bound, false));
             state.write(", ");
         }
     }
@@ -831,10 +840,16 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     emit_generic_bounds(state, &t.generic_bounds);
     state.write(" {");
     state.push_indent();
-    for a in &t.assoc_typs {
+    for (a, bounds) in &t.assoc_typs {
         state.newline();
         state.write("type ");
         state.write(a.to_string());
+        if bounds.len() > 0 {
+            state.write(" : ");
+            let bounds_strs: Vec<_> =
+                bounds.iter().map(|bound| emit_generic_bound(bound, true)).collect();
+            state.write(bounds_strs.join("+"));
+        }
         state.write(";");
     }
     state.newline_unindent();
@@ -846,6 +861,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     let d_keyword = match &*d.datatype {
         Datatype::Struct(..) => "struct ",
         Datatype::Enum(..) => "enum ",
+        Datatype::Union(..) => "union ",
     };
     state.newline();
     state.write_spanned(d_keyword, d.span);
@@ -859,7 +875,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
         }
     };
     match &*d.datatype {
-        Datatype::Struct(fields) => {
+        Datatype::Struct(fields) | Datatype::Union(fields) => {
             let suffix = if suffix_where { "" } else { ";" };
             emit_fields(state, fields, suffix);
             if suffix_where {

@@ -1,10 +1,15 @@
-use crate::ast::{Expr, ExprX, FunctionX, GenericBoundX, Krate, KrateX, Typ, TypX, UnaryOpr};
+use crate::ast::{
+    Expr, ExprX, Function, FunctionX, GenericBoundX, Idents, Krate, KrateX, MaskSpec, Typ, TypX,
+    UnaryOpr,
+};
 use crate::ast_visitor::{
     expr_visitor_check, expr_visitor_dfs, typ_visitor_check, VisitorControlFlow, VisitorScopeMap,
 };
 pub use air::ast_util::{ident_binder, str_ident};
+use std::sync::Arc;
 
-fn check_expr_simplified(_scope_map: &VisitorScopeMap, expr: &Expr) -> Result<(), ()> {
+fn check_expr_simplified(expr: &Expr, function: &Function) -> Result<(), ()> {
+    check_typ_simplified(&expr.typ, &function.x.typ_params)?;
     match expr.x {
         ExprX::ConstVar(..)
         | ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _)
@@ -14,9 +19,10 @@ fn check_expr_simplified(_scope_map: &VisitorScopeMap, expr: &Expr) -> Result<()
     }
 }
 
-fn check_typ_simplified(typ: &Typ) -> Result<(), ()> {
+fn check_typ_simplified(typ: &Typ, typ_params: &Idents) -> Result<(), ()> {
     match &**typ {
         TypX::Tuple(..) => Err(()),
+        TypX::TypParam(id) if !typ_params.contains(id) => Err(()),
         _ => Ok(()),
     }
 }
@@ -39,13 +45,24 @@ pub fn check_krate_simplified(krate: &Krate) {
     } = &**krate;
 
     for function in functions {
-        let FunctionX { require, ensure, decrease, body, typ_bounds, params, ret, .. } =
-            &function.x;
+        let FunctionX {
+            require, ensure, decrease, body, typ_bounds, params, ret, mask_spec, ..
+        } = &function.x;
 
-        let all_exprs =
-            require.iter().chain(ensure.iter()).chain(decrease.iter()).chain(body.iter());
+        let mask_exprs = match mask_spec {
+            MaskSpec::InvariantOpens(es) => es.clone(),
+            MaskSpec::InvariantOpensExcept(es) => es.clone(),
+            MaskSpec::NoSpec => Arc::new(vec![]),
+        };
+
+        let all_exprs = require
+            .iter()
+            .chain(ensure.iter())
+            .chain(decrease.iter())
+            .chain(body.iter())
+            .chain(mask_exprs.iter());
         for expr in all_exprs {
-            expr_visitor_check(expr, &mut check_expr_simplified)
+            expr_visitor_check(expr, &mut |_, e| check_expr_simplified(e, function))
                 .expect("function AST expression uses node that should have been simplified");
         }
 
@@ -53,25 +70,29 @@ pub fn check_krate_simplified(krate: &Krate) {
             match &**bound {
                 GenericBoundX::Trait(_, ts) => {
                     for t in ts.iter() {
-                        typ_visitor_check(t, &mut check_typ_simplified).expect(
-                            "function param bound uses node that should have been simplified",
-                        );
+                        typ_visitor_check(t, &mut |t| {
+                            check_typ_simplified(t, &function.x.typ_params)
+                        })
+                        .expect("function param bound uses node that should have been simplified");
                     }
                 }
             }
         }
 
         for param in params.iter().chain(std::iter::once(ret)) {
-            typ_visitor_check(&param.x.typ, &mut check_typ_simplified)
-                .expect("function param typ uses node that should have been simplified");
+            typ_visitor_check(&param.x.typ, &mut |t| {
+                check_typ_simplified(t, &function.x.typ_params)
+            })
+            .expect("function param typ uses node that should have been simplified");
         }
     }
 
     for datatype in datatypes {
+        let typ_params = Arc::new(datatype.x.typ_params.iter().map(|(id, _)| id.clone()).collect());
         for variant in datatype.x.variants.iter() {
-            for field in variant.a.iter() {
+            for field in variant.fields.iter() {
                 let (typ, _, _) = &field.a;
-                typ_visitor_check(typ, &mut check_typ_simplified)
+                typ_visitor_check(typ, &mut |t| check_typ_simplified(t, &typ_params))
                     .expect("datatype field typ uses node that should have been simplified");
             }
         }

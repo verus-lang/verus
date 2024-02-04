@@ -94,6 +94,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::StrSlice, TypX::StrSlice) => true,
         (TypX::Char, TypX::Char) => true,
+        (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
+            f1 == f2 && n_types_equal(ts1, ts2)
+        }
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -111,11 +114,22 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(_), _) => false,
         (TypX::StrSlice, _) => false,
         (TypX::Char, _) => false,
+        (TypX::FnDef(..), _) => false,
     }
 }
 
 pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
     typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
+}
+
+pub fn typ_args_for_datatype_typ(typ: &Typ) -> &Typs {
+    match &**typ {
+        TypX::Decorate(_, t) => typ_args_for_datatype_typ(t),
+        TypX::Datatype(_, args, _) => args,
+        _ => {
+            panic!("typ_args_for_datatype_typ expected datatype type");
+        }
+    }
 }
 
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall };
@@ -612,6 +626,15 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::StrSlice => format!("StrSlice"),
         TypX::Char => format!("char"),
+        TypX::FnDef(f, typs, _res) => format!(
+            "FnDef({}){}",
+            path_as_friendly_rust_name(&f.path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
     }
 }
 

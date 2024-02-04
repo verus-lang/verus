@@ -84,6 +84,7 @@ struct State {
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
     lambda_types: HashSet<usize>,
+    fndef_types: HashSet<Fun>,
 }
 
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
@@ -94,6 +95,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Lambda(ts, _) => ReachedType::Lambda(ts.len()),
         TypX::AnonymousClosure(..) => panic!("unexpected TypX::AnonymousClosure"),
         TypX::Datatype(path, _, _) => ReachedType::Datatype(path.clone()),
+        TypX::FnDef(..) => ReachedType::None,
         TypX::Decorate(_, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
@@ -199,6 +201,15 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
         }
+        TypX::FnDef(fun, _typs, res_fun_opt) => {
+            state.fndef_types.insert(fun.clone());
+            reach_function(ctxt, state, fun);
+
+            if let Some(res_fun) = res_fun_opt {
+                state.fndef_types.insert(res_fun.clone());
+                reach_function(ctxt, state, res_fun);
+            }
+        }
     }
 }
 
@@ -283,6 +294,10 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             state,
                             &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
                         );
+                    }
+                    ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter, _) => {
+                        let t = ReachedType::Datatype(crate::def::option_type_path());
+                        reach_type(ctxt, state, &t);
                     }
                     _ => {}
                 }
@@ -397,7 +412,7 @@ pub fn prune_krate_for_module(
     module: &Path,
     fun: Option<&Fun>,
     vstd_crate_name: &Option<Ident>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>) {
+) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>, Vec<Fun>) {
     let is_root = |function: &Function| match fun {
         Some(f) => &function.x.name == f,
         None => match &function.x.owning_module {
@@ -617,9 +632,11 @@ pub fn prune_krate_for_module(
     };
     let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
     lambda_types.sort();
+    let mut fndef_types: Vec<Fun> = state.fndef_types.into_iter().collect();
+    fndef_types.sort();
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
     let State { reached_bound_traits, .. } = state;
-    (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits)
+    (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits, fndef_types)
 }

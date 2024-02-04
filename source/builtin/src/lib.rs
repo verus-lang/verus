@@ -256,6 +256,13 @@ pub fn get_variant_field<Adt, Field>(_a: Adt, _variant: &str, _field: &str) -> F
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::get_union_field"]
+#[verifier::spec]
+pub fn get_union_field<Adt, Field>(_a: Adt, _field: &str) -> Field {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::assume_"]
 #[verifier::proof]
 pub fn assume_(_: bool) {
@@ -1300,6 +1307,13 @@ macro_rules! decreases_to {
     ($($x:tt)*) => {
         ::builtin_macros::verus_proof_macro_exprs!($crate::decreases_to_internal!($($x)*))
     };
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]
+#[verifier::spec]
+pub fn infer_spec_for_loop_iter<A>(_: A) -> Option<A> {
+    unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]

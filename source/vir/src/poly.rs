@@ -79,7 +79,7 @@ use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp,
     Param, ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr,
+    UnaryOpr, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -158,7 +158,12 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => false,
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::Lambda(..)
+        | TypX::StrSlice
+        | TypX::Char
+        | TypX::FnDef(..) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -184,7 +189,12 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 
 fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => typ.clone(),
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::Lambda(..)
+        | TypX::StrSlice
+        | TypX::Char
+        | TypX::FnDef(..) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -217,9 +227,12 @@ fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
 
 pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::Char => {
-            Arc::new(TypX::Boxed(typ.clone()))
-        }
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::Lambda(..)
+        | TypX::StrSlice
+        | TypX::Char
+        | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -241,7 +254,8 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
         | TypX::Datatype(..)
         | TypX::Primitive(_, _)
         | TypX::StrSlice
-        | TypX::Char => expr.clone(),
+        | TypX::Char
+        | TypX::FnDef(..) => expr.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -266,36 +280,24 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
 }
 
 pub fn coerce_expr_to_poly(ctx: &Ctx, expr: &Expr) -> Expr {
-    match &*crate::ast_util::undecorate_typ(&expr.typ) {
-        TypX::Datatype(path, _, _)
-            if !ctx.datatype_is_transparent[path] && typ_as_mono(&expr.typ).is_none() =>
-        {
-            expr.clone()
-        }
-        TypX::Primitive(_, _) if typ_as_mono(&expr.typ).is_none() => expr.clone(),
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::Lambda(..)
-        | TypX::Datatype(..)
-        | TypX::Primitive(_, _)
-        | TypX::StrSlice
-        | TypX::Char => {
-            let op = UnaryOpr::Box(expr.typ.clone());
-            let exprx = ExprX::UnaryOpr(op, expr.clone());
-            let typ = Arc::new(TypX::Boxed(expr.typ.clone()));
-            SpannedTyped::new(&expr.span, &typ, exprx)
-        }
-        TypX::AnonymousClosure(..) => {
-            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
-        }
-        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
-        TypX::Decorate(..) => {
-            panic!("internal error: Decorate should be removed by undecorate_typ")
-        }
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => expr.clone(),
-        TypX::TypeId => panic!("internal error: TypeId created too soon"),
-        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
-        TypX::Air(_) => panic!("internal error: Air type created too soon"),
+    if typ_is_poly(ctx, &expr.typ) {
+        expr.clone()
+    } else {
+        let op = UnaryOpr::Box(expr.typ.clone());
+        let exprx = ExprX::UnaryOpr(op, expr.clone());
+        let typ = Arc::new(TypX::Boxed(expr.typ.clone()));
+        SpannedTyped::new(&expr.span, &typ, exprx)
+    }
+}
+
+pub(crate) fn coerce_exp_to_poly(ctx: &Ctx, exp: &crate::sst::Exp) -> crate::sst::Exp {
+    if typ_is_poly(ctx, &exp.typ) {
+        exp.clone()
+    } else {
+        let op = UnaryOpr::Box(exp.typ.clone());
+        let expx = crate::sst::ExpX::UnaryOpr(op, exp.clone());
+        let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
+        SpannedTyped::new(&exp.span, &typ, expx)
     }
 }
 
@@ -380,7 +382,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::Ctor(path, variant, binders, update) => {
             assert!(update.is_none()); // removed by ast_simplify
-            let fields = &ctx.datatype_map[path].x.get_variant(variant).a;
+            let fields = &ctx.datatype_map[path].x.get_variant(variant).fields;
             let mut bs: Vec<Binder<Expr>> = Vec::new();
             for binder in binders.iter() {
                 let field = crate::ast_util::get_field(fields, &binder.name);
@@ -410,6 +412,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
+                UnaryOp::InferSpecForLoopIter => {
+                    // e1 will be the argument to spec Option::Some(...)
+                    let e1 = coerce_expr_to_poly(ctx, &e1);
+                    mk_expr(ExprX::Unary(*op, e1))
+                }
                 UnaryOp::HeightTrigger => panic!("direct access to 'height' is not allowed"),
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
@@ -434,8 +441,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let exprx = ExprX::UnaryOpr(op.clone(), e1.clone());
                     SpannedTyped::new(&e1.span, &e1.typ, exprx)
                 }
-                UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _ }) => {
-                    let fields = &ctx.datatype_map[datatype].x.get_variant(variant).a;
+                UnaryOpr::Field(FieldOpr {
+                    datatype,
+                    variant,
+                    field,
+                    get_variant: _,
+                    check: _,
+                }) => {
+                    let fields = &ctx.datatype_map[datatype].x.get_variant(variant).fields;
                     let field = crate::ast_util::get_field(fields, field);
 
                     // Force an expression of the form unbox(...) to match triggers with unbox:
@@ -575,6 +588,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 external_spec: Some((cid.clone(), cexpr1)),
             })
         }
+        ExprX::ExecFnByName(fun) => mk_expr(ExprX::ExecFnByName(fun.clone())),
         ExprX::Choose { params, cond, body } => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
@@ -667,7 +681,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr_typ(&t, ExprX::If(e0, e1.clone(), Some(e2)))
         }
         ExprX::Match(..) => panic!("Match should already be removed"),
-        ExprX::Loop { label, cond, body, invs } => {
+        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
             let cond = cond.as_ref().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
             let body = poly_expr(ctx, state, body);
             let invs = invs.iter().map(|inv| crate::ast::LoopInvariant {
@@ -675,7 +689,13 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 ..inv.clone()
             });
             let invs = Arc::new(invs.collect());
-            mk_expr(ExprX::Loop { label: label.clone(), cond, body, invs })
+            mk_expr(ExprX::Loop {
+                is_for_loop: *is_for_loop,
+                label: label.clone(),
+                cond,
+                body,
+                invs,
+            })
         }
         ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             let inv = coerce_expr_to_poly(ctx, &poly_expr(ctx, state, inv));
@@ -772,6 +792,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease_when,
         decrease_by,
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind,
         publish,
@@ -911,6 +932,17 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         None
     };
 
+    let fndef_axioms = if let Some(es) = fndef_axioms {
+        let mut es2 = vec![];
+        for e in es.iter() {
+            let e2 = coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, &e));
+            es2.push(e2);
+        }
+        Some(Arc::new(es2))
+    } else {
+        None
+    };
+
     let functionx = FunctionX {
         name: name.clone(),
         proxy: proxy.clone(),
@@ -929,6 +961,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease_when,
         decrease_by: decrease_by.clone(),
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind: *item_kind,
         publish: *publish,
@@ -940,12 +973,11 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 }
 
 fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
-    let variants = vec_map(&*datatype.x.variants, |v| {
-        v.map_a(|fields| {
-            Arc::new(vec_map(fields, |f| {
-                f.map_a(|(t, m, v)| (coerce_typ_to_native(ctx, t), *m, v.clone()))
-            }))
-        })
+    let variants = vec_map(&*datatype.x.variants, |v| Variant {
+        fields: Arc::new(vec_map(&v.fields, |f| {
+            f.map_a(|(t, m, v)| (coerce_typ_to_native(ctx, t), *m, v.clone()))
+        })),
+        ..v.clone()
     });
     let variants = Arc::new(variants);
     let datatypex = DatatypeX { variants, ..datatype.x.clone() };

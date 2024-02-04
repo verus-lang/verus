@@ -79,6 +79,11 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
+                TypX::FnDef(_fun, ts, _res_fun) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
                 TypX::Projection { trait_typ_args, trait_path: _, name: _ } => {
                     for t in trait_typ_args.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
@@ -137,6 +142,10 @@ where
             let trait_path = trait_path.clone();
             let name = name.clone();
             ft(env, &Arc::new(TypX::Projection { trait_typ_args, trait_path, name }))
+        }
+        TypX::FnDef(fun, ts, res_fun) => {
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            ft(env, &Arc::new(TypX::FnDef(fun.clone(), Arc::new(ts), res_fun.clone())))
         }
         TypX::Decorate(d, t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
@@ -270,7 +279,7 @@ where
                 ExprX::Call(target, es) => {
                     match target {
                         CallTarget::Fun(_, _, _, _, _) => (),
-                        CallTarget::BuiltinSpecFun(_, _) => (),
+                        CallTarget::BuiltinSpecFun(_, _, _) => (),
                         CallTarget::FnSpec(fun) => {
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
                         }
@@ -363,6 +372,7 @@ where
                         }
                     }
                 }
+                ExprX::ExecFnByName(_fun) => {}
                 ExprX::Choose { params, cond, body } => {
                     map.push_scope(true);
                     for binder in params.iter() {
@@ -433,7 +443,7 @@ where
                         map.pop_scope();
                     }
                 }
-                ExprX::Loop { label: _, cond, body, invs } => {
+                ExprX::Loop { is_for_loop: _, label: _, cond, body, invs } => {
                     if let Some(cond) = cond {
                         expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
                     }
@@ -535,6 +545,7 @@ where
         decrease_when,
         decrease_by: _,
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind: _,
         publish: _,
@@ -542,6 +553,7 @@ where
         body,
         extra_dependencies: _,
     } = &function.x;
+
     map.push_scope(true);
     for p in params.iter() {
         let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
@@ -566,6 +578,7 @@ where
             }
         }
     }
+
     if let Some(e) = body {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
@@ -578,6 +591,12 @@ where
         }
         expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
         map.pop_scope();
+    }
+
+    if let Some(es) = fndef_axioms {
+        for e in es.iter() {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+        }
     }
 
     VisitorControlFlow::Recurse
@@ -638,9 +657,11 @@ where
                         *autospec_usage,
                     )
                 }
-                CallTarget::BuiltinSpecFun(x, typs) => {
-                    CallTarget::BuiltinSpecFun(x.clone(), map_typs_visitor_env(typs, env, ft)?)
-                }
+                CallTarget::BuiltinSpecFun(x, typs, impl_paths) => CallTarget::BuiltinSpecFun(
+                    x.clone(),
+                    map_typs_visitor_env(typs, env, ft)?,
+                    impl_paths.clone(),
+                ),
                 CallTarget::FnSpec(fun) => {
                     let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
                     CallTarget::FnSpec(fun)
@@ -783,6 +804,7 @@ where
                 external_spec,
             }
         }
+        ExprX::ExecFnByName(fun) => ExprX::ExecFnByName(fun.clone()),
         ExprX::Choose { params, cond, body } => {
             let params =
                 vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
@@ -867,7 +889,7 @@ where
             });
             ExprX::Match(expr1, Arc::new(arms?))
         }
-        ExprX::Loop { label, cond, body, invs } => {
+        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
             let cond =
                 cond.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
@@ -876,7 +898,13 @@ where
                 let e1 = map_expr_visitor_env(&inv.inv, map, env, fe, fs, ft)?;
                 invs1.push(crate::ast::LoopInvariant { inv: e1, ..inv.clone() });
             }
-            ExprX::Loop { label: label.clone(), cond, body, invs: Arc::new(invs1) }
+            ExprX::Loop {
+                is_for_loop: *is_for_loop,
+                label: label.clone(),
+                cond,
+                body,
+                invs: Arc::new(invs1),
+            }
         }
         ExprX::Return(e1) => {
             let e1 = match e1 {
@@ -1054,6 +1082,7 @@ where
         decrease_when,
         decrease_by,
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind,
         publish,
@@ -1144,6 +1173,17 @@ where
         None
     };
 
+    let fndef_axioms = if let Some(es) = fndef_axioms {
+        let mut es2 = vec![];
+        for e in es.iter() {
+            let e2 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            es2.push(e2);
+        }
+        Some(Arc::new(es2))
+    } else {
+        None
+    };
+
     let functionx = FunctionX {
         name,
         proxy,
@@ -1162,6 +1202,7 @@ where
         decrease_when,
         decrease_by,
         broadcast_forall,
+        fndef_axioms,
         mask_spec,
         item_kind,
         publish,
@@ -1185,12 +1226,13 @@ where
     let mut variants: Vec<Variant> = Vec::new();
     for variant in datatypex.variants.iter() {
         let mut fields: Vec<Field> = Vec::new();
-        for field in variant.a.iter() {
+        for field in variant.fields.iter() {
             let (typ, mode, vis) = &field.a;
             let typ = map_typ_visitor_env(typ, env, ft)?;
             fields.push(field.new_a((typ, *mode, vis.clone())));
         }
-        variants.push(variant.new_a(Arc::new(fields)));
+        let variant = Variant { fields: Arc::new(fields), ..variant.clone() };
+        variants.push(variant);
     }
     let variants = Arc::new(variants);
     Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, typ_bounds, ..datatypex }))

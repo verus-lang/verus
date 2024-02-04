@@ -11,6 +11,7 @@ pub(crate) enum IdKind {
     Fun,
     Local,
     Builtin,
+    Field,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -48,6 +49,7 @@ pub(crate) enum TypX {
         name: Id,
     },
     Closure,
+    FnDef,
 }
 
 pub(crate) type Pattern = Box<(Span, PatternX)>;
@@ -118,6 +120,7 @@ pub(crate) enum Fields {
 pub(crate) enum Datatype {
     Struct(Fields),
     Enum(Vec<(Id, Fields)>),
+    Union(Fields),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -156,7 +159,7 @@ pub(crate) struct TraitDecl {
     pub(crate) name: Id,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
-    pub(crate) assoc_typs: Vec<Id>,
+    pub(crate) assoc_typs: Vec<(Id, Vec<GenericBound>)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

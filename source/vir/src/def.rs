@@ -52,10 +52,10 @@ const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
+const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
-const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
@@ -87,6 +87,9 @@ pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
 pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
+
+pub const FNDEF_TYPE: &str = "fndef";
+pub const FNDEF_SINGLETON: &str = "fndef_singleton";
 
 // List of constant strings that can appear in generated AIR code
 pub const FUEL_ID: &str = "FuelId";
@@ -122,10 +125,12 @@ pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
 pub const BOX_STRSLICE: &str = "S";
 pub const BOX_CHAR: &str = "C";
+pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
 pub const UNBOX_STRSLICE: &str = "%S";
 pub const UNBOX_CHAR: &str = "%C";
+pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
@@ -358,6 +363,10 @@ pub fn prefix_type_id(path: &Path) -> Ident {
     Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
 }
 
+pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
+    Arc::new(PREFIX_FNDEF_TYPE_ID.to_string() + &fun_to_string(fun))
+}
+
 pub fn prefix_tuple_type(i: usize) -> Path {
     let ident = Arc::new(format!("{}{}", PREFIX_TUPLE_TYPE, i));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
@@ -374,10 +383,6 @@ pub fn prefix_tuple_variant(i: usize) -> Ident {
 
 pub fn prefix_tuple_param(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_PARAM, i))
-}
-
-pub fn prefix_tuple_field(i: usize) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_TUPLE_FIELD, i))
 }
 
 pub fn prefix_lambda_type(i: usize) -> Path {
@@ -500,7 +505,11 @@ pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> I
 }
 
 pub fn positional_field_ident(idx: usize) -> Ident {
-    Arc::new(format!("_{}", idx))
+    Arc::new(format!("{}", idx))
+}
+
+pub fn field_ident_from_rust(s: &str) -> Ident {
+    Arc::new(format!("{}", s))
 }
 
 pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
@@ -777,5 +786,12 @@ pub fn array_index_path(vstd_crate_name: &Option<Ident>) -> Path {
             Arc::new("array".to_string()),
             Arc::new("array_index".to_string()),
         ]),
+    })
+}
+
+pub(crate) fn option_type_path() -> Path {
+    Arc::new(PathX {
+        krate: Some(Arc::new("core".to_string())),
+        segments: Arc::new(vec![Arc::new("option".to_string()), Arc::new("Option".to_string())]),
     })
 }

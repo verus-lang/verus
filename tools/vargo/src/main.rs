@@ -223,6 +223,12 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let vstd_trace = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-trace")
+        .map(|p| args.remove(p))
+        .is_some();
+
     if vstd_no_alloc && !vstd_no_std {
         return Err(format!("--vstd-no-alloc requires --vstd-no-std"));
     }
@@ -930,6 +936,9 @@ fn run() -> Result<(), String> {
                         }
                         if vstd_no_alloc {
                             vstd_build = vstd_build.arg("--no-alloc");
+                        }
+                        if vstd_trace {
+                            vstd_build = vstd_build.arg("--trace");
                         }
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");
