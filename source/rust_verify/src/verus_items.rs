@@ -1,5 +1,4 @@
 use air::ast::Ident;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
@@ -632,9 +631,10 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
 
     if let Some(rust_path) = rust_path {
-        static NUM_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"^([A-Za-z0-9_]+)::(MIN|MAX|BITS)").unwrap());
-        if let Some(captures) = NUM_RE.captures(rust_path) {
+        static NUM_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        let num_re =
+            NUM_RE.get_or_init(|| Regex::new(r"^([A-Za-z0-9_]+)::(MIN|MAX|BITS)").unwrap());
+        if let Some(captures) = num_re.captures(rust_path) {
             let ty_name = captures.get(1).expect("invalid int intrinsic regex");
             let const_name = captures.get(2).expect("invalid int intrinsic regex");
             use RustIntType::*;
