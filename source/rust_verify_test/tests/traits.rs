@@ -1629,7 +1629,7 @@ test_verify_one_file! {
         }
 
         spec fn f<A: T>(i: int) -> bool
-            decreases 0int when true via f_decreases::<A>
+            decreases 0int via f_decreases::<A>
         {
             !f::<A>(i - 0)
         }
