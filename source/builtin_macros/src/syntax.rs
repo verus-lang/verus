@@ -1421,6 +1421,11 @@ impl Visitor {
             to the loop. \
             You might also try storing the loop expression in a variable outside the loop \
             (e.g. `let e = 0..10; for x in e { ... }`).";
+        let print_hint: Expr = if expr_name.is_some() {
+            Expr::Verbatim(quote_spanned!(expr.span() => false))
+        } else {
+            Expr::Verbatim(quote_spanned!(expr.span() => true))
+        };
 
         let x_exec_iter = Ident::new("VERUS_exec_iter", span);
         let x_ghost_iter = if let Some(x_ghost_iter_box) = expr_name {
@@ -1436,16 +1441,18 @@ impl Visitor {
         //                  builtin::infer_spec_for_loop_iter(
         //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
         //                          &::core::iter::IntoIterator::into_iter(e)))),
-        let exec_inv: Expr = Expr::Verbatim(quote_spanned!(span =>
+        let exec_inv: Expr = Expr::Verbatim(quote_spanned!(expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
             ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
         ));
-        let ghost_inv: Expr = Expr::Verbatim(quote_spanned!(span =>
+        let ghost_inv: Expr = Expr::Verbatim(quote_spanned!(expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
             ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
                 builtin::infer_spec_for_loop_iter(
                     &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-                        &::core::iter::IntoIterator::into_iter(#expr_inv))))
+                        &::core::iter::IntoIterator::into_iter(#expr_inv)),
+                    #print_hint,
+                ))
         ));
         let invariant_ensure = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {

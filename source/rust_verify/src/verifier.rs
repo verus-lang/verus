@@ -612,6 +612,7 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
+        hint_upon_failure: &std::cell::RefCell<Option<Message>>,
         is_singular: bool,
     ) -> RunCommandQueriesResult {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
@@ -745,6 +746,9 @@ impl Verifier {
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
                         invalidity = true;
+                        if let Some(hint) = hint_upon_failure.take() {
+                            reporter.report_as(&hint.to_any(), MessageLevel::Note);
+                        }
                     }
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
@@ -884,8 +888,13 @@ impl Verifier {
 
         let mut result =
             RunCommandQueriesResult { invalidity: false, timed_out: false, not_skipped: false };
-        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
-            &*commands_with_context;
+        let CommandsWithContextX {
+            context,
+            commands,
+            prover_choice,
+            skip_recommends: _,
+            hint_upon_failure,
+        } = &*commands_with_context;
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -905,6 +914,7 @@ impl Verifier {
                     snap_map,
                     &command,
                     &context,
+                    hint_upon_failure,
                     *prover_choice == vir::def::ProverChoice::Singular,
                 );
         }

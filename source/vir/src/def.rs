@@ -620,6 +620,7 @@ pub struct CommandsWithContextX {
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
+    pub hint_upon_failure: std::cell::RefCell<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -636,6 +637,7 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
+            hint_upon_failure: std::cell::RefCell::new(None),
         })
     }
 }
