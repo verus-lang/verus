@@ -193,12 +193,12 @@ tokenized_state_machine!(RefCounter<Perm> {
     fn dec_to_zero_inductive(pre: Self, post: Self, x: Perm) { }
 });
 
-struct InnerRc<S> {
+struct InnerArc<S> {
     pub rc_cell: PAtomicU64,
     pub s: S,
 }
 
-type MemPerms<S> = (ptr::PointsTo<InnerRc<S>>, ptr::Dealloc<InnerRc<S>>);
+type MemPerms<S> = (ptr::PointsTo<InnerArc<S>>, ptr::Dealloc<InnerArc<S>>);
 
 tracked struct GhostStuff<S> {
     pub tracked rc_perm: PermissionU64,
@@ -213,19 +213,19 @@ impl<S> GhostStuff<S> {
     }
 }
 
-impl<S> InnerRc<S> {
+impl<S> InnerArc<S> {
     spec fn wf(self, cell: PAtomicU64) -> bool {
         self.rc_cell == cell
     }
 }
 
 struct_with_invariants!{
-    struct MyRc<S> {
+    struct MyArc<S> {
         pub inst: Tracked< RefCounter::Instance<MemPerms<S>> >,
         pub inv: Tracked< Duplicable<AtomicInvariant<_, GhostStuff<S>, _>> >,
         pub reader: Tracked< RefCounter::reader<MemPerms<S>> >,
 
-        pub ptr: PPtr<InnerRc<S>>,
+        pub ptr: PPtr<InnerArc<S>>,
 
         pub rc_cell: Ghost< PAtomicU64 >,
     }
@@ -251,7 +251,7 @@ struct_with_invariants!{
     }
 }
 
-impl<S> MyRc<S> {
+impl<S> MyArc<S> {
     spec fn view(self) -> S {
         self.reader@@.key.0@.value.get_Some_0().s
     }
@@ -262,7 +262,7 @@ impl<S> MyRc<S> {
             rc@ == s,
     {
         let (rc_cell, Tracked(rc_perm)) = PAtomicU64::new(1);
-        let inner_rc = InnerRc::<S> { rc_cell, s };
+        let inner_rc = InnerArc::<S> { rc_cell, s };
 
         let (ptr, Tracked(ptr_perm), Tracked(dealloc_perm)) = PPtr::new(inner_rc);
 
@@ -276,7 +276,7 @@ impl<S> MyRc<S> {
         let tracked inv = AtomicInvariant::new((tr_inst, gh_cell), g, 0);
         let tracked inv = Duplicable::new(inv);
 
-        MyRc {
+        MyArc {
             inst: tr_inst, inv: Tracked(inv), reader: Tracked(reader),
             ptr,
             rc_cell: gh_cell,
@@ -338,7 +338,7 @@ impl<S> MyRc<S> {
             });
 
             if res.is_ok() {
-                return MyRc {
+                return MyArc {
                     inst: Tracked(self.inst.borrow().clone()),
                     inv: Tracked(self.inv.borrow().clone()),
                     reader: Tracked(new_reader.tracked_unwrap()),
@@ -352,7 +352,7 @@ impl<S> MyRc<S> {
     fn dispose(self)
         requires self.wf(),
     {
-        let MyRc { inst: Tracked(inst), inv: Tracked(inv), reader: Tracked(reader), ptr, rc_cell: _ } = self;
+        let MyArc { inst: Tracked(inst), inv: Tracked(inv), reader: Tracked(reader), ptr, rc_cell: _ } = self;
 
         let tracked perm = inst.reader_guard(
             reader@.key,
@@ -394,14 +394,14 @@ impl<S> MyRc<S> {
 
 enum Sequence<V> {
     Nil,
-    Cons(V, MyRc<Sequence<V>>),
+    Cons(V, MyArc<Sequence<V>>),
 }
 
 fn main() {
-    let nil = MyRc::new(Sequence::Nil);
-    let a5 = MyRc::new(Sequence::Cons(5, nil.clone()));
-    let a7 = MyRc::new(Sequence::Cons(7, nil.clone()));
-    let a67 = MyRc::new(Sequence::Cons(6, a7.clone()));
+    let nil = MyArc::new(Sequence::Nil);
+    let a5 = MyArc::new(Sequence::Cons(5, nil.clone()));
+    let a7 = MyArc::new(Sequence::Cons(7, nil.clone()));
+    let a67 = MyArc::new(Sequence::Cons(6, a7.clone()));
 }
 
 }
