@@ -101,8 +101,9 @@ cargo build
 
 A common error you'll find at this stage is that imports of specific
 identifiers with `use` (as opposed to blanket imports using `*`) don't work
-when building the standalone exec-only version of `vstd`. For this, any such
-import must be prefixed by `#[cfg(verus_keep_ghost)]`, such as:
+when building the standalone exec-only version of `vstd`. To rectify this error,
+make sure every such import is prefixed by `#[cfg(verus_keep_ghost)]`, as
+in the following example:
 ```
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::general_internals::is_le;
