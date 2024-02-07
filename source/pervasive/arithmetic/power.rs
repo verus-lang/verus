@@ -19,7 +19,9 @@ use builtin_macros::*;
 verus! {
 
 use crate::arithmetic::div_mod::*;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::general_internals::{is_le};
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::mul::{
     lemma_mul_inequality,
     lemma_mul_nonnegative_auto,
@@ -33,7 +35,9 @@ use crate::arithmetic::mul::{
     lemma_mul_is_associative_auto,
     lemma_mul_nonnegative,
 };
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction_auto};
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::math::{sub as sub1};
 
 /// This function performs exponentiation recursively, to compute `b`

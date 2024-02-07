@@ -17,8 +17,11 @@ use builtin_macros::*;
 
 verus! {
 
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto};
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::general_internals::is_le;
 
 /// This function computes 2 to the power of the given natural number

@@ -18,14 +18,18 @@ use builtin_macros::*;
 verus! {
 
 use crate::calc_macro::*;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::div_mod::{
     lemma_div_pos_is_pos_auto,
     lemma_div_decreases_auto,
     lemma_div_is_ordered_auto,
     lemma_div_multiples_vanish,
 };
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::math::{div as div1};
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::mul::{lemma_mul_increases, lemma_mul_is_commutative};
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::power::{pow, lemma_pow_positive};
 
 /// This function recursively defines the integer logarithm. It's only

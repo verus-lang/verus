@@ -19,6 +19,7 @@ use builtin_macros::*;
 verus! {
 
 #[allow(unused_imports)]
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::div_internals::{
     div_recursive,
     lemma_div_induction_auto,
@@ -27,18 +28,22 @@ use crate::arithmetic::internals::div_internals::{
     lemma_div_auto,
 };
 use crate::arithmetic::internals::div_internals_nonlinear as DivINL;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mod_internals::{
     lemma_div_add_denominator,
     lemma_mod_auto,
     mod_recursive,
 };
 use crate::arithmetic::internals::mod_internals_nonlinear as ModINL;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::{
     lemma_mul_auto,
     lemma_mul_induction,
     lemma_mul_induction_auto,
 };
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::general_internals::{is_le};
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::math::{add as add1, sub as sub1, div as div1};
 use crate::arithmetic::mul::*;
 

@@ -19,14 +19,19 @@ verus! {
 
 use crate::arithmetic::internals::general_internals::*;
 use crate::arithmetic::mul::*;
-use crate::arithmetic::internals::mul_internals::{lemma_mul_auto};
+#[cfg(verus_keep_ghost)]
+use crate::arithmetic::internals::mul_internals::lemma_mul_auto;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals_nonlinear;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mod_internals_nonlinear::{
     lemma_fundamental_div_mod,
     lemma_mod_range,
     lemma_small_mod,
 };
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::div_internals_nonlinear;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::math::{add as add1, sub as sub1};
 
 /// This function performs the modulus operation recursively.

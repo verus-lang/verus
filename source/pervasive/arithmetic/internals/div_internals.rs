@@ -17,7 +17,9 @@ use builtin_macros::*;
 
 verus! {
 
-use crate::arithmetic::internals::general_internals::{is_le};
+#[cfg(verus_keep_ghost)]
+use crate::arithmetic::internals::general_internals::is_le;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mod_internals::{
     lemma_mod_induction_forall,
     lemma_mod_induction_forall2,
@@ -26,7 +28,10 @@ use crate::arithmetic::internals::mod_internals::{
     lemma_mod_basics,
 };
 use crate::arithmetic::internals::mod_internals_nonlinear;
+#[cfg(verus_keep_ghost)]
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::div_internals_nonlinear;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::math::{add as add1, sub as sub1};
 
 /// This function recursively computes the quotient resulting from

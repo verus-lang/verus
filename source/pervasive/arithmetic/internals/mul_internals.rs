@@ -15,8 +15,10 @@
 use builtin::*;
 use builtin_macros::*;
 
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::general_internals::{is_le, lemma_induction_helper};
 use crate::arithmetic::internals::mul_internals_nonlinear as MulINL;
+#[cfg(verus_keep_ghost)]
 use crate::arithmetic::math::{add as add1, sub as sub1};
 
 verus! {
