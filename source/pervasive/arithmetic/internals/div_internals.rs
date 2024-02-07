@@ -143,7 +143,7 @@ pub open spec fn div_auto(n: int) -> bool
 }
 
 /// Proof of `div_auto_plus(n)`, not exported publicly because it's
-/// just used as part of `lemma_div_auto` to prove `div_auto(n)`
+/// just used as part of [`lemma_div_auto`] to prove `div_auto(n)`
 proof fn lemma_div_auto_plus(n: int)
     requires
         n > 0,
@@ -195,7 +195,7 @@ proof fn lemma_div_auto_plus(n: int)
 }
 
 /// Proof of `div_auto_mius(n)`, not exported publicly because it's
-/// just used as part of `lemma_div_auto` to prove `div_auto(n)`
+/// just used as part of [`lemma_div_auto`] to prove `div_auto(n)`
 proof fn lemma_div_auto_minus(n: int)
     requires
         n > 0,

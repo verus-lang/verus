@@ -111,7 +111,7 @@ pub proof fn lemma_pow2_mask_div2_auto()
     }
 }
 
-/// This lemma establishes the concrete values for all powers of 2 from 0 to 32 and also 2^64.
+/// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64
 pub proof fn lemma2_to64()
     ensures
         pow2(0) == 0x1,

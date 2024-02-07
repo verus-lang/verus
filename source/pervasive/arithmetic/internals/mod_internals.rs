@@ -188,7 +188,6 @@ pub proof fn lemma_div_add_denominator(n: int, x: int)
 /// Proof that when dividing, subtracting the denominator from the numerator
 /// decreases the result by 1. Specifically, for the given `n` and `x`,
 /// `(x - n) / n == x / n - 1`.
-// #[verifier::spinoff_prover]
 pub proof fn lemma_div_sub_denominator(n: int, x: int)
     requires
         n > 0,

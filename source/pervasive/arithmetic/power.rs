@@ -325,7 +325,7 @@ pub proof fn lemma_pow_subtracts_auto()
 
 /// Proof that `a` to the power of `b * c` is equal to the result of
 /// taking `a` to the power of `b`, then taking that to the power of
-/// `c`.
+/// `c`
 pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
     ensures
         0 <= b * c,
@@ -371,7 +371,7 @@ pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
 
 /// Proof that, for any `a`, `b`, and `c`, `a` to the power of `b * c`
 /// is equal to the result of taking `a` to the power of `b`, then
-/// taking that to the power of `c`.
+/// taking that to the power of `c`
 pub proof fn lemma_pow_multiplies_auto()
     ensures
         forall|b: nat, c: nat|
@@ -425,7 +425,7 @@ pub proof fn lemma_pow_distributes_auto()
     }
 }
 
-/// Proof of various useful properties of `pow` (exponentiation)
+/// Proof of various useful properties of [`pow`] (exponentiation)
 pub proof fn lemma_pow_auto()
     ensures
         forall|x: int| pow(x, 0) == 1,

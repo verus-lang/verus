@@ -149,7 +149,6 @@ pub proof fn lemma_div_basics_auto()
 /// Proof that if a dividend is a whole number, the divisor is a
 /// natural number, and their quotient is 0, then the dividend is
 /// smaller than the divisor
-// #[verifier::spinoff_prover]
 pub proof fn lemma_small_div_converse_auto()
     ensures
         forall|x: int, d: int|
@@ -266,7 +265,7 @@ pub proof fn lemma_div_is_strictly_smaller_auto()
 }
 
 /// Proof that, given `r == a % d + b % d - (a + b) % d`, `r` can also
-/// be expressed as `d * ((a + b) / d) - d * (a / d) - d * (b / d)`.
+/// be expressed as `d * ((a + b) / d) - d * (a / d) - d * (b / d)`
 pub proof fn lemma_dividing_sums(a: int, b: int, d: int, r: int)
     requires
         0 < d,
@@ -281,7 +280,7 @@ pub proof fn lemma_dividing_sums(a: int, b: int, d: int, r: int)
 
 /// Proof that for any values of the following variables, `r == a % d
 /// + b % d - (a + b) % d` implies `r == d * ((a + b) / d) - d * (a /
-/// d) - d * (b / d)`.
+/// d) - d * (b / d)`
 pub proof fn lemma_dividing_sums_auto()
     ensures
         forall|a: int, b: int, d: int, r: int|
@@ -630,7 +629,7 @@ pub proof fn lemma_remainder_upper_auto()
 
 /// Proof that the division of a nonnegative integer `x` by a positive
 /// integer `d` multiplied by `d` is less than or equal to the value
-/// of `x`.
+/// of `x`
 pub proof fn lemma_remainder_lower(x: int, d: int)
     requires
         0 <= x,
@@ -658,7 +657,7 @@ pub proof fn lemma_remainder_lower_auto()
 /// Proof that the difference between a nonnegative integer `x` and
 /// the division of `x` by a positive integer `d` multiplied by `d` is
 /// lower bounded (inclusively) by 0 and upper bounded (exclusively)
-/// by `d`
+/// by `d
 pub proof fn lemma_remainder(x: int, d: int)
     requires
         0 <= x,
@@ -807,8 +806,8 @@ pub proof fn lemma_div_denominator(x: int, c: int, d: int)
     }
 }
 
-/// Proof that dividing a fraction by a divisor is equivalent to multiplying the fraction's
-/// denominator by the divisor
+/// Proof that dividing a fraction by a divisor is equivalent to
+/// multiplying the fraction's denominator by the divisor
 pub proof fn lemma_div_denominator_auto()
     ensures
         forall|c: int, d: int|
@@ -914,8 +913,9 @@ pub proof fn lemma_indistinguishable_quotients_auto()
     }
 }
 
-/// Proof that common factors from the dividend and divisor of a modulus operation can be factored out.
-/// Specifically, `(b * x) % (b * c) == b * (x % c)`.
+/// Proof that common factors from the dividend and divisor of a
+/// modulus operation can be factored out. Specifically,
+/// `(b * x) % (b * c) == b * (x % c)`.
 pub proof fn lemma_truncate_middle(x: int, b: int, c: int)
     requires
         0 <= x,
@@ -944,7 +944,8 @@ pub proof fn lemma_truncate_middle(x: int, b: int, c: int)
     };
 }
 
-/// Proof that common factors from the dividend and divisor of a modulus operation can be factored out
+/// Proof that common factors from the dividend and divisor of a
+/// modulus operation can be factored out
 pub proof fn lemma_truncate_middle_auto()
     ensures
         forall|x: int, b: int, c: int|
@@ -957,8 +958,9 @@ pub proof fn lemma_truncate_middle_auto()
     }
 }
 
-/// Proof that multiplying the numerator and denominator by an integer does not change the quotient.
-/// Specifically, `a / d == (x * a) / (x * d)`.
+/// Proof that multiplying the numerator and denominator by an integer
+/// does not change the quotient. Specifically,
+/// `a / d == (x * a) / (x * d)`.
 pub proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
     requires
         0 < x,
@@ -981,7 +983,8 @@ pub proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
     }
 }
 
-/// Proof that multiplying the numerator and denominator by an integer does not change the quotient
+/// Proof that multiplying the numerator and denominator by an integer
+/// does not change the quotient
 pub proof fn lemma_div_multiples_vanish_quotient_auto()
     ensures
         forall|x: int, d: int| #![trigger x * d] 0 < x && 0 < d ==> 0 < x * d,
@@ -1000,7 +1003,7 @@ pub proof fn lemma_div_multiples_vanish_quotient_auto()
 }
 
 /// Proof that, since `a % d == 0` and `0 <= r < d`, we can conclude
-/// `a == d * (a + r) / d`.
+/// `a == d * (a + r) / d`
 pub proof fn lemma_round_down(a: int, r: int, d: int)
     requires
         0 < d,
@@ -1014,7 +1017,7 @@ pub proof fn lemma_round_down(a: int, r: int, d: int)
 }
 
 /// Proof that for all `a`, `d`, and `r`, if `a % d == 0` and `0 <= r
-/// < d`, then `a == d * (a + r) / d`.
+/// < d`, then `a == d * (a + r) / d`
 pub proof fn lemma_round_down_auto()
     ensures
         forall|a: int, r: int, d: int|
@@ -1027,7 +1030,7 @@ pub proof fn lemma_round_down_auto()
     }
 }
 
-/// Proof that, since `0 <= b < d`, we have `(d * x + b) / d == x`.
+/// Proof that, since `0 <= b < d`, we have `(d * x + b) / d == x`
 pub proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
     requires
         0 < d,
@@ -1068,7 +1071,8 @@ pub proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
     assert(f(x));
 }
 
-/// Proof that, for any `x`, `b`, and `d` satisfying `0 <= b < d`, we have `(d * x + b) / d == x`
+/// Proof that, for any `x`, `b`, and `d` satisfying `0 <= b < d`, we
+/// have `(d * x + b) / d == x`
 pub proof fn lemma_div_multiples_vanish_fancy_auto()
     ensures
         forall|x: int, b: int, d: int|
@@ -1424,7 +1428,7 @@ pub proof fn lemma_mod_basics_auto()
 }
 
 /// Proof of properties of the modulus operation including those
-/// described in `lemma_mod_basics_auto`. This lemma also states that
+/// described in [`lemma_mod_basics_auto`]. This lemma also states that
 /// the remainder of any division will be less than the divisor's
 /// value.
 pub proof fn lemma_mod_properties_auto()
@@ -1648,8 +1652,9 @@ pub proof fn lemma_mod_subtraction_auto()
     }
 }
 
-/// Proof that modulo distributes over addition, provided you do an extra modulo after adding the remainders.
-/// Specifically, `((x % m) + (y % m)) % m == (x + y) % m`.
+/// Proof that modulo distributes over addition, provided you do an
+/// extra modulo after adding the remainders. Specifically,
+/// `((x % m) + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop(x: int, y: int, m: int)
     requires
         0 < m,
@@ -1659,8 +1664,9 @@ pub proof fn lemma_add_mod_noop(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-/// Proof that modulo distributes over addition, provided you do an extra modulo after adding the remainders.
-/// In other words, for all `x`, `y`, and `m`, `((x % m) + (y % m)) % m == (x + y) % m`.
+/// Proof that modulo distributes over addition, provided you do an
+/// extra modulo after adding the remainders. In other words, for all
+/// `x`, `y`, and `m`, `((x % m) + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop_auto()
     ensures
         forall|x: int, y: int, m: int|
@@ -1673,8 +1679,9 @@ pub proof fn lemma_add_mod_noop_auto()
     }
 }
 
-/// Proof that describes an expanded and succinct version of modulus operator in relation to addition.
-/// Specifically, `(x + (y % m)) % m == (x + y) % m`.
+/// Proof that describes an expanded and succinct version of modulus
+/// operator in relation to addition. Specifically,
+/// `(x + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop_right(x: int, y: int, m: int)
     requires
         0 < m,
@@ -1684,8 +1691,9 @@ pub proof fn lemma_add_mod_noop_right(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-/// Proof that describes an expanded and succinct version of modulus operator in relation to addition.
-/// That is, for all `x`, `y`, and `m`, `(x + (y % m)) % m == (x + y) % m`.
+/// Proof that describes an expanded and succinct version of modulus
+/// operator in relation to addition. That is, for all `x`, `y`, and
+/// `m`, `(x + (y % m)) % m == (x + y) % m`.
 pub proof fn lemma_add_mod_noop_right_auto()
     ensures
         forall|x: int, y: int, m: int|
@@ -1698,8 +1706,9 @@ pub proof fn lemma_add_mod_noop_right_auto()
     }
 }
 
-/// Proof that modulo distributes over subtraction provided you do an extra modulo operation after
-/// subtracting the remainders. Specifically, `((x % m) - (y % m)) % m == (x - y) % m`.
+/// Proof that modulo distributes over subtraction provided you do an
+/// extra modulo operation after subtracting the remainders.
+/// Specifically, `((x % m) - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop(x: int, y: int, m: int)
     requires
         0 < m,
@@ -1709,8 +1718,9 @@ pub proof fn lemma_sub_mod_noop(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-/// Proof that modulo distributes over subtraction provided you do an extra modulo operation after
-/// subtracting the remainders. In other words, for all `x`, `y`, and `m`,
+/// Proof that modulo distributes over subtraction provided you do an
+/// extra modulo operation after subtracting the remainders. In other
+/// words, for all `x`, `y`, and `m`,
 /// `((x % m) - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop_auto()
     ensures
@@ -1724,8 +1734,9 @@ pub proof fn lemma_sub_mod_noop_auto()
     }
 }
 
-/// Proof that describes an expanded and succinct version of modulus operator in relation to subtraction.
-/// Specifically, `(x - (y % m)) % m == (x - y) % m`.
+/// Proof that describes an expanded and succinct version of modulus
+/// operator in relation to subtraction. Specifically,
+/// `(x - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop_right(x: int, y: int, m: int)
     requires
         0 < m,
@@ -1735,8 +1746,9 @@ pub proof fn lemma_sub_mod_noop_right(x: int, y: int, m: int)
     lemma_mod_auto(m);
 }
 
-/// Proof that describes an expanded and succinct version of modulus operator in relation to subtraction.
-/// That is, for all `x`, `y`, and `m`, `(x - (y % m)) % m == (x - y) % m`.
+/// Proof that describes an expanded and succinct version of modulus
+/// operator in relation to subtraction. That is, for all `x`, `y`,
+/// and `m`, `(x - (y % m)) % m == (x - y) % m`.
 pub proof fn lemma_sub_mod_noop_right_auto()
     ensures
         forall|x: int, y: int, m: int|
@@ -1808,7 +1820,7 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
 }
 
 /// This proof isn't exported from this module. It's just used in
-/// the proof of `lemma_fundamental_div_mod_converse`.
+/// the proof of [`lemma_fundamental_div_mod_converse`].
 proof fn lemma_fundamental_div_mod_converse_helper_1(u: int, d: int, r: int)
     requires
         d != 0,
@@ -1841,7 +1853,7 @@ proof fn lemma_fundamental_div_mod_converse_helper_1(u: int, d: int, r: int)
 }
 
 /// This proof isn't exported from this module. It's just used in
-/// the proof of `lemma_fundamental_div_mod_converse`.
+/// the proof of [`lemma_fundamental_div_mod_converse`].
 proof fn lemma_fundamental_div_mod_converse_helper_2(u: int, d: int, r: int)
     requires
         d != 0,
@@ -2052,7 +2064,8 @@ pub proof fn lemma_mul_mod_noop_general(x: int, y: int, m: int)
     lemma_mul_mod_noop_right(x % m, y, m);
 }
 
-/// Proof of various properties about modulo equivalence with respect to multiplication
+/// Proof of various properties about modulo equivalence with respect
+/// to multiplication
 pub proof fn lemma_mul_mod_noop_general_auto()
     ensures
         forall|x: int, y: int, m: int|
@@ -2293,7 +2306,8 @@ pub proof fn lemma_part_bound2(x: int, y: int, z: int)
     assert((x % y) % (y * z) == x % y);
 }
 
-/// Proof that any nonnegative integer `x` modulo `y` modulo `y * z` is less than `y`
+/// Proof that any nonnegative integer `x` modulo `y` modulo `y * z`
+/// is less than `y`
 pub proof fn lemma_part_bound2_auto()
     ensures
         forall|y: int, z: int|

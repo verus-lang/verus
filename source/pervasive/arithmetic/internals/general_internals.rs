@@ -29,7 +29,7 @@ pub open spec fn is_le(x: int, y: int) -> bool {
 }
 
 /// This proof, local to this module, aids in the process of proving
-/// `lemma_induction_helper` by covering only the case of nonnegative
+/// [`lemma_induction_helper`] by covering only the case of nonnegative
 /// values of `x`.
 proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
     requires
@@ -59,7 +59,7 @@ proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
 }
 
 /// This proof, local to this module, aids in the process of proving
-/// `lemma_induction_helper` by covering only the case of negative
+/// [`lemma_induction_helper`] by covering only the case of negative
 /// values of `x`.
 proof fn lemma_induction_helper_neg(n: int, f: FnSpec(int) -> bool, x: int)
     requires

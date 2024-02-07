@@ -49,8 +49,8 @@ pub proof fn lemma_mul_is_mul_recursive_auto()
 }
 
 /// Proof that multiplying two positive integers with `*` results in
-/// the same product as [`mul_pos`], which is achieved by recursive
-/// addition. Specifically, `x * y == mul_pos(x, y)`.
+/// the same product as would be achieved by recursive addition.
+/// Specifically, `x * y == mul_pos(x, y)`.
 pub proof fn lemma_mul_is_mul_pos(x: int, y: int)
     requires
         x >= 0,
@@ -180,8 +180,10 @@ proof fn lemma_mul_ordering_auto()
     };
 }
 
-/// We don't port LemmaMulEquality or LemmaMulEqualityAuto from the
-/// Dafny standard library for arithmetic, since they're never useful.
+/*
+    We don't port LemmaMulEquality or LemmaMulEqualityAuto from the
+    Dafny standard library for arithmetic, since they're never useful.
+*/
 
 /// Proof that, since `x <= y` and `z >= 0`, `x * z <= y * z`
 pub proof fn lemma_mul_inequality(x: int, y: int, z: int)
@@ -683,7 +685,8 @@ pub proof fn lemma_mul_unary_negation_auto()
     }
 }
 
-/// Proof that multiplying `-x` and `-y` produces the same product as multiplying `x` and `y`
+/// Proof that multiplying `-x` and `-y` produces the same product as
+/// multiplying `x` and `y`
 pub proof fn lemma_mul_cancels_negatives(x: int, y: int)
     ensures
         x * y == (-x) * (-y),

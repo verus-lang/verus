@@ -167,7 +167,6 @@ pub open spec fn mul_auto() -> bool {
 
 /// Proof that multiplication is commutative, distributes over
 /// addition, and distributes over subtraction
-// #[verifier::spinoff_prover]
 pub proof fn lemma_mul_auto()
     ensures
         mul_auto(),
