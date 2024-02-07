@@ -101,7 +101,7 @@ cargo build
 
 A common error you'll find at this stage is that imports of specific
 identifiers with `use` (as opposed to blanket imports using `*`) don't work
-when building the standalong exec-only version of `vstd`. For this, any such
+when building the standalone exec-only version of `vstd`. For this, any such
 import must be prefixed by `#[cfg(verus_keep_ghost)]`, such as:
 ```
 #[cfg(verus_keep_ghost)]
