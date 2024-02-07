@@ -1206,9 +1206,9 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::NullaryOpr(op.clone())))))
         }
-        ExprX::Unary(UnaryOp::InferSpecForLoopIter, spec_expr) => {
+        ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, spec_expr) => {
             let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
-            let infer_exp = mk_exp(ExpX::Unary(UnaryOp::InferSpecForLoopIter, spec_exp));
+            let infer_exp = mk_exp(ExpX::Unary(*op, spec_exp));
             Ok((vec![], ReturnValue::Some(infer_exp)))
         }
         ExprX::Unary(op, exprr) => {
@@ -1828,18 +1828,23 @@ pub(crate) fn expr_to_stm_opt(
                     state.pop_scope();
 
                     // Translate as assert, assume in outer query
-                    for r in requires.iter() {
-                        // Use expr_to_pure_exp_skip_checks,
-                        // because we checked spec preconditions above with expr_to_pure_exp_check
-                        let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
-                        let assert = Spanned::new(
-                            r.span.clone(),
-                            StmX::Assert(
-                                Some(error(&r.span.clone(), "requires not satisfied".to_string())),
-                                require_exp,
-                            ),
-                        );
-                        outer.push(assert);
+                    if !state.checking_recommends(&ctx) {
+                        for r in requires.iter() {
+                            // Use expr_to_pure_exp_skip_checks,
+                            // because we checked spec preconditions above with expr_to_pure_exp_check
+                            let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
+                            let assert = Spanned::new(
+                                r.span.clone(),
+                                StmX::Assert(
+                                    Some(error(
+                                        &r.span.clone(),
+                                        "requires not satisfied".to_string(),
+                                    )),
+                                    require_exp,
+                                ),
+                            );
+                            outer.push(assert);
+                        }
                     }
                     for e in ensures.iter() {
                         // Use expr_to_pure_exp_skip_checks,

@@ -400,6 +400,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => expr.clone(),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => expr.clone(),
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
@@ -412,7 +413,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
-                UnaryOp::InferSpecForLoopIter => {
+                UnaryOp::InferSpecForLoopIter { .. } => {
                     // e1 will be the argument to spec Option::Some(...)
                     let e1 = coerce_expr_to_poly(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))

@@ -445,12 +445,14 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
                     if name == "rlimit" =>
                 {
-                    match r.parse::<f32>() {
-                        Ok(rlimit) => v.push(Attr::RLimit(rlimit)),
-                        Err(_) => {
-                            return err_span(*span, "expected number for rlimit");
-                        }
-                    }
+                    let Some(rlimit) = r
+                        .parse::<f32>()
+                        .ok()
+                        .or_else(|| if r == "infinity" { Some(f32::INFINITY) } else { None })
+                    else {
+                        return err_span(*span, "expected number, or `infinity` for rlimit");
+                    };
+                    v.push(Attr::RLimit(rlimit));
                 }
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
                 AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
