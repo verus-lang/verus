@@ -59,7 +59,7 @@ pub fn main() {
                 use rust_verify::file_loader::PervasiveFileLoader;
                 use rust_verify::verifier::Verifier;
 
-                let mut our_args: ArgsX = Default::default();
+                let mut our_args: ArgsX = ArgsX::new();
                 our_args.pervasive_path = Some(pervasive_path.to_string());
                 our_args.no_verify = !verify;
                 our_args.no_lifetime = !verify;
