@@ -151,75 +151,6 @@ pub proof fn lemma2_to64()
 {
     reveal(pow2);
     reveal(pow);
-    assert(pow2(0) == 0x1);
-    assert(pow2(1) == 0x2);
-    assert(pow2(2) == 0x4);
-    assert(pow2(3) == 0x8);
-    assert(pow2(4) == 0x10);
-    assert(pow2(5) == 0x20);
-    assert(pow2(6) == 0x40);
-    assert(pow2(7) == 0x80);
-    assert(pow2(8) == 0x100);
-    assert(pow2(9) == 0x200);
-    assert(pow2(10) == 0x400);
-    assert(pow2(11) == 0x800);
-    assert(pow2(12) == 0x1000);
-    assert(pow2(13) == 0x2000);
-    assert(pow2(14) == 0x4000);
-    assert(pow2(15) == 0x8000);
-    assert(pow2(16) == 0x10000);
-    assert(pow2(17) == 0x20000);
-    assert(pow2(18) == 0x40000);
-    assert(pow2(19) == 0x80000);
-    assert(pow2(20) == 0x100000);
-    assert(pow2(21) == 0x200000);
-    assert(pow2(22) == 0x400000);
-    assert(pow2(23) == 0x800000);
-    assert(pow2(24) == 0x1000000);
-    assert(pow2(25) == 0x2000000);
-    assert(pow2(26) == 0x4000000);
-    assert(pow2(27) == 0x8000000);
-    assert(pow2(28) == 0x10000000);
-    assert(pow2(29) == 0x20000000);
-    assert(pow2(30) == 0x40000000);
-    assert(pow2(31) == 0x80000000);
-    assert(pow2(32) == 0x100000000);
-    assert(pow2(33) == 0x200000000);
-    assert(pow2(34) == 0x400000000);
-    assert(pow2(35) == 0x800000000);
-    assert(pow2(36) == 0x1000000000);
-    assert(pow2(37) == 0x2000000000);
-    assert(pow2(38) == 0x4000000000);
-    assert(pow2(39) == 0x8000000000);
-    assert(pow2(40) == 0x10000000000);
-    assert(pow2(41) == 0x20000000000);
-    assert(pow2(42) == 0x40000000000);
-    assert(pow2(43) == 0x80000000000);
-    assert(pow2(44) == 0x100000000000);
-    assert(pow2(45) == 0x200000000000);
-    assert(pow2(46) == 0x400000000000);
-    assert(pow2(47) == 0x800000000000);
-    assert(pow2(48) == 0x1000000000000);
-    assert(pow2(49) == 0x2000000000000);
-    assert(pow2(50) == 0x4000000000000);
-    assert(pow2(51) == 0x8000000000000);
-    assert(pow2(52) == 0x10000000000000);
-    assert(pow2(53) == 0x20000000000000);
-    assert(pow2(54) == 0x40000000000000);
-    assert(pow2(55) == 0x80000000000000);
-    assert(pow2(56) == 0x100000000000000);
-    assert(pow2(57) == 0x200000000000000);
-    assert(pow2(58) == 0x400000000000000);
-    assert(pow2(59) == 0x800000000000000);
-    assert(pow2(60) == 0x1000000000000000);
-    assert(pow2(61) == 0x2000000000000000);
-    assert(pow2(62) == 0x4000000000000000);
-    assert(pow2(63) == 0x8000000000000000);
-    assert(pow2(64) == 0x10000000000000000);
-    /*
-       assert by compute isn't currently working for vstd, but when it is, the following will
-       be the better approach:
-
     assert(
         pow2(0) == 0x1 &&
         pow2(1) == 0x2 &&
@@ -255,8 +186,7 @@ pub proof fn lemma2_to64()
         pow2(31) == 0x80000000 &&
         pow2(32) == 0x100000000 &&
         pow2(64) == 0x10000000000000000
-    ) by(compute_only);
-    */
+   ) by(compute_only);
 }
 
 } // verus!
