@@ -458,7 +458,17 @@ pub fn parse_args_with_imports(
         rlimit: {
             let rlimit = matches
                 .opt_get::<f32>(OPT_RLIMIT)
-                .unwrap_or_else(|_| error("expected number after rlimit".to_string()))
+                .ok()
+                .or_else(|| {
+                    matches.opt_get::<String>(OPT_RLIMIT).ok().and_then(|v| {
+                        if v == Some("infinity".to_owned()) {
+                            Some(Some(f32::INFINITY))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .unwrap_or_else(|| error("expected number or `infinity` after rlimit".to_string()))
                 .unwrap_or(DEFAULT_RLIMIT_SECS);
             if rlimit == 0.0 {
                 error("rlimit 0 is not allowed".to_string());

@@ -608,13 +608,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_rlimit verus_code! {
+    #[test] test_rlimit_20 verus_code! {
         #[verifier::rlimit(20)]
         fn test1() {
             assert(true);
             assert(!false);
             assert(true && true);
             assert(true || false);
+            assert(true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_rlimit_inf verus_code! {
+        #[verifier::rlimit(infinity)]
+        fn test1() {
             assert(true);
         }
     } => Ok(())
