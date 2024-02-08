@@ -182,7 +182,7 @@ pub proof fn axiom_set_empty<A>(a: A)
 /// A call to `Set::new` with the predicate `f` contains `a` if and only if `f(a)` is true.
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_set_new<A>(f: FnSpec(A) -> bool, a: A)
+pub proof fn axiom_set_new<A>(f: spec_fn(A) -> bool, a: A)
     ensures
         Set::new(f).contains(a) == f(a),
 {
@@ -300,7 +300,7 @@ pub proof fn axiom_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_mk_map_domain<K, V>(s: Set<K>, f: FnSpec(K) -> V)
+pub proof fn axiom_mk_map_domain<K, V>(s: Set<K>, f: spec_fn(K) -> V)
     ensures
         #[trigger] s.mk_map(f).dom() == s,
 {
@@ -308,7 +308,7 @@ pub proof fn axiom_mk_map_domain<K, V>(s: Set<K>, f: FnSpec(K) -> V)
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub proof fn axiom_mk_map_index<K, V>(s: Set<K>, f: FnSpec(K) -> V, key: K)
+pub proof fn axiom_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> V, key: K)
     requires
         s.contains(key),
     ensures

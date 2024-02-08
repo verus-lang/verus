@@ -3714,7 +3714,10 @@ where
     F: Fold + ?Sized,
 {
     TypeFnSpec {
-        fn_spec_token: Token![FnSpec](tokens_helper(f, &node.fn_spec_token.span)),
+        fn_spec_token: (node.fn_spec_token)
+            .map(|it| Token![FnSpec](tokens_helper(f, &it.span))),
+        spec_fn_token: (node.spec_fn_token)
+            .map(|it| Token![FnSpec](tokens_helper(f, &it.span))),
         paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_bare_fn_arg(it)),
         output: f.fold_return_type(node.output),

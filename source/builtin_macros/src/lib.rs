@@ -3,7 +3,8 @@
     feature(proc_macro_span),
     feature(proc_macro_tracked_env),
     feature(proc_macro_quote),
-    feature(proc_macro_expand)
+    feature(proc_macro_expand),
+    feature(proc_macro_diagnostic)
 )]
 
 use synstructure::{decl_attribute, decl_derive};

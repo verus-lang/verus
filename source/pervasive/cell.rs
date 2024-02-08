@@ -283,7 +283,7 @@ impl<T> InvCell<T> {
         &&& self.possible_values@.contains(val)
     }
 
-    pub fn new(val: T, Ghost(f): Ghost<FnSpec(T) -> bool>) -> (cell: Self)
+    pub fn new(val: T, Ghost(f): Ghost<spec_fn(T) -> bool>) -> (cell: Self)
         requires f(val),
         ensures cell.wf() && forall |v| f(v) <==> cell.inv(v),
     {
