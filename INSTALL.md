@@ -22,7 +22,7 @@ Change directory to `source`: `cd source`
 ### On Windows: Get Z3 and set the `VERUS_Z3_PATH` environment variable
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
-Make sure you get Z3 4.12.2.
+Make sure you get Z3 4.12.5.
 The Z3 `bin` folder contain the executable `z3.exe`.
 Set the `VERUS_Z3_PATH` environment variable to the path of the Z3 executable file.
 
