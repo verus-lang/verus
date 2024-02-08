@@ -1497,7 +1497,7 @@ test_verify_one_file! {
     #[test] decrease_through_function verus_code! {
         enum E {
             Nil,
-            F(FnSpec(int) -> E),
+            F(spec_fn(int) -> E),
         }
 
         proof fn p(e: E)
@@ -1514,7 +1514,7 @@ test_verify_one_file! {
     #[test] decrease_through_function_fails verus_code! {
         enum E {
             Nil,
-            F(FnSpec(int) -> E),
+            F(spec_fn(int) -> E),
         }
 
         proof fn p(e: E)
@@ -1531,7 +1531,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decrease_through_function_bad verus_code! {
         struct S {
-            x: FnSpec(int) -> S,
+            x: spec_fn(int) -> S,
         }
 
         proof fn p(s: S)
@@ -1549,7 +1549,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         #[verifier::reject_recursive_types(A)]
-        struct MyFun<A, B>(FnSpec(A) -> B);
+        struct MyFun<A, B>(spec_fn(A) -> B);
         enum E {
             Nil,
             F(MyFun<int, E>),
@@ -1798,7 +1798,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] decreases_inside_closure verus_code! {
-        spec fn f1(n: int) -> FnSpec(int) -> int
+        spec fn f1(n: int) -> spec_fn(int) -> int
             decreases n
         {
             if n > 0 {
@@ -1808,7 +1808,7 @@ test_verify_one_file! {
             }
         }
 
-        spec fn f2(n: int) -> FnSpec(int) -> int
+        spec fn f2(n: int) -> spec_fn(int) -> int
             decreases n
         {
             if n > 0 {

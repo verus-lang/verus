@@ -3088,6 +3088,8 @@ impl Hash for TypeFnSpec {
     where
         H: Hasher,
     {
+        self.fn_spec_token.hash(state);
+        self.spec_fn_token.hash(state);
         self.inputs.hash(state);
         self.output.hash(state);
     }
