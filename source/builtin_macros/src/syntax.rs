@@ -2691,12 +2691,21 @@ impl VisitMut for Visitor {
         let tmp_ty = take_type(ty);
 
         match tmp_ty {
-            Type::FnSpec(TypeFnSpec { spec_fn_token: _, fn_spec_token, paren_token: _, inputs, output }) => {
+            Type::FnSpec(TypeFnSpec {
+                spec_fn_token: _,
+                fn_spec_token,
+                paren_token: _,
+                inputs,
+                output,
+            }) => {
                 #[cfg(verus_keep_ghost)]
                 if fn_spec_token.is_some() {
-                    proc_macro::Diagnostic::spanned(span.unwrap(),
+                    proc_macro::Diagnostic::spanned(
+                        span.unwrap(),
                         proc_macro::Level::Warning,
-                        "FnSpec is deprecated - use spec_fn instead").emit();
+                        "FnSpec is deprecated - use spec_fn instead",
+                    )
+                    .emit();
                 }
 
                 // Turn `FnSpec(Args...) -> Output`
