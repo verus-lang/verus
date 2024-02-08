@@ -706,6 +706,9 @@ where
             let ts = map_typs_visitor_env(ts, env, ft)?;
             ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p.clone(), ts))
         }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter)
+        }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::Unary(*op, expr1)

@@ -675,7 +675,7 @@ fn check_expr_handle_mut_arg(
                 if path_as_vstd_name(&x.path)
                     == path_as_vstd_name(&crate::def::exec_nonstatic_call_path(&None))
                 {
-                    format!("to call a non-static function in ghost code, it must be a FnSpec")
+                    format!("to call a non-static function in ghost code, it must be a spec_fn")
                 } else {
                     format!("cannot call function with mode {}", function.x.mode)
                 }
@@ -775,6 +775,7 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(Mode::Exec),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => Ok(Mode::Spec),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => Ok(Mode::Spec),
         ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind }, e1) => {
             // same as a call to an op_mode function with parameter from_mode and return to_mode
             if ctxt.check_ghost_blocks {
@@ -802,12 +803,12 @@ fn check_expr_handle_mut_arg(
         ExprX::Unary(UnaryOp::HeightTrigger, _) => {
             panic!("direct access to 'height' is not allowed")
         }
-        ExprX::Unary(UnaryOp::InferSpecForLoopIter, e1) => {
+        ExprX::Unary(UnaryOp::InferSpecForLoopIter { .. }, e1) => {
             // InferSpecForLoopIter is a loop-invariant hint that always has mode spec.
             // If the expression already has mode spec (e.g. because the function calls
             // are all autospec), then keep the expression.
             // Otherwise, make a note that the expression had mode exec,
-            // so that ast_simplify can replace the expression with None.
+            // so that check_function can replace the expression with NoInferSpecForLoopIter.
             let mut typing = typing.push_restore_on_error();
             let mode_opt = check_expr(ctxt, record, &mut typing, outer_mode, e1);
             let mode = mode_opt.unwrap_or(Mode::Exec);
@@ -906,7 +907,7 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Closure(params, body) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use FnSpec closure in 'exec' mode"));
+                return Err(error(&expr.span, "cannot use spec_fn closure in 'exec' mode"));
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
@@ -923,7 +924,7 @@ fn check_expr_handle_mut_arg(
             if typing.block_ghostness != Ghost::Exec || outer_mode != Mode::Exec {
                 return Err(error(
                     &expr.span,
-                    "closure in ghost code must be marked as a FnSpec by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
+                    "closure in ghost code must be marked as a spec_fn by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
                 ));
             }
             let mut typing = typing.push_var_scope();
@@ -1464,15 +1465,18 @@ fn check_function(
             let mut functionx = function.x.clone();
             functionx.body = Some(crate::ast_visitor::map_expr_visitor(body, &|expr: &Expr| {
                 match &expr.x {
-                    ExprX::Unary(UnaryOp::InferSpecForLoopIter, _) => {
+                    ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, e) => {
                         let mode_opt = infer_spec.iter().find(|(span, _)| span.id == expr.span.id);
                         if let Some((_, Mode::Spec)) = mode_opt {
                             // InferSpecForLoopIter must be spec mode
                             // to be usable for invariant inference
                             Ok(expr.clone())
                         } else {
-                            // Otherwise, abandon the expression and return None (no inference)
-                            Ok(crate::loop_inference::make_none_expr(&expr.span, &expr.typ))
+                            // Otherwise, abandon the expression and return NoInferSpecForLoopIter,
+                            // which will be converted to None in sst_to_air
+                            let no_infer = crate::ast::NullaryOpr::NoInferSpecForLoopIter;
+                            let e = e.new_x(ExprX::NullaryOpr(no_infer));
+                            Ok(expr.new_x(ExprX::Unary(*op, e)))
                         }
                     }
                     _ => Ok(expr.clone()),

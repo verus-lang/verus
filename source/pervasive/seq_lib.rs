@@ -22,7 +22,7 @@ impl<A> Seq<A> {
     /// the resulting sequence.
     /// The `int` parameter of `f` is the index of the element being mapped.
     // TODO(verus): rename to map_entries, for consistency with Map::map
-    pub open spec fn map<B>(self, f: FnSpec(int, A) -> B) -> Seq<B> {
+    pub open spec fn map<B>(self, f: spec_fn(int, A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 
@@ -30,7 +30,7 @@ impl<A> Seq<A> {
     /// the resulting sequence.
     /// The `int` parameter of `f` is the index of the element being mapped.
     // TODO(verus): rename to map, because this is what everybody wants.
-    pub open spec fn map_values<B>(self, f: FnSpec(A) -> B) -> Seq<B> {
+    pub open spec fn map_values<B>(self, f: spec_fn(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))
     }
 
@@ -74,7 +74,7 @@ impl<A> Seq<A> {
     /// ```rust
     /// {{#include ../../../rust_verify/example/multiset.rs:sorted_by_leq}}
     /// ```
-    pub closed spec fn sort_by(self, leq: FnSpec(A,A) -> bool) -> Seq<A>
+    pub closed spec fn sort_by(self, leq: spec_fn(A,A) -> bool) -> Seq<A>
         recommends
             total_ordering(leq),
         decreases
@@ -93,7 +93,7 @@ impl<A> Seq<A> {
         }
     }
 
-    pub proof fn lemma_sort_by_ensures(self, leq: FnSpec(A,A) -> bool)
+    pub proof fn lemma_sort_by_ensures(self, leq: spec_fn(A,A) -> bool)
         requires
             total_ordering(leq),
         ensures
@@ -143,7 +143,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[verifier::opaque]
-    pub open spec fn filter(self, pred: FnSpec(A) -> bool) -> Self
+    pub open spec fn filter(self, pred: spec_fn(A) -> bool) -> Self
         decreases self.len()
     {
         if self.len() == 0 {
@@ -154,7 +154,7 @@ impl<A> Seq<A> {
         }
     }
 
-    pub proof fn filter_lemma(self, pred: FnSpec(A) -> bool)
+    pub proof fn filter_lemma(self, pred: spec_fn(A) -> bool)
         ensures
             // we don't keep anything bad
             // TODO(andrea): recommends didn't catch this error, where i isn't known to be in
@@ -194,14 +194,14 @@ impl<A> Seq<A> {
 
     #[verifier(external_body)]
     #[verifier(broadcast_forall)]
-    pub proof fn filter_lemma_broadcast(self, pred: FnSpec(A) -> bool)
+    pub proof fn filter_lemma_broadcast(self, pred: spec_fn(A) -> bool)
         ensures
             forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
             forall |i: int| 0 <= i < self.len() && pred(self[i])
                 ==> #[trigger] self.filter(pred).contains(self[i]),
             #[trigger] self.filter(pred).len() <= self.len();
 
-    proof fn filter_distributes_over_add(a:Self, b:Self, pred:FnSpec(A)->bool)
+    proof fn filter_distributes_over_add(a:Self, b:Self, pred:spec_fn(A)->bool)
     ensures
         (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
     decreases b.len()
@@ -250,19 +250,19 @@ impl<A> Seq<A> {
 
     #[verifier(external_body)]
     #[verifier(broadcast_forall)]
-    pub proof fn filter_distributes_over_add_broacast(a:Self, b:Self, pred:FnSpec(A)->bool)
+    pub proof fn filter_distributes_over_add_broacast(a:Self, b:Self, pred:spec_fn(A)->bool)
     ensures
         #[trigger] (a+b).filter(pred) == a.filter(pred) + b.filter(pred),
     {
     // TODO(chris): We have perfectly good proofs sitting around for these broadcasts; they don't
     // need to be axioms!
-//        assert forall |a:Self, b:Self, pred:FnSpec(A)->bool| (a+b).filter(pred) == a.filter(pred) + b.filter(pred) by {
+//        assert forall |a:Self, b:Self, pred:spec_fn(A)->bool| (a+b).filter(pred) == a.filter(pred) + b.filter(pred) by {
 //            Self::filter_distributes_over_add(a, b, pred);
 //        }
     }
 
     /// Returns the maximum value in a non-empty sequence, given sorting function leq
-    pub open spec fn max_via(self, leq: FnSpec(A,A) -> bool) -> A
+    pub open spec fn max_via(self, leq: spec_fn(A,A) -> bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
@@ -278,7 +278,7 @@ impl<A> Seq<A> {
     }
 
     /// Returns the minimum value in a non-empty sequence, given sorting function leq
-    pub open spec fn min_via(self, leq: FnSpec(A,A) -> bool) -> A
+    pub open spec fn min_via(self, leq: spec_fn(A,A) -> bool) -> A
        recommends self.len() > 0,
        decreases self.len(),
     {
@@ -560,7 +560,7 @@ impl<A> Seq<A> {
     ///
     /// Given a sequence `s = [x0, x1, x2, ..., xn]`, applying this function `s.fold_left(b, f)`
     /// returns `f(...f(f(b, x0), x1), ..., xn)`.
-    pub open spec fn fold_left<B>(self, b: B, f: FnSpec(B, A) -> B) -> (res: B)
+    pub open spec fn fold_left<B>(self, b: B, f: spec_fn(B, A) -> B) -> (res: B)
         decreases self.len(),
     {
         if self.len() == 0 {
@@ -573,7 +573,7 @@ impl<A> Seq<A> {
     /// Equivalent to [`Self::fold_left`] but defined by breaking off the leftmost element when
     /// recursing, rather than the rightmost. See [`Self::lemma_fold_left_alt`] that proves
     /// equivalence.
-    pub open spec fn fold_left_alt<B>(self, b: B, f: FnSpec(B, A) -> B) -> (res: B)
+    pub open spec fn fold_left_alt<B>(self, b: B, f: spec_fn(B, A) -> B) -> (res: B)
         decreases self.len(),
     {
         if self.len() == 0 {
@@ -584,7 +584,7 @@ impl<A> Seq<A> {
     }
 
     /// An auxiliary lemma for proving [`Self::lemma_fold_left_alt`].
-    proof fn aux_lemma_fold_left_alt<B>(self, b: B, f: FnSpec(B, A) -> B, k: int)
+    proof fn aux_lemma_fold_left_alt<B>(self, b: B, f: spec_fn(B, A) -> B, k: int)
         requires 0 < k <= self.len(),
         ensures
           self.subrange(k, self.len() as int)
@@ -615,7 +615,7 @@ impl<A> Seq<A> {
     }
 
     /// [`Self::fold_left`] and [`Self::fold_left_alt`] are equivalent.
-    pub proof fn lemma_fold_left_alt<B>(self, b: B, f: FnSpec(B, A) -> B)
+    pub proof fn lemma_fold_left_alt<B>(self, b: B, f: spec_fn(B, A) -> B)
         ensures self.fold_left(b, f) == self.fold_left_alt(b, f),
         decreases self.len(),
     {
@@ -637,7 +637,7 @@ impl<A> Seq<A> {
     ///
     /// Given a sequence `s = [x0, x1, x2, ..., xn]`, applying this function `s.fold_right(b, f)`
     /// returns `f(x0, f(x1, f(x2, ..., f(xn, b)...)))`.
-    pub open spec fn fold_right<B>(self, f: FnSpec(A, B) -> B, b: B) -> (res: B)
+    pub open spec fn fold_right<B>(self, f: spec_fn(A, B) -> B, b: B) -> (res: B)
         decreases self.len(),
     {
         if self.len() == 0 {
@@ -650,7 +650,7 @@ impl<A> Seq<A> {
     /// Equivalent to [`Self::fold_right`] but defined by breaking off the leftmost element when
     /// recursing, rather than the rightmost. See [`Self::lemma_fold_right_alt`] that proves
     /// equivalence.
-    pub open spec fn fold_right_alt<B>(self, f: FnSpec(A, B) -> B, b: B) -> (res: B)
+    pub open spec fn fold_right_alt<B>(self, f: spec_fn(A, B) -> B, b: B) -> (res: B)
         decreases self.len(),
     {
         if self.len() == 0 {
@@ -661,7 +661,7 @@ impl<A> Seq<A> {
     }
 
     /// An auxiliary lemma for proving [`Self::lemma_fold_right_alt`].
-    proof fn aux_lemma_fold_right_alt<B>(self, f: FnSpec(A, B) -> B, b: B, k: int)
+    proof fn aux_lemma_fold_right_alt<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
         requires 0 <= k < self.len(),
         ensures
           self.subrange(0, k).fold_right(f, self.subrange(k, self.len() as int).fold_right(f, b)) ==
@@ -689,7 +689,7 @@ impl<A> Seq<A> {
     }
 
     /// [`Self::fold_right`] and [`Self::fold_right_alt`] are equivalent.
-    pub proof fn lemma_fold_right_alt<B>(self, f: FnSpec(A, B) -> B, b: B)
+    pub proof fn lemma_fold_right_alt<B>(self, f: spec_fn(A, B) -> B, b: B)
         ensures self.fold_right(f, b) == self.fold_right_alt(f, b),
         decreases self.len(),
     {
@@ -738,7 +738,7 @@ impl<A> Seq<A> {
     /// it is true for every member of the sequence as a collection.
     /// Useful for converting quantifiers between the two forms
     /// to satisfy a precondition in the latter form.
-    pub proof fn lemma_indexing_implies_membership(self, f: FnSpec(A) -> bool)
+    pub proof fn lemma_indexing_implies_membership(self, f: spec_fn(A) -> bool)
         requires
             forall |i: int| 0 <= i < self.len() ==> #[trigger] f(#[trigger] self[i]),
         ensures
@@ -751,7 +751,7 @@ impl<A> Seq<A> {
     /// it is true at every index of the sequence.
     /// Useful for converting quantifiers between the two forms
     /// to satisfy a precondition in the latter form.
-    pub proof fn lemma_membership_implies_indexing(self, f: FnSpec(A) -> bool)
+    pub proof fn lemma_membership_implies_indexing(self, f: spec_fn(A) -> bool)
         requires
             forall |x: A| #[trigger] self.contains(x) ==> #[trigger] f(x),
         ensures
@@ -1143,7 +1143,7 @@ impl Seq<int> {
 }
 
 // Helper function to aid with merge sort
-spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool) -> Seq<A>
+spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: spec_fn(A,A) -> bool) -> Seq<A>
     recommends
         sorted_by(left, leq),
         sorted_by(right, leq),
@@ -1162,7 +1162,7 @@ spec fn merge_sorted_with<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bo
     }
 }
 
-proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: FnSpec(A,A) -> bool)
+proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: spec_fn(A,A) -> bool)
     requires
         sorted_by(left, leq),
         sorted_by(right, leq),
@@ -1525,7 +1525,7 @@ pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
 }
  
 /// Any two sequences that are sorted by a total order and that have the same elements are equal.
-pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: FnSpec(A,A) -> bool)
+pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: spec_fn(A,A) -> bool)
 requires
     sorted_by(x,leq),
     sorted_by(y,leq),

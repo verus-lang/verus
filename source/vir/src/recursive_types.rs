@@ -468,7 +468,7 @@ fn type_scc_error(
     err
 }
 
-fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Node>) -> VirErr {
+fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr {
     // Special case this error message because it doesn't look like
     // a 'trait' error to the user (even though we conceptualize it as a trait
     // error in VIR)
@@ -495,9 +495,19 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
     };
     let msg = msg.to_string();
     let mut err = crate::messages::error_bare(msg);
+
+    // Try to put Node::Fun first, since this is likely to be the easiest to understand
+    let mut nodes = nodes.clone();
+    if let Some(i) = nodes.iter().position(|n| matches!(n, Node::Fun(..))) {
+        let len = nodes.len();
+        let second_part = nodes.split_off(i);
+        nodes.splice(0..0, second_part);
+        assert!(nodes.len() == len);
+    }
+
     for (i, node) in nodes.iter().enumerate() {
-        let mut push = |node: &Node, span: Span, text: &str| {
-            if node == head {
+        let mut push = |span: Span, text: &str| {
+            if i == 0 {
                 err = err.primary_span(&span);
             }
             let msg = format!(
@@ -512,19 +522,19 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
             Node::Fun(fun) | Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => {
                 if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
                     let span = f.span.clone();
-                    push(node, span, ": function definition, whose body may have dependencies");
+                    push(span, ": function definition, whose body may have dependencies");
                 }
             }
             Node::Datatype(path) => {
                 if let Some(d) = krate.datatypes.iter().find(|t| t.x.path == *path) {
                     let span = d.span.clone();
-                    push(node, span, ": type definition");
+                    push(span, ": type definition");
                 }
             }
             Node::Trait(trait_path) => {
                 if let Some(t) = krate.traits.iter().find(|t| t.x.name == *trait_path) {
                     let span = t.span.clone();
-                    push(node, span, ": declaration of trait");
+                    push(span, ": declaration of trait");
                 }
             }
             Node::TraitImpl(ImplPath::TraitImplPath(impl_path)) => {
@@ -532,11 +542,11 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
                     krate.trait_impls.iter().find(|t| t.x.impl_path.clone() == *impl_path)
                 {
                     let span = t.span.clone();
-                    push(node, span, ": implementation of trait for a type");
+                    push(span, ": implementation of trait for a type");
                 }
             }
             Node::SpanInfo { span_infos_index, text } => {
-                push(node, span_infos[*span_infos_index].clone(), text);
+                push(span_infos[*span_infos_index].clone(), text);
             }
         }
     }
@@ -601,9 +611,13 @@ pub(crate) fn add_trait_impl_to_graph(
     let src_node = new_span_info_node(
         span_infos,
         t.x.trait_typ_arg_impls.span.clone(),
-        ": an implementation of a trait, applying the trait to some type arguments, \
-            for some `Self` type, where applying the trait to type arguments and declaring \
-            the `Self` type may depend on other trait implementations to satisfy type bounds"
+        ": an implementation of a trait, which depends on (1) any supertraits \
+            of the trait or (2) any type arguments passed to the trait's type parameters. \
+            Specifically, (1) the implementation of a subtrait builds on, and depends on, \
+            the implementations of all supertraits of the subtrait, and \
+            (2) the implementation of a trait must satisfy any bounds on any type arguments \
+            used to instantiate the type parameters of the trait (including bounds on `Self`), \
+            so this implementation may depend on other implementations to satisfy these bounds."
             .to_string(),
     );
     call_graph.add_edge(trait_impl_src_node, src_node.clone());
@@ -754,7 +768,6 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
                     return Err(scc_error(
                         krate,
                         &ctx.datatype_graph_span_infos,
-                        node,
                         &ctx.func_call_graph.shortest_cycle_back_to_self(node),
                     ));
                 }

@@ -4185,7 +4185,12 @@ pub fn visit_type_fn_spec<'ast, V>(v: &mut V, node: &'ast TypeFnSpec)
 where
     V: Visit<'ast> + ?Sized,
 {
-    tokens_helper(v, &node.fn_spec_token.span);
+    if let Some(it) = &node.fn_spec_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.spec_fn_token {
+        tokens_helper(v, &it.span);
+    }
     tokens_helper(v, &node.paren_token.span);
     for el in Punctuated::pairs(&node.inputs) {
         let (it, p) = el.into_tuple();

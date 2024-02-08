@@ -163,12 +163,12 @@ impl<K, V> Map<K, V> {
     }
 
     /// Map a function `f` over all (k, v) pairs in `self`.
-    pub open spec fn map_entries<W>(self, f: FnSpec(K, V) -> W) -> Map<K, W> {
+    pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
         Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
     }
 
     /// Map a function `f` over the values in `self`.
-    pub open spec fn map_values<W>(self, f: FnSpec(V) -> W) -> Map<K, W> {
+    pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
         Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
     }
 
@@ -286,7 +286,7 @@ pub proof fn lemma_disjoint_union_size<K,V>(m1: Map<K,V>, m2: Map<K,V>)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
-pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
+pub proof fn lemma_map_new_domain<K,V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
         Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k))
 {
@@ -297,7 +297,7 @@ pub proof fn lemma_map_new_domain<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
 /// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V)
+pub proof fn lemma_map_new_values<K,V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
         Map::<K,V>::new(fk,fv).values() == Set::<V>::new(|v: V| (exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v)),
 {
@@ -313,16 +313,16 @@ pub proof fn lemma_map_new_values<K,V>(fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V
 /// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 pub proof fn lemma_map_properties<K,V>()
     ensures
-    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
+    forall |fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).dom()
             == Set::<K>::new(|k: K| fk(k)), //from lemma_map_new_domain
-    forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values()
+    forall |fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values()
             == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),  //from lemma_map_new_values
 {
-    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V|
+    assert forall |fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V|
         #[trigger] Map::<K,V>::new(fk,fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
             lemma_map_new_domain(fk, fv);
         }
-    assert forall |fk: FnSpec(K) -> bool, fv: FnSpec(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values()
+    assert forall |fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger] Map::<K,V>::new(fk,fv).values()
         == Set::<V>::new(|v: V| exists |k: K| #[trigger] fk(k) && #[trigger] fv(k) == v) by {
             lemma_map_new_values(fk, fv);
         }

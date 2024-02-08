@@ -794,6 +794,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 air::ast_util::mk_true()
             }
         }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
+            panic!("internal error: NoInferSpecForLoopIter")
+        }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
@@ -840,7 +843,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(str_ident(CHAR_TO_UNICODE), Arc::new(vec![expr])))
             }
-            UnaryOp::InferSpecForLoopIter => {
+            UnaryOp::InferSpecForLoopIter { .. } => {
                 // loop_inference failed to promote to Some, so demote to None
                 let exp = crate::loop_inference::make_option_exp(None, &exp.span, &exp.typ);
                 exp_to_expr(ctx, &exp, expr_ctxt)?
@@ -1912,8 +1915,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
             let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
             let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
+            let mut hint_message = None;
             for inv in invs.iter() {
-                let inv_exp = crate::loop_inference::finalize_inv(modified_vars, &inv.inv);
+                let inv_exp =
+                    crate::loop_inference::finalize_inv(modified_vars, &inv.inv, &mut hint_message);
                 let msg_opt = exp_get_custom_err(&inv_exp);
                 let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
                 if cond.is_some() {
@@ -2030,7 +2035,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
 
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(CommandsWithContextX::new(
+            let loop_cmd_context = CommandsWithContextX::new(
                 ctx.fun
                     .as_ref()
                     .expect("asserts are expected to be in a function")
@@ -2041,7 +2046,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
                 ProverChoice::DefaultProver,
                 false,
-            ));
+            );
+            loop_cmd_context.hint_upon_failure.replace(hint_message);
+            state.commands.push(loop_cmd_context);
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();

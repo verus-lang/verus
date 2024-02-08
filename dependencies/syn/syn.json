@@ -6055,7 +6055,14 @@
       },
       "fields": {
         "fn_spec_token": {
-          "token": "FnSpec"
+          "option": {
+            "token": "FnSpec"
+          }
+        },
+        "spec_fn_token": {
+          "option": {
+            "token": "FnSpec"
+          }
         },
         "paren_token": {
           "group": "Paren"

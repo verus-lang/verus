@@ -563,7 +563,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
         TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
         TypX::Lambda(atyps, rtyp) => format!(
-            "FnSpec({}) -> {}",
+            "spec_fn({}) -> {}",
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
