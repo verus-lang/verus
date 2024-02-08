@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBounds,
-    Ident, Krate, Mode, Path, SpannedTyped, Trait, TraitImpl, Typ, TypX, Typs, VirErr, Visibility,
-    WellKnownItem,
+    Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped, Trait, TraitImpl, Typ, TypX, Typs,
+    VirErr, Visibility, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -215,6 +215,103 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
     }
 
     Arc::new(kratex)
+}
+
+pub(crate) fn redirect_default_method_call(
+    func_map: &HashMap<Fun, Function>,
+    trait_impl_map: &HashMap<(Fun, Path), Fun>,
+    function: &Function,
+    span: &Span,
+    callee: Fun,
+    ts: Typs,
+    impl_paths: ImplPaths,
+) -> Result<(Fun, ImplPaths), VirErr> {
+    let f2 = &func_map[&callee];
+    let filter_impl_paths = |callee: &Fun| {
+        Arc::new(
+            impl_paths
+                .iter()
+                .cloned()
+                .filter(|p| {
+                    // If we can directly resolve a call from f1 inside impl to f2 inside
+                    // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
+                    // This is a useful special case where we can avoid a spurious cyclic dependency
+                    // error.
+                    let f2 = &func_map[callee];
+                    if let (
+                        FunctionKind::TraitMethodImpl { impl_path: caller_impl, .. },
+                        FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
+                    ) = (&function.x.kind, &f2.x.kind)
+                    {
+                        &ImplPath::TraitImplPath(caller_impl.clone()) != p
+                            || &ImplPath::TraitImplPath(callee_impl.clone()) != p
+                    } else {
+                        true
+                    }
+                })
+                .collect(),
+        )
+    };
+
+    if let (
+        FunctionKind::TraitMethodImpl {
+            trait_path: caller_trait,
+            impl_path: caller_impl,
+            trait_typ_args: caller_trait_typ_args,
+            inherit_body_from,
+            ..
+        },
+        FunctionKind::TraitMethodDecl { trait_path: callee_trait, .. },
+    ) = (&function.x.kind, &f2.x.kind)
+    {
+        if callee_trait == caller_trait {
+            if let Some(f_trait) = inherit_body_from {
+                let f_trait = &func_map[f_trait];
+                let trait_typ_args = f_trait
+                    .x
+                    .typ_params
+                    .iter()
+                    .map(|x| Arc::new(TypX::TypParam(x.clone())))
+                    .collect();
+                if crate::ast_util::n_types_equal(&ts, &Arc::new(trait_typ_args)) {
+                    // Since we don't have a copy of the default method body
+                    // specialized to our impl, we need to do extra work to
+                    // redirect calls from the inherited body back to our own impl.
+                    // See comment below regarding trait_inherit_default_name.
+                    let default_name = crate::def::trait_inherit_default_name(&callee, caller_impl);
+                    if func_map.contains_key(&default_name) {
+                        // turn T::f into impl::default-f
+                        let callee = default_name;
+                        let impl_paths = filter_impl_paths(&callee);
+                        return Ok((callee, impl_paths));
+                    } else {
+                        // turn T::f into impl::f
+                        let callee = trait_impl_map[&(callee, caller_impl.clone())].clone();
+                        let impl_paths = filter_impl_paths(&callee);
+                        return Ok((callee, impl_paths));
+                    }
+                } else {
+                    // In a normal body, we rely on impl_paths to detect cycles.
+                    // Unfortunately, in an inherited body, we don't have impl_paths
+                    // specialized to our impl, so we conservatively reject
+                    // the call.
+                    return Err(error(
+                        span,
+                        "call from trait default method to same trait with different type arguments is not allowed",
+                    ));
+                }
+            } else if crate::ast_util::n_types_equal(&ts, caller_trait_typ_args) {
+                // We resolved to a method implemented in the trait (a default)
+                // Because ts is the same as caller_trait_typ_args,
+                // we infer that this is a call to our own inherited copy of the
+                // trait method, and thus is a direct call within our own impl.
+                let callee = crate::def::trait_inherit_default_name(&callee, caller_impl);
+                let impl_paths = filter_impl_paths(&callee);
+                return Ok((callee, impl_paths));
+            }
+        }
+    }
+    Ok((callee, impl_paths))
 }
 
 fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {

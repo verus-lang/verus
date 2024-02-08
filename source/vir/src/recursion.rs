@@ -473,95 +473,27 @@ pub(crate) fn expand_call_graph(
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
-                let (callee, ts) =
-                    if let CallTargetKind::Method(Some((x_resolved, ts_resolved, _))) = kind {
-                        (x_resolved.clone(), ts_resolved.clone())
-                    } else {
-                        (x.clone(), ts.clone())
-                    };
-                let callee = {
-                    let f2 = &func_map[&callee];
-                    if let (
-                        FunctionKind::TraitMethodImpl {
-                            trait_path: caller_trait,
-                            impl_path: caller_impl,
-                            trait_typ_args: caller_trait_typ_args,
-                            inherit_body_from,
-                            ..
-                        },
-                        FunctionKind::TraitMethodDecl { trait_path: callee_trait, .. },
-                    ) = (&function.x.kind, &f2.x.kind)
+                let (callee, ts, impl_paths) =
+                    if let CallTargetKind::Method(Some((x_resolved, ts_resolved, x_impl_paths))) =
+                        kind
                     {
-                        if callee_trait == caller_trait {
-                            if let Some(f_trait) = inherit_body_from {
-                                let f_trait = &func_map[f_trait];
-                                let trait_typ_args = f_trait
-                                    .x
-                                    .typ_params
-                                    .iter()
-                                    .map(|x| Arc::new(TypX::TypParam(x.clone())))
-                                    .collect();
-                                if crate::ast_util::n_types_equal(&ts, &Arc::new(trait_typ_args)) {
-                                    // Since we don't have a copy of the default method body
-                                    // specialized to our impl, we need to do extra work to
-                                    // redirect calls from the inherited body back to our own impl.
-                                    // See comment below regarding trait_inherit_default_name.
-                                    let default_name = crate::def::trait_inherit_default_name(
-                                        &callee,
-                                        caller_impl,
-                                    );
-                                    if func_map.contains_key(&default_name) {
-                                        // turn T::f into impl::default-f
-                                        default_name
-                                    } else {
-                                        // turn T::f into impl::f
-                                        trait_impl_map[&(callee, caller_impl.clone())].clone()
-                                    }
-                                } else {
-                                    // In a normal body, we rely on impl_paths to detect cycles.
-                                    // Unfortunately, in an inherited body, we don't have impl_paths
-                                    // specialized to our impl, so we conservatively reject
-                                    // the call.
-                                    return Err(error(
-                                        &expr.span,
-                                        "call from trait default method to same trait with different type arguments is not allowed",
-                                    ));
-                                }
-                            } else if crate::ast_util::n_types_equal(&ts, caller_trait_typ_args) {
-                                // We resolved to a method implemented in the trait (a default)
-                                // Because ts is the same as caller_trait_typ_args,
-                                // we infer that this is a call to our own inherited copy of the
-                                // trait method, and thus is a direct call within our own impl.
-                                crate::def::trait_inherit_default_name(&callee, caller_impl)
-                            } else {
-                                callee
-                            }
-                        } else {
-                            callee
-                        }
+                        (x_resolved.clone(), ts_resolved.clone(), x_impl_paths.clone())
                     } else {
-                        callee
-                    }
-                };
-                let f2 = &func_map[&callee];
+                        (x.clone(), ts.clone(), impl_paths.clone())
+                    };
+
+                let (callee, impl_paths) = crate::traits::redirect_default_method_call(
+                    func_map,
+                    trait_impl_map,
+                    function,
+                    &expr.span,
+                    callee,
+                    ts,
+                    impl_paths,
+                )?;
 
                 for impl_path in impl_paths.iter() {
                     // f --> D: T
-                    // (However: if we can directly resolve a call from f1 inside impl to f2 inside
-                    // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
-                    // This is a useful special case where we can avoid a spurious cyclic dependency
-                    // error.)
-                    if let (
-                        FunctionKind::TraitMethodImpl { impl_path: caller_impl, .. },
-                        FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
-                    ) = (&function.x.kind, &f2.x.kind)
-                    {
-                        if &ImplPath::TraitImplPath(caller_impl.clone()) == impl_path
-                            && &ImplPath::TraitImplPath(callee_impl.clone()) == impl_path
-                        {
-                            continue;
-                        }
-                    }
                     let expr_node = crate::recursive_types::new_span_info_node(
                         span_infos,
                         expr.span.clone(),
