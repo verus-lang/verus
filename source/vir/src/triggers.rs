@@ -337,9 +337,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 }
                 Ok(())
             }
-            ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::MBQI), _) => {
+            ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::NoTriggers), _) => {
                 if map.num_scopes() == 1 {
-                    state.auto_trigger = AutoType::MBQI;
+                    state.auto_trigger = AutoType::None;
                 }
                 Ok(())
             }
@@ -422,14 +422,14 @@ pub(crate) fn build_triggers(
     allow_empty: bool,
 ) -> Result<(Trigs, bool), VirErr> {
     let mut state = State {
-        auto_trigger: AutoType::None,
+        auto_trigger: AutoType::Manual,
         trigger_vars: vars.iter().cloned().collect(),
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
     };
     get_manual_triggers(&mut state, exp)?;
     if state.triggers.len() > 0 || allow_empty {
-        if state.auto_trigger != AutoType::None {
+        if state.auto_trigger != AutoType::Manual {
             return Err(error(
                 span,
                 "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",
@@ -456,7 +456,7 @@ pub(crate) fn build_triggers(
             trigs.push(Arc::new(trig.clone()));
         }
         Ok((Arc::new(trigs), false))
-    } else if state.auto_trigger == AutoType::MBQI {
+    } else if state.auto_trigger == AutoType::None {
         Ok((Arc::new(Vec::new()), true))
     } else {
         let vars = &vars.iter().cloned().map(|(x, _)| x).collect();

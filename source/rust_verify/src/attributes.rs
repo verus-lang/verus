@@ -230,8 +230,8 @@ pub(crate) enum Attr {
     AutoTrigger,
     // accept all possible triggers chosen by triggers_auto without printing any diagnostics
     AllTriggers,
-    // use model-based quantifier instantiation for this quantifier
-    MBQI,
+    // do not produce any patterns for this quantifier (Z3 will pick, or if pi.enabled = false, won't use triggers at all)
+    NoTriggers,
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
     // when used in a ghost context, redirect to a specified spec method
@@ -340,7 +340,7 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
                 AttrTree::Fun(_, name, None) if name == "all_triggers" => v.push(Attr::AllTriggers),
-                AttrTree::Fun(_, name, None) if name == "no_triggers" => v.push(Attr::MBQI),
+                AttrTree::Fun(_, name, None) if name == "no_triggers" => v.push(Attr::NoTriggers),
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
@@ -513,7 +513,7 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, name, None) if name == "all_triggers" => {
                         v.push(Attr::AllTriggers)
                     }
-                    AttrTree::Fun(_, name, None) if name == "no_triggers" => v.push(Attr::MBQI),
+                    AttrTree::Fun(_, name, None) if name == "no_triggers" => v.push(Attr::NoTriggers),
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
@@ -632,7 +632,7 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>,
         match attr {
             Attr::AutoTrigger => groups.push(TriggerAnnotation::AutoTrigger),
             Attr::AllTriggers => groups.push(TriggerAnnotation::AllTriggers),
-            Attr::MBQI => groups.push(TriggerAnnotation::MBQI),
+            Attr::NoTriggers => groups.push(TriggerAnnotation::NoTriggers),
             Attr::Trigger(None) => groups.push(TriggerAnnotation::Trigger(None)),
             Attr::Trigger(Some(group_ids)) => {
                 groups.extend(group_ids.into_iter().map(|id| TriggerAnnotation::Trigger(Some(id))));
