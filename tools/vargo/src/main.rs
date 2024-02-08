@@ -229,6 +229,12 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let vstd_log_all = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-log-all")
+        .map(|p| args.remove(p))
+        .is_some();
+
     if vstd_no_alloc && !vstd_no_std {
         return Err(format!("--vstd-no-alloc requires --vstd-no-std"));
     }
@@ -939,6 +945,9 @@ fn run() -> Result<(), String> {
                         }
                         if vstd_trace {
                             vstd_build = vstd_build.arg("--trace");
+                        }
+                        if vstd_log_all {
+                            vstd_build = vstd_build.arg("--log-all");
                         }
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");

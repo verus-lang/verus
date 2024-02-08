@@ -33,6 +33,7 @@ fn main() {
     let mut no_alloc = false;
     let mut verbose = false;
     let mut trace = false;
+    let mut log_all = false;
     for arg in args {
         if arg == "--release" {
             release = true;
@@ -46,6 +47,8 @@ fn main() {
             no_alloc = true;
         } else if arg == "--trace" {
             trace = true;
+        } else if arg == "--log-all" {
+            log_all = true;
         } else {
             panic!("unexpected argument: {:}", arg)
         }
@@ -86,6 +89,7 @@ fn main() {
         verus_target_path.to_str().expect("invalid path").to_string(),
         (if no_verify { "no-verify" } else { "verify" }).to_string(),
         (if trace { "trace" } else { "no-trace" }).to_string(),
+        (if log_all { "log-all" } else { "no-log-all" }).to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
         "--extern".to_string(),
