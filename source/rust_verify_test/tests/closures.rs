@@ -11,7 +11,7 @@ test_verify_one_file! {
             assert(f(20) == 21);
         }
 
-        proof fn takefun(f: FnSpec(u32, u64) -> bool) -> (b: bool)
+        proof fn takefun(f: spec_fn(u32, u64) -> bool) -> (b: bool)
             ensures
                 b == f(10, 20),
         {
@@ -25,20 +25,20 @@ test_verify_one_file! {
         }
 
         #[verifier(opaque)]
-        spec fn apply_to_1(f: FnSpec(u8) -> u8) -> u8 {
+        spec fn apply_to_1(f: spec_fn(u8) -> u8) -> u8 {
             f(1)
         }
 
-        proof fn refine_takefun(f: FnSpec(bool, bool) -> nat) {
+        proof fn refine_takefun(f: spec_fn(bool, bool) -> nat) {
             assert(f(true, false) >= 0);
         }
 
-        proof fn test_refine(f: FnSpec(bool, bool) -> nat) {
+        proof fn test_refine(f: spec_fn(bool, bool) -> nat) {
             refine_takefun(|x: bool, y: bool| 10);
             assert(apply_to_1(|u: u8| 10) >= 0);
         }
 
-        spec fn polytestfun<A>(a: A, f: FnSpec(A, A) -> A) -> A{
+        spec fn polytestfun<A>(a: A, f: spec_fn(A, A) -> A) -> A{
             f(a, a)
         }
 
@@ -47,7 +47,7 @@ test_verify_one_file! {
             assert(a === aa);
         }
 
-        spec fn specf(x: u32, f: FnSpec(u32) -> u32) -> u32 {
+        spec fn specf(x: u32, f: spec_fn(u32) -> u32) -> u32 {
             f(f(x))
         }
 
@@ -67,16 +67,16 @@ test_verify_one_file! {
             assert(specf(10, |z| add(add(add(z, 1), p), q)) == add(18, mul(2, p)));
         }
 
-        proof fn test_refine_inference(f: FnSpec(bool, bool) -> nat) {
+        proof fn test_refine_inference(f: spec_fn(bool, bool) -> nat) {
             refine_takefun(|x, y| 10);
             assert(apply_to_1(|u| 10) >= 0);
         }
 
         struct S {
-            f: FnSpec(u8) -> u8,
+            f: spec_fn(u8) -> u8,
         }
 
-        proof fn test_fnspec_refinement_types(f: FnSpec(u8) -> u8, s: S) {
+        proof fn test_fnspec_refinement_types(f: spec_fn(u8) -> u8, s: S) {
             let x = f(10);
             assert(x < 300);
             let g = s.f;
@@ -88,7 +88,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
-        proof fn takefun(f: FnSpec(u32, u64) -> bool) -> bool {
+        proof fn takefun(f: spec_fn(u32, u64) -> bool) -> bool {
             ensures(|b: bool| b == f(10, 20));
 
             #[verifier::spec] let b: bool = f(10, 20);
@@ -104,7 +104,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
-        spec fn polytestfun<A>(a: A, f: FnSpec(A, A) -> A) -> A{
+        spec fn polytestfun<A>(a: A, f: spec_fn(A, A) -> A) -> A{
             f(a, a)
         }
 
@@ -117,7 +117,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails3 verus_code! {
-        spec fn specf(x: u32, f: FnSpec(u32) -> u32) -> u32 {
+        spec fn specf(x: u32, f: spec_fn(u32) -> u32) -> u32 {
             f(f(x))
         }
 
@@ -140,7 +140,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
-        proof fn refine_takefun(f: FnSpec(nat) -> int) {
+        proof fn refine_takefun(f: spec_fn(nat) -> int) {
             assert(f(10) >= 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -148,7 +148,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_fn_spec_type verus_code! {
-        spec fn stuff(t: FnSpec(int) -> int, x: int) -> int {
+        spec fn stuff(t: spec_fn(int) -> int, x: int) -> int {
             t(x)
         }
 

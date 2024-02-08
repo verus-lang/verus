@@ -520,9 +520,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_spec_eq_type_error_3 verus_code! {
-        fn test(a: u64, b: FnSpec(u64)->nat)
+        fn test(a: u64, b: spec_fn(u64)->nat)
             requires a == b { }
-    } => Err(err) => assert_spec_eq_type_err(err, "u64", "FnSpec(u64) -> nat")
+    } => Err(err) => assert_spec_eq_type_err(err, "u64", "spec_fn(u64) -> nat")
 }
 
 test_verify_one_file! {
