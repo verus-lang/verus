@@ -74,6 +74,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
     match name {
         Primitive::Array => crate::def::array_type(),
         Primitive::Slice => crate::def::slice_type(),
+        Primitive::Ptr => crate::def::ptr_type(),
     }
 }
 
@@ -81,6 +82,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
     str_ident(match name {
         Primitive::Array => crate::def::TYPE_ID_ARRAY,
         Primitive::Slice => crate::def::TYPE_ID_SLICE,
+        Primitive::Ptr => crate::def::TYPE_ID_PTR,
     })
 }
 
@@ -136,10 +138,12 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
-        TypX::Primitive(Primitive::Array | Primitive::Slice, _) => match typ_as_mono(typ) {
-            None => panic!("should be boxed"),
-            Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
-        },
+        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
+            match typ_as_mono(typ) {
+                None => panic!("should be boxed"),
+                Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
+            }
+        }
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
@@ -172,6 +176,7 @@ fn decoration_str(d: TypDecoration) -> &'static str {
         TypDecoration::Ghost => crate::def::DECORATE_GHOST,
         TypDecoration::Tracked => crate::def::DECORATE_TRACKED,
         TypDecoration::Never => crate::def::DECORATE_NEVER,
+        TypDecoration::ConstPtr => crate::def::DECORATE_CONST_PTR,
     }
 }
 

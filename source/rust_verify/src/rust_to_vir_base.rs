@@ -688,6 +688,17 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typs = Arc::new(vec![typ]);
             (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
         }
+        TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty, mutbl }) => {
+            let typ = t_rec(ty)?.0;
+            let typs = Arc::new(vec![typ]);
+
+            let typ = Arc::new(TypX::Primitive(Primitive::Ptr, typs));
+            let dec_typ = match mutbl {
+                Mutability::Not => Arc::new(TypX::Decorate(TypDecoration::ConstPtr, typ)),
+                Mutability::Mut => typ,
+            };
+            (dec_typ, false)
+        }
         TyKind::Array(ty, const_len) => {
             let typ = mid_ty_to_vir_ghost(
                 tcx,
@@ -911,7 +922,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::Str => unsupported_err!(span, "str type"),
-        TyKind::RawPtr(..) => unsupported_err!(span, "raw pointer types"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")
         }

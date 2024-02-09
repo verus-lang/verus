@@ -23,6 +23,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Char => false,
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::FnDef(..) => false,
     }
 }

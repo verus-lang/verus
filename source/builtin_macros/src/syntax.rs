@@ -2077,7 +2077,7 @@ impl VisitMut for Visitor {
 
         let do_replace = match &expr {
             Expr::Lit(ExprLit { lit: Lit::Int(..), .. }) if use_spec_traits => true,
-            Expr::Cast(..) if use_spec_traits => true,
+            Expr::Cast(cast) if use_spec_traits && !is_ptr_type(&cast.ty) => true,
             Expr::Index(..) if use_spec_traits => true,
             Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
@@ -3581,5 +3581,13 @@ fn mk_verus_attr(span: Span, tokens: TokenStream) -> Attribute {
         bracket_token: token::Bracket { span },
         path: Path { leading_colon: None, segments: path_segments },
         tokens: quote! { (#tokens) },
+    }
+}
+
+fn is_ptr_type(typ: &Type) -> bool {
+    match typ {
+        Type::Ptr(_) => true,
+        Type::Paren(t) => is_ptr_type(&t.elem),
+        _ => false,
     }
 }

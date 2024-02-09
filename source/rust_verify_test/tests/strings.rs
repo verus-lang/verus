@@ -508,7 +508,7 @@ test_verify_one_file! {
             let v: u8 = 42;
             let z = v as char;
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast: `u8` to `char`")
 }
 
 test_verify_one_file! {

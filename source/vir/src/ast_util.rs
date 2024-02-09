@@ -628,6 +628,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             match prim {
                 crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
                 crate::ast::Primitive::Slice => format!("[{typs_str}]"),
+                crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
             }
         }
         TypX::Datatype(path, typs, _) => format!(
@@ -645,6 +646,14 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Decorate(TypDecoration::MutRef, typ) => {
             format!("&mut {}", typ_to_diagnostic_str(typ))
         }
+        TypX::Decorate(TypDecoration::ConstPtr, typ) => match &**typ {
+            TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
+                format!("*const {}", typ_to_diagnostic_str(&typs[0]))
+            }
+            _ => {
+                format!("[Internal Error *const decoration] {}", typ_to_diagnostic_str(typ))
+            }
+        },
         TypX::Decorate(
             decoration @ (TypDecoration::Box
             | TypDecoration::Rc
