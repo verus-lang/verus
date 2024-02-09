@@ -329,6 +329,7 @@ fn check_item<'tcx>(
                     impl_def_id,
                     trait_did,
                     trait_ref.skip_binder().args,
+                    None,
                 );
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
                 // We keep this full list, with the first element being the Self type X

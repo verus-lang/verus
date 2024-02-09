@@ -2987,6 +2987,106 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default10 verus_code! {
+        trait T {
+            proof fn f();
+            proof fn g() {}
+        }
+
+        proof fn h() {
+            <bool as T>::g();
+        }
+
+        impl T for bool {
+            proof fn f() { h(); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default11 verus_code! {
+        trait T {
+            proof fn f();
+            proof fn g() {}
+        }
+
+        proof fn h() {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn f() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default11b verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g() }
+            proof fn g() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn g() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default12 verus_code! {
+        trait T1 {
+            proof fn f() ensures false;
+        }
+
+        // "trait T2: T1" is equivalent to "trait T2 where Self: T1".
+        // We treat "Self: T1" just like we would treat "A: T1" for an explicit type parameter A.
+        // This means that Self::f is unconditionally available to call inside g.
+        // It also means that in h(), <bool as T2>::g() must provide "impl T1 for bool" for g.
+        // This is what causes the cycle.
+        // This approach has advantages and disadvantages:
+        // - disadvantage: even if g() doesn't call Self::f(), it's still a (spurious) cycle
+        // - advantage: "Self: T1" is available for instantiating other bounds; see test_default13
+        trait T2: T1 {
+            proof fn g() ensures false { Self::f(); }
+        }
+
+        impl T1 for bool {
+            proof fn f() { h(); }
+        }
+
+        impl T2 for bool {
+        }
+
+        proof fn h()
+             ensures false
+        {
+            <bool as T2>::g();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default13 verus_code! {
+        trait T1: Sized {
+            proof fn f();
+        }
+
+        proof fn m<A: T1>() {
+            A::f();
+        }
+
+        trait T2: T1 {
+            proof fn g() { m::<Self>(); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
         use vstd::prelude::View;
 

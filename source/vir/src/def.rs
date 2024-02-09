@@ -253,7 +253,7 @@ pub(crate) fn trait_default_name(default_fun: &Fun) -> Fun {
     })
 }
 
-pub(crate) fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
+pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
     let path = (**impl_path).clone();
     let mut segments = (*path.segments).clone();
     let x = segments.last().expect("segment").to_string()
