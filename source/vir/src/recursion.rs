@@ -482,7 +482,7 @@ pub(crate) fn expand_call_graph(
                         (x.clone(), ts.clone(), impl_paths.clone())
                     };
 
-                let (callee, impl_paths) = crate::traits::redirect_default_method_call(
+                let (callee, impl_paths) = crate::traits::redirect_calls_in_default_methods(
                     func_map,
                     trait_impl_map,
                     function,

@@ -99,6 +99,64 @@ pub fn demote_foreign_traits(
     Ok(Arc::new(kratex))
 }
 
+/*
+In Rust, traits can have default implementations of methods.  For example:
+    trait T {
+        fn f();
+        fn g() { Self::f(); Self::g(); }
+        fn h();
+    }
+The simplest way to handle termination checking would be to make a Node::Fun
+for the default implementation, following rustc's internal approach, which:
+- represents the default implementation as a function T::g
+- represents g's calls Self::f() and Self::g() as dynamically dispatched through
+  the Self parameter, via the "Self: T" bound.
+- represents other calls to T::g as statically bound to T::g (assuming this isn't overridden
+  by the impl that is being called through).
+However, requiring the "Self: T" be available in T::g would make it hard for impls to use g:
+    impl T for bool {
+        fn f() {}
+        fn h() { Self::g(); }
+    }
+In this simple encoding, the impl of h can't call it's own inherited copy of g,
+because it doesn't yet satisfy the "bool: T" bound (this bound isn't satisfied until
+after the impl's f and h are fully defined.)
+
+Instead of using the simple approach described above,
+we make termination checking more flexible by creating a Node::Fun for each
+inherited copy of a default method, so that there are potentially many Node::Fun values
+for a single default method.  In the example above, there is one Node::Fun for the
+original T::g in T and one Node::Fun for the copy of T::g inherited by "impl T for bool".
+As long as we check termination for all the copies, it is safe to make copies and
+to dispatch calls to specific copy for the impl we are calling.
+In the example above, h's call to Self::g() calls "impl T for bool"'s copy of g,
+not the original g in T.
+We treat the inherited copies of default methods just like ordinary methods implemented
+in the impl, so that the inherited copy does not require a "Self: T" bound.
+This means that the example above is checked as if all the method were implemented
+from scratch inside the impl:
+    impl T for bool {
+        fn f() {}
+        fn g() { Self::f(); Self::g(); } // this is our own *copy* of the method inherited from T
+        fn h() { Self::g(); }
+    }
+
+The function inherit_default_bodies creates these copies of the default implementations.
+
+The function redirect_calls_in_default_methods patches up termination checking for
+calls made from the bodies of copied methods, since rustc's resolution of these calls
+is in the context of the original trait method, not the context of the inherited copy.
+(It might be cleaner to get rustc to make these copies and do its own resolution,
+but this isn't so easy for us, since the default method might come from a separate crate,
+and in this case rustc wouldn't have the HIR for the method.)
+
+Finally, resolved calls to a default method are reresolved as calls to the appropriate
+copy by fn_call_to_vir in the rust_verify crate.  For example:
+- remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
+- if let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path {
+    f = vir::def::trait_inherit_default_name(&f, &impl_path)
+  }
+*/
 pub fn inherit_default_bodies(krate: &Krate) -> Krate {
     let mut kratex = (**krate).clone();
 
@@ -217,7 +275,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
     Arc::new(kratex)
 }
 
-pub(crate) fn redirect_default_method_call(
+pub(crate) fn redirect_calls_in_default_methods(
     func_map: &HashMap<Fun, Function>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
     function: &Function,
@@ -227,37 +285,10 @@ pub(crate) fn redirect_default_method_call(
     impl_paths: ImplPaths,
 ) -> Result<(Fun, ImplPaths), VirErr> {
     let f2 = &func_map[&callee];
-    let filter_impl_paths = |callee: &Fun| {
-        Arc::new(
-            impl_paths
-                .iter()
-                .cloned()
-                .filter(|p| {
-                    // If we can directly resolve a call from f1 inside impl to f2 inside
-                    // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
-                    // This is a useful special case where we can avoid a spurious cyclic dependency
-                    // error.
-                    let f2 = &func_map[callee];
-                    if let (
-                        FunctionKind::TraitMethodImpl { impl_path: caller_impl, .. },
-                        FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
-                    ) = (&function.x.kind, &f2.x.kind)
-                    {
-                        &ImplPath::TraitImplPath(caller_impl.clone()) != p
-                            || &ImplPath::TraitImplPath(callee_impl.clone()) != p
-                    } else {
-                        true
-                    }
-                })
-                .collect(),
-        )
-    };
-
     if let (
         FunctionKind::TraitMethodImpl {
             trait_path: caller_trait,
             impl_path: caller_impl,
-            trait_typ_args: caller_trait_typ_args,
             inherit_body_from,
             ..
         },
@@ -279,17 +310,34 @@ pub(crate) fn redirect_default_method_call(
                     // redirect calls from the inherited body back to our own impl.
                     // See comment below regarding trait_inherit_default_name.
                     let default_name = crate::def::trait_inherit_default_name(&callee, caller_impl);
-                    if func_map.contains_key(&default_name) {
+                    let callee = if func_map.contains_key(&default_name) {
                         // turn T::f into impl::default-f
-                        let callee = default_name;
-                        let impl_paths = filter_impl_paths(&callee);
-                        return Ok((callee, impl_paths));
+                        default_name
                     } else {
                         // turn T::f into impl::f
-                        let callee = trait_impl_map[&(callee, caller_impl.clone())].clone();
-                        let impl_paths = filter_impl_paths(&callee);
-                        return Ok((callee, impl_paths));
-                    }
+                        trait_impl_map[&(callee, caller_impl.clone())].clone()
+                    };
+
+                    // If we can directly resolve a call from f1 inside impl to f2 inside
+                    // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
+                    // This is a useful special case where we can avoid a spurious cyclic dependency
+                    // error.
+                    let filter = |p: &ImplPath| {
+                        let f2 = &func_map[&callee];
+                        if let (
+                            FunctionKind::TraitMethodImpl { impl_path: caller_impl, .. },
+                            FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
+                        ) = (&function.x.kind, &f2.x.kind)
+                        {
+                            &ImplPath::TraitImplPath(caller_impl.clone()) != p
+                                || &ImplPath::TraitImplPath(callee_impl.clone()) != p
+                        } else {
+                            true
+                        }
+                    };
+                    let impl_paths = Arc::new(impl_paths.iter().cloned().filter(filter).collect());
+
+                    return Ok((callee, impl_paths));
                 } else {
                     // In a normal body, we rely on impl_paths to detect cycles.
                     // Unfortunately, in an inherited body, we don't have impl_paths
@@ -300,14 +348,6 @@ pub(crate) fn redirect_default_method_call(
                         "call from trait default method to same trait with different type arguments is not allowed",
                     ));
                 }
-            } else if crate::ast_util::n_types_equal(&ts, caller_trait_typ_args) {
-                // We resolved to a method implemented in the trait (a default)
-                // Because ts is the same as caller_trait_typ_args,
-                // we infer that this is a call to our own inherited copy of the
-                // trait method, and thus is a direct call within our own impl.
-                let callee = crate::def::trait_inherit_default_name(&callee, caller_impl);
-                let impl_paths = filter_impl_paths(&callee);
-                return Ok((callee, impl_paths));
             }
         }
     }
