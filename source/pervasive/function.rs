@@ -10,14 +10,14 @@ verus! {
   /// General properties of spec functions.
   ///
   /// For now, this just contains an axiom of function extensionality for
-  /// FnSpec.
+  /// spec_fn.
 
   /// DEPRECATED: use f1 =~= f2 or f1 =~~= f2 instead.
   /// Axiom of function extensionality: two functions are equal if they are
   /// equal on all inputs.
   #[verifier(external_body)]
   #[deprecated = "use f1 =~= f2 or f1 =~~= f2 instead"]
-  pub proof fn fun_ext<A, B>(f1: FnSpec(A) -> B, f2: FnSpec(A) -> B)
+  pub proof fn fun_ext<A, B>(f1: spec_fn(A) -> B, f2: spec_fn(A) -> B)
     requires forall |x: A| #![trigger f1(x)] f1(x) == f2(x)
     ensures f1 == f2
   {}
@@ -34,7 +34,7 @@ macro_rules! gen_fun_ext_n {
       /// See [`fun_ext`]
       #[verifier(external_body)]
       #[deprecated = "use f1 =~= f2 or f1 =~~= f2 instead"]
-      pub proof fn $fun_ext<$($I),*, $O>(f1: FnSpec($($I),*,) -> $O, f2: FnSpec($($I),*,) -> $O)
+      pub proof fn $fun_ext<$($I),*, $O>(f1: spec_fn($($I),*,) -> $O, f2: spec_fn($($I),*,) -> $O)
         requires forall |$($x: $I),*| #![trigger f1($($x),*)] f1($($x),*) == f2($($x),*)
         ensures f1 == f2
       {}

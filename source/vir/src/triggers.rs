@@ -155,7 +155,7 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CharToInt
-            | UnaryOp::InferSpecForLoopIter => Ok(()),
+            | UnaryOp::InferSpecForLoopIter { .. } => Ok(()),
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => {
@@ -248,6 +248,9 @@ fn check_trigger_expr(
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
                 Err(error(&exp.span, "triggers cannot contain trait bounds"))
             }
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
+                Err(error(&exp.span, "triggers cannot contain loop spec inference"))
+            }
             ExpX::Unary(op, arg) => match op {
                 UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot => {
                     check_trigger_expr_arg(state, true, arg)
@@ -259,7 +262,7 @@ fn check_trigger_expr(
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized => Ok(()),
-                UnaryOp::InferSpecForLoopIter => {
+                UnaryOp::InferSpecForLoopIter { .. } => {
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
                 }
                 UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),

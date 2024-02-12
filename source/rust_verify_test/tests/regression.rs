@@ -480,7 +480,7 @@ test_verify_one_file! {
             spec fn foo(&self) -> bool;
         }
 
-        pub type MyType<T> = FnSpec(T) -> bool;
+        pub type MyType<T> = spec_fn(T) -> bool;
 
         impl<T> Foo for MyType<T> {
             open spec fn foo(&self) -> bool {
@@ -1172,7 +1172,7 @@ test_verify_one_file! {
             Seq::new(1, |i: int| l[i as nat].x)
         }
 
-        spec fn f2<DT: T>(l: L<DT>) -> FnSpec(L<DT>)->DT::X {
+        spec fn f2<DT: T>(l: L<DT>) -> spec_fn(L<DT>)->DT::X {
             |ll: L<DT>| ll.x
         }
     } => Ok(())

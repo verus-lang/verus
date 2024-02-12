@@ -244,7 +244,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] fnspec_positivity verus_code! {
         struct S {
-            f: FnSpec(S) -> int,
+            f: spec_fn(S) -> int,
         }
     } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }

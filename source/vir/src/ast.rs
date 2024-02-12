@@ -230,6 +230,8 @@ pub enum NullaryOpr {
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
     TraitBound(Path, Typs),
+    /// A failed InferSpecForLoopIter subexpression
+    NoInferSpecForLoopIter,
 }
 
 /// Primitive unary operations
@@ -270,7 +272,7 @@ pub enum UnaryOp {
     /// For an exec/proof expression e, the spec s should be chosen so that the value v
     /// that e evaluates to is immutable and v == s, where v may contain local variables.
     /// For example, if v == (n..m), then n and m must be immutable local variables.
-    InferSpecForLoopIter,
+    InferSpecForLoopIter { print_hint: bool },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]

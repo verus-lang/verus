@@ -316,6 +316,7 @@ impl ExpX {
                 ("const_generic".to_string(), 99)
             }
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("trait_bound".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
@@ -332,7 +333,7 @@ impl ExpX {
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     return exp.x.to_string_prec(global, precedence);
                 }
-                UnaryOp::InferSpecForLoopIter => ("InferSpecForLoopIter".to_string(), 0),
+                UnaryOp::InferSpecForLoopIter { .. } => ("InferSpecForLoopIter".to_string(), 0),
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;

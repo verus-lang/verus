@@ -1,6 +1,6 @@
 #! /bin/bash
 
-z3_version="4.12.2"
+z3_version="4.12.5"
 
 if [ `uname` == "Darwin" ]; then
     if [[ $(uname -m) == 'arm64' ]]; then

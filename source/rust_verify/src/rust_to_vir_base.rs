@@ -577,7 +577,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         TypX::Tuple(typs) => typs.clone(),
                         _ => {
                             // TODO proper user-facing error msg here
-                            panic!("expected first type argument of FnSpec to be a tuple");
+                            panic!("expected first type argument of spec_fn to be a tuple");
                         }
                     };
                     return Ok((Arc::new(TypX::Lambda(param_typs, ret_typ)), false));

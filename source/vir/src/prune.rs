@@ -295,7 +295,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
                         );
                     }
-                    ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter, _) => {
+                    ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
                         let t = ReachedType::Datatype(crate::def::option_type_path());
                         reach_type(ctxt, state, &t);
                     }

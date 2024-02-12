@@ -51,6 +51,11 @@ pub fn main() {
                     "no-trace" => false,
                     _ => panic!("invalid trace argument"),
                 };
+                let log_all = match internal_args.next().unwrap().as_str() {
+                    "log-all" => true,
+                    "no-log-all" => false,
+                    _ => panic!("invalid trace argument"),
+                };
 
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
@@ -59,7 +64,7 @@ pub fn main() {
                 use rust_verify::file_loader::PervasiveFileLoader;
                 use rust_verify::verifier::Verifier;
 
-                let mut our_args: ArgsX = Default::default();
+                let mut our_args: ArgsX = ArgsX::new();
                 our_args.pervasive_path = Some(pervasive_path.to_string());
                 our_args.no_verify = !verify;
                 our_args.no_lifetime = !verify;
@@ -67,6 +72,7 @@ pub fn main() {
                 our_args.export = Some(target_path.join(vstd_vir).to_str().unwrap().to_string());
                 our_args.compile = true;
                 our_args.trace = trace;
+                our_args.log_all = log_all;
                 let our_args = Args::from(our_args);
 
                 let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));

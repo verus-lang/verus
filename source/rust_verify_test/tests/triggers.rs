@@ -259,7 +259,7 @@ const TRIGGER_ON_LAMBDA_COMMON: &str = verus_code_str! {
 test_verify_one_file! {
     #[test] test_trigger_on_lambda_1 TRIGGER_ON_LAMBDA_COMMON.to_string() + verus_code_str! {
         #[verifier(external_body)]
-        proof fn something(fn1: FnSpec(S)->bool, fn2: FnSpec(S)->bool)
+        proof fn something(fn1: spec_fn(S)->bool, fn2: spec_fn(S)->bool)
         ensures forall|s: S| #[trigger] fn1(s) ==> fn2(s) { }
 
         proof fn foo(s: S) {
@@ -276,7 +276,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_trigger_on_lambda_2 TRIGGER_ON_LAMBDA_COMMON.to_string() + verus_code_str! {
         #[verifier(external_body)]
-        proof fn something(fn1: FnSpec(S)->bool, fn2: FnSpec(S)->bool)
+        proof fn something(fn1: spec_fn(S)->bool, fn2: spec_fn(S)->bool)
         ensures forall|s: S| #[trigger] fn1(s) ==> fn2(s) { }
 
         proof fn foo(s: S) {

@@ -191,9 +191,19 @@ fn func_body_to_air(
     )?;
 
     let mut proof_body: Vec<crate::ast::Expr> = Vec::new();
-    let def_reqs = if let Some(req) = &function.x.decrease_when {
-        // "when" means the function is only defined if the requirements hold,
-        // including trait bound requirements
+    let mut def_reqs: Vec<Expr> = Vec::new();
+    // Non-recursive function definitions are unconditional axioms that hold
+    // for all type arguments and value arguments
+    // (conceptually, they aren't axioms at all, but are simply abbreviations).
+    // Recursive function definitions, on the other hand, only hold conditionally for
+    // type arguments and value arguments for which termination can be proved.
+    // Collect the conditions on type arguments and value arguments in def_reqs.
+    if function.x.decrease.len() > 0 {
+        // conditions on type arguments:
+        def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds));
+    }
+    if let Some(req) = &function.x.decrease_when {
+        // "when" means the function is only defined if the requirements hold
 
         // first, set up proof_body
         let mut reqs = crate::traits::trait_bounds_to_ast(ctx, &req.span, &function.x.typ_bounds);
@@ -208,17 +218,13 @@ fn func_body_to_air(
         }
         proof_body.push(req.clone()); // check spec preconditions
 
-        // next, define def_reqs for the quuantified axioms
-        let mut def_reqs = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
         // Skip checks because we check decrease_when below
         let exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut check_state, req)?;
         let exp = check_state.finalize_exp(ctx, &check_state.fun_ssts, &exp)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
+        // conditions on value arguments:
         def_reqs.push(expr);
-        def_reqs
-    } else {
-        vec![]
-    };
+    }
     if let Some(fun) = &function.x.decrease_by {
         check_state.view_as_spec = false;
         if let Some(decrease_by_fun) = ctx.func_map.get(fun) {
