@@ -103,6 +103,11 @@ fn main() {
         "--out-dir".to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
     ];
+    if let Ok(sysroot) = std::env::var("RUST_SYSROOT") {
+        child_args.push("--sysroot".to_string());
+        child_args.push(sysroot);
+    }
+
     if release {
         child_args.push("-C".to_string());
         child_args.push("opt-level=3".to_string());

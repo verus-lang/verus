@@ -7,6 +7,9 @@
 
 mod util;
 
+use std::ffi::OsStr;
+use std::process::Command;
+
 use filetime::FileTime as FFileTime;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -57,6 +60,109 @@ impl PartialOrd for Fingerprint {
                 _ => None,
             }
         }
+    }
+}
+
+#[derive(Debug)]
+enum Toolchain {
+    Rustup {
+        toolchain: String,
+        channel: String,
+    },
+    Host,
+}
+
+impl Toolchain {
+    fn from_environment() -> Option<Self> {
+        std::env::var("VARGO_TOOLCHAIN")
+            .ok()
+            .and_then(|toolchain| {
+                match toolchain.as_str() {
+                    "" => None,
+                    "host" => Some(Self::Host),
+                    _ => {
+                        // More relaxed than `rustup show active-toolchain`
+                        let channel = toolchain.split('-').next()
+                            .unwrap_or(&toolchain)
+                            .to_string();
+
+                        Some(Self::Rustup {
+                            toolchain,
+                            channel,
+                        })
+                    }
+                }
+            })
+    }
+
+    fn from_active_rustup_toolchain() -> Result<Self, String> {
+        let output = std::process::Command::new("rustup")
+            .arg("show")
+            .arg("active-toolchain")
+            .stderr(std::process::Stdio::inherit())
+            .output()
+            .map_err(|x| format!("could not execute rustup ({})", x))?;
+
+        if !output.status.success() {
+            return Err(format!("rustup failed"));
+        }
+
+        let active_toolchain_re = Regex::new(
+            r"^(([A-Za-z0-9.]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)",
+        )
+        .unwrap();
+
+        let stdout = std::str::from_utf8(&output.stdout)
+            .map_err(|_| format!("rustup output is invalid utf8"))?;
+
+        let mut captures = active_toolchain_re.captures_iter(&stdout);
+        if let Some(cap) = captures.next() {
+            Ok(Self::Rustup {
+                toolchain: cap[1].to_string(),
+                channel: cap[2].to_string(),
+            })
+        } else {
+            Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"))
+        }
+    }
+
+    fn has_rustup_channel(&self, channel: &str) -> bool {
+        if let Self::Rustup { channel: self_channel, .. } = self {
+            channel == self_channel
+        } else {
+            false
+        }
+    }
+
+    fn command(&self, command: impl AsRef<OsStr>) -> Command {
+        match self {
+            Self::Rustup { toolchain, .. } => {
+                let mut cmd = Command::new("rustup");
+                cmd
+                    .arg("run")
+                    .arg(toolchain)
+                    .arg("--")
+                    .arg(command.as_ref());
+
+                cmd
+            }
+            Self::Host => {
+                Command::new(command)
+            }
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Rustup { toolchain, .. } => toolchain,
+            Self::Host => "host",
+        }
+    }
+}
+
+impl AsRef<OsStr> for Toolchain {
+    fn as_ref(&self) -> &OsStr {
+        self.as_str().as_ref()
     }
 }
 
@@ -242,26 +348,17 @@ fn run() -> Result<(), String> {
     let mut args_bucket = args.clone();
     let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
 
-    let (repo_root, rust_toolchain_toml) = {
+    let repo_root = {
         let current_dir = std::env::current_dir()
             .map_err(|x| format!("could not obtain the current directory ({})", x))?;
-        let repo_root = current_dir
+        current_dir
             .parent()
             .ok_or(format!(
                 "current dir does not have a parent\nrun vargo in `source`"
             ))?
-            .to_owned();
-        let rust_toolchain_toml = toml::from_str::<toml::Value>(
-            &std::fs::read_to_string(repo_root.join("rust-toolchain.toml")).map_err(|x| {
-                format!(
-                    "could not read rust-toolchain.toml ({})\nrun vargo in `source`",
-                    x
-                )
-            })?,
-        )
-        .map_err(|x| format!("could not parse Cargo.toml ({})\nrun vargo in `source`", x))?;
-        (repo_root, rust_toolchain_toml)
+            .to_owned()
     };
+
     if vargo_nest == 0 {
         let files = crate::util::vargo_file_contents(&repo_root.join("tools").join("vargo"));
         let build_hash = &crate::util::hash_file_contents(VARGO_SOURCE_FILES.to_vec());
@@ -274,45 +371,36 @@ fn run() -> Result<(), String> {
             ));
         }
     }
+    let toolchain = if let Some(env) = Toolchain::from_environment() {
+        Some(env)
+    } else if !in_nextest {
+        let active = Toolchain::from_active_rustup_toolchain()?;
 
-    let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
-        .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })
-        .ok_or(
-            format!("rust-toolchain.toml does not contain the toolchain.channel key, or it isn't a string\nrun vargo in `source`"))?;
-
-    let toolchain = if !in_nextest {
-        let output = std::process::Command::new("rustup")
-            .arg("show")
-            .arg("active-toolchain")
-            .stderr(std::process::Stdio::inherit())
-            .output()
-            .map_err(|x| format!("could not execute rustup ({})", x))?;
-        if !output.status.success() {
-            return Err(format!("rustup failed"));
-        }
-        let active_toolchain_re = Regex::new(
-            r"^(([A-Za-z0-9.-]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)",
+        let rust_toolchain_toml = toml::from_str::<toml::Value>(
+            &std::fs::read_to_string(repo_root.join("rust-toolchain.toml")).map_err(|x| {
+                format!(
+                    "could not read rust-toolchain.toml ({})\nrun vargo in `source`",
+                    x
+                )
+            })?,
         )
-        .unwrap();
-        let stdout = std::str::from_utf8(&output.stdout)
-            .map_err(|_| format!("rustup output is invalid utf8"))?;
-        let mut captures = active_toolchain_re.captures_iter(&stdout);
-        if let Some(cap) = captures.next() {
-            let channel = &cap[2];
-            let toolchain = cap[1].to_string();
-            if rust_toolchain_toml_channel != channel {
-                return Err(format!("rustup is using a toolchain with channel {channel}, we expect {rust_toolchain_toml_channel}\ndo you have a rustup override set?"));
-            }
-            Some(toolchain)
-        } else {
-            return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"));
+        .map_err(|x| format!("could not parse Cargo.toml ({})\nrun vargo in `source`", x))?;
+
+        let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
+            .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })
+            .ok_or(
+                format!("rust-toolchain.toml does not contain the toolchain.channel key, or it isn't a string\nrun vargo in `source`"))?;
+
+        if !active.has_rustup_channel(&rust_toolchain_toml_channel) {
+            return Err(format!("The current toolchain is {active:?} but we expect a toolchain with channel {rust_toolchain_toml_channel}\ndo you have a rustup override set?"));
         }
+        Some(active)
     } else {
         None
     };
 
     if let Some(ref toolchain) = toolchain {
-        std::env::set_var("VARGO_TOOLCHAIN", toolchain);
+        std::env::set_var("VARGO_TOOLCHAIN", toolchain.as_str());
     }
 
     let z3_file_name = if vargo_nest == 0 && std::env::var("VERUS_Z3_PATH").is_ok() {
@@ -368,9 +456,11 @@ fn run() -> Result<(), String> {
     };
 
     if task == Task::Cmd {
-        return std::process::Command::new("rustup")
-            .arg("run")
-            .arg(toolchain.expect("not in nextest"))
+        let command = args_bucket.pop()
+            .expect("Must have a command to run");
+
+        return toolchain.expect("No toolchain available")
+            .command(command)
             .args(args_bucket)
             .stderr(std::process::Stdio::inherit())
             .stdout(std::process::Stdio::inherit())
@@ -429,8 +519,13 @@ fn run() -> Result<(), String> {
         forward_args.extend({
             let (forward_args, new_args_bucket): (Vec<_>, Vec<_>) =
                 args_bucket.iter().cloned().enumerate().partition(|(i, y)| {
-                    args_bucket
-                        .get(i - 1)
+                    let prev = if *i > 0 {
+                        args_bucket.get(i - 1)
+                    } else {
+                        None
+                    };
+
+                    prev
                         .map(|x| CARGO_FORWARD_ARGS_NEXT.contains(&x.as_str()))
                         .unwrap_or(false)
                         || CARGO_FORWARD_ARGS_NEXT.contains(&y.as_str())
@@ -467,8 +562,13 @@ fn run() -> Result<(), String> {
     let feature_args: Vec<_> = {
         let (feature_args, new_args_bucket): (Vec<_>, Vec<_>) =
             args_bucket.iter().cloned().enumerate().partition(|(i, y)| {
-                args_bucket
-                    .get(i - 1)
+                let prev = if *i > 0 {
+                    args_bucket.get(i - 1)
+                } else {
+                    None
+                };
+
+                prev
                     .map(|x| x.as_str() == "-F" || x.as_str() == "--features")
                     .unwrap_or(false)
                     || y.as_str() == "-F"
@@ -725,7 +825,10 @@ fn run() -> Result<(), String> {
                 ));
             }
 
+            let toolchain = toolchain.expect("No toolchain available");
+
             fn build_target(
+                toolchain: &Toolchain,
                 release: bool,
                 target: &str,
                 extra_args: &[String],
@@ -737,7 +840,7 @@ fn run() -> Result<(), String> {
                     || package == None && !exclude.iter().find(|x| x.as_str() == target).is_some()
                 {
                     info(format!("building {}", target).as_str());
-                    let mut cmd = std::process::Command::new("cargo");
+                    let mut cmd = toolchain.command("cargo");
                     let mut cmd = cmd
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
@@ -810,7 +913,7 @@ fn run() -> Result<(), String> {
                 } else {
                     &cargo_forward_args
                 };
-                build_target(release, p, &extra_args[..], package, &exclude[..], verbose)?;
+                build_target(&toolchain, release, p, &extra_args[..], package, &exclude[..], verbose)?;
             }
 
             let mut dependencies_mtime = None;
@@ -921,7 +1024,7 @@ fn run() -> Result<(), String> {
                         .unwrap_or(true)
                     {
                         info("vstd outdated, rebuilding");
-                        let mut vstd_build = std::process::Command::new("cargo");
+                        let mut vstd_build = toolchain.command("cargo");
                         let mut vstd_build = vstd_build
                             .env("RUSTC_BOOTSTRAP", "1")
                             .env("VERUS_IN_VARGO", "1")
