@@ -324,7 +324,7 @@ fn run() -> Result<(), String> {
         std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
-    let z3_file_name = if vargo_nest == 0 && std::env::var("VERUS_Z3_PATH").is_ok() {
+    let z3_file_name = if std::env::var("VERUS_Z3_PATH").is_ok() {
         std::env::var("VERUS_Z3_PATH").unwrap()
     } else {
         Z3_FILE_NAME.to_string()
@@ -376,7 +376,7 @@ fn run() -> Result<(), String> {
         _ => panic!("unexpected command"),
     };
 
-    if task != Task::Fmt && !no_solver_version_check {
+    if vargo_nest == 0 && task != Task::Fmt && !no_solver_version_check {
         let output = std::process::Command::new(z3_path)
             .arg("--version")
             .output()
