@@ -338,42 +338,6 @@ fn run() -> Result<(), String> {
         std::env::set_var("VERUS_Z3_PATH", z3_path);
     }
 
-    {
-        let output = std::process::Command::new(z3_path)
-            .arg("--version")
-            .output()
-            .map_err(|x| format!("could not execute z3: {}", x))?;
-        if !output.status.success() {
-            return Err(format!("z3 returned non-zero exit code"));
-        }
-        let stdout_str = std::str::from_utf8(&output.stdout)
-            .map_err(|x| format!("z3 version output is not valid utf8 ({})", x))?
-            .to_string();
-        let z3_version_re = Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
-            .expect("failed to compile z3 version regex");
-        let version = z3_version_re
-            .captures(&stdout_str)
-            .and_then(|captures| {
-                let mut captures = captures.iter();
-                let _ = captures.next()?;
-                let version = captures.next()?;
-                if captures.next() != None {
-                    return None;
-                }
-                Some(version?.as_str())
-            })
-            .ok_or(format!("undexpected z3 version output ({})", stdout_str))?;
-        if !no_solver_version_check && version != consts::EXPECTED_Z3_VERSION {
-            return Err(format!(
-                "Verus expects z3 version \"{}\", found version \"{}\"\n\
-            Run ./tools/get-z3.(sh|ps1) to update z3 first.\n\
-            If you need a build with a custom z3 version, re-run with --no-solver-version-check.",
-                consts::EXPECTED_Z3_VERSION,
-                version
-            ));
-        }
-    }
-
     let cargo_toml = toml::from_str::<toml::Value>(
         &std::fs::read_to_string("Cargo.toml")
             .map_err(|x| format!("could not read Cargo.toml ({})\nrun vargo in `source`", x))?,
@@ -411,6 +375,42 @@ fn run() -> Result<(), String> {
         "update" => Task::Update,
         _ => panic!("unexpected command"),
     };
+
+    if task != Task::Fmt && !no_solver_version_check {
+        let output = std::process::Command::new(z3_path)
+            .arg("--version")
+            .output()
+            .map_err(|x| format!("could not execute z3: {}", x))?;
+        if !output.status.success() {
+            return Err(format!("z3 returned non-zero exit code"));
+        }
+        let stdout_str = std::str::from_utf8(&output.stdout)
+            .map_err(|x| format!("z3 version output is not valid utf8 ({})", x))?
+            .to_string();
+        let z3_version_re = Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
+            .expect("failed to compile z3 version regex");
+        let version = z3_version_re
+            .captures(&stdout_str)
+            .and_then(|captures| {
+                let mut captures = captures.iter();
+                let _ = captures.next()?;
+                let version = captures.next()?;
+                if captures.next() != None {
+                    return None;
+                }
+                Some(version?.as_str())
+            })
+            .ok_or(format!("undexpected z3 version output ({})", stdout_str))?;
+        if version != consts::EXPECTED_Z3_VERSION {
+            return Err(format!(
+                "Verus expects z3 version \"{}\", found version \"{}\"\n\
+            Run ./tools/get-z3.(sh|ps1) to update z3 first.\n\
+            If you need a build with a custom z3 version, re-run with --no-solver-version-check.",
+                consts::EXPECTED_Z3_VERSION,
+                version
+            ));
+        }
+    }
 
     if task == Task::Cmd {
         return std::process::Command::new("rustup")
