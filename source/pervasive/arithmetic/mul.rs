@@ -20,9 +20,9 @@ verus! {
 use crate::arithmetic::internals::mul_internals_nonlinear as MulINL;
 use crate::arithmetic::internals::mul_internals::*;
 
-/// Proof that multiplication using `*` is equivalent to the
-/// multiplication using [`mul_recursive`]. Specifically,
-/// `x * y == mul_recursive(x, y)`.
+/// Proof that multiplication using `*` is equivalent to
+/// multiplication using a recursive definition. Specifically,
+/// `x * y` is equivalent in that way.
 pub proof fn lemma_mul_is_mul_recursive(x: int, y: int)
     ensures
         (x * y) == mul_recursive(x, y),
@@ -38,8 +38,8 @@ pub proof fn lemma_mul_is_mul_recursive(x: int, y: int)
     }
 }
 
-/// Proof that multiplication using `*` is equivalent to the
-/// multiplication using [`mul_recursive`]
+/// Proof that multiplication using `*` is equivalent to
+/// multiplication using a recursive definition
 pub proof fn lemma_mul_is_mul_recursive_auto()
     ensures
         forall|x: int, y: int| x * y == mul_recursive(x, y),
