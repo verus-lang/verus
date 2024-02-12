@@ -1828,18 +1828,23 @@ pub(crate) fn expr_to_stm_opt(
                     state.pop_scope();
 
                     // Translate as assert, assume in outer query
-                    for r in requires.iter() {
-                        // Use expr_to_pure_exp_skip_checks,
-                        // because we checked spec preconditions above with expr_to_pure_exp_check
-                        let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
-                        let assert = Spanned::new(
-                            r.span.clone(),
-                            StmX::Assert(
-                                Some(error(&r.span.clone(), "requires not satisfied".to_string())),
-                                require_exp,
-                            ),
-                        );
-                        outer.push(assert);
+                    if !state.checking_recommends(&ctx) {
+                        for r in requires.iter() {
+                            // Use expr_to_pure_exp_skip_checks,
+                            // because we checked spec preconditions above with expr_to_pure_exp_check
+                            let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
+                            let assert = Spanned::new(
+                                r.span.clone(),
+                                StmX::Assert(
+                                    Some(error(
+                                        &r.span.clone(),
+                                        "requires not satisfied".to_string(),
+                                    )),
+                                    require_exp,
+                                ),
+                            );
+                            outer.push(assert);
+                        }
                     }
                     for e in ensures.iter() {
                         // Use expr_to_pure_exp_skip_checks,

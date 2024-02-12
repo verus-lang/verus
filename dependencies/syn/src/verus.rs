@@ -251,7 +251,8 @@ ast_struct! {
     /// A FnSpec type: `FnSpec(usize) -> bool`.
     /// Parsed similarly to TypeBareFn
     pub struct TypeFnSpec {
-        pub fn_spec_token: Token![FnSpec],
+        pub fn_spec_token: Option<Token![FnSpec]>, // deprecated TODO remove
+        pub spec_fn_token: Option<Token![SpecFn]>,
         pub paren_token: token::Paren,
         pub inputs: Punctuated<BareFnArg, Token![,]>,
         pub output: ReturnType,
@@ -1250,6 +1251,7 @@ mod printing {
     impl ToTokens for TypeFnSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.fn_spec_token.to_tokens(tokens);
+            self.spec_fn_token.to_tokens(tokens);
             self.paren_token.surround(tokens, |tokens| {
                 self.inputs.to_tokens(tokens);
             });

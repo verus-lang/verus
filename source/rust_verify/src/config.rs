@@ -45,7 +45,7 @@ pub struct LogArgs {
     pub log_triggers: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ArgsX {
     pub pervasive_path: Option<String>,
     pub export: Option<String>,
@@ -82,6 +82,48 @@ pub struct ArgsX {
     pub num_threads: usize,
     pub trace: bool,
     pub report_long_running: bool,
+}
+
+impl ArgsX {
+    pub fn new() -> Self {
+        Self {
+            pervasive_path: Default::default(),
+            export: Default::default(),
+            import: Default::default(),
+            verify_root: Default::default(),
+            verify_module: Default::default(),
+            verify_function: Default::default(),
+            no_external_by_default: Default::default(),
+            no_verify: Default::default(),
+            no_lifetime: Default::default(),
+            no_auto_recommends_check: Default::default(),
+            time: Default::default(),
+            time_expanded: Default::default(),
+            output_json: Default::default(),
+            rlimit: f32::INFINITY, // NOTE: default rlimit is infinity
+            smt_options: Default::default(),
+            multiple_errors: Default::default(),
+            expand_errors: Default::default(),
+            log_dir: Default::default(),
+            log_all: Default::default(),
+            log_args: Default::default(),
+            show_triggers: Default::default(),
+            ignore_unexpected_smt: Default::default(),
+            debugger: Default::default(),
+            profile: Default::default(),
+            profile_all: Default::default(),
+            capture_profiles: Default::default(),
+            spinoff_all: Default::default(),
+            use_internal_profiler: Default::default(),
+            no_vstd: Default::default(),
+            compile: Default::default(),
+            solver_version_check: Default::default(),
+            version: Default::default(),
+            num_threads: Default::default(),
+            trace: Default::default(),
+            report_long_running: Default::default(),
+        }
+    }
 }
 
 pub type Args = Arc<ArgsX>;
@@ -413,10 +455,27 @@ pub fn parse_args_with_imports(
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
-        rlimit: matches
-            .opt_get::<f32>(OPT_RLIMIT)
-            .unwrap_or_else(|_| error("expected number after rlimit".to_string()))
-            .unwrap_or(DEFAULT_RLIMIT_SECS),
+        rlimit: {
+            let rlimit = matches
+                .opt_get::<f32>(OPT_RLIMIT)
+                .ok()
+                .or_else(|| {
+                    matches.opt_get::<String>(OPT_RLIMIT).ok().and_then(|v| {
+                        if v == Some("infinity".to_owned()) {
+                            Some(Some(f32::INFINITY))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .unwrap_or_else(|| error("expected number or `infinity` after rlimit".to_string()))
+                .unwrap_or(DEFAULT_RLIMIT_SECS);
+            if rlimit == 0.0 {
+                error("rlimit 0 is not allowed".to_string());
+            } else {
+                rlimit
+            }
+        },
         smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),
         multiple_errors: matches
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)

@@ -234,7 +234,7 @@ test_verify_one_file! {
             assert((|x:int,y:int| x + y)(40, 2) == 42) by (compute_only);
         }
 
-        spec fn call_it(f: FnSpec(int) -> int, arg: int) -> int {
+        spec fn call_it(f: spec_fn(int) -> int, arg: int) -> int {
             let y: int = 100;
             f(arg)
         }
@@ -253,7 +253,7 @@ test_verify_one_file! {
     #[test] closures_fail verus_code! {
 
         #[verifier(external_body)]
-        spec fn call_it(f: FnSpec(int) -> int, arg: int) -> bool
+        spec fn call_it(f: spec_fn(int) -> int, arg: int) -> bool
         {
             true
         }

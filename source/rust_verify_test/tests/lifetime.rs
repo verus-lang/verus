@@ -377,7 +377,7 @@ test_verify_one_file! {
             )
         }
 
-        proof fn bar<'a>(f: FnSpec(u32) -> bool, v: u32, foo: Foo<'a, u32>) -> bool {
+        proof fn bar<'a>(f: spec_fn(u32) -> bool, v: u32, foo: Foo<'a, u32>) -> bool {
             f(v)
         }
     } => Ok(())

@@ -675,7 +675,7 @@ fn check_expr_handle_mut_arg(
                 if path_as_vstd_name(&x.path)
                     == path_as_vstd_name(&crate::def::exec_nonstatic_call_path(&None))
                 {
-                    format!("to call a non-static function in ghost code, it must be a FnSpec")
+                    format!("to call a non-static function in ghost code, it must be a spec_fn")
                 } else {
                     format!("cannot call function with mode {}", function.x.mode)
                 }
@@ -907,7 +907,7 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Closure(params, body) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use FnSpec closure in 'exec' mode"));
+                return Err(error(&expr.span, "cannot use spec_fn closure in 'exec' mode"));
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
@@ -924,7 +924,7 @@ fn check_expr_handle_mut_arg(
             if typing.block_ghostness != Ghost::Exec || outer_mode != Mode::Exec {
                 return Err(error(
                     &expr.span,
-                    "closure in ghost code must be marked as a FnSpec by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
+                    "closure in ghost code must be marked as a spec_fn by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
                 ));
             }
             let mut typing = typing.push_var_scope();

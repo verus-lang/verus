@@ -534,7 +534,7 @@ pub mod parsing {
             } else {
                 Ok(Type::Verbatim(verbatim::between(begin, input)))
             }
-        } else if lookahead.peek(Token![FnSpec]) {
+        } else if lookahead.peek(Token![FnSpec]) || lookahead.peek(Token![SpecFn]) {
             if let Some(fn_spec) = parse_fn_spec(input, false)? {
                 if lifetimes.is_some() {
                     Err(Error::new(
@@ -780,6 +780,7 @@ pub mod parsing {
 
         let fn_spec = TypeFnSpec {
             fn_spec_token: input.parse()?,
+            spec_fn_token: input.parse()?,
             paren_token: parenthesized!(args in input),
             inputs: {
                 let mut inputs = Punctuated::new();

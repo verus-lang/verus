@@ -246,7 +246,7 @@ fn test_vec2() {
 // ANCHOR_END: test_vec2
 
 // ANCHOR: ret_spec_fn
-spec fn adder(x: int) -> FnSpec(int) -> int {
+spec fn adder(x: int) -> spec_fn(int) -> int {
     |y: int| x + y
 }
 

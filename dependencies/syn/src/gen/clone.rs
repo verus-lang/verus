@@ -2391,6 +2391,7 @@ impl Clone for TypeFnSpec {
     fn clone(&self) -> Self {
         TypeFnSpec {
             fn_spec_token: self.fn_spec_token.clone(),
+            spec_fn_token: self.spec_fn_token.clone(),
             paren_token: self.paren_token.clone(),
             inputs: self.inputs.clone(),
             output: self.output.clone(),

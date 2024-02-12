@@ -28,7 +28,7 @@ impl<A> Set<A> {
     }
 
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
-    pub open spec fn map<B>(self, f: FnSpec(A) -> B) -> Set<B> {
+    pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
@@ -37,7 +37,7 @@ impl<A> Set<A> {
     ///
     /// Given a set `s = {x0, x1, x2, ..., xn}`, applying this function `s.fold(init, f)`
     /// returns `f(...f(f(init, x0), x1), ..., xn)`.
-    pub open spec fn fold<E>(self, init: E, f: FnSpec(E, A) -> E) -> E
+    pub open spec fn fold<E>(self, init: E, f: spec_fn(E, A) -> E) -> E
         decreases
             self.len(),
     {
@@ -84,7 +84,7 @@ impl<A> Set<A> {
     }
 
     /// Converts a set into a sequence sorted by the given ordering function `leq`
-    pub open spec fn to_sorted_seq(self, leq: FnSpec(A,A) -> bool) -> Seq<A> {
+    pub open spec fn to_sorted_seq(self, leq: spec_fn(A,A) -> bool) -> Seq<A> {
         self.to_seq().sort_by(leq)
     }
 
@@ -96,7 +96,7 @@ impl<A> Set<A> {
 
     /// Any totally-ordered set contains a unique minimal (equivalently, least) element.
     /// Returns an arbitrary value if r is not a total ordering
-    pub closed spec fn find_unique_minimal(self, r: FnSpec(A,A) -> bool) -> A 
+    pub closed spec fn find_unique_minimal(self, r: spec_fn(A,A) -> bool) -> A 
         recommends 
             total_ordering(r),
             self.len() > 0,
@@ -122,7 +122,7 @@ impl<A> Set<A> {
     }
 
     #[via_fn]
-    proof fn prove_decrease_min_unique(self, r: FnSpec(A,A) -> bool)
+    proof fn prove_decrease_min_unique(self, r: spec_fn(A,A) -> bool)
     {
         lemma_set_properties::<A>();
         if self.len() > 0 {
@@ -133,7 +133,7 @@ impl<A> Set<A> {
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_minimal`.
-    pub proof fn find_unique_minimal_ensures(self, r: FnSpec(A,A) -> bool)
+    pub proof fn find_unique_minimal_ensures(self, r: spec_fn(A,A) -> bool)
         requires
             self.finite(),
             self.len() > 0,
@@ -182,7 +182,7 @@ impl<A> Set<A> {
 
     /// Any totally-ordered set contains a unique maximal (equivalently, greatest) element.
     /// Returns an arbitrary value if r is not a total ordering
-    pub closed spec fn find_unique_maximal(self, r: FnSpec(A,A) -> bool) -> A 
+    pub closed spec fn find_unique_maximal(self, r: spec_fn(A,A) -> bool) -> A 
         recommends 
             total_ordering(r),
             self.len() > 0,
@@ -208,12 +208,12 @@ impl<A> Set<A> {
     }
 
     #[via_fn]
-    proof fn prove_decrease_max_unique(self, r: FnSpec(A,A) -> bool) {
+    proof fn prove_decrease_max_unique(self, r: spec_fn(A,A) -> bool) {
         lemma_set_properties::<A>();
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
-    pub proof fn find_unique_maximal_ensures(self, r: FnSpec(A,A) -> bool)
+    pub proof fn find_unique_maximal_ensures(self, r: spec_fn(A,A) -> bool)
         requires
             self.finite(),
             self.len() > 0,
@@ -329,7 +329,7 @@ impl<A> Set<A> {
     }
 
     /// The result of filtering a finite set is finite and has size less than or equal to the original set.
-    pub proof fn lemma_len_filter(self, f: FnSpec(A) -> bool)
+    pub proof fn lemma_len_filter(self, f: spec_fn(A) -> bool)
         requires
             self.finite(),
         ensures
@@ -342,19 +342,19 @@ impl<A> Set<A> {
     }
 
     /// In a pre-ordered set, a greatest element is necessarily maximal.
-    pub proof fn lemma_greatest_implies_maximal(self, r: FnSpec(A,A) -> bool, max: A)
+    pub proof fn lemma_greatest_implies_maximal(self, r: spec_fn(A,A) -> bool, max: A)
         requires pre_ordering(r),
         ensures is_greatest(r, max, self) ==> is_maximal(r, max, self),
     {}
 
     /// In a pre-ordered set, a least element is necessarily minimal.
-    pub proof fn lemma_least_implies_minimal(self, r: FnSpec(A,A) -> bool, min: A)
+    pub proof fn lemma_least_implies_minimal(self, r: spec_fn(A,A) -> bool, min: A)
         requires pre_ordering(r),
         ensures is_least(r, min, self) ==> is_minimal(r, min, self),
     {}
 
     /// In a totally-ordered set, an element is maximal if and only if it is a greatest element.
-    pub proof fn lemma_maximal_equivalent_greatest(self, r: FnSpec(A,A) -> bool, max: A)
+    pub proof fn lemma_maximal_equivalent_greatest(self, r: spec_fn(A,A) -> bool, max: A)
         requires total_ordering(r),
         ensures is_greatest(r, max, self) <==> is_maximal(r, max, self),
     {
@@ -362,7 +362,7 @@ impl<A> Set<A> {
     }
 
     /// In a totally-ordered set, an element is maximal if and only if it is a greatest element.
-    pub proof fn lemma_minimal_equivalent_least(self, r: FnSpec(A,A) -> bool, min: A)
+    pub proof fn lemma_minimal_equivalent_least(self, r: spec_fn(A,A) -> bool, min: A)
         requires total_ordering(r),
         ensures is_least(r, min, self) <==> is_minimal(r, min, self),
     {
@@ -370,7 +370,7 @@ impl<A> Set<A> {
     }
 
     /// In a partially-ordered set, there exists at most one least element.
-    pub proof fn lemma_least_is_unique(self, r: FnSpec(A,A) -> bool)
+    pub proof fn lemma_least_is_unique(self, r: spec_fn(A,A) -> bool)
         requires partial_ordering(r),
         ensures forall |min: A, min_prime: A| is_least(r, min, self) && is_least(r, min_prime, self) ==> min == min_prime,
     {
@@ -381,7 +381,7 @@ impl<A> Set<A> {
     }
 
     /// In a partially-ordered set, there exists at most one greatest element.
-    pub proof fn lemma_greatest_is_unique(self, r: FnSpec(A,A) -> bool)
+    pub proof fn lemma_greatest_is_unique(self, r: spec_fn(A,A) -> bool)
         requires partial_ordering(r),
         ensures forall |max: A, max_prime: A| is_greatest(r, max, self) && is_greatest(r, max_prime, self) ==> max == max_prime,
     {
@@ -392,7 +392,7 @@ impl<A> Set<A> {
     }
 
     /// In a totally-ordered set, there exists at most one minimal element.
-    pub proof fn lemma_minimal_is_unique(self, r: FnSpec(A,A) -> bool)
+    pub proof fn lemma_minimal_is_unique(self, r: spec_fn(A,A) -> bool)
         requires
             total_ordering(r),
         ensures
@@ -406,7 +406,7 @@ impl<A> Set<A> {
     }
 
     /// In a totally-ordered set, there exists at most one maximal element.
-    pub proof fn lemma_maximal_is_unique(self, r: FnSpec(A,A) -> bool)
+    pub proof fn lemma_maximal_is_unique(self, r: spec_fn(A,A) -> bool)
         requires
             self.finite(),
             total_ordering(r),
@@ -569,7 +569,7 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
 /// If an injective function is applied to each element of a set to construct
 /// another set, the two sets have the same size.
 // the dafny original lemma reasons with partial function f
-pub proof fn lemma_map_size<A,B>(x: Set<A>, y: Set<B>, f: FnSpec(A) -> B)
+pub proof fn lemma_map_size<A,B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     requires
         injective(f),
         forall |a: A| x.contains(a) ==> y.contains(#[trigger] f(a)),

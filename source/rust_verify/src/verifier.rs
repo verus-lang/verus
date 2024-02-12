@@ -938,7 +938,11 @@ impl Verifier {
     }
 
     fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
-        air_context.set_rlimit((rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32);
+        air_context.set_rlimit(if rlimit == f32::INFINITY {
+            0 // z3 interprets a zero rlimit as infinity
+        } else {
+            (rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32
+        });
     }
 
     fn set_default_rlimit(&self, air_context: &mut air::context::Context) {

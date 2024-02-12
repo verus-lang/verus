@@ -1655,7 +1655,7 @@ fn eval_expr_launch(
         fun_calls: HashMap::new(),
     };
     // Don't run for too long
-    let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
+    let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64;
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch, global };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
