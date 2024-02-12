@@ -38,7 +38,7 @@ use crate::arithmetic::mul::{
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction_auto};
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::math::{sub as sub1};
+use crate::math::{sub as sub1};
 
 /// This function performs exponentiation recursively, to compute `b`
 /// to the power of a natural number `e`

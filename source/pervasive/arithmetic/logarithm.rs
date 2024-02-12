@@ -26,7 +26,7 @@ use crate::arithmetic::div_mod::{
     lemma_div_multiples_vanish,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::math::{div as div1};
+use crate::math::{div as div1};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::mul::{lemma_mul_increases, lemma_mul_is_commutative};
 #[cfg(verus_keep_ghost)]

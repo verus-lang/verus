@@ -44,7 +44,7 @@ use crate::arithmetic::internals::mul_internals::{
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::general_internals::{is_le};
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::math::{add as add1, sub as sub1, div as div1};
+use crate::math::{add as add1, sub as sub1, div as div1};
 use crate::arithmetic::mul::*;
 
 /*****************************************************************************

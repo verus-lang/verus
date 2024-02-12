@@ -32,7 +32,7 @@ use crate::arithmetic::internals::mod_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::div_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::math::{add as add1, sub as sub1};
+use crate::math::{add as add1, sub as sub1};
 
 /// This function recursively computes the quotient resulting from
 /// dividing two numbers `x` and `d`, in the case where `d > 0`

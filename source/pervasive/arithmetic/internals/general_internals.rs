@@ -13,7 +13,7 @@
 //! *******************************************************************************/
 //! Declares helper lemmas and predicates for non-linear arithmetic
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::math::{add as add1, sub as sub1};
+use crate::math::{add as add1, sub as sub1};
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
