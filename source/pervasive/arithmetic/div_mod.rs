@@ -52,7 +52,7 @@ use crate::arithmetic::mul::*;
 *****************************************************************************/
 
 /// Proof that, for the case of `x / d`, division using `/` is
-/// equivalent to division using [`div_recursive`]
+/// equivalent to a recursive definition of division
 pub proof fn lemma_div_is_div_recursive(x: int, d: int)
     requires
         0 < d,
@@ -64,8 +64,8 @@ pub proof fn lemma_div_is_div_recursive(x: int, d: int)
     lemma_div_induction_auto(d, x, |u: int| div_recursive(u, d) == u / d);
 }
 
-/// Proof that division using `/` is equivalent to division using
-/// [`div_recursive`] as long as the divisor is positive
+/// Proof that division using `/` is equivalent to a recursive
+/// definition of division as long as the divisor is positive
 pub proof fn lemma_div_is_div_recursive_auto()
     ensures
         forall|x: int, d: int|
@@ -1342,8 +1342,8 @@ pub proof fn lemma_part_bound1_auto()
 *******************************************************************************/
 
 /// Proof that computing the modulus using `%` is equivalent to
-/// computing it with [`mod_recursive`]. Specifically,
-/// `x % m == mod_recursive(x, m)`.
+/// computing it with a recursive definition of modulus. Specifically,
+/// `x % m` is equivalent in that way.
 pub proof fn lemma_mod_is_mod_recursive(x: int, m: int)
     requires
         m > 0,
@@ -1391,7 +1391,7 @@ pub proof fn lemma_mod_is_mod_recursive(x: int, m: int)
 }
 
 /// Proof that computing the modulus using `%` is equivalent to
-/// computing it with [`mod_recursive`]
+/// computing it by a recursive definition
 pub proof fn lemma_mod_is_mod_recursive_auto()
     ensures
         forall|x: int, d: int|
