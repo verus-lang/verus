@@ -289,7 +289,7 @@ pub proof fn lemma_div_auto(n: int)
 /// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
 /// functional style so that it can be used where functional triggers
 /// are required.
-pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
+pub proof fn lemma_div_induction_auto(n: int, x: int, f: spec_fn(int) -> bool)
     requires
         n > 0,
         div_auto(n) ==> {
@@ -346,7 +346,7 @@ pub proof fn lemma_div_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
 /// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
 /// functional style so that it can be used where functional triggers
 /// are required.
-pub proof fn lemma_div_induction_auto_forall(n: int, f: FnSpec(int) -> bool)
+pub proof fn lemma_div_induction_auto_forall(n: int, f: spec_fn(int) -> bool)
     requires
         n > 0,
         div_auto(n) ==> {

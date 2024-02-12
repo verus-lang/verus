@@ -77,7 +77,7 @@ pub open spec fn mod_recursive(x: int, d: int) -> int
 /// must establish that, for any `i < n`, `f(i) ==> f(sub1(i, n))`.
 /// `sub1(i, n)` is just `i - n`, but written in a functional style
 /// so that it can be used where functional triggers are required.
-pub proof fn lemma_mod_induction_forall(n: int, f: FnSpec(int) -> bool)
+pub proof fn lemma_mod_induction_forall(n: int, f: spec_fn(int) -> bool)
     requires
         n > 0,
         forall|i: int|
@@ -126,7 +126,7 @@ pub proof fn lemma_mod_induction_forall(n: int, f: FnSpec(int) -> bool)
 /// where functional triggers are required.
 ///
 /// 4) For any `j < n`, `f(j) ==> f(i, sub1(j, n))`.
-pub proof fn lemma_mod_induction_forall2(n: int, f: FnSpec(int, int) -> bool)
+pub proof fn lemma_mod_induction_forall2(n: int, f: spec_fn(int, int) -> bool)
     requires
         n > 0,
         forall|i: int, j: int|
@@ -483,7 +483,7 @@ pub proof fn lemma_mod_auto(n: int)
 /// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
 /// functional style so that it can be used where functional triggers
 /// are required.
-pub proof fn lemma_mod_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
+pub proof fn lemma_mod_induction_auto(n: int, x: int, f: spec_fn(int) -> bool)
     requires
         n > 0,
         mod_auto(n) ==> {
@@ -537,7 +537,7 @@ pub proof fn lemma_mod_induction_auto(n: int, x: int, f: FnSpec(int) -> bool)
 /// - n)`. `is_le(i + 1, n)` is just `i + 1 <= n`, but written in a
 /// functional style so that it can be used where functional triggers
 /// are required.
-pub proof fn lemma_mod_induction_auto_forall(n: int, f: FnSpec(int) -> bool)
+pub proof fn lemma_mod_induction_auto_forall(n: int, f: spec_fn(int) -> bool)
     requires
         n > 0,
         mod_auto(n) ==> {

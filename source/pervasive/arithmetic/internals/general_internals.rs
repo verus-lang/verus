@@ -31,7 +31,7 @@ pub open spec fn is_le(x: int, y: int) -> bool {
 /// This proof, local to this module, aids in the process of proving
 /// [`lemma_induction_helper`] by covering only the case of nonnegative
 /// values of `x`.
-proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
+proof fn lemma_induction_helper_pos(n: int, f: spec_fn(int) -> bool, x: int)
     requires
         x >= 0,
         n > 0,
@@ -61,7 +61,7 @@ proof fn lemma_induction_helper_pos(n: int, f: FnSpec(int) -> bool, x: int)
 /// This proof, local to this module, aids in the process of proving
 /// [`lemma_induction_helper`] by covering only the case of negative
 /// values of `x`.
-proof fn lemma_induction_helper_neg(n: int, f: FnSpec(int) -> bool, x: int)
+proof fn lemma_induction_helper_neg(n: int, f: spec_fn(int) -> bool, x: int)
     requires
         x < 0,
         n > 0,
@@ -115,7 +115,7 @@ proof fn lemma_induction_helper_neg(n: int, f: FnSpec(int) -> bool, x: int)
 /// must establish that, for any `i < n`, `f(i) ==> f(sub1(i, n))`.
 /// `sub1(i, n)` is just `i - n`, but written in a functional style
 /// so that it can be used where functional triggers are required.
-pub proof fn lemma_induction_helper(n: int, f: FnSpec(int) -> bool, x: int)
+pub proof fn lemma_induction_helper(n: int, f: spec_fn(int) -> bool, x: int)
     requires
         n > 0,
         forall|i: int|

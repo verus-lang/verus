@@ -63,7 +63,7 @@ pub open spec fn mul_recursive(x: int, y: int) -> int {
 /// must establish that, for any `i <= 0`, `f(i) ==> f(sub1(i, 1))`.
 /// `sub1(i, 1)` is just `i - 1`, but written in a functional style
 /// so that it can be used where functional triggers are required.
-pub proof fn lemma_mul_induction(f: FnSpec(int) -> bool)
+pub proof fn lemma_mul_induction(f: spec_fn(int) -> bool)
     requires
         f(0),
         forall|i: int|
@@ -189,7 +189,7 @@ pub proof fn lemma_mul_auto()
 /// To prove inductive steps downward from the base case, the caller
 /// must establish that, for any `i`, `is_le(i, 0)` implies `f(i) ==>
 /// f(i - 1)`.
-pub proof fn lemma_mul_induction_auto(x: int, f: FnSpec(int) -> bool)
+pub proof fn lemma_mul_induction_auto(x: int, f: spec_fn(int) -> bool)
     requires
         mul_auto() ==> {
             &&& f(0)
@@ -224,7 +224,7 @@ pub proof fn lemma_mul_induction_auto(x: int, f: FnSpec(int) -> bool)
 /// To prove inductive steps downward from the base case, the caller
 /// must establish that, for any `i`, `is_le(i, 0)` implies `f(i) ==>
 /// f(i - 1)`.
-pub proof fn lemma_mul_induction_auto_forall(f: FnSpec(int) -> bool)
+pub proof fn lemma_mul_induction_auto_forall(f: spec_fn(int) -> bool)
     requires
         mul_auto() ==> {
             &&& f(0)
