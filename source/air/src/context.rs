@@ -224,6 +224,7 @@ impl Context {
             self.set_z3_param_bool("smt.delay_units", true, true);
             self.set_z3_param_u32("smt.arith.solver", 2, true);
             self.set_z3_param_bool("smt.arith.nl", false, true);
+            self.set_z3_param_bool("pi.enabled", false, true);
         } else if option == "disable_incremental_solving" && value {
             self.disable_incremental_solving = true;
             if write_to_logs {

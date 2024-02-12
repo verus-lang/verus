@@ -591,7 +591,7 @@ test_verify_one_file! {
         struct Q<A: T>(A::X);
         struct R;
         impl T for R { type X = S; }
-        struct S(FnSpec(Q<R>) -> int);
+        struct S(spec_fn(Q<R>) -> int);
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
@@ -600,7 +600,7 @@ test_verify_one_file! {
         trait T { type X; }
         struct Q<A: T>(A::X);
         struct R;
-        impl T for R { type X = FnSpec(S) -> int; }
+        impl T for R { type X = spec_fn(S) -> int; }
         struct S(Q<R>);
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
@@ -608,7 +608,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_termination_5_fail_3 verus_code! {
         trait T { type X; }
-        struct Q<A: T>(FnSpec(A::X) -> int);
+        struct Q<A: T>(spec_fn(A::X) -> int);
         struct R;
         impl T for R { type X = S; }
         struct S(Q<R>);
@@ -628,7 +628,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_termination_5_fail_5 verus_code! {
         trait T { type X; }
-        struct Q<A: T>(FnSpec(A::X) -> int);
+        struct Q<A: T>(spec_fn(A::X) -> int);
         struct S(Q<S>);
         impl T for S { type X = int; }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
@@ -876,7 +876,7 @@ test_verify_one_file! {
         struct Q<A: T>(A::X);
         struct R;
         impl T for R { type X = S; }
-        struct S(FnSpec(Q<R>) -> int);
+        struct S(spec_fn(Q<R>) -> int);
         impl Z for S { }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
@@ -888,7 +888,7 @@ test_verify_one_file! {
         struct Q<A: T>(<<A as T>::X as Z>::Y);
         struct R;
         impl T for R { type X = S; }
-        struct S(FnSpec(Q<R>) -> int);
+        struct S(spec_fn(Q<R>) -> int);
         impl Z for S {
             type Y = S;
         }
@@ -2018,9 +2018,9 @@ test_verify_one_file! {
         struct S {}
         impl T for S { spec fn f(&self) -> int { 1 } }
         impl T for int { spec fn f(&self) -> int { 2 + *self } }
-        impl T for FnSpec(int) -> int { spec fn f(&self) -> int { (*self)(3) } }
+        impl T for spec_fn(int) -> int { spec fn f(&self) -> int { (*self)(3) } }
 
-        proof fn test(x: int, y: FnSpec(int) -> int) {
+        proof fn test(x: int, y: spec_fn(int) -> int) {
             assert(x.f() == x + 2);
             assert(y.f() == y(3));
         }
@@ -2033,9 +2033,9 @@ test_verify_one_file! {
         struct S {}
         impl T for S { spec fn f(&self) -> int { 1 } }
         impl T for int { spec fn f(&self) -> int { 2 + *self } }
-        impl T for FnSpec(int) -> int { spec fn f(&self) -> int { (*self)(3) } }
+        impl T for spec_fn(int) -> int { spec fn f(&self) -> int { (*self)(3) } }
 
-        proof fn test(x: int, y: FnSpec(int) -> int) {
+        proof fn test(x: int, y: spec_fn(int) -> int) {
             assert(x.f() == x + 2);
             assert(y.f() == y(3));
             assert(false); // FAILS

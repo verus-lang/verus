@@ -2291,7 +2291,9 @@ impl Eq for TypeFnSpec {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for TypeFnSpec {
     fn eq(&self, other: &Self) -> bool {
-        self.inputs == other.inputs && self.output == other.output
+        self.fn_spec_token == other.fn_spec_token
+            && self.spec_fn_token == other.spec_fn_token && self.inputs == other.inputs
+            && self.output == other.output
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

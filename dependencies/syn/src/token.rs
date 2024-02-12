@@ -730,6 +730,7 @@ define_keywords! {
     "choose"      pub struct Choose       /// `choose`
     "is"          pub struct Is           /// `is`
     "FnSpec"      pub struct FnSpec       /// `FnSpec`
+    "spec_fn"     pub struct SpecFn       /// `spec_fn`
     "via"         pub struct Via          /// `via`
     "when"        pub struct When         /// `when`
     "any"         pub struct InvAny       /// `any`
@@ -956,6 +957,7 @@ macro_rules! export_token_macro {
             [size_of]     => { $crate::token::SizeOf };
             [layout]      => { $crate::token::Layout };
             [FnSpec]      => { $crate::token::FnSpec };
+            [SpecFn]      => { $crate::token::SpecFn };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };
             [<==>]        => { $crate::token::Equiv };

@@ -6779,6 +6779,30 @@ impl Debug for Lite<syn::Type> {
             }
             syn::Type::FnSpec(_val) => {
                 let mut formatter = formatter.debug_struct("Type::FnSpec");
+                if let Some(val) = &_val.fn_spec_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::FnSpec);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("fn_spec_token", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.spec_fn_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::FnSpec);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("spec_fn_token", Print::ref_cast(val));
+                }
                 if !_val.inputs.is_empty() {
                     formatter.field("inputs", Lite(&_val.inputs));
                 }
@@ -6873,6 +6897,30 @@ impl Debug for Lite<syn::TypeFnSpec> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("TypeFnSpec");
+        if let Some(val) = &_val.fn_spec_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::FnSpec);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("fn_spec_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.spec_fn_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::FnSpec);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("spec_fn_token", Print::ref_cast(val));
+        }
         if !_val.inputs.is_empty() {
             formatter.field("inputs", Lite(&_val.inputs));
         }

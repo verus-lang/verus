@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_fn verus_code! {
-        proof fn test(x: FnSpec(int, u8) -> int, y: FnSpec(int, u8) -> int) {
+        proof fn test(x: spec_fn(int, u8) -> int, y: spec_fn(int, u8) -> int) {
             assume(forall|i: int, j: u8| #[trigger] x(i, j) == y(i, j));
             assert(x =~= y);
         }
@@ -14,7 +14,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_fn_fails verus_code! {
-        proof fn test(x: FnSpec(int, u8) -> int, y: FnSpec(int, u8) -> int) {
+        proof fn test(x: spec_fn(int, u8) -> int, y: spec_fn(int, u8) -> int) {
             assert(x =~= y); // FAILS
         }
     } => Err(err) => assert_one_fails(err)

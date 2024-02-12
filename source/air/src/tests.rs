@@ -782,7 +782,10 @@ fn yes_forall2() {
         (check-valid
             (assert
                 (=>
-                    (forall ((i Int) (j Int)) (f i j))
+                    (forall ((i Int) (j Int)) (!
+                        (f i j)
+                        :pattern ((f i j))
+                    ))
                     (f 10 20)
                 )
             )
@@ -1410,8 +1413,12 @@ fn yes_choose1() {
         (axiom (f 3 3))
         (check-valid
             (assert
-                (let (( a (choose ((x Int)) (f x x) x) ))
-                    (f a a)
+                (let (( a (choose ((x Int)) (!
+                    (f x x)
+                    :pattern ((f x x))
+                ) x)
+                ))
+                (f a a)
                 )
             )
         )
@@ -1425,7 +1432,11 @@ fn yes_choose1_2() {
         (axiom (f 3 3))
         (check-valid
             (assert
-                (let (( a (choose ((x Int) (y Int)) (and (f x y) (= x y)) (+ x y)) ))
+                (let (( a (choose ((x Int) (y Int)) (!
+                        (and (f x y) (= x y))
+                        :pattern ((f x y))
+                    ) (+ x y))
+                    ))
                     (f (div a 2) (div a 2))
                 )
             )
@@ -1440,7 +1451,10 @@ fn no_choose1() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose ((x Int)) (f x x) x) ))
+                (let (( a (choose ((x Int)) (!
+                        (f x x)
+                        :pattern ((f x x))
+                    ) x) ))
                     (f a a)
                 )
             )
@@ -1455,7 +1469,10 @@ fn no_choose1_2() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose ((x Int) (y Int)) (and (f x y) (= x y)) (+ x y)) ))
+                (let (( a (choose ((x Int) (y Int)) (!
+                        (and (f x y) (= x y))
+                        :pattern ((f x y))
+                    ) (+ x y)) ))
                     (f (div a 2) (div a 2))
                 )
             )
@@ -1516,8 +1533,12 @@ fn yes_choose3() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose ((x Int)) (f x 4) x) ))
-                    (f a 4)
+                (let (( a (choose ((x Int)) (!
+                        (f x 4)
+                        :pattern ((f x 4))
+                    ) x)
+                ))
+                (f a 4)
                 )
             )
         )

@@ -3290,6 +3290,7 @@ impl Debug for TypeFnSpec {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("TypeFnSpec");
         formatter.field("fn_spec_token", &self.fn_spec_token);
+        formatter.field("spec_fn_token", &self.spec_fn_token);
         formatter.field("paren_token", &self.paren_token);
         formatter.field("inputs", &self.inputs);
         formatter.field("output", &self.output);
