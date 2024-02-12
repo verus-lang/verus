@@ -32,7 +32,10 @@ mod attributes;
 mod buckets;
 pub mod commands;
 pub mod config;
+
+#[path = "../../../tools/common/consts.rs"]
 pub mod consts;
+
 pub mod context;
 pub mod debugger;
 pub mod def;
