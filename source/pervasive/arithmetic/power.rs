@@ -156,14 +156,7 @@ pub proof fn lemma_square_is_pow2(x: int)
     ensures
         pow(x, 2) == x * x,
 {
-    // the original dafny is just a reveal clause
-    // maybe I can do it with reveal_with_fuel? but I don't know how
-    // the following doesn't work
-    // assert(pow(x, 2) == x * x) by {
-    // reveal_with_fuel(pow, 2);
-    //  };
-    reveal(pow);
-    assert(x as int * pow(x as int, 1) == x * (x as int * pow(x as int, 0)));
+    reveal_with_fuel(pow, 3);
 }
 
 /// Proof that taking any positive integer to the power of 2 is

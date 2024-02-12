@@ -183,6 +183,10 @@ proof fn lemma_mul_ordering_auto()
 /*
     We don't port LemmaMulEquality or LemmaMulEqualityAuto from the
     Dafny standard library for arithmetic, since they're never useful.
+    They say that `x == y ==> x * z == y * z`, which is trivial. It
+    follows immediately from the basic SMT axiom that functions and
+    operators (including multiplication) have equal values when
+    applied to equal arguments.
 */
 
 /// Proof that, since `x <= y` and `z >= 0`, `x * z <= y * z`
@@ -493,11 +497,6 @@ pub proof fn lemma_mul_is_distributive_sub_auto()
 /// Proof that multiplication distributes over subtraction when the
 /// subtraction happens in the multiplicand (i.e., in the left-hand
 /// argument to `*`). Specifically, `(y - z) * x == y * x - z * x`.
-/*
-    Note: This isn't in the Dafny standard library, but it's a logical
-    extension of [`lemma_mul_is_distributive_sub`] and
-    [`lemma_mul_is_distributive_add_other_way`].
-*/
 pub proof fn lemma_mul_is_distributive_sub_other_way(x: int, y: int, z: int)
     ensures
         (y - z) * x == y * x - z * x,
@@ -511,11 +510,6 @@ pub proof fn lemma_mul_is_distributive_sub_other_way(x: int, y: int, z: int)
 /// Proof that multiplication distributes over subtraction when the
 /// subtraction happens in the multiplicand (i.e., in the left-hand
 /// argument to `*`)
-/*
-    Note: This isn't in the Dafny standard library, but it's a logical
-    extension of [`lemma_mul_is_distributive_sub_auto`] and
-    [`lemma_mul_is_distributive_add_other_way`].
-*/
 pub proof fn lemma_mul_is_distributive_sub_other_way_auto()
     ensures
         forall |x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,

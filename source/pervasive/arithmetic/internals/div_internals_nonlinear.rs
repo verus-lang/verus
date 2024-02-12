@@ -47,15 +47,4 @@ pub proof fn lemma_small_div()
 {
 }
 
-// TODO: how to translate the `real` type?
-//       seems to be only used here
-/* the quotient of dividing a positive real number (not 0) by a smaller positive real number*/// proof fn lemma_real_div_gt(x:real, y:real)
-//     requires
-//         x > y,
-//         x >= 0.0,
-//         y > 0.0
-//     ensures
-//         x / y > 1 as real
-// {}
-
 } // verus!

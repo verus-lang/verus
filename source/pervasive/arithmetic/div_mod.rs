@@ -48,8 +48,8 @@ use crate::arithmetic::math::{add as add1, sub as sub1, div as div1};
 use crate::arithmetic::mul::*;
 
 /*****************************************************************************
-   * Division:
-   *****************************************************************************/
+* Division
+*****************************************************************************/
 
 /// Proof that, for the case of `x / d`, division using `/` is
 /// equivalent to division using [`div_recursive`]
@@ -1338,8 +1338,8 @@ pub proof fn lemma_part_bound1_auto()
 }
 
 /*******************************************************************************
-   * Modulus:
-   *******************************************************************************/
+* Modulus
+*******************************************************************************/
 
 /// Proof that computing the modulus using `%` is equivalent to
 /// computing it with [`mod_recursive`]. Specifically,
