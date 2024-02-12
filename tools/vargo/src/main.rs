@@ -5,6 +5,9 @@
 // `target/debug` or `target/release` when they are the main build target, and
 // not when they're a dependency of another target.
 
+#[path = "../../common/consts.rs"]
+mod consts;
+
 mod util;
 
 use filetime::FileTime as FFileTime;
@@ -229,6 +232,12 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let no_solver_version_check = args
+        .iter()
+        .position(|x| x.as_str() == "--no-solver-version-check")
+        .map(|p| args.remove(p))
+        .is_some();
+
     if vstd_no_alloc && !vstd_no_std {
         return Err(format!("--vstd-no-alloc requires --vstd-no-std"));
     }
@@ -321,6 +330,42 @@ fn run() -> Result<(), String> {
     }
     if std::env::var("VERUS_Z3_PATH").is_err() && z3_path.is_file() {
         std::env::set_var("VERUS_Z3_PATH", z3_path);
+    }
+
+    {
+        let output = std::process::Command::new(z3_path)
+            .arg("--version")
+            .output()
+            .map_err(|x| format!("could not execute z3: {}", x))?;
+        if !output.status.success() {
+            return Err(format!("z3 returned non-zero exit code"));
+        }
+        let stdout_str = std::str::from_utf8(&output.stdout)
+            .map_err(|x| format!("z3 version output is not valid utf8 ({})", x))?
+            .to_string();
+        let z3_version_re = Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
+            .expect("failed to compile z3 version regex");
+        let version = z3_version_re
+            .captures(&stdout_str)
+            .and_then(|captures| {
+                let mut captures = captures.iter();
+                let _ = captures.next()?;
+                let version = captures.next()?;
+                if captures.next() != None {
+                    return None;
+                }
+                Some(version?.as_str())
+            })
+            .ok_or(format!("undexpected z3 version output ({})", stdout_str))?;
+        if !no_solver_version_check && version != consts::EXPECTED_Z3_VERSION {
+            return Err(format!(
+                "Verus expects z3 version \"{}\", found version \"{}\"\n\
+            Run ./tools/get-z3.(sh|ps1) to update z3 first.\n\
+            If you need a build with a custom z3 version, re-run with --no-solver-version-check.",
+                consts::EXPECTED_Z3_VERSION,
+                version
+            ));
+        }
     }
 
     let cargo_toml = toml::from_str::<toml::Value>(

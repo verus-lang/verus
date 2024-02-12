@@ -1156,8 +1156,7 @@ impl Verifier {
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
-            air_context
-                .set_expected_solver_version(crate::consts::EXPECTED_SOLVER_VERSION.to_string());
+            air_context.set_expected_solver_version(crate::consts::EXPECTED_Z3_VERSION.to_string());
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
