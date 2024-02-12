@@ -308,7 +308,7 @@ pub(crate) fn redirect_calls_in_default_methods(
                     // Since we don't have a copy of the default method body
                     // specialized to our impl, we need to do extra work to
                     // redirect calls from the inherited body back to our own impl.
-                    // See comment below regarding trait_inherit_default_name.
+                    // See comments above regarding trait_inherit_default_name.
                     let default_name = crate::def::trait_inherit_default_name(&callee, caller_impl);
                     let callee = if func_map.contains_key(&default_name) {
                         // turn T::f into impl::default-f
@@ -343,6 +343,8 @@ pub(crate) fn redirect_calls_in_default_methods(
                     // Unfortunately, in an inherited body, we don't have impl_paths
                     // specialized to our impl, so we conservatively reject
                     // the call.
+                    // (Note: it's not clear that this case is actually possible;
+                    // we could consider this to be a panic rather than an Err.)
                     return Err(error(
                         span,
                         "call from trait default method to same trait with different type arguments is not allowed",

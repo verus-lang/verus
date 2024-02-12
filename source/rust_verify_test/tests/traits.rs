@@ -3087,6 +3087,84 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default14 verus_code! {
+        trait T: Sized {
+            proof fn g()
+                ensures false
+            {
+                // For termination's sake, the "Self: T" bound is not available inside methods,
+                // including default methods.
+                // In ordinary impl methods, we catch uses of "Self: T" by seeing that impl_paths
+                // recursively refer to the current impl whenever "Self: T" is used.
+                // In default methods, on the other hand, there's no impl to use in impl_paths,
+                // so impl_paths is empty in the following call (f::<Self>()).
+                // Therefore, we catch the termination failure a different way:
+                // whoever we're calling who needs "Self: T" as a bound (in this case, f)
+                // must depend on T itself -- there must be a path from f to T in the call graph.
+                // We then make sure that T depends on T's default methods,
+                // so that there's a cycle.
+                f::<Self>();
+            }
+        }
+
+        proof fn f<A: T>()
+            ensures false
+        {
+            A::g();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default15 verus_code! {
+        trait T1: Sized {
+            proof fn f1() ensures false;
+        }
+        trait T2: T1 {
+            proof fn f2() ensures false {
+                <Self as T1>::f1();
+            }
+        }
+        impl T1 for bool {
+            proof fn f1() {
+                <Self as T2>::f2();
+            }
+        }
+        impl T2 for bool {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default16 verus_code! {
+        trait T1: Sized {
+            proof fn f1() ensures false;
+        }
+        trait T2<A: T1> {
+            proof fn f2() ensures false {
+                A::f1();
+            }
+        }
+        impl T1 for bool {
+            proof fn f1() {
+                <bool as T2<bool>>::f2();
+            }
+        }
+        impl T2<bool> for bool {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default17 verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g(); }
+            proof fn g() ensures false { Self::f(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
     #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
         use vstd::prelude::View;
 
