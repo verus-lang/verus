@@ -5,6 +5,7 @@ use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
+use std::collections::HashMap;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
@@ -17,6 +18,9 @@ use syn_verus::visit_mut::{
     visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
     visit_specification_mut, visit_trait_item_method_mut, VisitMut,
 };
+use syn_verus::ExprMatches;
+use syn_verus::MatchesOpExpr;
+use syn_verus::MatchesOpToken;
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
@@ -975,6 +979,182 @@ impl Visitor {
         }
     }
 
+    fn visit_items_post(&mut self, items: &mut Vec<Item>) {
+        let mut i = 0;
+        while i < items.len() {
+            if let Item::Enum(enum_) = &mut items[i] {
+                if let Some(new_item) = self.visit_item_enum_synthesize(enum_) {
+                    items.insert(i + 1, new_item);
+                    i += 1;
+                }
+            }
+            i += 1;
+        }
+    }
+
+    fn visit_item_enum_synthesize(&mut self, enum_: &mut ItemEnum) -> Option<Item> {
+        let mut allow_inconsistent_fields = false;
+
+        enum_.attrs.retain(|attr| {
+            if let syn_verus::AttrStyle::Outer = attr.style {
+                match &attr.path.segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
+                    [attr_name] if attr_name.to_string() == "allow" => {
+                        if attr.tokens.to_string() == "(inconsistent_fields)" {
+                            allow_inconsistent_fields = true;
+                            return false;
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            true
+        });
+
+        if self.erase_ghost.erase_all() {
+            return None;
+        }
+
+        #[derive(PartialEq, Eq, Hash, Debug, Clone)]
+        enum FieldName {
+            Named(Ident),
+            Unnamed(usize),
+        }
+
+        #[derive(PartialEq, Eq, Debug)]
+        struct FieldInfo {
+            ty: Type,
+            vis: Visibility,
+        }
+
+        impl FieldInfo {
+            fn from(field: &Field) -> FieldInfo {
+                FieldInfo { ty: field.ty.clone(), vis: field.vis.clone() }
+            }
+        }
+
+        let mut all_fields: HashMap<FieldName, (FieldInfo, Vec<Ident>)> = HashMap::new();
+        let mut invalid_fields: Vec<Ident> = Vec::new();
+        for variant in &enum_.variants {
+            match &variant.fields {
+                syn_verus::Fields::Named(named) => {
+                    for field in &named.named {
+                        let ident = field.ident.as_ref().expect("named field").clone();
+                        let name = FieldName::Named(ident.clone());
+                        let info = FieldInfo::from(field);
+                        use std::collections::hash_map::Entry;
+                        match all_fields.entry(name.clone()) {
+                            Entry::Occupied(mut occ) => {
+                                if occ.get().0 != info {
+                                    occ.remove_entry();
+                                    invalid_fields.push(ident);
+                                } else {
+                                    occ.get_mut().1.push(variant.ident.clone());
+                                }
+                            }
+                            Entry::Vacant(vac) => {
+                                vac.insert((info, vec![variant.ident.clone()]));
+                            }
+                        }
+                    }
+                }
+                syn_verus::Fields::Unnamed(unnamed) => {
+                    for (i, field) in unnamed.unnamed.iter().enumerate() {
+                        let name = FieldName::Unnamed(i);
+                        let info = FieldInfo::from(field);
+                        use std::collections::hash_map::Entry;
+                        match all_fields.entry(name.clone()) {
+                            Entry::Occupied(mut occ) => {
+                                if occ.get().0 != info {
+                                    occ.remove_entry();
+                                } else {
+                                    occ.get_mut().1.push(variant.ident.clone());
+                                }
+                            }
+                            Entry::Vacant(vac) => {
+                                vac.insert((info, vec![variant.ident.clone()]));
+                            }
+                        }
+                    }
+                }
+                syn_verus::Fields::Unit => {}
+            }
+        }
+
+        #[cfg(verus_keep_ghost)]
+        if !self.erase_ghost.erase() && !allow_inconsistent_fields {
+            for invalid_field in invalid_fields {
+                proc_macro::Diagnostic::spanned(enum_.span().unwrap(), proc_macro::Level::Warning, {
+                    format!("field `{}` has inconsistent type or visibility in different variants\n->{} syntax will not be available for this field\nuse #[allow(inconsistent_fields)] on the struct to silence the warnign", &invalid_field, &invalid_field)
+                }).emit();
+            }
+        }
+
+        let enum_vis_pub = !matches!(enum_.vis, syn_verus::Visibility::Inherited);
+        if all_fields.len() != 0 {
+            let enum_ident = &enum_.ident;
+            let methods = all_fields
+                .iter()
+                .map(|(name, (info, variants))| {
+                    let method_ident = match name {
+                        FieldName::Named(named) => quote::format_ident!("arrow_{}", named),
+                        FieldName::Unnamed(unnamed) => {
+                            quote::format_ident!("arrow_{}", unnamed)
+                        }
+                    };
+                    let field_str = match name {
+                        FieldName::Named(named) => named.to_string(),
+                        FieldName::Unnamed(unnamed) => unnamed.to_string(),
+                    };
+                    let ty_ = &info.ty;
+                    let vis = enum_.vis.clone();
+
+                    let publish = if enum_vis_pub {
+                        quote! {
+                            #[verus::internal(open)]
+                        }
+                    } else {
+                        quote! {}
+                    };
+
+                    assert!(!variants.is_empty());
+                    if variants.len() == 1 {
+                        let variant_ident = variants[0].to_string();
+                        quote_spanned! { enum_.span() =>
+                            #[cfg(verus_keep_ghost)]
+                            #[allow(non_snake_case)]
+                            #[verus::internal(spec)]
+                            #[verifier::inline]
+                            #publish
+                            #vis fn #method_ident(self) -> #ty_ {
+                                ::builtin::get_variant_field(self, #variant_ident, #field_str)
+                            }
+                        }
+                    } else {
+                        quote_spanned! { enum_.span() =>
+                            #[cfg(verus_keep_ghost)]
+                            #[allow(non_snake_case)]
+                            #[verus::internal(spec)]
+                            #[verus::internal(get_field_many_variants)]
+                            #[verifier::external]
+                            #publish
+                            #vis fn #method_ident(self) -> #ty_ {
+                                unimplemented!()
+                            }
+                        }
+                    }
+                })
+                .collect::<proc_macro2::TokenStream>();
+            let (impl_generics, ty_generics, where_clause) = enum_.generics.split_for_impl();
+            Some(Item::Verbatim(quote_spanned! { enum_.span() =>
+                impl #impl_generics #enum_ident #ty_generics #where_clause {
+                    #methods
+                }
+            }))
+        } else {
+            None
+        }
+    }
+
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
@@ -1615,12 +1795,48 @@ enum ExtractQuantTriggersFound {
     None,
 }
 
+// For
+// assert(false && E::A matches E::A ==> true);
+// to preserve && precedence it would turn into
+//     if let E::A = E::A { false && true ==> true } else { false && false ==> true }
+//
+//     assert(v == 4 && x matches E::A { v } ==> v == 4);
+//
+//     if let E::A { v } = x { v == 4 && true ==> true } else { v == 4 && false ==> true }
+//
+// For
+//     assert(true || E::A matches E::A ==> true);
+// to preserve || precedence it would turn into
+//     if let E::A = E::A { true } else { false || false ==> true }
+
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
         if self.chain_operators(expr) {
             return;
         } else if self.closure_quant_operators(expr) {
             return;
+        }
+
+        if let Expr::Binary(ExprBinary { op, right, .. }) = &expr {
+            if let Expr::Matches(ExprMatches {
+                op_expr: Some(MatchesOpExpr { op_token, .. }),
+                ..
+            }) = &**right
+            {
+                match (op, op_token) {
+                    (_, MatchesOpToken::BigAnd) => (),
+                    (_, MatchesOpToken::Implies(_)) => {
+                        *expr = Expr::Verbatim(
+                            quote_spanned! { expr.span() => compile_error!("matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                        );
+                    }
+                    (_, MatchesOpToken::AndAnd(_)) => {
+                        *expr = Expr::Verbatim(
+                            quote_spanned! { expr.span() => compile_error!("matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                        );
+                    }
+                }
+            }
         }
 
         let is_inside_bitvector = match &expr {
@@ -1940,6 +2156,8 @@ impl VisitMut for Visitor {
             Expr::Is(..) => true,
             Expr::Has(..) => true,
             Expr::ForLoop(..) => true,
+            Expr::Matches(..) => true,
+            Expr::GetField(..) => true,
             _ => false,
         };
         if do_replace && self.inside_type == 0 {
@@ -2357,6 +2575,42 @@ impl VisitMut for Visitor {
                     let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                     let lhs = has.lhs;
                     *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+                }
+                Expr::Matches(matches) => {
+                    let span = matches.span();
+                    let syn_verus::ExprMatches { attrs: _, lhs, matches_token: _, pat, op_expr } =
+                        matches;
+                    if let Some(op_expr) = op_expr {
+                        let MatchesOpExpr { op_token, rhs } = op_expr;
+                        match op_token {
+                            MatchesOpToken::Implies(_) => {
+                                *expr = Expr::Verbatim(quote_spanned!(span => (
+                                    (if let #pat = (#lhs) { #rhs } else { true })
+                                )));
+                            }
+                            MatchesOpToken::AndAnd(_) => {
+                                *expr = Expr::Verbatim(quote_spanned!(span => (
+                                    (if let #pat = (#lhs) { #rhs } else { false })
+                                )));
+                            }
+                            MatchesOpToken::BigAnd => {
+                                *expr = Expr::Verbatim(quote_spanned!(span => (
+                                    (if let #pat = (#lhs) { #rhs } else { false })
+                                )));
+                            }
+                        }
+                    } else {
+                        *expr = Expr::Verbatim(quote_spanned!(span => (
+                            (if let #pat = (#lhs) { true } else { false })
+                        )));
+                    }
+                }
+                Expr::GetField(gf) => {
+                    let span = gf.span();
+                    let base = gf.base;
+                    let member_ident = quote::format_ident!("arrow_{}", gf.member);
+                    let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
+                    *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
                 }
                 _ => panic!("expected to replace expression"),
             }
@@ -2777,6 +3031,9 @@ impl VisitMut for Visitor {
         }
         self.filter_attrs(&mut item.attrs);
         syn_verus::visit_mut::visit_item_mod_mut(self, item);
+        if let Some((_, items)) = &mut item.content {
+            self.visit_items_post(items);
+        }
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
@@ -3066,10 +3323,13 @@ pub(crate) fn rewrite_items(
         inside_bitvector: false,
     };
     visitor.visit_items_prefilter(&mut items.items);
-    for mut item in items.items {
+    for mut item in &mut items.items {
         visitor.visit_item_mut(&mut item);
         visitor.inside_ghost = 0;
         visitor.inside_arith = InsideArith::None;
+    }
+    visitor.visit_items_post(&mut items.items);
+    for item in items.items {
         item.to_tokens(&mut new_stream);
     }
     proc_macro::TokenStream::from(new_stream)

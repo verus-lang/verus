@@ -193,6 +193,9 @@ pub trait Visit<'ast> {
     fn visit_expr_for_loop(&mut self, i: &'ast ExprForLoop) {
         visit_expr_for_loop(self, i);
     }
+    fn visit_expr_get_field(&mut self, i: &'ast ExprGetField) {
+        visit_expr_get_field(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_group(&mut self, i: &'ast ExprGroup) {
         visit_expr_group(self, i);
@@ -230,6 +233,9 @@ pub trait Visit<'ast> {
     #[cfg(feature = "full")]
     fn visit_expr_match(&mut self, i: &'ast ExprMatch) {
         visit_expr_match(self, i);
+    }
+    fn visit_expr_matches(&mut self, i: &'ast ExprMatches) {
+        visit_expr_matches(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_expr_method_call(&mut self, i: &'ast ExprMethodCall) {
@@ -541,6 +547,12 @@ pub trait Visit<'ast> {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_macro_delimiter(&mut self, i: &'ast MacroDelimiter) {
         visit_macro_delimiter(self, i);
+    }
+    fn visit_matches_op_expr(&mut self, i: &'ast MatchesOpExpr) {
+        visit_matches_op_expr(self, i);
+    }
+    fn visit_matches_op_token(&mut self, i: &'ast MatchesOpToken) {
+        visit_matches_op_token(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_member(&mut self, i: &'ast Member) {
@@ -1511,6 +1523,12 @@ where
         Expr::Has(_binding_0) => {
             v.visit_expr_has(_binding_0);
         }
+        Expr::Matches(_binding_0) => {
+            v.visit_expr_matches(_binding_0);
+        }
+        Expr::GetField(_binding_0) => {
+            v.visit_expr_get_field(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1754,6 +1772,17 @@ where
     }
     v.visit_block(&node.body);
 }
+pub fn visit_expr_get_field<'ast, V>(v: &mut V, node: &'ast ExprGetField)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.base);
+    tokens_helper(v, &node.arrow_token.spans);
+    v.visit_member(&node.member);
+}
 #[cfg(feature = "full")]
 pub fn visit_expr_group<'ast, V>(v: &mut V, node: &'ast ExprGroup)
 where
@@ -1887,6 +1916,20 @@ where
     tokens_helper(v, &node.brace_token.span);
     for it in &node.arms {
         v.visit_arm(it);
+    }
+}
+pub fn visit_expr_matches<'ast, V>(v: &mut V, node: &'ast ExprMatches)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.lhs);
+    tokens_helper(v, &node.matches_token.span);
+    full!(v.visit_pat(& node.pat));
+    if let Some(it) = &node.op_expr {
+        v.visit_matches_op_expr(it);
     }
 }
 #[cfg(feature = "full")]
@@ -3197,6 +3240,27 @@ where
         MacroDelimiter::Bracket(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
+    }
+}
+pub fn visit_matches_op_expr<'ast, V>(v: &mut V, node: &'ast MatchesOpExpr)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    v.visit_matches_op_token(&node.op_token);
+    v.visit_expr(&*node.rhs);
+}
+pub fn visit_matches_op_token<'ast, V>(v: &mut V, node: &'ast MatchesOpToken)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        MatchesOpToken::Implies(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        MatchesOpToken::AndAnd(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        MatchesOpToken::BigAnd => {}
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

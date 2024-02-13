@@ -796,6 +796,18 @@ impl Debug for Expr {
                 formatter.field(v0);
                 formatter.finish()
             }
+            #[cfg(feature = "full")]
+            Expr::Matches(v0) => {
+                let mut formatter = formatter.debug_tuple("Matches");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => {
+                let mut formatter = formatter.debug_tuple("GetField");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -991,6 +1003,17 @@ impl Debug for ExprForLoop {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprGetField {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprGetField");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("base", &self.base);
+        formatter.field("arrow_token", &self.arrow_token);
+        formatter.field("member", &self.member);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ExprGroup {
@@ -1108,6 +1131,18 @@ impl Debug for ExprMatch {
         formatter.field("expr", &self.expr);
         formatter.field("brace_token", &self.brace_token);
         formatter.field("arms", &self.arms);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ExprMatches {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprMatches");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("lhs", &self.lhs);
+        formatter.field("matches_token", &self.matches_token);
+        formatter.field("pat", &self.pat);
+        formatter.field("op_expr", &self.op_expr);
         formatter.finish()
     }
 }
@@ -2321,6 +2356,33 @@ impl Debug for MacroDelimiter {
                 formatter.field(v0);
                 formatter.finish()
             }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for MatchesOpExpr {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("MatchesOpExpr");
+        formatter.field("op_token", &self.op_token);
+        formatter.field("rhs", &self.rhs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for MatchesOpToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MatchesOpToken::Implies(v0) => {
+                let mut formatter = formatter.debug_tuple("Implies");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            MatchesOpToken::AndAnd(v0) => {
+                let mut formatter = formatter.debug_tuple("AndAnd");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            MatchesOpToken::BigAnd => formatter.write_str("BigAnd"),
         }
     }
 }

@@ -274,6 +274,8 @@ pub(crate) enum Attr {
     Trusted,
     // global size_of
     SizeOfGlobal,
+    // Marks generated -> functions that are unsupported because a field appears in multiple variants
+    InternalGetFieldManyVariants,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -545,6 +547,9 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::UnwrappedBinding)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "size_of" => v.push(Attr::SizeOfGlobal),
+                    AttrTree::Fun(_, arg, None) if arg == "get_field_many_variants" => {
+                        v.push(Attr::InternalGetFieldManyVariants)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -690,6 +695,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
     pub(crate) trusted: bool,
+    pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
 }
 
@@ -746,6 +752,7 @@ pub(crate) fn get_verifier_attrs(
         internal_reveal_fn: false,
         trusted: false,
         size_of_global: false,
+        internal_get_field_many_variants: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -794,6 +801,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,
+            Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
             _ => {}
         }
     }

@@ -139,6 +139,16 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     }
 
+    let f_attrs = bctx.ctxt.tcx.get_attrs_unchecked(f);
+    let f_vattrs = get_verifier_attrs(f_attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
+    if f_vattrs.internal_get_field_many_variants {
+        return Err(vir::messages::error(
+            &crate::spans::err_air_span(expr.span),
+            format!("this field is present in multiple variants, cannot use -> syntax"),
+        )
+        .help("use `matches` instead"));
+    }
+
     // Normal function call
 
     unsupported_err_unless!(

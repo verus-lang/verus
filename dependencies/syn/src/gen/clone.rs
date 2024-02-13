@@ -387,6 +387,10 @@ impl Clone for Expr {
             Expr::Is(v0) => Expr::Is(v0.clone()),
             #[cfg(feature = "full")]
             Expr::Has(v0) => Expr::Has(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Matches(v0) => Expr::Matches(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => Expr::GetField(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -582,6 +586,17 @@ impl Clone for ExprForLoop {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprGetField {
+    fn clone(&self) -> Self {
+        ExprGetField {
+            attrs: self.attrs.clone(),
+            base: self.base.clone(),
+            arrow_token: self.arrow_token.clone(),
+            member: self.member.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ExprGroup {
@@ -699,6 +714,18 @@ impl Clone for ExprMatch {
             expr: self.expr.clone(),
             brace_token: self.brace_token.clone(),
             arms: self.arms.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprMatches {
+    fn clone(&self) -> Self {
+        ExprMatches {
+            attrs: self.attrs.clone(),
+            lhs: self.lhs.clone(),
+            matches_token: self.matches_token.clone(),
+            pat: self.pat.clone(),
+            op_expr: self.op_expr.clone(),
         }
     }
 }
@@ -1664,6 +1691,25 @@ impl Clone for MacroDelimiter {
             MacroDelimiter::Paren(v0) => MacroDelimiter::Paren(v0.clone()),
             MacroDelimiter::Brace(v0) => MacroDelimiter::Brace(v0.clone()),
             MacroDelimiter::Bracket(v0) => MacroDelimiter::Bracket(v0.clone()),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for MatchesOpExpr {
+    fn clone(&self) -> Self {
+        MatchesOpExpr {
+            op_token: self.op_token.clone(),
+            rhs: self.rhs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for MatchesOpToken {
+    fn clone(&self) -> Self {
+        match self {
+            MatchesOpToken::Implies(v0) => MatchesOpToken::Implies(v0.clone()),
+            MatchesOpToken::AndAnd(v0) => MatchesOpToken::AndAnd(v0.clone()),
+            MatchesOpToken::BigAnd => MatchesOpToken::BigAnd,
         }
     }
 }

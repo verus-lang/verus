@@ -235,6 +235,8 @@ ast_enum_of_structs! {
         BigOr(BigOr),
         Is(ExprIs),
         Has(ExprHas),
+        Matches(ExprMatches),
+        GetField(ExprGetField),
 
         // Not public API.
         //
@@ -864,7 +866,9 @@ impl Expr {
             | Expr::View(View { attrs, .. })
             | Expr::Is(ExprIs { attrs, .. })
             | Expr::Has(ExprHas { attrs, .. })
-            | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
+            | Expr::Yield(ExprYield { attrs, .. })
+            | Expr::GetField(ExprGetField { attrs, .. })
+            | Expr::Matches(ExprMatches { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
             Expr::BigAnd(_) => Vec::new(),
             Expr::BigOr(_) => Vec::new(),
@@ -1153,9 +1157,9 @@ pub(crate) mod parsing {
     //
     // Struct literals are ambiguous in certain positions
     // https://github.com/rust-lang/rfcs/pull/92
-    pub struct AllowStruct(bool);
+    pub struct AllowStruct(pub(crate) bool);
 
-    enum Precedence {
+    pub(crate) enum Precedence {
         Any,
         Assign,
         Range,
@@ -1172,7 +1176,7 @@ pub(crate) mod parsing {
         Arithmetic,
         Term,
         Cast,
-        HasIs,
+        HasIsMatches,
     }
 
     #[derive(PartialEq, Eq, Clone, Copy)]
@@ -1242,7 +1246,7 @@ pub(crate) mod parsing {
                 | Precedence::Arithmetic
                 | Precedence::Term
                 | Precedence::Cast
-                | Precedence::HasIs => Associativity::Left,
+                | Precedence::HasIsMatches => Associativity::Left,
             }
         }
     }
@@ -1373,7 +1377,7 @@ pub(crate) mod parsing {
     }
 
     #[cfg(feature = "full")]
-    fn parse_expr(
+    pub(crate) fn parse_expr(
         input: ParseStream,
         mut lhs: Expr,
         allow_struct: AllowStruct,
@@ -1492,7 +1496,7 @@ pub(crate) mod parsing {
                     colon_token,
                     ty: Box::new(ty),
                 });
-            } else if Precedence::HasIs >= base && input.peek(Token![is]) {
+            } else if Precedence::HasIsMatches >= base && input.peek(Token![is]) {
                 let is_token: Token![is] = input.parse()?;
                 let variant_ident = input.parse()?;
                 lhs = Expr::Is(ExprIs {
@@ -1501,7 +1505,7 @@ pub(crate) mod parsing {
                     is_token,
                     variant_ident,
                 });
-            } else if Precedence::HasIs >= base && input.peek(Token![has]) {
+            } else if Precedence::HasIsMatches >= base && input.peek(Token![has]) {
                 let has_token: Token![has] = input.parse()?;
                 let rhs = unary_expr(input, allow_struct)?;
                 lhs = Expr::Has(ExprHas {
@@ -1510,6 +1514,8 @@ pub(crate) mod parsing {
                     has_token,
                     rhs: Box::new(rhs),
                 });
+            } else if Precedence::HasIsMatches >= base && input.peek(Token![matches]) {
+                lhs = verus::parse_matches(input, lhs, allow_struct, false)?;
             } else {
                 break;
             }
@@ -1577,12 +1583,12 @@ pub(crate) mod parsing {
         Ok(lhs)
     }
 
-    fn peek_precedence(input: ParseStream) -> Precedence {
+    pub(crate) fn peek_precedence(input: ParseStream) -> Precedence {
         if input.peek(Token![&&&]) || input.peek(Token![|||]) {
             return Precedence::Any;
         }
-        if input.peek(Token![is]) || input.peek(Token![has]) {
-            Precedence::HasIs
+        if input.peek(Token![is]) || input.peek(Token![has]) || input.peek(Token![matches]) {
+            Precedence::HasIsMatches
         } else if let Ok(op) = input.fork().parse() {
             Precedence::of(&op)
         } else if input.peek(Token![=]) && !input.peek(Token![=>]) {
@@ -1605,7 +1611,7 @@ pub(crate) mod parsing {
     }
 
     #[cfg(feature = "full")]
-    fn expr_attrs(input: ParseStream) -> Result<Vec<Attribute>> {
+    pub(crate) fn expr_attrs(input: ParseStream) -> Result<Vec<Attribute>> {
         let mut attrs = Vec::new();
         loop {
             if input.peek(token::Group) {
@@ -1633,7 +1639,7 @@ pub(crate) mod parsing {
     // &mut <trailer>
     // box <trailer>
     #[cfg(feature = "full")]
-    fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
+    pub(crate) fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
         let begin = input.fork();
         let attrs = input.call(expr_attrs)?;
         crate::verus::disallow_prefix_binop(input)?;
@@ -1723,6 +1729,16 @@ pub(crate) mod parsing {
                     func: Box::new(e),
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse)?,
+                });
+            } else if input.peek(Token![->]) {
+                let arrow_token: Token![->] = input.parse()?;
+                let member: Member = input.parse()?;
+
+                e = Expr::GetField(ExprGetField {
+                    attrs: Vec::new(),
+                    base: Box::new(e),
+                    arrow_token,
+                    member,
                 });
             } else if input.peek(Token![.])
                 && !input.peek(Token![..])
@@ -2211,7 +2227,7 @@ pub(crate) mod parsing {
     #[cfg(feature = "full")]
     pub(crate) fn expr_early_block(input: ParseStream) -> Result<Expr> {
         let attrs = input.call(expr_attrs)?;
-        let prefix_binop = verus::parse_prefix_binop(input, &attrs)?;
+        let prefix_binop = verus::parse_prefix_binop(input, &attrs, false)?;
         if let Some(expr) = prefix_binop {
             return Ok(expr);
         }
@@ -2270,7 +2286,10 @@ pub(crate) mod parsing {
             return parse_expr(input, expr, allow_struct, Precedence::Any);
         };
 
-        if input.peek(Token![.]) && !input.peek(Token![..]) || input.peek(Token![?]) {
+        if input.peek(Token![.]) && !input.peek(Token![..])
+            || input.peek(Token![?])
+            || input.peek(Token![->])
+        {
             expr = trailer_helper(input, expr)?;
 
             attrs.extend(expr.replace_attrs(Vec::new()));
@@ -2564,6 +2583,7 @@ pub(crate) mod parsing {
         ExprTuple, Tuple, "expected tuple expression",
         ExprType, Type, "expected type ascription expression",
         View, View, "expected view expression",
+        ExprGetField, GetField, "expected get field expression",
     }
 
     #[cfg(feature = "full")]
@@ -3196,13 +3216,19 @@ pub(crate) mod parsing {
     }
 
     fn check_cast(input: ParseStream) -> Result<()> {
-        let kind = if input.peek(Token![.]) && !input.peek(Token![..]) {
-            if input.peek2(token::Await) {
-                "`.await`"
-            } else if input.peek2(Ident) && (input.peek3(token::Paren) || input.peek3(Token![::])) {
-                "a method call"
+        let kind = if input.peek(Token![.]) && !input.peek(Token![..]) || input.peek(Token![->]) {
+            if input.peek(Token![.]) {
+                if input.peek2(token::Await) {
+                    "`.await`"
+                } else if input.peek2(Ident)
+                    && (input.peek3(token::Paren) || input.peek3(Token![::]))
+                {
+                    "a method call"
+                } else {
+                    "a field access"
+                }
             } else {
-                "a field access"
+                "a get field access"
             }
         } else if input.peek(Token![?]) {
             "`?`"
