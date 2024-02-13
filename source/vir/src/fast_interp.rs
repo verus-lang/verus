@@ -1,34 +1,67 @@
+use num_bigint::BigInt;
+use std::rc::Rc;
+use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode};
+use crate::sst::{Exp, ExpX, UniqueIdent};
+use std::collections::HashMap;
+use air::scope_map::ScopeMap;
 
 enum Value {
     Bool(bool),
     Int(BigInt),
-    Ctor(u32, Vec<Value>),
+    Ctor(u32, Rc<Vec<Value>>),
     Symbol(u32),
 }
 
+type Offset = u32;
+struct ProcId(u32);
+struct LabelId(u32);
+
 enum Op {
-    Binary { op: BinaryOp },
+    Unary(IUnaryOp),
+    Binary(BinaryOp),
+    Ternary(ITernaryOp),
     PushValue(Value),
     PushMove(Offset),
     Pop(u32),
     Move { src: Offset, dst: Offset },
-    Call { fn_id: FnId },
+    Call { addr: u32 },
+    MemoizedCall { addr: u32, n_args: usize },
+    DynCall { closure: Offset },
+    BuildCtor { variant: u32, n_fields: u32 },
     Return,
-    ConditionalJmp { op_idx: u32 }, 
-    Jmp { op_idx: u32 }, 
+    ConditionalJmp { true_addr: u32, false_addr: u32, other_addr: u32 }, 
+    Jmp { addr: u32 }, 
 }
 
 enum PreOp {
-    Binary { op: BinaryOp },
+    Unary(IUnaryOp),
+    Binary(BinaryOp),
+    Ternary(ITernaryOp),
     PushValue(Value),
     PushMove(Offset),
     Pop(u32),
     Move { src: Offset, dst: Offset },
-    Call { fn_id: FnId },
+    Call { proc_id: ProcId },
+    MemoizedCall { proc_id: ProcId, n_args: u32 },
+    DynCall { closure: Offset },
     Return,
-    ConditionalJmp { true_label: LabelId, false_label: LabelId }, 
+    BuildClosure { proc_id: ProcId, n_args: u32 },
+    BuildCtor { variant: u32, n_fields: u32 },
+    ConditionalJmp { true_label: LabelId, false_label: LabelId, other_label: LabelId }, 
     Jmp { label: LabelId }, 
-    Label(u32),
+    Label(LabelId),
+}
+
+enum IUnaryOp {
+    Not,
+    BitNot,
+    IntegerTypeBound(IntegerTypeBoundKind),
+    IsVariant(u32),
+    GetField(u32, u32),
+}
+
+enum ITernaryOp {
+    IfThenElse,
 }
 
 enum Procedure {
@@ -37,10 +70,14 @@ enum Procedure {
     Closure(Vec<UniqueIdent>, Vec<UniqueIdent>, Exp),
 }
 
+struct InterpreterConfig {
+    make_opaque: Vec<Fun>,
+}
+
 struct InterpreterCtx {
     fun_to_proc_idx: HashMap<Fun, usize>,
     procs: Vec<Procedure>, 
-    proc_offsets: Vec<u32>,
+    proc_addresses: Vec<u32>,
 
     ops: Vec<Op>,
 }
@@ -92,7 +129,7 @@ impl<'a> State<'a> {
         self.frame_size -= 1;
     }
 
-    fn do_ternary(&mut self, ternary_op: TernaryOp) {
+    fn do_ternary(&mut self, ternary_op: ITernaryOp) {
         self.pre_ops.push(PreOp::Ternary(ternary_op));
         self.frame_size -= 2;
     }
@@ -134,35 +171,35 @@ impl<'a> State<'a> {
                 // done:
                 //   ternarny_op IfThenElse
 
-                let lbl_thn_body = state.mk_label();
-                let lbl_done_true = state.mk_label();
-                let lbl_els_normal = state.mk_label();
-                let lbl_els_body = state.mk_label();
-                let lbl_done = state.mk_label();
+                let lbl_thn_body = self.mk_label();
+                let lbl_done_true = self.mk_label();
+                let lbl_els_normal = self.mk_label();
+                let lbl_els_body = self.mk_label();
+                let lbl_done = self.mk_label();
                 let lbl_dummy = lbl_done_true;
 
-                state.push_exp(cond);
-                state.jmp_conditional(1, lbl_thn_body, lbl_els_normal, lbl_thn_body);
+                self.push_exp(cond);
+                self.jmp_conditional(1, lbl_thn_body, lbl_els_normal, lbl_thn_body);
 
-                state.set_label(lbl_thn_body);
-                state.push_exp(thn);
-                state.jmp_conditional(2, lbl_done_true, lbl_dummy, lbl_els_body);
+                self.set_label(lbl_thn_body);
+                self.push_exp(thn);
+                self.jmp_conditional(2, lbl_done_true, lbl_dummy, lbl_els_body);
 
-                state.set_label(lbl_done_true);
-                state.push_value(Value::Bool(false));
-                state.jmp(lbl_done);
+                self.set_label(lbl_done_true);
+                self.push_value_default();
+                self.jmp(lbl_done);
 
-                state.set_label(lbl_els_normal);
-                state.frame_size -= 2;
-                state.push_value(Value::Bool(false));
+                self.set_label(lbl_els_normal);
+                self.frame_size -= 2;
+                self.push_value_default();
 
-                state.set_label(lbl_els_body);
-                state.push_exp(els);
+                self.set_label(lbl_els_body);
+                self.push_exp(els);
 
-                state.set_label(lbl_done):
-                state.do_ternary(TernaryOp::IfThenElse);
+                self.set_label(lbl_done);
+                self.do_ternary(TernaryOp::IfThenElse);
             }
-            ExpX::Binary(BinaryOp::Or | BinaryOp::And | BinaryOp::Implies, lhs, rhs) => {
+            ExpX::Binary(op @ (BinaryOp::Or | BinaryOp::And | BinaryOp::Implies), lhs, rhs) => {
                 // Short-circuiting binary ops. Again we need to account for symbolic values
 
                 // push_exp lhs
@@ -174,73 +211,89 @@ impl<'a> State<'a> {
                 //   binary_op
                 // done:
 
-                let lbl_do_rhs = state.mk_label();
-                let lbl_done = state.mk_label();
+                let lbl_do_rhs = self.mk_label();
+                let lbl_done = self.mk_label();
 
-                state.push_exp(lhs);
+                self.push_exp(lhs);
 
                 if op == BinaryOp::Implies {
-                    state.do_unary(UnaryOp::Not);
+                    self.do_unary(UnaryOp::Not);
                 }
                 // From here on out, treat ==> as an OR
                 let is_and = (op == BinaryOp::And);
 
                 if is_and {
-                    state.jmp_conditional(1, lbl_do_rhs, lbl_done, lbl_do_rhs);
+                    self.jmp_conditional(1, lbl_do_rhs, lbl_done, lbl_do_rhs);
                 } else {
-                    state.jmp_conditional(1, lbl_done, lbl_do_rhs, lbl_do_rhs);
+                    self.jmp_conditional(1, lbl_done, lbl_do_rhs, lbl_do_rhs);
                 }
 
-                state.set_label(lbl_do_rhs);
-                state.push_exp(rhs);
-                state.do_binary(if is_and { BinaryOp::And } else { BinaryOp::Or });
-                state.set_label(lbl_done);
+                self.set_label(lbl_do_rhs);
+                self.push_exp(rhs);
+                self.do_binary(if is_and { BinaryOp::And } else { BinaryOp::Or });
+                self.set_label(lbl_done);
             }
             ExpX::BinaryOp(bop, lhs, rhs) => {
-                state.push_exp(lhs);
-                state.push_exp(rhs);
-                state.do_binary(bop);
+                self.push_exp(lhs);
+                self.push_exp(rhs);
+                self.do_binary(bop);
             }
-            ExpX::BinaryOpr(BinaryOpr::ExtEq(true | false, _typ)) => {
-                state.push_exp(lhs);
-                state.push_exp(rhs);
-                state.do_binary(BinaryOp::Eq(Mode::Spec));
+            ExpX::BinaryOpr(BinaryOpr::ExtEq(true | false, _typ), lhs, rhs) => {
+                self.push_exp(lhs);
+                self.push_exp(rhs);
+                self.do_binary(BinaryOp::Eq(Mode::Spec));
             }
             ExpX::UnaryOp(UnaryOp::Not, e) => {
-                state.push_exp(e);
-                state.do_unary(IUnaryOp::Not);
+                self.push_exp(e);
+                self.do_unary(IUnaryOp::Not);
             }
             ExpX::UnaryOp(UnaryOp::BitNot, e) => {
-                state.push_exp(e);
-                state.do_unary(IUnaryOp::BitNot);
+                self.push_exp(e);
+                self.do_unary(IUnaryOp::BitNot);
             }
-            ExpX::UnaryOp(UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. }, e) => {
-                state.push_exp(e);
+            ExpX::UnaryOp(UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } | UnaryOp::CustomErr(_), e) => {
+                self.push_exp(e);
             }
+            ExpX::UnaryOpr(UnaryOp::Box(_) | UnaryOp::Unbox(_), e) => {
+                self.push_exp(e);
+            }
+            ExpX::UnaryOpr(UnaryOpr::HasType(_) | UnaryOpr::TupleField { .. }) => unreachable!(),
+            ExpX::UnaryOpr(UnaryOpr::IsVariant { datatype, variant }) => {
+                let (_variant, idx) = &get_variant_and_idx(&ctx.global.datatypes[path].1, variant);
+                self.push_exp(e);
+                self.get_is_variant(idx);
+            }
+            ExpX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field, .. })) => {
+                let (variant, idx) = &get_variant_and_idx(&ctx.global.datatypes[path].1, variant);
+                let field_idx = variant.fields.iter().position(|f| f.name == field).unwrap();
 
-            ExpX::UnaryOpr(UnaryOp::Box(_) | UnaryOp::Unbox(_) | UnaryOp::, e) => {
-                state.push_exp(e);
+                self.push_exp(e);
+                self.get_field(idx, field_idx);
+            }
+            ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, _mode), e) => {
+                self.push_exp(e);
+                self.do_unary(IUnaryOp::IntegerTypeBound(kind));
             }
             ExpX::CallLambda(_, closure, args) => {
-                state.push_exp(closure);
+                self.push_exp(closure);
                 for arg in args.iter() {
-                    state.push_exp(arg);
+                    self.push_exp(arg);
                 }
-                state.dyn_call(args.len() + 1);
+                self.dyn_call(args.len() + 1);
             }
             ExpX::Call(call_fun, _typs, args) => {
                 for arg in args.iter() {
-                    state.push_exp(arg);
+                    self.push_exp(arg);
                 }
 
                 let call_type = get_call_type(call_fun);
                 match call_type {
                     CallType::Fun(fun, cached) => {
-                        let proc_id = state.get_proc_id(fun);
+                        let proc_id = self.get_proc_id(fun);
                         if cached {
-                            state.normal_call(proc_id);
+                            self.normal_call(proc_id);
                         } else {
-                            state.cached_call(proc_id, args.len());
+                            self.cached_call(proc_id, args.len());
                         }
                     }
                     CallType::Uninterp => {
@@ -259,7 +312,7 @@ impl<'a> State<'a> {
                     self.push_exp(body);
                     self.var_locs.pop_scope();
 
-                    self.move(1, binders.len() + 1);
+                    self.do_move(1, binders.len() + 1);
                     self.pop(binders.len());
                 }
                 BndX::Lambda(binders, _triggers) => {
@@ -286,7 +339,7 @@ impl<'a> State<'a> {
                     self.build_closure(proc_id, captured_vars.len());
                 }
             }
-            ExpX::Ctor(path, variant, binders) {
+            ExpX::Ctor(path, variant, binders) => {
                 let (variant, idx) = &get_variant_and_idx(&ctx.global.datatypes[path].1, variant);
                 let fields = variant.fields;
                 let es = fields.iter().map(|f| get_field(binders, &f.name).a);
@@ -323,7 +376,7 @@ impl<'a> State<'a> {
                 }
 
                 self.push_exp(body);
-                self.move(0, self.frame_size);
+                self.do_move(0, self.frame_size);
                 self.pop(self.frame_size - 1);
                 self.do_return();
             }
@@ -344,7 +397,7 @@ impl<'a> State<'a> {
                 }
 
                 self.push_exp(body);
-                self.move(0, self.frame_size);
+                self.do_move(0, self.frame_size);
                 self.pop(self.frame_size - 1);
                 self.do_return();
             }
@@ -362,11 +415,176 @@ impl InterpreterCtx {
             next_label_id: next_label_id,
         };
 
-        state.ctx.push(Procedure::Exp(e.clone()));
-        let i = state.ctx.procs.len() - 1;
+        state.ctx.procs.push(Procedure::Exp(e.clone()));
+        let first_proc = state.ctx.procs.len() - 1;
+        let mut i = state.ctx.procs.len() - 1;
+        let mut pre_ops_lists = vec![];
         while i < state.ctx.procs.len() {
             let res = state.compile_procedure(&state.ctx.procs[i]);
             i += 1;
+
+            let pre_ops = std::mem::take(&mut state.pre_ops);
+            pre_ops_lists.push(pre_ops);
         }
+
+        let mut label_map = HashMap::<u32, u32>::new();
+        let mut current_address = self.ops.len();
+        for pre_ops in pre_ops_lists.iter() {
+            state.proc_addresses.push(current_address);
+            for pre_op in pre_ops.iter() {
+                if let PreOp::Label(label_id) = pre_op {
+                    assert!(!label_map.contains_key(label_id.0));
+                    label_map.insert(label_id.0, current_address);
+                } else {
+                    current_address += 1;
+                }
+            }
+        }
+        for pre_ops in pre_ops_lists.iter() {
+            for pre_op in pre_ops.iter() {
+                let op = match pre_op {
+                    PreOp::Unary(op) => Op::Unary(Op),
+                    PreOp::Binary(op) => Op::Binary(Op),
+                    PreOp::Ternary(op) => Op::Ternary(Op),
+                    PreOp::PushValue(value) => Op::PushValue(value),
+                    PreOp::PushMove(offset) => Op::PushMove(offset),
+                    PreOp::Pop(n) => Op::Pop(n),
+                    PreOp::Move { src, dst } => Op::Move { src, dst },
+                    PreOp::Call { proc_id } =>
+                        Op::PreOp::Call { addr: self.proc_addresses[proc_id.0] },
+                    PreOp::MemoizedCall { proc_id } =>
+                        Op::PreOp::MemoizedCall { addr: self.proc_addresses[proc_id.0] },
+                    PreOp::DynCall { closure } => Op::DynCall { closure },
+                    PreOp::Return => Op::Return,
+                    PreOp::BuildClosure { proc_id, n_args } => {
+                        Op::BuildCtor { variant: self.proc_addresses[proc_id.0],
+                            n_fields: n_args }
+                    }
+                    PreOp::BuildCtor { variant, n_fields } => {
+                        Op::BuildCtor { variant, n_fields }
+                    }
+                    PreOp::ConditionalJmp { true_label, false_label, other_label } => {
+                        Op::ConditionalJmp {
+                            true_addr: *label_map.get(*true_label).unwrap(),
+                            false_addr: *label_map.get(*false_label).unwrap(),
+                            other_addr: *label_map.get(*other_label).unwrap(),
+                        }
+                    }
+                    PreOp::Jmp { label } => {
+                        Op::Jmp {
+                            addr: *label_map.get(*label).unwrap(),
+                        } 
+                    }
+                    PreOp::Label(_) => { continue; }
+                };
+                self.ops.push(op);
+            }
+        }
+    }
+
+    fn run(&self, proc_id: ProcId) -> Value {
+        let instr_ptr = self.proc_addresses[proc_id];
+        let stack: Vec<Value> = Vec::with_capacity(1000);
+        let call_stack: Vec<CallFrame> = Vec::with_capacity(1000);
+        let memoize_cache = HashMap::<(u32, Vec<Value>), Value>::new();
+
+        loop {
+            match &self.ops[instr_ptr] {
+                Op::Unary(op) => {
+                    exec_unary(&mut stack[stack.len() - 1], op);
+                }
+                Op::Binary(op) => {
+                    let rhs = stack.pop();
+                    exec_binary(&mut stack[stack.len() - 1], rhs, op);
+                }
+                Op::Ternary(op) => {
+                    let r3 = stack.pop();
+                    let r2 = stack.pop();
+                    exec_ternary(&mut stack[stack.len() - 1], r2, r3, op);
+                }
+                Op::PushValue(value) => {
+                    stack.push(value.clone());
+                }
+                Op::PushMove(offset) => {
+                    let v = stack[stack.len() - offset].clone();
+                    stack.push(v);
+                }
+                Op::Pop(n) => {
+                    stack.truncate(stack.len() - n);
+                }
+                Op::Move { src, dst } => {
+                    let v = stack[stack.len() - src].clone();
+                    stack[stack.len() - dst] = v;
+                }
+                Op::Call { addr } => {
+                    call_stack.push(Call { return_addr: instr_ptr + 1, memoize: None });
+                    instr_ptr = addr;
+                    continue;
+                }
+                Op::MemoizedCall { addr, n_args } => {
+                    let args = stack[stack.len() - n_args ..].to_vec();
+                    let key = (addr, args);
+                    match memoize_cache.get(&key) {
+                        Some(ret) => {
+                            stack.truncate(stack.len() - n_args);
+                            stack.push(ret.clone());
+                        }
+                        None => {
+                            call_stack.push(Call { return_addr: instr_ptr + 1, memoize: Some(key) });
+                            instr_ptr = addr;
+                            continue;
+                        }
+                    }
+                    todo!();
+                }
+                Op::DynCall { closure } => {
+                    if let Value::Ctor(addr, _) = stack[stack.len() - closure] {
+                        call_stack.push(Call { return_addr: instr_ptr + 1, memoize: None });
+                        instr_ptr = addr;
+                        continue;
+                    } else {
+                        todo!();
+                    }
+                }
+                Op::BuiltCtor { variant, n_fields } => {
+                    let vs = stack.drain(stack.len() - n_fields ..).collect();
+                    let v = Value::Ctor(variant, Rc::new(vs));
+                    stack.push(v);
+                }
+                Op::Return => {
+                    if call_stack.len() == 0 {
+                        break;
+                    }
+                    let frame = call_stack.pop();
+                    match frame {
+                        Call { return_addr, memoize } => {
+                            if let Some(key) = memoize {
+                                memoize_cache.insert(key, stack[stack.len() - 1].clone());
+                            }
+                            instr_ptr = addr;
+                            continue;
+                        }
+                    }
+                }
+                Op::Jmp { addr } => {
+                    instr_ptr = addr;
+                    continue;
+                }
+                Op::ConditionalJmp { true_addr, false_addr, other_addr } => {
+                    let v = &stack[stack.len() - 1];
+                    instr_ptr = match v {
+                        Value::Bool(false) => false_addr,
+                        Value::Bool(true) => true_addr,
+                        _ => other_addr,
+                    };
+                    continue;
+                }
+            }
+
+            instr_ptr += 1;
+        }
+
+        assert!(stack.len() == 1);
+        return stack[0].clone();
     }
 }
