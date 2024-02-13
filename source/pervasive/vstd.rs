@@ -18,6 +18,7 @@
 extern crate alloc;
 
 pub mod pervasive;
+pub mod arithmetic;
 pub mod array;
 pub mod bytes;
 pub mod calc_macro;

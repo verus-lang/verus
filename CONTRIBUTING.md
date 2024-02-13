@@ -90,6 +90,25 @@ VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --noc
 This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
 a time when using this flag, so that the logs are not overwritten by other tests.
 
+## Contributing to the standard library (`vstd`)
+
+If you're contributing to the standard library, you should also test the
+standalone build of that library with
+```
+cd source/pervasive
+cargo build
+```
+
+A common error you'll find at this stage is that imports of specific
+identifiers with `use` (as opposed to blanket imports using `*`) don't work
+when building the standalone exec-only version of `vstd`. To rectify this error,
+make sure every such import is prefixed by `#[cfg(verus_keep_ghost)]`, as
+in the following example:
+```
+#[cfg(verus_keep_ghost)]
+use crate::arithmetic::internals::general_internals::is_le;
+```
+
 ## Other tips
 
 You can use `--vstd-no-verify` to skip verification of the `vstd` library. This is pretty useful if you're building or running tests a lot. Note that it will still _build_ `vstd`—it just skips the SMT step. For example:
