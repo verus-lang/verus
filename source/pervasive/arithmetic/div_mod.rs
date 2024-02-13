@@ -1965,10 +1965,6 @@ pub proof fn lemma_mod_pos_bound_auto()
 
 /// Proof that when integer `x` is divided by positive integer `m`,
 /// the remainder is nonegative and less than `m`.
-/*
-    Note: This isn't in the Dafny standard library, but it's an
-    obvious extension of [`lemma_mod_pos_bound`].
-*/
 pub proof fn lemma_mod_bound(x: int, m: int)
     requires
         0 < m,
@@ -1980,10 +1976,6 @@ pub proof fn lemma_mod_bound(x: int, m: int)
 
 /// Proof that when any number is divided by a positive integer, the
 /// remainder is nonnegative and less than that positive integer.
-/*
-    Note: This isn't in the Dafny standard library, but it's an
-    obvious extension of [`lemma_mod_pos_bound_auto`].
-*/
 pub proof fn lemma_mod_bound_auto()
     ensures
         forall |x: int, m: int| 0 < m ==> 0 <= #[trigger] (x % m) < m,
