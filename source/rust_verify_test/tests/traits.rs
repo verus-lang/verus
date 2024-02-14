@@ -3165,6 +3165,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default18 verus_code! {
+        struct S;
+        trait T {
+            fn f(s: S) -> S { s }
+        }
+        impl T for bool {
+        }
+        fn test(s: S) -> S {
+            <bool as T>::f(s)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
         use vstd::prelude::View;
 

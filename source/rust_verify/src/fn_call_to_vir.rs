@@ -166,6 +166,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     let node_substs = fix_node_substs(tcx, bctx.types, node_substs, rust_item, &args, expr);
 
+    let mut record_name = name.clone();
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
@@ -178,6 +179,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 let typs = mk_typ_args(bctx, &inst.args, expr.span)?;
                 let mut f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+                record_name = f.clone();
 
                 let mut self_trait_impl_path = None;
                 let mut remove_self_trait_bound = None;
@@ -203,11 +205,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             }
         }
         vir::ast::CallTargetKind::Method(resolved)
-    };
-
-    let record_name = match &target_kind {
-        vir::ast::CallTargetKind::Method(Some((fun, _, _))) => fun.clone(),
-        _ => name.clone(),
     };
 
     record_call(bctx, expr, ResolvedCall::Call(record_name, autospec_usage));
