@@ -676,7 +676,7 @@ pub fn func_decl_to_air(
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
     }
 
-    if ctx.fndef_type_set.contains(&function.x.name) {
+    if crate::ast_simplify::need_fndef_axiom(&ctx.fndef_type_set, function) {
         let fndef_axioms = function
             .x
             .fndef_axioms
