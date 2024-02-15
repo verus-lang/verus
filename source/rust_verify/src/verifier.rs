@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 use vir::context::GlobalCtx;
 
 use crate::buckets::{Bucket, BucketId};
-use vir::ast::{Fun, Ident, Krate, VirErr};
+use vir::ast::{Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
     path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
@@ -272,7 +272,6 @@ pub struct Verifier {
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
     crate_names: Option<Vec<String>>,
-    vstd_crate_name: Option<Ident>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     buckets: HashMap<BucketId, Bucket>,
@@ -378,7 +377,6 @@ impl Verifier {
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
             crate_names: None,
-            vstd_crate_name: None,
             air_no_span: None,
             current_crate_modules: None,
             buckets: HashMap::new(),
@@ -409,7 +407,6 @@ impl Verifier {
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
             crate_names: self.crate_names.clone(),
-            vstd_crate_name: self.vstd_crate_name.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
             buckets: self.buckets.clone(),
@@ -1638,12 +1635,7 @@ impl Verifier {
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
-            vir::prune::prune_krate_for_module(
-                &krate,
-                bucket_id.module(),
-                bucket_id.function(),
-                &self.vstd_crate_name,
-            );
+            vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1702,7 +1694,6 @@ impl Verifier {
             air_no_span.clone(),
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
-            self.vstd_crate_name.clone(),
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2299,22 +2290,18 @@ impl Verifier {
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
         let import_len = self.args.import.len();
-        let vstd_crate_name = if import_len > 0 || self.args.export.is_some() {
-            Some(Arc::new(vir::def::VERUSLIB.to_string()))
-        } else {
-            None
-        };
+        let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
         let mut ctxt = Arc::new(ContextX {
             cmd_line_args: self.args.clone(),
             tcx,
             krate: hir.krate(),
             erasure_info,
             spans: spans.clone(),
-            vstd_crate_name: vstd_crate_name.clone(),
             verus_items,
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
             no_vstd: self.args.no_vstd,
             arch_word_bits: None,
+            vstd_crate_name,
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
@@ -2390,7 +2377,6 @@ impl Verifier {
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_names = Some(crate_names);
-        self.vstd_crate_name = vstd_crate_name;
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
