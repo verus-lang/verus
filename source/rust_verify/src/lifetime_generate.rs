@@ -2487,6 +2487,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             if vattrs.is_external(&ctxt.cmd_line_args) {
                                 continue;
                             }
+                            if vattrs.reveal_group {
+                                continue;
+                            }
                             if !vattrs.external_fn_specification {
                                 erase_fn(
                                     krate,

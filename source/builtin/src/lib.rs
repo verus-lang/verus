@@ -1311,10 +1311,10 @@ macro_rules! decreases_to {
 
 #[macro_export]
 macro_rules! reveal_group {
-    { $x:ident => $($y:path),* $(,)? } => {
+    { $v:vis $x:ident => $($y:path),* $(,)? } => {
         ::builtin_macros::verus! {
             #[verus::internal(reveal_group)]
-            proof fn $x() {
+            $v proof fn $x() {
                 $(reveal($y);)*
             }
         }
