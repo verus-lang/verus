@@ -224,6 +224,8 @@ pub(crate) enum Attr {
     AcceptRecursiveTypes(Option<String>),
     // export function's require/ensure as global forall
     BroadcastForall,
+    // group together other BroadcastForall or RevealGroup
+    RevealGroup,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
     AutoTrigger,
     // accept all possible triggers chosen by triggers_auto without printing any diagnostics
@@ -525,6 +527,9 @@ pub(crate) fn parse_attrs(
                     {
                         v.push(Attr::ReturnMode(Mode::Exec))
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "reveal_group" => {
+                        v.push(Attr::RevealGroup)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "header_unwrap_parameter" => {
                         v.push(Attr::UnwrapParameter)
                     }
@@ -675,6 +680,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) accept_recursive_types: bool,
     pub(crate) accept_recursive_type_list: Vec<(String, AcceptRecursiveType)>,
     pub(crate) broadcast_forall: bool,
+    pub(crate) reveal_group: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
@@ -731,6 +737,7 @@ pub(crate) fn get_verifier_attrs(
         accept_recursive_types: false,
         accept_recursive_type_list: vec![],
         broadcast_forall: false,
+        reveal_group: false,
         no_auto_trigger: false,
         autospec: None,
         custom_req_err: None,
@@ -782,6 +789,7 @@ pub(crate) fn get_verifier_attrs(
                 vs.accept_recursive_type_list.push((s, AcceptRecursiveType::Accept))
             }
             Attr::BroadcastForall => vs.broadcast_forall = true,
+            Attr::RevealGroup => vs.reveal_group = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),

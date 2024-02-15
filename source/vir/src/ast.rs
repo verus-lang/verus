@@ -953,6 +953,21 @@ pub enum ItemKind {
     Static,
 }
 
+pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct RevealGroupX {
+    /// Name of the function that is used internally to represent the group.
+    /// This is used, for example, to create a Node::Fun(name) for the group.
+    /// Note that there is no FunctionX for the group, though.
+    pub name: Fun,
+    /// Access control (public/private)
+    pub visibility: Visibility,
+    /// Owning module
+    pub owning_module: Option<Path>,
+    /// All the subgroups or functions included in this group
+    pub members: Arc<Vec<Fun>>,
+}
+
 /// Single field in a variant
 pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// List of fields in a variant
@@ -1099,6 +1114,8 @@ pub type Krate = Arc<KrateX>;
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
+    /// All reveal_groups in the crate
+    pub reveal_groups: Vec<RevealGroup>,
     /// All datatypes in the crate
     pub datatypes: Vec<Datatype>,
     /// All traits in the crate

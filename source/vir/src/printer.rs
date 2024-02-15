@@ -339,6 +339,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     let KrateX {
         datatypes,
         functions,
+        reveal_groups,
         traits,
         trait_impls,
         assoc_type_impls,
@@ -362,6 +363,11 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
+            .expect("cannot write to vir write");
+    }
+    for group in reveal_groups.iter() {
+        let group_id_node = nodes!(group_id {path_to_node(&group.x.name.path)});
+        writeln!(&mut write, "{}\n", nw.node_to_string(&group_id_node))
             .expect("cannot write to vir write");
     }
     for t in traits.iter() {

@@ -130,6 +130,22 @@ fn func_def_quant(
     Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
+pub(crate) fn broadcast_forall_group_axioms(
+    decl_commands: &mut Vec<Command>,
+    group: &crate::ast::RevealGroup,
+) {
+    let id_group = prefix_fuel_id(&fun_to_air_ident(&group.x.name));
+    let fuel_group = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_group)]);
+    for member in group.x.members.iter() {
+        // (axiom (=> (fuel_bool_default fuel%group) (fuel_bool_default fuel%member)))
+        let id_member = prefix_fuel_id(&fun_to_air_ident(member));
+        let fuel_member = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_member)]);
+        let member_imply = mk_implies(&fuel_group, &fuel_member);
+        let member_axiom = Arc::new(DeclX::Axiom(member_imply));
+        decl_commands.push(Arc::new(CommandX::Global(member_axiom)));
+    }
+}
+
 fn func_body_to_air(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,

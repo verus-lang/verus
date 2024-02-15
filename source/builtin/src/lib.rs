@@ -1309,6 +1309,18 @@ macro_rules! decreases_to {
     };
 }
 
+#[macro_export]
+macro_rules! reveal_group {
+    { $x:ident => $($y:path),* $(,)? } => {
+        ::builtin_macros::verus! {
+            #[verus::internal(reveal_group)]
+            proof fn $x() {
+                $(reveal($y);)*
+            }
+        }
+    };
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]
 #[verifier::spec]

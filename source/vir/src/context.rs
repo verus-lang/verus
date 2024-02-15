@@ -77,6 +77,8 @@ pub struct Ctx {
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
+    pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
     pub quantifier_count: Cell<u64>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
@@ -213,7 +215,11 @@ impl GlobalCtx {
             func_map.insert(function.x.name.clone(), function.clone());
         }
         let mut fun_bounds: HashMap<Fun, GenericBounds> = HashMap::new();
+        let reveal_group_set: HashSet<Fun> =
+            krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+
         let mut func_call_graph: Graph<Node> = Graph::new();
+
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
@@ -279,6 +285,7 @@ impl GlobalCtx {
             func_call_graph.add_edge(fndef_impl_node, fun_node);
             crate::recursion::expand_call_graph(
                 &func_map,
+                &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
                 f,
@@ -403,6 +410,8 @@ impl Ctx {
         for tr in krate.traits.iter() {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
+        let reveal_group_set: HashSet<Fun> =
+            krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
@@ -422,6 +431,8 @@ impl Ctx {
             fndef_type_set,
             functions,
             func_map,
+            reveal_groups: krate.reveal_groups.clone(),
+            reveal_group_set,
             quantifier_count,
             funcs_with_ensure_predicate,
             datatype_map,
@@ -454,21 +465,30 @@ impl Ctx {
     pub fn fuel(&self) -> Commands {
         let mut ids: Vec<air::ast::Expr> = Vec::new();
         let mut commands: Vec<Command> = Vec::new();
+        let mut names: Vec<Fun> = Vec::new();
         for function in &self.functions {
             match (function.x.mode, function.x.body.as_ref(), function.x.attrs.broadcast_forall) {
                 (Mode::Spec, Some(_), false) | (Mode::Proof, Some(_), true) => {
-                    let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&function.x.name));
-                    ids.push(air::ast_util::ident_var(&id));
-                    let typ_fuel_id = str_typ(&FUEL_ID);
-                    let decl = Arc::new(DeclX::Const(id, typ_fuel_id));
-                    commands.push(Arc::new(CommandX::Global(decl)));
+                    names.push(function.x.name.clone());
                 }
                 _ => {}
             }
         }
+        for group in &self.reveal_groups {
+            names.push(group.x.name.clone());
+        }
+        for name in names {
+            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&name));
+            ids.push(air::ast_util::ident_var(&id));
+            let decl = Arc::new(DeclX::Const(id, str_typ(&FUEL_ID)));
+            commands.push(Arc::new(CommandX::Global(decl)));
+        }
         let distinct = Arc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Arc::new(ids)));
         let decl = Arc::new(DeclX::Axiom(distinct));
         commands.push(Arc::new(CommandX::Global(decl)));
+        for group in &self.reveal_groups {
+            crate::func_to_air::broadcast_forall_group_axioms(&mut commands, group);
+        }
         Arc::new(commands)
     }
 }

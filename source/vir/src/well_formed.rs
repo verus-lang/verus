@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 struct Ctxt {
     pub(crate) funs: HashMap<Fun, Function>,
+    pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
 }
@@ -355,6 +356,9 @@ fn check_one_expr(
             crate::closures::check_closure_well_formed(expr)?;
         }
         ExprX::Fuel(f, fuel) => {
+            if ctxt.reveal_groups.contains(f) && *fuel == 1 {
+                return Ok(());
+            }
             let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
             if f.x.mode != Mode::Spec && !f.x.attrs.broadcast_forall {
                 return Err(error(
@@ -1018,6 +1022,8 @@ pub fn check_crate(
         }
         dts.insert(datatype.x.path.clone(), datatype.clone());
     }
+    let reveal_groups: HashSet<Fun> =
+        krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
     // Check connections between decreases_by specs and proofs
     let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
@@ -1120,7 +1126,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { funs, dts, krate: krate.clone() };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
     }

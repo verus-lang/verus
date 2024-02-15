@@ -995,6 +995,7 @@ fn poly_assoc_type_impl(ctx: &Ctx, assoc: &AssocTypeImpl) -> AssocTypeImpl {
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
     let KrateX {
         functions,
+        reveal_groups,
         datatypes,
         traits,
         trait_impls,
@@ -1007,6 +1008,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
     } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
+        reveal_groups: reveal_groups.clone(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
         traits: traits.clone(),
         trait_impls: trait_impls.clone(),

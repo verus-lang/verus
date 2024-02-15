@@ -1579,7 +1579,7 @@ pub(crate) fn expr_to_stm_opt(
             // because there are no transitive dependencies.
             // If so, just skip the fuel/reveal statement entirely
             // (it can't possibly have any effect)
-            let skip = !ctx.func_map.contains_key(x);
+            let skip = !ctx.reveal_group_set.contains(x) && !ctx.func_map.contains_key(x);
 
             if skip {
                 state.diagnostics.report(&warning(

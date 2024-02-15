@@ -993,6 +993,7 @@ fn mk_fun_decl(
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
         functions,
+        reveal_groups,
         datatypes,
         traits,
         trait_impls,
@@ -1122,6 +1123,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let external_types = external_types.clone();
     let krate = Arc::new(KrateX {
         functions,
+        reveal_groups: reveal_groups.clone(),
         datatypes,
         traits,
         trait_impls,

@@ -6,7 +6,7 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function,
-    FunctionKind, Ident, Krate, KrateX, Mode, Path, Stmt, Trait, TraitX, Typ, TypX,
+    FunctionKind, Ident, Krate, KrateX, Mode, Path, RevealGroup, Stmt, Trait, TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::ast_visitor::VisitorScopeMap;
@@ -53,6 +53,7 @@ struct TraitImpl {
 struct Ctxt {
     module: Path,
     function_map: HashMap<Fun, Function>,
+    reveal_group_map: HashMap<Fun, RevealGroup>,
     datatype_map: HashMap<Path, Datatype>,
     // For an impl "bounds ==> trait T(...t...)", point T to impl:
     trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>>,
@@ -76,6 +77,7 @@ struct State {
     reached_assoc_type_impls: HashSet<AssocTypeGroup>,
     reached_modules: HashSet<Path>,
     worklist_functions: Vec<Fun>,
+    worklist_reveal_groups: Vec<Fun>,
     worklist_types: Vec<ReachedType>,
     worklist_bound_traits: Vec<TraitName>,
     worklist_trait_impls: Vec<ImplName>,
@@ -135,6 +137,9 @@ fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
 fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     if ctxt.function_map.contains_key(name) {
         reach(&mut state.reached_functions, &mut state.worklist_functions, name);
+    }
+    if ctxt.reveal_group_map.contains_key(name) {
+        reach(&mut state.reached_functions, &mut state.worklist_reveal_groups, name);
     }
 }
 
@@ -311,6 +316,16 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             reach_methods(ctxt, state, methods);
             continue;
         }
+        if let Some(f) = state.worklist_reveal_groups.pop() {
+            let group = &ctxt.reveal_group_map[&f];
+            if let Some(module_path) = &group.x.owning_module {
+                reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+            }
+            for member in group.x.members.iter() {
+                reach_function(ctxt, state, member);
+            }
+            continue;
+        }
         if let Some(t) = state.worklist_types.pop() {
             match &t {
                 ReachedType::Datatype(path) => {
@@ -450,6 +465,7 @@ pub fn prune_krate_for_module(
     // Collect functions and datatypes,
     // pruning all bodies and variants that are not visible to our module
     let mut functions: Vec<Function> = Vec::new();
+    let mut reveal_groups: Vec<RevealGroup> = Vec::new();
     let mut datatypes: Vec<Datatype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.functions {
@@ -488,6 +504,15 @@ pub fn prune_krate_for_module(
             functions.push(Spanned::new(f.span.clone(), function));
         }
     }
+    for f in &krate.reveal_groups {
+        if is_visible_to(&f.x.visibility, module) {
+            reveal_groups.push(f.clone());
+            if revealed_functions.contains(&f.x.name) {
+                state.reached_functions.insert(f.x.name.clone());
+                state.worklist_reveal_groups.push(f.x.name.clone());
+            }
+        }
+    }
     for d in &krate.datatypes {
         match &d.x.owning_module {
             Some(path) if path == module => {
@@ -512,6 +537,7 @@ pub fn prune_krate_for_module(
     }
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
+    let mut reveal_group_map: HashMap<Fun, RevealGroup> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
     let mut assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>> = HashMap::new();
     let mut trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>> = HashMap::new();
@@ -534,6 +560,9 @@ pub fn prune_krate_for_module(
             all_functions_in_each_module.insert(module.clone(), Vec::new());
         }
         all_functions_in_each_module.get_mut(&module).unwrap().push(f.x.name.clone());
+    }
+    for f in &reveal_groups {
+        reveal_group_map.insert(f.x.name.clone(), f.clone());
     }
     for d in &datatypes {
         datatype_map.insert(d.x.path.clone(), d.clone());
@@ -579,6 +608,7 @@ pub fn prune_krate_for_module(
     let ctxt = Ctxt {
         module: module.clone(),
         function_map,
+        reveal_group_map,
         datatype_map,
         trait_to_trait_impls,
         typ_to_trait_impls,
@@ -604,6 +634,10 @@ pub fn prune_krate_for_module(
 
     let kratex = KrateX {
         functions: functions
+            .into_iter()
+            .filter(|f| state.reached_functions.contains(&f.x.name))
+            .collect(),
+        reveal_groups: reveal_groups
             .into_iter()
             .filter(|f| state.reached_functions.contains(&f.x.name))
             .collect(),

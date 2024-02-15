@@ -24,7 +24,7 @@ use crate::util::vec_map_result;
 use air::ast::Binder;
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::messages::Diagnostics;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -389,8 +389,9 @@ fn check_termination<'a>(
             Ok(stm_block)
         }
         StmX::Fuel(callee, fuel) if *fuel >= 1 => {
-            let f2 = &ctx.func_map[callee];
-            if f2.x.attrs.broadcast_forall && is_recursive_call(&ctxt, callee, &None) {
+            let broadcast_forall = ctx.reveal_group_set.contains(callee)
+                || ctx.func_map[callee].x.attrs.broadcast_forall;
+            if broadcast_forall && is_recursive_call(&ctxt, callee, &None) {
                 // This isn't needed for soundness, since the broadcast_forall axiom isn't
                 // declared until after this SCC, but we might as well signal an error,
                 // since this reveal will have no effect.
@@ -425,6 +426,7 @@ pub(crate) fn check_termination_stm(
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
+    reveal_group_set: &HashSet<Fun>,
     call_graph: &mut Graph<Node>,
     span_infos: &mut Vec<Span>,
     function: &Function,
@@ -520,8 +522,9 @@ pub(crate) fn expand_call_graph(
                 }
             }
             ExprX::Fuel(callee, fuel) if *fuel >= 1 => {
-                let f2 = &func_map[callee];
-                if f2.x.attrs.broadcast_forall {
+                let broadcast_forall =
+                    reveal_group_set.contains(callee) || func_map[callee].x.attrs.broadcast_forall;
+                if broadcast_forall {
                     // f --> f2
                     call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
                 }

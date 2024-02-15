@@ -113,6 +113,7 @@ fn check_item<'tcx>(
             check_item_fn(
                 ctxt,
                 &mut vir.functions,
+                Some(&mut vir.reveal_groups),
                 item.owner_id.to_def_id(),
                 FunctionKind::Static,
                 visibility(),
@@ -396,6 +397,7 @@ fn check_item<'tcx>(
                                 check_item_fn(
                                     ctxt,
                                     &mut vir.functions,
+                                    None,
                                     impl_item.owner_id.to_def_id(),
                                     kind,
                                     impl_item_visibility,
@@ -626,6 +628,7 @@ fn check_item<'tcx>(
                         let fun = check_item_fn(
                             ctxt,
                             &mut methods,
+                            None,
                             owner_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility(),
