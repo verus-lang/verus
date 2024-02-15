@@ -140,4 +140,42 @@ pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_r
     result.map(op)
 }
 
+// ok
+
+#[verifier(inline)]
+pub open spec fn ok<T, E>(result: Result<T, E>) -> Option<T> {
+    match result {
+        Ok(t) => Some(t),
+        Err(_) => None,
+    }
+}
+
+#[verifier::external_fn_specification]
+#[verifier::when_used_as_spec(ok)]
+pub fn ex_result_ok<T, E>(result: Result<T, E>) -> (opt: Option<T>)
+    ensures
+        opt == ok(result)
+{
+    result.ok()
+}
+
+// err
+
+#[verifier(inline)]
+pub open spec fn err<T, E>(result: Result<T, E>) -> Option<E> {
+    match result {
+        Ok(_) => None,
+        Err(e) => Some(e),
+    }
+}
+
+#[verifier::external_fn_specification]
+#[verifier::when_used_as_spec(err)]
+pub fn ex_result_err<T, E>(result: Result<T, E>) -> (opt: Option<E>)
+    ensures
+        opt == err(result)
+{
+    result.err()
+}
+
 }
