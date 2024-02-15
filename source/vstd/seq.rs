@@ -68,14 +68,18 @@ impl<A> SeqInner<A> {
             0 <= i < self.len(),
         decreases self.len(),
     {
-        match self {
-            SeqInner::Nil => arbitrary(),
-            SeqInner::Cons { head, tail } => if i == 0 {
-                SeqInner::Cons { head: a, tail }
-            } else {
-                let new_tail = tail.update(i - 1, a);
-                SeqInner::Cons { head, tail: Box::new(new_tail) }
-            },
+        if !(0 <= i < self.len()) {  // this supports weakening some preconditions
+            self
+        } else {
+            match self {
+                SeqInner::Nil => arbitrary(),
+                SeqInner::Cons { head, tail } => if i == 0 {
+                    SeqInner::Cons { head: a, tail }
+                } else {
+                    let new_tail = tail.update(i - 1, a);
+                    SeqInner::Cons { head, tail: Box::new(new_tail) }
+                },
+            }
         }
     }
 
@@ -554,15 +558,32 @@ pub broadcast proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     lemma_seq_inner_push_index_same(s.inner, a, i);
 }
 
+proof fn lemma_seq_inner_index_out_of_bounds<A>(s: SeqInner<A>, i: int)
+    requires
+        !(0 <= i < s.len()),
+    ensures
+        s[i] == arbitrary::<A>(),
+    decreases s,
+{
+    match s {
+        SeqInner::Nil => {},
+        SeqInner::Cons { tail, .. } => {
+            lemma_seq_inner_index_out_of_bounds(*tail, i - 1);
+        },
+    }
+}
+
 proof fn lemma_seq_inner_push_index_different<A>(s: SeqInner<A>, a: A, i: int)
     requires
-        0 <= i < s.len(),
+        i < s.len(),
     ensures
         #[trigger] s.push(a)[i] == s[i],
     decreases s,
 {
     match s {
-        SeqInner::Nil => { assert(s.len() == 0) },
+        SeqInner::Nil => {
+            lemma_seq_inner_index_out_of_bounds(s.push(a), i);
+        },
         SeqInner::Cons { tail, .. } => {
             if i == 0 {
             } else {
@@ -574,7 +595,7 @@ proof fn lemma_seq_inner_push_index_different<A>(s: SeqInner<A>, a: A, i: int)
 
 pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
     requires
-        0 <= i < s.len(),
+        i < s.len(),
     ensures
         #[trigger] s.push(a)[i] == s[i],
 {
@@ -584,7 +605,7 @@ pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int
 // Expensive lemma; not in the default broadcast group
 pub broadcast proof fn lemma_seq_push_index_different_alt<A>(s: Seq<A>, a: A, i: int)
     requires
-        0 <= i < s.len(),
+        i < s.len(),
     ensures
         (#[trigger] s.push(a))[i] == #[trigger] s[i],
 {
@@ -593,33 +614,33 @@ pub broadcast proof fn lemma_seq_push_index_different_alt<A>(s: Seq<A>, a: A, i:
 }
 
 proof fn lemma_seq_inner_update_len<A>(s: SeqInner<A>, i: int, a: A)
-    requires
-        0 <= i < s.len(),
     ensures
         s.update(i, a).len() == s.len(),
     decreases i,
 {
-    let s_upd = s.update(i, a);
-    match s {
-        SeqInner::Nil => {},
-        SeqInner::Cons { head, tail } => {
-            match s_upd {
-                SeqInner::Nil => {},
-                SeqInner::Cons { head: head_upd, tail: tail_upd } => {
-                    if i == 0 {
-                        assert(head_upd == a);
-                    } else {
-                        lemma_seq_inner_update_len(*tail, (i - 1), a);
-                    }
-                },
-            }
-        },
+    if !(0 <= i < s.len()) {
+        assert(s.update(i, a) == s);
+    } else {
+        let s_upd = s.update(i, a);
+        match s {
+            SeqInner::Nil => {},
+            SeqInner::Cons { head, tail } => {
+                match s_upd {
+                    SeqInner::Nil => {},
+                    SeqInner::Cons { head: head_upd, tail: tail_upd } => {
+                        if i == 0 {
+                            assert(head_upd == a);
+                        } else {
+                            lemma_seq_inner_update_len(*tail, (i - 1), a);
+                        }
+                    },
+                }
+            },
+        }
     }
 }
 
 pub broadcast proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
-    requires
-        0 <= i < s.len(),
     ensures
         #[trigger] s.update(i, a).len() == s.len(),
     decreases i,
@@ -669,31 +690,31 @@ pub broadcast proof fn lemma_seq_update_same_alt<A>(s: Seq<A>, i: int, a: A)
 
 proof fn lemma_seq_inner_update_index_different<A>(s: SeqInner<A>, i1: int, i2: int, a: A)
     requires
-        0 <= i1 < s.len(),
-        0 <= i2 < s.len(),
         i1 != i2,
     ensures
         #[trigger] s.update(i2, a)[i1] == s[i1],
     decreases s,
 {
-    match s {
-        SeqInner::Nil => {},
-        SeqInner::Cons { tail, .. } => {
-            if i2 == 0 {
-                assert(s.update(i2, a)[i1] == s[i1]);
-            } else if i1 == 0 {
-                assert(s.update(i2, a)[i1] == s[i1]);
-            } else {
-                lemma_seq_inner_update_index_different(*tail, i1 - 1, i2 - 1, a);
-            }
-        },
+    if !(0 <= i2 < s.len()) {
+        assert(s.update(i2, a) == s);
+    } else {
+        match s {
+            SeqInner::Nil => {},
+            SeqInner::Cons { tail, .. } => {
+                if i2 == 0 {
+                    assert(s.update(i2, a)[i1] == s[i1]);
+                } else if i1 == 0 {
+                    assert(s.update(i2, a)[i1] == s[i1]);
+                } else {
+                    lemma_seq_inner_update_index_different(*tail, i1 - 1, i2 - 1, a);
+                }
+            },
+        }
     }
 }
 
 pub broadcast proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
-        0 <= i1 < s.len(),
-        0 <= i2 < s.len(),
         i1 != i2,
     ensures
         #[trigger] s.update(i2, a)[i1] == s[i1],
@@ -704,8 +725,6 @@ pub broadcast proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int
 // Expensive lemma; not in the default broadcast group
 pub broadcast proof fn lemma_seq_update_different_alt<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
-        0 <= i1 < s.len(),
-        0 <= i2 < s.len(),
         i1 != i2,
     ensures
         (#[trigger] s.update(i2, a))[i1] == #[trigger] s[i1],
@@ -964,28 +983,31 @@ pub broadcast proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
 
 proof fn lemma_seq_inner_add_index1<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
     requires
-        0 <= i < s1.len(),
+        i < s1.len(),
     ensures
         s1.add(s2)[i] == s1[i],
     decreases s1,
 {
-    match s1 {
-        SeqInner::Nil => {
-            assert(false);
-        },
-        SeqInner::Cons { head, tail } => {
-            if i == 0 {
-                assert(s1[i] == s1.add(s2)[i]);
-            } else {
-                lemma_seq_inner_add_index1(*tail, s2, i - 1);
-            }
-        },
+    if i < 0 {
+        lemma_seq_inner_index_out_of_bounds(s1, i);
+        lemma_seq_inner_index_out_of_bounds(s1.add(s2), i);
+    } else {
+        match s1 {
+            SeqInner::Nil => {},
+            SeqInner::Cons { head, tail } => {
+                if i == 0 {
+                    assert(s1[i] == s1.add(s2)[i]);
+                } else {
+                    lemma_seq_inner_add_index1(*tail, s2, i - 1);
+                }
+            },
+        }
     }
 }
 
 pub broadcast proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
-        0 <= i < s1.len(),
+        i < s1.len(),
     ensures
         #[trigger] s1.add(s2)[i] == s1[i],
 {
@@ -1002,12 +1024,14 @@ proof fn lemma_seq_inner_add_index2<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
     match s1 {
         SeqInner::Nil => {
             assert(s1.add(s2) == s2);
+            assert(s1.add(s2)[i] == s2[i - s1.len()]);
         },
         SeqInner::Cons { head, tail } => {
             if i == 0 {
-                assert(false);
+                assert(s1.add(s2)[i] == s2[i - s1.len()]);
             } else {
                 lemma_seq_inner_add_index2(*tail, s2, i - 1);
+                assert(s1.add(s2)[i] == s2[i - s1.len()]);
             }
         },
     }
