@@ -70,7 +70,7 @@ impl<A> Seq<A> {
     /// Gets the value at the given index `i`.
     ///
     /// If `i` is not in the range `[0, self.len())`, then the resulting value
-    /// is meaningless and arbitrary.
+    /// is arbitrary().
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::index"]
     pub closed spec fn index(self, i: int) -> A
@@ -131,13 +131,18 @@ impl<A> Seq<A> {
         recommends 0 <= i < self.len()
         decreases self
     {
-        match self {
-            Seq::Nil => arbitrary(),
-            Seq::Cons(x, l) =>
-            if i == 0 {
-                Seq::Cons(a, l)
-            } else {
-                Seq::Cons(x, Box::new(l.update(i-1, a)))
+        if !(0 <= i < self.len()) {
+            // makes some additional lemmas hold for out-of-bounds updates
+            self
+        } else {
+            match self {
+                Seq::Nil => Seq::Nil,
+                Seq::Cons(x, l) =>
+                if i == 0 {
+                    Seq::Cons(a, l)
+                } else {
+                    Seq::Cons(x, Box::new(l.update(i-1, a)))
+                }
             }
         }
     }
@@ -288,6 +293,19 @@ proof fn lemma_seq_index_decreases<A>(s: Seq<A>, i: int)
     }
 }
 
+proof fn seq_index_out_of_bounds<A>(s: Seq<A>, i: int)
+    requires !(0 <= i < s.len())
+    ensures s[i] == arbitrary::<A>()
+    decreases s
+{
+    match s {
+        Seq::Nil => {}
+        Seq::Cons(_, l) => {
+            seq_index_out_of_bounds(*l, i-1);
+        }
+    }
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
@@ -377,11 +395,21 @@ pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
 }
 
 proof fn lemma_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
+    // 0 <= i not required
     requires
-        0 <= i < s.len(),
+        i < s.len(),
     ensures
         s.push(a)[i] == s[i],
+    decreases s
 {
+    match s {
+        Seq::Nil => {
+            seq_index_out_of_bounds(s.push(a), i);
+        }
+        Seq::Cons(x, l) => {
+            lemma_seq_push_index_different(*l, a, i-1);
+        }
+    }
 }
 
 #[verifier(external_body)]
@@ -395,8 +423,9 @@ pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
 }
 
 proof fn lemma_seq_update_len<A>(s: Seq<A>, i: int, a: A)
-    requires
-        0 <= i < s.len(),
+    // precondition is not required
+    // requires
+    //     0 <= i < s.len(),
     ensures
         #[trigger] s.update(i, a).len() == s.len(),
 {
@@ -432,12 +461,24 @@ pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
 
 proof fn lemma_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
-        0 <= i1 < s.len(),
-        0 <= i2 < s.len(),
+        // these conditions are not required
+        // 0 <= i1 < s.len(),
+        // 0 <= i2 < s.len(),
         i1 != i2,
     ensures
         s.update(i2, a)[i1] == s[i1],
+    decreases s
 {
+    match s {
+        Seq::Nil => {
+        }
+        Seq::Cons(x, l) => {
+            if i2 == 0 {
+            } else {
+                lemma_seq_update_different(*l, i1-1, i2-1, a);
+            }
+        }
+    }
 }
 
 #[verifier(external_body)]
@@ -453,7 +494,8 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
 }
 
 proof fn seq_extensional_equality_index<A>(s1: Seq<A>, s2: Seq<A>)
-    requires s1.len() == s2.len() && forall |i: int| 0 <= i < s1.len() ==> s1[i] == s2[i]
+    requires s1.len() == s2.len(),
+             forall |i: int| 0 <= i < s1.len() ==> s1[i] == s2[i],
     ensures s1 == s2
     decreases s1
 {
@@ -579,11 +621,16 @@ pub proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
 }
 
 proof fn lemma_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+    // 0 <= i not required
     requires
-        0 <= i < s1.len(),
+        i < s1.len(),
     ensures
         s1.add(s2)[i] == s1[i],
 {
+    if !(0 <= i) {
+        seq_index_out_of_bounds(s1.add(s2), i);
+        seq_index_out_of_bounds(s1, i);
+    }
 }
 
 #[verifier(external_body)]
@@ -599,10 +646,15 @@ pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 proof fn lemma_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= s1.len(),
-        i < s1.len() as int + s2.len(),
+        // precondition not required
+        // i < s1.len() as int + s2.len(),
     ensures
         s1.add(s2)[i] == s2[i - s1.len()],
 {
+    if !(i < s1.len() as int + s2.len()) {
+        seq_index_out_of_bounds(s1.add(s2), i);
+        seq_index_out_of_bounds(s2, i - s1.len());
+    }
 }
 
 #[verifier(external_body)]
