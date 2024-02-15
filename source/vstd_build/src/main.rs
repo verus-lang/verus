@@ -8,8 +8,6 @@ extern crate rustc_driver;
 
 // path to vstd.rs relative to our directory (source/vstd)
 const VSTD_RS_PATH: &str = "pervasive/vstd.rs";
-// path to pervasive relative to our directory (source/vstd)
-const PERVASIVE_PATH: &str = "pervasive";
 // name of generated veruslib.vir in target
 const VSTD_VIR: &str = "vstd.vir";
 
@@ -83,26 +81,35 @@ fn main() {
     }
 
     let mut child_args: Vec<String> = vec![
-        "--internal-build-vstd-driver".to_string(),
-        PERVASIVE_PATH.to_string(),
-        VSTD_VIR.to_string(),
-        verus_target_path.to_str().expect("invalid path").to_string(),
-        (if no_verify { "no-verify" } else { "verify" }).to_string(),
-        (if trace { "trace" } else { "no-trace" }).to_string(),
-        (if log_all { "log-all" } else { "no-log-all" }).to_string(),
+        "--internal-test-mode".to_string(),
         "--extern".to_string(),
         format!("builtin={lib_builtin_path}"),
         "--extern".to_string(),
         format!("builtin_macros={lib_builtin_macros_path}"),
         "--extern".to_string(),
         format!("state_machines_macros={lib_state_machines_macros_path}"),
-        "--edition=2018".to_string(),
         "--cfg".to_string(),
         "erasure_macro_todo".to_string(),
         "--crate-type=lib".to_string(),
+        "--export".to_string(),
+        verus_target_path.join(VSTD_VIR).to_str().unwrap().to_string(),
         "--out-dir".to_string(),
         verus_target_path.to_str().expect("invalid path").to_string(),
+        "--multiple-errors".to_string(),
+        "2".to_string(),
+        "--no-vstd".to_string(),
+        "--compile".to_string(),
     ];
+    if no_verify {
+        child_args.push("--no-verify".to_string());
+        child_args.push("--no-lifetime".to_string());
+    }
+    if trace {
+        child_args.push("--trace".to_string());
+    }
+    if log_all {
+        child_args.push("--log-all".to_string());
+    }
     if release {
         child_args.push("-C".to_string());
         child_args.push("opt-level=3".to_string());
@@ -119,6 +126,7 @@ fn main() {
 
     let cmd = verus_target_path.join("rust_verify");
     let mut child = std::process::Command::new(cmd);
+    child.env("RUST_MIN_STACK", "5242880");
     child.args(&child_args[..]);
 
     if verbose {

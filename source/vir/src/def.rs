@@ -663,7 +663,6 @@ pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> 
                 ]
             } else {
                 vec![
-                    Arc::new("pervasive".to_string()),
                     Arc::new("invariant".to_string()),
                     atomicity_type_name(atomicity),
                     Arc::new("inv".to_string()),
