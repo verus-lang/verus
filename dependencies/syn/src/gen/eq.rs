@@ -407,6 +407,10 @@ impl PartialEq for Expr {
             (Expr::Is(self0), Expr::Is(other0)) => self0 == other0,
             #[cfg(feature = "full")]
             (Expr::Has(self0), Expr::Has(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::Matches(self0), Expr::Matches(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::GetField(self0), Expr::GetField(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -573,6 +577,15 @@ impl PartialEq for ExprForLoop {
             && self.body == other.body
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ExprGetField {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ExprGetField {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.base == other.base
+            && self.member == other.member
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ExprGroup {}
@@ -674,6 +687,15 @@ impl Eq for ExprMatch {}
 impl PartialEq for ExprMatch {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.expr == other.expr && self.arms == other.arms
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ExprMatches {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ExprMatches {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.lhs == other.lhs && self.pat == other.pat
+            && self.op_expr == other.op_expr
     }
 }
 #[cfg(feature = "full")]
@@ -1580,6 +1602,27 @@ impl PartialEq for MacroDelimiter {
             (MacroDelimiter::Paren(_), MacroDelimiter::Paren(_)) => true,
             (MacroDelimiter::Brace(_), MacroDelimiter::Brace(_)) => true,
             (MacroDelimiter::Bracket(_), MacroDelimiter::Bracket(_)) => true,
+            _ => false,
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for MatchesOpExpr {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for MatchesOpExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.op_token == other.op_token && self.rhs == other.rhs
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for MatchesOpToken {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for MatchesOpToken {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MatchesOpToken::Implies(_), MatchesOpToken::Implies(_)) => true,
+            (MatchesOpToken::AndAnd(_), MatchesOpToken::AndAnd(_)) => true,
+            (MatchesOpToken::BigAnd, MatchesOpToken::BigAnd) => true,
             _ => false,
         }
     }

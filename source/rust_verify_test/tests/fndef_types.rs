@@ -940,3 +940,169 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot refer to private function")
 }
+
+test_verify_one_file! {
+    #[test] trait_method_use_emits_req_ens_axioms_for_impls verus_code! {
+        trait VPartialEq {
+            fn eq(&self, other: &Self) -> bool;
+            fn ne(&self, other: &Self) -> bool;
+        }
+
+        trait VEq : VPartialEq {
+            spec fn rel(&self, other: &Self) -> bool;
+
+            proof fn reflexive(a: &Self)
+                ensures a.rel(a);
+
+            proof fn symmetric(a: &Self, b: &Self)
+                ensures a.rel(b) ==> b.rel(a);
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+                requires a.rel(b), b.rel(c)
+                ensures a.rel(c);
+
+            proof fn fns_correct(a: &Self, b: &Self)
+                ensures
+                    // call_ensures is a verus builtin that means
+                    // "this is a valid input-output pair for the function Self::eq"
+                    call_ensures(Self::eq, (a, b), true) ==> a.rel(b),
+                    call_ensures(Self::eq, (a, b), false) ==> !a.rel(b),
+
+                    call_ensures(Self::ne, (a, b), true) ==> !a.rel(b),
+                    call_ensures(Self::ne, (a, b), false) ==> a.rel(b);
+        }
+
+        // Example usage
+
+        struct Mod2 { u: u64 }
+
+        impl Mod2 {
+            spec fn view(&self) -> int {
+                (self.u % 2) as int
+            }
+        }
+
+        impl VPartialEq for Mod2 {
+            fn eq(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ == other@),
+            {
+                self.u % 2 == other.u % 2
+            }
+
+            fn ne(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ != other@),
+            {
+                self.u % 2 != other.u % 2
+            }
+        }
+
+        impl VEq for Mod2 {
+            spec fn rel(&self, other: &Self) -> bool {
+                self@ == other@
+            }
+
+            // Proof that rel is an equivalence relation
+
+            proof fn reflexive(a: &Self)
+            { }
+
+            proof fn symmetric(a: &Self, b: &Self)
+            { }
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+            { }
+
+            // Proof that `eq` and `ne` return the value of `rel`:
+
+            proof fn fns_correct(a: &Self, b: &Self)
+            {
+                // Note that this requires the axioms for req and ens
+                // for the Mod2::eq and Mod2::ne method impls.
+                // However, we never directly reference call_ensures(Mod2::eq, ...)
+                // anywhere. Instead, we only have the more general
+                // call_ensures invocations from the ensures clause of fns_correct
+                // in the trait declaration.
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_method_use_emits_req_ens_axioms_for_impls_fail verus_code! {
+        trait VPartialEq {
+            fn eq(&self, other: &Self) -> bool;
+            fn ne(&self, other: &Self) -> bool;
+        }
+
+        trait VEq : VPartialEq {
+            spec fn rel(&self, other: &Self) -> bool;
+
+            proof fn reflexive(a: &Self)
+                ensures a.rel(a);
+
+            proof fn symmetric(a: &Self, b: &Self)
+                ensures a.rel(b) ==> b.rel(a);
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+                requires a.rel(b), b.rel(c)
+                ensures a.rel(c);
+
+            proof fn fns_correct(a: &Self, b: &Self)
+                ensures
+                    call_ensures(Self::ne, (a, b), true) ==> !a.rel(b); // FAILS
+        }
+
+        // Example usage
+
+        struct Mod2 { u: u64 }
+
+        impl Mod2 {
+            spec fn view(&self) -> int {
+                (self.u % 2) as int
+            }
+        }
+
+        impl VPartialEq for Mod2 {
+            fn eq(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ == other@),
+            {
+                self.u % 2 == other.u % 2
+            }
+
+            fn ne(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ == other@),
+            {
+                self.u % 2 == other.u % 2
+            }
+        }
+
+        impl VEq for Mod2 {
+            spec fn rel(&self, other: &Self) -> bool {
+                self@ == other@
+            }
+
+            // Proof that rel is an equivalence relation
+
+            proof fn reflexive(a: &Self)
+            { }
+
+            proof fn symmetric(a: &Self, b: &Self)
+            { }
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+            { }
+
+            // Proof that `eq` and `ne` return the value of `rel`:
+
+            proof fn fns_correct(a: &Self, b: &Self)
+            {
+                // Note that this requires the axioms for req and ens
+                // for the Mod2::eq and Mod2::ne method impls.
+                // However, we never directly reference call_ensures(Mod2::eq, ...)
+                // anywhere. Instead, we only have the more general
+                // call_ensures invocations from the ensures clause of fns_correct
+                // in the trait declaration.
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

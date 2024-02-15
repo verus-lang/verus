@@ -686,7 +686,7 @@ pub fn func_decl_to_air(
         ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
     }
 
-    if ctx.fndef_type_set.contains(&function.x.name) {
+    if crate::ast_simplify::need_fndef_axiom(&ctx.fndef_type_set, function) {
         let fndef_axioms = function
             .x
             .fndef_axioms
@@ -1110,7 +1110,7 @@ pub fn func_def_to_air(
         diagnostics,
         &state.fun_ssts,
         &stm,
-        &req_ens_function.x.ensure,
+        &enss,
         &ens_pars,
         dest.clone(),
     )?;
@@ -1122,7 +1122,7 @@ pub fn func_def_to_air(
                 diagnostics,
                 &state.fun_ssts,
                 &s,
-                &req_ens_function.x.ensure,
+                &enss,
                 &ens_pars,
                 dest.clone(),
             )

@@ -1112,6 +1112,16 @@
           {
             "syn": "ExprHas"
           }
+        ],
+        "Matches": [
+          {
+            "syn": "ExprMatches"
+          }
+        ],
+        "GetField": [
+          {
+            "syn": "ExprGetField"
+          }
         ]
       },
       "exhaustive": false
@@ -1595,6 +1605,30 @@
       }
     },
     {
+      "ident": "ExprGetField",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "base": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "arrow_token": {
+          "token": "RArrow"
+        },
+        "member": {
+          "syn": "Member"
+        }
+      }
+    },
+    {
       "ident": "ExprGroup",
       "features": {
         "any": [
@@ -1877,6 +1911,35 @@
         "arms": {
           "vec": {
             "syn": "Arm"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprMatches",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "lhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "matches_token": {
+          "token": "Matches"
+        },
+        "pat": {
+          "syn": "Pat"
+        },
+        "op_expr": {
+          "option": {
+            "syn": "MatchesOpExpr"
           }
         }
       }
@@ -4298,6 +4361,41 @@
       }
     },
     {
+      "ident": "MatchesOpExpr",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "op_token": {
+          "syn": "MatchesOpToken"
+        },
+        "rhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "MatchesOpToken",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Implies": [
+          {
+            "token": "Imply"
+          }
+        ],
+        "AndAnd": [
+          {
+            "token": "AndAnd"
+          }
+        ],
+        "BigAnd": []
+      }
+    },
+    {
       "ident": "Member",
       "features": {
         "any": [
@@ -6061,7 +6159,7 @@
         },
         "spec_fn_token": {
           "option": {
-            "token": "FnSpec"
+            "token": "SpecFn"
           }
         },
         "paren_token": {
@@ -6843,6 +6941,7 @@
     "Lt": "<",
     "Macro": "macro",
     "Match": "match",
+    "Matches": "matches",
     "Mod": "mod",
     "Move": "move",
     "MulEq": "*=",
@@ -6878,6 +6977,7 @@
     "ShrEq": ">>=",
     "SizeOf": "size_of",
     "Spec": "spec",
+    "SpecFn": "SpecFn",
     "Star": "*",
     "Static": "static",
     "Struct": "struct",

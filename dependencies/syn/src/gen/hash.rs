@@ -677,6 +677,16 @@ impl Hash for Expr {
                 state.write_u8(48u8);
                 v0.hash(state);
             }
+            #[cfg(feature = "full")]
+            Expr::Matches(v0) => {
+                state.write_u8(49u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => {
+                state.write_u8(50u8);
+                v0.hash(state);
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -872,6 +882,17 @@ impl Hash for ExprForLoop {
         self.body.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprGetField {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.base.hash(state);
+        self.member.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ExprGroup {
@@ -990,6 +1011,18 @@ impl Hash for ExprMatch {
         self.attrs.hash(state);
         self.expr.hash(state);
         self.arms.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprMatches {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.lhs.hash(state);
+        self.pat.hash(state);
+        self.op_expr.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -2154,6 +2187,35 @@ impl Hash for MacroDelimiter {
                 state.write_u8(1u8);
             }
             MacroDelimiter::Bracket(_) => {
+                state.write_u8(2u8);
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for MatchesOpExpr {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.op_token.hash(state);
+        self.rhs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for MatchesOpToken {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            MatchesOpToken::Implies(_) => {
+                state.write_u8(0u8);
+            }
+            MatchesOpToken::AndAnd(_) => {
+                state.write_u8(1u8);
+            }
+            MatchesOpToken::BigAnd => {
                 state.write_u8(2u8);
             }
         }

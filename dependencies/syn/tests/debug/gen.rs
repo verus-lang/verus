@@ -1595,6 +1595,40 @@ impl Debug for Lite<syn::Expr> {
                 formatter.field("rhs", Lite(&_val.rhs));
                 formatter.finish()
             }
+            syn::Expr::Matches(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::Matches");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("lhs", Lite(&_val.lhs));
+                formatter.field("pat", Lite(&_val.pat));
+                if let Some(val) = &_val.op_expr {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::MatchesOpExpr);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("op_expr", Print::ref_cast(val));
+                }
+                formatter.finish()
+            }
+            syn::Expr::GetField(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::GetField");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("base", Lite(&_val.base));
+                formatter.field("member", Lite(&_val.member));
+                formatter.finish()
+            }
             _ => unreachable!(),
         }
     }
@@ -1991,6 +2025,18 @@ impl Debug for Lite<syn::ExprForLoop> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::ExprGetField> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ExprGetField");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("base", Lite(&_val.base));
+        formatter.field("member", Lite(&_val.member));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ExprGroup> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -2201,6 +2247,34 @@ impl Debug for Lite<syn::ExprMatch> {
         formatter.field("expr", Lite(&_val.expr));
         if !_val.arms.is_empty() {
             formatter.field("arms", Lite(&_val.arms));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprMatches> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ExprMatches");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("lhs", Lite(&_val.lhs));
+        formatter.field("pat", Lite(&_val.pat));
+        if let Some(val) = &_val.op_expr {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::MatchesOpExpr);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("op_expr", Print::ref_cast(val));
         }
         formatter.finish()
     }
@@ -4851,6 +4925,31 @@ impl Debug for Lite<syn::MacroDelimiter> {
         }
     }
 }
+impl Debug for Lite<syn::MatchesOpExpr> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("MatchesOpExpr");
+        formatter.field("op_token", Lite(&_val.op_token));
+        formatter.field("rhs", Lite(&_val.rhs));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::MatchesOpToken> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::MatchesOpToken::Implies(_val) => {
+                formatter.write_str("Implies")?;
+                Ok(())
+            }
+            syn::MatchesOpToken::AndAnd(_val) => {
+                formatter.write_str("AndAnd")?;
+                Ok(())
+            }
+            syn::MatchesOpToken::BigAnd => formatter.write_str("BigAnd"),
+        }
+    }
+}
 impl Debug for Lite<syn::Member> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -6794,7 +6893,7 @@ impl Debug for Lite<syn::Type> {
                 if let Some(val) = &_val.spec_fn_token {
                     #[derive(RefCast)]
                     #[repr(transparent)]
-                    struct Print(syn::token::FnSpec);
+                    struct Print(syn::token::SpecFn);
                     impl Debug for Print {
                         fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                             formatter.write_str("Some")?;
@@ -6912,7 +7011,7 @@ impl Debug for Lite<syn::TypeFnSpec> {
         if let Some(val) = &_val.spec_fn_token {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print(syn::token::FnSpec);
+            struct Print(syn::token::SpecFn);
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some")?;

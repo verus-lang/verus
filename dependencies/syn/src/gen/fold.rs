@@ -191,6 +191,9 @@ pub trait Fold {
     fn fold_expr_for_loop(&mut self, i: ExprForLoop) -> ExprForLoop {
         fold_expr_for_loop(self, i)
     }
+    fn fold_expr_get_field(&mut self, i: ExprGetField) -> ExprGetField {
+        fold_expr_get_field(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_expr_group(&mut self, i: ExprGroup) -> ExprGroup {
         fold_expr_group(self, i)
@@ -228,6 +231,9 @@ pub trait Fold {
     #[cfg(feature = "full")]
     fn fold_expr_match(&mut self, i: ExprMatch) -> ExprMatch {
         fold_expr_match(self, i)
+    }
+    fn fold_expr_matches(&mut self, i: ExprMatches) -> ExprMatches {
+        fold_expr_matches(self, i)
     }
     #[cfg(feature = "full")]
     fn fold_expr_method_call(&mut self, i: ExprMethodCall) -> ExprMethodCall {
@@ -551,6 +557,12 @@ pub trait Fold {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_macro_delimiter(&mut self, i: MacroDelimiter) -> MacroDelimiter {
         fold_macro_delimiter(self, i)
+    }
+    fn fold_matches_op_expr(&mut self, i: MatchesOpExpr) -> MatchesOpExpr {
+        fold_matches_op_expr(self, i)
+    }
+    fn fold_matches_op_token(&mut self, i: MatchesOpToken) -> MatchesOpToken {
+        fold_matches_op_token(self, i)
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_member(&mut self, i: Member) -> Member {
@@ -1421,6 +1433,8 @@ where
         Expr::BigOr(_binding_0) => Expr::BigOr(f.fold_big_or(_binding_0)),
         Expr::Is(_binding_0) => Expr::Is(f.fold_expr_is(_binding_0)),
         Expr::Has(_binding_0) => Expr::Has(f.fold_expr_has(_binding_0)),
+        Expr::Matches(_binding_0) => Expr::Matches(f.fold_expr_matches(_binding_0)),
+        Expr::GetField(_binding_0) => Expr::GetField(f.fold_expr_get_field(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1620,6 +1634,17 @@ where
         body: f.fold_block(node.body),
     }
 }
+pub fn fold_expr_get_field<F>(f: &mut F, node: ExprGetField) -> ExprGetField
+where
+    F: Fold + ?Sized,
+{
+    ExprGetField {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        base: Box::new(f.fold_expr(*node.base)),
+        arrow_token: Token![->](tokens_helper(f, &node.arrow_token.spans)),
+        member: f.fold_member(node.member),
+    }
+}
 #[cfg(feature = "full")]
 pub fn fold_expr_group<F>(f: &mut F, node: ExprGroup) -> ExprGroup
 where
@@ -1743,6 +1768,18 @@ where
         expr: Box::new(f.fold_expr(*node.expr)),
         brace_token: Brace(tokens_helper(f, &node.brace_token.span)),
         arms: FoldHelper::lift(node.arms, |it| f.fold_arm(it)),
+    }
+}
+pub fn fold_expr_matches<F>(f: &mut F, node: ExprMatches) -> ExprMatches
+where
+    F: Fold + ?Sized,
+{
+    ExprMatches {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        lhs: Box::new(f.fold_expr(*node.lhs)),
+        matches_token: Token![matches](tokens_helper(f, &node.matches_token.span)),
+        pat: full!(f.fold_pat(node.pat)),
+        op_expr: (node.op_expr).map(|it| f.fold_matches_op_expr(it)),
     }
 }
 #[cfg(feature = "full")]
@@ -2893,6 +2930,29 @@ where
         }
     }
 }
+pub fn fold_matches_op_expr<F>(f: &mut F, node: MatchesOpExpr) -> MatchesOpExpr
+where
+    F: Fold + ?Sized,
+{
+    MatchesOpExpr {
+        op_token: f.fold_matches_op_token(node.op_token),
+        rhs: Box::new(f.fold_expr(*node.rhs)),
+    }
+}
+pub fn fold_matches_op_token<F>(f: &mut F, node: MatchesOpToken) -> MatchesOpToken
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        MatchesOpToken::Implies(_binding_0) => {
+            MatchesOpToken::Implies(Token![==>](tokens_helper(f, &_binding_0.spans)))
+        }
+        MatchesOpToken::AndAnd(_binding_0) => {
+            MatchesOpToken::AndAnd(Token![&&](tokens_helper(f, &_binding_0.spans)))
+        }
+        MatchesOpToken::BigAnd => MatchesOpToken::BigAnd,
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn fold_member<F>(f: &mut F, node: Member) -> Member
 where
@@ -3717,7 +3777,7 @@ where
         fn_spec_token: (node.fn_spec_token)
             .map(|it| Token![FnSpec](tokens_helper(f, &it.span))),
         spec_fn_token: (node.spec_fn_token)
-            .map(|it| Token![FnSpec](tokens_helper(f, &it.span))),
+            .map(|it| Token![SpecFn](tokens_helper(f, &it.span))),
         paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_bare_fn_arg(it)),
         output: f.fold_return_type(node.output),

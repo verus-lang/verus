@@ -317,7 +317,7 @@ impl<'a> State<'a> {
         diagnostics: &impl Diagnostics,
         fun_ssts: &SstMap,
         stm: &Stm,
-        ensures: &Exprs,
+        ensures: &Vec<Exp>,
         ens_pars: &Pars,
         dest: Option<UniqueIdent>,
     ) -> Result<Stm, VirErr> {
@@ -328,7 +328,7 @@ impl<'a> State<'a> {
                 diagnostics,
                 fun_ssts,
                 &stm,
-                ensures,
+                &Arc::new(ensures.clone()),
                 ens_pars,
                 dest,
             )
