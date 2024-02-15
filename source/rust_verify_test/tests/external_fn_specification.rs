@@ -1331,3 +1331,27 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "X::foo` is not supported") // TODO could have clearer error msg
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] external_trait_item_error verus_code! {
+        trait Tr {
+            #[verifier::external]
+            fn foo(&self);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a trait item cannot be marked 'external'")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] external_trait_impl_item_error verus_code! {
+        trait Tr {
+            fn foo(&self);
+        }
+
+        pub struct X { t: u8 }
+
+        impl Tr for X {
+            #[verifier::external]
+            fn foo(&self) { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked 'external'")
+}

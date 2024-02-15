@@ -368,14 +368,25 @@ fn check_item<'tcx>(
             };
 
             for impl_item_ref in impll.items {
+                let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                if trait_path_typ_args.is_some() {
+                    let vattrs =
+                        get_verifier_attrs(fn_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    if vattrs.external {
+                        return err_span(
+                            item.span,
+                            "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
+                        );
+                    }
+                }
+
                 match impl_item_ref.kind {
                     AssocItemKind::Fn { has_self: true | false } => {
-                        let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                         let impl_item_visibility =
                             mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
-                                let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
                                 let kind = if let Some((_, trait_path, trait_typ_args)) =
                                     trait_path_typ_args.clone()
                                 {
@@ -415,7 +426,6 @@ fn check_item<'tcx>(
                         }
                     }
                     AssocItemKind::Type => {
-                        let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                         if impl_item.generics.params.len() != 0
                             || impl_item.generics.predicates.len() != 0
                             || impl_item.generics.has_where_clause_predicates
@@ -612,6 +622,16 @@ fn check_item<'tcx>(
                     None,
                     Some(&mut *ctxt.diagnostics.borrow_mut()),
                 )?;
+
+                let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
+                let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                if vattrs.external {
+                    return err_span(
+                        *span,
+                        "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",
+                    );
+                }
+
                 unsupported_err_unless!(generics_params.len() == 0, *span, "trait generics");
                 unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {

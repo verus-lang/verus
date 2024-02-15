@@ -2268,21 +2268,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] allow_external_drop_with_requires verus_code! {
+    #[test] disallow_external_drop verus_code! {
         struct A { v: u64 }
 
         impl Drop for A {
             #[verifier::external]
             fn drop(&mut self)
-                requires false
             {
+                let x = 1 / 0;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked external")
+}
+
+test_verify_one_file! {
+    #[test] allow_external_body_drop verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            #[verifier::external_body]
+            fn drop(&mut self)
+                opens_invariants none
+            {
+                let x = 1 / 0;
             }
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] diallow_external_body_drop_with_requires verus_code! {
+    #[test] disallow_external_body_drop_with_requires verus_code! {
         struct A { v: u64 }
 
         impl Drop for A {
