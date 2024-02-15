@@ -1311,3 +1311,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] test_trait_method_impl_is_external_error verus_code! {
+        pub struct X { t: u8 }
+
+        trait Tr {
+            fn foo(&self);
+        }
+
+        pub fn stuff(x: X) {
+            x.foo();
+        }
+
+
+        #[verifier::external]
+        impl Tr for X {
+            fn foo(&self) { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "X::foo` is not supported") // TODO could have clearer error msg
+}

@@ -1,6 +1,7 @@
 use crate::ast::{
-    CallTarget, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind,
-    Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
+    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun,
+    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr,
+    VirErrAs,
 };
 use crate::ast_util::{is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -183,8 +184,20 @@ fn check_one_expr(
         ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
-        ExprX::Call(CallTarget::Fun(_, x, _, _, _), args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args) => {
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
+            match kind {
+                CallTargetKind::Static => {}
+                CallTargetKind::Method(None) => {}
+                CallTargetKind::Method(Some((resolved_fun, _, _))) => {
+                    check_path_and_get_function(
+                        ctxt,
+                        resolved_fun,
+                        disallow_private_access,
+                        &expr.span,
+                    )?;
+                }
+            }
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
                 // it's just a container for proof code that goes in the corresponding spec function
