@@ -1441,6 +1441,7 @@ dependencies = [
  "bincode",
  "console",
  "getopts 0.2.21 (git+https://github.com/utaal/getopts.git?branch=parse-partial)",
+ "indexmap 1.9.3",
  "indicatif 0.17.7",
  "internals_interface",
  "num-bigint 0.4.4",

@@ -21,6 +21,8 @@ pub fn demote_foreign_traits(
     path_to_well_known_item: &HashMap<Path, WellKnownItem>,
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
+    check_no_dupe_impls(krate)?;
+
     let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
 
     let mut kratex = (**krate).clone();
@@ -70,14 +72,27 @@ pub fn demote_foreign_traits(
             *function = Spanned::new(function.span.clone(), functionx);
         }
 
-        if let FunctionKind::ForeignTraitMethodImpl(trait_path) = &function.x.kind {
+        if let FunctionKind::ForeignTraitMethodImpl {
+            method,
+            impl_path,
+            trait_path,
+            trait_typ_args,
+        } = &function.x.kind
+        {
             let our_trait = traits.contains(trait_path);
             let mut functionx = function.x.clone();
             if our_trait {
-                return Err(error(
-                    &function.x.proxy.as_ref().unwrap().span,
-                    "external_fn_specification can only be used on trait functions when the trait itself is external",
-                ));
+                //return Err(error(
+                //    &function.x.proxy.as_ref().unwrap().span,
+                //    "external_fn_specification can only be used on trait functions when the trait itself is external",
+                //));
+                functionx.kind = FunctionKind::TraitMethodImpl {
+                    method: method.clone(),
+                    impl_path: impl_path.clone(),
+                    trait_path: trait_path.clone(),
+                    trait_typ_args: trait_typ_args.clone(),
+                    inherit_body_from: None,
+                };
             } else {
                 check_modes(function, &function.x.proxy.as_ref().unwrap().span)?;
                 functionx.kind = FunctionKind::Static;
@@ -522,4 +537,24 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let forall = mk_bind_expr(&bind, &imply);
     let axiom = Arc::new(DeclX::Axiom(forall));
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
+}
+
+pub fn check_no_dupe_impls(krate: &Krate) -> Result<(), VirErr> {
+    let mut paths = HashMap::<Path, TraitImpl>::new();
+    for trait_impl in krate.trait_impls.iter() {
+        match paths.get(&trait_impl.x.impl_path) {
+            Some(prev_trait_impl) => {
+                let e = error(
+                    &prev_trait_impl.span,
+                    "duplicate specification for this trait implementation",
+                )
+                .primary_span(&trait_impl.span);
+                return Err(e);
+            }
+            None => {
+                paths.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
+            }
+        }
+    }
+    Ok(())
 }

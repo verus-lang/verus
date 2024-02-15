@@ -475,7 +475,7 @@ fn check_function(
             FunctionKind::Static => {}
             FunctionKind::TraitMethodDecl { .. }
             | FunctionKind::TraitMethodImpl { .. }
-            | FunctionKind::ForeignTraitMethodImpl(_) => {
+            | FunctionKind::ForeignTraitMethodImpl { .. } => {
                 return Err(error(
                     &function.span,
                     "decreases_by/recommends_by function cannot be a trait method",
@@ -564,7 +564,7 @@ fn check_function(
             FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
                 return Err(error(&function.span, "'atomic' not supported for trait functions"));
             }
-            FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl(..) => {
+            FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl { .. } => {
                 // ok
             }
         }

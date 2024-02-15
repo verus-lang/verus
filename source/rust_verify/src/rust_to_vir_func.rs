@@ -22,11 +22,12 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, MaskSpec, Mode, ParamX,
-    SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, MaskSpec,
+    Mode, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
 use vir::ast_util::air_unique_var;
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
+use vir::sst_util::subst_typ;
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
@@ -174,6 +175,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
+    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
@@ -294,6 +296,10 @@ pub(crate) fn handle_external_fn<'tcx>(
 
     let has_self_parameter = has_self_parameter(ctxt, external_id);
 
+    if matches!(kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
+        external_fn_specification_trait_method_impls.push((external_id, sig.span));
+    }
+
     Ok((external_path, external_item_visibility, kind, has_self_parameter))
 }
 
@@ -315,6 +321,7 @@ pub(crate) fn check_item_fn<'tcx>(
     self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics,
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
+    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
@@ -342,8 +349,17 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let (external_path, external_item_visibility, kind, has_self_param) =
-            handle_external_fn(ctxt, id, visibility, sig, self_generics, &body_id, mode, &vattrs)?;
+        let (external_path, external_item_visibility, kind, has_self_param) = handle_external_fn(
+            ctxt,
+            id,
+            visibility,
+            sig,
+            self_generics,
+            &body_id,
+            mode,
+            &vattrs,
+            external_fn_specification_trait_method_impls,
+        )?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
 
@@ -669,7 +685,9 @@ pub(crate) fn check_item_fn<'tcx>(
         let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
         let mut typ_bounds: Vec<vir::ast::GenericBound> = Vec::new();
         if let FunctionKind::TraitMethodDecl { .. } = kind {
-            typ_params.push(vir::def::trait_self_type_param());
+            if !vattrs.external_fn_specification {
+                typ_params.push(vir::def::trait_self_type_param());
+            }
         }
         if let Some((self_typ_params, self_typ_bounds)) = self_typ_params {
             typ_params.append(&mut (*self_typ_params).clone());
@@ -677,6 +695,7 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         typ_params.extend_from_slice(&sig_typ_params[..]);
         typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
+
         (Arc::new(typ_params), Arc::new(typ_bounds))
     };
 
@@ -776,7 +795,7 @@ pub(crate) fn check_item_fn<'tcx>(
             )
         })
     };
-    let func = FunctionX {
+    let mut func = FunctionX {
         name: name.clone(),
         proxy,
         kind,
@@ -803,6 +822,10 @@ pub(crate) fn check_item_fn<'tcx>(
         extra_dependencies: header.extra_dependencies,
     };
 
+    if vattrs.external_fn_specification {
+        func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
+    }
+
     let function = ctxt.spanned_new(sig.span, func);
     functions.push(function);
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
@@ -813,6 +836,123 @@ fn has_self_parameter<'tcx>(ctxt: &Context<'tcx>, id: DefId) -> bool {
         assoc_item.fn_has_self_parameter
     } else {
         false
+    }
+}
+
+fn fix_external_fn_specification_trait_method_decl_typs(
+    span: Span,
+    func: FunctionX,
+) -> Result<FunctionX, VirErr> {
+    if matches!(func.kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
+        // TODO
+        Ok(func)
+    } else if let FunctionKind::TraitMethodDecl { .. } = &func.kind {
+        let FunctionX {
+            name,
+            proxy,
+            kind,
+            visibility,
+            owning_module,
+            mode,
+            fuel,
+            typ_params,
+            mut typ_bounds,
+            mut params,
+            mut ret,
+            require,
+            ensure,
+            decrease,
+            decrease_when,
+            decrease_by,
+            broadcast_forall,
+            fndef_axioms,
+            mask_spec,
+            item_kind,
+            publish,
+            attrs,
+            body,
+            extra_dependencies,
+        } = func;
+
+        unsupported_err_unless!(typ_params.len() == 1, span, "type params");
+
+        let mut typ_substs = HashMap::<Arc<String>, Typ>::new();
+        typ_substs.insert(
+            typ_params[0].clone(),
+            Arc::new(TypX::TypParam(vir::def::trait_self_type_param())),
+        );
+        typ_bounds = Arc::new(
+            typ_bounds
+                .iter()
+                .map(|typ_bound| {
+                    let gbx = match &**typ_bound {
+                        GenericBoundX::Trait(path, typs) => {
+                            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+                            GenericBoundX::Trait(path.clone(), Arc::new(typs))
+                        }
+                    };
+                    Arc::new(gbx)
+                })
+                .collect(),
+        );
+
+        let mut typ_params = (*typ_params).clone();
+        typ_params[0] = vir::def::trait_self_type_param();
+        let typ_params = Arc::new(typ_params);
+
+        //params = params.iter().map(|p| p.new_x(p.x.new_a(subst_typ(&typ_substs, &p.a)))).collect();
+        //ret = ret.new_x(ret.x.new_a(&typ_substs, &ret.a));
+        params = Arc::new(
+            params
+                .iter()
+                .map(|p| {
+                    p.new_x(vir::ast::ParamX {
+                        typ: subst_typ(&typ_substs, &p.x.typ),
+                        ..p.x.clone()
+                    })
+                })
+                .collect(),
+        );
+        ret = ret
+            .new_x(vir::ast::ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
+
+        unsupported_err_unless!(require.len() == 0, span, "requires clauses");
+        unsupported_err_unless!(ensure.len() == 0, span, "ensures clauses");
+        unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
+        unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
+        unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
+        unsupported_err_unless!(broadcast_forall.is_none(), span, "broadcast_forall");
+        unsupported_err_unless!(matches!(mask_spec, MaskSpec::NoSpec), span, "opens_invariants");
+        unsupported_err_unless!(body.is_none(), span, "opens_invariants");
+
+        Ok(FunctionX {
+            name,
+            proxy,
+            kind,
+            visibility,
+            owning_module,
+            mode,
+            fuel,
+            typ_params,
+            typ_bounds,
+            params,
+            ret,
+            require,
+            ensure,
+            decrease,
+            decrease_when,
+            decrease_by,
+            broadcast_forall,
+            fndef_axioms,
+            mask_spec,
+            item_kind,
+            publish,
+            attrs,
+            body,
+            extra_dependencies,
+        })
+    } else {
+        Ok(func)
     }
 }
 
@@ -977,18 +1117,42 @@ pub(crate) fn get_external_def_id<'tcx>(
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
         let inst =
             rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
+        let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
         if let Ok(Some(inst)) = inst {
             if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
-                let kind = FunctionKind::ForeignTraitMethodImpl(trait_path);
-                return Ok((did, kind));
-            }
-        }
+                let impl_def_id = tcx.impl_of_method(did).expect("impl_of_method");
+                let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
-        return err_span(
-            sig.span,
-            "external_fn_specification not supported for unresolved trait functions",
-        );
+                let mut types: Vec<Typ> = Vec::new();
+                for ty in trait_ref.skip_binder().args.types() {
+                    types.push(mid_ty_to_vir(tcx, &verus_items, did, sig.span, &ty, false)?);
+                }
+
+                let kind = FunctionKind::ForeignTraitMethodImpl {
+                    method: Arc::new(FunX {
+                        path: def_id_to_vir_path(tcx, verus_items, external_id),
+                    }),
+                    impl_path: def_id_to_vir_path(tcx, verus_items, impl_def_id),
+                    trait_path: trait_path,
+                    trait_typ_args: Arc::new(types),
+                };
+                return Ok((did, kind));
+            } else {
+                return err_span(sig.span, "Verus internal error: expected InstanceDef::Item");
+            }
+        } else {
+            // This is the actual, generic trait method.
+            // Be conservative with this feature for now.
+            let rust_item = crate::verus_items::get_rust_item(tcx, external_id);
+            if rust_item == Some(crate::verus_items::RustItem::Clone) {
+                return Ok((external_id, FunctionKind::TraitMethodDecl { trait_path }));
+            }
+
+            return err_span(
+                sig.span,
+                "external_fn_specification not supported for unresolved trait functions",
+            );
+        }
     } else {
         Ok((external_id, FunctionKind::Static))
     }

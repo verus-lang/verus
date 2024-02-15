@@ -753,3 +753,26 @@ impl MaskSpec {
         }
     }
 }
+
+#[macro_export]
+macro_rules! path {
+    [ $krate:literal => $( $segment:literal ),* ] => {
+        ::std::sync::Arc::new($crate::ast::PathX {
+            krate: ::std::option::Option::Some(::std::sync::Arc::new($krate.into())),
+            segments: ::std::sync::Arc::new(
+                ::std::vec![
+                    $(
+                        ::std::sync::Arc::new($segment.into())
+                    ),*
+                ],
+            ),
+        })
+    };
+}
+
+#[macro_export]
+macro_rules! fun {
+    [ $krate:literal => $( $segment:literal ),* ] => {
+        Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
+    };
+}
