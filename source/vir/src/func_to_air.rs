@@ -1066,7 +1066,7 @@ pub fn func_def_to_air(
         diagnostics,
         &state.fun_ssts,
         &stm,
-        &req_ens_function.x.ensure,
+        &enss,
         &ens_pars,
         dest.clone(),
     )?;
@@ -1078,7 +1078,7 @@ pub fn func_def_to_air(
                 diagnostics,
                 &state.fun_ssts,
                 &s,
-                &req_ens_function.x.ensure,
+                &enss,
                 &ens_pars,
                 dest.clone(),
             )
