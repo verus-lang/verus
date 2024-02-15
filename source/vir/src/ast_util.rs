@@ -287,12 +287,12 @@ pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
     }
 }
 
-pub fn get_path_as_rust_names_for_krate(krate: &Option<Ident>) -> Vec<(Path, String)> {
+pub fn get_path_as_rust_names_for_krate(krate: &Ident) -> Vec<(Path, String)> {
     let mut v: Vec<(Path, String)> = Vec::new();
     if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
         if let Some(map) = &*guard {
             for (path, name) in map {
-                if &path.krate == krate {
+                if &path.krate == &Some(krate.clone()) {
                     v.push((path.clone(), name.clone()));
                 }
             }

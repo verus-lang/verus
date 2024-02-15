@@ -47,7 +47,6 @@ pub struct LogArgs {
 
 #[derive(Debug)]
 pub struct ArgsX {
-    pub pervasive_path: Option<String>,
     pub export: Option<String>,
     pub import: Vec<(String, String)>,
     pub verify_root: bool,
@@ -87,7 +86,6 @@ pub struct ArgsX {
 impl ArgsX {
     pub fn new() -> Self {
         Self {
-            pervasive_path: Default::default(),
             export: Default::default(),
             import: Default::default(),
             verify_root: Default::default(),
@@ -442,7 +440,6 @@ pub fn parse_args_with_imports(
     let extended = parse_opts_or_pairs(matches.opt_strs(OPT_EXTENDED_MULTI));
 
     let args = ArgsX {
-        pervasive_path: None,
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         export: matches.opt_str(OPT_EXPORT),
         import: import,
