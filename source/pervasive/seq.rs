@@ -28,28 +28,44 @@ verus! {
 /// To prove that two sequences are equal, it is usually easiest to use the
 /// extensional equality operator `=~=`.
 
-#[verifier::external_body]
-#[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
-pub struct Seq<A> {
-    dummy: marker::PhantomData<A>,
+#[verifier::ext_equal]
+pub enum Seq<A> {
+    Nil,
+    Cons(A, Box<Seq<A>>),
 }
 
 impl<A> Seq<A> {
     /// An empty sequence (i.e., a sequence of length 0).
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::empty"]
-    pub spec fn empty() -> Seq<A>;
+    pub closed spec fn empty() -> Seq<A> {
+        Seq::Nil
+    }
 
     /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::new"]
-    pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
+    pub closed spec fn new(len: nat, f: spec_fn(int) -> A) -> Seq<A>
+        decreases len
+    {
+        if len == 0 { Seq::Nil }
+        else {
+            Self::new((len-1) as nat, f).push(f(len-1))
+        }
+    }
 
     /// The length of a sequence.
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::len"]
-    pub spec fn len(self) -> nat;
+    pub closed spec fn len(self) -> nat
+        decreases self
+    {
+        match self {
+            Seq::Nil => 0,
+            Seq::Cons(_, l) => 1 + l.len(),
+        }
+    }
 
     /// Gets the value at the given index `i`.
     ///
@@ -57,8 +73,15 @@ impl<A> Seq<A> {
     /// is meaningless and arbitrary.
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::index"]
-    pub spec fn index(self, i: int) -> A
-        recommends 0 <= i < self.len();
+    pub closed spec fn index(self, i: int) -> A
+        recommends 0 <= i < self.len()
+        decreases self
+    {
+        match self {
+            Seq::Nil => arbitrary(),
+            Seq::Cons(a, l) => if i == 0 { a } else { l.index(i-1) }
+        }
+    }
 
     /// `[]` operator, synonymous with `index`
 
@@ -81,7 +104,14 @@ impl<A> Seq<A> {
     /// ```
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::push"]
-    pub spec fn push(self, a: A) -> Seq<A>;
+    pub closed spec fn push(self, a: A) -> Seq<A>
+        decreases self
+    {
+        match self {
+            Seq::Nil => Seq::Cons(a, Box::new(Seq::Nil)),
+            Seq::Cons(x, l) => Seq::Cons(x, Box::new(l.push(a))),
+        }
+    }
 
     /// Updates the sequence at the given index, replacing the element with the given
     /// value, and leaves all other entries unchanged.
@@ -97,8 +127,20 @@ impl<A> Seq<A> {
     /// ```
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::update"]
-    pub spec fn update(self, i: int, a: A) -> Seq<A>
-        recommends 0 <= i < self.len();
+    pub closed spec fn update(self, i: int, a: A) -> Seq<A>
+        recommends 0 <= i < self.len()
+        decreases self
+    {
+        match self {
+            Seq::Nil => arbitrary(),
+            Seq::Cons(x, l) =>
+            if i == 0 {
+                Seq::Cons(a, l)
+            } else {
+                Seq::Cons(x, Box::new(l.update(i-1, a)))
+            }
+        }
+    }
 
     /// DEPRECATED: use =~= or =~~= instead.
     /// Returns `true` if the two sequences are pointwise equal, i.e.,
@@ -132,8 +174,25 @@ impl<A> Seq<A> {
     /// ```
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::subrange"]
-    pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
-        recommends 0 <= start_inclusive <= end_exclusive <= self.len();
+    pub closed spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
+        recommends 0 <= start_inclusive <= end_exclusive <= self.len()
+        decreases start_inclusive, end_exclusive-start_inclusive
+    {
+        match self {
+            Seq::Nil => Seq::Nil,
+            Seq::Cons(a, l) =>
+            // skip elements until start_inclusive becomes 0
+            if start_inclusive > 0 {
+                l.subrange(start_inclusive-1, end_exclusive-1)
+            } else {
+                if end_exclusive <= 0 {
+                    Seq::Nil
+                } else {
+                    Seq::Cons(a, Box::new(l.subrange(start_inclusive, end_exclusive-1)))
+                }
+            }
+        }
+    }
 
     /// Returns a sequence containing only the first n elements of the original sequence
     
@@ -161,7 +220,14 @@ impl<A> Seq<A> {
     /// ```
 
     #[rustc_diagnostic_item = "verus::pervasive::seq::Seq::add"]
-    pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
+    pub closed spec fn add(self, rhs: Seq<A>) -> Seq<A>
+        decreases self
+    {
+        match self {
+            Seq::Nil => rhs,
+            Seq::Cons(a, l) => Seq::Cons(a, Box::new(l.add(rhs))),
+        }
+    }
 
     /// `+` operator, synonymous with `add`
 
@@ -189,7 +255,38 @@ impl<A> Seq<A> {
     }
 }
 
+proof fn seq_len_0_empty<A>(s: Seq<A>)
+    requires s.len() == 0
+    ensures s == Seq::<A>::empty()
+{
+    match s {
+        Seq::Nil => {}
+        Seq::Cons(_, l) => {
+            assert(s.len() == 1 + l.len());
+            assert(s.len() > 0);
+        }
+    }
+}
+
 // Trusted axioms
+
+proof fn lemma_seq_index_decreases<A>(s: Seq<A>, i: int)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger](decreases_to!(s => s[i])),
+    decreases i
+{
+    match s {
+        Seq::Nil => { assert(false); }
+        Seq::Cons(a, l) => {
+            if i == 0 {}
+            else {
+                lemma_seq_index_decreases(*l, i-1);
+            }
+        }
+    }
+}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
@@ -201,6 +298,12 @@ pub proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
 {
 }
 
+proof fn lemma_seq_empty<A>()
+    ensures
+        #[trigger] Seq::<A>::empty().len() == 0,
+{
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_empty<A>()
@@ -209,11 +312,25 @@ pub proof fn axiom_seq_empty<A>()
 {
 }
 
+proof fn lemma_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
+    ensures
+        #[trigger] Seq::new(len, f).len() == len,
+{
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
+{
+}
+
+proof fn lemma_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
+    requires
+        0 <= i < len,
+    ensures
+        Seq::new(len, f)[i] == f(i),
 {
 }
 
@@ -227,11 +344,25 @@ pub proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
 {
 }
 
+proof fn lemma_seq_push_len<A>(s: Seq<A>, a: A)
+    ensures
+        #[trigger] s.push(a).len() == s.len() + 1,
+{
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
     ensures
         #[trigger] s.push(a).len() == s.len() + 1,
+{
+}
+
+proof fn lemma_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
+    requires
+        i == s.len(),
+    ensures
+        #[trigger] s.push(a)[i] == a,
 {
 }
 
@@ -245,6 +376,14 @@ pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
 {
 }
 
+proof fn lemma_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
+    requires
+        0 <= i < s.len(),
+    ensures
+        s.push(a)[i] == s[i],
+{
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
@@ -252,6 +391,14 @@ pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
         0 <= i < s.len(),
     ensures
         s.push(a)[i] == s[i],
+{
+}
+
+proof fn lemma_seq_update_len<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] s.update(i, a).len() == s.len(),
 {
 }
 
@@ -265,6 +412,14 @@ pub proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
 {
 }
 
+proof fn lemma_seq_update_same<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] s.update(i, a)[i] == a,
+{
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
@@ -272,6 +427,16 @@ pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
         0 <= i < s.len(),
     ensures
         #[trigger] s.update(i, a)[i] == a,
+{
+}
+
+proof fn lemma_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
+    requires
+        0 <= i1 < s.len(),
+        0 <= i2 < s.len(),
+        i1 != i2,
+    ensures
+        s.update(i2, a)[i1] == s[i1],
 {
 }
 
@@ -287,6 +452,47 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
 {
 }
 
+proof fn seq_extensional_equality_index<A>(s1: Seq<A>, s2: Seq<A>)
+    requires s1.len() == s2.len() && forall |i: int| 0 <= i < s1.len() ==> s1[i] == s2[i]
+    ensures s1 == s2
+    decreases s1
+{
+    match s1 {
+        Seq::Nil => {
+            seq_len_0_empty(s2);
+        }
+        Seq::Cons(a, l1) => {
+            assert(s1.len() == 1 + l1.len());
+            match s2 {
+                Seq::Nil => {},
+                Seq::Cons(b, l2) => {
+                    assert(s2.len() == 1 + l2.len());
+                    assert(s1[0] == a);
+                    assert(s2[0] == b);
+                    assert forall |i: int| 0 <= i < l1.len() implies l1[i] == l2[i] by {
+                        assert(l1[i] == s1[i+1]);
+                        assert(l2[i] == s2[i+1]);
+                    }
+                    seq_extensional_equality_index(*l1, *l2);
+                }
+            }
+        }
+    }
+}
+
+proof fn lemma_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
+    ensures
+        #[trigger] (s1 =~= s2) <==> {
+            &&& s1.len() == s2.len()
+            &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i]
+        },
+{
+    if s1.len() =~= s2.len()
+        && forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i] {
+        seq_extensional_equality_index(s1, s2);
+    }
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
@@ -296,6 +502,19 @@ pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
             &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i]
         },
 {
+}
+
+proof fn lemma_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
+    ensures
+        #[trigger] (s1 =~~= s2) <==> {
+            &&& s1.len() == s2.len()
+            &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] =~~= s2[i]
+        },
+{
+    if s1.len() =~~= s2.len()
+        && forall|i: int| 0 <= i < s1.len() ==> s1[i] =~~= s2[i] {
+        seq_extensional_equality_index(s1, s2);
+    }
 }
 
 #[verifier(external_body)]
@@ -309,6 +528,14 @@ pub proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
 {
 }
 
+proof fn lemma_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
+    requires
+        0 <= j <= k <= s.len(),
+    ensures
+        #[trigger] s.subrange(j, k).len() == k - j,
+{
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
@@ -316,6 +543,15 @@ pub proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
         0 <= j <= k <= s.len(),
     ensures
         #[trigger] s.subrange(j, k).len() == k - j,
+{
+}
+
+proof fn lemma_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
+    requires
+        0 <= j <= k <= s.len(),
+        0 <= i < k - j,
+    ensures
+        s.subrange(j, k)[i] == s[i + j],
 {
 }
 
@@ -330,10 +566,23 @@ pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
 {
 }
 
+proof fn lemma_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
+    ensures #[trigger] s1.add(s2).len() == s1.len() + s2.len()
+{
+}
+
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     ensures #[trigger] s1.add(s2).len() == s1.len() + s2.len()
+{
+}
+
+proof fn lemma_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+    requires
+        0 <= i < s1.len(),
+    ensures
+        s1.add(s2)[i] == s1[i],
 {
 }
 
@@ -344,6 +593,15 @@ pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
         0 <= i < s1.len(),
     ensures
         s1.add(s2)[i] == s1[i],
+{
+}
+
+proof fn lemma_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+    requires
+        0 <= s1.len(),
+        i < s1.len() as int + s2.len(),
+    ensures
+        s1.add(s2)[i] == s2[i - s1.len()],
 {
 }
 
