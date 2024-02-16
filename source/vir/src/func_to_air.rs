@@ -2,7 +2,7 @@ use crate::ast::{
     Fun, Function, FunctionKind, Ident, Idents, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, Typs, VirErr,
 };
-use crate::ast_util::{mk_bool, QUANT_FORALL};
+use crate::ast_util::QUANT_FORALL;
 use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{

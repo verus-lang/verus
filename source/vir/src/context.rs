@@ -446,7 +446,7 @@ impl Ctx {
 
     pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
         let nodes = if prelude_config.mbqi_mode {
-            crate::prelude::prelude_nodes_mbqi(prelude_config)
+            crate::prelude::prelude_nodes_mbqi()
         } else {
             crate::prelude::prelude_nodes(prelude_config)
         };
