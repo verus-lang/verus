@@ -348,6 +348,15 @@ pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
                     assert(m.values().contains(v0));
                 }
             }
+            if m.values().contains(v0) {
+                if v0 != v {
+                    let i = choose |i: K| #[trigger] m.dom().contains(i) && m[i] == v0;
+                    if i != k {
+                        assert(m1.dom().contains(i));
+                        assert(m1.contains_value(v0));
+                    }
+                }
+            }
         });
         assert(m1.len() < m.len());
         lemma_values_finite(m1);
