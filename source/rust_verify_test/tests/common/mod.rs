@@ -347,7 +347,7 @@ pub fn run_verus(
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    // If we're using the pre-macro-expanded pervasive lib, then it might have
+    // If we're using the pre-macro-expanded vstd lib, then it might have
     // some macro-internal stuff in it, and rustc needs this option in order to accept it.
     #![feature(fmt_internals)]
 
@@ -368,7 +368,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         (false, options)
     };
 
-    let vstd = code.contains("vstd::") || code.contains("pervasive::") || options.contains(&"vstd");
+    let vstd = code.contains("vstd::") || options.contains(&"vstd");
     let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
 
     let files = vec![("test.rs".to_string(), code)];

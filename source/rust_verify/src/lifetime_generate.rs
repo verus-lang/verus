@@ -2,7 +2,7 @@ use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, Ghost
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::rust_to_vir_base::{def_id_to_vir_path, local_to_var, mid_ty_const_to_vir};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
-use crate::verus_items::{PervasiveItem, RustItem, VerusItem, VerusItems};
+use crate::verus_items::{RustItem, VerusItem, VerusItems, VstdItem};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
@@ -2265,7 +2265,7 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
 
     let verus_item = ctxt.verus_items.id_to_name.get(&id);
 
-    if let Some(VerusItem::Pervasive(PervasiveItem::StrSlice, _)) = verus_item {
+    if let Some(VerusItem::Vstd(VstdItem::StrSlice, _)) = verus_item {
         erase_abstract_datatype(ctxt, state, span, id);
         return;
     }
