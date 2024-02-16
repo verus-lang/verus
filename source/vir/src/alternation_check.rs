@@ -34,6 +34,8 @@ impl FunBounds {
     }
 }
 
+const DEBUG: bool = false;
+
 struct CollectState {
     reached_spec_funcs: HashSet<FunBounds>,
 }
@@ -83,7 +85,9 @@ impl BuildState {
         let ret_node = param_type_name_with_bindings(&ret.x.typ, bindings);
         for param in params.iter() {
             let param_node = param_type_name_with_bindings(&param.x.typ, bindings);
-            // println!("Adding Func Edge: {} -> {}", &param_node, &ret_node);
+            if DEBUG {
+                println!("Adding Func Edge: {} -> {}", &param_node, &ret_node);
+            }
             self.qa_graph.add_edge(param_node, ret_node.clone());
         }
     }
@@ -188,7 +192,9 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                     // if the function is inlined, don't add it to reached set. 
                                     // Instead, save it to inline spec funcs to learn bindings
                                     if !f.x.attrs.inline {
-                                        // println!("Reached Spec Fn: {}", fb.print_name());
+                                        if DEBUG {
+                                            println!("Reached Spec Fn: {}", fb.print_name());
+                                        }
                                         state.reached_spec_funcs.insert(fb);
                                     }
                                     // if it has a body, recurse
@@ -327,7 +333,9 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                         for (forall_name, count) in state.open_foralls.iter() {
                             // empty ones remain in the map with 0 count
                             if *count > 0 {
-                                // println!("Adding QA Edge: {} -> {}", forall_name, &typ_name);
+                                if DEBUG {
+                                    println!("Adding QA Edge: {} -> {}", forall_name, &typ_name);
+                                }
                                 state.qa_graph.add_edge(forall_name.clone(), typ_name.clone());
                             }
                         }
@@ -393,6 +401,19 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                             }
                             crate::ast::CallTargetKind::Method(None) => None,
                         } {
+                            for expr in exprs.iter() {
+                                // explore the expression in both positive and negative polarities
+                                // do this with original bindings, as we are in the context of the parent function.
+                                match {
+                                    build_graph(ctx, state, Polarity::Positive, bindings, expr)
+                                }.and({
+                                    build_graph(ctx, state, Polarity::Negative, bindings, expr)
+                                }) {
+                                    Ok(_) => (),
+                                    Err(err) => return VisitorControlFlow::Stop(err),
+                                }
+                            }
+
                             let f = &ctx.func_map[fun];
                             let (_, new_bindings) = compute_new_bindings(fun, &f.x.typ_params, typs.clone(), &bindings.unwrap_or(&HashMap::new()));
                             match f.x.mode {
@@ -400,10 +421,8 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                 Mode::Spec => {
                                     if f.x.attrs.inline {
                                         if let Some(body) = &f.x.body {
-                                            // TODO: Double check
                                             // as we're inlining, the params don't contribute new foralls
                                             // simply recurse into the body at the same polarity
-                                            // TODO: Fix the inline bindings here
                                             match build_graph(ctx, state, polarity, Some(&new_bindings), body) {
                                                 Ok(_) => VisitorControlFlow::Return,
                                                 Err(err) => return VisitorControlFlow::Stop(err),
@@ -437,7 +456,6 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                                     VisitorControlFlow::Stop(error(&expr.span, "exec calls are not supported in the EPR fragment"))
                                 }
                             }
-
                         } else {
                             VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
                         }
@@ -539,8 +557,10 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         if matches!(mode, Mode::Exec) {
             return Err(error(&f.span, "Exec mode functions not supported in EPR Mode"));
         }
-        let function_name = path_as_friendly_rust_name(&name.path);
-        // dbg!(function_name);
+        if DEBUG {
+            let function_name = path_as_friendly_rust_name(&name.path);
+            dbg!(function_name);
+        }
         // Pass 1: Collect all the functions mentioned
         let mut state = CollectState::new();
         for expr in ensure.iter() {
@@ -574,7 +594,9 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         for spec in &state.reached_spec_funcs {
             let spec_func = &ctx.func_map[&spec.fun];
             let FunctionX { mode, body, params, ret, typ_params, .. } = &spec_func.x;
-            // println!("Reached Spec Fn: {}", spec.print_name());
+            if DEBUG {
+                println!("Reached Spec Fn: {}", spec.print_name());
+            }
             assert!(matches!(mode, Mode::Spec));
             assert!(typ_params.len() == spec.typs.len());
             let bindings = typ_params
@@ -606,7 +628,6 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
         bstate.qa_graph.compute_sccs();
         let acyclic =
             bstate.qa_graph.sort_sccs().iter().all(|x| !bstate.qa_graph.node_is_in_cycle(x));
-        // dbg!(acyclic);
         if !acyclic {
             return Err(error(
                 &f.span,
