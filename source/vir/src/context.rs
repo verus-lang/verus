@@ -292,6 +292,15 @@ impl GlobalCtx {
                 f,
             )?;
         }
+        for group in &krate.reveal_groups {
+            let group_node = Node::Fun(group.x.name.clone());
+            func_call_graph.add_node(group_node.clone());
+            for member in group.x.members.iter() {
+                let target = Node::Fun(member.clone());
+                func_call_graph.add_node(target.clone());
+                func_call_graph.add_edge(group_node.clone(), target);
+            }
+        }
 
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
