@@ -296,3 +296,19 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_expand_fails(e, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] test11_traits_ensures ["--expand-errors"] => verus_code! {
+        trait T {
+            spec fn f() -> bool; // EXPAND-ERRORS
+            proof fn test()
+                ensures Self::f(); // EXPAND-ERRORS
+        }
+        impl T for u64 {
+            spec fn f() -> bool { false }
+
+            proof fn test() {
+            }
+        }
+    } => Err(e) => assert_expand_fails(e, 2)
+}

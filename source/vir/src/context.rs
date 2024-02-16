@@ -46,8 +46,8 @@ pub struct GlobalCtx {
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
-    pub(crate) vstd_crate_name: Option<Ident>, // already an arc
     pub arch: crate::ast::ArchWordBits,
+    pub vstd_crate_name: Ident,
 }
 
 // Context for verifying one function
@@ -199,7 +199,6 @@ impl GlobalCtx {
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
-        vstd_crate_name: Option<Ident>,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -319,6 +318,7 @@ impl GlobalCtx {
         let qid_map = RefCell::new(HashMap::new());
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
+        let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -332,8 +332,8 @@ impl GlobalCtx {
             qid_map,
             rlimit,
             interpreter_log,
-            vstd_crate_name,
             arch: krate.arch.word_bits,
+            vstd_crate_name,
         })
     }
 
@@ -354,8 +354,8 @@ impl GlobalCtx {
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,
-            vstd_crate_name: self.vstd_crate_name.clone(),
             arch: self.arch,
+            vstd_crate_name: self.vstd_crate_name.clone(),
         }
     }
 

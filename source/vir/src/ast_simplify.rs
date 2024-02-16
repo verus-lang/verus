@@ -806,6 +806,16 @@ fn exec_closure_spec(
     }
 }
 
+pub(crate) fn need_fndef_axiom(fndef_typs: &HashSet<Fun>, f: &Function) -> bool {
+    if fndef_typs.contains(&f.x.name) {
+        return true;
+    }
+    match &f.x.kind {
+        FunctionKind::TraitMethodImpl { method, .. } => fndef_typs.contains(method),
+        _ => false,
+    }
+}
+
 fn add_fndef_axioms_to_function(
     _ctx: &GlobalCtx,
     state: &mut State,
@@ -1022,7 +1032,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
     let functions = vec_map_result(&functions, |f: &Function| {
-        if state.fndef_typs.contains(&f.x.name) {
+        if need_fndef_axiom(&state.fndef_typs, f) {
             add_fndef_axioms_to_function(ctx, &mut state, f)
         } else {
             Ok(f.clone())
@@ -1139,7 +1149,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.no_span.clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
-        ctx.vstd_crate_name.clone(),
     )?;
     Ok(krate)
 }

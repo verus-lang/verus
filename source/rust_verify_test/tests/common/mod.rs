@@ -279,8 +279,6 @@ pub fn run_verus(
 
     verus_args.extend(
         vec![
-            "--edition".to_string(),
-            "2018".to_string(),
             "--crate-name".to_string(),
             "test_crate".to_string(),
             "--crate-type".to_string(),

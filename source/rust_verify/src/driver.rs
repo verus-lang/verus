@@ -18,7 +18,6 @@ fn run_compiler<'a, 'b>(
     erase_ghost: bool,
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-    _build_test_mode: bool, // TODO is this needed?
 ) -> Result<(), ErrorGuaranteed> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
@@ -121,7 +120,6 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
-    build_test_mode: bool,
 ) -> Result<(), ErrorGuaranteed> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
@@ -141,7 +139,7 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks, file_loader, build_test_mode)
+    run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
 }
 
 pub struct VerusRoot {
@@ -184,6 +182,7 @@ pub fn find_verusroot() -> Option<VerusRoot> {
                         }
                         Some(VerusRoot { path, in_vargo: false })
                     } else {
+                        // TODO suppress warning when building verus itself
                         eprintln!("warning: did not find a valid verusroot; continuing, but the builtin and vstd crates are likely missing");
                         None
                     }
@@ -258,20 +257,22 @@ pub fn run<F>(
     build_test_mode: bool,
 ) -> (Verifier, Stats, Result<(), ()>)
 where
-    F: 'static + rustc_span::source_map::FileLoader + Send + Sync + Clone,
+    F: 'static
+        + rustc_span::source_map::FileLoader
+        + crate::file_loader::FileLoaderClone
+        + Send
+        + Sync,
 {
+    rustc_args.push(format!("--edition"));
+    rustc_args.push(format!("2018"));
     if !build_test_mode {
         if let Some(VerusRoot { path: verusroot, in_vargo }) = verus_root {
-            rustc_args.push(format!("--edition"));
-            rustc_args.push(format!("2018"));
             let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
             rustc_args.extend(externs.to_args());
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
                 panic!("we are in vargo, but VERUS_Z3_PATH is not set; this is a bug");
             }
         }
-    } else if verifier.args.no_vstd {
-        panic!("cannot use --no-vstd in test mode");
     }
 
     let time0 = Instant::now();
@@ -287,7 +288,6 @@ where
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
-        build_test_mode,
     };
     let status = run_compiler(
         rustc_args_verify.clone(),
@@ -295,7 +295,6 @@ where
         false,
         &mut verifier_callbacks,
         Box::new(file_loader.clone()),
-        build_test_mode,
     );
     let VerifierCallbacksEraseMacro {
         verifier,
@@ -344,12 +343,7 @@ where
     let compile_status = if !verifier.args.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
-        run_with_erase_macro_compile(
-            rustc_args,
-            Box::new(file_loader),
-            verifier.args.compile,
-            build_test_mode,
-        )
+        run_with_erase_macro_compile(rustc_args, Box::new(file_loader), verifier.args.compile)
     };
 
     let time2 = Instant::now();

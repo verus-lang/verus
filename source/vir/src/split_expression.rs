@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, Exprs, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
     UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::get_function;
@@ -24,7 +24,7 @@ struct State<'a> {
     // stuff for postconditions when we encounter an AssertPostCondition
     // note: this is a slightly different form of data than sst_to_air uses
     // for the same purpose
-    ensures: &'a Exprs,
+    ensures: &'a Exps,
     ens_pars: &'a Pars,
     dest: Option<UniqueIdent>,
 }
@@ -32,7 +32,7 @@ struct State<'a> {
 impl<'a> State<'a> {
     pub fn new(
         fun_ssts: &'a SstMap,
-        ensures: &'a Exprs,
+        ensures: &'a Exps,
         ens_pars: &'a Pars,
         dest: Option<UniqueIdent>,
     ) -> Self {
@@ -623,19 +623,11 @@ fn visit_split_stm(
 
                 for e in state.ensures.iter() {
                     if need_split_expression(ctx, &e.span) {
-                        // skip checks because ensures are checked elsewhere
-                        let ens_exp = crate::ast_to_sst::expr_to_exp_skip_checks(
-                            ctx,
-                            diagnostics,
-                            &state.fun_ssts,
-                            &state.ens_pars,
-                            e,
-                        )?;
                         let error = error(&e.span, crate::def::SPLIT_POST_FAILURE);
                         let split_exprs = split_expr(
                             ctx,
                             &state, // use the state after `body` translation to get the fuel info
-                            &TracedExpX::new(ens_exp.clone(), error.clone()),
+                            &TracedExpX::new(e.clone(), error.clone()),
                             false,
                             0,
                         );
@@ -704,7 +696,7 @@ pub(crate) fn all_split_exp(
     diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     stm: &Stm,
-    ensures: &Exprs,
+    ensures: &Exps,
     ens_pars: &Pars,
     dest: Option<UniqueIdent>,
 ) -> Result<Stm, VirErr> {

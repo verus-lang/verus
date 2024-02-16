@@ -27,11 +27,11 @@ pub struct ContextX<'tcx> {
     pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) spans: crate::spans::SpanContext,
-    pub(crate) vstd_crate_name: Option<Ident>,
     pub(crate) verus_items: Arc<VerusItems>,
     pub(crate) diagnostics: std::rc::Rc<std::cell::RefCell<Vec<vir::ast::VirErrAs>>>,
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
+    pub(crate) vstd_crate_name: Ident,
 }
 
 #[derive(Clone)]

@@ -1235,3 +1235,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] seq_add_axiom_issue990 verus_code! {
+        use vstd::{prelude::*, seq::*};
+        proof fn seq_bad()
+            ensures false
+        {
+            let s1: Seq<int> = seq![1];
+            let s1_2: Seq<int> = seq![1, 2];
+            let s2: Seq<int> = seq![];
+            assert(s1.add(s2)[0] == s2[-1]); // FAILS
+            assert(s1_2.add(s2)[1] == s2[-1]); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}

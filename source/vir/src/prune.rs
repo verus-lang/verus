@@ -64,7 +64,7 @@ struct Ctxt {
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
-    vstd_crate_name: Option<Ident>,
+    vstd_crate_name: Ident,
 }
 
 #[derive(Default)]
@@ -426,7 +426,6 @@ pub fn prune_krate_for_module(
     krate: &Krate,
     module: &Path,
     fun: Option<&Fun>,
-    vstd_crate_name: &Option<Ident>,
 ) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>, Vec<Fun>) {
     let is_root = |function: &Function| match fun {
         Some(f) => &function.x.name == f,
@@ -605,6 +604,7 @@ pub fn prune_krate_for_module(
         }
         assoc_type_impl_map.get_mut(&key).unwrap().push(a.clone());
     }
+    let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
     let ctxt = Ctxt {
         module: module.clone(),
         function_map,
@@ -616,7 +616,7 @@ pub fn prune_krate_for_module(
         assoc_type_impl_map,
         method_map,
         all_functions_in_each_module,
-        vstd_crate_name: vstd_crate_name.clone(),
+        vstd_crate_name,
     };
     traverse_reachable(&ctxt, &mut state);
 

@@ -37,51 +37,6 @@ pub fn main() {
                 rust_verify::lifetime::lifetime_rustc_driver(&internal_args[..], buffer);
                 return;
             }
-            "--internal-build-vstd-driver" => {
-                let pervasive_path = internal_args.next().unwrap();
-                let vstd_vir = internal_args.next().unwrap();
-                let target_path = std::path::PathBuf::from(internal_args.next().unwrap());
-                let verify = match internal_args.next().unwrap().as_str() {
-                    "verify" => true,
-                    "no-verify" => false,
-                    _ => panic!("invalid verify argument"),
-                };
-                let trace = match internal_args.next().unwrap().as_str() {
-                    "trace" => true,
-                    "no-trace" => false,
-                    _ => panic!("invalid trace argument"),
-                };
-                let log_all = match internal_args.next().unwrap().as_str() {
-                    "log-all" => true,
-                    "no-log-all" => false,
-                    _ => panic!("invalid trace argument"),
-                };
-
-                let mut internal_args: Vec<_> = internal_args.collect();
-                internal_args.insert(0, internal_program);
-
-                use rust_verify::config::{Args, ArgsX};
-                use rust_verify::file_loader::PervasiveFileLoader;
-                use rust_verify::verifier::Verifier;
-
-                let mut our_args: ArgsX = ArgsX::new();
-                our_args.pervasive_path = Some(pervasive_path.to_string());
-                our_args.no_verify = !verify;
-                our_args.no_lifetime = !verify;
-                our_args.multiple_errors = 2;
-                our_args.export = Some(target_path.join(vstd_vir).to_str().unwrap().to_string());
-                our_args.compile = true;
-                our_args.trace = trace;
-                our_args.log_all = log_all;
-                let our_args = Args::from(our_args);
-
-                let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
-                let verifier = Verifier::new(our_args);
-                let (_verifier, _stats, status) =
-                    rust_verify::driver::run(verifier, internal_args, None, file_loader, true);
-                status.expect("failed to build vstd library");
-                return;
-            }
             "--internal-test-mode" => true,
             _ => false,
         }
@@ -139,11 +94,9 @@ pub fn main() {
         }
     }
 
-    let pervasive_path = our_args.pervasive_path.clone();
-
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
-    let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);
+    let file_loader = rust_verify::file_loader::RealFileLoader;
     let verifier = rust_verify::verifier::Verifier::new(our_args);
 
     let (verifier, stats, status) =
