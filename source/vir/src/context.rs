@@ -47,6 +47,7 @@ pub struct GlobalCtx {
     pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
     pub arch: crate::ast::ArchWordBits,
+    pub crate_name: Ident,
     pub vstd_crate_name: Ident,
 }
 
@@ -196,6 +197,7 @@ fn datatypes_invs(
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
+        crate_name: Ident,
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
@@ -333,6 +335,7 @@ impl GlobalCtx {
             rlimit,
             interpreter_log,
             arch: krate.arch.word_bits,
+            crate_name,
             vstd_crate_name,
         })
     }
@@ -355,6 +358,7 @@ impl GlobalCtx {
             rlimit: self.rlimit,
             interpreter_log,
             arch: self.arch,
+            crate_name: self.crate_name.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
         }
     }
@@ -487,7 +491,12 @@ impl Ctx {
         let decl = Arc::new(DeclX::Axiom(distinct));
         commands.push(Arc::new(CommandX::Global(decl)));
         for group in &self.reveal_groups {
-            crate::func_to_air::broadcast_forall_group_axioms(&mut commands, group);
+            crate::func_to_air::broadcast_forall_group_axioms(
+                self,
+                &mut commands,
+                group,
+                &self.global.crate_name,
+            );
         }
         Arc::new(commands)
     }

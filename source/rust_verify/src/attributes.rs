@@ -226,6 +226,10 @@ pub(crate) enum Attr {
     BroadcastForall,
     // group together other BroadcastForall or RevealGroup
     RevealGroup,
+    // prune away a reveal_group if the reveal_group's module itself is unused
+    HiddenUnlessThisModuleIsUsed,
+    // this reveal_group is revealed by default when the group's crate is imported
+    RevealedByDefaultWhenThisCrateIsImported,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
     AutoTrigger,
     // accept all possible triggers chosen by triggers_auto without printing any diagnostics
@@ -398,6 +402,14 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
                     v.push(Attr::BroadcastForall)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "hidden_unless_this_module_is_used" => {
+                    v.push(Attr::HiddenUnlessThisModuleIsUsed)
+                }
+                AttrTree::Fun(_, arg, None)
+                    if arg == "revealed_by_default_when_this_crate_is_imported" =>
+                {
+                    v.push(Attr::RevealedByDefaultWhenThisCrateIsImported)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
@@ -681,6 +693,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) accept_recursive_type_list: Vec<(String, AcceptRecursiveType)>,
     pub(crate) broadcast_forall: bool,
     pub(crate) reveal_group: bool,
+    pub(crate) hidden_unless_this_module_is_used: bool,
+    pub(crate) revealed_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
@@ -738,6 +752,8 @@ pub(crate) fn get_verifier_attrs(
         accept_recursive_type_list: vec![],
         broadcast_forall: false,
         reveal_group: false,
+        hidden_unless_this_module_is_used: false,
+        revealed_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
         autospec: None,
         custom_req_err: None,
@@ -790,6 +806,10 @@ pub(crate) fn get_verifier_attrs(
             }
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::RevealGroup => vs.reveal_group = true,
+            Attr::HiddenUnlessThisModuleIsUsed => vs.hidden_unless_this_module_is_used = true,
+            Attr::RevealedByDefaultWhenThisCrateIsImported => {
+                vs.revealed_by_default_when_this_crate_is_imported = true
+            }
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),

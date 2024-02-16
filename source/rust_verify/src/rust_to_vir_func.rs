@@ -305,6 +305,7 @@ fn create_reveal_group<'tcx>(
     name: &Fun,
     visibility: vir::ast::Visibility,
     module_path: &vir::ast::Path,
+    vattrs: &VerifierAttrs,
     vir_body: &Option<vir::ast::Expr>,
     span: Span,
 ) -> Result<(), VirErr> {
@@ -320,10 +321,18 @@ fn create_reveal_group<'tcx>(
                 }
                 return err_span(span, "reveal_group must consist of reveal statements");
             }
+            let revealed_by_default_when_this_crate_is_imported =
+                if vattrs.revealed_by_default_when_this_crate_is_imported {
+                    Some(ctxt.crate_name.clone())
+                } else {
+                    None
+                };
             let groupx = vir::ast::RevealGroupX {
                 name: name.clone(),
                 visibility,
                 owning_module: Some(module_path.clone()),
+                hidden_unless_this_module_is_used: vattrs.hidden_unless_this_module_is_used,
+                revealed_by_default_when_this_crate_is_imported,
                 members: Arc::new(members),
             };
             if let Some(groups) = reveal_groups {
@@ -487,6 +496,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &name,
             visibility,
             module_path,
+            &vattrs,
             &vir_body,
             sig.span,
         )?;

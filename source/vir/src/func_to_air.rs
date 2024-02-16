@@ -131,18 +131,30 @@ fn func_def_quant(
 }
 
 pub(crate) fn broadcast_forall_group_axioms(
+    ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
     group: &crate::ast::RevealGroup,
+    crate_name: &Ident,
 ) {
     let id_group = prefix_fuel_id(&fun_to_air_ident(&group.x.name));
     let fuel_group = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_group)]);
+    if let Some(group_crate) = &group.x.revealed_by_default_when_this_crate_is_imported {
+        let is_imported = crate_name != group_crate;
+        if is_imported {
+            // (axiom (fuel_bool_default fuel%group))
+            let group_axiom = Arc::new(DeclX::Axiom(fuel_group.clone()));
+            decl_commands.push(Arc::new(CommandX::Global(group_axiom)));
+        }
+    }
     for member in group.x.members.iter() {
-        // (axiom (=> (fuel_bool_default fuel%group) (fuel_bool_default fuel%member)))
-        let id_member = prefix_fuel_id(&fun_to_air_ident(member));
-        let fuel_member = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_member)]);
-        let member_imply = mk_implies(&fuel_group, &fuel_member);
-        let member_axiom = Arc::new(DeclX::Axiom(member_imply));
-        decl_commands.push(Arc::new(CommandX::Global(member_axiom)));
+        if ctx.reveal_group_set.contains(member) || ctx.func_map.contains_key(member) {
+            // (axiom (=> (fuel_bool_default fuel%group) (fuel_bool_default fuel%member)))
+            let id_member = prefix_fuel_id(&fun_to_air_ident(member));
+            let fuel_member = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_member)]);
+            let member_imply = mk_implies(&fuel_group, &fuel_member);
+            let member_axiom = Arc::new(DeclX::Axiom(member_imply));
+            decl_commands.push(Arc::new(CommandX::Global(member_axiom)));
+        }
     }
 }
 

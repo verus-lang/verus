@@ -785,7 +785,19 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
 }
 
 pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
-    let mut vir: KrateX = Default::default();
+    let mut vir: KrateX = KrateX {
+        functions: Vec::new(),
+        reveal_groups: Vec::new(),
+        datatypes: Vec::new(),
+        traits: Vec::new(),
+        trait_impls: Vec::new(),
+        assoc_type_impls: Vec::new(),
+        modules: Vec::new(),
+        external_fns: Vec::new(),
+        external_types: Vec::new(),
+        path_as_rust_names: Vec::new(),
+        arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
+    };
 
     // Map each item to the module that contains it, or None if the module is external
     let mut item_to_module: HashMap<ItemId, Option<Path>> = HashMap::new();

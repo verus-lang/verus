@@ -964,6 +964,13 @@ pub struct RevealGroupX {
     pub visibility: Visibility,
     /// Owning module
     pub owning_module: Option<Path>,
+    /// If true, then prune away group unless either the module that contains the group is used.
+    /// (Without this, importing vstd would recursively reach and encode all the
+    /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
+    pub hidden_unless_this_module_is_used: bool,
+    /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
+    /// No more than one such group is allowed in each crate.
+    pub revealed_by_default_when_this_crate_is_imported: Option<Ident>,
     /// All the subgroups or functions included in this group
     pub members: Arc<Vec<Fun>>,
 }
@@ -1097,20 +1104,14 @@ impl ArchWordBits {
     }
 }
 
-impl Default for ArchWordBits {
-    fn default() -> Self {
-        ArchWordBits::Either32Or64
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Arch {
     pub word_bits: ArchWordBits,
 }
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,

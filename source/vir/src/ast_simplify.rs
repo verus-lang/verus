@@ -1146,6 +1146,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
+        ctx.crate_name.clone(),
         ctx.no_span.clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
@@ -1157,17 +1158,31 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
     let mut krates = krates.into_iter();
     let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
     for k in krates {
-        kratex.functions.extend(k.functions.clone());
-        kratex.datatypes.extend(k.datatypes.clone());
-        kratex.traits.extend(k.traits.clone());
-        kratex.trait_impls.extend(k.trait_impls.clone());
-        kratex.assoc_type_impls.extend(k.assoc_type_impls.clone());
-        kratex.modules.extend(k.modules.clone());
-        kratex.external_fns.extend(k.external_fns.clone());
-        kratex.external_types.extend(k.external_types.clone());
-        kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());
+        let KrateX {
+            functions,
+            reveal_groups,
+            datatypes,
+            traits,
+            trait_impls,
+            assoc_type_impls,
+            modules,
+            external_fns,
+            external_types,
+            path_as_rust_names,
+            arch,
+        } = &*k;
+        kratex.functions.extend(functions.clone());
+        kratex.reveal_groups.extend(reveal_groups.clone());
+        kratex.datatypes.extend(datatypes.clone());
+        kratex.traits.extend(traits.clone());
+        kratex.trait_impls.extend(trait_impls.clone());
+        kratex.assoc_type_impls.extend(assoc_type_impls.clone());
+        kratex.modules.extend(modules.clone());
+        kratex.external_fns.extend(external_fns.clone());
+        kratex.external_types.extend(external_types.clone());
+        kratex.path_as_rust_names.extend(path_as_rust_names.clone());
         kratex.arch.word_bits = {
-            let word_bits = match (k.arch.word_bits, kratex.arch.word_bits) {
+            let word_bits = match (arch.word_bits, kratex.arch.word_bits) {
                 (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
                     if l != r {
                         return Err(crate::messages::error_bare(
