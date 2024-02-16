@@ -1665,6 +1665,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_broadcast_forall_causes_cycle_simple verus_code! {
+        pub trait Tr {
+            spec fn f() -> bool;
+
+            proof fn bad() ensures false; // FAILS
+        }
+
+        #[verifier::broadcast_forall]
+        #[verifier::external_body]
+        pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+            ensures
+                #[trigger] T::f() == !T::f(),
+        { }
+
+        struct X { }
+
+        impl Tr for X {
+            open spec fn f() -> bool { true }
+
+            proof fn bad() {
+                assert(Self::f());
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_decreases_trait_bound verus_code! {
         trait T {
             proof fn impossible()
