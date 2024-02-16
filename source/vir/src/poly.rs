@@ -235,7 +235,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         | TypX::StrSlice
         | TypX::Char
         | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
-        | TypX::Dummy => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Dummy => Arc::new(TypX::Boxed(typ.clone())),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }

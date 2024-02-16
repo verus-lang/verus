@@ -242,7 +242,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                     })?;
                 air::ast_util::mk_let(&binders, &expr)
             }
-            BndX::Quant(quant, binders, trigs) => {
+            BndX::Quant(quant, binders, trigs, is_mbqi) => {
                 let expr = bv_exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
                 for binder in binders.iter() {
@@ -271,7 +271,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| bv_exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
-                let qid = crate::sst_to_air::new_user_qid(ctx, &exp);
+                let qid = crate::sst_to_air::new_user_qid(ctx, &exp, *is_mbqi);
                 air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
             }
             _ => {

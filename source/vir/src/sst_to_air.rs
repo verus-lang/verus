@@ -17,8 +17,8 @@ use crate::def::{
     snapshot_ident, static_name, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
     suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
     CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    CHAR_FROM_UNICODE, CHAR_TO_UNICODE, DUMMY_ARG, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
-    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
+    CHAR_FROM_UNICODE, CHAR_TO_UNICODE, DUMMY_ARG, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
+    FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
     STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
     SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };

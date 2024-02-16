@@ -710,10 +710,10 @@ pub fn func_decl_to_air(
 
             let exp = match &exp.x {
                 ExpX::Bind(bnd, e) => match &bnd.x {
-                    BndX::Quant(quant, qbinders, trigs) => {
+                    BndX::Quant(quant, qbinders, trigs, is_mbqi) => {
                         let mut qbinders = (&**qbinders).clone();
                         qbinders.append(&mut binders);
-                        let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone());
+                        let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone(), *is_mbqi);
                         let bnd = Spanned::new(bnd.span.clone(), bndx);
                         let expx = ExpX::Bind(bnd, e.clone());
                         SpannedTyped::new(&exp.span, &exp.typ, expx)

@@ -152,64 +152,84 @@ fn compute_new_bindings(
 }
 
 pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), VirErr> {
-    
-    fn feature_check(
-        expr: &Expr,
-    ) -> Result<(), VirErr> {
+    fn feature_check(expr: &Expr) -> Result<(), VirErr> {
         use crate::ast::ExprX::*;
-        match expr_visitor_dfs::<VirErr, _>(expr, &mut ScopeMap::new(), &mut |_, expr| match &expr.x {
-            // unsupported
-            UnaryOpr(..) |
-            BinaryOpr(..) |
-            Choose { .. } |
-            Loc(..) |
-            Tuple(..) |
-            Ctor(..) |
-            Multi(..) |
-            Assign { .. } |
-            Match(..) |
-            Loop { .. } |
-            Return(..) |
-            Ghost { .. } |
-            VarLoc(_) |
-            VarAt(_, _) |
-            ConstVar(_, _) |
-            StaticVar(_) |
-            Fuel(_, _) |
-            Header(_) |
-            BreakOrContinue { .. } |
-            Closure(_, _) |
-            NullaryOpr(..) |
-            ExecClosure { .. } |
-            AssertBy { .. } |
-            AssertQuery { .. } |
-            AssertCompute(..) |
-            RevealString(..) |
-            OpenInvariant(..) => VisitorControlFlow::Stop(error(&expr.span, format!("{:?} unsupported in EPR fragment", expr.x))),
-            // supported (subset)
-            Unary(op, ..) => {
-                // only support not and trigger annotations
-                match op {
-                    crate::ast::UnaryOp::Not |
-                    crate::ast::UnaryOp::Trigger(..) => VisitorControlFlow::Recurse,
-                    _ => VisitorControlFlow::Stop(error(&expr.span, format!("{:?} unsupported in EPR fragment", expr.x))),
+        match expr_visitor_dfs::<VirErr, _>(
+            expr,
+            &mut ScopeMap::new(),
+            &mut |_, expr| match &expr.x {
+                // unsupported
+                UnaryOpr(..)
+                | BinaryOpr(..)
+                | Choose { .. }
+                | Loc(..)
+                | Tuple(..)
+                | Ctor(..)
+                | Multi(..)
+                | Assign { .. }
+                | Match(..)
+                | Loop { .. }
+                | Return(..)
+                | Ghost { .. }
+                | VarLoc(_)
+                | VarAt(_, _)
+                | ConstVar(_, _)
+                | StaticVar(_)
+                | Fuel(_, _)
+                | Header(_)
+                | BreakOrContinue { .. }
+                | Closure(_, _)
+                | NullaryOpr(..)
+                | ExecClosure { .. }
+                | AssertBy { .. }
+                | AssertQuery { .. }
+                | AssertCompute(..)
+                | RevealString(..)
+                | ArrayLiteral(..)
+                | ExecFnByName(..)
+                | OpenInvariant(..) => VisitorControlFlow::Stop(error(
+                    &expr.span,
+                    format!("{:?} unsupported in EPR fragment", expr.x),
+                )),
+                // supported (subset)
+                Unary(op, ..) => {
+                    // only support not and trigger annotations
+                    match op {
+                        crate::ast::UnaryOp::Not | crate::ast::UnaryOp::Trigger(..) => {
+                            VisitorControlFlow::Recurse
+                        }
+                        _ => VisitorControlFlow::Stop(error(
+                            &expr.span,
+                            format!("{:?} unsupported in EPR fragment", expr.x),
+                        )),
+                    }
                 }
-            }
-            Binary(op, ..) => {
-                // only support implies, eq, ne, xor
-                match op {
-                    crate::ast::BinaryOp::Implies |
-                    crate::ast::BinaryOp::Eq(_) |
-                    crate::ast::BinaryOp::Ne |
-                    crate::ast::BinaryOp::Xor |
-                    crate::ast::BinaryOp::Or |
-                    crate::ast::BinaryOp::And => VisitorControlFlow::Recurse,
-                    _ => VisitorControlFlow::Stop(error(&expr.span, "binary unsupported in EPR fragment")),
+                Binary(op, ..) => {
+                    // only support implies, eq, ne, xor
+                    match op {
+                        crate::ast::BinaryOp::Implies
+                        | crate::ast::BinaryOp::Eq(_)
+                        | crate::ast::BinaryOp::Ne
+                        | crate::ast::BinaryOp::Xor
+                        | crate::ast::BinaryOp::Or
+                        | crate::ast::BinaryOp::And => VisitorControlFlow::Recurse,
+                        _ => VisitorControlFlow::Stop(error(
+                            &expr.span,
+                            "binary unsupported in EPR fragment",
+                        )),
+                    }
                 }
-            }
-            // remaining types supported
-            _ => VisitorControlFlow::Recurse,
-        }) {
+                // remaining types supported
+                Call(..)
+                | Const(..)
+                | Var(..)
+                | Quant(..)
+                | If(..)
+                | WithTriggers { .. }
+                | AssertAssume { .. }
+                | Block(..) => VisitorControlFlow::Recurse,
+            },
+        ) {
             VisitorControlFlow::Recurse => Ok(()),
             VisitorControlFlow::Return => unreachable!(),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -297,7 +317,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                     }
                 }
                 crate::ast::CallTarget::FnSpec(_) |
-                crate::ast::CallTarget::BuiltinSpecFun(_, _) => VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
+                crate::ast::CallTarget::BuiltinSpecFun(_, _, _) => VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
             }
             Unary(..) |
             Quant(..) |
@@ -335,6 +355,8 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             AssertBy { .. } |
             AssertQuery { .. } |
             AssertCompute(..) |
+            ArrayLiteral(..) |
+            ExecFnByName(..) |
             RevealString(..) |
             OpenInvariant(..) => VisitorControlFlow::Stop(error(&expr.span, "unsupported in EPR fragment")),
         });
@@ -525,7 +547,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
                     }
                 }
                 crate::ast::CallTarget::FnSpec(_) |
-                crate::ast::CallTarget::BuiltinSpecFun(_, _) => VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
+                crate::ast::CallTarget::BuiltinSpecFun(_, _, _) => VisitorControlFlow::Stop(error(&expr.span, "this call is not supported in the EPR fragment"))
             }
             AssertAssume { is_assume, expr } => {
                 if *is_assume {
@@ -602,12 +624,14 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             AssertBy { .. } |
             AssertQuery { .. } |
             AssertCompute(..) |
+            ArrayLiteral(..) |
+            ExecFnByName(..) |
             RevealString(..) |
             OpenInvariant(..) => VisitorControlFlow::Stop(error(&expr.span, "unsupported in EPR fragment")),
         });
         Ok(())
     }
-    
+
     for f in krate.functions.iter().filter(|f| {
         (f.x.mode == Mode::Proof || f.x.mode == Mode::Exec)
             && f.x.owning_module.as_ref().is_some_and(|m| m == &module)
@@ -625,7 +649,7 @@ pub fn alternation_check(ctx: &Ctx, krate: &Krate, module: Path) -> Result<(), V
             let function_name = path_as_friendly_rust_name(&name.path);
             dbg!(function_name);
         }
-        // Pass 0: Feature Check 
+        // Pass 0: Feature Check
         for expr in ensure.iter() {
             feature_check(expr)?;
         }

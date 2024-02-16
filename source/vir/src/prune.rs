@@ -91,8 +91,8 @@ pub struct PruneKrateResult {
     pub pruned_krate: Krate,
     pub mono_abstract_datatypes: Vec<MonoTyp>,
     pub lambda_types: Vec<usize>,
-    pub reached_bound_traits: HashSet<Path>,
-    pub fn_defs: Vec<Fun>,
+    pub bound_traits: HashSet<Path>,
+    pub fndef_types: Vec<Fun>,
     pub types_are_uninterpreted: bool,
 }
 
@@ -435,11 +435,7 @@ fn datatypes_are_uninterpreted_sorts(state: &State, ctxt: &Ctxt, module: &Path) 
     })
 }
 
-pub fn prune_krate_for_module(
-    krate: &Krate,
-    module: &Path,
-    fun: Option<&Fun>,
-) -> PruneKrateResult {
+pub fn prune_krate_for_module(krate: &Krate, module: &Path, fun: Option<&Fun>) -> PruneKrateResult {
     let is_root = |function: &Function| match fun {
         Some(f) => &function.x.name == f,
         None => match &function.x.owning_module {
@@ -669,11 +665,11 @@ pub fn prune_krate_for_module(
     mono_abstract_datatypes.sort();
     let State { reached_bound_traits, .. } = state;
     PruneKrateResult {
-       pruned_krate:  Arc::new(kratex),
-       mono_abstract_datatypes,
-       lambda_types,
-       reached_bound_traits,
-       fndef_types,
-       types_are_uninterpreted: epr_check,
+        pruned_krate: Arc::new(kratex),
+        mono_abstract_datatypes,
+        lambda_types,
+        bound_traits: reached_bound_traits,
+        fndef_types,
+        types_are_uninterpreted: epr_check,
     }
 }

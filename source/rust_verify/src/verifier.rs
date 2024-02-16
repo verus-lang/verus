@@ -1640,12 +1640,14 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let vir::prune::PruneKrateResult { pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types, types_are_uninterpreted } =
-            vir::prune::prune_krate_for_module(
-                &krate,
-                bucket_id.module(),
-                bucket_id.function(),
-            );
+        let vir::prune::PruneKrateResult {
+            pruned_krate,
+            mono_abstract_datatypes,
+            lambda_types,
+            bound_traits,
+            fndef_types,
+            types_are_uninterpreted,
+        } = vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
         let mut epr_check = false;
         for module in &pruned_krate.modules {
             if module.x.path == bucket_id.module().clone() && module.x.epr_check {
