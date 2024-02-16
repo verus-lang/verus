@@ -63,7 +63,7 @@ so that, for example, `a ==> b && c` means `a ==> (b && c)`:
 | &&&                      | left                  |
 | &#124;&#124;&#124;       | left                  |
 
-# `is`, and the "arrow" field access
+# The `is` operator, and the "arrow" field access
 
 If you define an enum,
 
@@ -85,8 +85,8 @@ that these are supported if only one variant has "tuple like" fields).
 
 For more complex cases, and where you need an enum where multiple variants have
 fields of the same name, you can use the `t matches That { v: a }` syntax, which
-will result in a boolean if `t` matches the provided pattern. You can also follow
-it up with `==>` and `&&` and subsequent expressions (that bind at least as tightly)
+will result in a boolean representing whether `t` matches the provided pattern.
+You can also follow it up with `==>` and `&&` and subsequent expressions (that bind at least as tightly)
 will have access to the bound variables in the parttern (`a` in this example).
 
 For example, for that enum, you can say;
