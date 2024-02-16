@@ -1,15 +1,23 @@
 use num_bigint::BigInt;
 use std::rc::Rc;
-use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode};
-use crate::sst::{Exp, ExpX, UniqueIdent};
+use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode, FieldOpr};
+use crate::sst::{Exp, ExpX, UniqueIdent, BndX};
 use std::collections::HashMap;
 use air::scope_map::ScopeMap;
+use crate::context::Ctx;
+use crate::func_to_air::SstInfo;
+use std::convert::TryFrom;
+
 
 enum Value {
     Bool(bool),
     Int(BigInt),
     Ctor(u32, Rc<Vec<Value>>),
     Symbol(u32),
+}
+
+enum CallFrame {
+    Call { return_addr: u32, memoize: Option<Vec<Value>> },
 }
 
 type Offset = u32;
@@ -29,7 +37,7 @@ enum Op {
     DynCall { closure: Offset },
     BuildCtor { variant: u32, n_fields: u32 },
     Return,
-    ConditionalJmp { true_addr: u32, false_addr: u32, other_addr: u32 }, 
+    ConditionalJmp { offset: u32, true_addr: u32, false_addr: u32, other_addr: u32 }, 
     Jmp { addr: u32 }, 
 }
 
@@ -47,7 +55,7 @@ enum PreOp {
     Return,
     BuildClosure { proc_id: ProcId, n_args: u32 },
     BuildCtor { variant: u32, n_fields: u32 },
-    ConditionalJmp { true_label: LabelId, false_label: LabelId, other_label: LabelId }, 
+    ConditionalJmp { offset: u32, true_label: LabelId, false_label: LabelId, other_label: LabelId }, 
     Jmp { label: LabelId }, 
     Label(LabelId),
 }
@@ -92,17 +100,24 @@ enum Var {
 }
 
 struct State<'a> {
-    ctx: &'a mut InterpreterCtx,
+    interp_ctx: &'a mut InterpreterCtx,
+    ctx: &'a Ctx,
+    fun_ssts: &'a HashMap<Fun, SstInfo>,
 
     frame_size: u32,
     var_locs: ScopeMap<UniqueIdent, Var>,
     pre_ops: Vec<PreOp>,
+    next_label_id: u32,
 }
 
 impl<'a> State<'a> {
     fn push_value(&mut self, v: Value) {
         self.pre_ops.push(PreOp::PushValue(v));
         self.frame_size += 1;
+    }
+
+    fn push_value_default(&mut self) {
+        self.push_value(Value::Bool(false));
     }
 
     fn push_move(&mut self, offset: Offset) {
@@ -120,7 +135,7 @@ impl<'a> State<'a> {
         self.pre_ops.push(PreOp::Label(label_id));
     }
 
-    fn do_unary(&mut self, unary_op: UnaryOp) {
+    fn do_unary(&mut self, unary_op: IUnaryOp) {
         self.pre_ops.push(PreOp::Unary(unary_op));
     }
 
@@ -136,20 +151,37 @@ impl<'a> State<'a> {
 
     /// Caller is responsible for adjusting self.frame_size
     fn jmp(&mut self, label_id: LabelId) {
-        self.pre_ops.push(PreOp::Jmp(label_id));
+        self.pre_ops.push(PreOp::Jmp { label: label_id });
+    }
+
+    /// Caller is responsible for adjusting self.frame_size
+    fn jmp_conditional(&mut self, offset: u32, true_label: LabelId, false_label: LabelId, other_label: LabelId) {
+        self.pre_ops.push(PreOp::ConditionalJmp { offset, true_label, false_label, other_label });
+    }
+
+    fn dyn_call(&mut self, offset_of_closure: u32) {
+        // offset should be 1 more than the # of args
+        // e.g., if there are 2 args, then the closure is in the 3rd-to-last slot
+        self.pre_ops.push(PreOp::DynCall { closure: offset_of_closure });
     }
 
     fn push_exp(&mut self, e: &Exp) {
         match &e.x {
             ExpX::Const(Constant::Bool(b)) => {
-                self.push_value(Value::Bool(b));
+                self.push_value(Value::Bool(*b));
             }
             ExpX::Const(Constant::Int(i)) => {
-                self.push_value(Value::Int(i));
+                self.push_value(Value::Int(i.clone()));
             }
             ExpX::Var(uid) => {
-                let src = self.get_offset(uid);
-                self.push_move(src);
+                match self.var_locs.get(uid).unwrap() {
+                    Var::Symbol(sym) => {
+                        todo!();
+                    }
+                    Var::InStack(idx) => {
+                        self.push_move(self.frame_size - idx);
+                    }
+                }
             }
             ExpX::If(cond, thn, els) => {
                 // This is more complex than it seems like it ought to be because of
@@ -197,7 +229,7 @@ impl<'a> State<'a> {
                 self.push_exp(els);
 
                 self.set_label(lbl_done);
-                self.do_ternary(TernaryOp::IfThenElse);
+                self.do_ternary(ITernaryOp::IfThenElse);
             }
             ExpX::Binary(op @ (BinaryOp::Or | BinaryOp::And | BinaryOp::Implies), lhs, rhs) => {
                 // Short-circuiting binary ops. Again we need to account for symbolic values
@@ -216,11 +248,11 @@ impl<'a> State<'a> {
 
                 self.push_exp(lhs);
 
-                if op == BinaryOp::Implies {
-                    self.do_unary(UnaryOp::Not);
+                if op == &BinaryOp::Implies {
+                    self.do_unary(IUnaryOp::Not);
                 }
                 // From here on out, treat ==> as an OR
-                let is_and = (op == BinaryOp::And);
+                let is_and = op == &BinaryOp::And;
 
                 if is_and {
                     self.jmp_conditional(1, lbl_do_rhs, lbl_done, lbl_do_rhs);
@@ -233,53 +265,53 @@ impl<'a> State<'a> {
                 self.do_binary(if is_and { BinaryOp::And } else { BinaryOp::Or });
                 self.set_label(lbl_done);
             }
-            ExpX::BinaryOp(bop, lhs, rhs) => {
+            ExpX::Binary(bop, lhs, rhs) => {
                 self.push_exp(lhs);
                 self.push_exp(rhs);
-                self.do_binary(bop);
+                self.do_binary(*bop);
             }
             ExpX::BinaryOpr(BinaryOpr::ExtEq(true | false, _typ), lhs, rhs) => {
                 self.push_exp(lhs);
                 self.push_exp(rhs);
                 self.do_binary(BinaryOp::Eq(Mode::Spec));
             }
-            ExpX::UnaryOp(UnaryOp::Not, e) => {
+            ExpX::Unary(UnaryOp::Not, e) => {
                 self.push_exp(e);
                 self.do_unary(IUnaryOp::Not);
             }
-            ExpX::UnaryOp(UnaryOp::BitNot, e) => {
+            ExpX::Unary(UnaryOp::BitNot, e) => {
                 self.push_exp(e);
                 self.do_unary(IUnaryOp::BitNot);
             }
-            ExpX::UnaryOp(UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } | UnaryOp::CustomErr(_), e) => {
+            ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. }, e) => {
                 self.push_exp(e);
             }
-            ExpX::UnaryOpr(UnaryOp::Box(_) | UnaryOp::Unbox(_), e) => {
+            ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_), e) => {
                 self.push_exp(e);
             }
-            ExpX::UnaryOpr(UnaryOpr::HasType(_) | UnaryOpr::TupleField { .. }) => unreachable!(),
-            ExpX::UnaryOpr(UnaryOpr::IsVariant { datatype, variant }) => {
-                let (_variant, idx) = &get_variant_and_idx(&ctx.global.datatypes[path].1, variant);
+            ExpX::UnaryOpr(UnaryOpr::HasType(_) | UnaryOpr::TupleField { .. }, _) => unreachable!(),
+            ExpX::UnaryOpr(UnaryOpr::IsVariant { datatype, variant }, e) => {
+                let (_variant, idx) = &get_variant_and_idx(&self.ctx.global.datatypes[datatype].1, variant);
                 self.push_exp(e);
-                self.get_is_variant(idx);
+                self.do_unary(IUnaryOp::IsVariant(idx));
             }
-            ExpX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field, .. })) => {
-                let (variant, idx) = &get_variant_and_idx(&ctx.global.datatypes[path].1, variant);
+            ExpX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field, .. }), e) => {
+                let (variant, idx) = &get_variant_and_idx(&self.ctx.global.datatypes[datatype].1, variant);
                 let field_idx = variant.fields.iter().position(|f| f.name == field).unwrap();
 
                 self.push_exp(e);
-                self.get_field(idx, field_idx);
+                self.do_unary(IUnaryOp::GetField(idx, field_idx));
             }
             ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, _mode), e) => {
                 self.push_exp(e);
-                self.do_unary(IUnaryOp::IntegerTypeBound(kind));
+                self.do_unary(IUnaryOp::IntegerTypeBound(*kind));
             }
             ExpX::CallLambda(_, closure, args) => {
                 self.push_exp(closure);
                 for arg in args.iter() {
                     self.push_exp(arg);
                 }
-                self.dyn_call(args.len() + 1);
+                self.dyn_call(u32::try_from(args.len() + 1).unwrap());
             }
             ExpX::Call(call_fun, _typs, args) => {
                 for arg in args.iter() {
@@ -332,17 +364,17 @@ impl<'a> State<'a> {
                     }
                     let params = binders.iter().map(|t| t.name.clone()).collect();
 
-                    let proc_id = self.ctx.procedures.len();
-                    self.ctx.procedures.push(Procedure::Closure(
-                        captured_vars, params, exp));
+                    let proc_id = self.interp_ctx.procedures.len();
+                    self.interp_ctx.procedures.push(Procedure::Closure(
+                        captured_vars, params, body));
 
                     self.build_closure(proc_id, captured_vars.len());
                 }
             }
             ExpX::Ctor(path, variant, binders) => {
-                let (variant, idx) = &get_variant_and_idx(&ctx.global.datatypes[path].1, variant);
+                let (variant, idx) = &get_variant_and_idx(&self.ctx.global.datatypes[path].1, variant);
                 let fields = variant.fields;
-                let es = fields.iter().map(|f| get_field(binders, &f.name).a);
+                let es = fields.iter().map(|f| crate::ast_util::get_field(binders, &f.name).a);
                 for e in es.into_iter() {
                     self.push_exp(e);
                 }
@@ -367,10 +399,10 @@ impl<'a> State<'a> {
                 self.do_return();
             }
             Procedure::Fun(fun) => {
-                let function = ctx.func_map.get(fun);
-                let body = fun_ssts.get(fun);
+                let function = self.ctx.func_map.get(fun);
+                let body = self.fun_ssts.get(fun);
 
-                self.frame_size = params.len();
+                self.frame_size = function.x.params.len();
                 for (i, p) in function.x.params.iter().enumerate() {
                     self.var_locs.insert(p, Var::InStack(i));
                 }
@@ -406,13 +438,14 @@ impl<'a> State<'a> {
 }
 
 impl InterpreterCtx {
-    fn compile(&mut self, e: &Exp) {
+    fn compile(&mut self, ctx: &Ctx, e: &Exp) {
         let state = State {
-            ctx: self,
+            interp_ctx: self,
+            ctx,
             frame_size: 0,
             var_locs: ScopeMap::new(),
-            pre_ops: pre_ops,
-            next_label_id: next_label_id,
+            pre_ops: vec![],
+            next_label_id: 0,
         };
 
         state.ctx.procs.push(Procedure::Exp(e.clone()));
@@ -443,9 +476,9 @@ impl InterpreterCtx {
         for pre_ops in pre_ops_lists.iter() {
             for pre_op in pre_ops.iter() {
                 let op = match pre_op {
-                    PreOp::Unary(op) => Op::Unary(Op),
-                    PreOp::Binary(op) => Op::Binary(Op),
-                    PreOp::Ternary(op) => Op::Ternary(Op),
+                    PreOp::Unary(op) => Op::Unary(op),
+                    PreOp::Binary(op) => Op::Binary(op),
+                    PreOp::Ternary(op) => Op::Ternary(op),
                     PreOp::PushValue(value) => Op::PushValue(value),
                     PreOp::PushMove(offset) => Op::PushMove(offset),
                     PreOp::Pop(n) => Op::Pop(n),
@@ -463,8 +496,9 @@ impl InterpreterCtx {
                     PreOp::BuildCtor { variant, n_fields } => {
                         Op::BuildCtor { variant, n_fields }
                     }
-                    PreOp::ConditionalJmp { true_label, false_label, other_label } => {
+                    PreOp::ConditionalJmp { offset, true_label, false_label, other_label } => {
                         Op::ConditionalJmp {
+                            offset: *offset,
                             true_addr: *label_map.get(*true_label).unwrap(),
                             false_addr: *label_map.get(*false_label).unwrap(),
                             other_addr: *label_map.get(*other_label).unwrap(),
@@ -517,7 +551,7 @@ impl InterpreterCtx {
                     stack[stack.len() - dst] = v;
                 }
                 Op::Call { addr } => {
-                    call_stack.push(Call { return_addr: instr_ptr + 1, memoize: None });
+                    call_stack.push(CallFrame::Call { return_addr: instr_ptr + 1, memoize: None });
                     instr_ptr = addr;
                     continue;
                 }
@@ -530,7 +564,7 @@ impl InterpreterCtx {
                             stack.push(ret.clone());
                         }
                         None => {
-                            call_stack.push(Call { return_addr: instr_ptr + 1, memoize: Some(key) });
+                            call_stack.push(CallFrame::Call { return_addr: instr_ptr + 1, memoize: Some(key) });
                             instr_ptr = addr;
                             continue;
                         }
@@ -539,7 +573,7 @@ impl InterpreterCtx {
                 }
                 Op::DynCall { closure } => {
                     if let Value::Ctor(addr, _) = stack[stack.len() - closure] {
-                        call_stack.push(Call { return_addr: instr_ptr + 1, memoize: None });
+                        call_stack.push(CallFrame::Call { return_addr: instr_ptr + 1, memoize: None });
                         instr_ptr = addr;
                         continue;
                     } else {
@@ -557,11 +591,11 @@ impl InterpreterCtx {
                     }
                     let frame = call_stack.pop();
                     match frame {
-                        Call { return_addr, memoize } => {
+                        CallFrame::Call { return_addr, memoize } => {
                             if let Some(key) = memoize {
                                 memoize_cache.insert(key, stack[stack.len() - 1].clone());
                             }
-                            instr_ptr = addr;
+                            instr_ptr = return_addr;
                             continue;
                         }
                     }
@@ -570,8 +604,8 @@ impl InterpreterCtx {
                     instr_ptr = addr;
                     continue;
                 }
-                Op::ConditionalJmp { true_addr, false_addr, other_addr } => {
-                    let v = &stack[stack.len() - 1];
+                Op::ConditionalJmp { offset, true_addr, false_addr, other_addr } => {
+                    let v = &stack[stack.len() - offset];
                     instr_ptr = match v {
                         Value::Bool(false) => false_addr,
                         Value::Bool(true) => true_addr,
