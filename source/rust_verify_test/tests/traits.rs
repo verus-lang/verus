@@ -536,12 +536,9 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        // TODO: we could make the recursion rules more precise to allow decreases checking in this example:
-        //assert_eq!(err.errors.len(), 2);
-        //assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        //assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        // For now, we just reject the code as having a cycle:
-        assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition");
+        assert_eq!(err.errors.len(), 2);
+        assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
+        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
@@ -836,37 +833,77 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_4_bounds_unsupported_1 verus_code! {
+    #[test] test_termination_4_bounds_supported_1 verus_code! {
         trait T {
-            fn f(&self, n: u64);
+            proof fn f(&self, n: int);
         }
         trait U: T {
-            fn g(&self, n: u64);
+            proof fn g(&self, n: int);
         }
         struct S {}
         impl T for S {
-            fn f(&self, n: u64)
+            proof fn f(&self, n: int)
                 decreases n
             {
-                h(self, n - 1); // FAILS
+                if 0 < n {
+                    h(self, n - 1); // FAILS
+                }
             }
         }
         impl U for S {
-            fn g(&self, n: u64)
+            proof fn g(&self, n: int)
                 decreases n
             {
-                self.f(n - 1); // FAILS
+                if 0 < n {
+                    self.f(n - 1); // FAILS
+                }
             }
         }
-        fn h(x: &S, n: u64) {
+        proof fn h(x: &S, n: int) {
             if 0 < n {
                 x.g(n - 1);
             }
         }
     } => Err(err) => {
-        // TODO: we could make the recursion rules more precise to allow decreases checking in this example
-        assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition");
+        assert_vir_error_msg(err, "recursive function must have a decreases clause")
     }
+}
+
+test_verify_one_file! {
+    #[test] test_termination_4_bounds_supported_2 verus_code! {
+        trait T {
+            proof fn f(&self, n: int);
+        }
+        trait U: T {
+            proof fn g(&self, n: int);
+        }
+        struct S {}
+        impl T for S {
+            proof fn f(&self, n: int)
+                decreases n
+            {
+                if 0 < n {
+                    h(self, n - 1); // FAILS
+                }
+            }
+        }
+        impl U for S {
+            proof fn g(&self, n: int)
+                decreases n
+            {
+                if 0 < n {
+                    self.f(n - 1); // FAILS
+                }
+            }
+        }
+        proof fn h(x: &S, n: int)
+            decreases n
+        {
+            if 0 < n {
+                x.g(n - 1);
+            }
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1610,15 +1647,48 @@ test_verify_one_file! {
         }
 
         pub proof fn other_bad()
-            ensures false,
+            ensures false, // FAILS
         {
-            // This can be used to trigger the 'proves_false_requiring_trait_bound' lemma.
-            // Therefore, it is important we draw a dependency edge from `other_bad` function
-            // to the `impl Tr for X` object.
-
+            // It is important that the Trait-Impl-Axiom axiom for "impl Tr for X"
+            // (axiom (tr_bound%M.Tr. $ TYPE%X.)
+            // appears after "impl Tr for X" and its dependencies.
+            // Since "impl Tr for X" depends on other_bad,
+            // this ensures that the the Trait-Impl-Axiom axiom for "impl Tr for X"
+            // also appears after other_bad.
+            // This ensures that the broadcast_forall for proves_false_requiring_trait_bound
+            // isn't enabled (its precondition isn't satisfied) for "Tr for X" until
+            // after "impl Tr for X" and other_bad are checked.
+            // Otherwise, the axiom could be used here in other_bad to prove false.
             let t = X::f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_broadcast_forall_causes_cycle_simple verus_code! {
+        pub trait Tr {
+            spec fn f() -> bool;
+
+            proof fn bad() ensures false; // FAILS
+        }
+
+        #[verifier::broadcast_forall]
+        #[verifier::external_body]
+        pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+            ensures
+                #[trigger] T::f() == !T::f(),
+        { }
+
+        struct X { }
+
+        impl Tr for X {
+            open spec fn f() -> bool { true }
+
+            proof fn bad() {
+                assert(Self::f());
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -1809,6 +1879,29 @@ test_verify_one_file! {
             fn r(&self) -> bool {
                 true
             }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
+    #[test] test_impl_trait_bound_cycle1 verus_code! {
+        trait T {
+            spec fn f() -> int;
+        }
+        struct S<A>(A);
+        impl<A: T> T for S<A> {
+            spec fn f() -> int { A::f() + 1 }
+        }
+        impl T for bool {
+            // This instantiates A with A = bool, which recursively uses "impl T for bool"
+            // to satisfy A: T.
+            // For soundness, this must be considered a cycle and prohibited.
+            spec fn f() -> int { S::<bool>::f() }
+        }
+        proof fn test()
+            ensures false
+        {
+            assert(S::<bool>::f() == S::<bool>::f() + 1);
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
 }
