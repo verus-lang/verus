@@ -38,7 +38,7 @@ pub struct PreludeConfig {
     pub mbqi_mode: bool,
 }
 
-pub(crate) fn prelude_nodes_mbqi(config: PreludeConfig) -> Vec<Node> {
+pub(crate) fn prelude_nodes_mbqi() -> Vec<Node> {
     #[allow(non_snake_case)]
     let FuelId = str_to_node(FUEL_ID);
     #[allow(non_snake_case)]
@@ -70,7 +70,7 @@ pub(crate) fn prelude_nodes_mbqi(config: PreludeConfig) -> Vec<Node> {
     let check_decrease_int = str_to_node(CHECK_DECREASE_INT);
     let check_decrease_height = str_to_node(CHECK_DECREASE_HEIGHT);
     let height = str_to_node(HEIGHT);
-    let height_le = nodes!(_ partial-order 0);
+    let _height_le = nodes!(_ partial-order 0);
     let height_lt = str_to_node(HEIGHT_LT);
     let height_rec_fun = str_to_node(HEIGHT_REC_FUN);
     let closure_req = str_to_node(CLOSURE_REQ);
@@ -119,7 +119,7 @@ pub(crate) fn prelude_nodes_mbqi(config: PreludeConfig) -> Vec<Node> {
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
     let const_int = str_to_node(CONST_INT);
-    let ext_eq = str_to_node(EXT_EQ);
+    let _ext_eq = str_to_node(EXT_EQ);
 
     let uint_xor = str_to_node(UINT_XOR);
     let uint_and = str_to_node(UINT_AND);
