@@ -351,8 +351,7 @@ pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
-        0 <= s1.len(),
-        i < s1.len() as int + s2.len(),
+        s1.len() <= i < s1.len() + s2.len(),
     ensures
         s1.add(s2)[i] == s2[i - s1.len()],
 {
