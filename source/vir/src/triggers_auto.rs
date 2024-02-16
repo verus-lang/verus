@@ -262,7 +262,7 @@ fn make_score(term: &Term, depth: u64) -> Score {
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
     let fail_on_strop = || {
         unreachable!(
-            "internal error: doesn't make sense to reach `gather_terms` for string operations defined for builtin, these are only used to tie builtin and pervasive together and do not make sense in user programs"
+            "internal error: doesn't make sense to reach `gather_terms` for string operations defined for builtin, these are only used to tie builtin and vstd together and do not make sense in user programs"
         )
     };
 

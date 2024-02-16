@@ -7,7 +7,7 @@ extern crate rustc_driver;
 // the build script’s current directory is the source directory of the build script’s package
 
 // path to vstd.rs relative to our directory (source/vstd)
-const VSTD_RS_PATH: &str = "pervasive/vstd.rs";
+const VSTD_RS_PATH: &str = "vstd/vstd.rs";
 // name of generated veruslib.vir in target
 const VSTD_VIR: &str = "vstd.vir";
 

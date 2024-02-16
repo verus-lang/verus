@@ -189,7 +189,7 @@ pub enum TypX {
     ConstInt(BigInt),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-    /// StrSlice type. Currently the pervasive StrSlice struct is "seen" as this type
+    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
     /// despite the fact that it is in fact a datatype
     StrSlice,
     /// UTF-8 character type

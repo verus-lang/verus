@@ -156,10 +156,7 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
 
     if !matches!(
         ctx.verus_items.id_to_name.get(&id),
-        Some(&crate::verus_items::VerusItem::Pervasive(
-            crate::verus_items::PervasiveItem::StrSlice,
-            _
-        ))
+        Some(&crate::verus_items::VerusItem::Vstd(crate::verus_items::VstdItem::StrSlice, _))
     ) {
         return err_span(span, format!("expected a StrSlice"));
     }

@@ -29,7 +29,7 @@
     - [Defining datatypes]() <!--- Andrea --->
     - [Querying the discriminant (`#[is_variant]`)]() <!--- Andrea --->
     - [Proving properties of fields]() <!--- Andrea --->
-- [Basic libraries and spec closures](pervasive.md)
+- [Basic libraries and spec closures](vstd.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
     - [Spec closures](spec_closures.md)
