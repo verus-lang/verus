@@ -684,13 +684,6 @@ pub fn strslice_defn_path(vstd_crate_name: &Ident) -> Path {
     })
 }
 
-pub fn pervasive_assert_path() -> Path {
-    Arc::new(PathX {
-        krate: None,
-        segments: Arc::new(PERVASIVE_ASSERT.iter().map(|x| Arc::new(x.to_string())).collect()),
-    })
-}
-
 /// Inverse of unique_local_name: extracts the user_given_name from
 /// a unique name (e.g., given "a~2", returns "a"
 pub fn user_local_name<'a>(s: &'a str) -> &'a str {

@@ -22,7 +22,7 @@ spec fn is_sorted(seqint: Seq<int>) -> bool {
 spec fn count_in_seq<T>(a: Seq<T>, t: T) -> nat
     decreases a.len()
 {
-    //decreases(a);   // TOOD(utaal): thread 'rustc' panicked at 'internal error: unsupported type for decreases Boxed(Datatype(PathX { krate: None, segments: ["pervasive", "seq", "Seq"] }, [TypParam("T")]))', vir/src/recursion.rs:86:14
+    //decreases(a);   // TOOD(utaal): thread 'rustc' panicked at 'internal error: unsupported type for decreases Boxed(Datatype(PathX { krate: None, segments: ["vstd", "seq", "Seq"] }, [TypParam("T")]))', vir/src/recursion.rs:86:14
     if a.len() == 0 {
         0
     } else {
