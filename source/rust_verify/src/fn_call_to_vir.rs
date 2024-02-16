@@ -581,6 +581,25 @@ fn verus_item_to_vir<'tcx, 'a>(
                     err_span(args[0].span, "string literal expected".to_string())
                 }
             }
+            DirectiveItem::InlineAirStmt => {
+                if bctx.ctxt.cmd_line_args.allow_inline_air {
+                    record_spec_fn_no_proof_args(bctx, expr);
+                    unsupported_err_unless!(
+                        args_len == 1,
+                        expr.span,
+                        "expected air statement",
+                        &args
+                    );
+                    let s = get_string_lit_arg(&args[0], &f_name)?;
+                    mk_expr(ExprX::AirStmt(Arc::new(s)))
+                } else {
+                    err_span(
+                        expr.span,
+                        "inline AIR is only allowed with the relevant command line flag"
+                            .to_string(),
+                    )
+                }
+            }
         },
         VerusItem::Expr(expr_item) => match expr_item {
             ExprItem::Choose => {

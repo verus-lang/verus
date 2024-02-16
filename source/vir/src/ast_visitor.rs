@@ -276,7 +276,8 @@ where
                 | ExprX::VarLoc(_)
                 | ExprX::VarAt(_, _)
                 | ExprX::ConstVar(..)
-                | ExprX::StaticVar(..) => (),
+                | ExprX::StaticVar(..)
+                | ExprX::AirStmt(_) => (),
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
@@ -966,6 +967,7 @@ where
             map.pop_scope();
             ExprX::OpenInvariant(expr1, binder, expr2, *atomicity)
         }
+        ExprX::AirStmt(s) => ExprX::AirStmt(s.clone()),
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)

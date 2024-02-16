@@ -289,6 +289,9 @@ pub fn run_verus(
             verus_args.push("--no-lifetime".to_string());
         } else if *option == "vstd" {
             // ignore
+        } else if *option == "-V allow-inline-air" {
+            verus_args.push("-V".to_string());
+            verus_args.push("allow-inline-air".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }

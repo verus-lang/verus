@@ -1331,6 +1331,7 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
+        ExprX::AirStmt(_) => Ok(Mode::Exec),
     };
     Ok((mode?, None))
 }

@@ -1322,3 +1322,10 @@ pub fn infer_spec_for_loop_iter<A>(_: A, _print_hint: bool) -> Option<A> {
 pub const fn global_size_of<T>(_bytes: usize) {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::inline_air_stmt"]
+#[verifier::proof]
+pub fn inline_air_stmt(_s: &str) {
+    unimplemented!()
+}

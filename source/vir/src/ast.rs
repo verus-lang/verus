@@ -784,6 +784,8 @@ pub enum ExprX {
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
+    /// Inline AIR statement
+    AirStmt(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt

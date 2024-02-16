@@ -746,6 +746,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Some(e) => mk_expr_typ(&e.typ, ExprX::Block(Arc::new(stmts), e1)),
             }
         }
+        ExprX::AirStmt(_) => expr.clone(),
     }
 }
 
