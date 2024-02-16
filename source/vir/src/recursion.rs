@@ -51,6 +51,9 @@ pub(crate) fn get_callee(
     target: &Fun,
     resolved_method: &Option<(Fun, Typs)>,
 ) -> Option<Fun> {
+    if ctx.reveal_group_set.contains(target) {
+        return Some(target.clone());
+    }
     let fun = &ctx.func_map[target];
     if let FunctionKind::TraitMethodDecl { .. } = &fun.x.kind {
         resolved_method.clone().map(|(x, _)| x)
