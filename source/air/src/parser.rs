@@ -474,7 +474,7 @@ impl Parser {
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }
 
-    pub(crate) fn node_to_stmt(&self, node: &Node) -> Result<Stmt, String> {
+    pub fn node_to_stmt(&self, node: &Node) -> Result<Stmt, String> {
         match node {
             Node::List(nodes) => match &nodes[..] {
                 [Node::Atom(s), e] if s.to_string() == "assume" => {

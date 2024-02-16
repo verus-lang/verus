@@ -1682,39 +1682,69 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_decreases_trait_bound verus_code! {
-        trait T {
-            proof fn impossible()
-                ensures false;
-        }
+const DECREASES_TRAIT_BOUND_COMMON: &str = verus_code_str! {
+    trait T {
+        proof fn impossible()
+            ensures false;
+    }
 
-        spec fn f<A: T>(i: int) -> bool
-            decreases 0int via f_decreases::<A>
-        {
-            !f::<A>(i - 0)
-        }
+    spec fn f<A: T>(i: int) -> bool
+        decreases 0int via f_decreases::<A>
+    {
+        !f::<A>(i - 0)
+    }
 
-        #[verifier::decreases_by]
-        proof fn f_decreases<A: T>(i: int) {
-            A::impossible();
-        }
+    #[verifier::decreases_by]
+    proof fn f_decreases<A: T>(i: int) {
+        A::impossible();
+    }
 
-        proof fn test1<A: T>(i: int) {
-            assert(f::<A>(i) == !f::<A>(i - 0));
-            assert(false);
-        }
+    struct B { }
 
-        proof fn test2() {
+    proof fn test1<A: T>(i: int) {
+        assert(f::<A>(i) == !f::<A>(i - 0));
+        assert(false);
+    }
+};
+
+// NOTE: running with
+// VERUS_EXTRA_ARGS="--log-all" vargo nextest run -p rust_verify_test --vstd-no-verify --test traits -- test_decreases_trait_bound_unsound
+// can help debug AIR issues that result in SIGABRT in tests
+test_verify_one_file_with_options! {
+    #[test] test_decreases_trait_bound_unsound ["-V allow-inline-air"] => DECREASES_TRAIT_BOUND_COMMON.to_string() + verus_code_str! {
+        proof fn test2(i: int) {
             // We'd like to test that f's definition axiom only applies to A that implement T.
             // Ideally, we'd test this by applying f to an A that doesn't implement T
             // and seeing that the definition axiom doesn't apply.
             // Unfortunately, it's hard to test this because Rust's type checker already (correctly)
             // stops us from saying f::<ty>(x) for ty that doesn't implement T.
-            // So we have to manually check the AIR code for the axiom off line.
-            assert(false); // FAILS
+
+            // So we manually emit the AIR that corresponds to the f::<B>(x) call.
+            inline_air_stmt("(assume (tr_bound%T. $ TYPE%B.))");
+            inline_air_stmt("(assert (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
+            inline_air_stmt("(assume (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
+            assert(false);
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Ok(())
+}
+
+// NOTE: running with
+// VERUS_EXTRA_ARGS="--log-all" vargo nextest run -p rust_verify_test --vstd-no-verify --test traits -- test_decreases_trait_bound_unsound
+// can help debug AIR issues that result in SIGABRT in tests
+test_verify_one_file_with_options! {
+    #[test] test_decreases_trait_bound_sound ["-V allow-inline-air"] => DECREASES_TRAIT_BOUND_COMMON.to_string() + verus_code_str! {
+        proof fn test2(i: int) {
+            // We'd like to test that f's definition axiom only applies to A that implement T.
+            // Ideally, we'd test this by applying f to an A that doesn't implement T
+            // and seeing that the definition axiom doesn't apply.
+            // Unfortunately, it's hard to test this because Rust's type checker already (correctly)
+            // stops us from saying f::<ty>(x) for ty that doesn't implement T.
+
+            // So we manually emit the AIR that corresponds to the f::<B>(x) call.
+            // inline_air_stmt("(assume (tr_bound%T. $ TYPE%B.))");
+            inline_air_stmt("(assert (= (f.? $ TYPE%B. (I i!)) (not (f.? $ TYPE%B. (I (Sub i! 0))))))");
+        }
+    } => Err(err) => { assert!(err.errors.len() == 1); }
 }
 
 test_verify_one_file! {

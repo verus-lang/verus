@@ -2188,6 +2188,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
+        StmX::Air(s) => {
+            let mut parser = sise::Parser::new(s.as_bytes());
+            let node = sise::read_into_tree(&mut parser).unwrap();
+
+            let stmt = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+                .node_to_stmt(&node);
+            match stmt {
+                Ok(stmt) => vec![stmt],
+                Err(err) => {
+                    return Err(error(&stm.span, format!("Invalid inline AIR statement: {}", err)));
+                }
+            }
+        }
     };
     Ok(result)
 }
