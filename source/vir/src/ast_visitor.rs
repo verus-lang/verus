@@ -12,6 +12,7 @@ pub(crate) use crate::visitor::VisitorControlFlow;
 use air::scope_map::ScopeMap;
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct ScopeEntry {
     pub typ: Typ,
     pub is_mut: bool,

@@ -6,6 +6,7 @@ use crate::ast::VarBinder;
 use crate::ast::VarBinderX;
 use crate::ast::VarBinders;
 use crate::ast::VarIdent;
+use crate::ast::VarIdentX;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
@@ -33,8 +34,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 struct State {
-    // Counter to generate temporary variables
-    next_var: u64,
     // Name of a datatype to represent each tuple arity
     tuple_typs: HashMap<usize, Path>,
     // Name of a datatype to represent each tuple arity
@@ -46,20 +45,14 @@ struct State {
 impl State {
     fn new() -> Self {
         State {
-            next_var: 0,
             tuple_typs: HashMap::new(),
             closure_typs: HashMap::new(),
             fndef_typs: HashSet::new(),
         }
     }
 
-    fn reset_for_function(&mut self) {
-        self.next_var = 0;
-    }
-
-    fn next_temp(&mut self) -> VarIdent {
-        self.next_var += 1;
-        crate::def::simplify_temp_var(self.next_var)
+    fn for_function<'a>(&'a mut self) -> FunctionState<'a> {
+        FunctionState { global: self, next_var: 0, var_idents_with_local_id_seen: HashMap::new() }
     }
 
     fn tuple_type_name(&mut self, arity: usize) -> Path {
@@ -74,6 +67,40 @@ impl State {
             self.closure_typs.insert(id, crate::def::prefix_closure_type(id));
         }
         self.closure_typs[&id].clone()
+    }
+}
+
+struct FunctionState<'a> {
+    global: &'a mut State,
+    // Counter to generate temporary variables
+    next_var: u64,
+
+    var_idents_with_local_id_seen: HashMap<(String, Option<usize>, Vec<String>), HashSet<VarIdent>>,
+}
+
+impl<'a> FunctionState<'a> {
+    fn next_temp(&mut self) -> VarIdent {
+        self.next_var += 1;
+        crate::def::simplify_temp_var(self.next_var)
+    }
+
+    fn tuple_type_name(&mut self, arity: usize) -> Path {
+        self.global.tuple_type_name(arity)
+    }
+
+    #[allow(dead_code)]
+    fn closure_type_name(&mut self, id: usize) -> Path {
+        self.global.closure_type_name(id)
+    }
+
+    fn seen_var_ident(&mut self, v: &VarIdent) {
+        if v.1.is_some() {
+            let set = self
+                .var_idents_with_local_id_seen
+                .entry((v.0.clone(), v.2, v.3.clone()))
+                .or_insert(HashSet::new());
+            set.insert(v.clone());
+        }
     }
 }
 
@@ -92,7 +119,7 @@ fn is_small_expr(expr: &Expr) -> bool {
     }
 }
 
-fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
+fn temp_expr(state: &mut FunctionState, expr: &Expr) -> (Stmt, Expr) {
     // put expr into a temp variable to avoid duplicating it
     let temp = state.next_temp();
     let name = temp.clone();
@@ -103,7 +130,7 @@ fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
     (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
 }
 
-fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
+fn small_or_temp(state: &mut FunctionState, expr: &Expr) -> (Vec<Stmt>, Expr) {
     if is_small_expr(&expr) {
         (vec![], expr.clone())
     } else {
@@ -122,7 +149,7 @@ fn pattern_field_expr(span: &Span, expr: &Expr, pat_typ: &Typ, field_op: UnaryOp
 // - bindings of pattern variables to fields of exp
 fn pattern_to_exprs(
     ctx: &GlobalCtx,
-    state: &mut State,
+    state: &mut FunctionState,
     expr: &Expr,
     pattern: &Pattern,
     decls: &mut Vec<Stmt>,
@@ -150,7 +177,7 @@ struct PatternBoundDecl {
 
 fn pattern_to_exprs_rec(
     ctx: &GlobalCtx,
-    state: &mut State,
+    state: &mut FunctionState,
     expr: &Expr,
     pattern: &Pattern,
     decls: &mut Vec<PatternBoundDecl>,
@@ -240,7 +267,7 @@ fn pattern_to_exprs_rec(
 
 fn simplify_one_expr(
     ctx: &GlobalCtx,
-    state: &mut State,
+    state: &mut FunctionState,
     scope_map: &VisitorScopeMap,
     expr: &Expr,
 ) -> Result<Expr, VirErr> {
@@ -537,7 +564,7 @@ fn simplify_one_expr(
 }
 
 fn tuple_get_field_expr(
-    state: &mut State,
+    state: &mut FunctionState,
     span: &Span,
     typ: &Typ,
     tuple_expr: &Expr,
@@ -558,7 +585,11 @@ fn tuple_get_field_expr(
     field_expr
 }
 
-fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
+fn simplify_one_stmt(
+    ctx: &GlobalCtx,
+    state: &mut FunctionState,
+    stmt: &Stmt,
+) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
@@ -610,7 +641,11 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
 // TODO: a lot of this closure stuff could get its own file
 // rename to apply to all fn types, not just closure types
 
-fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &VarBinders<Typ>) -> Typs {
+fn closure_trait_call_typ_args(
+    state: &mut FunctionState,
+    fn_val: &Expr,
+    params: &VarBinders<Typ>,
+) -> Typs {
     let path = state.tuple_type_name(params.len());
 
     let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
@@ -620,7 +655,7 @@ fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &VarBin
 }
 
 fn mk_closure_req_call(
-    state: &mut State,
+    state: &mut FunctionState,
     span: &Span,
     params: &VarBinders<Typ>,
     fn_val: &Expr,
@@ -642,7 +677,7 @@ fn mk_closure_req_call(
 }
 
 fn mk_closure_ens_call(
-    state: &mut State,
+    state: &mut FunctionState,
     span: &Span,
     params: &VarBinders<Typ>,
     fn_val: &Expr,
@@ -665,7 +700,7 @@ fn mk_closure_ens_call(
 }
 
 fn exec_closure_spec_requires(
-    state: &mut State,
+    state: &mut FunctionState,
     span: &Span,
     closure_var: &Expr,
     params: &VarBinders<Typ>,
@@ -725,7 +760,7 @@ fn exec_closure_spec_requires(
 }
 
 fn exec_closure_spec_ensures(
-    state: &mut State,
+    state: &mut FunctionState,
     span: &Span,
     closure_var: &Expr,
     params: &VarBinders<Typ>,
@@ -792,7 +827,7 @@ fn exec_closure_spec_ensures(
 }
 
 fn exec_closure_spec(
-    state: &mut State,
+    state: &mut FunctionState,
     span: &Span,
     closure_var: &Expr,
     params: &VarBinders<Typ>,
@@ -825,7 +860,7 @@ fn add_fndef_axioms_to_function(
     state: &mut State,
     function: &Function,
 ) -> Result<Function, VirErr> {
-    state.reset_for_function();
+    let state = &mut state.for_function();
 
     let params: Vec<_> = function
         .x
@@ -895,12 +930,22 @@ fn add_fndef_axioms_to_function(
     Ok(Spanned::new(function.span.clone(), functionx))
 }
 
+struct RenameMap {
+    rename_map: HashMap<VarIdent, VarIdent>,
+}
+
+impl RenameMap {
+    fn get_or_unchanged(&self, index: &VarIdent) -> VarIdent {
+        self.rename_map.get(index).cloned().unwrap_or(index.clone())
+    }
+}
+
 fn simplify_function(
     ctx: &GlobalCtx,
     state: &mut State,
     function: &Function,
 ) -> Result<Function, VirErr> {
-    state.reset_for_function();
+    let state = &mut state.for_function();
     let mut functionx = function.x.clone();
     let local =
         LocalCtxt { span: function.span.clone(), typ_params: (*functionx.typ_params).clone() };
@@ -928,14 +973,293 @@ fn simplify_function(
 
     let function = Spanned::new(function.span.clone(), functionx);
     let mut map: VisitorScopeMap = ScopeMap::new();
-    crate::ast_visitor::map_function_visitor_env(
+    let simplified = crate::ast_visitor::map_function_visitor_env(
         &function,
         &mut map,
         state,
-        &|state, map, expr| simplify_one_expr(ctx, state, map, expr),
-        &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
-        &|state, typ| simplify_one_typ(&local, state, typ),
-    )
+        &|state, map, expr| {
+            let simplified_expr = simplify_one_expr(ctx, state, map, expr);
+            record_var_idents_expr(state, map, expr);
+            simplified_expr
+        },
+        &|state, _, stmt| {
+            let simplified_stmt = simplify_one_stmt(ctx, state, stmt);
+            record_var_idents_stmt(state, stmt);
+            simplified_stmt
+        },
+        &|state, typ| simplify_one_typ(&local, state.global, typ),
+    )?;
+    for p in simplified.x.params.iter().chain(Some(&simplified.x.ret)) {
+        let crate::ast::ParamX { name, unwrapped_info, .. } = &p.x;
+        state.seen_var_ident(name);
+        if let Some((_, ident)) = unwrapped_info {
+            state.seen_var_ident(ident);
+        }
+    }
+
+    let rename_map: RenameMap = {
+        let rename_map: HashMap<_, _> = state
+            .var_idents_with_local_id_seen
+            .iter()
+            .filter_map(|(_, vs)| {
+                (vs.len() == 1).then(|| {
+                    let v = vs.iter().next().unwrap();
+                    let new_v = Arc::new(VarIdentX(v.0.clone(), None, v.2, v.3.clone()));
+                    (v.clone(), new_v)
+                })
+            })
+            .collect();
+        // dbg!(&rename_map);
+        RenameMap { rename_map }
+    };
+
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    let mut simplified = crate::ast_visitor::map_function_visitor_env(
+        &simplified,
+        &mut map,
+        state,
+        &|_, _, expr| rename_vars_one_expr(&rename_map, expr),
+        &|_, _, stmt| rename_vars_one_stmt(&rename_map, stmt),
+        &|_, typ| Ok(typ.clone()),
+    )?;
+
+    {
+        let simplified = Arc::make_mut(&mut simplified);
+        let params = Arc::make_mut(&mut simplified.x.params);
+        for p in params.iter_mut() {
+            Arc::make_mut(p).x.name = rename_map.get_or_unchanged(&p.x.name);
+        }
+        let ret = Arc::make_mut(&mut simplified.x.ret);
+        ret.x.name = rename_map.get_or_unchanged(&ret.x.name);
+    }
+
+    Ok(simplified)
+}
+
+fn record_var_idents_expr(state: &mut FunctionState, _scope_map: &VisitorScopeMap, expr: &Expr) {
+    match &expr.x {
+        ExprX::Var(ident) | ExprX::VarLoc(ident) | ExprX::VarAt(ident, _) => {
+            state.seen_var_ident(ident);
+        }
+
+        ExprX::ExecClosure { params, ret, external_spec: Some((ident, _)), .. } => {
+            for p in params.iter() {
+                state.seen_var_ident(&p.name);
+            }
+            state.seen_var_ident(&ret.name);
+            state.seen_var_ident(ident);
+        }
+
+        ExprX::Quant(_, binders, _)
+        | ExprX::Closure(binders, _)
+        | ExprX::Choose { params: binders, .. }
+        | ExprX::AssertBy { vars: binders, .. } => {
+            for b in binders.iter() {
+                state.seen_var_ident(&b.name);
+            }
+        }
+
+        ExprX::OpenInvariant(_, binder, _, _) => {
+            state.seen_var_ident(&binder.name);
+        }
+
+        ExprX::Const(..)
+        | ExprX::ExecClosure { .. }
+        | ExprX::ConstVar(..)
+        | ExprX::StaticVar(..)
+        | ExprX::Loc(..)
+        | ExprX::Call(..)
+        | ExprX::Tuple(..)
+        | ExprX::Ctor(..)
+        | ExprX::NullaryOpr(..)
+        | ExprX::Unary(..)
+        | ExprX::UnaryOpr(..)
+        | ExprX::Binary(..)
+        | ExprX::BinaryOpr(..)
+        | ExprX::Multi(..)
+        | ExprX::ArrayLiteral(..)
+        | ExprX::ExecFnByName(..)
+        | ExprX::WithTriggers { .. }
+        | ExprX::Assign { .. }
+        | ExprX::Fuel(..)
+        | ExprX::RevealString(..)
+        | ExprX::Header(..)
+        | ExprX::AssertAssume { .. }
+        | ExprX::AssertQuery { .. }
+        | ExprX::AssertCompute(..)
+        | ExprX::If(..)
+        | ExprX::Match(..)
+        | ExprX::Loop { .. }
+        | ExprX::Return(..)
+        | ExprX::BreakOrContinue { .. }
+        | ExprX::Ghost { .. }
+        | ExprX::Block(_, _) => (),
+    }
+}
+
+fn record_var_idents_stmt(state: &mut FunctionState, stmt: &Stmt) {
+    fn handle_pattern(state: &mut FunctionState, pattern: &Pattern) {
+        match &pattern.x {
+            PatternX::Wildcard(_) => (),
+            PatternX::Tuple(patterns) => {
+                for p in patterns.iter() {
+                    handle_pattern(state, p);
+                }
+            }
+            PatternX::Constructor(_, _, binders) => {
+                for b in binders.iter() {
+                    handle_pattern(state, &b.a);
+                }
+            }
+            PatternX::Or(pattern1, pattern2) => {
+                handle_pattern(state, pattern1);
+                handle_pattern(state, pattern2);
+            }
+            PatternX::Var { name, mutable: _ } => {
+                state.seen_var_ident(&name);
+            }
+        }
+    }
+
+    match &stmt.x {
+        StmtX::Decl { pattern, mode: _, init: _ } => handle_pattern(state, pattern),
+        StmtX::Expr(_) => (),
+    }
+}
+
+fn rename_vars_one_expr(rename_map: &RenameMap, expr: &Expr) -> Result<Expr, VirErr> {
+    fn rename_binder_name<X: Clone>(rename_map: &RenameMap, binder: &VarBinder<X>) -> VarBinder<X> {
+        Arc::new(VarBinderX {
+            name: rename_map.get_or_unchanged(&binder.name),
+            a: binder.a.clone(),
+        })
+    }
+
+    fn rename_binders_names<X: Clone>(
+        rename_map: &RenameMap,
+        binders: &VarBinders<X>,
+    ) -> VarBinders<X> {
+        Arc::new(binders.iter().map(|b| rename_binder_name(rename_map, b)).collect())
+    }
+
+    match &expr.x {
+        ExprX::Var(ident) => Ok(expr.new_x(ExprX::Var(rename_map.get_or_unchanged(ident)))),
+        ExprX::VarLoc(ident) => Ok(expr.new_x(ExprX::VarLoc(rename_map.get_or_unchanged(ident)))),
+        ExprX::VarAt(ident, at) => {
+            Ok(expr.new_x(ExprX::VarAt(rename_map.get_or_unchanged(ident), *at)))
+        }
+
+        ExprX::ExecClosure {
+            params,
+            body,
+            requires,
+            ensures,
+            ret,
+            external_spec: Some((ident, e1)),
+        } => Ok(expr.new_x(ExprX::ExecClosure {
+            params: rename_binders_names(rename_map, params),
+            body: body.clone(),
+            requires: requires.clone(),
+            ensures: ensures.clone(),
+            ret: rename_binder_name(rename_map, ret),
+            external_spec: Some((rename_map.get_or_unchanged(ident), e1.clone())),
+        })),
+
+        ExprX::Quant(quant, bs, e1) => Ok(expr.new_x(ExprX::Quant(
+            quant.clone(),
+            rename_binders_names(rename_map, bs),
+            e1.clone(),
+        ))),
+        ExprX::Closure(bs, e1) => {
+            Ok(expr.new_x(ExprX::Closure(rename_binders_names(rename_map, bs), e1.clone())))
+        }
+        ExprX::Choose { params, cond, body } => Ok(expr.new_x(ExprX::Choose {
+            params: rename_binders_names(rename_map, params),
+            cond: cond.clone(),
+            body: body.clone(),
+        })),
+        ExprX::AssertBy { vars, require, ensure, proof } => Ok(expr.new_x(ExprX::AssertBy {
+            vars: rename_binders_names(rename_map, vars),
+            require: require.clone(),
+            ensure: ensure.clone(),
+            proof: proof.clone(),
+        })),
+
+        ExprX::OpenInvariant(e1, b, e2, atomicity) => Ok(expr.new_x(ExprX::OpenInvariant(
+            e1.clone(),
+            rename_binder_name(rename_map, b),
+            e2.clone(),
+            atomicity.clone(),
+        ))),
+
+        ExprX::Const(..)
+        | ExprX::ConstVar(..)
+        | ExprX::ExecClosure { .. }
+        | ExprX::StaticVar(..)
+        | ExprX::Loc(..)
+        | ExprX::Call(..)
+        | ExprX::Tuple(..)
+        | ExprX::Ctor(..)
+        | ExprX::NullaryOpr(..)
+        | ExprX::Unary(..)
+        | ExprX::UnaryOpr(..)
+        | ExprX::Binary(..)
+        | ExprX::BinaryOpr(..)
+        | ExprX::Multi(..)
+        | ExprX::ArrayLiteral(..)
+        | ExprX::ExecFnByName(..)
+        | ExprX::WithTriggers { .. }
+        | ExprX::Assign { .. }
+        | ExprX::Fuel(..)
+        | ExprX::RevealString(..)
+        | ExprX::Header(..)
+        | ExprX::AssertAssume { .. }
+        | ExprX::AssertQuery { .. }
+        | ExprX::AssertCompute(..)
+        | ExprX::If(..)
+        | ExprX::Match(..)
+        | ExprX::Loop { .. }
+        | ExprX::Return(..)
+        | ExprX::BreakOrContinue { .. }
+        | ExprX::Ghost { .. }
+        | ExprX::Block(_, _) => Ok(expr.clone()),
+    }
+}
+
+fn rename_vars_one_stmt(rename_map: &RenameMap, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
+    fn handle_pattern(rename_map: &RenameMap, pattern: &Pattern) -> Pattern {
+        match &pattern.x {
+            PatternX::Wildcard(w) => pattern.new_x(PatternX::Wildcard(*w)),
+            PatternX::Tuple(ps) => {
+                let ps = ps.iter().map(|p| handle_pattern(rename_map, p)).collect();
+                pattern.new_x(PatternX::Tuple(Arc::new(ps)))
+            }
+            PatternX::Constructor(path, ident, binders) => {
+                let binders = Arc::new(
+                    binders.iter().map(|b| b.new_a(handle_pattern(rename_map, &b.a))).collect(),
+                );
+                pattern.new_x(PatternX::Constructor(path.clone(), ident.clone(), binders))
+            }
+            PatternX::Or(p1, p2) => {
+                let p1 = handle_pattern(rename_map, p1);
+                let p2 = handle_pattern(rename_map, p2);
+                pattern.new_x(PatternX::Or(p1, p2))
+            }
+            PatternX::Var { name, mutable } => pattern.new_x(PatternX::Var {
+                name: rename_map.get_or_unchanged(name),
+                mutable: *mutable,
+            }),
+        }
+    }
+
+    match &stmt.x {
+        StmtX::Decl { pattern, mode, init } => Ok(vec![stmt.new_x(StmtX::Decl {
+            pattern: handle_pattern(rename_map, pattern),
+            mode: *mode,
+            init: init.clone(),
+        })]),
+        StmtX::Expr(_) => Ok(vec![stmt.clone()]),
+    }
 }
 
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {

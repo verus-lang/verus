@@ -237,10 +237,6 @@ pub fn decrease_at_entry(n: usize) -> VarIdent {
     str_unique_var(&format!("{}{}", DECREASE_AT_ENTRY, n))
 }
 
-// nocheckin pub fn trait_self_type_param() -> Ident {
-// nocheckin     Arc::new(TRAIT_SELF_TYPE_PARAM.to_string())
-// nocheckin }
-
 pub fn trait_self_type_param() -> VarIdent {
     str_unique_var(TRAIT_SELF_TYPE_PARAM)
 }
@@ -722,11 +718,6 @@ pub fn strslice_defn_path(vstd_crate_name: &Ident) -> Path {
 pub fn user_local_name<'a>(s: &'a VarIdent) -> &'a str {
     &s.0
 }
-
-/* nocheckin */
-// pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
-/* nocheckin */ //     user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
-/* nocheckin */ // }
 
 pub fn unique_var_name(
     user_given_name: String,
