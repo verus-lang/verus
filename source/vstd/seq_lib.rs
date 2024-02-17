@@ -160,7 +160,9 @@ impl<A> Seq<A> {
             // TODO(andrea): recommends didn't catch this error, where i isn't known to be in
             // self.filter(pred).len()
             //forall |i: int| 0 <= i < self.len() ==> pred(#[trigger] self.filter(pred)[i]),
-            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+            forall |i: int| 0 <= i < self.filter(pred).len() ==>
+                pred(#[trigger] self.filter(pred)[i]) &&
+                self.contains(self.filter(pred)[i]),
             // we keep everything we should
             forall |i: int| 0 <= i < self.len() && pred(self[i])
                 ==> #[trigger] self.filter(pred).contains(self[i]),
@@ -172,7 +174,7 @@ impl<A> Seq<A> {
         let out = self.filter(pred);
         if 0 < self.len() {
             self.drop_last().filter_lemma(pred);
-            assert forall |i: int| 0 <= i < out.len() implies pred(out[i]) by {
+            assert forall |i: int| 0 <= i < out.len() implies #[trigger] pred(out[i]) && self.contains(out[i]) by {
                 if i < out.len()-1 {
                     assert(self.drop_last().filter(pred)[i] == out.drop_last()[i]); // trigger drop_last
                     assert(pred(out[i]));   // TODO(andrea): why is this line required? It's the conclusion of the assert-forall.
@@ -196,7 +198,7 @@ impl<A> Seq<A> {
     #[verifier(broadcast_forall)]
     pub proof fn filter_lemma_broadcast(self, pred: spec_fn(A) -> bool)
         ensures
-            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+            forall |i: int| 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]) && self.contains(self.filter(pred)[i]),
             forall |i: int| 0 <= i < self.len() && pred(self[i])
                 ==> #[trigger] self.filter(pred).contains(self[i]),
             #[trigger] self.filter(pred).len() <= self.len();
