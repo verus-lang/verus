@@ -8,7 +8,7 @@
 
 use crate::ast::{
     AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, NullaryOpr, Path, Quant,
-    SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
+    SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -32,15 +32,22 @@ pub struct BndInfo {
 pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
 pub enum BndX {
-    Let(Binders<Exp>),
-    Quant(Quant, Binders<Typ>, Trigs),
-    Lambda(Binders<Typ>, Trigs),
-    Choose(Binders<Typ>, Trigs, Exp),
+    Let(VarBinders<Exp>),
+    Quant(Quant, VarBinders<Typ>, Trigs),
+    Lambda(VarBinders<Typ>, Trigs),
+    Choose(VarBinders<Typ>, Trigs, Exp),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UniqueIdent {
-    pub name: Ident,
+    pub name: VarIdent,
+    // None for bound vars, Some disambiguating integer for local vars
+    pub local: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct UniqueVarIdent {
+    pub name: crate::ast::VarIdent,
     // None for bound vars, Some disambiguating integer for local vars
     pub local: Option<u64>,
 }
@@ -67,13 +74,13 @@ pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug, Clone)]
 pub enum ExpX {
     Const(Constant),
-    Var(UniqueIdent),
+    Var(UniqueVarIdent),
     StaticVar(Fun),
-    VarLoc(UniqueIdent),
-    VarAt(UniqueIdent, VarAt),
+    VarLoc(UniqueVarIdent),
+    VarAt(UniqueVarIdent, VarAt),
     Loc(Exp),
     // used only during sst_to_air to generate AIR Old
-    Old(Ident, UniqueIdent),
+    Old(Ident, UniqueVarIdent),
     // call to spec function
     Call(CallFun, Typs, Exps),
     CallLambda(Typ, Exp, Exps),
@@ -103,7 +110,7 @@ pub type Par = Arc<Spanned<ParX>>;
 pub type Pars = Arc<Vec<Par>>;
 #[derive(Debug, Clone)]
 pub struct ParX {
-    pub name: Ident,
+    pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
     pub purpose: ParPurpose,
@@ -177,18 +184,18 @@ pub enum StmX {
         cond: Option<(Stm, Exp)>,
         body: Stm,
         invs: LoopInvs,
-        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
-        modified_vars: Arc<Vec<UniqueIdent>>,
+        typ_inv_vars: Arc<Vec<(UniqueVarIdent, Typ)>>,
+        modified_vars: Arc<Vec<UniqueVarIdent>>,
     },
-    OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
+    OpenInvariant(Exp, UniqueVarIdent, Typ, Stm, InvAtomicity),
     Block(Stms),
     ClosureInner {
         body: Stm,
-        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        typ_inv_vars: Arc<Vec<(UniqueVarIdent, Typ)>>,
     },
     AssertQuery {
         mode: AssertQueryMode,
-        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        typ_inv_vars: Arc<Vec<(UniqueVarIdent, Typ)>>,
         body: Stm,
     },
 }
@@ -196,7 +203,7 @@ pub enum StmX {
 pub type LocalDecl = Arc<LocalDeclX>;
 #[derive(Debug)]
 pub struct LocalDeclX {
-    pub ident: UniqueIdent,
+    pub ident: UniqueVarIdent,
     pub typ: Typ,
     pub mutable: bool,
 }

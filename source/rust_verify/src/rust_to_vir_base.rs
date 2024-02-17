@@ -18,10 +18,10 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    GenericBoundX, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VirErr,
+    GenericBoundX, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VarIdent,
+    VarIdentX, VarIdents, VirErr,
 };
-use vir::ast_util::{types_equal, undecorate_typ};
-use vir::def::unique_local_name;
+use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
 // TODO: eventually, this should just always be true
 thread_local! {
@@ -160,21 +160,21 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     TypX::Datatype(def_id_to_vir_path(tcx, verus_items, def_id), typ_args, impl_paths)
 }
 
-pub(crate) fn foreign_param_to_var<'tcx>(ident: &Ident) -> String {
-    ident.to_string()
+pub(crate) fn foreign_param_to_var<'tcx>(ident: &Ident) -> VarIdent {
+    str_unique_var(ident.as_str())
 }
 
 pub(crate) fn local_to_var<'tcx>(
     ident: &Ident,
     local_id: rustc_hir::hir_id::ItemLocalId,
-) -> String {
-    unique_local_name(ident.to_string(), local_id.index())
+) -> VarIdent {
+    Arc::new(VarIdentX(ident.to_string(), Some(local_id.index()), None, vec![]))
 }
 
 pub(crate) fn qpath_to_ident<'tcx>(
     tcx: TyCtxt<'tcx>,
     qpath: &QPath<'tcx>,
-) -> Option<vir::ast::Ident> {
+) -> Option<vir::ast::VarIdent> {
     use rustc_hir::def::Res;
     use rustc_hir::{BindingAnnotation, Node, Pat, PatKind};
     if let QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. }) = qpath {
@@ -183,7 +183,7 @@ pub(crate) fn qpath_to_ident<'tcx>(
             ..
         }) = tcx.hir().get(*id)
         {
-            Some(Arc::new(local_to_var(x, hir_id.local_id)))
+            Some(local_to_var(x, hir_id.local_id))
         } else {
             None
         }
@@ -462,7 +462,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
         }
         TyKind::Param(param) => {
-            (Arc::new(TypX::TypParam(Arc::new(param_ty_to_vir_name(param)))), false)
+            (Arc::new(TypX::TypParam(str_unique_var(&param_ty_to_vir_name(param)))), false)
         }
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
@@ -760,7 +760,9 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
         _ => *cnst,
     };
     match cnst.kind() {
-        ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
+        ConstKind::Param(param) => {
+            Ok(Arc::new(TypX::TypParam(str_unique_var(&param.name.to_string()))))
+        }
         ConstKind::Value(ValTree::Leaf(i)) => {
             let c = num_bigint::BigInt::from(i.assert_bits(i.size()));
             Ok(Arc::new(TypX::ConstInt(c)))
@@ -1091,7 +1093,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
         })
         .collect();
 
-    let mut typ_params: Vec<(vir::ast::Ident, vir::ast::AcceptRecursiveType)> = Vec::new();
+    let mut typ_params: Vec<(VarIdent, vir::ast::AcceptRecursiveType)> = Vec::new();
 
     // Process all trait bounds.
     let predicates = tcx.predicates_of(def_id);
@@ -1189,7 +1191,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
             GenericParamDefKind::Const { .. }
             | GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {
                 // trait/function bounds
-                typ_params.push((Arc::new(param_name), accept_rec));
+                typ_params.push((str_unique_var(&param_name), accept_rec));
             }
             _ => {
                 unsupported_err!(*span, "this kind of generic param");
@@ -1208,7 +1210,7 @@ pub(crate) fn check_generics_bounds_fun<'tcx>(
     generics: &'tcx Generics<'tcx>,
     def_id: DefId,
     diagnostics: Option<&mut Vec<vir::ast::VirErrAs>>,
-) -> Result<(vir::ast::Idents, vir::ast::GenericBounds), VirErr> {
+) -> Result<(VarIdents, vir::ast::GenericBounds), VirErr> {
     let (typ_params, typ_bounds) =
         check_generics_bounds(tcx, verus_items, generics, false, def_id, None, diagnostics)?;
     let typ_params = typ_params.iter().map(|(x, _)| x.clone()).collect();

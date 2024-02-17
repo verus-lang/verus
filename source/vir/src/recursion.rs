@@ -1,9 +1,9 @@
 use crate::ast::{
     AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
-use crate::ast_util::typ_to_diagnostic_str;
+use crate::ast_util::{ident_var_binder, str_unique_var, typ_to_diagnostic_str, LowerUniqueVar};
 use crate::context::Ctx;
 use crate::def::{
     decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
@@ -15,14 +15,13 @@ use crate::messages::{error, Span};
 use crate::scc::Graph;
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
-    UniqueIdent,
+    UniqueVarIdent,
 };
 use crate::sst_to_air::PostConditionKind;
 use crate::sst_to_air::PostConditionSst;
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
-use air::ast::Binder;
-use air::ast_util::{ident_binder, str_ident, str_typ};
+use air::ast_util::str_typ;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -160,12 +159,12 @@ fn check_decrease_call(
     // check_decrease(let params = args in decreases_exp, decreases_at_entry)
     let params = &function.x.params;
     assert!(params.len() == args.len());
-    let binders: Vec<Binder<Exp>> = params
+    let binders: Vec<VarBinder<Exp>> = params
         .iter()
         .zip(args.iter())
-        .map(|(param, arg)| ident_binder(&suffix_rename(&param.x.name), &arg.clone()))
+        .map(|(param, arg)| ident_var_binder(&suffix_rename(&param.x.name), &arg.clone()))
         .collect();
-    let renames: HashMap<UniqueIdent, UniqueIdent> = params
+    let renames: HashMap<UniqueVarIdent, UniqueVarIdent> = params
         .iter()
         .map(|param| (unique_local(&param.x.name), unique_bound(&suffix_rename(&param.x.name))))
         .collect();
@@ -253,7 +252,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
             if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = ExpX::Var(unique_local(&str_ident(FUEL_PARAM)));
+            let varx = ExpX::Var(unique_local(&&str_unique_var(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));
@@ -451,7 +450,7 @@ pub(crate) fn expand_call_graph(
         if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
             if crate::recursive_types::suppress_bound_in_trait_decl(
                 &trait_path,
-                &function.x.typ_params,
+                &function.x.typ_params.lower(),
                 bound,
             ) {
                 continue;

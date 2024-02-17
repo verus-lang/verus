@@ -1,16 +1,18 @@
 use crate::ast::{
     Fun, Function, FunctionKind, Ident, Idents, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
-    SpannedTyped, Typ, TypX, Typs, VirErr,
+    SpannedTyped, Typ, TypX, Typs, VarBinder, VarBinderX, VarIdent, VarIdents, VirErr,
 };
-use crate::ast_util::QUANT_FORALL;
+use crate::ast_util::{
+    str_unique_var, unique_var_from_ident, unique_vars_from_idents, LowerUniqueVar, QUANT_FORALL,
+};
 use crate::ast_visitor;
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_open_inv,
     prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name, suffix_global_id,
-    suffix_local_stmt_id, suffix_typ_param_id, suffix_typ_param_ids, unique_local,
-    CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
-    SUCC, THIS_PRE_FAILED, ZERO,
+    suffix_local_stmt_id, suffix_local_stmt_var, suffix_typ_param_var, suffix_typ_param_vars,
+    unique_local, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL,
+    FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
@@ -23,8 +25,8 @@ use crate::sst_util::{subst_exp, subst_stm};
 use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
 use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
-    Trigger, Triggers,
+    BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
+    Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, int_typ, mk_and, mk_bind_expr, mk_eq,
@@ -35,7 +37,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct SstInline {
-    pub(crate) typ_params: Idents,
+    pub(crate) typ_params: VarIdents,
     pub do_inline: bool,
 }
 use crate::sst_to_air::PostConditionKind;
@@ -53,22 +55,22 @@ pub type SstMap = UpdateCell<HashMap<Fun, SstInfo>>;
 pub(crate) fn func_bind_trig(
     ctx: &Ctx,
     name: String,
-    typ_params: &Idents,
+    typ_params: &VarIdents,
     params: &Pars,
     trig_exprs: &Vec<Expr>,
     add_fuel: bool,
 ) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
     for typ_param in typ_params.iter() {
-        for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
-            binders.push(ident_binder(&x, &str_typ(t)));
+        for (x, t) in crate::def::suffix_typ_param_vars_types(&typ_param) {
+            binders.push(ident_binder(&x.lower(), &str_typ(t)));
         }
     }
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
-            prefix_pre_var(&param.x.name)
+            prefix_pre_var(&param.x.name.lower())
         } else {
-            param.x.name.clone()
+            param.x.name.clone().lower()
         };
         binders.push(ident_binder(&suffix_local_stmt_id(&name), &typ_to_air(ctx, &param.x.typ)));
     }
@@ -85,7 +87,7 @@ pub(crate) fn func_bind_trig(
 pub(crate) fn func_bind(
     ctx: &Ctx,
     name: String,
-    typ_params: &Idents,
+    typ_params: &VarIdents,
     params: &Pars,
     trig_expr: &Expr,
     add_fuel: bool,
@@ -98,9 +100,9 @@ pub(crate) fn func_def_typs_args(typ_args: &Typs, params: &Pars) -> Vec<Expr> {
     let mut f_args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
-            prefix_pre_var(&param.x.name)
+            prefix_pre_var(&param.x.name.lower())
         } else {
-            param.x.name.clone()
+            param.x.name.lower()
         };
         f_args.push(ident_var(&suffix_local_stmt_id(&name)));
     }
@@ -109,7 +111,7 @@ pub(crate) fn func_def_typs_args(typ_args: &Typs, params: &Pars) -> Vec<Expr> {
 
 // arguments for function call f(typ_params, params)
 pub(crate) fn func_def_args(typ_params: &Idents, params: &Pars) -> Vec<Expr> {
-    let typ_args = Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone()))));
+    let typ_args = Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(str_unique_var(x)))));
     func_def_typs_args(&typ_args, params)
 }
 
@@ -127,7 +129,17 @@ fn func_def_quant(
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
     let f_imply = mk_implies(&mk_and(pre), &f_eq);
-    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
+    Ok(mk_bind_expr(
+        &func_bind(
+            ctx,
+            name.to_string(),
+            &unique_vars_from_idents(typ_params),
+            params,
+            &f_app,
+            false,
+        ),
+        &f_imply,
+    ))
 }
 
 fn func_body_to_air(
@@ -311,7 +323,7 @@ fn func_body_to_air(
 
         let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&name)));
         let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&name));
-        let args = func_def_args(&function.x.typ_params, &pars);
+        let args = func_def_args(&function.x.typ_params.lower(), &pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
         let mut args_succ = args.clone();
@@ -349,7 +361,7 @@ fn func_body_to_air(
     let e_forall = func_def_quant(
         ctx,
         &suffix_global_id(&fun_to_air_ident(&name)),
-        &function.x.typ_params,
+        &function.x.typ_params.lower(),
         &typ_args,
         &pars,
         &def_reqs,
@@ -387,7 +399,8 @@ pub fn req_ens_to_air(
         let decl = Arc::new(DeclX::Fun(name.clone(), Arc::new(all_typs), typ));
         commands.push(Arc::new(CommandX::Global(decl)));
 
-        let typ_args = Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone()))));
+        let typ_args =
+            Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(unique_var_from_ident(x)))));
 
         let mut exprs: Vec<Expr> = Vec::new();
         match inherit_from {
@@ -580,7 +593,7 @@ pub fn func_decl_to_air(
             &req_params,
             &vec![],
             &function.x.require,
-            &function.x.typ_params,
+            &function.x.typ_params.lower(),
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
             &msg,
@@ -604,7 +617,7 @@ pub fn func_decl_to_air(
                     &req_params,
                     &vec![],
                     &vec![e.clone()],
-                    &function.x.typ_params,
+                    &function.x.typ_params.lower(),
                     &req_typs,
                     &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
                     &None,
@@ -634,15 +647,19 @@ pub fn func_decl_to_air(
             let ParamX { name, typ, .. } = &function.x.ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             ens_params.push(param_to_par(&function.x.ret, false));
-            if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name))) {
+            if let Some(expr) =
+                typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_var(&name).lower()))
+            {
                 ens_typing_invs.push(expr);
             }
         }
         // typing invariants for synthetic out-params for &mut params
         for param in post_params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
-            if let Some(expr) =
-                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)))
-            {
+            if let Some(expr) = typ_invariant(
+                ctx,
+                &param.x.typ,
+                &ident_var(&suffix_local_stmt_var(&param.x.name).lower()),
+            ) {
                 ens_typing_invs.push(expr);
             }
         }
@@ -664,7 +681,7 @@ pub fn func_decl_to_air(
         &Arc::new(ens_params),
         &ens_typing_invs,
         &function.x.ensure,
-        &function.x.typ_params,
+        &function.x.typ_params.lower(),
         &Arc::new(ens_typs),
         &prefix_ensures(&fun_to_air_ident(&function.x.name)),
         &None,
@@ -693,10 +710,10 @@ pub fn func_decl_to_air(
             // The fndef_axiom shoudld already be a 'forall' statement
             // so we can add them to the existing forall node
 
-            let mut binders: Vec<Binder<Typ>> = Vec::new();
+            let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for name in function.x.typ_params.iter() {
                 let typ = Arc::new(TypX::TypeId);
-                let bind = BinderX { name: name.clone(), a: typ };
+                let bind = VarBinderX { name: name.clone(), a: typ };
                 binders.push(Arc::new(bind));
             }
 
@@ -781,11 +798,11 @@ pub fn func_axioms_to_air(
             let mut f_args: Vec<Expr> = Vec::new();
             let mut f_pre: Vec<Expr> = Vec::new();
             for typ_param in function.x.typ_params.iter() {
-                let ids = suffix_typ_param_ids(&typ_param);
-                f_args.extend(ids.iter().map(|x| ident_var(x)));
+                let ids = suffix_typ_param_vars(&typ_param);
+                f_args.extend(ids.iter().map(|x| ident_var(&x.lower())));
             }
             for param in function.x.params.iter() {
-                let arg = ident_var(&suffix_local_stmt_id(&param.x.name.clone()));
+                let arg = ident_var(&suffix_local_stmt_var(&param.x.name).lower());
                 f_args.push(arg.clone());
                 if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
                     f_pre.push(pre.clone());
@@ -831,12 +848,12 @@ pub fn func_axioms_to_air(
                     req_ens,
                 )?;
                 use crate::triggers::{typ_boxing, TriggerBoxing};
-                let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
-                let mut binders: Vec<Binder<Typ>> = Vec::new();
+                let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
+                let mut binders: Vec<VarBinder<Typ>> = Vec::new();
                 for name in function.x.typ_params.iter() {
-                    vars.push((suffix_typ_param_id(&name), TriggerBoxing::TypeId));
+                    vars.push((suffix_typ_param_var(&name), TriggerBoxing::TypeId));
                     let typ = Arc::new(TypX::TypeId);
-                    let bind = BinderX { name: name.clone(), a: typ };
+                    let bind = VarBinderX { name: name.clone(), a: typ };
                     binders.push(Arc::new(bind));
                 }
                 for param in params.iter() {
@@ -895,7 +912,7 @@ pub fn func_def_to_air(
             for (x, _) in tr.x.typ_params.iter() {
                 typ_params.push(x.clone());
             }
-            let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
+            let mut trait_typ_substs: HashMap<VarIdent, Typ> = HashMap::new();
             assert!(typ_params.len() == trait_typ_args.len());
             for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
                 let t = crate::poly::coerce_typ_to_poly(ctx, t);
@@ -1129,7 +1146,7 @@ pub fn func_def_to_air(
 
 fn map_expr_rename_vars(
     e: &Arc<SpannedTyped<crate::ast::ExprX>>,
-    req_ens_e_rename: &HashMap<Arc<String>, Arc<String>>,
+    req_ens_e_rename: &HashMap<VarIdent, VarIdent>,
 ) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Message> {
     ast_visitor::map_expr_visitor(e, &|expr| {
         use crate::ast::ExprX;

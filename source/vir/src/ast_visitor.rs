@@ -1,8 +1,8 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
-    Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX,
+    Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
     Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs, UnaryOpr,
-    Variant, VirErr,
+    VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::error;
@@ -18,7 +18,7 @@ pub struct ScopeEntry {
     pub init: bool,
 }
 
-pub type VisitorScopeMap = ScopeMap<Ident, ScopeEntry>;
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
 
 impl ScopeEntry {
     fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {

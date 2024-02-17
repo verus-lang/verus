@@ -1,12 +1,12 @@
-use crate::ast::{Typ, UnaryOpr};
+use crate::ast::{Typ, UnaryOpr, VarIdent};
 use crate::def::Spanned;
-use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
+use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueVarIdent};
 use crate::sst_visitor::exp_visitor_check;
 use air::scope_map::ScopeMap;
 use indexmap::{IndexMap, IndexSet};
 use std::sync::Arc;
 
-fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<Arc<String>> {
+fn to_ident_set(input: &IndexSet<UniqueVarIdent>) -> IndexSet<VarIdent> {
     let mut output = IndexSet::new();
     for item in input {
         output.insert(item.name.clone());
@@ -17,9 +17,9 @@ fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<Arc<String>> {
 // Compute:
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
-pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<Arc<String>>>;
+pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<VarIdent>>;
 
-pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
+pub(crate) fn get_loc_var(exp: &Exp) -> UniqueVarIdent {
     match &exp.x {
         ExpX::Loc(x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => get_loc_var(x),
@@ -31,15 +31,15 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
 
 pub(crate) fn stm_assign(
     assign_map: &mut AssignMap,
-    declared: &IndexMap<UniqueIdent, Typ>,
-    assigned: &mut IndexSet<UniqueIdent>,
-    modified: &mut IndexSet<UniqueIdent>,
+    declared: &IndexMap<UniqueVarIdent, Typ>,
+    assigned: &mut IndexSet<UniqueVarIdent>,
+    modified: &mut IndexSet<UniqueVarIdent>,
     stm: &Stm,
 ) -> Stm {
     let result = match &stm.x {
         StmX::Call { args, dest, .. } => {
             if let Some(dest) = dest {
-                let var: UniqueIdent = get_loc_var(&dest.dest);
+                let var: UniqueVarIdent = get_loc_var(&dest.dest);
                 assigned.insert(var.clone());
                 if !dest.is_init {
                     modified.insert(var.clone());
@@ -131,7 +131,7 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
 
             assert!(modified_vars.len() == 0);
-            let mut modified_vars: Vec<UniqueIdent> = Vec::new();
+            let mut modified_vars: Vec<UniqueVarIdent> = Vec::new();
             for x in modified.iter() {
                 if declared.contains_key(x) {
                     modified_vars.push(x.clone());
@@ -141,7 +141,7 @@ pub(crate) fn stm_assign(
             *modified = pre_modified;
 
             assert!(typ_inv_vars.len() == 0);
-            let mut typ_inv_vars: Vec<(UniqueIdent, Typ)> = Vec::new();
+            let mut typ_inv_vars: Vec<(UniqueVarIdent, Typ)> = Vec::new();
             for x in assigned.iter() {
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
@@ -184,9 +184,9 @@ pub(crate) fn stm_assign(
 
 pub(crate) fn stms_assign(
     assign_map: &mut AssignMap,
-    declared: &IndexMap<UniqueIdent, Typ>,
-    assigned: &mut IndexSet<UniqueIdent>,
-    modified: &mut IndexSet<UniqueIdent>,
+    declared: &IndexMap<UniqueVarIdent, Typ>,
+    assigned: &mut IndexSet<UniqueVarIdent>,
+    modified: &mut IndexSet<UniqueVarIdent>,
     stms: &Stms,
 ) -> Stms {
     let stms: Vec<Stm> =

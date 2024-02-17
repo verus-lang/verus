@@ -175,7 +175,7 @@ pub enum TypX {
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
-    TypParam(Ident),
+    TypParam(VarIdent),
     /// Projection such as <D as T<S>>::X or <A as T>::X (SMT-boxed, and can sometimes be unboxed)
     Projection {
         // trait_typ_args[0] is Self type
@@ -422,9 +422,9 @@ pub struct UnwrapParameter {
     // indicates Ghost or Tracked
     pub mode: Mode,
     // dummy name chosen for official Rust parameter name
-    pub outer_name: Ident,
+    pub outer_name: VarIdent,
     // rename the parameter to a different name using a "let" binding
-    pub inner_name: Ident,
+    pub inner_name: VarIdent,
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -439,7 +439,7 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(Ident, Typ)>, Exprs),
+    Ensures(Option<(VarIdent, Typ)>, Exprs),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
@@ -501,7 +501,7 @@ pub enum PatternX {
     Wildcard(bool),
     /// x or mut x
     Var {
-        name: Ident,
+        name: VarIdent,
         mutable: bool,
     },
     /// Note: ast_simplify replaces this with Constructor
@@ -623,6 +623,19 @@ pub enum AutospecUsage {
     Final,
 }
 
+pub type VarIdents = Arc<Vec<VarIdent>>;
+pub type VarIdent = Arc<VarIdentX>;
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
+pub struct VarIdentX(pub String, pub Option<usize>, pub Option<usize>, pub Vec<String>);
+
+pub type VarBinder<A> = Arc<VarBinderX<A>>;
+pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;
+#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
+pub struct VarBinderX<A: Clone> {
+    pub name: VarIdent,
+    pub a: A,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -632,11 +645,11 @@ pub enum ExprX {
     /// Constant
     Const(Constant),
     /// Local variable as a right-hand side
-    Var(Ident),
+    Var(VarIdent),
     /// Local variable as a left-hand side
-    VarLoc(Ident),
+    VarLoc(VarIdent),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
-    VarAt(Ident, VarAt),
+    VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
@@ -665,27 +678,27 @@ pub enum ExprX {
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
-    Quant(Quant, Binders<Typ>, Expr),
+    Quant(Quant, VarBinders<Typ>, Expr),
     /// Specification closure
-    Closure(Binders<Typ>, Expr),
+    Closure(VarBinders<Typ>, Expr),
     /// Executable closure
     ExecClosure {
-        params: Binders<Typ>,
+        params: VarBinders<Typ>,
         body: Expr,
         requires: Exprs,
         ensures: Exprs,
-        ret: Binder<Typ>,
+        ret: VarBinder<Typ>,
         /// The 'external spec' is an Option because it gets filled in during
         /// ast_simplify. It contains the assumptions that surrounding context
         /// can assume about a closure object after it is created.
-        external_spec: Option<(Ident, Expr)>,
+        external_spec: Option<(VarIdent, Expr)>,
     },
     /// Array literal (can also be used for sequence literals in the future)
     ArrayLiteral(Exprs),
     /// Executable function (declared with 'fn' and referred to by name)
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
-    Choose { params: Binders<Typ>, cond: Expr, body: Expr },
+    Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
@@ -702,7 +715,7 @@ pub enum ExprX {
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
     /// Assert-forall or assert-by statement
-    AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
     /// Assertion discharged via computation
@@ -720,7 +733,7 @@ pub enum ExprX {
         invs: LoopInvariants,
     },
     /// Open invariant
-    OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
+    OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
@@ -753,7 +766,7 @@ pub type Param = Arc<Spanned<ParamX>>;
 pub type Params = Arc<Vec<Param>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub struct ParamX {
-    pub name: Ident,
+    pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
     /// An &mut parameter
@@ -761,7 +774,7 @@ pub struct ParamX {
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
     /// We also save a copy of the original wrapped name for lifetime_generate
-    pub unwrapped_info: Option<(Mode, Ident)>,
+    pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
@@ -794,7 +807,7 @@ pub enum AcceptRecursiveType {
     Accept,
 }
 /// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
-pub type TypPositives = Arc<Vec<(Ident, AcceptRecursiveType)>>;
+pub type TypPositives = Arc<Vec<(VarIdent, AcceptRecursiveType)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
@@ -885,7 +898,7 @@ pub struct FunctionX {
     /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
     pub fuel: u32,
     /// Type parameters to generic functions
-    pub typ_params: Idents,
+    pub typ_params: VarIdents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,
     /// Function parameters
@@ -1027,7 +1040,7 @@ pub struct AssocTypeImplX {
     pub name: Ident,
     /// Path of the impl (e.g. "impl2") that contains "type name = typ;"
     pub impl_path: Path,
-    pub typ_params: Idents,
+    pub typ_params: VarIdents,
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,
@@ -1042,7 +1055,7 @@ pub struct TraitImplX {
     /// Path of the impl (e.g. "impl2")
     pub impl_path: Path,
     // typ_params of impl (unrelated to typ_params of trait)
-    pub typ_params: Idents,
+    pub typ_params: VarIdents,
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,

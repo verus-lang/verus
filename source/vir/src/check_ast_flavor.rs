@@ -1,6 +1,6 @@
 use crate::ast::{
-    Expr, ExprX, Function, FunctionX, GenericBoundX, Idents, Krate, KrateX, MaskSpec, Typ, TypX,
-    UnaryOpr,
+    Expr, ExprX, Function, FunctionX, GenericBoundX, Krate, KrateX, MaskSpec, Typ, TypX, UnaryOpr,
+    VarIdents,
 };
 use crate::ast_visitor::{
     expr_visitor_check, expr_visitor_dfs, typ_visitor_check, VisitorControlFlow, VisitorScopeMap,
@@ -19,7 +19,7 @@ fn check_expr_simplified(expr: &Expr, function: &Function) -> Result<(), ()> {
     }
 }
 
-fn check_typ_simplified(typ: &Typ, typ_params: &Idents) -> Result<(), ()> {
+fn check_typ_simplified(typ: &Typ, typ_params: &VarIdents) -> Result<(), ()> {
     match &**typ {
         TypX::Tuple(..) => Err(()),
         TypX::TypParam(id) if !typ_params.contains(id) => Err(()),

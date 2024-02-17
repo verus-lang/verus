@@ -23,7 +23,7 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
-use vir::ast_util::get_field;
+use vir::ast_util::{get_field, LowerUniqueVar};
 use vir::def::{field_ident_from_rust, VERUS_SPEC};
 use vir::messages::AstId;
 
@@ -203,7 +203,7 @@ impl State {
         for (k, v) in self.id_to_name.iter() {
             let sv = v.to_string();
             if s.contains(&sv) {
-                s = s.replace(&sv, vir::def::user_local_name(k));
+                s = s.replace(&sv, crate::lifetime_emit::user_local_name(k));
             }
         }
         for (k, v) in self.datatype_to_name.iter() {
@@ -539,7 +539,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
         PatKind::Binding(ann, hir_id, x, None) => {
-            let id = state.local(local_to_var(x, hir_id.local_id));
+            let id = state.local(&*local_to_var(x, hir_id.local_id));
             let BindingAnnotation(_, mutability) = ann;
             mk_pat(PatternX::Binding(id, mutability.to_owned()))
         }
@@ -1035,7 +1035,7 @@ fn erase_expr<'tcx>(
                         if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                             None
                         } else {
-                            mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
+                            mk_exp(ExpX::Var(state.local(&*local_to_var(&ident, id.local_id))))
                         }
                     }
                     _ => panic!("unsupported"),
@@ -1409,8 +1409,9 @@ fn erase_expr<'tcx>(
             let body = ctxt.tcx.hir().body(*body_id);
             let ps = &body.params;
             for p in ps.iter() {
-                let x =
-                    state.local(crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var"));
+                let pat_var =
+                    crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var").lower();
+                let x = state.local(pat_var.as_str());
                 let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
                 params.push((p.pat.span, x, typ));
             }

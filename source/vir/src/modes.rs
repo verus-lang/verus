@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
-    FunctionKind, Ident, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
-    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
+    FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
+    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -86,7 +86,7 @@ struct Record {
 // Temporary state pushed and popped during mode checking
 struct State {
     // for each variable: (is_mutable, mode)
-    pub(crate) vars: ScopeMap<Ident, (bool, Mode)>,
+    pub(crate) vars: ScopeMap<VarIdent, (bool, Mode)>,
     pub(crate) in_forall_stmt: bool,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
@@ -205,7 +205,7 @@ mod typing {
             assert_eq!(self.internal_state.vars.num_scopes(), 0);
         }
 
-        pub(super) fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
+        pub(super) fn insert(&mut self, _span: &Span, x: &VarIdent, mutable: bool, mode: Mode) {
             self.internal_state
                 .vars
                 .insert(x.clone(), (mutable, mode))
@@ -228,7 +228,7 @@ mod typing {
 use typing::Typing;
 
 impl State {
-    fn get(&self, x: &Ident) -> (bool, Mode) {
+    fn get(&self, x: &VarIdent) -> (bool, Mode) {
         *self.vars.get(x).expect("internal error: missing mode")
     }
 }
@@ -333,7 +333,7 @@ fn add_pattern(
 
 struct PatternBoundDecl {
     span: Span,
-    name: Ident,
+    name: VarIdent,
     mutable: bool,
     mode: Mode,
 }
@@ -412,7 +412,7 @@ fn add_pattern_rec(
                 if d1.mode != d2.mode {
                     let e = error_bare(format!(
                         "variable `{}` has different modes across alternatives separated by `|`",
-                        user_local_name(&d1.name.to_string())
+                        user_local_name(&d1.name)
                     ));
                     let e = e.primary_label(&d1.span, format!("has mode `{}`", d1.mode));
                     let e = e.primary_label(&d2.span, format!("has mode `{}`", d2.mode));

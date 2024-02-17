@@ -2,6 +2,15 @@ use crate::lifetime_ast::*;
 use rustc_ast::Mutability;
 use rustc_span::{BytePos, Span};
 
+pub fn user_local_name(raw_id: &String) -> &str {
+    /* REVIEW */
+    match raw_id.find(vir::def::LOCAL_UNIQUE_ID_SEPARATOR) {
+        /* REVIEW */ None => raw_id,
+        /* REVIEW */ Some(idx) => &raw_id[0..idx],
+        /* REVIEW */
+    }
+}
+
 pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> String {
     match kind {
         IdKind::Trait => format!("T{}_{}", rename_count, raw_id),
@@ -10,14 +19,14 @@ pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> S
         IdKind::TypParam => format!("A{}_{}", rename_count, raw_id),
         IdKind::Lifetime => format!("'a{}_{}", rename_count, raw_id),
         IdKind::Fun => format!("f{}_{}", rename_count, raw_id),
-        IdKind::Local => format!("x{}_{}", rename_count, vir::def::user_local_name(raw_id)),
+        IdKind::Local => format!("x{}_{}", rename_count, user_local_name(raw_id)),
         IdKind::Builtin => raw_id.clone(),
 
         // Numeric fields need to be emitted as numeric fields.
         // Non-numeric fields need to be unique-ified to avoid conflict with method names.
         // Therefore, we only use the rename_count for non-numeric fields.
         IdKind::Field if raw_id.bytes().nth(0).unwrap().is_ascii_digit() => raw_id.clone(),
-        IdKind::Field => format!("y{}_{}", rename_count, vir::def::user_local_name(raw_id)),
+        IdKind::Field => format!("y{}_{}", rename_count, user_local_name(raw_id)),
     }
 }
 

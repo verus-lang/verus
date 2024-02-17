@@ -1,27 +1,27 @@
 use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, Constant, CtorPrintStyle, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder,
+    VarBinderX, VarBinders, VarIdent,
 };
 use crate::ast_util::get_variant;
 use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Ident};
+use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueVarIdent};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
+pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueVarIdent, Typ> {
     free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new())
 }
 
 fn free_vars_exp_scope(
     exp: &Exp,
     scope_map: &mut crate::sst_visitor::VisitorScopeMap,
-) -> HashMap<UniqueIdent, Typ> {
-    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+) -> HashMap<UniqueVarIdent, Typ> {
+    let mut vars: HashMap<UniqueVarIdent, Typ> = HashMap::new();
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
             ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(&x.name) => {
@@ -34,8 +34,8 @@ fn free_vars_exp_scope(
     vars
 }
 
-pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
-    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueVarIdent, Typ> {
+    let mut vars: HashMap<UniqueVarIdent, Typ> = HashMap::new();
     crate::sst_visitor::stm_exp_visitor_dfs::<(), _>(stm, &mut |exp, scope_map| {
         vars.extend(free_vars_exp_scope(exp, scope_map).into_iter());
         crate::sst_visitor::VisitorControlFlow::Recurse
@@ -43,7 +43,7 @@ pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
     vars
 }
 
-fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
+fn subst_typ(typ_substs: &HashMap<VarIdent, Typ>, typ: &Typ) -> Typ {
     crate::ast_visitor::map_typ_visitor(typ, &|t: &Typ| match &**t {
         TypX::TypParam(x) => match typ_substs.get(x) {
             Some(t) => Ok(t.clone()),
@@ -60,7 +60,7 @@ pub fn subst_typ_for_datatype(
     typ: &Typ,
 ) -> Typ {
     assert!(typ_params.len() == args.len());
-    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    let mut typ_substs: HashMap<VarIdent, Typ> = HashMap::new();
     for (typ_param, arg) in typ_params.iter().zip(args.iter()) {
         typ_substs.insert(typ_param.0.clone(), arg.clone());
     }
@@ -69,15 +69,15 @@ pub fn subst_typ_for_datatype(
 
 fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     span: &Span,
-    substs: &mut ScopeMap<UniqueIdent, Exp>,
-    free_vars: &mut ScopeMap<UniqueIdent, ()>,
-    bs: &Binders<A>,
+    substs: &mut ScopeMap<UniqueVarIdent, Exp>,
+    free_vars: &mut ScopeMap<UniqueVarIdent, ()>,
+    bs: &VarBinders<A>,
     fa: FA,
     f_typ: FT,
-) -> Binders<A> {
+) -> VarBinders<A> {
     substs.push_scope(false);
     free_vars.push_scope(false);
-    let mut binders: Vec<Binder<A>> = Vec::new();
+    let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
         let name = if free_vars.contains_key(&unique) {
@@ -99,15 +99,15 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
         } else {
             b.name.clone()
         };
-        binders.push(Arc::new(BinderX { name, a: fa(&b.a) }));
+        binders.push(Arc::new(VarBinderX { name, a: fa(&b.a) }));
     }
     Arc::new(binders)
 }
 
 fn subst_exp_rec(
-    typ_substs: &HashMap<Ident, Typ>,
-    substs: &mut ScopeMap<UniqueIdent, Exp>,
-    free_vars: &mut ScopeMap<UniqueIdent, ()>,
+    typ_substs: &HashMap<VarIdent, Typ>,
+    substs: &mut ScopeMap<UniqueVarIdent, Exp>,
+    free_vars: &mut ScopeMap<UniqueVarIdent, ()>,
     exp: &Exp,
 ) -> Exp {
     let typ = subst_typ(typ_substs, &exp.typ);
@@ -148,8 +148,8 @@ fn subst_exp_rec(
             Some(_) => panic!("cannot substitute for VarAt"),
         },
         ExpX::Bind(bnd, e1) => {
-            let ftrigs = |substs: &mut ScopeMap<UniqueIdent, Exp>,
-                          free_vars: &mut ScopeMap<UniqueIdent, ()>,
+            let ftrigs = |substs: &mut ScopeMap<UniqueVarIdent, Exp>,
+                          free_vars: &mut ScopeMap<UniqueVarIdent, ()>,
                           triggers: &Trigs|
              -> Trigs {
                 let mut trigs: Vec<Trig> = Vec::new();
@@ -164,7 +164,7 @@ fn subst_exp_rec(
             };
             let bndx = match &bnd.x {
                 BndX::Let(bs) => {
-                    let mut binders: Vec<Binder<Exp>> = Vec::new();
+                    let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         binders.push(b.new_a(subst_exp_rec(typ_substs, substs, free_vars, &b.a)));
                     }
@@ -208,16 +208,16 @@ fn subst_exp_rec(
 }
 
 pub(crate) fn subst_exp(
-    typ_substs: &HashMap<Ident, Typ>,
-    substs: &HashMap<UniqueIdent, Exp>,
+    typ_substs: &HashMap<VarIdent, Typ>,
+    substs: &HashMap<UniqueVarIdent, Exp>,
     exp: &Exp,
 ) -> Exp {
     if typ_substs.len() == 0 && substs.len() == 0 {
         return exp.clone();
     }
 
-    let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
-    let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
+    let mut scope_substs: ScopeMap<UniqueVarIdent, Exp> = ScopeMap::new();
+    let mut free_vars: ScopeMap<UniqueVarIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(false);
     for (x, v) in substs {
@@ -235,8 +235,8 @@ pub(crate) fn subst_exp(
 }
 
 pub(crate) fn subst_stm(
-    typ_substs: &HashMap<Ident, Typ>,
-    substs: &HashMap<UniqueIdent, Exp>,
+    typ_substs: &HashMap<VarIdent, Typ>,
+    substs: &HashMap<UniqueVarIdent, Exp>,
     stm: &Stm,
 ) -> Stm {
     let stm = crate::sst_visitor::map_stm_visitor(&stm, &mut |stm| {

@@ -1,7 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, LoopInvariantKind, Mode, PatternX,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
+    VarBinders, VarIdent, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
@@ -12,7 +13,7 @@ use crate::interpreter::eval_expr;
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
-    Pars, Stm, StmX, UniqueIdent,
+    Pars, Stm, StmX, UniqueVarIdent,
 };
 use crate::sst_util::{
     bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_conjoin, sst_equal,
@@ -22,7 +23,7 @@ use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
 use crate::util::{vec_map, vec_map_result};
 use crate::visitor::VisitorControlFlow;
-use air::ast::{Binder, BinderX, Binders};
+use air::ast::{Binder, BinderX};
 use air::messages::Diagnostics;
 use air::scope_map::ScopeMap;
 use indexmap::IndexSet;
@@ -36,7 +37,7 @@ pub(crate) struct ClosureState {
     ensures: Exps,
     // recommends to check the well-formedness of the ensures clauses themselves
     ensures_checks: crate::sst::Stms,
-    dest: UniqueIdent,
+    dest: UniqueVarIdent,
 }
 
 pub(crate) struct State<'a> {
@@ -52,12 +53,12 @@ pub(crate) struct State<'a> {
     // Rename local variables when needed, using unique integers, to avoid collisions.
     // This is only needed for statement-level declarations (Some(unique_int)),
     // not for expression-level bindings (None).
-    rename_map: ScopeMap<Ident, Option<u64>>,
+    rename_map: ScopeMap<VarIdent, Option<u64>>,
     // Next integer to use for renaming each variable
-    rename_counters: HashMap<Ident, u64>,
+    rename_counters: HashMap<VarIdent, u64>,
     // Variables that we considered renaming, but ended up being Bind variables
     // rather than LocalDecls
-    dont_rename: HashSet<UniqueIdent>,
+    dont_rename: HashSet<UniqueVarIdent>,
     // If > 0, we're making a second pass over AST to generate just a pure Exp, with no Stms.
     // Rationale: in the first pass, when checking preconditions of spec functions
     // (e.g. recommends), we may have to generate Stms for the precondition checking,
@@ -141,9 +142,9 @@ impl<'a> State<'a> {
         }
     }
 
-    fn next_temp(&mut self, span: &Span, typ: &Typ) -> (Ident, Exp) {
+    fn next_temp(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
         self.next_var += 1;
-        let x = crate::def::prefix_temp_var(self.next_var);
+        let x = crate::def::new_temp_var(self.next_var);
         (x.clone(), SpannedTyped::new(span, typ, ExpX::Var(unique_local(&x))))
     }
 
@@ -155,36 +156,36 @@ impl<'a> State<'a> {
         self.rename_map.pop_scope();
     }
 
-    pub(crate) fn get_var_unique_id(&self, x: &Ident) -> UniqueIdent {
+    pub(crate) fn get_var_unique_id(&self, x: &VarIdent) -> UniqueVarIdent {
         match self.rename_map.get(x) {
             None => panic!("internal error: variable not in rename_map: {}", x),
-            Some(id) => UniqueIdent { name: x.clone(), local: *id },
+            Some(id) => UniqueVarIdent { name: x.clone(), local: *id },
         }
     }
 
-    pub(crate) fn new_statement_var(&mut self, x: &Ident) {
+    pub(crate) fn new_statement_var(&mut self, x: &VarIdent) {
         self.rename_counters.insert(x.clone(), 0);
         self.rename_map.insert(x.clone(), Some(0)).expect("new var");
     }
 
-    pub(crate) fn declare_expression_var(&mut self, x: &Ident) {
+    pub(crate) fn declare_expression_var(&mut self, x: &VarIdent) {
         self.rename_map.insert(x.clone(), None).expect("declare var");
     }
 
-    pub(crate) fn alloc_unique_var(&mut self, x: &Ident) -> UniqueIdent {
+    pub(crate) fn alloc_unique_var(&mut self, x: &VarIdent) -> UniqueVarIdent {
         let i = match self.rename_counters.get(x).copied() {
             None => 0,
             Some(i) => i + 1,
         };
         self.rename_counters.insert(x.clone(), i);
-        UniqueIdent { name: x.clone(), local: Some(i) }
+        UniqueVarIdent { name: x.clone(), local: Some(i) }
     }
 
-    pub(crate) fn insert_unique_var(&mut self, x: &UniqueIdent) {
+    pub(crate) fn insert_unique_var(&mut self, x: &UniqueVarIdent) {
         self.rename_map.insert(x.name.clone(), x.local).expect("declare var");
     }
 
-    pub(crate) fn declare_binders<A: Clone>(&mut self, binders: &Binders<A>) {
+    pub(crate) fn declare_binders<A: Clone>(&mut self, binders: &VarBinders<A>) {
         for binder in binders.iter() {
             self.declare_expression_var(&binder.name);
         }
@@ -192,11 +193,11 @@ impl<'a> State<'a> {
 
     pub(crate) fn declare_new_var(
         &mut self,
-        ident: &Ident,
+        ident: &VarIdent,
         typ: &Typ,
         mutable: bool,
         may_need_rename: bool,
-    ) -> UniqueIdent {
+    ) -> UniqueVarIdent {
         let unique_ident = if may_need_rename {
             let id = self.alloc_unique_var(ident);
             self.insert_unique_var(&id);
@@ -240,8 +241,8 @@ impl<'a> State<'a> {
                 {
                     if inline.do_inline {
                         let typ_params = &inline.typ_params;
-                        let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                        let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
+                        let mut typ_substs: HashMap<VarIdent, Typ> = HashMap::new();
+                        let mut substs: HashMap<UniqueVarIdent, Exp> = HashMap::new();
                         assert!(typ_params.len() == typs.len());
                         for (name, typ) in typ_params.iter().zip(typs.iter()) {
                             assert!(!typ_substs.contains_key(name));
@@ -265,11 +266,11 @@ impl<'a> State<'a> {
             ExpX::Bind(bnd, body) => match &bnd.x {
                 BndX::Quant(quant, bs, trigs) => {
                     assert!(trigs.len() == 0);
-                    let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
+                    let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
                     for b in bs.iter() {
                         match &*b.a {
                             TypX::TypeId => vars.push((
-                                crate::def::suffix_typ_param_id(&b.name),
+                                crate::def::suffix_typ_param_var(&b.name),
                                 TriggerBoxing::TypeId,
                             )),
                             _ => vars.push((b.name.clone(), typ_boxing(ctx, &b.a))),
@@ -319,7 +320,7 @@ impl<'a> State<'a> {
         stm: &Stm,
         ensures: &Vec<Exp>,
         ens_pars: &Pars,
-        dest: Option<UniqueIdent>,
+        dest: Option<UniqueVarIdent>,
     ) -> Result<Stm, VirErr> {
         let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))?;
         if ctx.expand_flag {
@@ -383,11 +384,11 @@ impl<'a> State<'a> {
     }
 }
 
-pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
+pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueVarIdent) -> Exp {
     SpannedTyped::new(span, typ, ExpX::VarLoc(lhs))
 }
 
-fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
+fn init_var(span: &Span, x: &UniqueVarIdent, exp: &Exp) -> Stm {
     Spanned::new(
         span.clone(),
         StmX::Assign {
@@ -425,7 +426,7 @@ pub fn assume_false(span: &Span) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
-pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
+pub(crate) fn assume_has_typ(x: &UniqueVarIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
     let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
@@ -595,7 +596,7 @@ pub(crate) fn check_pure_expr(
 pub(crate) fn check_pure_expr_bind(
     ctx: &Ctx,
     state: &mut State,
-    binders: &Binders<Typ>,
+    binders: &VarBinders<Typ>,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
     if state.checking_spec_preconditions(ctx) {
@@ -1430,8 +1431,8 @@ pub(crate) fn expr_to_stm_opt(
                     exp = SpannedTyped::new(&body.span, &boxed_typ, boxx);
                 }
             }
-            let mut let_box_binds: Vec<Binder<Exp>> = Vec::new();
-            let mut boxed_params: Vec<Binder<Typ>> = Vec::new();
+            let mut let_box_binds: Vec<VarBinder<Exp>> = Vec::new();
+            let mut boxed_params: Vec<VarBinder<Typ>> = Vec::new();
             for p in params.iter() {
                 match &*p.a {
                     TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. } => {
@@ -2235,7 +2236,7 @@ fn stmt_to_stm(
             // For a pure expression (i.e., one with no SST statements), return a binder
             let bnd = match &exp {
                 Some(exp) if stms.len() == 0 => {
-                    let binder = BinderX { name: name.clone(), a: exp.clone() };
+                    let binder = VarBinderX { name: name.clone(), a: exp.clone() };
                     let bnd = BndX::Let(Arc::new(vec![Arc::new(binder)]));
                     Some(Spanned::new(stmt.span.clone(), bnd))
                 }
@@ -2261,12 +2262,12 @@ fn stmt_to_stm(
 fn exec_closure_body_stms(
     ctx: &Ctx,
     state: &mut State,
-    params: &Binders<Typ>,
-    ret: &Binder<Typ>,
+    params: &VarBinders<Typ>,
+    ret: &VarBinder<Typ>,
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
-) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
+) -> Result<(Vec<Stm>, Arc<Vec<(UniqueVarIdent, Typ)>>), VirErr> {
     let mut typ_inv_vars = vec![];
 
     state.push_scope();

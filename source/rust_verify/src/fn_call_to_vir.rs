@@ -16,7 +16,6 @@ use crate::verus_items::{
     SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
-use air::ast::{Binder, BinderX};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
@@ -30,7 +29,7 @@ use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
     ChainedOp, ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
     IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VariantCheck, VirErr,
+    UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::field_ident_from_rust;
@@ -589,7 +588,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         return Ok(bctx.spanned_typed_new(
                             expr.span,
                             &typ,
-                            ExprX::VarAt(Arc::new(pat_to_var(pat)?), VarAt::Pre),
+                            ExprX::VarAt(pat_to_var(pat)?, VarAt::Pre),
                         ));
                     }
                 }
@@ -1430,14 +1429,14 @@ fn extract_ensures<'tcx>(
         ExprKind::Closure(closure) => {
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
             let body = tcx.hir().body(closure.body);
-            let mut xs: Vec<String> = Vec::new();
+            let mut xs: Vec<VarIdent> = Vec::new();
             for param in body.params.iter() {
                 xs.push(pat_to_var(param.pat)?);
             }
             let expr = &body.value;
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
             if typs.len() == 1 && xs.len() == 1 {
-                let id_typ = Some((Arc::new(xs[0].clone()), typs[0].clone()));
+                let id_typ = Some((xs[0].clone(), typs[0].clone()));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
             } else if typs.len() == 0 && xs.len() == 0 {
                 Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
@@ -1465,9 +1464,9 @@ fn extract_quant<'tcx>(
             let body = tcx.hir().body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
-            let mut binders: Vec<Binder<Typ>> = Vec::new();
+            let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
-                binders.push(Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)?), a: t }));
+                binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
@@ -1508,9 +1507,9 @@ fn extract_assert_forall_by<'tcx>(
             let body = tcx.hir().body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
-            let mut binders: Vec<Binder<Typ>> = Vec::new();
+            let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
-                binders.push(Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)?), a: t }));
+                binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
@@ -1555,17 +1554,17 @@ fn extract_choose<'tcx>(
     match &expr.kind {
         ExprKind::Closure(closure) => {
             let closure_body = tcx.hir().body(closure.body);
-            let mut params: Vec<Binder<Typ>> = Vec::new();
+            let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
             let typs = closure_param_typs(bctx, expr)?;
             assert!(closure_body.params.len() == typs.len());
             for (x, typ) in closure_body.params.iter().zip(typs) {
-                let name = Arc::new(pat_to_var(x.pat)?);
+                let name = pat_to_var(x.pat)?;
                 let vir_expr = bctx.spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                 erasure_info.hir_vir_ids.push((x.pat.hir_id, vir_expr.span.id));
                 vars.push(vir_expr);
-                params.push(Arc::new(BinderX { name, a: typ }));
+                params.push(Arc::new(VarBinderX { name, a: typ }));
             }
             let typs = vec_map(&params, |p| p.a.clone());
             let cond_expr = &closure_body.value;

@@ -2,18 +2,24 @@
 
 use crate::ast::Quant;
 use crate::ast::Typs;
+use crate::ast::VarBinder;
+use crate::ast::VarBinderX;
+use crate::ast::VarBinders;
+use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
-    FieldOpr, Fun, Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp,
-    Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr,
-    Variant, VariantCheck, VirErr, Visibility,
+    FieldOpr, Fun, Function, FunctionKind, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path,
+    Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant,
+    VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
 use crate::ast_util::{conjoin, disjoin, if_then_else, typ_args_for_datatype_typ, wrap_in_trigger};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
+use crate::def::dummy_param_name;
+use crate::def::is_dummy_param_name;
 use crate::def::{
     positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
 };
@@ -21,8 +27,6 @@ use crate::messages::error;
 use crate::messages::Span;
 use crate::sst_util::subst_typ_for_datatype;
 use crate::util::vec_map_result;
-use air::ast::BinderX;
-use air::ast::Binders;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -53,9 +57,9 @@ impl State {
         self.next_var = 0;
     }
 
-    fn next_temp(&mut self) -> Ident {
+    fn next_temp(&mut self) -> VarIdent {
         self.next_var += 1;
-        crate::def::prefix_simplify_temp_var(self.next_var)
+        crate::def::simplify_temp_var(self.next_var)
     }
 
     fn tuple_type_name(&mut self, arity: usize) -> Path {
@@ -75,7 +79,7 @@ impl State {
 
 struct LocalCtxt {
     span: Span,
-    typ_params: Vec<Ident>,
+    typ_params: Vec<VarIdent>,
 }
 
 fn is_small_expr(expr: &Expr) -> bool {
@@ -139,7 +143,7 @@ fn pattern_to_exprs(
 }
 
 struct PatternBoundDecl {
-    name: Ident,
+    name: VarIdent,
     mutable: bool,
     expr: Expr,
 }
@@ -591,7 +595,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             Ok(typ.clone())
         }
         TypX::TypParam(x) => {
-            if !local.typ_params.contains(x) {
+            if !local.typ_params.contains(&x) {
                 return Err(error(
                     &local.span,
                     format!("type parameter {} used before being declared", x),
@@ -606,7 +610,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
 // TODO: a lot of this closure stuff could get its own file
 // rename to apply to all fn types, not just closure types
 
-fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &Binders<Typ>) -> Typs {
+fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &VarBinders<Typ>) -> Typs {
     let path = state.tuple_type_name(params.len());
 
     let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
@@ -618,7 +622,7 @@ fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &Binder
 fn mk_closure_req_call(
     state: &mut State,
     span: &Span,
-    params: &Binders<Typ>,
+    params: &VarBinders<Typ>,
     fn_val: &Expr,
     arg_tuple: &Expr,
 ) -> Expr {
@@ -640,7 +644,7 @@ fn mk_closure_req_call(
 fn mk_closure_ens_call(
     state: &mut State,
     span: &Span,
-    params: &Binders<Typ>,
+    params: &VarBinders<Typ>,
     fn_val: &Expr,
     arg_tuple: &Expr,
     ret_arg: &Expr,
@@ -664,7 +668,7 @@ fn exec_closure_spec_requires(
     state: &mut State,
     span: &Span,
     closure_var: &Expr,
-    params: &Binders<Typ>,
+    params: &VarBinders<Typ>,
     requires: &Exprs,
 ) -> Result<Expr, VirErr> {
     // For requires:
@@ -713,7 +717,7 @@ fn exec_closure_spec_requires(
     );
 
     let forall = Quant { quant: air::ast::Quant::Forall };
-    let binders = Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ })]);
+    let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
     let req_forall =
         SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, req_quant_body));
 
@@ -724,8 +728,8 @@ fn exec_closure_spec_ensures(
     state: &mut State,
     span: &Span,
     closure_var: &Expr,
-    params: &Binders<Typ>,
-    ret: &Binder<Typ>,
+    params: &VarBinders<Typ>,
+    ret: &VarBinder<Typ>,
     ensures: &Exprs,
 ) -> Result<Expr, VirErr> {
     // For ensures:
@@ -743,8 +747,8 @@ fn exec_closure_spec_ensures(
     let tuple_ident = state.next_temp();
     let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
 
-    let ret_ident = &ret.name;
-    let ret_var = SpannedTyped::new(span, &ret.a, ExprX::Var(ret_ident.clone()));
+    let ret_ident = ret.clone();
+    let ret_var = SpannedTyped::new(span, &ret.a, ExprX::Var(ret_ident.name.clone()));
 
     let enss = conjoin(span, ensures);
 
@@ -780,7 +784,7 @@ fn exec_closure_spec_ensures(
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =
-        Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ }), ret.clone()]);
+        Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ }), ret.clone()]);
     let ens_forall =
         SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, ens_quant_body));
 
@@ -791,8 +795,8 @@ fn exec_closure_spec(
     state: &mut State,
     span: &Span,
     closure_var: &Expr,
-    params: &Binders<Typ>,
-    ret: &Binder<Typ>,
+    params: &VarBinders<Typ>,
+    ret: &VarBinder<Typ>,
     requires: &Exprs,
     ensures: &Exprs,
 ) -> Result<Expr, VirErr> {
@@ -827,8 +831,8 @@ fn add_fndef_axioms_to_function(
         .x
         .params
         .iter()
-        .filter(|p| &**p.x.name != crate::def::DUMMY_PARAM)
-        .map(|p| Arc::new(BinderX { name: p.x.name.clone(), a: p.x.typ.clone() }))
+        .filter(|p| !is_dummy_param_name(&p.x.name))
+        .map(|p| Arc::new(VarBinderX { name: p.x.name.clone(), a: p.x.typ.clone() }))
         .collect();
     let params = Arc::new(params);
 
@@ -869,7 +873,7 @@ fn add_fndef_axioms_to_function(
     }
 
     if function.x.ensure.len() > 0 {
-        let ret = Arc::new(BinderX {
+        let ret = Arc::new(VarBinderX {
             name: function.x.ret.x.name.clone(),
             a: function.x.ret.x.typ.clone(),
         });
@@ -912,7 +916,7 @@ fn simplify_function(
         && !is_trait_impl
     {
         let paramx = crate::ast::ParamX {
-            name: Arc::new(crate::def::DUMMY_PARAM.to_string()),
+            name: dummy_param_name(),
             typ: Arc::new(TypX::Int(IntRange::Int)),
             mode: Mode::Spec,
             is_mut: false,
