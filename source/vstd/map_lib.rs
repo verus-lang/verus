@@ -339,13 +339,16 @@ pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
         let m1 = m.remove(k);
         assert(m.contains_key(k));
         assert(m.contains_value(v));
-        assert_sets_equal!(m.values() == m1.values().insert(v), v0 => {
-            if m1.values().insert(v).contains(v0) {
-                if v0 == v {
-                    assert(m.contains_value(v));
-                    assert(m.values().contains(v0));
-                } else {
-                    assert(m.values().contains(v0));
+        let mv = m.values();
+        let m1v = m1.values();
+        assert_sets_equal!(mv == m1v.insert(v), v0 => {
+            if m.contains_value(v0) {
+                if v0 != v {
+                    let k0 = choose|k0| #![auto] m.contains_key(k0) && m[k0] == v0;
+                    assert(k0 != k);
+                    assert(m1.contains_key(k0));
+                    assert(mv.contains(v0) ==> m1v.insert(v).contains(v0));
+                    assert(mv.contains(v0) <== m1v.insert(v).contains(v0));
                 }
             }
         });
