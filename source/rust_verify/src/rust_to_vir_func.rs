@@ -732,6 +732,7 @@ pub(crate) fn check_item_fn<'tcx>(
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
+        external_body: vattrs.external_body,
         broadcast_forall: vattrs.broadcast_forall,
         bit_vector: vattrs.bit_vector,
         autospec,
