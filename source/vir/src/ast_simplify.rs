@@ -1147,6 +1147,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.no_span.clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
+        ctx.func_call_graph_log.clone(),
+        true,
     )?;
     Ok(krate)
 }
