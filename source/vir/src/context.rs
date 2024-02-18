@@ -2,6 +2,7 @@ use crate::ast::{
     ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, ImplPath, IntRange, Krate, Mode,
     Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
+use crate::ast_util::path_as_friendly_rust_name_raw;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::messages::{error, Span};
@@ -46,6 +47,7 @@ pub struct GlobalCtx {
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    pub(crate) func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
     pub arch: crate::ast::ArchWordBits,
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
@@ -194,6 +196,13 @@ fn datatypes_invs(
     has_inv
 }
 
+pub struct FuncCallGraphLogFiles {
+    pub all_initial: File,
+    pub all_simplified: File,
+    pub nostd_initial: File,
+    pub nostd_simplified: File,
+}
+
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
@@ -201,6 +210,8 @@ impl GlobalCtx {
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+        func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        after_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -304,6 +315,64 @@ impl GlobalCtx {
 
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
+
+        if let Some(FuncCallGraphLogFiles {
+            all_initial,
+            all_simplified,
+            nostd_initial,
+            nostd_simplified,
+        }) = &mut *func_call_graph_log.lock().expect("cannot lock call graph log file")
+        {
+            fn node_options(n: &Node) -> String {
+                fn labelize(name: &str, s: String) -> String {
+                    let label = s.replace("\"", "\\\"");
+                    format!("margin=0.1, label=\"{}\\n{}\"", name, label)
+                }
+                #[rustfmt::skip] // v to work around attributes being experimental on expressions
+                let v = match n {
+                    Node::Fun(fun) =>                         labelize("Fun", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"cds\"",
+                    Node::Datatype(path) =>                   labelize("Datatype", path_as_friendly_rust_name_raw(path)) + ", shape=\"folder\"",
+                    Node::Trait(path) =>                      labelize("Trait", path_as_friendly_rust_name_raw(path)) + ", shape=\"tab\"",
+                    Node::TraitImpl(impl_path) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
+                    Node::SpanInfo { span_infos_index: _, text: _ } => {
+                        format!("shape=\"point\"")
+                    }
+                };
+                v
+            }
+
+            fn nostd_filter(n: &Node) -> (bool, bool) {
+                fn is_not_std(path: &Path) -> bool {
+                    match path.krate.as_ref().map(|x| x.as_str()) {
+                        Some("vstd") | Some("core") | Some("alloc") => false,
+                        _ => true,
+                    }
+                }
+                let render = match n {
+                    Node::Fun(fun) => is_not_std(&fun.path),
+                    Node::Datatype(path) => is_not_std(path),
+                    Node::Trait(path) => is_not_std(path),
+                    Node::TraitImpl(ImplPath::TraitImplPath(path)) => is_not_std(path),
+                    Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => is_not_std(&fun.path),
+                    Node::SpanInfo { .. } => true,
+                };
+                (render, render && !matches!(n, Node::SpanInfo { .. }))
+            }
+
+            if !after_simplify {
+                func_call_graph.to_dot(all_initial, |_| (true, true), node_options);
+                func_call_graph.to_dot(nostd_initial, nostd_filter, node_options);
+            } else {
+                func_call_graph.to_dot(all_simplified, |_| (true, true), node_options);
+                func_call_graph.to_dot(nostd_simplified, nostd_filter, node_options);
+            }
+        }
+
         for f in &krate.functions {
             let f_node = Node::Fun(f.x.name.clone());
             if f.x.attrs.is_decrease_by {
@@ -346,6 +415,7 @@ impl GlobalCtx {
             arch: krate.arch.word_bits,
             crate_name,
             vstd_crate_name,
+            func_call_graph_log,
         })
     }
 
@@ -369,6 +439,7 @@ impl GlobalCtx {
             arch: self.arch,
             crate_name: self.crate_name.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
+            func_call_graph_log: self.func_call_graph_log.clone(),
         }
     }
 

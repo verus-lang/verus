@@ -29,7 +29,7 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use vir::context::GlobalCtx;
+use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use vir::ast::{Fun, Krate, VirErr};
@@ -1697,12 +1697,27 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
+        let call_graph_log = if self.args.log_all || self.args.log_args.log_call_graph {
+            #[rustfmt::skip] // r to work around attributes being experimental on expressions
+            let r = Some(FuncCallGraphLogFiles {
+                all_initial:      self.create_log_file(None, crate::config::CALL_GRAPH_FILE_SUFFIX_FULL_INITIAL)?,
+                all_simplified:   self.create_log_file(None, crate::config::CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED)?,
+                nostd_initial:    self.create_log_file(None, crate::config::CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL)?,
+                nostd_simplified: self.create_log_file(None, crate::config::CALL_GRAPH_FILE_SUFFIX_NOSTD_SIMPLIFIED)?,
+            });
+            r
+        } else {
+            None
+        };
+
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
             Arc::new(self.crate_name.clone().expect("crate_name")),
             air_no_span.clone(),
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
+            Arc::new(std::sync::Mutex::new(call_graph_log)),
+            false,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
