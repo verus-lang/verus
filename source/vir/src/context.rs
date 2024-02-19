@@ -81,7 +81,7 @@ pub struct Ctx {
     pub func_map: HashMap<Fun, Function>,
     // Ensure a unique identifier for each quantifier in a given function
     pub quantifier_count: Cell<u64>,
-    pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
+    pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub fun: Option<FunctionCtx>,
@@ -461,7 +461,7 @@ impl Ctx {
             datatypes_invs(&module, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
-        let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
+        let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
             functions.push(function.clone());

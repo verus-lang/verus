@@ -510,6 +510,7 @@ pub(crate) fn expand_call_graph(
                     call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
                 }
             }
+            ExprX::StaticVar(fun) => call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone())),
             _ => {}
         }
         Ok(())
