@@ -903,78 +903,96 @@ impl Visitor {
             }
         }
         for item in items.iter_mut() {
-            if let Item::Global(global) = &item {
-                use quote::ToTokens;
-                let Global { attrs: _, global_token: _, inner, semi: _ } = global;
-                let (type_, size_lit, align_lit) = match inner {
-                    syn_verus::GlobalInner::SizeOf(size_of) => {
-                        (&size_of.type_, &size_of.expr_lit, None)
-                    }
-                    syn_verus::GlobalInner::Layout(layout) => {
-                        (&layout.type_, &layout.size.2, layout.align.as_ref().map(|a| &a.3))
-                    }
-                };
-                let span = item.span();
-                let static_assert_size = quote! {
-                    if ::core::mem::size_of::<#type_>() != #size_lit {
-                        panic!("does not have the expected size");
-                    }
-                };
-                let static_assert_align = if let Some(align_lit) = align_lit {
-                    quote! {
-                        if ::core::mem::align_of::<#type_>() != #align_lit {
-                            panic!("does not have the expected alignment");
+            match &item {
+                Item::Global(global) => {
+                    use quote::ToTokens;
+                    let Global { attrs: _, global_token: _, inner, semi: _ } = global;
+                    let (type_, size_lit, align_lit) = match inner {
+                        syn_verus::GlobalInner::SizeOf(size_of) => {
+                            (&size_of.type_, &size_of.expr_lit, None)
                         }
-                    }
-                } else {
-                    quote! {}
-                };
-                if self.erase_ghost.erase() {
-                    *item = Item::Verbatim(quote_spanned! { span => const _: () = {
-                        #static_assert_size
-                        #static_assert_align
-                    }; });
-                } else {
-                    let type_name_escaped = format!("{}", type_.into_token_stream())
-                        .replace(" ", "")
-                        .replace("<", "_LL_")
-                        .replace(">", "_RR_");
-                    if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        let err =
-                            "this type name is not supported (it must only include A-Za-z0-9<>)";
-                        *item = Item::Verbatim(
-                            quote_spanned!(span => const _: () = { compile_error!(#err) };),
-                        );
+                        syn_verus::GlobalInner::Layout(layout) => {
+                            (&layout.type_, &layout.size.2, layout.align.as_ref().map(|a| &a.3))
+                        }
+                    };
+                    let span = item.span();
+                    let static_assert_size = quote! {
+                        if ::core::mem::size_of::<#type_>() != #size_lit {
+                            panic!("does not have the expected size");
+                        }
+                    };
+                    let static_assert_align = if let Some(align_lit) = align_lit {
+                        quote! {
+                            if ::core::mem::align_of::<#type_>() != #align_lit {
+                                panic!("does not have the expected alignment");
+                            }
+                        }
                     } else {
-                        let lemma_ident = format_ident!("VERUS_layout_of_{}", type_name_escaped);
-
-                        let ensures_align = if let Some(align_lit) = align_lit {
-                            quote! { ::vstd::layout::align_of::<#type_>() == #align_lit, }
-                        } else {
-                            quote! {}
-                        };
-
-                        *item = Item::Verbatim(quote_spanned! { span =>
-                        #[verus::internal(size_of)] const _: () = {
-                            ::builtin::global_size_of::<#type_>(#size_lit);
-
+                        quote! {}
+                    };
+                    if self.erase_ghost.erase() {
+                        *item = Item::Verbatim(quote_spanned! { span => const _: () = {
                             #static_assert_size
                             #static_assert_align
-                        };
+                        }; });
+                    } else {
+                        let type_name_escaped = format!("{}", type_.into_token_stream())
+                            .replace(" ", "")
+                            .replace("<", "_LL_")
+                            .replace(">", "_RR_");
+                        if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            let err = "this type name is not supported (it must only include A-Za-z0-9<>)";
+                            *item = Item::Verbatim(
+                                quote_spanned!(span => const _: () = { compile_error!(#err) };),
+                            );
+                        } else {
+                            let lemma_ident =
+                                format_ident!("VERUS_layout_of_{}", type_name_escaped);
 
-                        ::builtin_macros::verus! {
-                            #[verifier::external_body]
-                            #[verifier::broadcast_forall]
-                            #[allow(non_snake_case)]
-                            proof fn #lemma_ident()
-                                ensures
-                                    ::vstd::layout::size_of::<#type_>() == #size_lit,
-                                    #ensures_align
-                            {}
+                            let ensures_align = if let Some(align_lit) = align_lit {
+                                quote! { ::vstd::layout::align_of::<#type_>() == #align_lit, }
+                            } else {
+                                quote! {}
+                            };
+
+                            *item = Item::Verbatim(quote_spanned! { span =>
+                            #[verus::internal(size_of)] const _: () = {
+                                ::builtin::global_size_of::<#type_>(#size_lit);
+
+                                #static_assert_size
+                                #static_assert_align
+                            };
+
+                            ::builtin_macros::verus! {
+                                #[verifier::external_body]
+                                #[verifier::broadcast_forall]
+                                #[allow(non_snake_case)]
+                                proof fn #lemma_ident()
+                                    ensures
+                                        ::vstd::layout::size_of::<#type_>() == #size_lit,
+                                        #ensures_align
+                                {}
+                            }
+                            });
                         }
+                    }
+                }
+                Item::Reveal(item_reveal) => {
+                    let span = item.span();
+                    let paths = &item_reveal.paths;
+                    if self.erase_ghost.erase() {
+                        *item = Item::Verbatim(quote! { const _: () = (); });
+                    } else {
+                        let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
+                            quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); )
+                        ))).collect();
+                        let block = Block { brace_token: token::Brace { span }, stmts };
+                        *item = Item::Verbatim(quote_spanned! { span =>
+                            #[verus::internal(item_reveal)] const _: () = #block;
                         });
                     }
                 }
+                _ => (),
             }
         }
     }
@@ -3051,6 +3069,10 @@ impl VisitMut for Visitor {
         self.visit_trait_items_prefilter(&mut tr.items);
         self.filter_attrs(&mut tr.attrs);
         syn_verus::visit_mut::visit_item_trait_mut(self, tr);
+    }
+
+    fn visit_reveal_hide_mut(&mut self, _i: &mut syn_verus::RevealHide) {
+        // we have already transformed this, do not recurse into it
     }
 }
 

@@ -1,3 +1,5 @@
+use self::verus::ItemReveal;
+
 use super::*;
 use crate::derive::{Data, DataEnum, DataStruct, DataUnion, DeriveInput};
 use crate::punctuated::Punctuated;
@@ -74,7 +76,11 @@ ast_enum_of_structs! {
         Verbatim(TokenStream),
 
         // Verus
+        /// Global Verus directive
         Global(Global),
+
+        /// Item-level reveal
+        Reveal(ItemReveal),
 
         // Not public API.
         //
@@ -391,7 +397,8 @@ impl Item {
             | Item::Impl(ItemImpl { attrs, .. })
             | Item::Macro(ItemMacro { attrs, .. })
             | Item::Macro2(ItemMacro2 { attrs, .. })
-            | Item::Global(Global { attrs, .. }) => mem::replace(attrs, new),
+            | Item::Global(Global { attrs, .. })
+            | Item::Reveal(ItemReveal { attrs, .. }) => mem::replace(attrs, new),
             Item::Verbatim(_) => Vec::new(),
 
             #[cfg(syn_no_non_exhaustive)]
@@ -1233,6 +1240,8 @@ pub mod parsing {
                 }
             } else if lookahead.peek(Token![global]) {
                 input.parse().map(Item::Global)
+            } else if lookahead.peek(Token![reveal]) {
+                input.parse().map(Item::Reveal)
             } else if lookahead.peek(Token![macro]) {
                 input.parse().map(Item::Macro2)
             } else if vis.is_inherited()

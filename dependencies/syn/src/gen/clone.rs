@@ -1355,6 +1355,7 @@ impl Clone for Item {
             Item::Use(v0) => Item::Use(v0.clone()),
             Item::Verbatim(v0) => Item::Verbatim(v0.clone()),
             Item::Global(v0) => Item::Global(v0.clone()),
+            Item::Reveal(v0) => Item::Reveal(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1489,6 +1490,17 @@ impl Clone for ItemMod {
             mod_token: self.mod_token.clone(),
             ident: self.ident.clone(),
             content: self.content.clone(),
+            semi: self.semi.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ItemReveal {
+    fn clone(&self) -> Self {
+        ItemReveal {
+            attrs: self.attrs.clone(),
+            reveal_token: self.reveal_token.clone(),
+            paths: self.paths.clone(),
             semi: self.semi.clone(),
         }
     }

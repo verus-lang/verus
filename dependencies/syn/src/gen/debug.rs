@@ -1976,6 +1976,11 @@ impl Debug for Item {
                 formatter.field(v0);
                 formatter.finish()
             }
+            Item::Reveal(v0) => {
+                let mut formatter = formatter.debug_tuple("Reveal");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -2110,6 +2115,17 @@ impl Debug for ItemMod {
         formatter.field("mod_token", &self.mod_token);
         formatter.field("ident", &self.ident);
         formatter.field("content", &self.content);
+        formatter.field("semi", &self.semi);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ItemReveal {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ItemReveal");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("reveal_token", &self.reveal_token);
+        formatter.field("paths", &self.paths);
         formatter.field("semi", &self.semi);
         formatter.finish()
     }

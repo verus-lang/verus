@@ -483,6 +483,9 @@ pub trait Fold {
     fn fold_item_mod(&mut self, i: ItemMod) -> ItemMod {
         fold_item_mod(self, i)
     }
+    fn fold_item_reveal(&mut self, i: ItemReveal) -> ItemReveal {
+        fold_item_reveal(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_item_static(&mut self, i: ItemStatic) -> ItemStatic {
         fold_item_static(self, i)
@@ -2501,6 +2504,7 @@ where
         Item::Use(_binding_0) => Item::Use(f.fold_item_use(_binding_0)),
         Item::Verbatim(_binding_0) => Item::Verbatim(_binding_0),
         Item::Global(_binding_0) => Item::Global(f.fold_global(_binding_0)),
+        Item::Reveal(_binding_0) => Item::Reveal(f.fold_item_reveal(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2650,6 +2654,17 @@ where
                 FoldHelper::lift((it).1, |it| f.fold_item(it)),
             )),
         semi: (node.semi).map(|it| Token![;](tokens_helper(f, &it.spans))),
+    }
+}
+pub fn fold_item_reveal<F>(f: &mut F, node: ItemReveal) -> ItemReveal
+where
+    F: Fold + ?Sized,
+{
+    ItemReveal {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        reveal_token: Token![reveal](tokens_helper(f, &node.reveal_token.span)),
+        paths: FoldHelper::lift(node.paths, |it| Box::new(f.fold_expr_path(*it))),
+        semi: Token![;](tokens_helper(f, &node.semi.spans)),
     }
 }
 #[cfg(feature = "full")]

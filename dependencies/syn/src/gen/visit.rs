@@ -473,6 +473,9 @@ pub trait Visit<'ast> {
     fn visit_item_mod(&mut self, i: &'ast ItemMod) {
         visit_item_mod(self, i);
     }
+    fn visit_item_reveal(&mut self, i: &'ast ItemReveal) {
+        visit_item_reveal(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item_static(&mut self, i: &'ast ItemStatic) {
         visit_item_static(self, i);
@@ -2760,6 +2763,9 @@ where
         Item::Global(_binding_0) => {
             v.visit_global(_binding_0);
         }
+        Item::Reveal(_binding_0) => {
+            v.visit_item_reveal(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2942,6 +2948,23 @@ where
     if let Some(it) = &node.semi {
         tokens_helper(v, &it.spans);
     }
+}
+pub fn visit_item_reveal<'ast, V>(v: &mut V, node: &'ast ItemReveal)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.reveal_token.span);
+    for el in Punctuated::pairs(&node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path(&**it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+    tokens_helper(v, &node.semi.spans);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_static<'ast, V>(v: &mut V, node: &'ast ItemStatic)

@@ -1,6 +1,7 @@
 use crate::attributes::{get_ghost_block_opt, get_verifier_attrs, GhostBlockAttr};
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
+use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, is_smt_arith, is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node,
     typ_of_node_expect_mut_ref,
@@ -436,119 +437,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 // }
 
                 record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(args_len == 2, expr.span, "expected reveal", &args);
-                let ExprKind::Block(block, None) = args[0].kind else {
-                    unsupported_err!(expr.span, "invalid reveal", &args);
-                };
-                if block.stmts.len() != 1
-                    || !matches!(block.stmts[0].kind, rustc_hir::StmtKind::Item(_))
-                {
-                    unsupported_err!(expr.span, "invalid reveal", &args);
-                }
-                let Some(ExprKind::Path(QPath::Resolved(None, path))) =
-                    block.expr.as_ref().map(|x| &x.kind)
+                let RevealHideResult::Expr(expr) = crate::reveal_hide::handle_reveal_hide(
+                    &bctx.ctxt,
+                    expr,
+                    args_len,
+                    args,
+                    tcx,
+                    Some(mk_expr),
+                )?
                 else {
-                    unsupported_err!(expr.span, "invalid reveal", &args);
+                    panic!("handle_reveal_hide must return an Expr");
                 };
-                let id = {
-                    let Some(path_map) = &*crate::verifier::BODY_HIR_ID_TO_REVEAL_PATH_RES
-                        .read()
-                        .expect("lock failed")
-                    else {
-                        unsupported_err!(expr.span, "invalid reveal", &args);
-                    };
-                    let (ty_res, res) = &path_map[&path.res.def_id()];
-                    if let Some(ty_res) = ty_res {
-                        match res {
-                            crate::hir_hide_reveal_rewrite::ResOrSymbol::Res(res) => {
-                                // `res` has the def_id of the trait function
-                                // `ty_res` has the def_id of the type, or is a primitive type
-                                // we need to find the impl that contains the non-blanket
-                                // implementation of the function for the type
-                                let trait_ =
-                                    tcx.trait_of_item(res.def_id()).expect("trait of function");
-                                let ty_ = match ty_res {
-                                    Res::Def(_, def_id) => tcx.type_of(def_id).skip_binder(),
-                                    Res::PrimTy(prim_ty) => {
-                                        crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty)
-                                    }
-                                    _ => unsupported_err!(
-                                        expr.span,
-                                        "type {:?} not supported in reveal",
-                                        ty_res
-                                    ),
-                                };
-                                *tcx.non_blanket_impls_for_ty(trait_, ty_)
-                                    .find_map(|impl_| {
-                                        let implementor_ids = &tcx.impl_item_implementor_ids(impl_);
-                                        implementor_ids.get(&res.def_id())
-                                    })
-                                    .expect("non-blanked impl for ty with def")
-                            }
-                            crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(sym) => {
-                                let matching_impls: Vec<_> = tcx
-                                    .inherent_impls(ty_res.def_id())
-                                    .iter()
-                                    .filter_map(|impl_def_id| {
-                                        let ident =
-                                            rustc_span::symbol::Ident::from_str(sym.as_str());
-                                        let found = tcx
-                                            .associated_items(impl_def_id)
-                                            .find_by_name_and_namespace(
-                                                tcx,
-                                                ident,
-                                                rustc_hir::def::Namespace::ValueNS,
-                                                *impl_def_id,
-                                            );
-                                        found.map(|f| f.def_id)
-                                    })
-                                    .collect();
-                                if matching_impls.len() > 1 {
-                                    return err_span(
-                                        expr.span,
-                                        format!(
-                                            "{} is ambiguous, use the universal function call syntax to disambiguate (`<Type as Trait>::function`)",
-                                            sym.as_str()
-                                        ),
-                                    );
-                                } else if matching_impls.len() == 0 {
-                                    return err_span(
-                                        expr.span,
-                                        format!("`{}` not found", sym.as_str()),
-                                    );
-                                } else {
-                                    matching_impls.into_iter().next().unwrap()
-                                }
-                            }
-                        }
-                    } else {
-                        match res {
-                            crate::hir_hide_reveal_rewrite::ResOrSymbol::Res(res) => res.def_id(),
-                            crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(_) => {
-                                unsupported_err!(expr.span, "unexpected reveal", &args);
-                            }
-                        }
-                    }
-                };
-                let path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, id);
-
-                // let fun = get_fn_path(bctx, &args[0])?;
-                let ExprX::Const(Constant::Int(i)) =
-                    &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x
-                else {
-                    panic!("internal error: is_reveal_fuel");
-                };
-                let n = vir::ast_util::fuel_const_int_to_u32(
-                    &bctx.ctxt.spans.to_air_span(expr.span),
-                    i,
-                )?;
-                let fun = Arc::new(FunX { path });
-                if n == 0 {
-                    let header = Arc::new(HeaderExprX::Hide(fun));
-                    mk_expr(ExprX::Header(header))
-                } else {
-                    mk_expr(ExprX::Fuel(fun, n))
-                }
+                Ok(expr)
             }
             DirectiveItem::RevealHideInternalPath => {
                 err_span(expr.span, "reveal_internal_path is only for internal verus use")

@@ -1083,6 +1083,7 @@ pub type Module = Arc<Spanned<ModuleX>>;
 pub struct ModuleX {
     pub path: Path,
     // add attrs here
+    pub reveals: Option<Vec<Fun>>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]

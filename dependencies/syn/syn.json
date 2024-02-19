@@ -3424,6 +3424,11 @@
           {
             "syn": "Global"
           }
+        ],
+        "Reveal": [
+          {
+            "syn": "ItemReveal"
+          }
         ]
       },
       "exhaustive": false
@@ -3791,6 +3796,35 @@
           "option": {
             "token": "Semi"
           }
+        }
+      }
+    },
+    {
+      "ident": "ItemReveal",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "reveal_token": {
+          "token": "Reveal"
+        },
+        "paths": {
+          "punctuated": {
+            "element": {
+              "box": {
+                "syn": "ExprPath"
+              }
+            },
+            "punct": "Comma"
+          }
+        },
+        "semi": {
+          "token": "Semi"
         }
       }
     },

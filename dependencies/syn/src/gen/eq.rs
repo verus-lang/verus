@@ -1313,6 +1313,7 @@ impl PartialEq for Item {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
             (Item::Global(self0), Item::Global(other0)) => self0 == other0,
+            (Item::Reveal(self0), Item::Reveal(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -1420,6 +1421,14 @@ impl PartialEq for ItemMod {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
             && self.content == other.content && self.semi == other.semi
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ItemReveal {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ItemReveal {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.paths == other.paths
     }
 }
 #[cfg(feature = "full")]

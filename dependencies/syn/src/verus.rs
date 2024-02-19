@@ -240,6 +240,15 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ItemReveal {
+        pub attrs: Vec<Attribute>,
+        pub reveal_token: Token![reveal],
+        pub paths: Punctuated<Box<ExprPath>, Token![,]>,
+        pub semi: Token![;],
+    }
+}
+
+ast_struct! {
     pub struct View {
         pub attrs: Vec<Attribute>,
         pub expr: Box<Expr>,
@@ -941,6 +950,34 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ItemReveal {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let reveal_token: Token![reveal] = input.parse()?;
+            // let paths = input.parse()?;
+            let mut paths = Punctuated::new();
+            let semi = loop {
+                let path: Box<ExprPath> = input.parse()?;
+                paths.push(path);
+                if input.peek(Token![,]) {
+                    let _: Token![,] = input.parse()?;
+                    continue;
+                } else {
+                    let semi: Token![;] = input.parse()?;
+                    break semi;
+                }
+            };
+
+            Ok(ItemReveal {
+                attrs,
+                reveal_token,
+                paths,
+                semi,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Global {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
@@ -1269,6 +1306,22 @@ mod printing {
                     expr.to_tokens(tokens);
                 }
             });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ItemReveal {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
+            let ItemReveal {
+                attrs: _,
+                reveal_token,
+                paths,
+                semi,
+            } = self;
+            reveal_token.to_tokens(tokens);
+            paths.to_tokens(tokens);
+            semi.to_tokens(tokens);
         }
     }
 

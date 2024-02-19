@@ -8,6 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
+use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
@@ -81,6 +82,84 @@ fn check_item<'tcx>(
         let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
         if vattrs.size_of_global {
             return Ok(()); // handled earlier
+        }
+        if vattrs.item_reveal {
+            let err = crate::util::err_span(item.span, "invalid module-level reveals");
+            let ItemKind::Const(_ty, generics, body_id) = item.kind else {
+                return err;
+            };
+            unsupported_err_unless!(
+                generics.params.len() == 0 && generics.predicates.len() == 0,
+                item.span,
+                "const generics"
+            );
+            let _def_id = body_id.hir_id.owner.to_def_id();
+
+            let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);
+
+            let rustc_hir::ExprKind::Block(block, _) = body.value.kind else {
+                return err;
+            };
+
+            let funs = block
+                .stmts
+                .iter()
+                .map(|stmt| {
+                    let err = crate::util::err_span(item.span, "invalid module-level reveals");
+
+                    let rustc_hir::StmtKind::Semi(expr) = stmt.kind else {
+                        return err;
+                    };
+
+                    let rustc_hir::ExprKind::Call(fun_target, args) = expr.kind else {
+                        return err;
+                    };
+
+                    let rustc_hir::ExprKind::Path(rustc_hir::QPath::Resolved(None, fun_path)) =
+                        &fun_target.kind
+                    else {
+                        return err;
+                    };
+
+                    let Some(VerusItem::Directive(verus_items::DirectiveItem::RevealHide)) =
+                        ctxt.get_verus_item(fun_path.res.def_id())
+                    else {
+                        return err;
+                    };
+
+                    let args: Vec<_> = args.iter().collect();
+
+                    let crate::reveal_hide::RevealHideResult::RevealItem(fun) = handle_reveal_hide(
+                        ctxt,
+                        expr,
+                        args.len(),
+                        &args,
+                        ctxt.tcx,
+                        None::<fn(vir::ast::ExprX) -> Result<vir::ast::Expr, VirErr>>,
+                    )?
+                    else {
+                        panic!("handle_reveal_hide must return a RevealItem");
+                    };
+
+                    Ok(fun)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let Some(Some(mpath)) = mpath else {
+                unsupported_err!(item.span, "unsupported reveal here", item);
+            };
+            let module = vir
+                .modules
+                .iter_mut()
+                .find(|m| &m.x.path == mpath)
+                .expect("cannot find current module");
+            let reveals = &mut Arc::make_mut(module).x.reveals;
+            if reveals.is_none() {
+                *reveals = Some(Vec::new());
+            }
+            reveals.as_mut().unwrap().extend(funs);
+
+            return Ok(());
         }
         if path.segments.iter().find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_")).is_some()
         {
@@ -819,9 +898,10 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         // Shallowly visit just the top-level items (don't visit nested modules)
                         let path =
                             def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
-                        vir.modules.push(
-                            ctxt.spanned_new(item.span, vir::ast::ModuleX { path: path.clone() }),
-                        );
+                        vir.modules.push(ctxt.spanned_new(
+                            item.span,
+                            vir::ast::ModuleX { path: path.clone(), reveals: None },
+                        ));
                         let path = Some(path);
                         item_to_module
                             .extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
@@ -832,7 +912,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
                     vir.modules.push(ctxt.spanned_new(
                         mod_.spans.inner_span,
-                        vir::ast::ModuleX { path: path.clone() },
+                        vir::ast::ModuleX { path: path.clone(), reveals: None },
                     ));
                     item_to_module
                         .extend(mod_.item_ids.iter().map(move |ii| (*ii, Some(path.clone()))))

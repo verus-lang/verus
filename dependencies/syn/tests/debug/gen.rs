@@ -4138,6 +4138,16 @@ impl Debug for Lite<syn::Item> {
                 formatter.write_str(")")?;
                 Ok(())
             }
+            syn::Item::Reveal(_val) => {
+                let mut formatter = formatter.debug_struct("Item::Reveal");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                if !_val.paths.is_empty() {
+                    formatter.field("paths", Lite(&_val.paths));
+                }
+                formatter.finish()
+            }
             _ => unreachable!(),
         }
     }
@@ -4481,6 +4491,19 @@ impl Debug for Lite<syn::ItemMod> {
                 }
             }
             formatter.field("semi", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ItemReveal> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ItemReveal");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        if !_val.paths.is_empty() {
+            formatter.field("paths", Lite(&_val.paths));
         }
         formatter.finish()
     }

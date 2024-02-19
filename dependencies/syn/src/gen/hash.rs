@@ -1827,6 +1827,10 @@ impl Hash for Item {
                 state.write_u8(17u8);
                 v0.hash(state);
             }
+            Item::Reveal(v0) => {
+                state.write_u8(18u8);
+                v0.hash(state);
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1960,6 +1964,16 @@ impl Hash for ItemMod {
         self.ident.hash(state);
         self.content.hash(state);
         self.semi.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ItemReveal {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.paths.hash(state);
     }
 }
 #[cfg(feature = "full")]

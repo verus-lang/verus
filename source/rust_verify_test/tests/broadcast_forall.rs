@@ -335,3 +335,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    // TODO this feature is a work in progress
+    #[ignore] #[test] test_ring_algebra_mod_level RING_ALGEBRA.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            reveal(Ring_succ);
+
+            proof fn t2(p: Ring) requires p.inv() {
+                assert(p.succ().prev() == p);
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
