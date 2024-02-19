@@ -34,6 +34,49 @@ pub struct PathX {
     pub segments: Idents,
 }
 
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    ToDebugSNode
+)]
+pub enum VarIdentDisambiguate {
+    // AIR names that don't derive from rustc's names:
+    AirLocal,
+    // rustc's parameter unique id comes from the function body; no body means no id:
+    NoBodyParam,
+    // TypParams are normally Idents, but sometimes we mix TypParams into lists of VarIdents:
+    TypParam,
+    // Fields are normally Idents, but sometimes we mix field names into lists of VarIdents:
+    Field,
+    RustcId(usize),
+    ClosureReturnValue(usize),
+    VirRenumbered(u64),
+    AstSimplifyTemp(u64),
+    AstToSstTemp(u64),
+}
+
+/// A local variable name, possibly renamed for disambiguation
+pub type VarIdent = Arc<VarIdentX>;
+// VarIdentX(ident, disambiguating id, suffix)
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
+pub struct VarIdentX(pub String, pub VarIdentDisambiguate, pub Vec<String>);
+
+pub type VarBinder<A> = Arc<VarBinderX<A>>;
+pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;
+#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
+pub struct VarBinderX<A: Clone> {
+    pub name: VarIdent,
+    pub a: A,
+}
+
 /// Static function identifier
 pub type Fun = Arc<FunX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -175,7 +218,7 @@ pub enum TypX {
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
-    TypParam(VarIdent),
+    TypParam(Ident),
     /// Projection such as <D as T<S>>::X or <A as T>::X (SMT-boxed, and can sometimes be unboxed)
     Projection {
         // trait_typ_args[0] is Self type
@@ -623,19 +666,6 @@ pub enum AutospecUsage {
     Final,
 }
 
-pub type VarIdents = Arc<Vec<VarIdent>>;
-pub type VarIdent = Arc<VarIdentX>;
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
-pub struct VarIdentX(pub String, pub Option<usize>, pub Option<usize>, pub Vec<String>);
-
-pub type VarBinder<A> = Arc<VarBinderX<A>>;
-pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;
-#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
-pub struct VarBinderX<A: Clone> {
-    pub name: VarIdent,
-    pub a: A,
-}
-
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -807,7 +837,7 @@ pub enum AcceptRecursiveType {
     Accept,
 }
 /// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
-pub type TypPositives = Arc<Vec<(VarIdent, AcceptRecursiveType)>>;
+pub type TypPositives = Arc<Vec<(Ident, AcceptRecursiveType)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
@@ -898,7 +928,7 @@ pub struct FunctionX {
     /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
     pub fuel: u32,
     /// Type parameters to generic functions
-    pub typ_params: VarIdents,
+    pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,
     /// Function parameters
@@ -1040,7 +1070,7 @@ pub struct AssocTypeImplX {
     pub name: Ident,
     /// Path of the impl (e.g. "impl2") that contains "type name = typ;"
     pub impl_path: Path,
-    pub typ_params: VarIdents,
+    pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,
@@ -1055,7 +1085,7 @@ pub struct TraitImplX {
     /// Path of the impl (e.g. "impl2")
     pub impl_path: Path,
     // typ_params of impl (unrelated to typ_params of trait)
-    pub typ_params: VarIdents,
+    pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
     pub trait_path: Path,
     pub trait_typ_args: Typs,

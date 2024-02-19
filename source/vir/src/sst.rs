@@ -45,13 +45,6 @@ pub struct UniqueIdent {
     pub local: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UniqueVarIdent {
-    pub name: crate::ast::VarIdent,
-    // None for bound vars, Some disambiguating integer for local vars
-    pub local: Option<u64>,
-}
-
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InternalFun {
     ClosureReq,
@@ -74,13 +67,13 @@ pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug, Clone)]
 pub enum ExpX {
     Const(Constant),
-    Var(UniqueVarIdent),
+    Var(UniqueIdent),
     StaticVar(Fun),
-    VarLoc(UniqueVarIdent),
-    VarAt(UniqueVarIdent, VarAt),
+    VarLoc(UniqueIdent),
+    VarAt(UniqueIdent, VarAt),
     Loc(Exp),
     // used only during sst_to_air to generate AIR Old
-    Old(Ident, UniqueVarIdent),
+    Old(Ident, UniqueIdent),
     // call to spec function
     Call(CallFun, Typs, Exps),
     CallLambda(Typ, Exp, Exps),
@@ -184,18 +177,18 @@ pub enum StmX {
         cond: Option<(Stm, Exp)>,
         body: Stm,
         invs: LoopInvs,
-        typ_inv_vars: Arc<Vec<(UniqueVarIdent, Typ)>>,
-        modified_vars: Arc<Vec<UniqueVarIdent>>,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        modified_vars: Arc<Vec<UniqueIdent>>,
     },
-    OpenInvariant(Exp, UniqueVarIdent, Typ, Stm, InvAtomicity),
+    OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
     Block(Stms),
     ClosureInner {
         body: Stm,
-        typ_inv_vars: Arc<Vec<(UniqueVarIdent, Typ)>>,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
     },
     AssertQuery {
         mode: AssertQueryMode,
-        typ_inv_vars: Arc<Vec<(UniqueVarIdent, Typ)>>,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         body: Stm,
     },
 }
@@ -203,7 +196,7 @@ pub enum StmX {
 pub type LocalDecl = Arc<LocalDeclX>;
 #[derive(Debug)]
 pub struct LocalDeclX {
-    pub ident: UniqueVarIdent,
+    pub ident: UniqueIdent,
     pub typ: Typ,
     pub mutable: bool,
 }

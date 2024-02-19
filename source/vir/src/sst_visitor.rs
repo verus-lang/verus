@@ -2,7 +2,7 @@ use crate::ast::{
     SpannedTyped, Typ, UnaryOpr, VarBinder, VarBinderX, VarBinders, VarIdent, VirErr,
 };
 use crate::def::Spanned;
-use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LoopInv, Stm, StmX, Trig, Trigs, UniqueVarIdent};
+use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LoopInv, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
@@ -453,7 +453,7 @@ where
     map_exp_visitor_bind(exp, &mut map, &mut |e, _| Ok(f(e))).unwrap()
 }
 
-pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueVarIdent, UniqueVarIdent>) -> Exp {
+pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>) -> Exp {
     map_exp_visitor(exp, &mut |exp| match &exp.x {
         ExpX::VarAt(x, crate::ast::VarAt::Pre) if map.contains_key(x) => {
             SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))

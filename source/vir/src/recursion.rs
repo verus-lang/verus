@@ -3,7 +3,7 @@ use crate::ast::{
     ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
-use crate::ast_util::{ident_var_binder, str_unique_var, typ_to_diagnostic_str, LowerUniqueVar};
+use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
     decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
@@ -15,7 +15,7 @@ use crate::messages::{error, Span};
 use crate::scc::Graph;
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
-    UniqueVarIdent,
+    UniqueIdent,
 };
 use crate::sst_to_air::PostConditionKind;
 use crate::sst_to_air::PostConditionSst;
@@ -164,7 +164,7 @@ fn check_decrease_call(
         .zip(args.iter())
         .map(|(param, arg)| ident_var_binder(&suffix_rename(&param.x.name), &arg.clone()))
         .collect();
-    let renames: HashMap<UniqueVarIdent, UniqueVarIdent> = params
+    let renames: HashMap<UniqueIdent, UniqueIdent> = params
         .iter()
         .map(|param| (unique_local(&param.x.name), unique_bound(&suffix_rename(&param.x.name))))
         .collect();
@@ -252,7 +252,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
             if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = ExpX::Var(unique_local(&&str_unique_var(FUEL_PARAM)));
+            let varx = ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));
@@ -450,7 +450,7 @@ pub(crate) fn expand_call_graph(
         if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
             if crate::recursive_types::suppress_bound_in_trait_decl(
                 &trait_path,
-                &function.x.typ_params.lower(),
+                &function.x.typ_params,
                 bound,
             ) {
                 continue;

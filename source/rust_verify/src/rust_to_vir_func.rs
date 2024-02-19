@@ -4,7 +4,7 @@ use crate::attributes::{
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
+    check_generics_bounds_fun, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::util::{err_span, err_span_bare, unsupported_err_span};
@@ -25,7 +25,7 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, MaskSpec, Mode, ParamX,
     SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
-use vir::ast_util::str_unique_var;
+use vir::ast_util::air_unique_var;
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
@@ -437,10 +437,8 @@ pub(crate) fn check_item_fn<'tcx>(
                 (Some(vir_body), header, ps)
             }
             CheckItemFnEither::ParamNames(params) => {
-                let params = params
-                    .iter()
-                    .map(|p| (str_unique_var(p.as_str()), p.span, None, false))
-                    .collect();
+                let params =
+                    params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect();
                 let header = vir::headers::read_header_block(&mut vec![])?;
                 (None, header, params)
             }
@@ -646,9 +644,9 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
         (None, None) => {
-            (str_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
+            (air_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
         }
-        (None, Some((typ, mode))) => (str_unique_var(RETURN_VALUE), typ, mode),
+        (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
@@ -664,7 +662,7 @@ pub(crate) fn check_item_fn<'tcx>(
         },
     );
     let (typ_params, typ_bounds) = {
-        let mut typ_params: Vec<vir::ast::VarIdent> = Vec::new();
+        let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
         let mut typ_bounds: Vec<vir::ast::GenericBound> = Vec::new();
         if let FunctionKind::TraitMethodDecl { .. } = kind {
             typ_params.push(vir::def::trait_self_type_param());
@@ -1042,7 +1040,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         return err_span(span, "spec functions cannot have ensures");
     }
 
-    let ret_name = str_unique_var(RETURN_VALUE);
+    let ret_name = air_unique_var(RETURN_VALUE);
     let ret = ctxt.spanned_new(
         span,
         ParamX {
@@ -1136,7 +1134,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
-        let name = foreign_param_to_var(param);
+        let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
         let typ = mid_ty_to_vir(
             ctxt.tcx,
@@ -1159,7 +1157,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         Some((typ, mode)) => (typ, mode),
     };
     let ret_param = ParamX {
-        name: str_unique_var(RETURN_VALUE),
+        name: air_unique_var(RETURN_VALUE),
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,

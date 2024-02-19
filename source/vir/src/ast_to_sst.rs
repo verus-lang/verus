@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, LoopInvariantKind, Mode, PatternX,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX,
     SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
     VarBinders, VarIdent, VariantCheck, VirErr,
 };
@@ -13,7 +13,7 @@ use crate::interpreter::eval_expr;
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
-    Pars, Stm, StmX, UniqueVarIdent,
+    Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
     bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_conjoin, sst_equal,
@@ -37,7 +37,7 @@ pub(crate) struct ClosureState {
     ensures: Exps,
     // recommends to check the well-formedness of the ensures clauses themselves
     ensures_checks: crate::sst::Stms,
-    dest: UniqueVarIdent,
+    dest: UniqueIdent,
 }
 
 pub(crate) struct State<'a> {
@@ -58,7 +58,7 @@ pub(crate) struct State<'a> {
     rename_counters: HashMap<VarIdent, u64>,
     // Variables that we considered renaming, but ended up being Bind variables
     // rather than LocalDecls
-    dont_rename: HashSet<UniqueVarIdent>,
+    dont_rename: HashSet<UniqueIdent>,
     // If > 0, we're making a second pass over AST to generate just a pure Exp, with no Stms.
     // Rationale: in the first pass, when checking preconditions of spec functions
     // (e.g. recommends), we may have to generate Stms for the precondition checking,
@@ -156,10 +156,10 @@ impl<'a> State<'a> {
         self.rename_map.pop_scope();
     }
 
-    pub(crate) fn get_var_unique_id(&self, x: &VarIdent) -> UniqueVarIdent {
+    pub(crate) fn get_var_unique_id(&self, x: &VarIdent) -> UniqueIdent {
         match self.rename_map.get(x) {
             None => panic!("internal error: variable not in rename_map: {}", x),
-            Some(id) => UniqueVarIdent { name: x.clone(), local: *id },
+            Some(id) => UniqueIdent { name: x.clone(), local: *id },
         }
     }
 
@@ -172,16 +172,16 @@ impl<'a> State<'a> {
         self.rename_map.insert(x.clone(), None).expect("declare var");
     }
 
-    pub(crate) fn alloc_unique_var(&mut self, x: &VarIdent) -> UniqueVarIdent {
+    pub(crate) fn alloc_unique_var(&mut self, x: &VarIdent) -> UniqueIdent {
         let i = match self.rename_counters.get(x).copied() {
             None => 0,
             Some(i) => i + 1,
         };
         self.rename_counters.insert(x.clone(), i);
-        UniqueVarIdent { name: x.clone(), local: Some(i) }
+        UniqueIdent { name: x.clone(), local: Some(i) }
     }
 
-    pub(crate) fn insert_unique_var(&mut self, x: &UniqueVarIdent) {
+    pub(crate) fn insert_unique_var(&mut self, x: &UniqueIdent) {
         self.rename_map.insert(x.name.clone(), x.local).expect("declare var");
     }
 
@@ -197,7 +197,7 @@ impl<'a> State<'a> {
         typ: &Typ,
         mutable: bool,
         may_need_rename: bool,
-    ) -> UniqueVarIdent {
+    ) -> UniqueIdent {
         let unique_ident = if may_need_rename {
             let id = self.alloc_unique_var(ident);
             self.insert_unique_var(&id);
@@ -241,8 +241,8 @@ impl<'a> State<'a> {
                 {
                     if inline.do_inline {
                         let typ_params = &inline.typ_params;
-                        let mut typ_substs: HashMap<VarIdent, Typ> = HashMap::new();
-                        let mut substs: HashMap<UniqueVarIdent, Exp> = HashMap::new();
+                        let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                        let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
                         assert!(typ_params.len() == typs.len());
                         for (name, typ) in typ_params.iter().zip(typs.iter()) {
                             assert!(!typ_substs.contains_key(name));
@@ -320,7 +320,7 @@ impl<'a> State<'a> {
         stm: &Stm,
         ensures: &Vec<Exp>,
         ens_pars: &Pars,
-        dest: Option<UniqueVarIdent>,
+        dest: Option<UniqueIdent>,
     ) -> Result<Stm, VirErr> {
         let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))?;
         if ctx.expand_flag {
@@ -384,11 +384,11 @@ impl<'a> State<'a> {
     }
 }
 
-pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueVarIdent) -> Exp {
+pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
     SpannedTyped::new(span, typ, ExpX::VarLoc(lhs))
 }
 
-fn init_var(span: &Span, x: &UniqueVarIdent, exp: &Exp) -> Stm {
+fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     Spanned::new(
         span.clone(),
         StmX::Assign {
@@ -426,7 +426,7 @@ pub fn assume_false(span: &Span) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
-pub(crate) fn assume_has_typ(x: &UniqueVarIdent, typ: &Typ, span: &Span) -> Stm {
+pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
     let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
@@ -2267,7 +2267,7 @@ fn exec_closure_body_stms(
     body: &Expr,
     requires: &Exprs,
     ensures: &Exprs,
-) -> Result<(Vec<Stm>, Arc<Vec<(UniqueVarIdent, Typ)>>), VirErr> {
+) -> Result<(Vec<Stm>, Arc<Vec<(UniqueIdent, Typ)>>), VirErr> {
     let mut typ_inv_vars = vec![];
 
     state.push_scope();

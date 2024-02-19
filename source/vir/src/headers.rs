@@ -3,7 +3,7 @@ use crate::ast::{
     LoopInvariantKind, LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent,
     VirErr,
 };
-use crate::ast_util::{params_equal_opt, str_unique_var};
+use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
 use crate::messages::error;
 use std::collections::HashMap;
@@ -254,11 +254,11 @@ impl Header {
                 // const decl ensures clauses can refer to the const's "return value"
                 // using the name of the const (which is a ConstVar to the const):
                 ExprX::ConstVar(fun, _) if fun == const_name && !is_static => {
-                    expr.new_x(ExprX::Var(str_unique_var(crate::def::RETURN_VALUE)))
+                    expr.new_x(ExprX::Var(air_unique_var(crate::def::RETURN_VALUE)))
                 }
                 // likewise for static
                 ExprX::StaticVar(fun) if fun == const_name && is_static => {
-                    expr.new_x(ExprX::Var(str_unique_var(crate::def::RETURN_VALUE)))
+                    expr.new_x(ExprX::Var(air_unique_var(crate::def::RETURN_VALUE)))
                 }
                 _ => expr.clone(),
             })

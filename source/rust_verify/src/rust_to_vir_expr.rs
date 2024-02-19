@@ -1497,8 +1497,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                     }
                     if let Some(name) = gparam {
-                        let typ =
-                            Arc::new(TypX::TypParam(str_unique_var(&name.ident().to_string())));
+                        let typ = Arc::new(TypX::TypParam(Arc::new(name.ident().to_string())));
                         let opr = vir::ast::NullaryOpr::ConstGeneric(typ);
                         mk_expr(ExprX::NullaryOpr(opr))
                     } else {
@@ -2274,8 +2273,10 @@ pub(crate) fn closure_to_vir<'tcx>(
                     id
                 }
                 None => str_unique_var(
-                    &(vir::def::CLOSURE_RETURN_VALUE_PREFIX.to_string()
-                        + &body_id.hir_id.local_id.index().to_string()),
+                    vir::def::CLOSURE_RETURN_VALUE_PREFIX,
+                    vir::ast::VarIdentDisambiguate::ClosureReturnValue(
+                        body_id.hir_id.local_id.index(),
+                    ),
                 ),
             };
 

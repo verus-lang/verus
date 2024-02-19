@@ -1,9 +1,8 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
-    GenericBound, GenericBoundX, Ident, Idents, IntRange, ItemKind, Mode, Param, ParamX, Params,
-    Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
-    VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentX, VarIdents, Variant, Variants, VirErr,
-    Visibility,
+    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
+    PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
+    VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentX, Variant, Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
 use crate::sst::{Par, Pars};
@@ -655,8 +654,8 @@ impl ItemKind {
 
 impl Into<String> for &VarIdentX {
     fn into(self) -> String {
-        let VarIdentX(ident, uniq_id, rename, suffix) = self;
-        crate::def::unique_var_name(ident.to_string(), *uniq_id, *rename, suffix)
+        let VarIdentX(ident, uniq_id, suffix) = self;
+        crate::def::unique_var_name(ident.to_string(), *uniq_id, suffix)
     }
 }
 
@@ -695,16 +694,23 @@ impl<A: Clone> VarBinderX<A> {
 
 impl VarIdentX {
     pub fn push_suffix(&self, suffix: &str) -> VarIdent {
-        let VarIdentX(name, n, rename, sfxs) = self;
+        let VarIdentX(name, n, sfxs) = self;
         let mut sfxs = sfxs.clone();
         sfxs.push(suffix.to_owned());
-        Arc::new(VarIdentX(name.clone(), *n, *rename, sfxs))
+        Arc::new(VarIdentX(name.clone(), *n, sfxs))
     }
 }
 
-pub fn str_unique_var(s: &str) -> VarIdent {
-    /* REVIEW */
-    Arc::new(VarIdentX(s.to_string(), None, None, vec![]))
+pub fn str_unique_var(s: &str, dis: crate::ast::VarIdentDisambiguate) -> VarIdent {
+    Arc::new(VarIdentX(s.to_string(), dis, vec![]))
+}
+
+pub fn air_unique_var(s: &str) -> VarIdent {
+    Arc::new(VarIdentX(s.to_string(), crate::ast::VarIdentDisambiguate::AirLocal, vec![]))
+}
+
+pub fn typ_unique_var<S: ToString>(s: S) -> VarIdent {
+    Arc::new(VarIdentX(s.to_string(), crate::ast::VarIdentDisambiguate::TypParam, vec![]))
 }
 
 pub trait LowerVarBinder<A: Clone> {
@@ -748,8 +754,8 @@ impl LowerUniqueVar for VarIdent {
     type Target = Ident;
 
     fn lower(&self) -> Ident {
-        let VarIdentX(ident, uniq_id, rename, suffix) = &**self;
-        Arc::new(crate::def::unique_var_name(ident.to_string(), *uniq_id, *rename, suffix))
+        let VarIdentX(ident, uniq_id, suffix) = &**self;
+        Arc::new(crate::def::unique_var_name(ident.to_string(), *uniq_id, suffix))
     }
 }
 
@@ -767,12 +773,4 @@ impl LowerUniqueVar for Arc<Vec<VarIdent>> {
     fn lower(&self) -> Arc<Vec<Ident>> {
         Arc::new(self.iter().map(|x| x.lower()).collect())
     }
-}
-
-pub fn unique_var_from_ident(i: &Ident) -> VarIdent {
-    Arc::new(VarIdentX((**i).clone(), None, None, vec![]))
-}
-
-pub fn unique_vars_from_idents(i: &Idents) -> VarIdents {
-    Arc::new(i.iter().map(unique_var_from_ident).collect())
 }

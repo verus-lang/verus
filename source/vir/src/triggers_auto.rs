@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{error, Span};
-use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueVarIdent};
+use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -45,7 +45,7 @@ enum App {
     Ctor(Path, Ident),
     // u64 is an id, assigned via a simple counter
     Other(u64),
-    VarAt(UniqueVarIdent, VarAt),
+    VarAt(UniqueIdent, VarAt),
     BitOp(BitOpName),
     StaticVar(Fun),
     ExecFnByName(Fun),
@@ -65,7 +65,7 @@ type Term = Arc<TermX>;
 type Terms = Arc<Vec<Term>>;
 #[derive(PartialEq, Eq, Hash)]
 enum TermX {
-    Var(UniqueVarIdent),
+    Var(UniqueIdent),
     App(App, Terms),
 }
 
@@ -207,7 +207,7 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
 
 fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<VarIdent>, term: &Term) {
     match &**term {
-        TermX::Var(UniqueVarIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
+        TermX::Var(UniqueIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
             vars.insert(x.clone());
         }
         TermX::Var(..) => {}
@@ -228,7 +228,7 @@ fn term_size(term: &Term) -> u64 {
 
 fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     match &**term {
-        TermX::Var(UniqueVarIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
+        TermX::Var(UniqueIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
             Some(depth)
         }
         TermX::Var(..) => None,
@@ -288,7 +288,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             for typ in typs.iter() {
                 let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
                     TypX::TypParam(x) => {
-                        let x = crate::def::unique_bound(&crate::def::suffix_typ_param_var(x));
+                        let x = crate::def::unique_bound(&crate::def::suffix_typ_param_id(x));
                         all_terms.push(Arc::new(TermX::Var(x)));
                         Ok(t.clone())
                     }
@@ -459,12 +459,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 // Second bool: is the instantiation potentially bigger than the original template?
 fn structure_matches(ctxt: &Ctxt, template: &Term, term: &Term) -> (bool, bool) {
     match (&**template, &**term) {
-        (TermX::Var(UniqueVarIdent { name: x1, local: None }), TermX::App(_, _))
+        (TermX::Var(UniqueIdent { name: x1, local: None }), TermX::App(_, _))
             if ctxt.trigger_vars.contains(x1) =>
         {
             (true, true)
         }
-        (TermX::Var(UniqueVarIdent { name: x1, local: None }), _)
+        (TermX::Var(UniqueIdent { name: x1, local: None }), _)
             if ctxt.trigger_vars.contains(x1) =>
         {
             (true, false)

@@ -1,6 +1,6 @@
 use crate::ast::{NullaryOpr, SpannedTyped, Typ, TypX, UnaryOp};
 use crate::messages::{Message, Span};
-use crate::sst::{Exp, ExpX, UniqueVarIdent};
+use crate::sst::{Exp, ExpX, UniqueIdent};
 use std::sync::Arc;
 
 pub(crate) fn make_option_exp(opt: Option<Exp>, span: &Span, typ: &Typ) -> Exp {
@@ -21,7 +21,7 @@ pub(crate) fn make_option_exp(opt: Option<Exp>, span: &Span, typ: &Typ) -> Exp {
 
 // InferSpecForLoopIter produces None if any variables in the express are modified in the loop
 fn vars_unmodified(
-    modified_vars: &Arc<Vec<UniqueVarIdent>>,
+    modified_vars: &Arc<Vec<UniqueIdent>>,
     exp: &Exp,
     print_hint: bool,
     hint_message: &mut Option<Message>,
@@ -70,7 +70,7 @@ fn vars_unmodified(
 }
 
 pub(crate) fn finalize_inv(
-    modified_vars: &Arc<Vec<UniqueVarIdent>>,
+    modified_vars: &Arc<Vec<UniqueIdent>>,
     exp: &Exp,
     hint_message: &mut Option<Message>,
 ) -> Exp {

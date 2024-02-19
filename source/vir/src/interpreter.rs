@@ -14,7 +14,7 @@ use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::messages::{error, warning, Message, Span, ToAny};
-use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueVarIdent};
+use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
@@ -32,7 +32,7 @@ use std::thread;
 // An approximation of how many interpreter invocations we can do in 1 second (in release mode)
 const RLIMIT_MULTIPLIER: u64 = 400_000;
 
-type Env = ScopeMap<UniqueVarIdent, Exp>;
+type Env = ScopeMap<UniqueIdent, Exp>;
 
 /// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
 struct ExpsKey {
@@ -165,11 +165,11 @@ struct Ctx<'a> {
 pub enum InterpExp {
     /// Track free variables (those not introduced inside an assert_by_compute),
     /// so they don't get confused with bound variables.
-    FreeVar(UniqueVarIdent),
+    FreeVar(UniqueIdent),
     /// Optimized representation of intermediate sequence results
     Seq(Vector<Exp>),
     /// A lambda expression that carries with it the original context
-    Closure(Exp, HashMap<UniqueVarIdent, Exp>),
+    Closure(Exp, HashMap<UniqueIdent, Exp>),
 }
 
 /*****************************************************************
@@ -1424,7 +1424,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     state.cache_misses += 1;
                                     state.env.push_scope(true);
                                     for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                        let formal_id = UniqueVarIdent {
+                                        let formal_id = UniqueIdent {
                                             name: formal.x.name.clone(),
                                             local: Some(0),
                                         };
@@ -1465,7 +1465,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             state.env.push_scope(true);
                             for (formal, actual) in bnds.iter().zip(new_args.iter()) {
                                 let formal_id =
-                                    UniqueVarIdent { name: formal.name.clone(), local: None };
+                                    UniqueIdent { name: formal.name.clone(), local: None };
                                 state.env.insert(formal_id, actual.clone()).unwrap();
                             }
                             let e = eval_expr_internal(ctx, state, body);
@@ -1487,7 +1487,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
                 for b in bnds.iter() {
-                    let id = UniqueVarIdent { name: b.name.clone(), local: None };
+                    let id = UniqueIdent { name: b.name.clone(), local: None };
                     let val = eval_expr_internal(ctx, state, &b.a)?;
                     state.env.insert(id, val).unwrap();
                 }

@@ -1,7 +1,7 @@
-use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX, VarIdent, VarIdentX};
-use crate::ast_util::str_unique_var;
+use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast_util::air_unique_var;
 use crate::messages::Span;
-use crate::sst::UniqueVarIdent;
+use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
@@ -66,8 +66,8 @@ const PREFIX_STATIC: &str = "static%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
-/* REVIEW */
-pub const LOCAL_UNIQUE_ID_SEPARATOR: char = '~';
+const LOCAL_UNIQUE_ID_SEPARATOR: &str = "~";
+const LOCAL_RUSTC_ID_SEPARATOR: &str = "~~";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
@@ -234,15 +234,11 @@ pub fn fun_to_string(fun: &Fun) -> String {
 }
 
 pub fn decrease_at_entry(n: usize) -> VarIdent {
-    str_unique_var(&format!("{}{}", DECREASE_AT_ENTRY, n))
+    air_unique_var(&format!("{}{}", DECREASE_AT_ENTRY, n))
 }
 
-// nocheckin pub fn trait_self_type_param() -> Ident {
-// nocheckin     Arc::new(TRAIT_SELF_TYPE_PARAM.to_string())
-// nocheckin }
-
-pub fn trait_self_type_param() -> VarIdent {
-    str_unique_var(TRAIT_SELF_TYPE_PARAM)
+pub fn trait_self_type_param() -> Ident {
+    Arc::new(TRAIT_SELF_TYPE_PARAM.to_string())
 }
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
@@ -265,20 +261,20 @@ pub fn suffix_local_stmt_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_LOCAL_STMT)
 }
 
-pub(crate) fn unique_bound(id: &VarIdent) -> UniqueVarIdent {
-    UniqueVarIdent { name: id.clone(), local: None }
+pub(crate) fn unique_bound(id: &VarIdent) -> UniqueIdent {
+    UniqueIdent { name: id.clone(), local: None }
 }
 
-pub(crate) fn unique_local(id: &VarIdent) -> UniqueVarIdent {
-    UniqueVarIdent { name: id.clone(), local: Some(0) }
+pub(crate) fn unique_local(id: &VarIdent) -> UniqueIdent {
+    UniqueIdent { name: id.clone(), local: Some(0) }
 }
 
-pub fn suffix_local_unique_var(ident: &UniqueVarIdent) -> VarIdent {
-    let UniqueVarIdent { name: x, local: id } = ident;
+pub fn suffix_local_unique_id(ident: &UniqueIdent) -> VarIdent {
+    let UniqueIdent { name: x, local: id } = ident;
     match id {
         None => suffix_local_expr_var(x),
         Some(0) => suffix_local_stmt_var(x),
-        Some(i) => str_unique_var(&format!(
+        Some(i) => air_unique_var(&format!(
             "{}{}{}{}",
             x.to_string(),
             SUFFIX_LOCAL_EXPR,
@@ -303,9 +299,8 @@ pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
 }
 
 pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
-    let VarIdentX(ident, uniq_id, rename, suffix) = &**x;
-    assert!(rename.is_none());
-    Arc::new(VarIdentX(ident.clone(), *uniq_id, Some(n as usize), suffix.clone()))
+    // In principle, we could get renamed more than once, so accumulate n as a suffix
+    x.push_suffix(&format!("{SUBST_RENAME_SEPARATOR}{n}"))
 }
 
 pub(crate) fn suffix_typ_param_var(unique_var: &VarIdent) -> VarIdent {
@@ -333,6 +328,18 @@ pub(crate) fn suffix_typ_param_vars_types(unique_var: &VarIdent) -> Vec<(VarIden
     } else {
         vec![(suffix_typ_param_var(unique_var), TYPE)]
     }
+}
+
+pub(crate) fn suffix_typ_param_id(ident: &Ident) -> VarIdent {
+    suffix_typ_param_var(&crate::ast_util::typ_unique_var(ident))
+}
+
+pub(crate) fn suffix_typ_param_ids(ident: &Ident) -> Vec<VarIdent> {
+    suffix_typ_param_vars(&crate::ast_util::typ_unique_var(ident))
+}
+
+pub(crate) fn suffix_typ_param_ids_types(ident: &Ident) -> Vec<(VarIdent, &'static str)> {
+    suffix_typ_param_vars_types(&crate::ast_util::typ_unique_var(ident))
 }
 
 pub(crate) fn types() -> Vec<&'static str> {
@@ -375,8 +382,8 @@ pub fn prefix_tuple_variant(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_TYPE, i))
 }
 
-pub fn prefix_tuple_param(i: usize) -> VarIdent {
-    str_unique_var(&format!("{}{}", PREFIX_TUPLE_PARAM, i))
+pub fn prefix_tuple_param(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_TUPLE_PARAM, i))
 }
 
 pub fn prefix_lambda_type(i: usize) -> Path {
@@ -454,12 +461,10 @@ pub fn prefix_recursive_fun(fun: &Fun) -> Fun {
 }
 
 pub fn new_temp_var(n: u64) -> VarIdent {
-    Arc::new(crate::ast::VarIdentX(
-        PREFIX_TEMP_VAR.to_string(),
-        /* REVIEW */ Some(n as usize),
-        None,
-        vec![],
-    ))
+    crate::ast_util::str_unique_var(
+        PREFIX_TEMP_VAR,
+        crate::ast::VarIdentDisambiguate::AstToSstTemp(n),
+    )
 }
 
 pub fn is_temp_var(x: &Ident) -> bool {
@@ -468,12 +473,10 @@ pub fn is_temp_var(x: &Ident) -> bool {
 
 // ast_simplify introduces its own temporary variables; we don't want these to conflict with prefix_temp_var
 pub fn simplify_temp_var(n: u64) -> VarIdent {
-    Arc::new(crate::ast::VarIdentX(
-        SIMPLIFY_TEMP_VAR.to_string(),
-        /* REVIEW */ Some(n as usize),
-        None,
-        vec![],
-    ))
+    crate::ast_util::str_unique_var(
+        SIMPLIFY_TEMP_VAR,
+        crate::ast::VarIdentDisambiguate::AstSimplifyTemp(n),
+    )
 }
 
 pub fn prefix_pre_var(name: &Ident) -> Ident {
@@ -723,26 +726,29 @@ pub fn user_local_name<'a>(s: &'a VarIdent) -> &'a str {
     &s.0
 }
 
-/* nocheckin */
-// pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
-/* nocheckin */ //     user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
-/* nocheckin */ // }
-
 pub fn unique_var_name(
     user_given_name: String,
-    uniq_id: Option<usize>,
-    rename: Option<usize>,
+    uniq_id: crate::ast::VarIdentDisambiguate,
     suffix: &Vec<String>,
 ) -> String {
-    use std::fmt::Write;
+    use {crate::ast::VarIdentDisambiguate, std::fmt::Write};
     let mut out = user_given_name;
-    if let Some(uniq_id) = uniq_id {
-        out.push(LOCAL_UNIQUE_ID_SEPARATOR);
-        write!(&mut out, "{}", uniq_id).unwrap();
-    }
-    if let Some(rename) = rename {
-        out.push_str(SUBST_RENAME_SEPARATOR);
-        write!(&mut out, "{}", rename).unwrap();
+    match uniq_id {
+        VarIdentDisambiguate::AirLocal => {}
+        VarIdentDisambiguate::NoBodyParam => {}
+        VarIdentDisambiguate::Field => {}
+        VarIdentDisambiguate::TypParam => {}
+        VarIdentDisambiguate::RustcId(id) | VarIdentDisambiguate::ClosureReturnValue(id) => {
+            out.push_str(LOCAL_RUSTC_ID_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::VirRenumbered(id) => {
+            out.push_str(LOCAL_UNIQUE_ID_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::AstSimplifyTemp(id) | VarIdentDisambiguate::AstToSstTemp(id) => {
+            write!(&mut out, "{}", id).unwrap();
+        }
     }
     for s in suffix.iter() {
         out.push_str(s.as_str());
@@ -790,7 +796,7 @@ pub(crate) fn option_type_path() -> Path {
 }
 
 pub(crate) fn dummy_param_name() -> VarIdent {
-    Arc::new(crate::ast::VarIdentX(DUMMY_PARAM.to_string(), None, None, vec![]))
+    air_unique_var(DUMMY_PARAM)
 }
 
 pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {

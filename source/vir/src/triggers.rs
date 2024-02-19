@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::messages::{error, Span};
-use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueVarIdent};
+use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
 use crate::triggers_auto::AutoType;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -205,7 +205,7 @@ fn check_trigger_expr(
     let mut scope_map = ScopeMap::new();
     let ft = |free_vars: &mut HashSet<VarIdent>, t: &Typ| match &**t {
         TypX::TypParam(x) => {
-            free_vars.insert(crate::def::suffix_typ_param_var(x));
+            free_vars.insert(crate::def::suffix_typ_param_id(x));
             Ok(t.clone())
         }
         _ => Ok(t.clone()),
@@ -231,7 +231,7 @@ fn check_trigger_expr(
                 }
                 check_trigger_expr_args(state, true, args)
             }
-            ExpX::Var(UniqueVarIdent { name: x, local: None }) => {
+            ExpX::Var(UniqueIdent { name: x, local: None }) => {
                 if lets.contains(x) {
                     return Err(error(
                         &exp.span,
@@ -241,7 +241,7 @@ fn check_trigger_expr(
                 free_vars.insert(x.clone());
                 Ok(())
             }
-            ExpX::Var(UniqueVarIdent { name: _, local: Some(_) }) => Ok(()),
+            ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
             ExpX::VarAt(_, VarAt::Pre) => Ok(()),
             ExpX::Old(_, _) => panic!("internal error: Old"),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),

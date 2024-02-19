@@ -1,8 +1,8 @@
 use crate::ast::{
-    DatatypeTransparency, Field, Mode, Path, Typ, TypX, VarIdent, VarIdentX, VarIdents, Variants,
+    DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, VarIdent, Variants,
 };
 use crate::ast_util::{
-    is_visible_to_of_owner, path_as_friendly_rust_name, str_unique_var, LowerUniqueVar,
+    air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name, LowerUniqueVar,
 };
 use crate::context::Ctx;
 use crate::def::{
@@ -48,10 +48,11 @@ pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Data
 }
 
 fn field_to_par(span: &Span, f: &Field) -> Par {
+    let dis = crate::ast::VarIdentDisambiguate::Field;
     Spanned::new(
         span.clone(),
         ParX {
-            name: /* REVIEW */ Arc::new(VarIdentX("_".to_string() + &f.name, None, None, vec![])),
+            name: crate::ast_util::str_unique_var(&("_".to_string() + &f.name), dis),
             typ: f.a.0.clone(),
             mode: f.a.1,
             purpose: ParPurpose::Regular,
@@ -95,7 +96,7 @@ fn datatype_or_fun_to_air_commands(
     dtyp: &air::ast::Typ,
     dtyp_id: Option<Expr>,
     datatyp: Option<Typ>,
-    tparams: &VarIdents,
+    tparams: &Idents,
     variants: &Variants,
     is_fun: bool,
     declare_box: bool,
@@ -103,7 +104,7 @@ fn datatype_or_fun_to_air_commands(
     add_ext_equal: bool,
 ) {
     use crate::def::QID_EXT_EQUAL;
-    let x = str_unique_var("x");
+    let x = air_unique_var("x");
     let x_var = ident_var(&suffix_local_stmt_var(&x).lower());
     let apolytyp = str_typ(crate::def::POLY);
 
@@ -195,7 +196,7 @@ fn datatype_or_fun_to_air_commands(
         let mut args: Vec<Expr> = Vec::new();
         let mut pre: Vec<Expr> = Vec::new();
         for i in 0..tparams.len() - 1 {
-            let name = prefix_tuple_param(i);
+            let name = crate::ast_util::typ_unique_var(prefix_tuple_param(i));
             let arg = ident_var(&suffix_local_stmt_var(&name).lower());
             if let Some(inv) = typ_invariant(ctx, &typ_args[i], &arg) {
                 pre.push(inv);
@@ -472,13 +473,13 @@ fn datatype_or_fun_to_air_commands(
 
     // ext_equal axiom for datatypes
     if add_ext_equal {
-        let deep = str_unique_var("deep");
+        let deep = air_unique_var("deep");
         let deep_var = ident_var(&suffix_local_stmt_var(&deep).lower());
         let deep_param = var_param(deep, &Arc::new(TypX::Bool));
         let has_x = has;
         let y = str_ident("y");
         let y_var = ident_var(&suffix_local_stmt_id(&y));
-        let y_param = |typ: &Typ| var_param(str_unique_var(&y), typ);
+        let y_param = |typ: &Typ| var_param(air_unique_var(&y), typ);
         let unbox_y = ident_apply(&prefix_unbox(&dpath), &vec![y_var.clone()]);
         let has_y = expr_has_type(&y_var, &id);
         let eq_command = |s_name: &str, pre: &Vec<Expr>| {
@@ -597,7 +598,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     let mut axiom_commands: Vec<Command> = Vec::new();
 
     for lambda_n_params in &ctx.lambda_types {
-        let tparams: Vec<VarIdent> =
+        let tparams: Vec<Ident> =
             (0..*lambda_n_params + 1).into_iter().map(prefix_tuple_param).collect();
         datatype_or_fun_to_air_commands(
             ctx,
@@ -654,7 +655,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             transparent_air_datatypes.push(datatype_to_air(ctx, datatype));
         }
 
-        let mut tparams: Vec<VarIdent> = Vec::new();
+        let mut tparams: Vec<Ident> = Vec::new();
         for (name, _strict_pos) in datatype.x.typ_params.iter() {
             tparams.push(name.clone());
         }

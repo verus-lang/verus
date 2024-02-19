@@ -9,9 +9,9 @@ use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
-    FieldOpr, Fun, Function, FunctionKind, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path,
-    Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant,
-    VariantCheck, VirErr, Visibility,
+    FieldOpr, Fun, Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp,
+    Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr,
+    Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
@@ -79,7 +79,7 @@ impl State {
 
 struct LocalCtxt {
     span: Span,
-    typ_params: Vec<VarIdent>,
+    typ_params: Vec<Ident>,
 }
 
 fn is_small_expr(expr: &Expr) -> bool {

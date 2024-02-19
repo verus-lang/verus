@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Fun, Function, Params, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    VarIdent, VirErr,
+    BinaryOp, Fun, Function, Ident, Params, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::get_function;
 use crate::context::Ctx;
@@ -9,7 +9,7 @@ use crate::def::Spanned;
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::messages::Message;
 use crate::messages::{error, Span};
-use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueVarIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, Pars, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::map_shallow_stm;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ struct State<'a> {
     // for the same purpose
     ensures: &'a Exps,
     ens_pars: &'a Pars,
-    dest: Option<UniqueVarIdent>,
+    dest: Option<UniqueIdent>,
 }
 
 impl<'a> State<'a> {
@@ -34,7 +34,7 @@ impl<'a> State<'a> {
         fun_ssts: &'a SstMap,
         ensures: &'a Exps,
         ens_pars: &'a Pars,
-        dest: Option<UniqueVarIdent>,
+        dest: Option<UniqueIdent>,
     ) -> Self {
         let mut reveal_map = Vec::new();
         reveal_map.push(HashMap::new());
@@ -80,12 +80,12 @@ fn inline_expression(
     args: &Exps,
     typs: &Typs,
     params: &Params,
-    typ_params: &crate::ast::VarIdents,
+    typ_params: &crate::ast::Idents,
     body: &Exp,
 ) -> Result<Exp, (Span, String)> {
     // code copied from crate::ast_to_sst::finalized_exp
-    let mut typ_substs: HashMap<VarIdent, Typ> = HashMap::new();
-    let mut substs: HashMap<UniqueVarIdent, Exp> = HashMap::new();
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
     assert!(typ_params.len() == typs.len());
     for (name, typ) in typ_params.iter().zip(typs.iter()) {
         assert!(!typ_substs.contains_key(name));
@@ -698,7 +698,7 @@ pub(crate) fn all_split_exp(
     stm: &Stm,
     ensures: &Exps,
     ens_pars: &Pars,
-    dest: Option<UniqueVarIdent>,
+    dest: Option<UniqueIdent>,
 ) -> Result<Stm, VirErr> {
     let mut state = State::new(fun_ssts, ensures, ens_pars, dest);
     map_shallow_stm(stm, &mut |s| visit_split_stm(ctx, &mut state, diagnostics, s))

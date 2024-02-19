@@ -1,8 +1,8 @@
 use crate::ast::{
     AcceptRecursiveType, Datatype, FunctionKind, GenericBound, GenericBoundX, Ident, Idents,
-    ImplPath, Krate, Path, Trait, Typ, TypX, VarIdent, VirErr,
+    ImplPath, Krate, Path, Trait, Typ, TypX, VirErr,
 };
-use crate::ast_util::{path_as_friendly_rust_name, LowerUniqueVar};
+use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::GlobalCtx;
 use crate::messages::{error, Span};
 use crate::recursion::Node;
@@ -27,7 +27,7 @@ fn check_well_founded(
         panic!("{:?}", path);
     }
     let datatype = &datatypes[path];
-    let mut typ_param_accept: HashMap<VarIdent, AcceptRecursiveType> = HashMap::new();
+    let mut typ_param_accept: HashMap<Ident, AcceptRecursiveType> = HashMap::new();
     for (x, accept_rec) in datatype.x.typ_params.iter() {
         typ_param_accept.insert(x.clone(), *accept_rec);
     }
@@ -50,7 +50,7 @@ fn check_well_founded(
 fn check_well_founded_typ(
     datatypes: &HashMap<Path, Datatype>,
     datatypes_well_founded: &mut HashSet<Path>,
-    typ_param_accept: &HashMap<VarIdent, AcceptRecursiveType>,
+    typ_param_accept: &HashMap<Ident, AcceptRecursiveType>,
     typ: &Typ,
 ) -> bool {
     match &**typ {
@@ -254,7 +254,7 @@ fn check_positive_uses(
         }
         TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
         TypX::TypParam(x) => {
-            let strictly_positive = local.tparams[&x.lower()] != AcceptRecursiveType::Reject;
+            let strictly_positive = local.tparams[x] != AcceptRecursiveType::Reject;
             match (strictly_positive, polarity) {
                 (false, _) => Ok(()),
                 (true, Some(true)) => Ok(()),
@@ -357,7 +357,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     for datatype in &krate.datatypes {
         let mut tparams: HashMap<Ident, AcceptRecursiveType> = HashMap::new();
         for (name, accept_rec) in datatype.x.typ_params.iter() {
-            tparams.insert(name.lower(), *accept_rec);
+            tparams.insert(name.clone(), *accept_rec);
         }
         for bound in datatype.x.typ_bounds.iter() {
             match &**bound {
@@ -572,7 +572,7 @@ pub(crate) fn suppress_bound_in_trait_decl(
         assert!(args.len() == typ_params.len());
         for (typ_param, arg) in typ_params.iter().zip(args.iter()) {
             if let TypX::TypParam(bound_param) = &**arg {
-                if typ_param == &bound_param.lower() {
+                if typ_param == bound_param {
                     continue;
                 }
             }

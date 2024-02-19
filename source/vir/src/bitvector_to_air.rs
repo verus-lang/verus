@@ -7,7 +7,7 @@ use crate::ast_util::{
     undecorate_typ, IntegerTypeBitwidth, LowerUniqueVar, LowerVarBinder,
 };
 use crate::context::Ctx;
-use crate::def::{suffix_local_expr_var, suffix_local_unique_var};
+use crate::def::{suffix_local_expr_var, suffix_local_unique_id};
 use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
@@ -71,7 +71,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 }
             }
 
-            string_var(&suffix_local_unique_var(x).lower())
+            string_var(&suffix_local_unique_id(x).lower())
         }
         ExpX::Unary(op, arg) => {
             if !allowed_bitvector_type(&arg.typ) {
