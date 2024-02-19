@@ -1,12 +1,14 @@
 use num_bigint::BigInt;
 use std::rc::Rc;
 use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode, FieldOpr};
-use crate::sst::{Exp, ExpX, UniqueIdent, BndX};
+use crate::sst::{Exp, ExpX, UniqueIdent, BndX, CallFun};
 use std::collections::HashMap;
 use air::scope_map::ScopeMap;
 use crate::context::Ctx;
 use crate::func_to_air::SstInfo;
 use std::convert::TryFrom;
+use std::convert::TryInto;
+use crate::ast_util::get_variant_and_idx;
 
 
 enum Value {
@@ -53,7 +55,7 @@ enum PreOp {
     MemoizedCall { proc_id: ProcId, n_args: u32 },
     DynCall { closure: Offset },
     Return,
-    BuildClosure { proc_id: ProcId, n_args: u32 },
+    BuildClosure { proc_id: ProcId, n_captures: u32 },
     BuildCtor { variant: u32, n_fields: u32 },
     ConditionalJmp { offset: u32, true_label: LabelId, false_label: LabelId, other_label: LabelId }, 
     Jmp { label: LabelId }, 
@@ -83,7 +85,7 @@ struct InterpreterConfig {
 }
 
 struct InterpreterCtx {
-    fun_to_proc_idx: HashMap<Fun, usize>,
+    fun_to_proc_idx: HashMap<Fun, ProcId>,
     procs: Vec<Procedure>, 
     proc_addresses: Vec<u32>,
 
@@ -97,6 +99,11 @@ struct ModuleLevelInterpreterCtx {
 enum Var {
     Symbol(u32),
     InStack(u32),
+}
+
+enum CallType {
+    Fun(Fun, bool),
+    Uninterp,
 }
 
 struct State<'a> {
@@ -125,6 +132,14 @@ impl<'a> State<'a> {
         self.frame_size += 1;
     }
 
+    fn do_move(&mut self, src: Offset, dst: Offset) {
+        self.pre_ops.push(PreOp::Move { src, dst });
+    }
+
+    fn pop(&mut self, n: u32) {
+        self.pre_ops.push(PreOp::Pop(n));
+    }
+
     fn mk_label(&mut self) -> LabelId {
         let next = self.next_label_id;
         self.next_label_id += 1;
@@ -149,6 +164,10 @@ impl<'a> State<'a> {
         self.frame_size -= 2;
     }
 
+    fn do_return(&mut self) {
+        self.pre_ops.push(PreOp::Return);
+    }
+
     /// Caller is responsible for adjusting self.frame_size
     fn jmp(&mut self, label_id: LabelId) {
         self.pre_ops.push(PreOp::Jmp { label: label_id });
@@ -163,6 +182,43 @@ impl<'a> State<'a> {
         // offset should be 1 more than the # of args
         // e.g., if there are 2 args, then the closure is in the 3rd-to-last slot
         self.pre_ops.push(PreOp::DynCall { closure: offset_of_closure });
+        self.frame_size -= offset_of_closure;
+    }
+
+    fn normal_call(&mut self, proc_id: ProcId, n_args: usize) {
+        let n_args: u32 = n_args.try_into().unwrap();
+        self.pre_ops.push(PreOp::Call { proc_id });
+        self.frame_size = self.frame_size + 1 - n_args;
+    }
+
+    fn cached_call(&mut self, proc_id: ProcId, n_args: usize) {
+        let n_args = n_args.try_into().unwrap();
+        self.pre_ops.push(PreOp::MemoizedCall { proc_id, n_args });
+        self.frame_size = self.frame_size + 1 - n_args;
+    }
+
+    fn build_closure(&mut self, proc_id: ProcId, n_captures: usize) {
+        let n_captures = n_captures.try_into().unwrap();
+        self.pre_ops.push(PreOp::BuildClosure { proc_id, n_captures });
+        self.frame_size = self.frame_size + 1 - n_captures;
+    }
+
+    fn build_ctor(&mut self, variant: u32, n_fields: usize) {
+        let n_fields = n_fields.try_into().unwrap();
+        self.pre_ops.push(PreOp::BuildCtor { variant, n_fields });
+        self.frame_size = self.frame_size + 1 - n_fields;
+    }
+
+    fn get_proc_id_inserting_if_necessary(&mut self, fun: &Fun) -> ProcId {
+        match self.interp_ctx.fun_to_proc_idx.get(fun) {
+            Some(proc_id) => *proc_id,
+            None => {
+                let proc_id = ProcId(u32::try_from(self.interp_ctx.procs.len()).unwrap());
+                self.interp_ctx.procs.push(Procedure::Fun(fun.clone()));
+                self.interp_ctx.fun_to_proc_idx.insert(fun.clone(), proc_id);
+                proc_id
+            }
+        }
     }
 
     fn push_exp(&mut self, e: &Exp) {
@@ -291,13 +347,17 @@ impl<'a> State<'a> {
             }
             ExpX::UnaryOpr(UnaryOpr::HasType(_) | UnaryOpr::TupleField { .. }, _) => unreachable!(),
             ExpX::UnaryOpr(UnaryOpr::IsVariant { datatype, variant }, e) => {
-                let (_variant, idx) = &get_variant_and_idx(&self.ctx.global.datatypes[datatype].1, variant);
+                let (_variant, idx) = get_variant_and_idx(&self.ctx.global.datatypes[datatype].1, variant);
                 self.push_exp(e);
+                let idx = u32::try_from(idx).unwrap();
                 self.do_unary(IUnaryOp::IsVariant(idx));
             }
             ExpX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field, .. }), e) => {
-                let (variant, idx) = &get_variant_and_idx(&self.ctx.global.datatypes[datatype].1, variant);
-                let field_idx = variant.fields.iter().position(|f| f.name == field).unwrap();
+                let (variant, idx) = get_variant_and_idx(&self.ctx.global.datatypes[datatype].1, variant);
+                let field_idx = variant.fields.iter().position(|f| &f.name == field).unwrap();
+
+                let idx = u32::try_from(idx).unwrap();
+                let field_idx = u32::try_from(field_idx).unwrap();
 
                 self.push_exp(e);
                 self.do_unary(IUnaryOp::GetField(idx, field_idx));
@@ -318,12 +378,12 @@ impl<'a> State<'a> {
                     self.push_exp(arg);
                 }
 
-                let call_type = get_call_type(call_fun);
+                let call_type = self.get_call_type(call_fun);
                 match call_type {
                     CallType::Fun(fun, cached) => {
-                        let proc_id = self.get_proc_id(fun);
+                        let proc_id = self.get_proc_id_inserting_if_necessary(&fun);
                         if cached {
-                            self.normal_call(proc_id);
+                            self.normal_call(proc_id, args.len());
                         } else {
                             self.cached_call(proc_id, args.len());
                         }
@@ -335,17 +395,19 @@ impl<'a> State<'a> {
             }
             ExpX::Bind(bnd, body) => match &bnd.x {
                 BndX::Let(binders) => {
-                    self.var_locs.push_scope();
-                    for binder in binders {
+                    self.var_locs.push_scope(false);
+                    for binder in binders.iter() {
                         self.push_exp(&binder.a);
-                        self.var_locs.insert(binder.name.clone(),
+                        let uid = UniqueIdent { name: binder.name.clone(),
+                            local: None };
+                        self.var_locs.insert(uid,
                             Var::InStack(self.frame_size - 1));
                     }
                     self.push_exp(body);
                     self.var_locs.pop_scope();
 
-                    self.do_move(1, binders.len() + 1);
-                    self.pop(binders.len());
+                    self.do_move(1, (binders.len() + 1).try_into().unwrap());
+                    self.pop(binders.len().try_into().unwrap());
                 }
                 BndX::Lambda(binders, _triggers) => {
                     // use e here, not body, to make sure
@@ -354,7 +416,7 @@ impl<'a> State<'a> {
 
                     let mut captured_vars = vec![];
                     for fv in free_vars {
-                        match self.var_locs.get(fv).unwrap() {
+                        match self.var_locs.get(&fv).unwrap() {
                             Var::Symbol(_) => { }
                             Var::InStack(i) => {
                                 captured_vars.push(fv);
@@ -362,23 +424,23 @@ impl<'a> State<'a> {
                             }
                         }
                     }
-                    let params = binders.iter().map(|t| t.name.clone()).collect();
+                    let params = binders.iter().map(|t| UniqueIdent { name: t.name.clone(), local: None }).collect();
 
-                    let proc_id = self.interp_ctx.procedures.len();
-                    self.interp_ctx.procedures.push(Procedure::Closure(
-                        captured_vars, params, body));
+                    let proc_id = ProcId(self.interp_ctx.procs.len().try_into().unwrap());
+                    self.interp_ctx.procs.push(Procedure::Closure(
+                        captured_vars, params, body.clone()));
 
                     self.build_closure(proc_id, captured_vars.len());
                 }
             }
             ExpX::Ctor(path, variant, binders) => {
-                let (variant, idx) = &get_variant_and_idx(&self.ctx.global.datatypes[path].1, variant);
+                let (variant, idx) = get_variant_and_idx(&self.ctx.global.datatypes[path].1, variant);
                 let fields = variant.fields;
-                let es = fields.iter().map(|f| crate::ast_util::get_field(binders, &f.name).a);
-                for e in es.into_iter() {
+                for f in fields.iter() {
+                    let e = &crate::ast_util::get_field(binders, &f.name).a;
                     self.push_exp(e);
                 }
-                self.build_ctor(idx, fields.len());
+                self.build_ctor(idx.try_into().unwrap(), fields.len());
             }
         }
     }
@@ -391,7 +453,7 @@ impl<'a> State<'a> {
             Procedure::Exp(exp) => {
                 let free_vars = get_free_vars(exp);
                 let symbol = 0;
-                for fv in free_vars.iter() {
+                for fv in free_vars.into_iter() {
                     self.var_locs.insert(fv, Var::Symbol(symbol));
                     symbol += 1;
                 }
@@ -399,11 +461,12 @@ impl<'a> State<'a> {
                 self.do_return();
             }
             Procedure::Fun(fun) => {
-                let function = self.ctx.func_map.get(fun);
+                let function = self.ctx.func_map.get(fun).unwrap();
                 let body = self.fun_ssts.get(fun);
 
-                self.frame_size = function.x.params.len();
+                self.frame_size = function.x.params.len().try_into().unwrap();
                 for (i, p) in function.x.params.iter().enumerate() {
+                    let i = i.try_into().unwrap();
                     self.var_locs.insert(p, Var::InStack(i));
                 }
 
@@ -435,6 +498,14 @@ impl<'a> State<'a> {
             }
         }
     }
+
+    fn get_call_type(&self, fun: &CallFun) -> CallType {
+        todo!();
+    }
+}
+
+fn get_free_vars(e: &Exp) -> Vec<UniqueIdent> {
+    todo!();
 }
 
 impl InterpreterCtx {
