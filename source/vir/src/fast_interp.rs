@@ -5,7 +5,7 @@ use crate::sst::{Exp, ExpX, UniqueIdent, BndX, CallFun};
 use std::collections::HashMap;
 use air::scope_map::ScopeMap;
 use crate::context::Ctx;
-use crate::func_to_air::SstInfo;
+use crate::func_to_air::{SstMap};
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use crate::ast_util::get_variant_and_idx;
@@ -23,8 +23,8 @@ enum CallFrame {
 }
 
 type Offset = u32;
-struct ProcId(u32);
-struct LabelId(u32);
+struct ProcId(usize);
+struct LabelId(usize);
 
 enum Op {
     Unary(IUnaryOp),
@@ -35,7 +35,7 @@ enum Op {
     Pop(u32),
     Move { src: Offset, dst: Offset },
     Call { addr: u32 },
-    MemoizedCall { addr: u32, n_args: usize },
+    MemoizedCall { addr: u32, n_args: u32 },
     DynCall { closure: Offset },
     BuildCtor { variant: u32, n_fields: u32 },
     Return,
@@ -109,12 +109,12 @@ enum CallType {
 struct State<'a> {
     interp_ctx: &'a mut InterpreterCtx,
     ctx: &'a Ctx,
-    fun_ssts: &'a HashMap<Fun, SstInfo>,
+    fun_ssts: &'a SstMap,
 
     frame_size: u32,
     var_locs: ScopeMap<UniqueIdent, Var>,
     pre_ops: Vec<PreOp>,
-    next_label_id: u32,
+    next_label_id: usize,
 }
 
 impl<'a> State<'a> {
@@ -213,7 +213,7 @@ impl<'a> State<'a> {
         match self.interp_ctx.fun_to_proc_idx.get(fun) {
             Some(proc_id) => *proc_id,
             None => {
-                let proc_id = ProcId(u32::try_from(self.interp_ctx.procs.len()).unwrap());
+                let proc_id = ProcId(self.interp_ctx.procs.len());
                 self.interp_ctx.procs.push(Procedure::Fun(fun.clone()));
                 self.interp_ctx.fun_to_proc_idx.insert(fun.clone(), proc_id);
                 proc_id
@@ -462,15 +462,16 @@ impl<'a> State<'a> {
             }
             Procedure::Fun(fun) => {
                 let function = self.ctx.func_map.get(fun).unwrap();
-                let body = self.fun_ssts.get(fun);
+                let fun_sst = self.fun_ssts.borrow().get(fun).unwrap();
 
                 self.frame_size = function.x.params.len().try_into().unwrap();
                 for (i, p) in function.x.params.iter().enumerate() {
                     let i = i.try_into().unwrap();
-                    self.var_locs.insert(p, Var::InStack(i));
+                    let uid = UniqueIdent { name: p.x.name.clone(), local: None };
+                    self.var_locs.insert(uid, Var::InStack(i));
                 }
 
-                self.push_exp(body);
+                self.push_exp(&fun_sst.body);
                 self.do_move(0, self.frame_size);
                 self.pop(self.frame_size - 1);
                 self.do_return();
@@ -478,17 +479,18 @@ impl<'a> State<'a> {
             Procedure::Closure(captured, params, body) => {
                 // The closure itself is the first parameter, so
                 // the stack starts with (closure, param1, param2, ...)
-                self.frame_size = params.len() + 1;
+                self.frame_size = (params.len() + 1).try_into().unwrap();
                 for (i, p) in params.iter().enumerate() {
-                    self.var_locs.insert(p, Var::InStack(i + 1));
+                    let idx = (i + 1).try_into().unwrap();
+                    self.var_locs.insert(p.clone(), Var::InStack(idx));
                 }
 
                 // Start by unpacking the closure so that our stack looks like
                 // (closure, param1, param2, ..., captured1, captured2, ...)
                 for (i, captured_var) in captured.iter().enumerate() {
-                    self.var_locs.insert(captured_var, Var::InStack(self.frame_size));
+                    self.var_locs.insert(captured_var.clone(), Var::InStack(self.frame_size));
                     self.push_move(self.frame_size);
-                    self.do_unary(UnaryOp::GetField(i));
+                    self.do_unary(IUnaryOp::GetField(0, i.try_into().unwrap()));
                 }
 
                 self.push_exp(body);
@@ -509,9 +511,10 @@ fn get_free_vars(e: &Exp) -> Vec<UniqueIdent> {
 }
 
 impl InterpreterCtx {
-    fn compile(&mut self, ctx: &Ctx, e: &Exp) {
+    fn compile(&mut self, ctx: &Ctx, fun_ssts: &SstMap, e: &Exp) {
         let state = State {
             interp_ctx: self,
+            fun_ssts,
             ctx,
             frame_size: 0,
             var_locs: ScopeMap::new(),
@@ -519,33 +522,33 @@ impl InterpreterCtx {
             next_label_id: 0,
         };
 
-        state.ctx.procs.push(Procedure::Exp(e.clone()));
-        let first_proc = state.ctx.procs.len() - 1;
-        let mut i = state.ctx.procs.len() - 1;
+        state.interp_ctx.procs.push(Procedure::Exp(e.clone()));
+        let first_proc = state.interp_ctx.procs.len() - 1;
+        let mut i = state.interp_ctx.procs.len() - 1;
         let mut pre_ops_lists = vec![];
-        while i < state.ctx.procs.len() {
-            let res = state.compile_procedure(&state.ctx.procs[i]);
+        while i < state.interp_ctx.procs.len() {
+            let res = state.compile_procedure(&state.interp_ctx.procs[i]);
             i += 1;
 
             let pre_ops = std::mem::take(&mut state.pre_ops);
             pre_ops_lists.push(pre_ops);
         }
 
-        let mut label_map = HashMap::<u32, u32>::new();
-        let mut current_address = self.ops.len();
+        let mut label_map = HashMap::<usize, u32>::new();
+        let mut current_address: u32 = self.ops.len().try_into().unwrap();
         for pre_ops in pre_ops_lists.iter() {
-            state.proc_addresses.push(current_address);
+            state.interp_ctx.proc_addresses.push(current_address);
             for pre_op in pre_ops.iter() {
                 if let PreOp::Label(label_id) = pre_op {
-                    assert!(!label_map.contains_key(label_id.0));
+                    assert!(!label_map.contains_key(&label_id.0));
                     label_map.insert(label_id.0, current_address);
                 } else {
                     current_address += 1;
                 }
             }
         }
-        for pre_ops in pre_ops_lists.iter() {
-            for pre_op in pre_ops.iter() {
+        for pre_ops in pre_ops_lists.into_iter() {
+            for pre_op in pre_ops.into_iter() {
                 let op = match pre_op {
                     PreOp::Unary(op) => Op::Unary(op),
                     PreOp::Binary(op) => Op::Binary(op),
@@ -555,29 +558,29 @@ impl InterpreterCtx {
                     PreOp::Pop(n) => Op::Pop(n),
                     PreOp::Move { src, dst } => Op::Move { src, dst },
                     PreOp::Call { proc_id } =>
-                        Op::PreOp::Call { addr: self.proc_addresses[proc_id.0] },
-                    PreOp::MemoizedCall { proc_id } =>
-                        Op::PreOp::MemoizedCall { addr: self.proc_addresses[proc_id.0] },
+                        Op::Call { addr: self.proc_addresses[proc_id.0] },
+                    PreOp::MemoizedCall { proc_id, n_args } =>
+                        Op::MemoizedCall { addr: self.proc_addresses[proc_id.0], n_args: n_args },
                     PreOp::DynCall { closure } => Op::DynCall { closure },
                     PreOp::Return => Op::Return,
-                    PreOp::BuildClosure { proc_id, n_args } => {
+                    PreOp::BuildClosure { proc_id, n_captures } => {
                         Op::BuildCtor { variant: self.proc_addresses[proc_id.0],
-                            n_fields: n_args }
+                            n_fields: n_captures }
                     }
                     PreOp::BuildCtor { variant, n_fields } => {
                         Op::BuildCtor { variant, n_fields }
                     }
                     PreOp::ConditionalJmp { offset, true_label, false_label, other_label } => {
                         Op::ConditionalJmp {
-                            offset: *offset,
-                            true_addr: *label_map.get(*true_label).unwrap(),
-                            false_addr: *label_map.get(*false_label).unwrap(),
-                            other_addr: *label_map.get(*other_label).unwrap(),
+                            offset: offset,
+                            true_addr: *label_map.get(&true_label.0).unwrap(),
+                            false_addr: *label_map.get(&false_label.0).unwrap(),
+                            other_addr: *label_map.get(&other_label.0).unwrap(),
                         }
                     }
                     PreOp::Jmp { label } => {
                         Op::Jmp {
-                            addr: *label_map.get(*label).unwrap(),
+                            addr: *label_map.get(&label.0).unwrap(),
                         } 
                     }
                     PreOp::Label(_) => { continue; }
@@ -588,7 +591,7 @@ impl InterpreterCtx {
     }
 
     fn run(&self, proc_id: ProcId) -> Value {
-        let instr_ptr = self.proc_addresses[proc_id];
+        let instr_ptr = self.proc_addresses[proc_id.0];
         let stack: Vec<Value> = Vec::with_capacity(1000);
         let call_stack: Vec<CallFrame> = Vec::with_capacity(1000);
         let memoize_cache = HashMap::<(u32, Vec<Value>), Value>::new();
