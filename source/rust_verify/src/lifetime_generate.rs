@@ -2119,6 +2119,9 @@ fn erase_impl<'tcx>(
                 if vattrs.is_external(&ctxt.cmd_line_args) {
                     continue;
                 }
+                if vattrs.reveal_group {
+                    continue;
+                }
                 match &kind {
                     ImplItemKind::Fn(sig, body_id) => {
                         erase_fn(

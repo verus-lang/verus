@@ -408,7 +408,7 @@ fn check_item<'tcx>(
                                 check_item_fn(
                                     ctxt,
                                     &mut vir.functions,
-                                    None,
+                                    Some(&mut vir.reveal_groups),
                                     impl_item.owner_id.to_def_id(),
                                     kind,
                                     impl_item_visibility,

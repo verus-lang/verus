@@ -169,3 +169,169 @@ test_verify_one_file! {
         }}
     } => Ok(())
 }
+
+const RING_ALGEBRA: &str = verus_code_str! {
+    mod ring {
+        use builtin::*;
+
+        pub struct Ring {
+            pub i: nat,
+        }
+
+        impl Ring {
+            pub closed spec fn inv(&self) -> bool {
+                self.i < 10
+            }
+
+            pub closed spec fn succ(&self) -> Ring {
+                Ring { i: if self.i == 9 { 0 } else { self.i + 1 } }
+            }
+
+            pub closed spec fn prev(&self) -> Ring {
+                Ring { i: if self.i == 0 { 9 } else { (self.i - 1) as nat } }
+            }
+        }
+
+        #[verifier::broadcast_forall]
+        pub proof fn Ring_succ(p: Ring)
+            requires p.inv()
+            ensures p.inv() && (#[trigger] p.succ()).prev() == p
+        { }
+
+        #[verifier::broadcast_forall]
+        pub proof fn Ring_prev(p: Ring)
+            requires p.inv()
+            ensures p.inv() && (#[trigger] p.prev()).succ() == p
+        { }
+
+        reveal_group! {
+        pub Ring_properties =>
+            Ring_succ,
+            Ring_prev,
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_basic RING_ALGEBRA.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            proof fn t1(p: Ring) requires p.inv() {
+                assert(p.succ().prev() == p); // FAILS
+            }
+
+            proof fn t2(p: Ring) requires p.inv() {
+                reveal(Ring_succ);
+                assert(p.succ().prev() == p);
+            }
+
+            proof fn t3(p: Ring) requires p.inv() {
+                reveal(Ring_succ);
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p); // FAILS
+            }
+
+            proof fn t4(p: Ring) requires p.inv() {
+                assert(p.prev().succ() == p); // FAILS
+            }
+
+            proof fn t5(p: Ring) requires p.inv() {
+                reveal(Ring_succ);
+                reveal(Ring_prev);
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+
+            proof fn t6(p: Ring) requires p.inv() {
+                reveal(Ring_properties);
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+const RING_ALGEBRA_MEMBERS: &str = verus_code_str! {
+    mod ring {
+        use builtin::*;
+
+        pub struct Ring {
+            pub i: nat,
+        }
+
+        impl Ring {
+            pub closed spec fn inv(&self) -> bool {
+                self.i < 10
+            }
+
+            pub closed spec fn succ(&self) -> Ring {
+                Ring { i: if self.i == 9 { 0 } else { self.i + 1 } }
+            }
+
+            pub closed spec fn prev(&self) -> Ring {
+                Ring { i: if self.i == 0 { 9 } else { (self.i - 1) as nat } }
+            }
+
+            #[verifier::broadcast_forall]
+            pub proof fn succ_ensures(p: Ring)
+                requires p.inv()
+                ensures p.inv() && (#[trigger] p.succ()).prev() == p
+            { }
+
+            #[verifier::broadcast_forall]
+            pub proof fn prev_ensures(p: Ring)
+                requires p.inv()
+                ensures p.inv() && (#[trigger] p.prev()).succ() == p
+            { }
+
+            reveal_group! {
+            pub properties =>
+                Ring::succ_ensures,
+                Ring::prev_ensures,
+            }
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_member RING_ALGEBRA_MEMBERS.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            proof fn t1(p: Ring) requires p.inv() {
+                assert(p.succ().prev() == p); // FAILS
+            }
+
+            proof fn t2(p: Ring) requires p.inv() {
+                reveal(Ring::succ_ensures);
+                assert(p.succ().prev() == p);
+            }
+
+            proof fn t3(p: Ring) requires p.inv() {
+                reveal(Ring::succ_ensures);
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p); // FAILS
+            }
+
+            proof fn t4(p: Ring) requires p.inv() {
+                assert(p.prev().succ() == p); // FAILS
+            }
+
+            proof fn t5(p: Ring) requires p.inv() {
+                reveal(Ring::succ_ensures);
+                reveal(Ring::prev_ensures);
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+
+            proof fn t6(p: Ring) requires p.inv() {
+                reveal(Ring::properties);
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
