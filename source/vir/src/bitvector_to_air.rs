@@ -1,10 +1,9 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, InequalityOp, IntRange, Typ, TypX, UnaryOp, UnaryOpr, VarBinderX,
-    VirErr,
+    ArithOp, BinaryOp, BitwiseOp, InequalityOp, IntRange, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{
     allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, is_integer_type,
-    undecorate_typ, IntegerTypeBitwidth, LowerUniqueVar, LowerVarBinder,
+    undecorate_typ, IntegerTypeBitwidth, LowerUniqueVar,
 };
 use crate::context::Ctx;
 use crate::def::{suffix_local_expr_var, suffix_local_unique_id};
@@ -71,7 +70,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 }
             }
 
-            string_var(&suffix_local_unique_id(x).lower())
+            string_var(&suffix_local_unique_id(x))
         }
         ExpX::Unary(op, arg) => {
             if !allowed_bitvector_type(&arg.typ) {
@@ -235,13 +234,12 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 let expr = bv_exp_to_expr(ctx, e, expr_ctxt)?;
                 let binders =
                     vec_map_result(&*binders, |b| match bv_exp_to_expr(ctx, &b.a, expr_ctxt) {
-                        Ok(expr) => Ok(Arc::new(VarBinderX {
-                            name: suffix_local_expr_var(&b.name),
-                            a: expr,
-                        })),
+                        Ok(expr) => {
+                            Ok(Arc::new(BinderX { name: suffix_local_expr_var(&b.name), a: expr }))
+                        }
                         Err(vir_err) => Err(vir_err.clone()),
                     })?;
-                air::ast_util::mk_let(&binders.lower(), &expr)
+                air::ast_util::mk_let(&binders, &expr)
             }
             BndX::Quant(quant, binders, trigs) => {
                 let expr = bv_exp_to_expr(ctx, e, expr_ctxt)?;
@@ -263,7 +261,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                             let xts = crate::def::suffix_typ_param_vars_types(&binder.name);
                             xts.into_iter().map(|(x, t)| (x.lower(), str_typ(&t))).collect()
                         }
-                        _ => vec![(suffix_local_expr_var(&binder.name).lower(), typ)],
+                        _ => vec![(suffix_local_expr_var(&binder.name), typ)],
                     };
                     for (name, typ) in names_typs {
                         bs.push(Arc::new(BinderX { name, a: typ.clone() }));

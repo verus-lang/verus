@@ -245,16 +245,18 @@ pub fn suffix_global_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_GLOBAL)
 }
 
-pub fn suffix_local_expr_var(ident: &VarIdent) -> VarIdent {
-    ident.push_suffix(SUFFIX_LOCAL_EXPR)
+pub fn suffix_local_expr_var(ident: &VarIdent) -> Ident {
+    use crate::ast_util::LowerUniqueVar;
+    ident.push_suffix(SUFFIX_LOCAL_EXPR).lower()
 }
 
 pub fn suffix_local_expr_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_LOCAL_EXPR)
 }
 
-pub fn suffix_local_stmt_var(ident: &VarIdent) -> VarIdent {
-    ident.push_suffix(SUFFIX_LOCAL_STMT)
+pub fn suffix_local_stmt_var(ident: &VarIdent) -> Ident {
+    use crate::ast_util::LowerUniqueVar;
+    ident.push_suffix(SUFFIX_LOCAL_STMT).lower()
 }
 
 pub fn suffix_local_stmt_id(ident: &Ident) -> Ident {
@@ -269,7 +271,8 @@ pub(crate) fn unique_local(id: &VarIdent) -> UniqueIdent {
     UniqueIdent { name: id.clone(), local: Some(0) }
 }
 
-pub fn suffix_local_unique_id(ident: &UniqueIdent) -> VarIdent {
+pub fn suffix_local_unique_id(ident: &UniqueIdent) -> Ident {
+    use crate::ast_util::LowerUniqueVar;
     let UniqueIdent { name: x, local: id } = ident;
     match id {
         None => suffix_local_expr_var(x),
@@ -280,7 +283,8 @@ pub fn suffix_local_unique_id(ident: &UniqueIdent) -> VarIdent {
             SUFFIX_LOCAL_EXPR,
             i,
             SUFFIX_LOCAL_STMT
-        )),
+        ))
+        .lower(),
     }
 }
 

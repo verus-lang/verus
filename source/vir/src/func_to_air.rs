@@ -634,19 +634,16 @@ pub fn func_decl_to_air(
             let ParamX { name, typ, .. } = &function.x.ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             ens_params.push(param_to_par(&function.x.ret, false));
-            if let Some(expr) =
-                typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_var(&name).lower()))
+            if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_var(&name)))
             {
                 ens_typing_invs.push(expr);
             }
         }
         // typing invariants for synthetic out-params for &mut params
         for param in post_params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
-            if let Some(expr) = typ_invariant(
-                ctx,
-                &param.x.typ,
-                &ident_var(&suffix_local_stmt_var(&param.x.name).lower()),
-            ) {
+            if let Some(expr) =
+                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_var(&param.x.name)))
+            {
                 ens_typing_invs.push(expr);
             }
         }
@@ -789,7 +786,7 @@ pub fn func_axioms_to_air(
                 f_args.extend(ids.iter().map(|x| ident_var(&x.lower())));
             }
             for param in function.x.params.iter() {
-                let arg = ident_var(&suffix_local_stmt_var(&param.x.name).lower());
+                let arg = ident_var(&suffix_local_stmt_var(&param.x.name));
                 f_args.push(arg.clone());
                 if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
                     f_pre.push(pre.clone());

@@ -7,7 +7,7 @@ use crate::ast::{
 use crate::messages::{error, Span};
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
-use air::ast::{Binder, BinderX, Binders};
+use air::ast::{Binder, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
 use num_bigint::{BigInt, Sign};
 use std::collections::{HashMap, HashSet};
@@ -713,37 +713,6 @@ pub fn typ_unique_var<S: ToString>(s: S) -> VarIdent {
     Arc::new(VarIdentX(s.to_string(), crate::ast::VarIdentDisambiguate::TypParam, vec![]))
 }
 
-pub trait LowerVarBinder<A: Clone> {
-    type Target;
-
-    fn lower(&self) -> Self::Target;
-}
-
-impl<A: Clone> LowerVarBinder<A> for VarBinder<A> {
-    type Target = Binder<A>;
-
-    fn lower(&self) -> Binder<A> {
-        let VarBinderX { name, a } = &**self;
-        let name = Arc::new(name.to_string());
-        Arc::new(BinderX { name, a: a.clone() })
-    }
-}
-
-impl<A: Clone> LowerVarBinder<A> for Vec<VarBinder<A>> {
-    type Target = Vec<Binder<A>>;
-
-    fn lower(&self) -> Vec<Binder<A>> {
-        self.iter().map(|x| x.lower()).collect()
-    }
-}
-
-impl<A: Clone> LowerVarBinder<A> for Arc<Vec<VarBinder<A>>> {
-    type Target = Arc<Vec<Binder<A>>>;
-
-    fn lower(&self) -> Arc<Vec<Binder<A>>> {
-        Arc::new(self.iter().map(|x| x.lower()).collect())
-    }
-}
 pub trait LowerUniqueVar {
     type Target;
 
