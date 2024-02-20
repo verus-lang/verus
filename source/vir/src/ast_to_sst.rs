@@ -2138,6 +2138,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut binds: Vec<Bnd> = Vec::new();
             let mut is_pure_exp = true;
             let mut never_return = false;
+            state.push_scope();
             for stmt in stmts.iter() {
                 let (mut stms0, e0, decl_bnd_opt) = stmt_to_stm(ctx, state, stmt)?;
                 match decl_bnd_opt {
@@ -2185,6 +2186,7 @@ pub(crate) fn expr_to_stm_opt(
             for _ in local_decls.iter() {
                 state.pop_scope();
             }
+            state.pop_scope();
             match exp {
                 ReturnValue::Some(mut exp) if is_pure_exp => {
                     // Pure expression: fold decls into Let bindings and return a single expression
