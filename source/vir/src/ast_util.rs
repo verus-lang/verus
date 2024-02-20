@@ -676,6 +676,10 @@ impl<A: Clone + std::fmt::Debug> std::fmt::Debug for VarBinderX<A> {
 }
 
 impl<A: Clone> VarBinderX<A> {
+    pub fn rename(&self, name: VarIdent) -> VarBinder<A> {
+        Arc::new(VarBinderX { name, a: self.a.clone() })
+    }
+
     pub fn new_a<B: Clone>(&self, a: B) -> VarBinder<B> {
         Arc::new(VarBinderX { name: self.name.clone(), a })
     }
@@ -702,15 +706,15 @@ impl VarIdentX {
 }
 
 pub fn str_unique_var(s: &str, dis: crate::ast::VarIdentDisambiguate) -> VarIdent {
-    Arc::new(VarIdentX(s.to_string(), dis, vec![]))
+    Arc::new(VarIdentX(Arc::new(s.to_string()), dis, vec![]))
 }
 
 pub fn air_unique_var(s: &str) -> VarIdent {
-    Arc::new(VarIdentX(s.to_string(), crate::ast::VarIdentDisambiguate::AirLocal, vec![]))
+    Arc::new(VarIdentX(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::AirLocal, vec![]))
 }
 
 pub fn typ_unique_var<S: ToString>(s: S) -> VarIdent {
-    Arc::new(VarIdentX(s.to_string(), crate::ast::VarIdentDisambiguate::TypParam, vec![]))
+    Arc::new(VarIdentX(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::TypParam, vec![]))
 }
 
 pub trait LowerUniqueVar {

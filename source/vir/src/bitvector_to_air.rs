@@ -6,7 +6,7 @@ use crate::ast_util::{
     undecorate_typ, IntegerTypeBitwidth, LowerUniqueVar,
 };
 use crate::context::Ctx;
-use crate::def::{suffix_local_expr_var, suffix_local_unique_id};
+use crate::def::suffix_local_unique_id;
 use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
@@ -232,14 +232,12 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
                 let expr = bv_exp_to_expr(ctx, e, expr_ctxt)?;
-                let binders =
-                    vec_map_result(&*binders, |b| match bv_exp_to_expr(ctx, &b.a, expr_ctxt) {
-                        Ok(expr) => {
-                            Ok(Arc::new(BinderX { name: suffix_local_expr_var(&b.name), a: expr }))
-                        }
-                        Err(vir_err) => Err(vir_err.clone()),
-                    })?;
-                air::ast_util::mk_let(&binders, &expr)
+                let mut bs: Vec<Binder<Expr>> = Vec::new();
+                for b in binders.iter() {
+                    let e = bv_exp_to_expr(ctx, &b.a, expr_ctxt)?;
+                    bs.push(Arc::new(BinderX { name: b.name.lower(), a: e }));
+                }
+                air::ast_util::mk_let(&bs, &expr)
             }
             BndX::Quant(quant, binders, trigs) => {
                 let expr = bv_exp_to_expr(ctx, e, expr_ctxt)?;
@@ -261,7 +259,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                             let xts = crate::def::suffix_typ_param_vars_types(&binder.name);
                             xts.into_iter().map(|(x, t)| (x.lower(), str_typ(&t))).collect()
                         }
-                        _ => vec![(suffix_local_expr_var(&binder.name), typ)],
+                        _ => vec![(binder.name.lower(), typ)],
                     };
                     for (name, typ) in names_typs {
                         bs.push(Arc::new(BinderX { name, a: typ.clone() }));

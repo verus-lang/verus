@@ -24,7 +24,7 @@ fn free_vars_exp_scope(
     let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
-            ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(&x.name) => {
+            ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
             _ => (),
@@ -295,8 +295,8 @@ impl ExpX {
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
             },
-            Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
-            VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
+            Var(id) | VarLoc(id) => (format!("{}", user_local_name(id)), 99),
+            VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
             StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
             Loc(exp) => {
                 return exp.x.to_string_prec(global, precedence);
@@ -514,7 +514,7 @@ impl ExpX {
             Interp(e) => {
                 use InterpExp::*;
                 match e {
-                    FreeVar(id) => (format!("{}", user_local_name(&id.name)), 99),
+                    FreeVar(id) => (format!("{}", user_local_name(id)), 99),
                     Seq(s) => {
                         let v = s
                             .iter()

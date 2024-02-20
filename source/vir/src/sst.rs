@@ -38,12 +38,8 @@ pub enum BndX {
     Choose(VarBinders<Typ>, Trigs, Exp),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UniqueIdent {
-    pub name: VarIdent,
-    // None for bound vars, Some disambiguating integer for local vars
-    pub local: Option<u64>,
-}
+// TODO: remove UniqueIdent
+pub type UniqueIdent = VarIdent;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InternalFun {

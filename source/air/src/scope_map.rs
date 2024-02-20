@@ -2,12 +2,14 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::ops::Index;
 
+#[derive(Debug)]
 struct Scope<K, V> {
     undo_map: HashMap<K, (Option<V>, usize)>,
     allow_shadowing: bool,
     count: usize,
 }
 
+#[derive(Debug)]
 pub struct ScopeMap<K, V> {
     map: HashMap<K, V>,
     cannot_shadow: HashSet<K>,

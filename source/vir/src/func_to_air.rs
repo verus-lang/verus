@@ -8,9 +8,8 @@ use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_open_inv,
     prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name, suffix_global_id,
-    suffix_local_stmt_id, suffix_local_stmt_var, suffix_typ_param_id, suffix_typ_param_ids,
-    unique_local, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL,
-    FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
+    suffix_typ_param_id, suffix_typ_param_ids, unique_local, CommandsWithContext, SnapPos, Spanned,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
@@ -68,12 +67,12 @@ pub(crate) fn func_bind_trig(
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
             prefix_pre_var(&param.x.name.lower())
         } else {
-            param.x.name.clone().lower()
+            param.x.name.lower()
         };
-        binders.push(ident_binder(&suffix_local_stmt_id(&name), &typ_to_air(ctx, &param.x.typ)));
+        binders.push(ident_binder(&name, &typ_to_air(ctx, &param.x.typ)));
     }
     if add_fuel {
-        binders.push(ident_binder(&str_ident(FUEL_LOCAL), &str_typ(FUEL_TYPE)));
+        binders.push(ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE)));
     }
     let trigger: Trigger = Arc::new(trig_exprs.clone());
     let triggers: Triggers = Arc::new(vec![trigger]);
@@ -102,7 +101,7 @@ pub(crate) fn func_def_typs_args(typ_args: &Typs, params: &Pars) -> Vec<Expr> {
         } else {
             param.x.name.lower()
         };
-        f_args.push(ident_var(&suffix_local_stmt_id(&name)));
+        f_args.push(ident_var(&name));
     }
     f_args
 }
@@ -317,8 +316,8 @@ fn func_body_to_air(
         let mut args_succ = args.clone();
         let mut args_def = args;
         args_zero.push(str_var(ZERO));
-        args_fuel.push(str_var(FUEL_LOCAL));
-        args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_LOCAL)]));
+        args_fuel.push(str_var(FUEL_PARAM));
+        args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_PARAM)]));
         let mut succ_fuel_nat_f = ident_var(&fuel_nat_f);
         for _ in 0..cycle_len {
             succ_fuel_nat_f = str_apply(SUCC, &vec![succ_fuel_nat_f]);
@@ -634,15 +633,13 @@ pub fn func_decl_to_air(
             let ParamX { name, typ, .. } = &function.x.ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             ens_params.push(param_to_par(&function.x.ret, false));
-            if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_var(&name)))
-            {
+            if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
                 ens_typing_invs.push(expr);
             }
         }
         // typing invariants for synthetic out-params for &mut params
         for param in post_params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
-            if let Some(expr) =
-                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_var(&param.x.name)))
+            if let Some(expr) = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()))
             {
                 ens_typing_invs.push(expr);
             }
@@ -786,7 +783,7 @@ pub fn func_axioms_to_air(
                 f_args.extend(ids.iter().map(|x| ident_var(&x.lower())));
             }
             for param in function.x.params.iter() {
-                let arg = ident_var(&suffix_local_stmt_var(&param.x.name));
+                let arg = ident_var(&param.x.name.lower());
                 f_args.push(arg.clone());
                 if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
                     f_pre.push(pre.clone());
@@ -914,7 +911,7 @@ pub fn func_def_to_air(
     let dest = if function.x.has_return() {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
-        state.declare_new_var(name, typ, false, false);
+        state.declare_var_stm(name, typ, false, false);
         Some(unique_local(name))
     } else {
         None
@@ -925,7 +922,7 @@ pub fn func_def_to_air(
     let ens_pars = params_to_pars(&ens_params, true);
 
     for param in function.x.params.iter() {
-        state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
+        state.declare_var_stm(&param.x.name, &param.x.typ, param.x.is_mut, false);
     }
 
     let mut req_ens_e_rename: HashMap<_, _> = req_ens_function
@@ -1098,7 +1095,6 @@ pub fn func_def_to_air(
 
     // SST --> AIR
     for decl in decls {
-        state.new_statement_var(&decl.ident.name);
         state.local_decls.push(decl.clone());
     }
 

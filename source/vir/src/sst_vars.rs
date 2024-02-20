@@ -9,7 +9,7 @@ use std::sync::Arc;
 fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<VarIdent> {
     let mut output = IndexSet::new();
     for item in input {
-        output.insert(item.name.clone());
+        output.insert(item.clone());
     }
     output
 }

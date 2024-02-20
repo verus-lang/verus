@@ -58,7 +58,13 @@ pub enum VarIdentDisambiguate {
     Field,
     RustcId(usize),
     ClosureReturnValue(usize),
-    VirRenumbered(u64),
+    // We emit track whether the variable is SST/AIR statement-bound or expression-bound,
+    // to help drop unnecessary ids from expression-bound variables
+    VirRenumbered { is_stmt: bool, does_shadow: bool, id: u64 },
+    // Some expression-bound variables don't need an id
+    VirExprNoNumber,
+    // We rename parameters to VirParam if the parameters don't conflict with each other
+    VirParam,
     AstSimplifyTemp(u64),
     AstToSstTemp(u64),
 }
@@ -67,7 +73,7 @@ pub enum VarIdentDisambiguate {
 pub type VarIdent = Arc<VarIdentX>;
 // VarIdentX(ident, disambiguating id, suffix)
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
-pub struct VarIdentX(pub String, pub VarIdentDisambiguate, pub Vec<String>);
+pub struct VarIdentX(pub Ident, pub VarIdentDisambiguate, pub Vec<String>);
 
 pub type VarBinder<A> = Arc<VarBinderX<A>>;
 pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;

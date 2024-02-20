@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::messages::{error, Span};
-use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs};
 use crate::triggers_auto::AutoType;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -121,7 +121,7 @@ pub(crate) fn predict_native_quant_vars(
 fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Result<(), VirErr> {
     match &arg.x {
         ExpX::Var(x) => {
-            if let Some(boxing) = state.trigger_vars.get(&x.name) {
+            if let Some(boxing) = state.trigger_vars.get(x) {
                 match (expect_boxed, boxing) {
                     (false, TriggerBoxing::Native) => Ok(()),
                     (true, TriggerBoxing::Poly) => Ok(()),
@@ -132,7 +132,7 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
                             &arg.span,
                             format!(
                                 "variable `{}` in trigger cannot appear in both arithmetic and non-arithmetic positions",
-                                crate::def::user_local_name(&x.name)
+                                crate::def::user_local_name(x)
                             ),
                         ))
                     }
@@ -231,7 +231,7 @@ fn check_trigger_expr(
                 }
                 check_trigger_expr_args(state, true, args)
             }
-            ExpX::Var(UniqueIdent { name: x, local: None }) => {
+            ExpX::Var(x) => {
                 if lets.contains(x) {
                     return Err(error(
                         &exp.span,
@@ -241,7 +241,6 @@ fn check_trigger_expr(
                 free_vars.insert(x.clone());
                 Ok(())
             }
-            ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
             ExpX::VarAt(_, VarAt::Pre) => Ok(()),
             ExpX::Old(_, _) => panic!("internal error: Old"),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),

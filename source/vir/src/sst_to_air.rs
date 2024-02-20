@@ -14,13 +14,13 @@ use crate::def::{
     fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
     new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_lambda_type, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_expr_var, suffix_local_stmt_var,
-    suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    CHAR_FROM_UNICODE, CHAR_TO_UNICODE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
-    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
-    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
+    unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
+    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE, CHAR_TO_UNICODE,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
+    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
+    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
@@ -1067,24 +1067,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
-                let binders =
-                    vec_map_result(&*binders, |b| match exp_to_expr(ctx, &b.a, expr_ctxt) {
-                        Ok(expr) => {
-                            Ok(Arc::new(BinderX { name: suffix_local_expr_var(&b.name), a: expr }))
-                        }
-                        Err(vir_err) => Err(vir_err.clone()),
-                    })?;
-                air::ast_util::mk_let(&binders, &expr)
+                let mut bs: Vec<Binder<Expr>> = Vec::new();
+                for b in binders.iter() {
+                    let e = exp_to_expr(ctx, &b.a, expr_ctxt)?;
+                    bs.push(Arc::new(BinderX { name: b.name.lower(), a: e }));
+                }
+                air::ast_util::mk_let(&bs, &expr)
             }
             BndX::Quant(quant, binders, trigs) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
-                    let typ_inv = typ_invariant(
-                        ctx,
-                        &binder.a,
-                        &ident_var(&suffix_local_expr_var(&binder.name)),
-                    );
+                    let typ_inv = typ_invariant(ctx, &binder.a, &ident_var(&binder.name.lower()));
                     if let Some(inv) = typ_inv {
                         invs.push(inv);
                     }
@@ -1103,7 +1097,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             let xts = crate::def::suffix_typ_param_vars_types(&binder.name);
                             xts.into_iter().map(|(x, t)| (x.lower(), str_typ(&t))).collect()
                         }
-                        _ => vec![(suffix_local_expr_var(&binder.name), typ)],
+                        _ => vec![(binder.name.lower(), typ)],
                     };
                     for (name, typ) in names_typs {
                         bs.push(Arc::new(BinderX { name, a: typ.clone() }));
@@ -1118,8 +1112,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             BndX::Lambda(binders, trigs) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let binders = vec_map(&*binders, |b| {
-                    let name = suffix_local_expr_var(&b.name);
-                    Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
+                    Arc::new(BinderX { name: b.name.lower(), a: typ_to_air(ctx, &b.a) })
                 });
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
@@ -1132,7 +1125,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
                 let mut invs: Vec<Expr> = Vec::new();
                 for b in binders.iter() {
-                    let name = suffix_local_expr_var(&b.name);
+                    let name = b.name.lower();
                     let typ_inv = typ_invariant(ctx, &b.a, &ident_var(&name));
                     if let Some(inv) = &typ_inv {
                         invs.push(inv.clone());
@@ -2425,8 +2418,7 @@ pub(crate) fn body_stm_to_air(
 
     if !is_bit_vector_mode && !is_integer_ring {
         for param in params.iter() {
-            let typ_inv =
-                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_var(&param.x.name)));
+            let typ_inv = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()));
             if let Some(expr) = typ_inv {
                 local.push(Arc::new(DeclX::Axiom(expr)));
             }

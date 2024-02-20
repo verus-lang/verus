@@ -1,7 +1,6 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
-use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
@@ -35,11 +34,13 @@ For VIR -> AIR, we use these suffixes:
 
 // List of prefixes, suffixes, and separators that can appear in generated AIR code
 const SUFFIX_GLOBAL: &str = "?";
+const SUFFIX_PARAM: &str = "!";
 const SUFFIX_LOCAL_STMT: &str = "@";
 const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
+const SUFFIX_RUSTC_ID: &str = "~";
 const SUFFIX_DECORATE_TYPE_PARAM: &str = "&.";
-const SUFFIX_RENAME: &str = "!";
+const SUFFIX_RENAME: &str = "!$";
 const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
@@ -66,8 +67,6 @@ const PREFIX_STATIC: &str = "static%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
-const LOCAL_UNIQUE_ID_SEPARATOR: &str = "~";
-const LOCAL_RUSTC_ID_SEPARATOR: &str = "~~";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
@@ -99,7 +98,6 @@ pub const FUEL_TYPE: &str = "Fuel";
 pub const ZERO: &str = "zero";
 pub const SUCC: &str = "succ";
 pub const FUEL_PARAM: &str = "fuel%";
-pub const FUEL_LOCAL: &str = "fuel%@";
 pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
@@ -245,61 +243,25 @@ pub fn suffix_global_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_GLOBAL)
 }
 
-pub fn suffix_local_expr_var(ident: &VarIdent) -> Ident {
-    use crate::ast_util::LowerUniqueVar;
-    ident.push_suffix(SUFFIX_LOCAL_EXPR).lower()
-}
-
-pub fn suffix_local_expr_id(ident: &Ident) -> Ident {
-    Arc::new(ident.to_string() + SUFFIX_LOCAL_EXPR)
-}
-
-pub fn suffix_local_stmt_var(ident: &VarIdent) -> Ident {
-    use crate::ast_util::LowerUniqueVar;
-    ident.push_suffix(SUFFIX_LOCAL_STMT).lower()
-}
-
+// TODO: this is currently only used by debugger.rs; consider replacing this
 pub fn suffix_local_stmt_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_LOCAL_STMT)
 }
 
-pub(crate) fn unique_bound(id: &VarIdent) -> UniqueIdent {
-    UniqueIdent { name: id.clone(), local: None }
+// TODO: get rid of this
+pub(crate) fn unique_bound(id: &VarIdent) -> VarIdent {
+    id.clone()
 }
 
-pub(crate) fn unique_local(id: &VarIdent) -> UniqueIdent {
-    UniqueIdent { name: id.clone(), local: Some(0) }
+// TODO: get rid of this
+pub(crate) fn unique_local(id: &VarIdent) -> VarIdent {
+    id.clone()
 }
 
-pub fn suffix_local_unique_id(ident: &UniqueIdent) -> Ident {
+// TODO: get rid of this
+pub fn suffix_local_unique_id(ident: &VarIdent) -> Ident {
     use crate::ast_util::LowerUniqueVar;
-    let UniqueIdent { name: x, local: id } = ident;
-    match id {
-        None => suffix_local_expr_var(x),
-        Some(0) => suffix_local_stmt_var(x),
-        Some(i) => air_unique_var(&format!(
-            "{}{}{}{}",
-            x.to_string(),
-            SUFFIX_LOCAL_EXPR,
-            i,
-            SUFFIX_LOCAL_STMT
-        ))
-        .lower(),
-    }
-}
-
-pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
-    let mut name = ident.to_string();
-    if name.ends_with(SUFFIX_LOCAL_STMT) {
-        name = name[..name.len() - SUFFIX_LOCAL_STMT.len()].to_string();
-    }
-    match name.rfind(SUFFIX_LOCAL_EXPR) {
-        None => {}
-        Some(i) => {
-            name = name[..i].to_string();
-        }
-    }
-    Arc::new(name)
+    ident.lower()
 }
 
 pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
@@ -739,16 +701,34 @@ pub fn unique_var_name(
     let mut out = user_given_name;
     match uniq_id {
         VarIdentDisambiguate::AirLocal => {}
-        VarIdentDisambiguate::NoBodyParam => {}
-        VarIdentDisambiguate::Field => {}
+        VarIdentDisambiguate::NoBodyParam => {
+            out.push_str(SUFFIX_PARAM);
+        }
+        VarIdentDisambiguate::Field => {
+            out.push_str(SUFFIX_PARAM);
+        }
         VarIdentDisambiguate::TypParam => {}
         VarIdentDisambiguate::RustcId(id) | VarIdentDisambiguate::ClosureReturnValue(id) => {
-            out.push_str(LOCAL_RUSTC_ID_SEPARATOR);
+            out.push_str(SUFFIX_RUSTC_ID);
             write!(&mut out, "{}", id).unwrap();
         }
-        VarIdentDisambiguate::VirRenumbered(id) => {
-            out.push_str(LOCAL_UNIQUE_ID_SEPARATOR);
-            write!(&mut out, "{}", id).unwrap();
+        VarIdentDisambiguate::VirRenumbered { is_stmt, id, .. } => {
+            if is_stmt {
+                if id != 0 {
+                    out.push_str(SUFFIX_LOCAL_EXPR);
+                    write!(&mut out, "{}", id).unwrap();
+                }
+                out.push_str(SUFFIX_LOCAL_STMT);
+            } else {
+                out.push_str(SUFFIX_LOCAL_EXPR);
+                write!(&mut out, "{}", id).unwrap();
+            }
+        }
+        VarIdentDisambiguate::VirExprNoNumber => {
+            out.push_str(SUFFIX_LOCAL_EXPR);
+        }
+        VarIdentDisambiguate::VirParam => {
+            out.push_str(SUFFIX_PARAM);
         }
         VarIdentDisambiguate::AstSimplifyTemp(id) | VarIdentDisambiguate::AstToSstTemp(id) => {
             write!(&mut out, "{}", id).unwrap();
@@ -804,5 +784,5 @@ pub(crate) fn dummy_param_name() -> VarIdent {
 }
 
 pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
-    v.0 == DUMMY_PARAM
+    v.0.to_string() == DUMMY_PARAM
 }

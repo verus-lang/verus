@@ -1424,10 +1424,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     state.cache_misses += 1;
                                     state.env.push_scope(true);
                                     for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                        let formal_id = UniqueIdent {
-                                            name: formal.x.name.clone(),
-                                            local: Some(0),
-                                        };
+                                        let formal_id = formal.x.name.clone();
                                         state.env.insert(formal_id, actual.clone()).unwrap();
                                     }
                                     let result = eval_expr_internal(ctx, state, &body);
@@ -1464,8 +1461,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             });
                             state.env.push_scope(true);
                             for (formal, actual) in bnds.iter().zip(new_args.iter()) {
-                                let formal_id =
-                                    UniqueIdent { name: formal.name.clone(), local: None };
+                                let formal_id = formal.name.clone();
                                 state.env.insert(formal_id, actual.clone()).unwrap();
                             }
                             let e = eval_expr_internal(ctx, state, body);
@@ -1487,7 +1483,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
                 for b in bnds.iter() {
-                    let id = UniqueIdent { name: b.name.clone(), local: None };
+                    let id = b.name.clone();
                     let val = eval_expr_internal(ctx, state, &b.a)?;
                     state.env.insert(id, val).unwrap();
                 }

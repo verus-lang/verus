@@ -1424,7 +1424,7 @@ fn erase_expr<'tcx>(
                     ) if suffixes.len() == 0 => (x, local_id),
                     _ => panic!("pat_to_var"),
                 };
-                let x = state.local(x, *local_id);
+                let x = state.local(x.to_string(), *local_id);
                 let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
                 params.push((p.pat.span, x, typ));
             }
@@ -1861,7 +1861,7 @@ fn erase_fn_common<'tcx>(
             };
             let is_mut_var = param_info.1;
             let span = param_info.0;
-            let name = state.local(x, *local_id);
+            let name = state.local(x.to_string(), *local_id);
             let typ = if param.x.mode == Mode::Spec {
                 TypX::mk_unit()
             } else {
