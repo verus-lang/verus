@@ -87,8 +87,60 @@ Using this proof technique requires a bit of additional configuration of your Ve
 - Function calls in the formulas are treated as uninterpreted functions.  If a function definition is important for the proof, you should unfold the definition of the function in the proof function's `requires` clause.
 - When using an `integer_ring` lemma, the divisor of a modulus operator (`%`) must not be zero. If a divisor can be zero in the ensures clause of the `integer_ring` lemma, the facts in the ensures clause will not be available in the callsite.
 
-### Using `integer_ring` as a helper lemma for nonlinear proofs
-As the `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with the `integer_ring` feature. Instead, it is a common pattern to have a `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper function.
+To understand what `integer_ring` can or cannot do, it is important to understand how it
+handles the modulus operator, `%`. Since `integer_ring` does not understand inequalities,
+it cannot perform reasoning that requires that `0 <= (a % b) < b`.
+As a result, Singular's results might be confusing if you think of `%` primarily
+as the programming language operator.
+
+For example, suppose you use `a % b == x` as a precondition.
+Encoded in Singular, this will become `a % b == x % b`, or in more traditional "mathematical"
+language, `a ≡ x (mod b)`. This does _not_ imply that `x` is in the range `[0, b)`,
+it only implies that `a` and `x` are in the same equivalence class mod b.
+In other words, `a % b == x` implies `a ≡ x (mod b)`, but not vice versa.
+
+For the same reason, you cannot ask the `integer_ring` solver to prove a postcondition
+of the form `a % b == x`, unless `x` is 0. The `integer_ring` solver can prove
+that `a ≡ x (mod b)`, equivalently `(a - x) % b == 0`, but this does _not_ imply
+that `a % b == x`.
+
+Let's look at a specific example to understand the limitation.
+
+```rust
+proof fn foo(a: int, b: int, c: int, d: int, x: int, y: int) by(integer_ring)
+    requires
+        a % b == x,
+        c % d == y
+    ensures
+        x == y,
+{
+}
+```
+
+This theorem statement appears to be trivial, and indeed, Verus would solve it easily
+using its default proof strategy. 
+However, `integer_ring` will not solve it. On failure, Verus prints information about
+the Singular query, which we can inspect to understand why (this is cleaned up a bit):
+
+```
+ring ring_R=integer, (a, b, c, d, x, y, tmp_0, tmp_1, tmp_2), dp;
+    ideal ideal_I =
+      (a - (b * tmp_0)) - x,
+      (c - (d * tmp_1)) - y;
+    ideal ideal_G = groebner(ideal_I);
+    reduce(x - y, ideal_G);
+    quit;
+```
+
+We can see here that `a % b` is translated to `a - b * tmp_0`,
+while `c % d` is translated to `c - d * tmp_1`.
+Again, since there is no constraint that `a - b * tmp_0` or `c - d * tmp_1`
+is bounded, it is not possible to conclude 
+that `a - b * tmp_0 == c - d * tmp_1` after this simplification has taken place.
+
+## 3. Combining `integer_ring` and `nonlinear_arith`.
+
+As explained above, the `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with the `integer_ring` feature. Instead, it is a common pattern to have a `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper lemma.
 
 To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. Furthermore, you can also add additional variables to the formulas. For example, to work around division, one can introduce `c` where `b = a * c`, instead of `b/a`.
 
