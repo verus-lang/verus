@@ -48,6 +48,13 @@ the precondition of `f`:
 {{#include ../../../rust_verify/example/guide/higher_order_fns.rs:example2}}
 ```
 
+The `(50,)` looks a little funky. This is a 1-tuple.
+The `call_requires` and `call_ensures` always take tuple arguments for the "args".
+If `f` takes 0 arguments, then `call_requires` takes a unit tuple;
+if `f` takes 2 arguments, then it takes a pair; etc.
+Here, `f` takes 1 argument, so it takes a 1-tuple, which can be constructed by using
+the trailing comma, as in `(50,)`.
+
 Verus now accepts this code, as the precondition of `higher_order_fn` now guarantees that
 `f` accepts the input of `50`.
 
