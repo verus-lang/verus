@@ -30,7 +30,7 @@ use crate::arithmetic::internals::general_internals::is_le;
 #[verifier(opaque)]
 pub open spec fn pow2(e: nat) -> nat
     decreases
-            e// ensures pow2(e) > 0
+            e  // ensures pow2(e) > 0
             // cannot have ensurs clause in spec functions
             // a workaround is the lemma_pow2_pos below
             ,
@@ -105,8 +105,8 @@ pub proof fn lemma_pow2_mask_div2_auto()
         forall|e: nat| #![trigger pow2(e)] 0 < e ==> (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
 {
     reveal(pow2);
-    assert forall|e: nat| 0 < e implies (#[trigger]
-    (pow2(e)) - 1) / 2 == pow2((e - 1) as nat) - 1 by {
+    assert forall|e: nat| 0 < e implies (#[trigger] (pow2(e)) - 1) / 2 == pow2((e - 1) as nat)
+        - 1 by {
         lemma_pow2_mask_div2(e);
     }
 }
@@ -151,42 +151,15 @@ pub proof fn lemma2_to64()
 {
     reveal(pow2);
     reveal(pow);
-    assert(
-        pow2(0) == 0x1 &&
-        pow2(1) == 0x2 &&
-        pow2(2) == 0x4 &&
-        pow2(3) == 0x8 &&
-        pow2(4) == 0x10 &&
-        pow2(5) == 0x20 &&
-        pow2(6) == 0x40 &&
-        pow2(7) == 0x80 &&
-        pow2(8) == 0x100 &&
-        pow2(9) == 0x200 &&
-        pow2(10) == 0x400 &&
-        pow2(11) == 0x800 &&
-        pow2(12) == 0x1000 &&
-        pow2(13) == 0x2000 &&
-        pow2(14) == 0x4000 &&
-        pow2(15) == 0x8000 &&
-        pow2(16) == 0x10000 &&
-        pow2(17) == 0x20000 &&
-        pow2(18) == 0x40000 &&
-        pow2(19) == 0x80000 &&
-        pow2(20) == 0x100000 &&
-        pow2(21) == 0x200000 &&
-        pow2(22) == 0x400000 &&
-        pow2(23) == 0x800000 &&
-        pow2(24) == 0x1000000 &&
-        pow2(25) == 0x2000000 &&
-        pow2(26) == 0x4000000 &&
-        pow2(27) == 0x8000000 &&
-        pow2(28) == 0x10000000 &&
-        pow2(29) == 0x20000000 &&
-        pow2(30) == 0x40000000 &&
-        pow2(31) == 0x80000000 &&
-        pow2(32) == 0x100000000 &&
-        pow2(64) == 0x10000000000000000
-   ) by(compute_only);
+    assert(pow2(0) == 0x1 && pow2(1) == 0x2 && pow2(2) == 0x4 && pow2(3) == 0x8 && pow2(4) == 0x10
+        && pow2(5) == 0x20 && pow2(6) == 0x40 && pow2(7) == 0x80 && pow2(8) == 0x100 && pow2(9)
+        == 0x200 && pow2(10) == 0x400 && pow2(11) == 0x800 && pow2(12) == 0x1000 && pow2(13)
+        == 0x2000 && pow2(14) == 0x4000 && pow2(15) == 0x8000 && pow2(16) == 0x10000 && pow2(17)
+        == 0x20000 && pow2(18) == 0x40000 && pow2(19) == 0x80000 && pow2(20) == 0x100000 && pow2(21)
+        == 0x200000 && pow2(22) == 0x400000 && pow2(23) == 0x800000 && pow2(24) == 0x1000000
+        && pow2(25) == 0x2000000 && pow2(26) == 0x4000000 && pow2(27) == 0x8000000 && pow2(28)
+        == 0x10000000 && pow2(29) == 0x20000000 && pow2(30) == 0x40000000 && pow2(31) == 0x80000000
+        && pow2(32) == 0x100000000 && pow2(64) == 0x10000000000000000) by (compute_only);
 }
 
 } // verus!

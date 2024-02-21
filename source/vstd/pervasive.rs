@@ -7,14 +7,14 @@ use builtin_macros::*;
 
 #[cfg(not(feature = "std"))]
 macro_rules! println {
-    ($($arg:tt)*) => {
-    };
+    ($($arg:tt)*) => {};
 }
 verus! {
 
 // TODO: remove this
 pub proof fn assume(b: bool)
-    ensures b
+    ensures
+        b,
 {
     admit();
 }
@@ -22,20 +22,25 @@ pub proof fn assume(b: bool)
 // TODO: remove this
 #[verifier(custom_req_err("assertion failure"))]
 pub proof fn assert(b: bool)
-    requires b
-    ensures b
+    requires
+        b,
+    ensures
+        b,
 {
 }
 
 pub proof fn affirm(b: bool)
-    requires b
+    requires
+        b,
 {
 }
 
 // TODO: when default trait methods are supported, most of these should be given defaults
 pub trait ForLoopGhostIterator {
     type ExecIter;
+
     type Item;
+
     type Decrease;
 
     // Connect the ExecIter to the GhostIter
@@ -82,13 +87,17 @@ pub trait ForLoopGhostIteratorNew {
 }
 
 #[cfg(verus_keep_ghost)]
-pub trait FnWithRequiresEnsures<Args, Output> : Sized {
+pub trait FnWithRequiresEnsures<Args, Output>: Sized {
     spec fn requires(self, args: Args) -> bool;
+
     spec fn ensures(self, args: Args, output: Output) -> bool;
 }
 
 #[cfg(verus_keep_ghost)]
-impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output=Output>> FnWithRequiresEnsures<Args, Output> for F {
+impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>> FnWithRequiresEnsures<
+    Args,
+    Output,
+> for F {
     #[verifier::inline]
     open spec fn requires(self, args: Args) -> bool {
         call_requires(self, args)
@@ -105,16 +114,17 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output=Output>> FnWithRe
 // That is, Verus treats `f(x, y)` as `exec_nonstatic_call(f, (x, y))`.
 // (Note that this function wouldn't even satisfy the borrow-checker if you tried to
 // use it with a `&F` or `&mut F`, but this doesn't matter since it's only used at VIR.)
-
 #[cfg(verus_keep_ghost)]
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
 #[verifier(external_body)]
 #[rustc_diagnostic_item = "verus::vstd::vstd::exec_nonstatic_call"]
-fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -> (output: Output)
-    where F: FnOnce<Args, Output=Output>
-    requires call_requires(f, args)
-    ensures call_ensures(f, args, output)
+fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -> (output:
+    Output) where F: FnOnce<Args, Output = Output>
+    requires
+        call_requires(f, args),
+    ensures
+        call_ensures(f, args, output),
 {
     unimplemented!();
 }
@@ -139,35 +149,36 @@ fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -
 /// }
 /// ```
 pub closed spec fn spec_affirm(b: bool) -> bool
-    recommends b
+    recommends
+        b,
 {
     b
 }
 
 /// In spec, all types are inhabited
-#[verifier(external_body)] /* vattr */
+#[verifier(external_body)]  /* vattr */
 #[allow(dead_code)]
 pub closed spec fn arbitrary<A>() -> A {
     unimplemented!()
 }
 
-#[verifier(external_body)] /* vattr */
+#[verifier(external_body)]  /* vattr */
 #[allow(dead_code)]
 pub proof fn proof_from_false<A>() -> (tracked a: A) {
     requires(false);
-
     unimplemented!()
 }
 
-#[verifier(external_body)] /* vattr */
+#[verifier(external_body)]  /* vattr */
 #[allow(dead_code)]
 pub fn unreached<A>() -> A
-    requires false
+    requires
+        false,
 {
     panic!("unreached_external")
 }
 
-#[verifier(external_body)] /* vattr */
+#[verifier(external_body)]  /* vattr */
 pub fn print_u64(i: u64) {
     println!("{}", i);
 }
@@ -184,13 +195,13 @@ pub fn swap<A>(x: &mut A, y: &mut A)
 
 #[verifier::external_body]
 pub fn runtime_assert(b: bool)
-    requires b,
+    requires
+        b,
 {
     runtime_assert_internal(b);
 }
 
 } // verus!
-
 #[inline(always)]
 #[cfg_attr(verus_keep_ghost, verifier::external)]
 fn runtime_assert_internal(b: bool) {
@@ -224,11 +235,10 @@ macro_rules! assert_by_contradiction_internal {
     ($predicate:expr, $bblock:block) => {
         ::builtin::assert_by($predicate, {
             if !$predicate {
-                $bblock
-                ::builtin::assert_(false);
+                $bblock::builtin::assert_(false);
             }
         });
-    }
+    };
 }
 
 /// Macro to help set up boilerplate for specifying invariants when using
@@ -260,7 +270,7 @@ macro_rules! assert_by_contradiction_internal {
 ///     (pub)? struct $struct_name (<...>)? (where ...)? {
 ///         ( (pub)? $field_name: $type, )*
 ///     }
-/// 
+///
 ///     (pub)? (open|closed)? spec fn(&self (, ...)?) $fn_name {
 ///         ( InvariantDecl | BoolPredicateDecl )*
 ///     }
@@ -287,7 +297,7 @@ macro_rules! assert_by_contradiction_internal {
 ///
 /// ```rust
 /// BoolPredicateDecl  :=  predicate { $bool_expr }
-/// 
+///
 /// InvariantDecl  :=
 ///     invariant on $field_name
 ///         ( with ($dependencies) )?
@@ -351,10 +361,9 @@ macro_rules! assert_by_contradiction_internal {
 /// # Example using a container type (TODO)
 ///
 /// # Macro Expansion (TODO)
-
 pub use builtin_macros::struct_with_invariants;
 
-verus!{
+verus! {
 
 use crate::view::View;
 
@@ -362,13 +371,13 @@ use crate::view::View;
 #[verifier::external]
 pub trait VecAdditionalExecFns<T> {
     fn set(&mut self, i: usize, value: T);
+
     fn set_and_swap(&mut self, i: usize, value: &mut T);
 }
 
 #[cfg(feature = "alloc")]
 impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
     /// Replacement for `self[i] = value;` (which Verus does not support for technical reasons)
-
     #[verifier::external_body]
     fn set(&mut self, i: usize, value: T)
         requires
@@ -380,17 +389,16 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
     }
 
     /// Replacement for `swap(&mut self[i], &mut value)` (which Verus does not support for technical reasons)
-
     #[verifier::external_body]
     fn set_and_swap(&mut self, i: usize, value: &mut T)
         requires
             i < old(self).len(),
         ensures
             self@ == old(self)@.update(i as int, *old(value)),
-            *value == old(self)@.index(i as int)
+            *value == old(self)@.index(i as int),
     {
         core::mem::swap(&mut self[i], value);
     }
 }
 
-}
+} // verus!

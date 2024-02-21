@@ -170,12 +170,10 @@ pub proof fn lemma_mul_ordering(x: int, y: int)
 proof fn lemma_mul_ordering_auto()
     ensures
         forall|x: int, y: int|
-            (0 != x && 0 != y && #[trigger]
-            (x * y) >= 0) ==> x * y >= x && (x * y) >= y,
+            (0 != x && 0 != y && #[trigger] (x * y) >= 0) ==> x * y >= x && (x * y) >= y,
 {
-    assert forall|x: int, y: int| 0 != x && 0 != y && x * y >= 0 implies #[trigger]
-    (x * y) >= x && #[trigger]
-    (x * y) >= y by {
+    assert forall|x: int, y: int| 0 != x && 0 != y && x * y >= 0 implies #[trigger] (x * y) >= x
+        && #[trigger] (x * y) >= y by {
         lemma_mul_ordering(x, y);
     };
 }
@@ -205,13 +203,10 @@ pub proof fn lemma_mul_inequality(x: int, y: int, z: int)
 pub proof fn lemma_mul_inequality_auto()
     ensures
         forall|x: int, y: int, z: int|
-            x <= y && z >= 0 ==> #[trigger]
-            (x * z) <= #[trigger]
-            (y * z),
+            x <= y && z >= 0 ==> #[trigger] (x * z) <= #[trigger] (y * z),
 {
-    assert forall|x: int, y: int, z: int| x <= y && z >= 0 implies #[trigger]
-    (x * z) <= #[trigger]
-    (y * z) by {
+    assert forall|x: int, y: int, z: int| x <= y && z >= 0 implies #[trigger] (x * z)
+        <= #[trigger] (y * z) by {
         lemma_mul_inequality(x, y, z);
     }
 }
@@ -231,14 +226,10 @@ pub proof fn lemma_mul_strict_inequality(x: int, y: int, z: int)
 /// positive integer, preserves their numerical order
 pub proof fn lemma_mul_strict_inequality_auto()
     ensures
-        forall|x: int, y: int, z: int|
-            x < y && z > 0 ==> #[trigger]
-            (x * z) < #[trigger]
-            (y * z),
+        forall|x: int, y: int, z: int| x < y && z > 0 ==> #[trigger] (x * z) < #[trigger] (y * z),
 {
-    assert forall|x: int, y: int, z: int| x < y && z > 0 implies #[trigger]
-    (x * z) < #[trigger]
-    (y * z) by {
+    assert forall|x: int, y: int, z: int| x < y && z > 0 implies #[trigger] (x * z) < #[trigger] (y
+        * z) by {
         if x < y && z > 0 {
             lemma_mul_strict_inequality(x, y, z);
         }
@@ -266,14 +257,12 @@ pub proof fn lemma_mul_upper_bound(x: int, xbound: int, y: int, ybound: int)
 pub proof fn lemma_mul_upper_bound_auto()
     ensures
         forall|x: int, xbound: int, y: int, ybound: int|
-            x <= xbound && y <= ybound && 0 <= x && 0 <= y ==> #[trigger]
-            (x * y) <= #[trigger]
-            (xbound * ybound),
+            x <= xbound && y <= ybound && 0 <= x && 0 <= y ==> #[trigger] (x * y) <= #[trigger] (
+            xbound * ybound),
 {
     assert forall|x: int, xbound: int, y: int, ybound: int|
-        x <= xbound && y <= ybound && 0 <= x && 0 <= y implies #[trigger]
-    (x * y) <= #[trigger]
-    (xbound * ybound) by {
+        x <= xbound && y <= ybound && 0 <= x && 0 <= y implies #[trigger] (x * y) <= #[trigger] (
+    xbound * ybound) by {
         lemma_mul_upper_bound(x, xbound, y, ybound);
     }
 }
@@ -301,14 +290,12 @@ pub proof fn lemma_mul_strict_upper_bound(x: int, xbound: int, y: int, ybound: i
 pub proof fn lemma_mul_strict_upper_bound_auto()
     ensures
         forall|x: int, xbound: int, y: int, ybound: int|
-            x < xbound && y < ybound && 0 < x && 0 < y ==> #[trigger]
-            (x * y) <= #[trigger]
-            ((xbound - 1) * (ybound - 1)),
+            x < xbound && y < ybound && 0 < x && 0 < y ==> #[trigger] (x * y) <= #[trigger] ((xbound
+                - 1) * (ybound - 1)),
 {
     assert forall|x: int, xbound: int, y: int, ybound: int|
-        x < xbound && y < ybound && 0 < x && 0 < y implies #[trigger]
-    (x * y) <= #[trigger]
-    ((xbound - 1) * (ybound - 1)) by {
+        x < xbound && y < ybound && 0 < x && 0 < y implies #[trigger] (x * y) <= #[trigger] ((xbound
+        - 1) * (ybound - 1)) by {
         lemma_mul_strict_upper_bound(x, xbound, y, ybound);
     }
 }
@@ -333,13 +320,11 @@ pub proof fn lemma_mul_left_inequality(x: int, y: int, z: int)
 pub proof fn lemma_mul_left_inequality_auto()
     ensures
         forall|x: int, y: int, z: int|
-            x > 0 ==> (y <= z ==> #[trigger]
-            (x * y) <= #[trigger]
-            (x * z)) && (y < z ==> (x * y) < (x * z)),
+            x > 0 ==> (y <= z ==> #[trigger] (x * y) <= #[trigger] (x * z)) && (y < z ==> (x * y)
+                < (x * z)),
 {
-    assert forall|x: int, y: int, z: int| (y <= z || y < z) && 0 < x implies (y <= z ==> #[trigger]
-    (x * y) <= #[trigger]
-    (x * z)) && (y < z ==> (x * y) < (x * z)) by {
+    assert forall|x: int, y: int, z: int| (y <= z || y < z) && 0 < x implies (y <= z
+        ==> #[trigger] (x * y) <= #[trigger] (x * z)) && (y < z ==> (x * y) < (x * z)) by {
         lemma_mul_left_inequality(x, y, z);
     }
 }
@@ -365,14 +350,10 @@ pub proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
 pub proof fn lemma_mul_equality_converse_auto()
     ensures
         forall|m: int, x: int, y: int|
-            (m != 0 && #[trigger]
-            (m * x) == #[trigger]
-            (m * y)) ==> x == y,
+            (m != 0 && #[trigger] (m * x) == #[trigger] (m * y)) ==> x == y,
 {
     assert forall|m: int, x: int, y: int|
-        m != 0 && #[trigger]
-        (m * x) == #[trigger]
-        (m * y) implies x == y by {
+        m != 0 && #[trigger] (m * x) == #[trigger] (m * y) implies x == y by {
         lemma_mul_equality_converse(m, x, y);
     }
 }
@@ -393,15 +374,10 @@ pub proof fn lemma_mul_inequality_converse(x: int, y: int, z: int)
 /// they have that relationship themselves.
 pub proof fn lemma_mul_inequality_converse_auto()
     ensures
-        forall|x: int, y: int, z: int|
-            #[trigger]
-            (x * z) <= #[trigger]
-            (y * z) && z > 0 ==> x <= y,
+        forall|x: int, y: int, z: int| #[trigger] (x * z) <= #[trigger] (y * z) && z > 0 ==> x <= y,
 {
-    assert forall|x: int, y: int, z: int|
-        #[trigger]
-        (x * z) <= #[trigger]
-        (y * z) && z > 0 implies x <= y by {
+    assert forall|x: int, y: int, z: int| #[trigger]
+        (x * z) <= #[trigger] (y * z) && z > 0 implies x <= y by {
         lemma_mul_inequality_converse(x, y, z);
     }
 }
@@ -422,15 +398,10 @@ pub proof fn lemma_mul_strict_inequality_converse(x: int, y: int, z: int)
 /// that relationship themselves
 pub proof fn lemma_mul_strict_inequality_converse_auto()
     ensures
-        forall|x: int, y: int, z: int|
-            #[trigger]
-            (x * z) < #[trigger]
-            (y * z) && z >= 0 ==> x < y,
+        forall|x: int, y: int, z: int| #[trigger] (x * z) < #[trigger] (y * z) && z >= 0 ==> x < y,
 {
-    assert forall|x: int, y: int, z: int|
-        #[trigger]
-        (x * z) < #[trigger]
-        (y * z) && z >= 0 implies x < y by {
+    assert forall|x: int, y: int, z: int| #[trigger]
+        (x * z) < #[trigger] (y * z) && z >= 0 implies x < y by {
         lemma_mul_strict_inequality_converse(x, y, z);
     }
 }
@@ -512,9 +483,9 @@ pub proof fn lemma_mul_is_distributive_sub_other_way(x: int, y: int, z: int)
 /// argument to `*`)
 pub proof fn lemma_mul_is_distributive_sub_other_way_auto()
     ensures
-        forall |x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,
+        forall|x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,
 {
-    assert forall |x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x by {
+    assert forall|x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x by {
         lemma_mul_is_distributive_sub_other_way(x, y, z)
     }
 }
@@ -565,12 +536,9 @@ pub proof fn lemma_mul_strictly_positive(x: int, y: int)
 /// positive integer
 pub proof fn lemma_mul_strictly_positive_auto()
     ensures
-        forall|x: int, y: int|
-            (0 < x && 0 < y) ==> (0 < #[trigger]
-            (x * y)),
+        forall|x: int, y: int| (0 < x && 0 < y) ==> (0 < #[trigger] (x * y)),
 {
-    assert forall|x: int, y: int| 0 < x && 0 < y implies 0 < #[trigger]
-    (x * y) by {
+    assert forall|x: int, y: int| 0 < x && 0 < y implies 0 < #[trigger] (x * y) by {
         lemma_mul_strictly_positive(x, y);
     }
 }
@@ -591,12 +559,9 @@ pub proof fn lemma_mul_strictly_increases(x: int, y: int)
 /// integer
 pub proof fn lemma_mul_strictly_increases_auto()
     ensures
-        forall|x: int, y: int|
-            1 < x && 0 < y ==> y < #[trigger]
-            (x * y),
+        forall|x: int, y: int| 1 < x && 0 < y ==> y < #[trigger] (x * y),
 {
-    assert forall|x: int, y: int| 1 < x && 0 < y implies y < #[trigger]
-    (x * y) by {
+    assert forall|x: int, y: int| 1 < x && 0 < y implies y < #[trigger] (x * y) by {
         lemma_mul_strictly_increases(x, y);
     }
 }
@@ -617,12 +582,9 @@ pub proof fn lemma_mul_increases(x: int, y: int)
 /// product that is greater than or equal to each original integer
 pub proof fn lemma_mul_increases_auto()
     ensures
-        forall|x: int, y: int|
-            (0 < x && 0 < y) ==> (y <= #[trigger]
-            (x * y)),
+        forall|x: int, y: int| (0 < x && 0 < y) ==> (y <= #[trigger] (x * y)),
 {
-    assert forall|x: int, y: int| (0 < x && 0 < y) implies (y <= #[trigger]
-    (x * y)) by {
+    assert forall|x: int, y: int| (0 < x && 0 < y) implies (y <= #[trigger] (x * y)) by {
         lemma_mul_increases(x, y);
     }
 }
@@ -643,12 +605,9 @@ pub proof fn lemma_mul_nonnegative(x: int, y: int)
 /// non-negative integer
 pub proof fn lemma_mul_nonnegative_auto()
     ensures
-        forall|x: int, y: int|
-            0 <= x && 0 <= y ==> 0 <= #[trigger]
-            (x * y),
+        forall|x: int, y: int| 0 <= x && 0 <= y ==> 0 <= #[trigger] (x * y),
 {
-    assert forall|x: int, y: int| 0 <= x && 0 <= y implies 0 <= #[trigger]
-    (x * y) by {
+    assert forall|x: int, y: int| 0 <= x && 0 <= y implies 0 <= #[trigger] (x * y) by {
         lemma_mul_nonnegative(x, y);
     }
 }
@@ -704,14 +663,9 @@ pub proof fn lemma_mul_properties()
     ensures
         forall|x: int, y: int| #[trigger] (x * y) == y * x,
         forall|x: int| #![trigger x * 1] #![trigger 1 * x] x * 1 == 1 * x == x,
+        forall|x: int, y: int, z: int| x < y && z > 0 ==> #[trigger] (x * z) < #[trigger] (y * z),
         forall|x: int, y: int, z: int|
-            x < y && z > 0 ==> #[trigger]
-            (x * z) < #[trigger]
-            (y * z),
-        forall|x: int, y: int, z: int|
-            x <= y && z >= 0 ==> #[trigger]
-            (x * z) <= #[trigger]
-            (y * z),
+            x <= y && z >= 0 ==> #[trigger] (x * z) <= #[trigger] (y * z),
         forall|x: int, y: int, z: int| #[trigger] (x * (y + z)) == x * y + x * z,
         forall|x: int, y: int, z: int| #[trigger] (x * (y - z)) == x * y - x * z,
         forall|x: int, y: int, z: int| #[trigger] ((y + z) * x) == y * x + z * x,
@@ -721,21 +675,12 @@ pub proof fn lemma_mul_properties()
             #![trigger (x * y) * z]
             x * (y * z) == (x * y) * z,
         forall|x: int, y: int| #[trigger] (x * y) != 0 <==> x != 0 && y != 0,
+        forall|x: int, y: int| 0 <= x && 0 <= y ==> 0 <= #[trigger] (x * y),
         forall|x: int, y: int|
-            0 <= x && 0 <= y ==> 0 <= #[trigger]
-            (x * y),
-        forall|x: int, y: int|
-            0 < x && 0 < y && 0 <= x * y ==> x <= #[trigger]
-            (x * y) && y <= (x * y),
-        forall|x: int, y: int|
-            (1 < x && 0 < y) ==> (y < #[trigger]
-            (x * y)),
-        forall|x: int, y: int|
-            (0 < x && 0 < y) ==> (y <= #[trigger]
-            (x * y)),
-        forall|x: int, y: int|
-            (0 < x && 0 < y) ==> (0 < #[trigger]
-            (x * y)),
+            0 < x && 0 < y && 0 <= x * y ==> x <= #[trigger] (x * y) && y <= (x * y),
+        forall|x: int, y: int| (1 < x && 0 < y) ==> (y < #[trigger] (x * y)),
+        forall|x: int, y: int| (0 < x && 0 < y) ==> (y <= #[trigger] (x * y)),
+        forall|x: int, y: int| (0 < x && 0 < y) ==> (0 < #[trigger] (x * y)),
 {
     lemma_mul_strict_inequality_auto();
     lemma_mul_inequality_auto();

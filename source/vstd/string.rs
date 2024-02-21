@@ -4,11 +4,11 @@
 #[cfg(feature = "alloc")]
 use alloc::string::{self, ToString};
 
-use crate::view::*;
 use super::seq::Seq;
+use crate::prelude::*;
+use crate::view::*;
 use builtin::*;
 use builtin_macros::verus;
-use crate::prelude::*;
 
 verus! {
 
@@ -23,7 +23,6 @@ pub struct String {
 pub struct StrSlice<'a> {
     inner: &'a str,
 }
-
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::string::new_strlit")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
@@ -43,14 +42,16 @@ impl<'a> StrSlice<'a> {
     #[verifier(external_body)]
     pub fn unicode_len(&self) -> (l: usize)
         ensures
-            l as nat == self@.len()
+            l as nat == self@.len(),
     {
         self.inner.chars().count()
     }
+
     /// Warning: O(n) not O(1) due to unicode decoding needed
     #[verifier(external_body)]
     pub fn get_char(&self, i: usize) -> (c: char)
-        requires i < self@.len()
+        requires
+            i < self@.len(),
         ensures
             self@.index(i as int) == c,
             self.is_ascii() ==> forall|i: int| i < self@.len() ==> (self@.index(i) as nat) < 256,
@@ -66,21 +67,19 @@ impl<'a> StrSlice<'a> {
             to <= self@.len(),
         ensures
             ret@ == self@.subrange(from as int, to as int),
-            ret.is_ascii() == self.is_ascii()
+            ret.is_ascii() == self.is_ascii(),
     {
-        StrSlice {
-            inner: &self.inner[from..to],
-        }
+        StrSlice { inner: &self.inner[from..to] }
     }
 
     #[verifier(external_body)]
     pub fn substring_char(&self, from: usize, to: usize) -> (ret: StrSlice<'a>)
         requires
             from < self@.len(),
-            to <= self@.len()
+            to <= self@.len(),
         ensures
             ret@ == self@.subrange(from as int, to as int),
-            ret.is_ascii() == self.is_ascii()
+            ret.is_ascii() == self.is_ascii(),
     {
         let mut char_pos = 0;
         let mut byte_start = None;
@@ -88,30 +87,30 @@ impl<'a> StrSlice<'a> {
         let mut byte_pos = 0;
         let mut it = self.inner.chars();
         loop {
-            if char_pos == from { byte_start = Some(byte_pos); }
+            if char_pos == from {
+                byte_start = Some(byte_pos);
+            }
             if char_pos == to {
                 byte_end = Some(byte_pos);
-                break;
+                break ;
             }
-
             if let Some(c) = it.next() {
                 char_pos += 1;
                 byte_pos += c.len_utf8();
+            } else {
+                break ;
             }
-            else { break; }
         }
         let byte_start = byte_start.unwrap();
         let byte_end = byte_end.unwrap();
-        StrSlice {
-            inner: &self.inner[byte_start..byte_end]
-        }
+        StrSlice { inner: &self.inner[byte_start..byte_end] }
     }
 
     #[cfg(feature = "alloc")]
     pub fn to_string(self) -> (ret: String)
         ensures
             self@ == ret@,
-            self.is_ascii() == ret.is_ascii()
+            self.is_ascii() == ret.is_ascii(),
     {
         String::from_str(self)
     }
@@ -119,26 +118,23 @@ impl<'a> StrSlice<'a> {
     #[verifier(external_body)]
     pub fn get_ascii(&self, i: usize) -> (b: u8)
         requires
-            self.is_ascii()
+            self.is_ascii(),
         ensures
-            self.view().index(i as int) as u8 == b
+            self.view().index(i as int) as u8 == b,
     {
         self.inner.as_bytes()[i]
     }
 
-
-
     // TODO:This should be the as_bytes function after
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
-
     #[cfg(feature = "alloc")]
     #[verifier(external_body)]
     pub fn as_bytes(&self) -> (ret: alloc::vec::Vec<u8>)
         requires
-            self.is_ascii()
+            self.is_ascii(),
         ensures
-            ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8)
+            ret.view() == Seq::new(self.view().len(), |i| self.view().index(i) as u8),
     {
         let mut v = alloc::vec::Vec::new();
         for c in self.inner.as_bytes().iter() {
@@ -148,39 +144,39 @@ impl<'a> StrSlice<'a> {
     }
 
     #[verifier(external)]
-    pub fn from_rust_str(inner: &'a str) -> StrSlice<'a>
-    {
+    pub fn from_rust_str(inner: &'a str) -> StrSlice<'a> {
         StrSlice { inner }
     }
 
     #[verifier(external)]
-    pub fn into_rust_str(&'a self) -> &'a str
-    {
+    pub fn into_rust_str(&'a self) -> &'a str {
         self.inner
     }
 }
-
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_is_ascii<'a>(s: StrSlice<'a>)
     ensures
         #[trigger] s.is_ascii() == builtin::strslice_is_ascii(s),
-{ }
+{
+}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_len<'a>(s: StrSlice<'a>)
     ensures
         #[trigger] s@.len() == builtin::strslice_len(s),
-{ }
+{
+}
 
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
     ensures
         #[trigger] s@.index(i) == builtin::strslice_get_char(s, i),
-{ }
+{
+}
 
 #[cfg(feature = "alloc")]
 impl String {
@@ -193,7 +189,6 @@ impl String {
         ensures
             s@ == ret@,
             s.is_ascii() == ret.is_ascii(),
-
     {
         String { inner: s.inner.to_string() }
     }
@@ -228,35 +223,34 @@ impl String {
 
     #[verifier(external_body)]
     pub fn eq(&self, other: &Self) -> (b: bool)
-        ensures b == (self.view() == other.view())
+        ensures
+            b == (self.view() == other.view()),
     {
         self.inner == other.inner
     }
 
     #[verifier(external_body)]
     pub fn clone(&self) -> (result: String)
-        ensures result == self
+        ensures
+            result == self,
     {
         String { inner: self.inner.clone() }
     }
 
     #[verifier(external)]
-    pub fn from_rust_string(inner: alloc::string::String) -> String
-    {
+    pub fn from_rust_string(inner: alloc::string::String) -> String {
         String { inner }
     }
 
     #[verifier(external)]
-    pub fn into_rust_string(self) -> alloc::string::String
-    {
+    pub fn into_rust_string(self) -> alloc::string::String {
         self.inner
     }
 
     #[verifier(external)]
-    pub fn as_rust_string_ref(&self) -> &alloc::string::String
-    {
+    pub fn as_rust_string_ref(&self) -> &alloc::string::String {
         &self.inner
     }
 }
 
-}
+} // verus!
