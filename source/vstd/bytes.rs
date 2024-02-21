@@ -14,10 +14,11 @@ verus! {
 
 // Conversion between u16 and little-endian byte sequences
 pub closed spec fn spec_u16_to_le_bytes(x: u16) -> Seq<u8> {
+    #[verusfmt::skip]
     seq![
-    (x & 0xff) as u8,
-    ((x >> 8) & 0xff) as u8
-  ]
+        (x & 0xff) as u8,
+        ((x >> 8) & 0xff) as u8
+    ]
 }
 
 pub closed spec fn spec_u16_from_le_bytes(s: Seq<u8>) -> u16
@@ -47,7 +48,11 @@ pub proof fn lemma_auto_spec_u16_to_from_le_bytes()
             &&& x & 0xff < 256
             &&& (x >> 8) & 0xff < 256
         }) by (bit_vector);
-        assert(x == ((x & 0xff) | ((x >> 8) & 0xff) << 8)) by (bit_vector);
+        #[verusfmt::skip]
+        assert(x == (
+        (x & 0xff) |
+        ((x >> 8) & 0xff) << 8)
+    ) by (bit_vector);
     };
     assert forall|s: Seq<u8>| s.len() == 2 implies #[trigger] spec_u16_to_le_bytes(
         spec_u16_from_le_bytes(s),
@@ -55,8 +60,16 @@ pub proof fn lemma_auto_spec_u16_to_from_le_bytes()
         let x = spec_u16_from_le_bytes(s);
         let s0 = s[0] as u16;
         let s1 = s[1] as u16;
-        assert(((x == s0 | s1 << 8) && (s0 < 256) && (s1 < 256)) ==> s0 == (x & 0xff) && s1 == ((x
-            >> 8) & 0xff)) by (bit_vector);
+        #[verusfmt::skip]
+        assert(
+        (
+            (x == s0 | s1 << 8) &&
+            (s0 < 256) &&
+            (s1 < 256)
+        ) ==>
+            s0 == (x & 0xff) &&
+            s1 == ((x >> 8) & 0xff)
+    ) by (bit_vector);
         assert_seqs_equal!(spec_u16_to_le_bytes(spec_u16_from_le_bytes(s)) == s);
     }
 }
@@ -84,12 +97,13 @@ pub exec fn u16_to_le_bytes(x: u16) -> (s: alloc::vec::Vec<u8>)
 
 // Conversion between u32 and little-endian byte sequences
 pub closed spec fn spec_u32_to_le_bytes(x: u32) -> Seq<u8> {
+    #[verusfmt::skip]
     seq![
-    (x & 0xff) as u8,
-    ((x >> 8) & 0xff) as u8,
-    ((x >> 16) & 0xff) as u8,
-    ((x >> 24) & 0xff) as u8,
-  ]
+        (x & 0xff) as u8,
+        ((x >> 8) & 0xff) as u8,
+        ((x >> 16) & 0xff) as u8,
+        ((x >> 24) & 0xff) as u8,
+    ]
 }
 
 pub closed spec fn spec_u32_from_le_bytes(s: Seq<u8>) -> u32
@@ -122,8 +136,13 @@ pub proof fn lemma_auto_spec_u32_to_from_le_bytes()
             &&& (x >> 16) & 0xff < 256
             &&& (x >> 24) & 0xff < 256
         }) by (bit_vector);
-        assert(x == ((x & 0xff) | ((x >> 8) & 0xff) << 8 | ((x >> 16) & 0xff) << 16 | ((x >> 24)
-            & 0xff) << 24)) by (bit_vector);
+        #[verusfmt::skip]
+        assert(x == (
+        (x & 0xff) |
+        ((x >> 8) & 0xff) << 8 |
+        ((x >> 16) & 0xff) << 16 |
+        ((x >> 24) & 0xff) << 24)
+    ) by (bit_vector);
     };
     assert forall|s: Seq<u8>| s.len() == 4 implies #[trigger] spec_u32_to_le_bytes(
         spec_u32_from_le_bytes(s),
@@ -133,9 +152,20 @@ pub proof fn lemma_auto_spec_u32_to_from_le_bytes()
         let s1 = s[1] as u32;
         let s2 = s[2] as u32;
         let s3 = s[3] as u32;
-        assert(((x == s0 | s1 << 8 | s2 << 16 | s3 << 24) && (s0 < 256) && (s1 < 256) && (s2 < 256)
-            && (s3 < 256)) ==> s0 == (x & 0xff) && s1 == ((x >> 8) & 0xff) && s2 == ((x >> 16)
-            & 0xff) && s3 == ((x >> 24) & 0xff)) by (bit_vector);
+        #[verusfmt::skip]
+        assert(
+        (
+            (x == s0 | s1 << 8 | s2 << 16 | s3 << 24) &&
+            (s0 < 256) &&
+            (s1 < 256) &&
+            (s2 < 256) &&
+            (s3 < 256)
+        ) ==>
+            s0 == (x & 0xff) &&
+            s1 == ((x >> 8) & 0xff) &&
+            s2 == ((x >> 16) & 0xff) &&
+            s3 == ((x >> 24) & 0xff)
+    ) by (bit_vector);
         assert_seqs_equal!(spec_u32_to_le_bytes(spec_u32_from_le_bytes(s)) == s);
     }
 }
@@ -163,24 +193,32 @@ pub exec fn u32_to_le_bytes(x: u32) -> (s: alloc::vec::Vec<u8>)
 
 // Conversion between u64 and little-endian byte sequences
 pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8> {
+    #[verusfmt::skip]
     seq![
-    (x & 0xff) as u8,
-    ((x >> 8) & 0xff) as u8,
-    ((x >> 16) & 0xff) as u8,
-    ((x >> 24) & 0xff) as u8,
-    ((x >> 32) & 0xff) as u8,
-    ((x >> 40) & 0xff) as u8,
-    ((x >> 48) & 0xff) as u8,
-    ((x >> 56) & 0xff) as u8,
-  ]
+        (x & 0xff) as u8,
+        ((x >> 8) & 0xff) as u8,
+        ((x >> 16) & 0xff) as u8,
+        ((x >> 24) & 0xff) as u8,
+        ((x >> 32) & 0xff) as u8,
+        ((x >> 40) & 0xff) as u8,
+        ((x >> 48) & 0xff) as u8,
+        ((x >> 56) & 0xff) as u8,
+    ]
 }
 
 pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
     recommends
         s.len() == 8,
 {
-    (s[0] as u64) | (s[1] as u64) << 8 | (s[2] as u64) << 16 | (s[3] as u64) << 24 | (s[4] as u64)
-        << 32 | (s[5] as u64) << 40 | (s[6] as u64) << 48 | (s[7] as u64) << 56
+    #[verusfmt::skip]
+    (s[0] as u64) |
+    (s[1] as u64) << 8 |
+    (s[2] as u64) << 16 |
+    (s[3] as u64) << 24 |
+    (s[4] as u64) << 32 |
+    (s[5] as u64) << 40 |
+    (s[6] as u64) << 48 |
+    (s[7] as u64) << 56
 }
 
 pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
@@ -211,9 +249,17 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
             &&& (x >> 48) & 0xff < 256
             &&& (x >> 56) & 0xff < 256
         }) by (bit_vector);
-        assert(x == ((x & 0xff) | ((x >> 8) & 0xff) << 8 | ((x >> 16) & 0xff) << 16 | ((x >> 24)
-            & 0xff) << 24 | ((x >> 32) & 0xff) << 32 | ((x >> 40) & 0xff) << 40 | ((x >> 48) & 0xff)
-            << 48 | ((x >> 56) & 0xff) << 56)) by (bit_vector);
+        #[verusfmt::skip]
+        assert(x == (
+        (x & 0xff) |
+        ((x >> 8) & 0xff) << 8 |
+        ((x >> 16) & 0xff) << 16 |
+        ((x >> 24) & 0xff) << 24 |
+        ((x >> 32) & 0xff) << 32 |
+        ((x >> 40) & 0xff) << 40 |
+        ((x >> 48) & 0xff) << 48 |
+        ((x >> 56) & 0xff) << 56)
+    ) by (bit_vector);
     };
     assert forall|s: Seq<u8>| s.len() == 8 implies #[trigger] spec_u64_to_le_bytes(
         spec_u64_from_le_bytes(s),
@@ -227,12 +273,28 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
         let s5 = s[5] as u64;
         let s6 = s[6] as u64;
         let s7 = s[7] as u64;
-        assert(((x == s0 | s1 << 8 | s2 << 16 | s3 << 24 | s4 << 32 | s5 << 40 | s6 << 48 | s7
-            << 56) && (s0 < 256) && (s1 < 256) && (s2 < 256) && (s3 < 256) && (s4 < 256) && (s5
-            < 256) && (s6 < 256) && (s7 < 256)) ==> s0 == (x & 0xff) && s1 == ((x >> 8) & 0xff)
-            && s2 == ((x >> 16) & 0xff) && s3 == ((x >> 24) & 0xff) && s4 == ((x >> 32) & 0xff)
-            && s5 == ((x >> 40) & 0xff) && s6 == ((x >> 48) & 0xff) && s7 == ((x >> 56) & 0xff))
-            by (bit_vector);
+        #[verusfmt::skip]
+        assert(
+        (
+            (x == s0 | s1 << 8 | s2 << 16 | s3 << 24 | s4 << 32 | s5 << 40 | s6 << 48 | s7 << 56) &&
+            (s0 < 256) &&
+            (s1 < 256) &&
+            (s2 < 256) &&
+            (s3 < 256) &&
+            (s4 < 256) &&
+            (s5 < 256) &&
+            (s6 < 256) &&
+            (s7 < 256)
+        ) ==>
+            s0 == (x & 0xff) &&
+            s1 == ((x >> 8) & 0xff) &&
+            s2 == ((x >> 16) & 0xff) &&
+            s3 == ((x >> 24) & 0xff) &&
+            s4 == ((x >> 32) & 0xff) &&
+            s5 == ((x >> 40) & 0xff) &&
+            s6 == ((x >> 48) & 0xff) &&
+            s7 == ((x >> 56) & 0xff)
+    ) by (bit_vector);
         assert_seqs_equal!(spec_u64_to_le_bytes(spec_u64_from_le_bytes(s)) == s);
     }
 }
@@ -260,34 +322,48 @@ pub exec fn u64_to_le_bytes(x: u64) -> (s: alloc::vec::Vec<u8>)
 
 // Conversion between u128 and little-endian byte sequences
 pub closed spec fn spec_u128_to_le_bytes(x: u128) -> Seq<u8> {
+    #[verusfmt::skip]
     seq![
-    (x & 0xff) as u8,
-    ((x >> 8) & 0xff) as u8,
-    ((x >> 16) & 0xff) as u8,
-    ((x >> 24) & 0xff) as u8,
-    ((x >> 32) & 0xff) as u8,
-    ((x >> 40) & 0xff) as u8,
-    ((x >> 48) & 0xff) as u8,
-    ((x >> 56) & 0xff) as u8,
-    ((x >> 64) & 0xff) as u8,
-    ((x >> 72) & 0xff) as u8,
-    ((x >> 80) & 0xff) as u8,
-    ((x >> 88) & 0xff) as u8,
-    ((x >> 96) & 0xff) as u8,
-    ((x >> 104) & 0xff) as u8,
-    ((x >> 112) & 0xff) as u8,
-    ((x >> 120) & 0xff) as u8,
-  ]
+        (x & 0xff) as u8,
+        ((x >> 8) & 0xff) as u8,
+        ((x >> 16) & 0xff) as u8,
+        ((x >> 24) & 0xff) as u8,
+        ((x >> 32) & 0xff) as u8,
+        ((x >> 40) & 0xff) as u8,
+        ((x >> 48) & 0xff) as u8,
+        ((x >> 56) & 0xff) as u8,
+        ((x >> 64) & 0xff) as u8,
+        ((x >> 72) & 0xff) as u8,
+        ((x >> 80) & 0xff) as u8,
+        ((x >> 88) & 0xff) as u8,
+        ((x >> 96) & 0xff) as u8,
+        ((x >> 104) & 0xff) as u8,
+        ((x >> 112) & 0xff) as u8,
+        ((x >> 120) & 0xff) as u8,
+    ]
 }
 
 pub closed spec fn spec_u128_from_le_bytes(s: Seq<u8>) -> u128
     recommends
         s.len() == 16,
 {
-    (s[0] as u128) | (s[1] as u128) << 8 | (s[2] as u128) << 16 | (s[3] as u128) << 24 | (
-    s[4] as u128) << 32 | (s[5] as u128) << 40 | (s[6] as u128) << 48 | (s[7] as u128) << 56 | (
-    s[8] as u128) << 64 | (s[9] as u128) << 72 | (s[10] as u128) << 80 | (s[11] as u128) << 88 | (
-    s[12] as u128) << 96 | (s[13] as u128) << 104 | (s[14] as u128) << 112 | (s[15] as u128) << 120
+    #[verusfmt::skip]
+    (s[0] as u128) |
+    (s[1] as u128) << 8 |
+    (s[2] as u128) << 16 |
+    (s[3] as u128) << 24 |
+    (s[4] as u128) << 32 |
+    (s[5] as u128) << 40 |
+    (s[6] as u128) << 48 |
+    (s[7] as u128) << 56 |
+    (s[8] as u128) << 64 |
+    (s[9] as u128) << 72 |
+    (s[10] as u128) << 80 |
+    (s[11] as u128) << 88 |
+    (s[12] as u128) << 96 |
+    (s[13] as u128) << 104 |
+    (s[14] as u128) << 112 |
+    (s[15] as u128) << 120
 }
 
 #[verifier::spinoff_prover]
@@ -325,12 +401,25 @@ pub proof fn lemma_auto_spec_u128_to_from_le_bytes()
             &&& (x >> 112) & 0xff < 256
             &&& (x >> 120) & 0xff < 256
         }) by (bit_vector);
-        assert(x == ((x & 0xff) | ((x >> 8) & 0xff) << 8 | ((x >> 16) & 0xff) << 16 | ((x >> 24)
-            & 0xff) << 24 | ((x >> 32) & 0xff) << 32 | ((x >> 40) & 0xff) << 40 | ((x >> 48) & 0xff)
-            << 48 | ((x >> 56) & 0xff) << 56 | ((x >> 64) & 0xff) << 64 | ((x >> 72) & 0xff) << 72
-            | ((x >> 80) & 0xff) << 80 | ((x >> 88) & 0xff) << 88 | ((x >> 96) & 0xff) << 96 | ((x
-            >> 104) & 0xff) << 104 | ((x >> 112) & 0xff) << 112 | ((x >> 120) & 0xff) << 120))
-            by (bit_vector);
+        #[verusfmt::skip]
+        assert(x == (
+        (x & 0xff) |
+        ((x >> 8) & 0xff) << 8 |
+        ((x >> 16) & 0xff) << 16 |
+        ((x >> 24) & 0xff) << 24 |
+        ((x >> 32) & 0xff) << 32 |
+        ((x >> 40) & 0xff) << 40 |
+        ((x >> 48) & 0xff) << 48 |
+        ((x >> 56) & 0xff) << 56 |
+        ((x >> 64) & 0xff) << 64 |
+        ((x >> 72) & 0xff) << 72 |
+        ((x >> 80) & 0xff) << 80 |
+        ((x >> 88) & 0xff) << 88 |
+        ((x >> 96) & 0xff) << 96 |
+        ((x >> 104) & 0xff) << 104 |
+        ((x >> 112) & 0xff) << 112 |
+        ((x >> 120) & 0xff) << 120)
+    ) by (bit_vector);
     };
     assert forall|s: Seq<u8>| s.len() == 16 implies #[trigger] spec_u128_to_le_bytes(
         spec_u128_from_le_bytes(s),
@@ -352,17 +441,47 @@ pub proof fn lemma_auto_spec_u128_to_from_le_bytes()
         let s13 = s[13] as u128;
         let s14 = s[14] as u128;
         let s15 = s[15] as u128;
-        assert(((x == s0 | s1 << 8 | s2 << 16 | s3 << 24 | s4 << 32 | s5 << 40 | s6 << 48 | s7 << 56
-            | s8 << 64 | s9 << 72 | s10 << 80 | s11 << 88 | s12 << 96 | s13 << 104 | s14 << 112
-            | s15 << 120) && (s0 < 256) && (s1 < 256) && (s2 < 256) && (s3 < 256) && (s4 < 256) && (
-        s5 < 256) && (s6 < 256) && (s7 < 256) && (s8 < 256) && (s9 < 256) && (s10 < 256) && (s11
-            < 256) && (s12 < 256) && (s13 < 256) && (s14 < 256) && (s15 < 256)) ==> s0 == (x & 0xff)
-            && s1 == ((x >> 8) & 0xff) && s2 == ((x >> 16) & 0xff) && s3 == ((x >> 24) & 0xff) && s4
-            == ((x >> 32) & 0xff) && s5 == ((x >> 40) & 0xff) && s6 == ((x >> 48) & 0xff) && s7 == (
-        (x >> 56) & 0xff) && s8 == ((x >> 64) & 0xff) && s9 == ((x >> 72) & 0xff) && s10 == ((x
-            >> 80) & 0xff) && s11 == ((x >> 88) & 0xff) && s12 == ((x >> 96) & 0xff) && s13 == ((x
-            >> 104) & 0xff) && s14 == ((x >> 112) & 0xff) && s15 == ((x >> 120) & 0xff))
-            by (bit_vector);
+        #[verusfmt::skip]
+        assert(
+        (
+            (x == s0 | s1 << 8 | s2 << 16 | s3 << 24 | s4 << 32
+                     | s5 << 40 | s6 << 48 | s7 << 56 | s8 << 64
+                     | s9 << 72 | s10 << 80 | s11 << 88 | s12 << 96
+                     | s13 << 104 | s14 << 112 | s15 << 120) &&
+            (s0 < 256) &&
+            (s1 < 256) &&
+            (s2 < 256) &&
+            (s3 < 256) &&
+            (s4 < 256) &&
+            (s5 < 256) &&
+            (s6 < 256) &&
+            (s7 < 256) &&
+            (s8 < 256) &&
+            (s9 < 256) &&
+            (s10 < 256) &&
+            (s11 < 256) &&
+            (s12 < 256) &&
+            (s13 < 256) &&
+            (s14 < 256) &&
+            (s15 < 256)
+        ) ==>
+            s0 == (x & 0xff) &&
+            s1 == ((x >> 8) & 0xff) &&
+            s2 == ((x >> 16) & 0xff) &&
+            s3 == ((x >> 24) & 0xff) &&
+            s4 == ((x >> 32) & 0xff) &&
+            s5 == ((x >> 40) & 0xff) &&
+            s6 == ((x >> 48) & 0xff) &&
+            s7 == ((x >> 56) & 0xff) &&
+            s8 == ((x >> 64) & 0xff) &&
+            s9 == ((x >> 72) & 0xff) &&
+            s10 == ((x >> 80) & 0xff) &&
+            s11 == ((x >> 88) & 0xff) &&
+            s12 == ((x >> 96) & 0xff) &&
+            s13 == ((x >> 104) & 0xff) &&
+            s14 == ((x >> 112) & 0xff) &&
+            s15 == ((x >> 120) & 0xff)
+    ) by (bit_vector);
         assert_seqs_equal!(spec_u128_to_le_bytes(spec_u128_from_le_bytes(s)) == s);
     }
 }
