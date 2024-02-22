@@ -1202,8 +1202,10 @@ struct PostConditionInfo {
 
 #[derive(Debug)]
 struct LoopInfo {
+    spinoff_loop: bool,
     is_for_loop: bool,
     label: Option<String>,
+    air_break_label: Ident,
     some_cond: bool,
     invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>)>>,
     invs_exit: Arc<Vec<(Span, Expr, Option<Arc<String>>)>>,
@@ -1221,6 +1223,7 @@ struct State {
     mask: MaskSet,         // set of invariants that are allowed to be opened
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
+    loop_label_counter: u64,
     static_prelude: Vec<Stmt>,
 }
 
@@ -1821,17 +1824,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s)?)))]
         }
         StmX::BreakOrContinue { label, is_break } => {
+            let loop_info = if label.is_some() {
+                state
+                    .loop_infos
+                    .iter()
+                    .rfind(|info| info.label == *label)
+                    .expect("missing loop label")
+            } else {
+                state.loop_infos.last().expect("inside loop")
+            };
+            let is_air_break = *is_break && !loop_info.spinoff_loop;
             let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_spec_preconditions() {
-                let loop_info = if label.is_some() {
-                    state
-                        .loop_infos
-                        .iter()
-                        .rfind(|info| info.label == *label)
-                        .expect("missing loop label")
-                } else {
-                    state.loop_infos.last().expect("inside loop")
-                };
+            if !ctx.checking_spec_preconditions() && !is_air_break {
                 assert!(!loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
                 if loop_info.is_for_loop && !*is_break {
                     // At the very least, the syntax macro will need to advance the ghost iterator
@@ -1856,7 +1860,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     stmts.push(Arc::new(StmtX::Assert(error, inv.clone())));
                 }
             }
-            stmts.push(Arc::new(StmtX::Assume(air::ast_util::mk_false())));
+            if is_air_break {
+                stmts.push(Arc::new(StmtX::Break(loop_info.air_break_label.clone())));
+            } else {
+                stmts.push(Arc::new(StmtX::Assume(air::ast_util::mk_false())));
+            }
             stmts
         }
         StmX::ClosureInner { body, typ_inv_vars } => {
@@ -1903,7 +1911,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop {
+            spinoff_loop,
+            is_for_loop,
+            label,
+            cond,
+            body,
+            invs,
+            typ_inv_vars,
+            modified_vars,
+        } => {
+            let spinoff_loop = *spinoff_loop;
             let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
                 let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
                 let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -1945,8 +1963,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
 
             let mut air_body: Vec<Stmt> = state.static_prelude.clone();
+            if !spinoff_loop {
+                for x in modified_vars.iter() {
+                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
+                }
+                for (x, typ) in typ_inv_vars.iter() {
+                    if modified_vars.contains(x) {
+                        let typ_inv =
+                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                        if let Some(expr) = typ_inv {
+                            air_body.push(Arc::new(StmtX::Assume(expr)));
+                        }
+                    }
+                }
+            }
 
             /*
+            When spinoff_loop = true:
             Generate a separate SMT query for the loop body.
             Rationale: large functions with while loops tend to be slow to verify.
             Therefore, it's good to try to factor large functions
@@ -1964,10 +1997,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             which would slow verification of the loop body.)
             */
             let mut local = state.local_shared.clone();
-            for (x, typ) in typ_inv_vars.iter() {
-                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                if let Some(expr) = typ_inv {
-                    local.push(Arc::new(DeclX::Axiom(expr)));
+            if spinoff_loop {
+                for (x, typ) in typ_inv_vars.iter() {
+                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                    if let Some(expr) = typ_inv {
+                        local.push(Arc::new(DeclX::Axiom(expr)));
+                    }
                 }
             }
 
@@ -1975,8 +2010,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // *x or *old(x) within the loop body or invariants.
             // Thus, we need to create a 'pre' snapshot and havoc all these variables
             // so that we can refer to either version of the variable within the body.
-
-            air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+            if spinoff_loop {
+                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+            }
             for (x, typ) in typ_inv_vars.iter() {
                 if state.may_be_used_in_old.contains(x) {
                     air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
@@ -1995,14 +2031,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
             if let Some(cond_stmts) = &cond_stmts {
+                assert!(spinoff_loop);
                 air_body.append(&mut cond_stmts.clone());
             }
             if let Some(pos_assume) = pos_assume {
+                assert!(spinoff_loop);
                 air_body.push(pos_assume);
             }
+            let air_break_label = crate::def::break_label(state.loop_label_counter);
+            state.loop_label_counter += 1;
             let loop_info = LoopInfo {
+                spinoff_loop,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
+                air_break_label: air_break_label.clone(),
                 some_cond: cond.is_some(),
                 invs_entry: invs_entry.clone(),
                 invs_exit: invs_exit.clone(),
@@ -2021,6 +2063,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     air_body.push(Arc::new(inv_stmt));
                 }
             }
+            if !spinoff_loop {
+                let loop_end = StmtX::Assume(air::ast_util::mk_false());
+                air_body.push(Arc::new(loop_end));
+            }
             let assertion = one_stmt(air_body);
 
             let assertion = if !ctx.debug {
@@ -2033,22 +2079,24 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let block_contents: Vec<Stmt> = vec![snapshot, assertion];
                 Arc::new(StmtX::Block(Arc::new(block_contents)))
             };
-
-            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            let loop_cmd_context = CommandsWithContextX::new(
-                ctx.fun
-                    .as_ref()
-                    .expect("asserts are expected to be in a function")
-                    .current_fun
-                    .clone(),
-                stm.span.clone(),
-                "while loop".to_string(),
-                Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
-                ProverChoice::DefaultProver,
-                false,
-            );
-            loop_cmd_context.hint_upon_failure.replace(hint_message);
-            state.commands.push(loop_cmd_context);
+            if spinoff_loop {
+                let assertion = assertion.clone();
+                let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+                let loop_cmd_context = CommandsWithContextX::new(
+                    ctx.fun
+                        .as_ref()
+                        .expect("asserts are expected to be in a function")
+                        .current_fun
+                        .clone(),
+                    stm.span.clone(),
+                    "while loop".to_string(),
+                    Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
+                    ProverChoice::DefaultProver,
+                    false,
+                );
+                loop_cmd_context.hint_upon_failure.replace(hint_message);
+                state.commands.push(loop_cmd_context);
+            }
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -2062,25 +2110,36 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     stmts.push(Arc::new(inv_stmt));
                 }
             }
-            for x in modified_vars.iter() {
-                stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
+            if !spinoff_loop {
+                let break_label = air_break_label.clone();
+                let loop_breakable = Arc::new(StmtX::Breakable(break_label, assertion));
+                stmts.push(loop_breakable);
             }
-            for (x, typ) in typ_inv_vars.iter() {
-                if modified_vars.contains(x) {
-                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                    if let Some(expr) = typ_inv {
-                        stmts.push(Arc::new(StmtX::Assume(expr)));
+            if spinoff_loop {
+                for x in modified_vars.iter() {
+                    stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
+                }
+                for (x, typ) in typ_inv_vars.iter() {
+                    if modified_vars.contains(x) {
+                        let typ_inv =
+                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                        if let Some(expr) = typ_inv {
+                            stmts.push(Arc::new(StmtX::Assume(expr)));
+                        }
                     }
                 }
             }
             for (_, inv, _) in invs_exit.iter() {
+                assert!(spinoff_loop);
                 let inv_stmt = StmtX::Assume(inv.clone());
                 stmts.push(Arc::new(inv_stmt));
             }
             if let Some(cond_stmts) = &cond_stmts {
+                assert!(spinoff_loop);
                 stmts.append(&mut cond_stmts.clone());
             }
             if let Some(neg_assume) = neg_assume {
+                assert!(spinoff_loop);
                 stmts.push(neg_assume);
             }
             if ctx.debug {
@@ -2384,6 +2443,7 @@ pub(crate) fn body_stm_to_air(
             kind: post_condition.kind,
         },
         loop_infos: Vec::new(),
+        loop_label_counter: 0,
         static_prelude: mk_static_prelude(ctx, statics),
     };
 

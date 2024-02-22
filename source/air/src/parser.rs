@@ -489,6 +489,13 @@ impl Parser {
                     let stmt = self.node_to_stmt(&e)?;
                     Ok(Arc::new(StmtX::DeadEnd(stmt)))
                 }
+                [Node::Atom(s), Node::Atom(label), e] if s.to_string() == "breakable" => {
+                    let stmt = self.node_to_stmt(&e)?;
+                    Ok(Arc::new(StmtX::Breakable(Arc::new(label.clone()), stmt)))
+                }
+                [Node::Atom(s), Node::Atom(label)] if s.to_string() == "break" => {
+                    Ok(Arc::new(StmtX::Break(Arc::new(label.clone()))))
+                }
                 _ => match &nodes[0] {
                     Node::Atom(s) if s.to_string() == "block" => {
                         Ok(Arc::new(StmtX::Block(self.nodes_to_stmts(&nodes[1..])?)))

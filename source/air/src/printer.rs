@@ -388,6 +388,8 @@ impl Printer {
             StmtX::Assign(x, expr) => nodes!(assign {str_to_node(x)} {self.expr_to_node(expr)}),
             StmtX::Snapshot(snap) => nodes!(snapshot {str_to_node(snap)}),
             StmtX::DeadEnd(s) => nodes!(deadend {self.stmt_to_node(s)}),
+            StmtX::Breakable(x, s) => nodes!(breakable {str_to_node(x)} {self.stmt_to_node(s)}),
+            StmtX::Break(x) => nodes!(break { str_to_node(x) }),
             StmtX::Block(stmts) | StmtX::Switch(stmts) => {
                 let mut nodes = Vec::new();
                 let s = match &**stmt {

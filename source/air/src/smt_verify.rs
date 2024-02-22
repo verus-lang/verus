@@ -42,7 +42,6 @@ fn label_asserts<'ctx>(
         },
         ExprX::LabeledAssertion(error, expr) => {
             let label = Arc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
-
             let decl = Arc::new(DeclX::Const(label.clone(), Arc::new(TypX::Bool)));
             let assertion_info =
                 AssertionInfo { error: error.clone(), label: label.clone(), decl, disabled: false };
@@ -58,7 +57,6 @@ fn label_asserts<'ctx>(
             let count = context.axiom_infos_count;
             context.axiom_infos_count += 1;
             let label = Arc::new(GLOBAL_PREFIX_LABEL.to_string() + &count.to_string());
-
             let decl = Arc::new(DeclX::Const(label.clone(), Arc::new(TypX::Bool)));
             let axiom_info = AxiomInfo { labels: labels.clone(), label: label.clone(), decl };
             axiom_infos.push(axiom_info);

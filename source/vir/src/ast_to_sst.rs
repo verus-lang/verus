@@ -492,10 +492,8 @@ fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
 
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Loop { is_for_loop: _, label, cond: None, body, invs: _ } => {
-            loop_body_has_break(label, body)
-        }
-        ExprX::Loop { is_for_loop: _, label: _, cond: Some(_), body: _, invs: _ } => true,
+        ExprX::Loop { label, cond: None, body, .. } => loop_body_has_break(label, body),
+        ExprX::Loop { cond: Some(_), .. } => true,
         _ => {
             panic!("expected while loop");
         }
@@ -1914,10 +1912,38 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Match(..) => {
             panic!("internal error: Match should have been simplified by ast_simplify")
         }
-        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { spinoff_loop, is_for_loop, label, cond, body, invs } => {
+            let is_for_loop = *is_for_loop;
+            let spinoff_loop = *spinoff_loop;
+            let invs = if is_for_loop && !spinoff_loop {
+                // The syntax macro doesn't have enough context to know whether ensures is needed,
+                // so we have to fix up the invariants here.
+                Arc::new(
+                    invs.iter()
+                        .filter_map(|inv| match inv.kind {
+                            LoopInvariantKind::Invariant => Some(inv.clone()),
+                            LoopInvariantKind::InvariantEnsures => {
+                                Some(crate::ast::LoopInvariant {
+                                    kind: LoopInvariantKind::Invariant,
+                                    inv: inv.inv.clone(),
+                                })
+                            }
+                            LoopInvariantKind::Ensures => None,
+                        })
+                        .collect(),
+                )
+            } else {
+                invs.clone()
+            };
             let has_break = loop_body_has_break(label, body);
             let simple_invs = invs.iter().all(|inv| inv.kind == LoopInvariantKind::Invariant);
-            let simple_while = !has_break && simple_invs && cond.is_some();
+            let simple_while = !has_break && simple_invs && cond.is_some() && spinoff_loop;
+            if !spinoff_loop && !simple_invs {
+                return Err(error(
+                    &expr.span,
+                    "loop invariants with 'spinoff_loop(false)' cannot be ensures",
+                ));
+            }
             let mut cnd = if let Some(cond) = cond {
                 let (stms0, e0) = expr_to_stm_opt(ctx, state, cond)?;
                 let e0 = match e0 {
@@ -1968,10 +1994,15 @@ pub(crate) fn expr_to_stm_opt(
                     cnd = None;
                 }
             }
+            if !spinoff_loop {
+                // !spinoff_loop handling expects a "loop", not a "while"
+                assert!(cnd.is_none());
+            }
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
-                    is_for_loop: *is_for_loop,
+                    spinoff_loop,
+                    is_for_loop,
                     label: label.clone(),
                     cond: cnd,
                     body: stms_to_one_stm(&body.span, stms1),

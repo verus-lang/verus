@@ -1,7 +1,7 @@
 use crate::ast::{Decl, DeclX, Expr, ExprX, Query, QueryX, Stmt, StmtX, UnaryOp};
 use crate::ast_util::bool_typ;
 use crate::ast_util::{mk_and, mk_implies, mk_or, mk_true};
-use crate::def::SWITCH_LABEL;
+use crate::def::{break_label, SWITCH_LABEL};
 use std::sync::Arc;
 
 fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Expr) -> Expr {
@@ -22,6 +22,21 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
             // wp(deadend(s), P) = wp(s, true) /\ P
             let wps = stmt_to_expr(label_n, locals, stmt, mk_true());
             mk_and(&vec![wps, pred])
+        }
+        StmtX::Breakable(label, stmt) => {
+            // wp((s; label:), P) = (P ==> label) ==> wp(s, label)
+            //                    = wp(s, label) \/ (!label /\ P)
+            let label = break_label(label);
+            locals.push(Arc::new(DeclX::Const(label.clone(), bool_typ())));
+            let exp_label = Arc::new(ExprX::Var(label));
+            let lhs = stmt_to_expr(label_n, locals, stmt, exp_label.clone());
+            let neg_label = Arc::new(ExprX::Unary(UnaryOp::Not, exp_label));
+            let and = mk_and(&vec![neg_label, pred]);
+            mk_or(&vec![lhs, and])
+        }
+        StmtX::Break(label) => {
+            // wp((break label), P) = label
+            Arc::new(ExprX::Var(break_label(label)))
         }
         StmtX::Block(stmts) => {
             // wp((s1; s2), P) = wp(s1, wp(s2, P))

@@ -161,7 +161,14 @@ pub enum StmtX {
     Snapshot(Ident),
     // verify Stmt, but block assumptions in Stmt from persisting after Stmt
     DeadEnd(Stmt),
+    // Allow Stmt to have a Break inside it that jumps forward to the end of the Stmt
+    // (the Ident names the label at the end of the Breakable;
+    // this label is used by Break as the target to jump to.)
+    Breakable(Ident, Stmt),
+    // Jump forward to the end of the Breakable labeled by Ident
+    Break(Ident),
     Block(Stmts),
+    // Nondeterministically choose any one Stmt in Stmts and execute it
     Switch(Stmts),
 }
 

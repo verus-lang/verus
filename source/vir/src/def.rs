@@ -62,6 +62,7 @@ const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
+const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -746,6 +747,10 @@ pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
 
 pub fn static_name(fun: &Fun) -> Ident {
     Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
+}
+
+pub fn break_label(i: u64) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_BREAK_LABEL, i))
 }
 
 pub fn array_index_fun(vstd_crate_name: &Option<Ident>) -> Fun {

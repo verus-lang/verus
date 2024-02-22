@@ -1050,6 +1050,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             );
         }
     }
+    let spinoff_loop = if let Some(spinoff_loop) = expr_vattrs.spinoff_loop {
+        match &expr.kind {
+            ExprKind::Loop(..) => spinoff_loop,
+            _ => {
+                return err_span(
+                    expr.span,
+                    "the attribute #[verifier::spinoff_loop] is only allowed on loops",
+                );
+            }
+        }
+    } else {
+        true
+    };
 
     match &expr.kind {
         ExprKind::Block(body, _) => {
@@ -1641,6 +1654,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let header = vir::headers::read_header(&mut body)?;
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
+                spinoff_loop,
                 is_for_loop: expr_vattrs.for_loop,
                 label,
                 cond: None,
@@ -1659,6 +1673,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             // rustc desugars a while loop of the form `while cond { body }`
             // to `loop { if cond { body } else { break; } }`
             // We want to "un-desugar" it to represent it as a while loop.
+            // (We also need to retrieve the invariants from the body inside the If.)
             // We already got `body` from the if-branch; now sanity check that the
             // 'else' branch really has a 'break' statement as expected.
             if let Some(Expr {
@@ -1700,6 +1715,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
+                spinoff_loop,
                 is_for_loop: false,
                 label,
                 cond,

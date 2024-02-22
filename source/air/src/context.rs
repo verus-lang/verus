@@ -105,6 +105,8 @@ impl Context {
                 message_interface: message_interface.clone(),
                 decls: crate::scope_map::ScopeMap::new(),
                 snapshots: HashSet::new(),
+                break_labels_local: HashSet::new(),
+                break_labels_in_scope: crate::scope_map::ScopeMap::new(),
             },
             debug: false,
             ignore_unexpected_smt: false,
@@ -126,6 +128,7 @@ impl Context {
         context.choose_map.push_scope(false);
         context.apply_map.push_scope(false);
         context.typing.decls.push_scope(false);
+        context.typing.break_labels_in_scope.push_scope(false);
         context
     }
 

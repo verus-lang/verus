@@ -177,6 +177,7 @@ where
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::Loop {
+                    spinoff_loop: _,
                     is_for_loop: _,
                     label: _,
                     cond,
@@ -254,6 +255,7 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
             StmX::Loop {
+                spinoff_loop: _,
                 is_for_loop: _,
                 label: _,
                 cond,
@@ -624,7 +626,16 @@ where
             let stm = Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs));
             fs(&stm)
         }
-        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop {
+            spinoff_loop,
+            is_for_loop,
+            label,
+            cond,
+            body,
+            invs,
+            typ_inv_vars,
+            modified_vars,
+        } => {
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm = map_stm_visitor(cond_stm, fs)?;
                 Some((cond_stm, cond_exp.clone()))
@@ -635,6 +646,7 @@ where
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
+                    spinoff_loop: *spinoff_loop,
                     is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond,
@@ -704,7 +716,16 @@ where
             let rhs = rhs.as_ref().map(|rhs| fs(rhs)).transpose()?;
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
-        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop {
+            spinoff_loop,
+            is_for_loop,
+            label,
+            cond,
+            body,
+            invs,
+            typ_inv_vars,
+            modified_vars,
+        } => {
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm = fs(cond_stm)?;
                 Some((cond_stm, cond_exp.clone()))
@@ -715,6 +736,7 @@ where
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
+                    spinoff_loop: *spinoff_loop,
                     is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond,
@@ -786,7 +808,16 @@ where
                 },
             ))
         }
-        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop {
+            spinoff_loop,
+            is_for_loop,
+            label,
+            cond,
+            body,
+            invs,
+            typ_inv_vars,
+            modified_vars,
+        } => {
             let mut typ_inv_vars2 = vec![];
             for (uid, typ) in typ_inv_vars.iter() {
                 typ_inv_vars2.push((uid.clone(), ft(typ)?));
@@ -794,6 +825,7 @@ where
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
+                    spinoff_loop: *spinoff_loop,
                     is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond: cond.clone(),
@@ -893,7 +925,16 @@ where
                 let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
-            StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            StmX::Loop {
+                spinoff_loop,
+                is_for_loop,
+                label,
+                cond,
+                body,
+                invs,
+                typ_inv_vars,
+                modified_vars,
+            } => {
                 let cond = if let Some((cond_stm, cond_exp)) = cond {
                     let cond_exp = fe(cond_exp)?;
                     Some((cond_stm.clone(), cond_exp))
@@ -907,6 +948,7 @@ where
                 Spanned::new(
                     span,
                     StmX::Loop {
+                        spinoff_loop: *spinoff_loop,
                         is_for_loop: *is_for_loop,
                         label: label.clone(),
                         cond,

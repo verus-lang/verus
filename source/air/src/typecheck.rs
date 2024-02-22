@@ -26,6 +26,8 @@ pub struct Typing {
     // For simplicity, global and local names must be unique (bound variables can have the same name)
     pub(crate) decls: ScopeMap<Ident, Declared>,
     pub(crate) snapshots: HashSet<Ident>,
+    pub(crate) break_labels_local: HashSet<Ident>,
+    pub(crate) break_labels_in_scope: ScopeMap<Ident, ()>,
 }
 
 impl Typing {
@@ -479,6 +481,25 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
             }
             Ok(())
         }
+        StmtX::Breakable(label, s) => {
+            if typing.break_labels_local.contains(label) {
+                Err(format!("break label '{label}' declared more than once in same query"))
+            } else {
+                typing.break_labels_local.insert(label.clone());
+                typing.break_labels_in_scope.push_scope(false);
+                typing.break_labels_in_scope.insert(label.clone(), ()).expect("push break");
+                check_stmt(typing, s)?;
+                typing.break_labels_in_scope.pop_scope();
+                Ok(())
+            }
+        }
+        StmtX::Break(label) => {
+            if typing.break_labels_in_scope.contains_key(label) {
+                Ok(())
+            } else {
+                Err(format!("break label '{label}' not in scope"))
+            }
+        }
         StmtX::Switch(stmts) => {
             let snapshots = typing.snapshots.clone(); // snapshots from branches are not retained
             for s in stmts.iter() {
@@ -592,6 +613,8 @@ pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<Query,
         locals.append(&mut gen_decls);
         locals.push(decl);
     }
+    context.typing.snapshots = HashSet::new();
+    context.typing.break_labels_local = HashSet::new();
     check_stmt(&mut context.typing, &query.assertion)?;
 
     // Call crate::closure to rewrite query
