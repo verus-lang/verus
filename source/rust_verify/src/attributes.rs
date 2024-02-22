@@ -591,6 +591,37 @@ pub(crate) fn parse_attrs_opt(
     }
 }
 
+pub(crate) fn parse_attrs_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    mut def_id: rustc_span::def_id::DefId,
+) -> Vec<Attr> {
+    let mut vattrs: Vec<Attr> = Vec::new();
+    loop {
+        if let Some(did) = def_id.as_local() {
+            let hir_id = tcx.hir().local_def_id_to_hir_id(did);
+            let attrs = tcx.hir().attrs(hir_id);
+            vattrs.extend(parse_attrs_opt(attrs, None));
+        }
+        if let Some(id) = tcx.opt_parent(def_id) {
+            def_id = id;
+        } else {
+            return vattrs;
+        }
+    }
+}
+
+pub(crate) fn get_spinoff_loop_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> Option<bool> {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::SpinoffLoop(flag) = attr {
+            return Some(flag);
+        }
+    }
+    None
+}
+
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
