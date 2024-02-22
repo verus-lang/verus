@@ -951,8 +951,8 @@ fn run() -> Result<(), String> {
                         .expect("dependencies_mtime should be Some here")
                         .into();
 
-                    let pervasive_path = std::path::Path::new("pervasive");
-                    let vstd_mtime: FileTime = util::mtime_recursive(&pervasive_path)?.into();
+                    let vstd_path = std::path::Path::new("vstd");
+                    let vstd_mtime: FileTime = util::mtime_recursive(&vstd_path)?.into();
 
                     let current_fingerprint = Fingerprint {
                         dependencies_mtime,

@@ -67,7 +67,7 @@ jobs:
           else
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
-            cd pervasive
+            cd vstd
             unset -f cargo
             cargo build
             cd ..

@@ -86,6 +86,21 @@ pub fn verify_files_vstd_all_diags(
 ) -> Result<TestErr, TestErr> {
     THREAD_LOCAL_TEST_NAME.with(|tn| *tn.borrow_mut() = Some(name.to_string()));
 
+    fn print_input_dir_rerun_info(
+        test_input_dir: &std::path::PathBuf,
+        options: &[&str],
+        entry_file: &String,
+    ) {
+        eprintln!("the input directory is {}", test_input_dir.to_string_lossy());
+        eprintln!("{}", yansi::Paint::blue("rerun this test with:"));
+        eprintln!(
+            "vargo run -p rust_verify -- --crate-type=lib {} {}",
+            options.join(" "),
+            test_input_dir.join(entry_file).to_string_lossy()
+        );
+        eprintln!();
+    }
+
     let files: Vec<(String, String)> = files.into_iter().collect();
 
     let deps_dir = std::env::current_exe().unwrap();
@@ -107,6 +122,14 @@ pub fn verify_files_vstd_all_diags(
     }
     std::fs::create_dir(&test_input_dir).unwrap();
 
+    let keep_test_dir = std::env::var("VERUS_KEEP_TEST_DIR")
+        .ok()
+        .and_then(|x| if x.trim() == "0" { None } else { Some(()) })
+        .is_some();
+    if keep_test_dir {
+        print_input_dir_rerun_info(&test_input_dir, options, &entry_file);
+    }
+
     for (file_name, file_contents) in files {
         use std::io::Write;
         let mut f = std::fs::File::create(test_input_dir.join(file_name))
@@ -124,18 +147,20 @@ pub fn verify_files_vstd_all_diags(
         regex::Regex::new(r"^aborting due to( [0-9]+)? previous errors?").unwrap();
 
     #[cfg(target_os = "windows")]
-    let code = run.status.code().expect("unexpected signal in Windows");
+    let is_run_success = run.status.success();
 
     #[cfg(not(target_os = "windows"))]
-    let code = match run.status.code() {
-        Some(code) => code,
-        None => {
-            use std::os::unix::process::ExitStatusExt;
-            panic!("test terminated by a signal: {:?}", run.status.signal());
-        }
-    };
+    let is_run_success = run.status.success();
 
-    let mut is_failure = code != 0;
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = run.status.signal() {
+            eprintln!("test terminated by a signal: {:?}", signal);
+        }
+    }
+
+    let mut is_failure = !is_run_success;
     let mut warnings = Vec::new();
     let mut notes = Vec::new();
 
@@ -174,17 +199,12 @@ pub fn verify_files_vstd_all_diags(
         }
     }
 
-    if !is_failure {
-        std::fs::remove_dir_all(&test_input_dir).unwrap();
-    } else {
-        eprintln!("the input directory is {}", test_input_dir.to_string_lossy());
-        eprintln!("{}", yansi::Paint::blue("rerun this test with:"));
-        eprintln!(
-            "vargo run -p rust_verify -- --crate-type=lib {} {}",
-            options.join(" "),
-            test_input_dir.join(entry_file).to_string_lossy()
-        );
-        eprintln!();
+    if !keep_test_dir {
+        if !is_failure {
+            std::fs::remove_dir_all(&test_input_dir).unwrap();
+        } else {
+            print_input_dir_rerun_info(&test_input_dir, options, &entry_file);
+        }
     }
 
     if is_failure {
@@ -279,8 +299,6 @@ pub fn run_verus(
 
     verus_args.extend(
         vec![
-            "--edition".to_string(),
-            "2018".to_string(),
             "--crate-name".to_string(),
             "test_crate".to_string(),
             "--crate-type".to_string(),
@@ -349,7 +367,7 @@ pub fn run_verus(
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    // If we're using the pre-macro-expanded pervasive lib, then it might have
+    // If we're using the pre-macro-expanded vstd lib, then it might have
     // some macro-internal stuff in it, and rustc needs this option in order to accept it.
     #![feature(fmt_internals)]
 
@@ -370,7 +388,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         (false, options)
     };
 
-    let vstd = code.contains("vstd::") || code.contains("pervasive::") || options.contains(&"vstd");
+    let vstd = code.contains("vstd::") || options.contains(&"vstd");
     let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
 
     let files = vec![("test.rs".to_string(), code)];

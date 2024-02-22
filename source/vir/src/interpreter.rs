@@ -625,7 +625,7 @@ pub enum SeqFn {
     Last,
 }
 
-// TODO: Make the matching here more robust to changes in pervasive
+// TODO: Make the matching here more robust to changes in vstd
 /// Identify sequence functions for which we provide custom interpretation
 fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
@@ -651,7 +651,7 @@ fn strs_to_idents(s: Vec<&str>) -> Idents {
 
 /// Convert an interpreter-internal sequence representation back into a
 /// representation we can pass to AIR
-// TODO: More robust way of pointing to pervasive's sequence functions
+// TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
     let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
     let typs = Arc::new(vec![typ.clone()]);

@@ -62,3 +62,56 @@ so that, for example, `a ==> b && c` means `a ==> (b && c)`:
 | closures, forall, exists | right                 |
 | &&&                      | left                  |
 | &#124;&#124;&#124;       | left                  |
+
+# The `is` operator, and the "arrow" field access
+
+If you define an enum,
+
+```rust
+enum ThisOrThat {
+    This(nat),
+    That { v: int },
+}
+```
+
+you can then use (in specification code) the syntax `t is This` or `t is That`
+which will be true if `t` is a value of the relevant enum variant.
+
+If, in addition, all the fields have distinct names, like in the example above
+you can then access the fields with `t->v` or `t->0` (for positional fields note
+that these are supported if only one variant has "tuple like" fields).
+
+# `matches` with `&&&`, `==>`, and `&&`
+
+For more complex cases, and where you need an enum where multiple variants have
+fields of the same name, you can use the `t matches That { v: a }` syntax, which
+will result in a boolean representing whether `t` matches the provided pattern.
+You can also follow it up with `==>` and `&&` and subsequent expressions (that bind at least as tightly)
+will have access to the bound variables in the parttern (`a` in this example).
+
+For example, for that enum, you can say;
+
+```rust
+proof fn uses_arrow_matches_1(t: ThisOrThat)
+    requires
+        t is That ==> t->v == 3,
+        t is This ==> t->0 == 4,
+{
+    assert(t matches ThisOrThat::This(k) ==> k == 4);
+    assert(t matches ThisOrThat::That { v } ==> v == 3);
+}
+```
+
+The "t matches `pattern`" syntax is also valid as an expression of a `&&&` chain, e.g.
+
+```rust
+proof fn test1(t: ThisOrThat)
+    requires ({
+        &&& t matches ThisOrThat::That { v: a }
+        &&& a > 3
+        &&& a < 5
+    })
+{
+    // ...
+}
+```

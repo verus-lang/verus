@@ -54,6 +54,6 @@ pub mod view;
 pub mod std_specs;
 pub mod relations;
 
-// Re-exports all pervasive types, traits, and functions that are commonly used or replace
+// Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
 pub mod prelude;

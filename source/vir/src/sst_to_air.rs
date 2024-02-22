@@ -1561,12 +1561,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let (has_ens, ens_fun, ens_typ_args) = match resolved_method {
-                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate.contains(res_fun) => {
+                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
                     let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
                     (true, res_fun, res_typ_args)
                 }
-                _ if ctx.funcs_with_ensure_predicate.contains(&func.x.name) => {
+                _ if ctx.funcs_with_ensure_predicate[&func.x.name] => {
                     // Use ens predicate for the generic function
                     (true, &func.x.name, typ_args)
                 }
@@ -2330,7 +2330,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
 fn mk_static_prelude(ctx: &Ctx, statics: &Vec<Fun>) -> Vec<Stmt> {
     statics
         .iter()
-        .filter(|f| ctx.funcs_with_ensure_predicate.contains(&**f))
+        .filter(|f| ctx.funcs_with_ensure_predicate[&**f])
         .map(|f| {
             let f_ens = prefix_ensures(&fun_to_air_ident(&f));
             let f_static = string_var(&static_name(f));

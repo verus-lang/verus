@@ -546,7 +546,7 @@ pub fn func_decl_to_air(
 ) -> Result<Commands, VirErr> {
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
-            if ctx.funcs_with_ensure_predicate.contains(method) {
+            if ctx.funcs_with_ensure_predicate[method] {
                 let ens = prefix_ensures(&fun_to_air_ident(&method));
                 (true, Some((ens, trait_typ_args.clone())))
             } else {
@@ -672,9 +672,7 @@ pub fn func_decl_to_air(
         bool_typ(),
         inherit_fn_ens,
     )?;
-    if has_ens_pred {
-        ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
-    }
+    ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
     if crate::ast_simplify::need_fndef_axiom(&ctx.fndef_type_set, function) {
         let fndef_axioms = function
