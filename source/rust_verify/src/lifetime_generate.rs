@@ -1278,8 +1278,10 @@ fn erase_expr<'tcx>(
             if expect_spec {
                 erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
             } else {
+                let ty1 = erase_ty(ctxt, state, &ctxt.types().expr_ty_adjusted(e1));
+                let ty2 = erase_ty(ctxt, state, &ctxt.types().expr_ty_adjusted(e2));
                 let ty = erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
-                mk_exp(ExpX::Index(ty, exp1.expect("expr"), exp2.expect("expr")))
+                mk_exp(ExpX::Index(ty1, ty2, ty, exp1.expect("expr"), exp2.expect("expr")))
             }
         }
         ExprKind::Field(e1, field) => {
