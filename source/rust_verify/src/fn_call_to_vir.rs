@@ -122,7 +122,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     if let Some(verus_item) = verus_item {
         match verus_item {
-            VerusItem::Pervasive(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_) => (),
+            VerusItem::Vstd(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_) => (),
             _ => {
                 return verus_item_to_vir(
                     bctx,
@@ -1412,7 +1412,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Arc::new(vir_args),
             ));
         }
-        VerusItem::Pervasive(_, _)
+        VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
         | VerusItem::Global(_) => unreachable!(),

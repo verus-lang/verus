@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
@@ -36,7 +36,7 @@ jobs:
         features: ['', 'singular', 'record-history']
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: get z3
         working-directory: ./source
         run: |
@@ -67,7 +67,7 @@ jobs:
           else
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
             VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
-            cd pervasive
+            cd vstd
             unset -f cargo
             cargo build
             cd ..
@@ -78,7 +78,7 @@ jobs:
         run: |
           ./tools/docs.sh
       - name: upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         if: matrix.features == ''
         with:
           name: verusdoc
@@ -88,7 +88,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: get z3
         shell: pwsh
         working-directory: .\source

@@ -1656,6 +1656,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_broadcast_forall_causes_cycle_simple verus_code! {
+        pub trait Tr {
+            spec fn f() -> bool;
+
+            proof fn bad() ensures false; // FAILS
+        }
+
+        #[verifier::broadcast_forall]
+        #[verifier::external_body]
+        pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+            ensures
+                #[trigger] T::f() == !T::f(),
+        { }
+
+        struct X { }
+
+        impl Tr for X {
+            open spec fn f() -> bool { true }
+
+            proof fn bad() {
+                assert(Self::f());
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_decreases_trait_bound verus_code! {
         trait T {
             proof fn impossible()
@@ -2325,21 +2352,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] allow_external_drop_with_requires verus_code! {
+    #[test] disallow_external_drop verus_code! {
         struct A { v: u64 }
 
         impl Drop for A {
             #[verifier::external]
             fn drop(&mut self)
-                requires false
             {
+                let x = 1 / 0;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked external")
+}
+
+test_verify_one_file! {
+    #[test] allow_external_body_drop verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            #[verifier::external_body]
+            fn drop(&mut self)
+                opens_invariants none
+            {
+                let x = 1 / 0;
             }
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] diallow_external_body_drop_with_requires verus_code! {
+    #[test] disallow_external_body_drop_with_requires verus_code! {
         struct A { v: u64 }
 
         impl Drop for A {

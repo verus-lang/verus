@@ -30,6 +30,10 @@ pub const SMT_FILE_SUFFIX: &str = ".smt2";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
+pub const CALL_GRAPH_FILE_SUFFIX_FULL_INITIAL: &str = "-call-graph-full-initial.dot";
+pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simplified.dot";
+pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
+pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_SIMPLIFIED: &str = "-call-graph-nostd-simplified.dot";
 
 #[derive(Debug, Default)]
 pub struct LogArgs {
@@ -43,11 +47,11 @@ pub struct LogArgs {
     pub log_air_final: bool,
     pub log_smt: bool,
     pub log_triggers: bool,
+    pub log_call_graph: bool,
 }
 
 #[derive(Debug)]
 pub struct ArgsX {
-    pub pervasive_path: Option<String>,
     pub export: Option<String>,
     pub import: Vec<(String, String)>,
     pub verify_root: bool,
@@ -87,7 +91,6 @@ pub struct ArgsX {
 impl ArgsX {
     pub fn new() -> Self {
         Self {
-            pervasive_path: Default::default(),
             export: Default::default(),
             import: Default::default(),
             verify_root: Default::default(),
@@ -203,6 +206,8 @@ pub fn parse_args_with_imports(
     const LOG_AIR_FINAL: &str = "air-final";
     const LOG_SMT: &str = "smt";
     const LOG_TRIGGERS: &str = "triggers";
+    const LOG_CALL_GRAPH: &str = "call-graph";
+
     const LOG_ITEMS: &[(&str, &str)] = &[
         (LOG_VIR, "Log VIR"),
         (LOG_VIR_SIMPLE, "Log simplified VIR"),
@@ -217,6 +222,7 @@ pub fn parse_args_with_imports(
         (LOG_AIR_FINAL, "Log AIR queries in final form"),
         (LOG_SMT, "Log SMT queries"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
+        (LOG_CALL_GRAPH, "Log the call graph"),
     ];
 
     const OPT_TRIGGERS_SILENT: &str = "triggers-silent";
@@ -442,7 +448,6 @@ pub fn parse_args_with_imports(
     let extended = parse_opts_or_pairs(matches.opt_strs(OPT_EXTENDED_MULTI));
 
     let args = ArgsX {
-        pervasive_path: None,
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         export: matches.opt_str(OPT_EXPORT),
         import: import,
@@ -514,6 +519,7 @@ pub fn parse_args_with_imports(
             log_air_final: log.get(LOG_AIR_FINAL).is_some(),
             log_smt: log.get(LOG_SMT).is_some(),
             log_triggers: log.get(LOG_TRIGGERS).is_some(),
+            log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS_VERBOSE) {
             ShowTriggers::Verbose

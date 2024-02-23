@@ -65,12 +65,57 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_cycle_disallowed verus_code! {
+    #[test] test_cycle_disallowed_1 verus_code! {
         #[verifier::opaque]
         spec fn f(i: int) -> bool { true }
 
         #[verifier::broadcast_forall]
         proof fn p(i: int)
+            ensures f(i)
+            decreases i
+        {
+            reveal(p);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot recursively reveal broadcast_forall")
+}
+
+test_verify_one_file! {
+    #[test] test_cycle_disallowed_2 verus_code! {
+        #[verifier::opaque]
+        spec fn f(i: int) -> bool { false }
+
+        #[verifier::broadcast_forall]
+        proof fn p(i: int)
+            ensures f(i)
+            decreases i
+        {
+            reveal(q);
+        }
+
+        #[verifier::broadcast_forall]
+        proof fn q(i: int)
+            ensures f(i)
+            decreases i
+        {
+            reveal(p);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot recursively reveal broadcast_forall")
+}
+
+test_verify_one_file! {
+    #[test] test_cycle_ordering_3 verus_code! {
+        #[verifier::opaque]
+        spec fn f(i: int) -> bool { false }
+
+        #[verifier::broadcast_forall]
+        proof fn p(i: int)
+            ensures f(i)
+            decreases i
+        {
+            q(i);
+        }
+
+        proof fn q(i: int)
             ensures f(i)
             decreases i
         {

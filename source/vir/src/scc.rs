@@ -5,12 +5,12 @@
  * https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
  */
 use std::cmp::min;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 type SccId = usize;
 type NodeIndex = usize;
 
-pub struct Graph<T> {
+pub struct Graph<T: std::cmp::Eq + std::hash::Hash + Clone> {
     // Map T to index in nodes
     h: HashMap<T, NodeIndex>,
     nodes: Vec<Node<T>>,
@@ -30,7 +30,7 @@ struct SCC /* <T> */ {
     nodes: Vec<NodeIndex>,
 }
 
-struct Node<T> {
+struct Node<T: std::cmp::Eq + std::hash::Hash + Clone> {
     t: T,
     edges: Vec<NodeIndex>,
     // index in Graph.nodes or usize::MAX
@@ -250,6 +250,48 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
             }
             paths_at_depth = paths_at_next_depth;
         }
+    }
+
+    pub fn to_dot(
+        &self,
+        mut w: impl std::io::Write,
+        filter_by: impl Fn(&T) -> (/* always */ bool, /* only if reached */ bool),
+        node_options: impl Fn(&T) -> String,
+    ) {
+        fn io_err<V>(o: Result<V, std::io::Error>) {
+            o.unwrap_or_else(|err| panic!("i/o failed: {}", err));
+        }
+
+        io_err(writeln!(w, "digraph M {{"));
+        io_err(writeln!(w, "  rankdir=LR;"));
+        io_err(writeln!(w, "  node [shape=\"box\"];"));
+        let mut render_nodes = BTreeSet::new();
+        for (i, n) in self.nodes.iter().enumerate() {
+            if n.edges.len() > 0 {
+                if filter_by(&n.t).1 {
+                    render_nodes.insert(i);
+                }
+            }
+            for e in n.edges.iter() {
+                if filter_by(&n.t).1 && filter_by(&self.nodes[*e].t).0 {
+                    render_nodes.insert(*e);
+                }
+            }
+        }
+        for (i, n) in self.nodes.iter().enumerate() {
+            if render_nodes.contains(&i) {
+                io_err(writeln!(w, "  node_{} [{}]", i, node_options(&n.t)));
+            }
+        }
+        io_err(writeln!(w, ""));
+        for (i, n) in self.nodes.iter().enumerate().filter(|(i, _)| render_nodes.contains(i)) {
+            for e in
+                n.edges.iter().filter(|x| render_nodes.contains(x)).collect::<HashSet<_>>().iter()
+            {
+                io_err(writeln!(w, "  node_{} -> node_{}", i, e));
+            }
+        }
+        io_err(writeln!(w, "}}"));
     }
 }
 

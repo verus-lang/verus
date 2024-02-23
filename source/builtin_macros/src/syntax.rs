@@ -1122,6 +1122,7 @@ impl Visitor {
                         quote_spanned! { enum_.span() =>
                             #[cfg(verus_keep_ghost)]
                             #[allow(non_snake_case)]
+                            #[verus::internal(verus_macro)]
                             #[verus::internal(spec)]
                             #[verifier::inline]
                             #publish
@@ -1133,6 +1134,7 @@ impl Visitor {
                         quote_spanned! { enum_.span() =>
                             #[cfg(verus_keep_ghost)]
                             #[allow(non_snake_case)]
+                            #[verus::internal(verus_macro)]
                             #[verus::internal(spec)]
                             #[verus::internal(get_field_many_variants)]
                             #[verifier::external]
@@ -1146,6 +1148,7 @@ impl Visitor {
                 .collect::<proc_macro2::TokenStream>();
             let (impl_generics, ty_generics, where_clause) = enum_.generics.split_for_impl();
             Some(Item::Verbatim(quote_spanned! { enum_.span() =>
+                #[verus::internal(verus_macro)]
                 impl #impl_generics #enum_ident #ty_generics #where_clause {
                     #methods
                 }

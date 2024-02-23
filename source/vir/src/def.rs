@@ -680,69 +680,36 @@ fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     }
 }
 
-pub fn fn_inv_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
+pub fn fn_inv_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: vstd_crate_name.clone(),
-            segments: Arc::new(if vstd_crate_name.is_some() {
-                vec![
-                    Arc::new("invariant".to_string()),
-                    atomicity_type_name(atomicity),
-                    Arc::new("inv".to_string()),
-                ]
-            } else {
-                vec![
-                    Arc::new("pervasive".to_string()),
-                    Arc::new("invariant".to_string()),
-                    atomicity_type_name(atomicity),
-                    Arc::new("inv".to_string()),
-                ]
-            }),
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("invariant".to_string()),
+                atomicity_type_name(atomicity),
+                Arc::new("inv".to_string()),
+            ]),
         }),
     })
 }
 
-pub fn fn_namespace_name(vstd_crate_name: &Option<Ident>, atomicity: InvAtomicity) -> Fun {
+pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
-            krate: vstd_crate_name.clone(),
-            segments: Arc::new(if vstd_crate_name.is_some() {
-                vec![
-                    Arc::new("invariant".to_string()),
-                    atomicity_type_name(atomicity),
-                    Arc::new("namespace".to_string()),
-                ]
-            } else {
-                vec![
-                    Arc::new("pervasive".to_string()),
-                    Arc::new("invariant".to_string()),
-                    atomicity_type_name(atomicity),
-                    Arc::new("namespace".to_string()),
-                ]
-            }),
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("invariant".to_string()),
+                atomicity_type_name(atomicity),
+                Arc::new("namespace".to_string()),
+            ]),
         }),
     })
 }
 
-pub fn strslice_defn_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn strslice_defn_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
-        segments: Arc::new(if vstd_crate_name.is_some() {
-            vec![Arc::new("string".to_string()), Arc::new(STRSLICE.to_string())]
-        } else {
-            vec![
-                Arc::new("pervasive".to_string()),
-                Arc::new("string".to_string()),
-                Arc::new(STRSLICE.to_string()),
-            ]
-        }),
-    })
-}
-
-pub fn pervasive_assert_path() -> Path {
-    Arc::new(PathX {
-        krate: None,
-        segments: Arc::new(PERVASIVE_ASSERT.iter().map(|x| Arc::new(x.to_string())).collect()),
+        krate: Some(vstd_crate_name.clone()),
+        segments: Arc::new(vec![Arc::new("string".to_string()), Arc::new(STRSLICE.to_string())]),
     })
 }
 
@@ -759,8 +726,8 @@ pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
     user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
 }
 
-pub fn exec_nonstatic_call_fun(vstd_crate_name: &Option<Ident>) -> Fun {
-    Arc::new(FunX { path: exec_nonstatic_call_path(vstd_crate_name) })
+pub fn exec_nonstatic_call_fun(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX { path: exec_nonstatic_call_path(&Some(vstd_crate_name.clone())) })
 }
 
 pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
@@ -777,13 +744,13 @@ pub fn static_name(fun: &Fun) -> Ident {
     Arc::new(PREFIX_STATIC.to_string() + &fun_to_string(fun))
 }
 
-pub fn array_index_fun(vstd_crate_name: &Option<Ident>) -> Fun {
+pub fn array_index_fun(vstd_crate_name: &Ident) -> Fun {
     Arc::new(FunX { path: array_index_path(vstd_crate_name) })
 }
 
-pub fn array_index_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn array_index_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
+        krate: Some(vstd_crate_name.clone()),
         segments: Arc::new(vec![
             Arc::new("array".to_string()),
             Arc::new("array_index".to_string()),

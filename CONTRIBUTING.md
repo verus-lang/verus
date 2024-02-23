@@ -95,7 +95,7 @@ a time when using this flag, so that the logs are not overwritten by other tests
 If you're contributing to the standard library, you should also test the
 standalone build of that library with
 ```
-cd source/pervasive
+cd source/vstd
 cargo build
 ```
 

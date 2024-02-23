@@ -127,7 +127,7 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
     def_id: DefId,
 ) -> Option<Path> {
     let verus_item = verus_items.id_to_name.get(&def_id);
-    if let Some(VerusItem::Pervasive(_, Some(fn_name))) = verus_item {
+    if let Some(VerusItem::Vstd(_, Some(fn_name))) = verus_item {
         // interpreter.rs and def.rs refer directly to some impl methods,
         // so make sure we use the fn_name names from `verus_items`
         let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
@@ -585,8 +585,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let did = adt_def_data.did;
             let is_strslice = matches!(
                 verus_items.id_to_name.get(&did),
-                Some(&crate::verus_items::VerusItem::Pervasive(
-                    crate::verus_items::PervasiveItem::StrSlice,
+                Some(&crate::verus_items::VerusItem::Vstd(
+                    crate::verus_items::VstdItem::StrSlice,
                     _
                 ))
             );

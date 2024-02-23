@@ -68,7 +68,7 @@ test_verify_one_file! {
             assert(size_of::<A>() == size_of::<Arc<A>>()); // FAILS
         }
 
-        // See the explanation in pervasive/layout.rs for why we don't make this assumption.
+        // See the explanation in vstd/layout.rs for why we don't make this assumption.
 
         fn test_not_assumed_bounded<V>() {
             assert(size_of::<V>() as usize as int == size_of::<V>()); // FAILS
