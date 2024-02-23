@@ -1593,3 +1593,44 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot access any field of a datatype where one or more fields are private")
 }
+
+test_verify_one_file! {
+    #[test] field_of_unencoded_struct_in_impl_regression_578 verus_code! {
+        use vstd::prelude::*;
+
+        mod log {
+            use vstd::prelude::*;
+            pub struct Device{
+                pub dev: Vec<u8>,
+                size: usize,
+                head: usize,
+                pub tail: usize,
+            }
+
+            impl Device {
+                pub fn new(size: usize) -> Self
+                {
+                    Self {
+                        dev: Vec::with_capacity(size),
+                        size,
+                        head: 0,
+                        tail: 0,
+                    }
+                }
+
+                pub fn write_byte(&mut self, dst: usize, byte: u8)
+                    requires
+                        dst < old(self).dev.len()
+                {
+                    self.dev.set(dst, byte);
+                }
+            }
+        }
+
+        use crate::log::*;
+        fn main() {
+            let mut dev = Device::new(4096);
+            dev.write_byte(0, 0);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot access any field of a datatype where one or more fields are private")
+}
