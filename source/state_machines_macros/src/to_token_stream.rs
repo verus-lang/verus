@@ -392,18 +392,23 @@ pub fn output_primary_stuff(
     let mut show_stream = TokenStream::new();
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, false);
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, true);
-    if sm.init_label.is_some() {
+    if let Some(init_label) = &sm.init_label {
         root_stream.extend(quote! {
-            #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+            ::builtin_macros::verus!{
+                #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+                #init_label
+            }
+        });
+        root_stream.extend(quote! {});
+    }
+    if let Some(transition_label) = &sm.transition_label {
+        root_stream.extend(quote! {
+            ::builtin_macros::verus!{
+                #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+                #transition_label
+            }
         });
     }
-    sm.init_label.to_tokens(root_stream);
-    if sm.transition_label.is_some() {
-        root_stream.extend(quote! {
-            #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
-        });
-    }
-    sm.transition_label.to_tokens(root_stream);
     root_stream.extend(quote! {
         pub mod show {
             use super::*;

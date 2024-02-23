@@ -7195,3 +7195,49 @@ test_verify_one_file! {
 
     } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
 }
+
+test_verify_one_file! {
+    #[test] arrow_functions_regression_1002_1 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ Example {
+            fields {}
+
+            pub enum Label
+            {
+                B { b: nat }
+            }
+
+            pub open spec fn test(t: Label) -> bool
+                recommends t is B
+            {
+                t->b > 10
+            }
+
+            transition!{
+                f(l: Label) {
+                    require l->b > 10;
+                }
+            }
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] arrow_functions_regression_1002_2 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ Example {
+            fields {
+                pub x: nat,
+            }
+
+            pub enum InitLabel
+            {
+                B { b: nat }
+            }
+
+            init!{
+                g(l: InitLabel) {
+                    init x = l->b;
+                }
+            }
+        }}
+    } => Ok(())
+}
