@@ -1564,3 +1564,32 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "in &&&, a matches expression needs to be prefixed with &&&")
 }
+
+test_verify_one_file! {
+    #[test] field_of_unencoded_struct_in_impl_regression_881_1008 verus_code! {
+        mod m1 {
+            pub trait A {
+                spec fn foo(&self) -> u64;
+            }
+
+            pub struct S {
+                pub f1: u64,
+                f2: u64,
+            }
+
+            impl A for S {
+                open spec fn foo(&self) -> u64 {
+                    self.f1
+                }
+            }
+        }
+
+        mod m2 {
+            use crate::m1::*;
+
+            fn bar(a: S) {
+                let ghost f1 = a.foo();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot access any field of a datatype where one or more fields are private")
+}
