@@ -193,19 +193,13 @@ pub fn main() {
         };
 
         if verifier.args.output_json {
-            assert!(
-                smt_function_breakdown
-                    .keys()
-                    .collect::<std::collections::HashSet<_>>()
-                    .difference(
-                        &smt_run_times
-                            .iter()
-                            .map(|(x, _)| *x)
-                            .collect::<std::collections::HashSet<_>>()
-                    )
-                    .next()
-                    .is_none()
-            );
+            {
+                let smt_function_breakdown_set =
+                    smt_function_breakdown.keys().collect::<std::collections::HashSet<_>>();
+                let smt_run_times_set =
+                    smt_run_times.iter().map(|(x, _)| *x).collect::<std::collections::HashSet<_>>();
+                assert!(smt_run_times_set.is_subset(&smt_function_breakdown_set));
+            }
 
             let mut times = serde_json::json!({
                 "verus-build": {
