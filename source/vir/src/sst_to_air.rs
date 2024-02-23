@@ -1962,22 +1962,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 None
             };
 
-            let mut air_body: Vec<Stmt> = state.static_prelude.clone();
-            if !spinoff_loop {
-                for x in modified_vars.iter() {
-                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
-                }
-                for (x, typ) in typ_inv_vars.iter() {
-                    if modified_vars.contains(x) {
-                        let typ_inv =
-                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                        if let Some(expr) = typ_inv {
-                            air_body.push(Arc::new(StmtX::Assume(expr)));
-                        }
-                    }
-                }
-            }
-
             /*
             When spinoff_loop = true:
             Generate a separate SMT query for the loop body.
@@ -1996,6 +1980,69 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             the outer function's entire context into the verification of the loop body,
             which would slow verification of the loop body.)
             */
+
+            /*
+            Suppose we have:
+                loop invs { body }
+            When spinoff_loop = false, we generate this AIR:
+                assert invs
+                breakable(break_label) {
+                    havoc modified_vars
+                    assume typ_inv(modified_vars)
+                    assume invs
+                    body // "break" inside body turns into break(break_label)
+                    assert invs
+                    assume false
+                }
+                // note that we don't assume the invs after the loop,
+                // because we may have come from a break statement where the invs don't hold
+            When spinoff_loop = true:
+                We generate this AIR in the outer query:
+                    assert invs
+                    havoc modified_vars
+                    assume typ_invs(modified_vars)
+                    assume invs_exit
+                We generate this AIR in the spun-off loop query:
+                    axiom typ_invs(all_used_vars)
+                    assume invs_entry
+                    body // "break" inside body turns into assert invs_exit; assume false
+                    assert invs_entry
+            Suppose we have:
+                while cond invs { body }
+            When spinoff_loop = false, this is represented as a "loop"; see the case above.
+            When spinoff_loop = true:
+                We generate this AIR in the outer query:
+                    assert invs
+                    havoc modified_vars
+                    assume typ_invs(modified_vars)
+                    assume invs_exit
+                    cond_stm
+                    assume !cond_exp
+                We generate this AIR in the spun-off loop query:
+                    axiom typ_invs(all_used_vars)
+                    assume invs_entry
+                    cond_stm
+                    assume cond_exp
+                    body // "break" inside body turns into assert invs_exit; assume false
+                    assert invs_entry
+            */
+
+            let mut air_body: Vec<Stmt> = state.static_prelude.clone();
+            if !spinoff_loop {
+                for x in modified_vars.iter() {
+                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
+                }
+                for (x, typ) in typ_inv_vars.iter() {
+                    if modified_vars.contains(x) {
+                        let typ_inv =
+                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                        if let Some(expr) = typ_inv {
+                            air_body.push(Arc::new(StmtX::Assume(expr)));
+                        }
+                    }
+                }
+            }
+
             let mut local = state.local_shared.clone();
             if spinoff_loop {
                 for (x, typ) in typ_inv_vars.iter() {
