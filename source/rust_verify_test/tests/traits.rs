@@ -3221,6 +3221,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default19 verus_code! {
+        mod m1 {
+            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            pub trait T {
+                open spec fn f() -> int { 3 }
+            }
+            impl T for bool {}
+        }
+        mod m2 {
+            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            use crate::m1::*;
+            proof fn test() {
+                assert(<bool as T>::f() == 3);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
         use vstd::prelude::View;
 

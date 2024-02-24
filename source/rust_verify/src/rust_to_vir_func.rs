@@ -681,7 +681,9 @@ pub(crate) fn check_item_fn<'tcx>(
     let publish = {
         let (publish, open_closed_present) = get_publish(&vattrs);
         match kind {
-            FunctionKind::TraitMethodImpl { .. } => {
+            FunctionKind::TraitMethodImpl { .. } | FunctionKind::TraitMethodDecl { .. }
+                if body.is_some() =>
+            {
                 if mode == Mode::Spec
                     && visibility.restricted_to.as_ref() != Some(module_path)
                     && body.is_some()
