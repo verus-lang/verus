@@ -298,7 +298,7 @@ test_verify_one_file! {
                 Maybe::None => assert(m.is_None()),
             };
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -368,7 +368,7 @@ test_verify_one_file! {
         pub fn test1(m: Maybe<u64>) {
             requires(m.is_Some() && m.get_Some_0() > 10);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -400,7 +400,7 @@ test_verify_one_file! {
                 vstd::pervasive::unreached::<()>();
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -454,7 +454,7 @@ test_verify_one_file! {
             let r = test2(&Res::Ok { t: false });
             assert(!r);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -488,7 +488,7 @@ test_verify_one_file! {
                 self.is_One() && self.get_One_0() <= v
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -774,7 +774,7 @@ test_verify_one_file! {
                 };
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -809,7 +809,7 @@ test_verify_one_file! {
         {
             assert(h.get_A_Couple_More_0() == 10);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -871,7 +871,7 @@ test_verify_one_file! {
         enum X<T> {
             ZZ(T),
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -1633,4 +1633,32 @@ test_verify_one_file! {
             dev.write_byte(0, 0);
         }
     } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot access any field of a datatype where one or more fields are private")
+}
+
+test_verify_one_file! {
+    #[test] test_arrow_with_variant verus_code! {
+        #[is_variant]
+        pub enum E<T> {
+            One { t: T },
+            Two { t: T },
+            Three(T),
+        }
+
+        pub fn test1(e: E<u64>) -> (res: bool)
+            ensures
+                e is One ==> res == (e->One_t == 3),
+                e is Two ==> !res,
+                e is Three ==> res == (e->Three_0 == 4),
+        {
+            match e {
+                E::One { t } => t == 3,
+                E::Two { t: _ } => false,
+                E::Three(t) => t == 4,
+            }
+        }
+    } => Ok(err) => {
+        dbg!(&err);
+        assert!(err.errors.len() == 0);
+        assert!(err.warnings.iter().find(|w| w.message == "`#[is_variant]` is deprecated - use `->` or `matches` instead").is_some());
+    }
 }
