@@ -687,10 +687,8 @@ impl VisitMut for ExecGhostPatVisitor {
                 let span = id.span();
                 let decl = if self.ghost.is_some() {
                     parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
-                } else if id.mutability.is_some() {
-                    parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x;)
                 } else {
-                    parse_quote_spanned!(span => #[verus::internal(proof)] let #x;)
+                    parse_quote_spanned!(span => #[verus::internal(infer_mode)] let mut #x;)
                 };
                 let assign = quote_spanned!(span => #x = #tmp_x);
                 id.ident = tmp_x;

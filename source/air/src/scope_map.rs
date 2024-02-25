@@ -81,6 +81,15 @@ impl<K: Eq + Hash + Clone, V> ScopeMap<K, V> {
         }
     }
 
+    pub fn replace(&mut self, key: K, value: V) -> Result<(), ()> {
+        if self.contains_key(&key) {
+            self.map.insert(key, value).expect("replace");
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
     pub fn map(&self) -> &HashMap<K, V> {
         &self.map
     }
