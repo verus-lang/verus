@@ -312,6 +312,27 @@ impl GlobalCtx {
                 func_call_graph.add_edge(group_node.clone(), target);
             }
         }
+        for module in &krate.modules {
+            if let Some(ref reveals) = module.x.reveals {
+                let module_reveal_node = Node::ModuleReveal(module.x.path.clone());
+                func_call_graph.add_node(module_reveal_node.clone());
+                for fun in reveals.x.iter() {
+                    let target = Node::Fun(fun.clone());
+                    func_call_graph.add_node(target.clone());
+                    func_call_graph.add_edge(module_reveal_node.clone(), target);
+                }
+
+                for f in krate
+                    .functions
+                    .iter()
+                    .filter(|f| f.x.owning_module.as_ref() == Some(&module.x.path))
+                {
+                    let source = Node::Fun(f.x.name.clone());
+                    func_call_graph.add_node(source.clone());
+                    func_call_graph.add_edge(source, module_reveal_node.clone());
+                }
+            }
+        }
 
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
@@ -339,6 +360,7 @@ impl GlobalCtx {
                             ImplPath::FnDefImplPath(fun) =>   labelize("FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
                         }
                     }
+                    Node::ModuleReveal(path) =>               labelize("ModuleReveal", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
                     Node::SpanInfo { span_infos_index: _, text: _ } => {
                         format!("shape=\"point\"")
                     }
@@ -359,6 +381,7 @@ impl GlobalCtx {
                     Node::Trait(path) => is_not_std(path),
                     Node::TraitImpl(ImplPath::TraitImplPath(path)) => is_not_std(path),
                     Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => is_not_std(&fun.path),
+                    Node::ModuleReveal(path) => is_not_std(path),
                     Node::SpanInfo { .. } => true,
                 };
                 (render, render && !matches!(n, Node::SpanInfo { .. }))

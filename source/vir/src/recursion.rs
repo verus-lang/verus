@@ -33,6 +33,7 @@ pub enum Node {
     Datatype(Path),
     Trait(Path),
     TraitImpl(ImplPath),
+    ModuleReveal(Path),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },

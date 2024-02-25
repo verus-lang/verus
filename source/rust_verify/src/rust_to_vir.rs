@@ -26,7 +26,7 @@ use rustc_hir::{
     ItemKind, MaybeOwner, Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn,
     TraitItem, TraitItemKind, TraitRef, Unsafety,
 };
-use vir::def::trait_self_type_param;
+use vir::def::{trait_self_type_param, Spanned};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -154,10 +154,14 @@ fn check_item<'tcx>(
                 .find(|m| &m.x.path == mpath)
                 .expect("cannot find current module");
             let reveals = &mut Arc::make_mut(module).x.reveals;
-            if reveals.is_none() {
-                *reveals = Some(Vec::new());
+            if reveals.is_some() {
+                return err_span(
+                    item.span,
+                    "only one module-level revealed allowed for each module",
+                );
             }
-            reveals.as_mut().unwrap().extend(funs);
+            let span = crate::spans::err_air_span(item.span);
+            *reveals = Some(Spanned::new(span, funs));
 
             return Ok(());
         }

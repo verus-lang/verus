@@ -545,6 +545,12 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                     push(span, ": implementation of trait for a type");
                 }
             }
+            Node::ModuleReveal(path) => {
+                if let Some(t) = krate.modules.iter().find(|m| &m.x.path == path) {
+                    let span = t.span.clone();
+                    push(span, ": module-level reveal");
+                }
+            }
             Node::SpanInfo { span_infos_index, text } => {
                 push(span_infos[*span_infos_index].clone(), text);
             }

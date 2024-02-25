@@ -343,11 +343,51 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            reveal(Ring_succ);
+            reveal Ring_succ;
 
             proof fn t2(p: Ring) requires p.inv() {
                 assert(p.succ().prev() == p);
             }
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_circular_module_reveal verus_code! {
+        mod mf {
+            use vstd::prelude::*;
+            #[verifier::opaque]
+            pub open spec fn f(i: int) -> bool { false }
+        }
+
+        mod m1 {
+            use vstd::prelude::*;
+            use crate::mf::*;
+            use crate::m2::*;
+
+            reveal q;
+
+            #[verifier::broadcast_forall]
+            pub proof fn p(i: int)
+                ensures f(i)
+                decreases i
+            {
+            }
+        }
+
+        mod m2 {
+            use vstd::prelude::*;
+            use crate::mf::*;
+            use crate::m1::*;
+
+            reveal p;
+
+            #[verifier::broadcast_forall]
+            pub proof fn q(i: int)
+                ensures f(i)
+                decreases i
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
 }
