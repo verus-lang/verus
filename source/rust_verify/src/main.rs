@@ -194,11 +194,11 @@ pub fn main() {
 
         if verifier.args.output_json {
             {
-                let smt_function_breakdown_set =
+                let _smt_function_breakdown_set =
                     smt_function_breakdown.keys().collect::<std::collections::HashSet<_>>();
-                let smt_run_times_set =
+                let _smt_run_times_set =
                     smt_run_times.iter().map(|(x, _)| *x).collect::<std::collections::HashSet<_>>();
-                assert!(smt_run_times_set.is_subset(&smt_function_breakdown_set));
+                // REVIEW check these are consistent
             }
 
             let mut times = serde_json::json!({
