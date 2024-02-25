@@ -557,7 +557,8 @@ fn output_step_datatype(
 
     root_stream.extend(quote! {
         #[allow(non_camel_case_types)]
-        #[::builtin_macros::is_variant]
+        #[::builtin_macros::is_variant_no_deprecation_warning]
+        #[::builtin_macros::verus_enum_synthesize]
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         pub enum #type_ident#generics {
             #(#variants,)*
