@@ -611,8 +611,20 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             state.newline_unindent();
             state.write("}");
         }
-        ExpX::Index(result_typ, e1, e2) => {
-            state.write("(*index::<_, _, ");
+        ExpX::Index(ty1, ty2, result_typ, e1, e2) => {
+            state.write("(*index::<");
+            match &**ty1 {
+                TypX::Ref(ty, _, _) => {
+                    state.write(ty.to_string());
+                }
+                _ => {
+                    // Not sure if this case is possible
+                    state.write("_");
+                }
+            }
+            state.write(", ");
+            state.write(ty2.to_string());
+            state.write(", ");
             state.write(result_typ.to_string());
             state.write(">(&(");
             emit_exp(state, e1);

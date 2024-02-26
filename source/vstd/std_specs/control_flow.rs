@@ -1,10 +1,10 @@
 use crate::prelude::*;
-use core::ops::Try;
+use core::convert::Infallible;
 use core::ops::ControlFlow;
 use core::ops::FromResidual;
-use core::convert::Infallible;
+use core::ops::Try;
 
-verus!{
+verus! {
 
 #[verifier(external_type_specification)]
 #[verifier::accept_recursive_types(B)]
@@ -15,9 +15,11 @@ pub struct ExControlFlow<B, C>(ControlFlow<B, C>);
 #[verifier(external_body)]
 pub struct ExInfallible(Infallible);
 
-
 #[verifier::external_fn_specification]
-pub fn ex_result_branch<T, E>(result: Result<T, E>) -> (cf: ControlFlow<<Result<T, E> as Try>::Residual, <Result<T, E> as Try>::Output>)
+pub fn ex_result_branch<T, E>(result: Result<T, E>) -> (cf: ControlFlow<
+    <Result<T, E> as Try>::Residual,
+    <Result<T, E> as Try>::Output,
+>)
     ensures
         cf === match result {
             Ok(v) => ControlFlow::Continue(v),
@@ -28,7 +30,10 @@ pub fn ex_result_branch<T, E>(result: Result<T, E>) -> (cf: ControlFlow<<Result<
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_option_branch<T>(option: Option<T>) -> (cf: ControlFlow<<Option<T> as Try>::Residual, <Option<T> as Try>::Output>)
+pub fn ex_option_branch<T>(option: Option<T>) -> (cf: ControlFlow<
+    <Option<T> as Try>::Residual,
+    <Option<T> as Try>::Output,
+>)
     ensures
         cf === match option {
             Some(v) => ControlFlow::Continue(v),
@@ -53,13 +58,15 @@ pub spec fn spec_from<S, T>(value: T, ret: S) -> bool;
 #[verifier::external_body]
 pub proof fn spec_from_blanket_identity<T>(t: T, s: T)
     ensures
-        spec_from::<T, T>(t, s) ==> t == s
+        spec_from::<T, T>(t, s) ==> t == s,
 {
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_result_from_residual<T, E, F: From<E>>(result: Result<Infallible, E>)
-      -> (result2: Result<T, F>)
+pub fn ex_result_from_residual<T, E, F: From<E>>(result: Result<Infallible, E>) -> (result2: Result<
+    T,
+    F,
+>)
     ensures
         match (result, result2) {
             (Err(e), Err(e2)) => spec_from::<F, E>(e, e2),
@@ -69,4 +76,4 @@ pub fn ex_result_from_residual<T, E, F: From<E>>(result: Result<Infallible, E>)
     Result::from_residual(result)
 }
 
-}
+} // verus!

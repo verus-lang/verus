@@ -259,7 +259,7 @@ impl IntRange {
     }
 }
 
-fn path_as_friendly_rust_name_inner(path: &Path) -> String {
+pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
         Some(krate) => krate.to_string(),
@@ -282,7 +282,7 @@ pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
         if map_opt.as_mut().unwrap().contains_key(path) {
             return;
         }
-        let name = path_as_friendly_rust_name_inner(friendly);
+        let name = path_as_friendly_rust_name_raw(friendly);
         map_opt.as_mut().unwrap().insert(path.clone(), name);
     }
 }
@@ -310,7 +310,7 @@ pub fn path_as_friendly_rust_name(path: &Path) -> String {
             }
         }
     }
-    path_as_friendly_rust_name_inner(path)
+    path_as_friendly_rust_name_raw(path)
 }
 
 pub fn path_as_vstd_name(path: &Path) -> Option<String> {
@@ -489,6 +489,11 @@ impl FunctionX {
             TypX::Datatype(path, _, _) if path == &crate::def::prefix_tuple_type(0) => false,
             _ => true,
         }
+    }
+
+    // even if the return type is unit, it can still be named; if so, our AIR code must declare it
+    pub fn has_return_name(&self) -> bool {
+        self.has_return() || *self.ret.x.name != crate::def::RETURN_VALUE
     }
 
     pub fn is_main(&self) -> bool {

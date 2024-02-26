@@ -545,7 +545,7 @@ pub fn func_decl_to_air(
 ) -> Result<Commands, VirErr> {
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
-            if ctx.funcs_with_ensure_predicate.contains(method) {
+            if ctx.funcs_with_ensure_predicate[method] {
                 let ens = prefix_ensures(&fun_to_air_ident(&method));
                 (true, Some((ens, trait_typ_args.clone())))
             } else {
@@ -629,7 +629,7 @@ pub fn func_decl_to_air(
     let mut ens_params = (*post_params).clone();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
-        if function.x.has_return() {
+        if function.x.has_return_name() {
             let ParamX { name, typ, .. } = &function.x.ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             ens_params.push(param_to_par(&function.x.ret, false));
@@ -670,9 +670,7 @@ pub fn func_decl_to_air(
         bool_typ(),
         inherit_fn_ens,
     )?;
-    if has_ens_pred {
-        ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
-    }
+    ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
     if crate::ast_simplify::need_fndef_axiom(&ctx.fndef_type_set, function) {
         let fndef_axioms = function
@@ -908,7 +906,7 @@ pub fn func_def_to_air(
     state.fun_ssts = fun_ssts;
 
     let mut ens_params = (*function.x.params).clone();
-    let dest = if function.x.has_return() {
+    let dest = if function.x.has_return_name() {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
         state.declare_var_stm(name, typ, false, false);

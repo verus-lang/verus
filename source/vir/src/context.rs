@@ -1,7 +1,8 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, ImplPath, IntRange, Krate, Mode,
-    Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    ArchWordBits, Datatype, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath, IntRange,
+    Krate, Mode, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
+use crate::ast_util::path_as_friendly_rust_name_raw;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::messages::{error, Span};
@@ -36,6 +37,7 @@ pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: Arc<HashMap<Path, (TypPositives, Variants)>>,
     pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
+    pub(crate) fun_attrs: Arc<HashMap<Fun, FunctionAttrs>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Arc<Graph<Node>>,
@@ -46,6 +48,7 @@ pub struct GlobalCtx {
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    pub(crate) func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
     pub arch: crate::ast::ArchWordBits,
     pub vstd_crate_name: Ident,
 }
@@ -79,7 +82,7 @@ pub struct Ctx {
     pub func_map: HashMap<Fun, Function>,
     // Ensure a unique identifier for each quantifier in a given function
     pub quantifier_count: Cell<u64>,
-    pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
+    pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub fun: Option<FunctionCtx>,
@@ -191,12 +194,21 @@ fn datatypes_invs(
     has_inv
 }
 
+pub struct FuncCallGraphLogFiles {
+    pub all_initial: File,
+    pub all_simplified: File,
+    pub nostd_initial: File,
+    pub nostd_simplified: File,
+}
+
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+        func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        after_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -212,6 +224,7 @@ impl GlobalCtx {
             func_map.insert(function.x.name.clone(), function.clone());
         }
         let mut fun_bounds: HashMap<Fun, GenericBounds> = HashMap::new();
+        let mut fun_attrs: HashMap<Fun, FunctionAttrs> = HashMap::new();
         let mut func_call_graph: Graph<Node> = Graph::new();
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
@@ -276,6 +289,9 @@ impl GlobalCtx {
             func_call_graph.add_node(fun_node.clone());
             func_call_graph.add_node(fndef_impl_node.clone());
             func_call_graph.add_edge(fndef_impl_node, fun_node);
+
+            fun_attrs.insert(f.x.name.clone(), f.x.attrs.clone());
+
             crate::recursion::expand_call_graph(
                 &func_map,
                 &mut func_call_graph,
@@ -286,6 +302,64 @@ impl GlobalCtx {
 
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
+
+        if let Some(FuncCallGraphLogFiles {
+            all_initial,
+            all_simplified,
+            nostd_initial,
+            nostd_simplified,
+        }) = &mut *func_call_graph_log.lock().expect("cannot lock call graph log file")
+        {
+            fn node_options(n: &Node) -> String {
+                fn labelize(name: &str, s: String) -> String {
+                    let label = s.replace("\"", "\\\"");
+                    format!("margin=0.1, label=\"{}\\n{}\"", name, label)
+                }
+                #[rustfmt::skip] // v to work around attributes being experimental on expressions
+                let v = match n {
+                    Node::Fun(fun) =>                         labelize("Fun", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"cds\"",
+                    Node::Datatype(path) =>                   labelize("Datatype", path_as_friendly_rust_name_raw(path)) + ", shape=\"folder\"",
+                    Node::Trait(path) =>                      labelize("Trait", path_as_friendly_rust_name_raw(path)) + ", shape=\"tab\"",
+                    Node::TraitImpl(impl_path) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
+                    Node::SpanInfo { span_infos_index: _, text: _ } => {
+                        format!("shape=\"point\"")
+                    }
+                };
+                v
+            }
+
+            fn nostd_filter(n: &Node) -> (bool, bool) {
+                fn is_not_std(path: &Path) -> bool {
+                    match path.krate.as_ref().map(|x| x.as_str()) {
+                        Some("vstd") | Some("core") | Some("alloc") => false,
+                        _ => true,
+                    }
+                }
+                let render = match n {
+                    Node::Fun(fun) => is_not_std(&fun.path),
+                    Node::Datatype(path) => is_not_std(path),
+                    Node::Trait(path) => is_not_std(path),
+                    Node::TraitImpl(ImplPath::TraitImplPath(path)) => is_not_std(path),
+                    Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => is_not_std(&fun.path),
+                    Node::SpanInfo { .. } => true,
+                };
+                (render, render && !matches!(n, Node::SpanInfo { .. }))
+            }
+
+            if !after_simplify {
+                func_call_graph.to_dot(all_initial, |_| (true, true), node_options);
+                func_call_graph.to_dot(nostd_initial, nostd_filter, node_options);
+            } else {
+                func_call_graph.to_dot(all_simplified, |_| (true, true), node_options);
+                func_call_graph.to_dot(nostd_simplified, nostd_filter, node_options);
+            }
+        }
+
         for f in &krate.functions {
             let f_node = Node::Fun(f.x.name.clone());
             if f.x.attrs.is_decrease_by {
@@ -317,6 +391,7 @@ impl GlobalCtx {
             chosen_triggers,
             datatypes: Arc::new(datatypes),
             fun_bounds: Arc::new(fun_bounds),
+            fun_attrs: Arc::new(fun_attrs),
             no_span,
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
@@ -327,6 +402,7 @@ impl GlobalCtx {
             interpreter_log,
             arch: krate.arch.word_bits,
             vstd_crate_name,
+            func_call_graph_log,
         })
     }
 
@@ -339,6 +415,7 @@ impl GlobalCtx {
             chosen_triggers,
             datatypes: self.datatypes.clone(),
             fun_bounds: self.fun_bounds.clone(),
+            fun_attrs: self.fun_attrs.clone(),
             no_span: self.no_span.clone(),
             func_call_graph: self.func_call_graph.clone(),
             datatype_graph: self.datatype_graph.clone(),
@@ -349,6 +426,7 @@ impl GlobalCtx {
             interpreter_log,
             arch: self.arch,
             vstd_crate_name: self.vstd_crate_name.clone(),
+            func_call_graph_log: self.func_call_graph_log.clone(),
         }
     }
 
@@ -390,7 +468,7 @@ impl Ctx {
             datatypes_invs(&module, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
-        let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
+        let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
             functions.push(function.clone());

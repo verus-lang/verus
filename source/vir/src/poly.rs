@@ -852,7 +852,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let require = native_exprs(&mut state, require);
 
     state.types.push_scope(true);
-    if function.x.has_return() {
+    if function.x.has_return_name() {
         let _ = state.types.insert(ret.x.name.clone(), ret.x.typ.clone());
     }
     let ensure = native_exprs(&mut state, ensure);

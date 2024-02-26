@@ -113,7 +113,7 @@ pub proof fn lemma_log_nonnegative(base: int, pow: int)
     decreases pow,
 {
     reveal(log);
-    if !(pow < base || pow / base >= pow || pow / base < 0)  {
+    if !(pow < base || pow / base >= pow || pow / base < 0) {
         lemma_log_nonnegative(base, pow / base);
     }
 }

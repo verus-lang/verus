@@ -80,6 +80,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
+        free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
         let name = if free_vars.contains_key(&unique) {
             // capture-avoiding substitution:
             // rename bound variable to avoid capturing free variable
@@ -135,10 +136,13 @@ fn subst_exp_rec(
             &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) => match substs.get(x) {
-            None => mk_exp(ExpX::Var(x.clone())),
-            Some(e) => e.clone(),
-        },
+        ExpX::Var(x) => {
+            assert!(free_vars.contains_key(x));
+            match substs.get(x) {
+                None => mk_exp(ExpX::Var(x.clone())),
+                Some(e) => e.clone(),
+            }
+        }
         ExpX::VarLoc(x) => match substs.get(x) {
             None => mk_exp(ExpX::VarLoc(x.clone())),
             Some(_) => panic!("cannot substitute for VarLoc"),
@@ -220,6 +224,9 @@ pub(crate) fn subst_exp(
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(false);
+    for (y, _) in free_vars_exp(exp) {
+        let _ = free_vars.insert(y.clone(), ());
+    }
     for (x, v) in substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
@@ -302,9 +309,33 @@ impl ExpX {
                 return exp.x.to_string_prec(global, precedence);
             }
             Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
-                let args =
-                    exps.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
-                (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
+                let (zero_args, is_method) = match global.fun_attrs.get(fun) {
+                    Some(attrs) => (attrs.print_zero_args, attrs.print_as_method),
+                    None => (false, false),
+                };
+
+                let fun_name = fun.path.segments.last().unwrap();
+
+                if is_method && exps.len() > 0 {
+                    let receiver = exps[0].x.to_user_string(global);
+                    let args = exps
+                        .iter()
+                        .skip(1)
+                        .map(|e| e.x.to_user_string(global))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    (format!("{}.{}({})", receiver, fun_name, args), 90)
+                } else {
+                    let args = if zero_args {
+                        "".to_string()
+                    } else {
+                        exps.iter()
+                            .map(|e| e.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    (format!("{}({})", fun_name, args), 90)
+                }
             }
             Call(CallFun::InternalFun(func), _, exps) => {
                 let args =

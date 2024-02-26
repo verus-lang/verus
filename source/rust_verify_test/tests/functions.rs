@@ -92,6 +92,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_returns_named_unit verus_code! {
+        proof fn test() -> (u: ())
+            ensures u == ()
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_async_external_fn_accepted verus_code! {
         #[verifier(external)]
         async fn foo(_c: usize) -> Result<usize, ()> {
