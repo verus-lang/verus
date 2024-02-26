@@ -1700,7 +1700,7 @@ fn add_token_param_in_out(
             } else {
                 Expr::Verbatim(quote! { #param_name.view().instance })
             };
-            inst_eq_reqs.push(Expr::Verbatim(quote_spanned! {
+            inst_eq_reqs.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#lhs, #inst)
             }));
         }
