@@ -594,7 +594,7 @@ macro_rules! assert_multisets_equal {
                 ]);
                 { $bblock }
             });
-            ::builtin::assert_(m1.ext_equal(m2));
+            ::builtin::assert_(::builtin::ext_equal(m1, m2));
         });
     }
 }
