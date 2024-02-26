@@ -97,6 +97,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
                 n += 1;
             }
         } else {
+            free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
             b.name.clone()
         };
         binders.push(Arc::new(BinderX { name, a: fa(&b.a) }));
@@ -220,6 +221,9 @@ pub(crate) fn subst_exp(
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(false);
+    for (y, _) in free_vars_exp(exp) {
+        let _ = free_vars.insert(y.clone(), ());
+    }
     for (x, v) in substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
