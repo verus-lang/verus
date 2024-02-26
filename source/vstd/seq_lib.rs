@@ -199,7 +199,8 @@ impl<A> Seq<A> {
     pub proof fn filter_lemma_broadcast(self, pred: spec_fn(A) -> bool)
         ensures
             forall|i: int|
-                0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i]),
+                0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i])
+                    && self.contains(self.filter(pred)[i]),
             forall|i: int|
                 0 <= i < self.len() && pred(self[i]) ==> #[trigger] self.filter(pred).contains(
                     self[i],

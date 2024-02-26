@@ -626,3 +626,27 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
 }
+
+test_verify_one_file! {
+    #[test] index_with_extra_ref_issue1009 verus_code! {
+        use vstd::prelude::*;
+
+        fn get_internal<'a>(v: &'a Vec::<u8>, i: usize) -> (r: &'a u8)
+            requires
+                0 <= i < v.len()
+            ensures
+                r == &v[i as int]
+        {
+            &v[i]
+        }
+
+        fn get_internal2<'a>(v: &'a Vec::<u8>, i: usize) -> (r: &'a u8)
+            requires
+                0 <= i < v.len()
+            ensures
+                r == &v[i as int]
+        {
+            &(*v)[i]
+        }
+    } => Ok(())
+}

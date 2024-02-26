@@ -312,3 +312,32 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_expand_fails(e, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] assoc_types_issue952 ["--expand-errors"] => verus_code! {
+        struct C;
+
+        trait D<E> {
+            spec fn l(&self, k: &E) -> u64;
+
+            fn m(&self, k: &E) -> (p: u64)
+                ensures
+                    p == self.l(k), // FAILS
+            ;
+        }
+
+        trait N {
+            type O;
+
+            fn m() -> u64;
+        }
+
+        impl<E> D<E::O> for E where E: N {
+            spec fn l(&self, k: &E::O) -> u64;
+
+            fn m(&self, k: &E::O) -> u64 {
+                E::m()
+            }
+        }
+    } => Err(e) => assert_fails(e, 1)
+}

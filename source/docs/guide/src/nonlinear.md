@@ -1,11 +1,10 @@
 # Integers: Nonlinear Arithmetic and Bit Manipulation
 
 Some properties about integers are very difficult (or expensive) to reason about fully automatically.
-As described below, to tackle these properties, Verus offers several dedicated proof strategies.
+To tackle these properties, Verus offers several dedicated proof strategies.
 
-# Nonlinear Arithmetic in Verus
-
-Nonlinear arithmetic involves equations that multiply, divide, or take the remainder of integer variables 
+One such property is **nonlinear arithmetic**,
+which involves equations that multiply, divide, or take the remainder of integer variables 
 (e.g., `x * (y * z) == (x * y) * z`).  As discussed earlier in this guide, determining the truth of such formulas
 is undecideable in general, meaning that general-purpose SMT solvers like Z3 can only make a best-effort attempt
 to solve them.  These attempts rely on heuristics that can be unpredictable.  Hence, by default, Verus 
@@ -88,8 +87,60 @@ Using this proof technique requires a bit of additional configuration of your Ve
 - Function calls in the formulas are treated as uninterpreted functions.  If a function definition is important for the proof, you should unfold the definition of the function in the proof function's `requires` clause.
 - When using an `integer_ring` lemma, the divisor of a modulus operator (`%`) must not be zero. If a divisor can be zero in the ensures clause of the `integer_ring` lemma, the facts in the ensures clause will not be available in the callsite.
 
-### Using `integer_ring` as a helper lemma for nonlinear proofs
-As the `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with the `integer_ring` feature. Instead, it is a common pattern to have a `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper function.
+To understand what `integer_ring` can or cannot do, it is important to understand how it
+handles the modulus operator, `%`. Since `integer_ring` does not understand inequalities,
+it cannot perform reasoning that requires that `0 <= (a % b) < b`.
+As a result, Singular's results might be confusing if you think of `%` primarily
+as the programming language operator.
+
+For example, suppose you use `a % b == x` as a precondition.
+Encoded in Singular, this will become `a % b == x % b`, or in more traditional "mathematical"
+language, `a ≡ x (mod b)`. This does _not_ imply that `x` is in the range `[0, b)`,
+it only implies that `a` and `x` are in the same equivalence class mod b.
+In other words, `a % b == x` implies `a ≡ x (mod b)`, but not vice versa.
+
+For the same reason, you cannot ask the `integer_ring` solver to prove a postcondition
+of the form `a % b == x`, unless `x` is 0. The `integer_ring` solver can prove
+that `a ≡ x (mod b)`, equivalently `(a - x) % b == 0`, but this does _not_ imply
+that `a % b == x`.
+
+Let's look at a specific example to understand the limitation.
+
+```rust
+proof fn foo(a: int, b: int, c: int, d: int, x: int, y: int) by(integer_ring)
+    requires
+        a % b == x,
+        c % d == y
+    ensures
+        x == y,
+{
+}
+```
+
+This theorem statement appears to be trivial, and indeed, Verus would solve it easily
+using its default proof strategy. 
+However, `integer_ring` will not solve it. On failure, Verus prints information about
+the Singular query, which we can inspect to understand why (this is cleaned up a bit):
+
+```
+ring ring_R=integer, (a, b, c, d, x, y, tmp_0, tmp_1, tmp_2), dp;
+    ideal ideal_I =
+      (a - (b * tmp_0)) - x,
+      (c - (d * tmp_1)) - y;
+    ideal ideal_G = groebner(ideal_I);
+    reduce(x - y, ideal_G);
+    quit;
+```
+
+We can see here that `a % b` is translated to `a - b * tmp_0`,
+while `c % d` is translated to `c - d * tmp_1`.
+Again, since there is no constraint that `a - b * tmp_0` or `c - d * tmp_1`
+is bounded, it is not possible to conclude 
+that `a - b * tmp_0 == c - d * tmp_1` after this simplification has taken place.
+
+## 3. Combining `integer_ring` and `nonlinear_arith`.
+
+As explained above, the `integer_ring` feature has several limitations, it is not possible to get an arbitary nonlinear property only with the `integer_ring` feature. Instead, it is a common pattern to have a `by(nonlinear_arith)` function as a main lemma for the desired property, and use `integer_ring` lemma as a helper lemma.
 
 To work around the lack of support for inequalities and division, you can often write a helper proof discharged with `integer_ring` and use it to prove properties that are not directly supported by `integer_ring`. Furthermore, you can also add additional variables to the formulas. For example, to work around division, one can introduce `c` where `b = a * c`, instead of `b/a`.
 
@@ -224,66 +275,3 @@ More `integer_ring` examples can be found in [this folder](https://github.com/ve
 ### Examining the encoding
 Singular queries will be logged to the directory specified with `--log-dir` (which defaults to `.verus-log`) in a separate file with a `.singular` suffix. You can directly run Singular on this file. For example, `Singular .verus-log/root.singular --q`. 
 The output is `0` when Singular successsfully verifies the query.
-
-
-
----
-# Proving Properties About Bit Manipulation
-
-Verus offers two dedicated mechanisms for reasoning about bit manipulation
-(e.g., to prove that `xor(w, w) == 0`).  Small, one-off proofs can be done
-via `assert(...) by(bit_vector)`. Larger proofs, or proofs that will be needed in more than one place, can be done by writing a proof function and adding the annotation 
-`by(bit_vector)`.  
-Both mechanisms export facts expressed over integers (e.g., in terms of `u32`), but internally, they translate the proof obligations into assertions about bit vectors and use a dedicated solver to discharge those assertions.
-
-### `assert(...) by(bit_vector)`
-This style can be used to prove a short and context-free bit-manipulation property.
-Here are two example use cases:
-```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_easy}}
-```
-
-Currently, assertions expressed via `assert(...) by(bit_vector)` do not include any ambient facts from the surrounding context (e.g., from the surrounding function's `requires` clause or from previous variable assignments).  For example, the following example will fail.
-
-```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_fail}}
-```
-
-To make ambient facts available, add a `requires` clause to "import" these facts into the bit-vector assertion.  For example, the following example will now succeed.
-```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_success}}
-```
-
-
-### `proof fn ... by(bit_vector)`
-This mechanism should be used when proving more complex facts about bit manipulation or when a proof will be used more than once. To use this mechanism, you should write a function in `proof` mode.
-The function **should not** have a body. Context can be provided via a `requires` clause. 
-For example:     
-```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:de_morgan}}
-```
-
-## Limitations
-
-### Supported Expressions 
-
-The bit-manipulation reasoning mechanism supports only a subset of the full set of expressions Verus offers.
-Currently, it supports:
-- Unsigned integer types (as well as the `as` keyword between unsigned integers)
-- Built-in operators
-- `let` binding
-- Quantifiers
-- `if-then-else` 
-
-Note that function calls are not supported. As a workaround, you may consider using a macro instead of a function. 
-
-
-### Bitwise Operators As Uninterpreted Functions
-Outside of `by(bit_vector)`, bitwise operators are translated into uninterpreted functions in Z3, meaning Z3 knows nothing about them when used in other contexts. 
-As a consequence, basic properties such as the commutativity and associativity of bitwise-AND will not be applied automatically. To make use of these properties, please refer to [this example file](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_basic.rs), which contains basic properties for bitwise operators.
-
-### Naming Arithmetic Operators: `add/sub/mul`
-Inside a bit-vector assertion, please use `add`, `sub`, and `mul` for fixed-width operators instead of `+` `-` `*`, as the latter operators widen the result to a mathematical integer. 
-
-### Bit-Manipulation Examples Using the `get_bit!` and `set_bit!` Macros
-You can use two macros, `get_bit!` and `set_bit!`, to access and modify a single bit of an integer variable. Please refer our [garbage collection example](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_garbage_collection.rs) and our [bitvector equivalence example](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_equivalence.rs).

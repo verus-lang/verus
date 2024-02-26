@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, ImplPath, IntRange, Krate, Mode,
-    Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    ArchWordBits, Datatype, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath, IntRange,
+    Krate, Mode, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
 use crate::ast_util::path_as_friendly_rust_name_raw;
 use crate::datatype_to_air::is_datatype_transparent;
@@ -37,6 +37,7 @@ pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: Arc<HashMap<Path, (TypPositives, Variants)>>,
     pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
+    pub(crate) fun_attrs: Arc<HashMap<Fun, FunctionAttrs>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Arc<Graph<Node>>,
@@ -223,6 +224,7 @@ impl GlobalCtx {
             func_map.insert(function.x.name.clone(), function.clone());
         }
         let mut fun_bounds: HashMap<Fun, GenericBounds> = HashMap::new();
+        let mut fun_attrs: HashMap<Fun, FunctionAttrs> = HashMap::new();
         let mut func_call_graph: Graph<Node> = Graph::new();
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
@@ -287,6 +289,9 @@ impl GlobalCtx {
             func_call_graph.add_node(fun_node.clone());
             func_call_graph.add_node(fndef_impl_node.clone());
             func_call_graph.add_edge(fndef_impl_node, fun_node);
+
+            fun_attrs.insert(f.x.name.clone(), f.x.attrs.clone());
+
             crate::recursion::expand_call_graph(
                 &func_map,
                 &mut func_call_graph,
@@ -386,6 +391,7 @@ impl GlobalCtx {
             chosen_triggers,
             datatypes: Arc::new(datatypes),
             fun_bounds: Arc::new(fun_bounds),
+            fun_attrs: Arc::new(fun_attrs),
             no_span,
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
@@ -409,6 +415,7 @@ impl GlobalCtx {
             chosen_triggers,
             datatypes: self.datatypes.clone(),
             fun_bounds: self.fun_bounds.clone(),
+            fun_attrs: self.fun_attrs.clone(),
             no_span: self.no_span.clone(),
             func_call_graph: self.func_call_graph.clone(),
             datatype_graph: self.datatype_graph.clone(),
