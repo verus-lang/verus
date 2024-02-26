@@ -80,6 +80,7 @@ macro_rules! declare_atomic_type {
                 }
             }
 
+            #[inline(always)]
             pub fn load(&self) -> $value_ty
                 requires self.well_formed(),
             {
