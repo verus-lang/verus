@@ -2,7 +2,7 @@ use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
     GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
     PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
-    VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentX, Variant, Variants, VirErr, Visibility,
+    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
 use crate::sst::{Par, Pars};
@@ -652,14 +652,14 @@ impl ItemKind {
     }
 }
 
-impl Into<String> for &VarIdentX {
+impl Into<String> for &VarIdent {
     fn into(self) -> String {
-        let VarIdentX(ident, uniq_id) = self;
+        let VarIdent(ident, uniq_id) = self;
         crate::def::unique_var_name(ident.to_string(), *uniq_id)
     }
 }
 
-impl fmt::Display for VarIdentX {
+impl fmt::Display for VarIdent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: String = self.into();
         f.write_str(&s)
@@ -697,15 +697,15 @@ impl<A: Clone> VarBinderX<A> {
 }
 
 pub fn str_unique_var(s: &str, dis: crate::ast::VarIdentDisambiguate) -> VarIdent {
-    Arc::new(VarIdentX(Arc::new(s.to_string()), dis))
+    VarIdent(Arc::new(s.to_string()), dis)
 }
 
 pub fn air_unique_var(s: &str) -> VarIdent {
-    Arc::new(VarIdentX(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::AirLocal))
+    VarIdent(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::AirLocal)
 }
 
 pub fn typ_unique_var<S: ToString>(s: S) -> VarIdent {
-    Arc::new(VarIdentX(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::TypParamBare))
+    VarIdent(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::TypParamBare)
 }
 
 pub trait LowerUniqueVar {
@@ -718,7 +718,7 @@ impl LowerUniqueVar for VarIdent {
     type Target = Ident;
 
     fn lower(&self) -> Ident {
-        let VarIdentX(ident, uniq_id) = &**self;
+        let VarIdent(ident, uniq_id) = self;
         Arc::new(crate::def::unique_var_name(ident.to_string(), *uniq_id))
     }
 }

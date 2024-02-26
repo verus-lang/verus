@@ -938,7 +938,7 @@ fn simplify_function(
         let prev = param.x.name.clone();
         let name = if rename_ok {
             let dis = crate::ast::VarIdentDisambiguate::VirParam;
-            let name = Arc::new(crate::ast::VarIdentX(prev.0.clone(), dis));
+            let name = VarIdent(prev.0.clone(), dis);
             state.rename_vars.insert(prev, name.clone()).map(|_| panic!("rename params"));
             name
         } else {

@@ -194,7 +194,7 @@ impl<'a> State<'a> {
                 self.rename_exp_idents.insert(x.0.clone(), ()).expect("rename_var");
             }
         }
-        let crate::ast::VarIdentX(name, d) = (**x).clone();
+        let crate::ast::VarIdent(name, d) = x.clone();
         assert!(!matches!(d, VarIdentDisambiguate::VirRenumbered { .. }));
         let d = if is_stm || does_shadow {
             self.rename_counters.insert(x.0.clone(), id);
@@ -203,7 +203,7 @@ impl<'a> State<'a> {
         } else {
             VarIdentDisambiguate::VirExprNoNumber
         };
-        let x2 = Arc::new(crate::ast::VarIdentX(name, d));
+        let x2 = crate::ast::VarIdent(name, d);
         if !(is_stm && maybe_exp) {
             self.rename_map.insert(x.clone(), x2.clone()).expect("rename_map");
         }
@@ -230,7 +230,7 @@ impl<'a> State<'a> {
     }
 
     pub(crate) fn rename_delayed_to_exp(&mut self, x: &VarIdent) -> VarIdent {
-        let crate::ast::VarIdentX(name, d) = (**x).clone();
+        let crate::ast::VarIdent(name, d) = x.clone();
         let (does_shadow, id) = match d {
             VarIdentDisambiguate::VirRenumbered { is_stmt: true, does_shadow, id } => {
                 (does_shadow, id)
@@ -242,7 +242,7 @@ impl<'a> State<'a> {
         } else {
             VarIdentDisambiguate::VirExprNoNumber
         };
-        let x2 = Arc::new(crate::ast::VarIdentX(name, d));
+        let x2 = crate::ast::VarIdent(name, d);
         self.rename_delayed.insert(x.clone(), x2.clone()).map(|_| panic!("rename_delayed"));
         x2
     }

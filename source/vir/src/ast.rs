@@ -74,9 +74,8 @@ pub enum VarIdentDisambiguate {
 }
 
 /// A local variable name, possibly renamed for disambiguation
-pub type VarIdent = Arc<VarIdentX>;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
-pub struct VarIdentX(pub Ident, pub VarIdentDisambiguate);
+pub struct VarIdent(pub Ident, pub VarIdentDisambiguate);
 
 pub type VarBinder<A> = Arc<VarBinderX<A>>;
 pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;

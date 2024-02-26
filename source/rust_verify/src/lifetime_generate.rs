@@ -1416,8 +1416,8 @@ fn erase_expr<'tcx>(
             let ps = &body.params;
             for p in ps.iter() {
                 let pat_var = crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var");
-                let (x, local_id) = match &*pat_var {
-                    vir::ast::VarIdentX(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
+                let (x, local_id) = match &pat_var {
+                    vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
                         (x, local_id)
                     }
                     _ => panic!("pat_to_var"),
@@ -1849,8 +1849,8 @@ fn erase_fn_common<'tcx>(
         {
             let name =
                 if let Some((_, name)) = &param.x.unwrapped_info { name } else { &param.x.name };
-            let (x, local_id) = match &**name {
-                vir::ast::VarIdentX(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
+            let (x, local_id) = match name {
+                vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
                     (x, local_id)
                 }
                 _ => panic!("pat_to_var"),

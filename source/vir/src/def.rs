@@ -266,19 +266,19 @@ pub fn suffix_local_unique_id(ident: &VarIdent) -> Ident {
 
 pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
     let dis = crate::ast::VarIdentDisambiguate::VirSubst(n);
-    Arc::new(crate::ast::VarIdentX(x.0.clone(), dis))
+    crate::ast::VarIdent(x.0.clone(), dis)
 }
 
 pub(crate) fn suffix_typ_param_var(x: &VarIdent) -> VarIdent {
     assert!(x.1 == crate::ast::VarIdentDisambiguate::TypParamBare);
     let dis = crate::ast::VarIdentDisambiguate::TypParamSuffixed;
-    Arc::new(crate::ast::VarIdentX(x.0.clone(), dis))
+    crate::ast::VarIdent(x.0.clone(), dis)
 }
 
 pub(crate) fn suffix_decorate_typ_param_var(x: &VarIdent) -> VarIdent {
     assert!(x.1 == crate::ast::VarIdentDisambiguate::TypParamBare);
     let dis = crate::ast::VarIdentDisambiguate::TypParamDecorated;
-    Arc::new(crate::ast::VarIdentX(x.0.clone(), dis))
+    crate::ast::VarIdent(x.0.clone(), dis)
 }
 
 pub(crate) fn suffix_typ_param_vars(unique_var: &VarIdent) -> Vec<VarIdent> {
@@ -318,7 +318,7 @@ pub(crate) fn types() -> Vec<&'static str> {
 
 pub fn rename_rec_param(ident: &VarIdent, n: usize) -> VarIdent {
     let dis = crate::ast::VarIdentDisambiguate::VirParamRecursion(n);
-    Arc::new(crate::ast::VarIdentX(ident.0.clone(), dis))
+    crate::ast::VarIdent(ident.0.clone(), dis)
 }
 
 pub fn slice_type() -> Path {
