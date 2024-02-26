@@ -41,12 +41,13 @@
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
     - [broadcast_forall]() <!--- Chris --->
-- [Runtime `exec` Features]()
-    - [Exec closures]()
-    - [Statics](./static.md)
+- [Higher-order executable functions]()
+    - [Passing functions as values](./exec_funs_as_values.md)
+    - [Closures]()
 - [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
-    - [Integers: nonlinear arithmetic and bit vectors](nonlinear_bitvec.md) <!--- Chris and Chanhee --->
+    - [Integers and nonlinear arithmetic](nonlinear.md)
+    - [Bit vectors and bitwise operations](bitvec.md)
     - [forall and exists: writing and using triggers, inline functions]() <!--- Chris --->
     - [Recursive functions]() <!--- Chris --->
     - [Extensional equality](extensional_equality.md)
@@ -144,6 +145,8 @@
   - [decreases ... via ...]()
   - [Datatype ordering]()
   - [Cyclic definitions]()
+- [Misc. Rust features]()
+  - [Statics](./static.md)
 - [Command line]()
   - [--record](./reference-flag-record.md)
 - [Planned future work]()

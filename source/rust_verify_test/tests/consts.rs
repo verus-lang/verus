@@ -284,3 +284,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] statics_ens_ordering verus_code! {
+        pub fn test() {
+            test2();
+        }
+
+        exec static X: u32 ensures 2 <= X <= 4 { 3 }
+
+        #[inline]
+        fn test2() {
+            let y = X;
+            assert(2 <= y <= 4);
+        }
+    } => Ok(())
+}

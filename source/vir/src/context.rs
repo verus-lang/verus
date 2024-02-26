@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, ImplPath, IntRange, Krate, Mode,
-    Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    ArchWordBits, Datatype, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath, IntRange,
+    Krate, Mode, Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
 use crate::ast_util::path_as_friendly_rust_name_raw;
 use crate::datatype_to_air::is_datatype_transparent;
@@ -37,6 +37,7 @@ pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: Arc<HashMap<Path, (TypPositives, Variants)>>,
     pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
+    pub(crate) fun_attrs: Arc<HashMap<Fun, FunctionAttrs>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Arc<Graph<Node>>,
@@ -84,7 +85,7 @@ pub struct Ctx {
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
     pub quantifier_count: Cell<u64>,
-    pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
+    pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub fun: Option<FunctionCtx>,
@@ -227,6 +228,7 @@ impl GlobalCtx {
             func_map.insert(function.x.name.clone(), function.clone());
         }
         let mut fun_bounds: HashMap<Fun, GenericBounds> = HashMap::new();
+        let mut fun_attrs: HashMap<Fun, FunctionAttrs> = HashMap::new();
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
@@ -295,6 +297,9 @@ impl GlobalCtx {
             func_call_graph.add_node(fun_node.clone());
             func_call_graph.add_node(fndef_impl_node.clone());
             func_call_graph.add_edge(fndef_impl_node, fun_node);
+
+            fun_attrs.insert(f.x.name.clone(), f.x.attrs.clone());
+
             crate::recursion::expand_call_graph(
                 &func_map,
                 &reveal_group_set,
@@ -427,6 +432,7 @@ impl GlobalCtx {
             chosen_triggers,
             datatypes: Arc::new(datatypes),
             fun_bounds: Arc::new(fun_bounds),
+            fun_attrs: Arc::new(fun_attrs),
             no_span,
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
@@ -451,6 +457,7 @@ impl GlobalCtx {
             chosen_triggers,
             datatypes: self.datatypes.clone(),
             fun_bounds: self.fun_bounds.clone(),
+            fun_attrs: self.fun_attrs.clone(),
             no_span: self.no_span.clone(),
             func_call_graph: self.func_call_graph.clone(),
             datatype_graph: self.datatype_graph.clone(),
@@ -504,7 +511,7 @@ impl Ctx {
             datatypes_invs(&module.x.path, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
-        let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
+        let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
             functions.push(function.clone());

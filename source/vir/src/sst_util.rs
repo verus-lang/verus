@@ -302,9 +302,33 @@ impl ExpX {
                 return exp.x.to_string_prec(global, precedence);
             }
             Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
-                let args =
-                    exps.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
-                (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
+                let (zero_args, is_method) = match global.fun_attrs.get(fun) {
+                    Some(attrs) => (attrs.print_zero_args, attrs.print_as_method),
+                    None => (false, false),
+                };
+
+                let fun_name = fun.path.segments.last().unwrap();
+
+                if is_method && exps.len() > 0 {
+                    let receiver = exps[0].x.to_user_string(global);
+                    let args = exps
+                        .iter()
+                        .skip(1)
+                        .map(|e| e.x.to_user_string(global))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    (format!("{}.{}({})", receiver, fun_name, args), 90)
+                } else {
+                    let args = if zero_args {
+                        "".to_string()
+                    } else {
+                        exps.iter()
+                            .map(|e| e.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    (format!("{}({})", fun_name, args), 90)
+                }
             }
             Call(CallFun::InternalFun(func), _, exps) => {
                 let args =

@@ -14,6 +14,9 @@ pub trait OptionAdditionalFns<T> : Sized {
     #[allow(non_snake_case)] spec fn get_Some_0(&self) -> T;
     #[allow(non_snake_case)] spec fn is_None(&self) -> bool;
 
+    #[allow(non_snake_case)] spec fn arrow_Some_0(&self) -> T;
+    #[allow(non_snake_case)] spec fn arrow_0(&self) -> T;
+
     proof fn tracked_unwrap(tracked self) -> (tracked t: T)
         requires
             self.is_Some(),
@@ -41,6 +44,16 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     #[verifier(inline)]
     open spec fn is_None(&self) -> bool {
         builtin::is_variant(self, "None")
+    }
+
+    #[verifier(inline)]
+    open spec fn arrow_Some_0(&self) -> T {
+        builtin::get_variant_field(self, "Some", "0")
+    }
+
+    #[verifier(inline)]
+    open spec fn arrow_0(&self) -> T {
+        builtin::get_variant_field(self, "Some", "0")
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {

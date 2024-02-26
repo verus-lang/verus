@@ -833,6 +833,11 @@ pub struct FunctionAttrsX {
     pub memoize: bool,
     /// override default rlimit
     pub rlimit: Option<f32>,
+    /// does this function take zero args (this is useful to keep track
+    /// of because we add a dummy arg to zero functions)
+    pub print_zero_args: bool,
+    /// is this a method, i.e., written with x.f() syntax? useful for printing
+    pub print_as_method: bool,
 }
 
 /// Function specification of its invariant mask
