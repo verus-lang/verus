@@ -1,11 +1,11 @@
-use core::{marker};
+use core::marker;
 
+#[allow(unused_imports)]
+use crate::pervasive::*;
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
-use crate::pervasive::*;
 
 verus! {
 
@@ -27,7 +27,6 @@ verus! {
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the
 /// extensional equality operator `=~=`.
-
 #[verifier::external_body]
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
@@ -37,17 +36,14 @@ pub struct Seq<A> {
 
 impl<A> Seq<A> {
     /// An empty sequence (i.e., a sequence of length 0).
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::empty"]
     pub spec fn empty() -> Seq<A>;
 
     /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::new"]
     pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
     /// The length of a sequence.
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::len"]
     pub spec fn len(self) -> nat;
 
@@ -55,16 +51,17 @@ impl<A> Seq<A> {
     ///
     /// If `i` is not in the range `[0, self.len())`, then the resulting value
     /// is meaningless and arbitrary.
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::index"]
     pub spec fn index(self, i: int) -> A
-        recommends 0 <= i < self.len();
+        recommends
+            0 <= i < self.len(),
+    ;
 
     /// `[]` operator, synonymous with `index`
-
     #[verifier(inline)]
     pub open spec fn spec_index(self, i: int) -> A
-        recommends 0 <= i < self.len()
+        recommends
+            0 <= i < self.len(),
     {
         self.index(i)
     }
@@ -79,7 +76,6 @@ impl<A> Seq<A> {
     ///     assert(seq![10, 11, 12].push(13) =~= seq![10, 11, 12, 13]);
     /// }
     /// ```
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::push"]
     pub spec fn push(self, a: A) -> Seq<A>;
 
@@ -95,10 +91,11 @@ impl<A> Seq<A> {
     ///     assert(t =~= seq![10, 11, -5, 13, 14]);
     /// }
     /// ```
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::update"]
     pub spec fn update(self, i: int, a: A) -> Seq<A>
-        recommends 0 <= i < self.len();
+        recommends
+            0 <= i < self.len(),
+    ;
 
     /// DEPRECATED: use =~= or =~~= instead.
     /// Returns `true` if the two sequences are pointwise equal, i.e.,
@@ -110,7 +107,6 @@ impl<A> Seq<A> {
     /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
     /// rather than using `.ext_equal` directly.
-
     #[deprecated = "use =~= or =~~= instead"]
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::ext_equal"]
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
@@ -130,23 +126,22 @@ impl<A> Seq<A> {
     ///     assert(sub =~= seq![12, 13]);
     /// }
     /// ```
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::subrange"]
     pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
-        recommends 0 <= start_inclusive <= end_exclusive <= self.len();
+        recommends
+            0 <= start_inclusive <= end_exclusive <= self.len(),
+    ;
 
     /// Returns a sequence containing only the first n elements of the original sequence
-    
     #[verifier(inline)]
-    pub open spec fn take(self, n: int) -> Seq<A>{
-        self.subrange(0,n)
-    } 
+    pub open spec fn take(self, n: int) -> Seq<A> {
+        self.subrange(0, n)
+    }
 
     /// Returns a sequence without the first n elements of the original sequence
-    
     #[verifier(inline)]
-    pub open spec fn skip(self, n: int) -> Seq<A>{
-        self.subrange(n,self.len() as int)
+    pub open spec fn skip(self, n: int) -> Seq<A> {
+        self.subrange(n, self.len() as int)
     }
 
     /// Concatenates the sequences.
@@ -159,45 +154,42 @@ impl<A> Seq<A> {
     ///             =~= seq![10, 11, 12, 13, 14]);
     /// }
     /// ```
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::add"]
     pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
 
     /// `+` operator, synonymous with `add`
-
     #[verifier(inline)]
     pub open spec fn spec_add(self, rhs: Seq<A>) -> Seq<A> {
         self.add(rhs)
     }
 
     /// Returns the last element of the sequence.
-
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::last"]
     pub open spec fn last(self) -> A
-        recommends 0 < self.len()
+        recommends
+            0 < self.len(),
     {
         self[self.len() as int - 1]
     }
 
     /// Returns the first element of the sequence.
-    
     #[rustc_diagnostic_item = "vstd::seq::Seq::first"]
     pub open spec fn first(self) -> A
-        recommends 0 < self.len()
+        recommends
+            0 < self.len(),
     {
         self[0]
     }
 }
 
 // Trusted axioms
-
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     requires
         0 <= i < s.len(),
     ensures
-        #[trigger](decreases_to!(s => s[i])),
+        #[trigger] (decreases_to!(s => s[i])),
 {
 }
 
@@ -333,7 +325,8 @@ pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
-    ensures #[trigger] s1.add(s2).len() == s1.len() + s2.len()
+    ensures
+        #[trigger] s1.add(s2).len() == s1.len() + s2.len(),
 {
 }
 
@@ -357,10 +350,7 @@ pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 {
 }
 
-
-
 // ------------- Macros ---------------- //
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {
@@ -382,15 +372,12 @@ macro_rules! seq_internal {
 /// assert(s[1] == 12);
 /// assert(s[2] == 13);
 /// ```
-
 #[macro_export]
 macro_rules! seq {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!($crate::seq::seq_internal!($($tail)*))
     };
 }
-
-
 
 #[doc(hidden)]
 pub use seq_internal;

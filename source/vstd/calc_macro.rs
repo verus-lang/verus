@@ -1,5 +1,4 @@
 //! The [`calc`] macro provides support for reasoning about a structured proof calculation.
-
 #![allow(unused_imports)]
 use crate::pervasive::*;
 use builtin::*;
@@ -156,7 +155,6 @@ macro_rules! calc_aux {
 ///   y;
 /// }
 /// ```
-
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! calc {
