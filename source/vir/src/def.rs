@@ -40,7 +40,7 @@ const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
 const SUFFIX_RUSTC_ID: &str = "~";
 const SUFFIX_DECORATE_TYPE_PARAM: &str = "&.";
-const SUFFIX_RENAME: &str = "!$";
+const SUFFIX_REC_PARAM: &str = "!$";
 const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
@@ -265,16 +265,20 @@ pub fn suffix_local_unique_id(ident: &VarIdent) -> Ident {
 }
 
 pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
-    // In principle, we could get renamed more than once, so accumulate n as a suffix
-    x.push_suffix(&format!("{SUBST_RENAME_SEPARATOR}{n}"))
+    let dis = crate::ast::VarIdentDisambiguate::VirSubst(n);
+    Arc::new(crate::ast::VarIdentX(x.0.clone(), dis))
 }
 
-pub(crate) fn suffix_typ_param_var(unique_var: &VarIdent) -> VarIdent {
-    unique_var.push_suffix(SUFFIX_TYPE_PARAM)
+pub(crate) fn suffix_typ_param_var(x: &VarIdent) -> VarIdent {
+    assert!(x.1 == crate::ast::VarIdentDisambiguate::TypParamBare);
+    let dis = crate::ast::VarIdentDisambiguate::TypParamSuffixed;
+    Arc::new(crate::ast::VarIdentX(x.0.clone(), dis))
 }
 
-pub(crate) fn suffix_decorate_typ_param_var(unique_var: &VarIdent) -> VarIdent {
-    unique_var.push_suffix(SUFFIX_DECORATE_TYPE_PARAM)
+pub(crate) fn suffix_decorate_typ_param_var(x: &VarIdent) -> VarIdent {
+    assert!(x.1 == crate::ast::VarIdentDisambiguate::TypParamBare);
+    let dis = crate::ast::VarIdentDisambiguate::TypParamDecorated;
+    Arc::new(crate::ast::VarIdentX(x.0.clone(), dis))
 }
 
 pub(crate) fn suffix_typ_param_vars(unique_var: &VarIdent) -> Vec<VarIdent> {
@@ -312,8 +316,9 @@ pub(crate) fn types() -> Vec<&'static str> {
     if crate::context::DECORATE { vec![DECORATION, TYPE] } else { vec![TYPE] }
 }
 
-pub fn suffix_rename(ident: &VarIdent) -> VarIdent {
-    ident.push_suffix(SUFFIX_RENAME)
+pub fn rename_rec_param(ident: &VarIdent, n: usize) -> VarIdent {
+    let dis = crate::ast::VarIdentDisambiguate::VirParamRecursion(n);
+    Arc::new(crate::ast::VarIdentX(ident.0.clone(), dis))
 }
 
 pub fn slice_type() -> Path {
@@ -427,22 +432,12 @@ pub fn prefix_recursive_fun(fun: &Fun) -> Fun {
 }
 
 pub fn new_temp_var(n: u64) -> VarIdent {
-    crate::ast_util::str_unique_var(
-        PREFIX_TEMP_VAR,
-        crate::ast::VarIdentDisambiguate::AstToSstTemp(n),
-    )
-}
-
-pub fn is_temp_var(x: &Ident) -> bool {
-    x.starts_with(PREFIX_TEMP_VAR)
+    crate::ast_util::str_unique_var(PREFIX_TEMP_VAR, crate::ast::VarIdentDisambiguate::VirTemp(n))
 }
 
 // ast_simplify introduces its own temporary variables; we don't want these to conflict with prefix_temp_var
 pub fn simplify_temp_var(n: u64) -> VarIdent {
-    crate::ast_util::str_unique_var(
-        SIMPLIFY_TEMP_VAR,
-        crate::ast::VarIdentDisambiguate::AstSimplifyTemp(n),
-    )
+    crate::ast_util::str_unique_var(SIMPLIFY_TEMP_VAR, crate::ast::VarIdentDisambiguate::VirTemp(n))
 }
 
 pub fn prefix_pre_var(name: &Ident) -> Ident {
@@ -695,7 +690,6 @@ pub fn user_local_name<'a>(s: &'a VarIdent) -> &'a str {
 pub fn unique_var_name(
     user_given_name: String,
     uniq_id: crate::ast::VarIdentDisambiguate,
-    suffix: &Vec<String>,
 ) -> String {
     use {crate::ast::VarIdentDisambiguate, std::fmt::Write};
     let mut out = user_given_name;
@@ -707,8 +701,14 @@ pub fn unique_var_name(
         VarIdentDisambiguate::Field => {
             out.push_str(SUFFIX_PARAM);
         }
-        VarIdentDisambiguate::TypParam => {}
-        VarIdentDisambiguate::RustcId(id) | VarIdentDisambiguate::ClosureReturnValue(id) => {
+        VarIdentDisambiguate::TypParamBare => {}
+        VarIdentDisambiguate::TypParamSuffixed => {
+            out.push_str(SUFFIX_TYPE_PARAM);
+        }
+        VarIdentDisambiguate::TypParamDecorated => {
+            out.push_str(SUFFIX_DECORATE_TYPE_PARAM);
+        }
+        VarIdentDisambiguate::RustcId(id) => {
             out.push_str(SUFFIX_RUSTC_ID);
             write!(&mut out, "{}", id).unwrap();
         }
@@ -730,12 +730,17 @@ pub fn unique_var_name(
         VarIdentDisambiguate::VirParam => {
             out.push_str(SUFFIX_PARAM);
         }
-        VarIdentDisambiguate::AstSimplifyTemp(id) | VarIdentDisambiguate::AstToSstTemp(id) => {
+        VarIdentDisambiguate::VirParamRecursion(n) => {
+            out.push_str(SUFFIX_REC_PARAM);
+            write!(&mut out, "{}", n).unwrap();
+        }
+        VarIdentDisambiguate::VirSubst(n) => {
+            out.push_str(SUBST_RENAME_SEPARATOR);
+            write!(&mut out, "{}", n).unwrap();
+        }
+        VarIdentDisambiguate::VirTemp(id) => {
             write!(&mut out, "{}", id).unwrap();
         }
-    }
-    for s in suffix.iter() {
-        out.push_str(s.as_str());
     }
     out
 }

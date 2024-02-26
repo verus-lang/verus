@@ -53,27 +53,30 @@ pub enum VarIdentDisambiguate {
     // rustc's parameter unique id comes from the function body; no body means no id:
     NoBodyParam,
     // TypParams are normally Idents, but sometimes we mix TypParams into lists of VarIdents:
-    TypParam,
+    TypParamBare,
+    TypParamSuffixed,
+    TypParamDecorated,
     // Fields are normally Idents, but sometimes we mix field names into lists of VarIdents:
     Field,
     RustcId(usize),
-    ClosureReturnValue(usize),
-    // We emit track whether the variable is SST/AIR statement-bound or expression-bound,
+    // We track whether the variable is SST/AIR statement-bound or expression-bound,
     // to help drop unnecessary ids from expression-bound variables
     VirRenumbered { is_stmt: bool, does_shadow: bool, id: u64 },
     // Some expression-bound variables don't need an id
     VirExprNoNumber,
     // We rename parameters to VirParam if the parameters don't conflict with each other
     VirParam,
-    AstSimplifyTemp(u64),
-    AstToSstTemp(u64),
+    // Recursive definitions have an extra copy of the parameters
+    VirParamRecursion(usize),
+    // Capture-avoiding substitution creates new names:
+    VirSubst(u64),
+    VirTemp(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
 pub type VarIdent = Arc<VarIdentX>;
-// VarIdentX(ident, disambiguating id, suffix)
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
-pub struct VarIdentX(pub Ident, pub VarIdentDisambiguate, pub Vec<String>);
+pub struct VarIdentX(pub Ident, pub VarIdentDisambiguate);
 
 pub type VarBinder<A> = Arc<VarBinderX<A>>;
 pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;

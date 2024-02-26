@@ -2274,9 +2274,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 }
                 None => str_unique_var(
                     vir::def::CLOSURE_RETURN_VALUE_PREFIX,
-                    vir::ast::VarIdentDisambiguate::ClosureReturnValue(
-                        body_id.hir_id.local_id.index(),
-                    ),
+                    vir::ast::VarIdentDisambiguate::RustcId(body_id.hir_id.local_id.index()),
                 ),
             };
 

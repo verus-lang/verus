@@ -6,7 +6,7 @@ use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
+    decrease_at_entry, rename_rec_param, unique_bound, unique_local, CommandsWithContext, Spanned,
     FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
@@ -162,11 +162,17 @@ fn check_decrease_call(
     let binders: Vec<VarBinder<Exp>> = params
         .iter()
         .zip(args.iter())
-        .map(|(param, arg)| ident_var_binder(&suffix_rename(&param.x.name), &arg.clone()))
+        .enumerate()
+        .map(|(n, (param, arg))| {
+            ident_var_binder(&rename_rec_param(&param.x.name, n), &arg.clone())
+        })
         .collect();
     let renames: HashMap<UniqueIdent, UniqueIdent> = params
         .iter()
-        .map(|param| (unique_local(&param.x.name), unique_bound(&suffix_rename(&param.x.name))))
+        .enumerate()
+        .map(|(n, param)| {
+            (unique_local(&param.x.name), unique_bound(&rename_rec_param(&param.x.name, n)))
+        })
         .collect();
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
