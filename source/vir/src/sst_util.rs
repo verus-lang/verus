@@ -80,6 +80,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     let mut binders: Vec<Binder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
+        free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
         let name = if free_vars.contains_key(&unique) {
             // capture-avoiding substitution:
             // rename bound variable to avoid capturing free variable
@@ -97,7 +98,6 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
                 n += 1;
             }
         } else {
-            free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
             b.name.clone()
         };
         binders.push(Arc::new(BinderX { name, a: fa(&b.a) }));
@@ -136,10 +136,13 @@ fn subst_exp_rec(
             &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) => match substs.get(x) {
-            None => mk_exp(ExpX::Var(x.clone())),
-            Some(e) => e.clone(),
-        },
+        ExpX::Var(x) => {
+            assert!(free_vars.contains_key(x));
+            match substs.get(x) {
+                None => mk_exp(ExpX::Var(x.clone())),
+                Some(e) => e.clone(),
+            }
+        }
         ExpX::VarLoc(x) => match substs.get(x) {
             None => mk_exp(ExpX::VarLoc(x.clone())),
             Some(_) => panic!("cannot substitute for VarLoc"),
