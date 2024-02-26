@@ -1,6 +1,6 @@
 use crate::ast::{
     ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, ImplPath, IntRange, Krate, Mode,
-    Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
 use crate::ast_util::path_as_friendly_rust_name_raw;
 use crate::datatype_to_air::is_datatype_transparent;
@@ -70,7 +70,7 @@ pub struct FunctionCtx {
 
 // Context for verifying one module
 pub struct Ctx {
-    pub(crate) module: Path,
+    pub(crate) module: Module,
     pub(crate) datatype_is_transparent: HashMap<Path, bool>,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_types: Vec<MonoTyp>,
@@ -488,7 +488,7 @@ impl Ctx {
     pub fn new(
         krate: &Krate,
         global: GlobalCtx,
-        module: Path,
+        module: Module,
         mono_types: Vec<MonoTyp>,
         lambda_types: Vec<usize>,
         bound_traits: HashSet<Path>,
@@ -498,10 +498,10 @@ impl Ctx {
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
-                .insert(datatype.x.path.clone(), is_datatype_transparent(&module, datatype));
+                .insert(datatype.x.path.clone(), is_datatype_transparent(&module.x.path, datatype));
         }
         let datatypes_with_invariant =
-            datatypes_invs(&module, &datatype_is_transparent, &krate.datatypes);
+            datatypes_invs(&module.x.path, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
         let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
@@ -565,8 +565,8 @@ impl Ctx {
             .expect("internal error: malformed prelude")
     }
 
-    pub fn module(&self) -> Path {
-        self.module.clone()
+    pub fn module_path(&self) -> Path {
+        self.module.x.path.clone()
     }
 
     pub fn fuel(&self) -> Commands {
@@ -601,6 +601,7 @@ impl Ctx {
                 &self.global.crate_name,
             );
         }
+        crate::func_to_air::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
         Arc::new(commands)
     }
 }

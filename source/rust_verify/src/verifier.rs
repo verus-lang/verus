@@ -1166,7 +1166,7 @@ impl Verifier {
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
 
-        let module = &ctx.module();
+        let module = &ctx.module_path();
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -1644,10 +1644,16 @@ impl Verifier {
                 bucket_id.module(),
                 bucket_id.function(),
             );
+        let module = pruned_krate
+            .modules
+            .iter()
+            .find(|m| &m.x.path == bucket_id.module())
+            .expect("module in krate")
+            .clone();
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
-            bucket_id.module().clone(),
+            module,
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,

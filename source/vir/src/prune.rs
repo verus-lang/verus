@@ -6,7 +6,8 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function,
-    FunctionKind, Ident, Krate, KrateX, Mode, Path, RevealGroup, Stmt, Trait, TraitX, Typ, TypX,
+    FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt, Trait,
+    TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::ast_visitor::VisitorScopeMap;
@@ -493,6 +494,12 @@ pub fn prune_krate_for_module(
     state.worklist_modules.push(module.clone());
 
     // Collect all functions that our module reveals:
+    let this_module_reveals = krate
+        .modules
+        .iter()
+        .find(|m| &m.x.path == module)
+        .map(|m| m.x.reveals.clone())
+        .expect("module declaration for current module");
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     for f in &krate.functions {
         if is_root(f) {
@@ -512,6 +519,9 @@ pub fn prune_krate_for_module(
                 .expect("expr_visitor_check failed unexpectedly");
             }
         }
+    }
+    for f in this_module_reveals.iter().flat_map(|o| o.x.iter()) {
+        revealed_functions.insert(f.clone());
     }
     for group in &krate.reveal_groups {
         if let Some(group_crate) = &group.x.revealed_by_default_when_this_crate_is_imported {
@@ -701,6 +711,19 @@ pub fn prune_krate_for_module(
         traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
     }
 
+    let modules: Vec<Module> = krate
+        .modules
+        .iter()
+        .map(|mm| {
+            mm.map_x(|m| ModuleX {
+                path: m.path.clone(),
+                reveals: if &m.path == module { m.reveals.clone() } else { None },
+            })
+        })
+        .collect();
+
+    debug_assert!(modules.iter().filter(|m| m.x.reveals.is_some()).count() <= 1);
+
     let kratex = KrateX {
         functions: functions
             .into_iter()
@@ -727,7 +750,7 @@ pub fn prune_krate_for_module(
             .filter(|i| state.reached_trait_impls.contains(&i.x.impl_path))
             .cloned()
             .collect(),
-        modules: krate.modules.clone(),
+        modules,
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),

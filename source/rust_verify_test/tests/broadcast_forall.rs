@@ -337,8 +337,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO this feature is a work in progress
-    #[ignore] #[test] test_ring_algebra_mod_level RING_ALGEBRA.to_string() + verus_code_str! {
+    #[test] test_ring_algebra_mod_level_1 RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
             use builtin::*;
             use crate::ring::*;
@@ -349,7 +348,56 @@ test_verify_one_file! {
                 assert(p.succ().prev() == p);
             }
         }
-    } => Err(err) => assert_fails(err, 3)
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_mod_level_2 RING_ALGEBRA.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            reveal Ring_properties;
+
+            proof fn t2(p: Ring) requires p.inv() {
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_mod_level_3 RING_ALGEBRA.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            reveal Ring_prev, Ring_succ;
+
+            proof fn t2(p: Ring) requires p.inv() {
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_mod_level_not_allowed_1 RING_ALGEBRA.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            reveal Ring_prev;
+            reveal Ring_succ;
+
+            proof fn t2(p: Ring) requires p.inv() {
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only one module-level revealed allowed for each module")
 }
 
 test_verify_one_file! {

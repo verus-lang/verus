@@ -174,7 +174,10 @@ fn tr_inline_function(
                 ));
             }
         };
-        if !crate::ast_util::is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module) {
+        if !crate::ast_util::is_visible_to_of_owner(
+            &fun_to_inline.x.owning_module,
+            &ctx.module.x.path,
+        ) {
             // if the target inline function is outside this module, track `open` `closed` at module boundaries
             match fun_to_inline.x.publish {
                 Some(b) => {

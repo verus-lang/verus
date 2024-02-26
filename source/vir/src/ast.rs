@@ -1078,12 +1078,14 @@ pub enum WellKnownItem {
     DropTrait,
 }
 
+pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;
+
 pub type Module = Arc<Spanned<ModuleX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct ModuleX {
     pub path: Path,
     // add attrs here
-    pub reveals: Option<Arc<Spanned<Vec<Fun>>>>,
+    pub reveals: Option<ModuleReveals>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]

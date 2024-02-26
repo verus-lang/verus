@@ -130,6 +130,28 @@ fn func_def_quant(
     Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
+pub(crate) fn module_reveal_axioms(
+    _ctx: &Ctx,
+    decl_commands: &mut Vec<Command>,
+    module_reveals: &Option<crate::ast::ModuleReveals>,
+) {
+    if let Some(module_reveals) = module_reveals {
+        let revealed_fuels = mk_and(
+            &module_reveals
+                .x
+                .iter()
+                .map(|member: &Fun| {
+                    let fuel_id = prefix_fuel_id(&fun_to_air_ident(member));
+                    str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&fuel_id)])
+                })
+                .collect::<Vec<Expr>>(),
+        );
+
+        let axiom = Arc::new(DeclX::Axiom(revealed_fuels));
+        decl_commands.push(Arc::new(CommandX::Global(axiom)));
+    }
+}
+
 pub(crate) fn broadcast_forall_group_axioms(
     ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
