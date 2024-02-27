@@ -32,8 +32,9 @@ and programmers having to use manual triggers to eliminate the timeouts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AutoType {
     Regular,
-    All,
     None,
+    All,
+    Manual,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -715,7 +716,7 @@ pub(crate) fn build_triggers(
         module,
         span: span.clone(),
         triggers: found_triggers,
-        low_confidence: state.low_confidence && (auto_trigger == AutoType::None),
+        low_confidence: state.low_confidence && (auto_trigger == AutoType::Manual),
     };
     chosen_triggers_vec.push(chosen_triggers);
     if state.chosen_triggers.len() >= 1 {

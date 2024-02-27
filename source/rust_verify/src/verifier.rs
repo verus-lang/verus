@@ -13,6 +13,7 @@ use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+use vir::alternation_check;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -1053,7 +1054,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, mbqi_mode: false },
             profile_file_name,
         )?;
 
@@ -1129,6 +1130,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
+        mbqi: bool,
     ) -> Result<(Duration, Duration), VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1153,11 +1155,15 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, mbqi_mode: mbqi },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(crate::consts::EXPECTED_Z3_VERSION.to_string());
+        }
+        if mbqi {
+            air_context.set_z3_param("smt.mbqi", "true");
+            air_context.set_z3_param("smt.macro_finder", "true");
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
@@ -1634,8 +1640,20 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
-            vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
+        let vir::prune::PruneKrateResult {
+            pruned_krate,
+            mono_abstract_datatypes,
+            lambda_types,
+            bound_traits,
+            fndef_types,
+            types_are_uninterpreted,
+        } = vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
+        let mut epr_check = false;
+        for module in &pruned_krate.modules {
+            if module.x.path == bucket_id.module().clone() && module.x.epr_check {
+                epr_check = true;
+            }
+        }
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1645,7 +1663,19 @@ impl Verifier {
             bound_traits,
             fndef_types,
             self.args.debugger,
+            epr_check,
         )?;
+        if epr_check {
+            if types_are_uninterpreted {
+                alternation_check::alternation_check(&ctx, krate, bucket_id.module().clone())?;
+            } else {
+                reporter.report_now(
+                    &note_bare(format!("{:} failed EPR Type Check", bucket_id.friendly_name()))
+                        .to_any(),
+                );
+            }
+        }
+
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
@@ -1654,7 +1684,7 @@ impl Verifier {
         }
 
         let (time_smt_init, time_smt_run) =
-            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
+            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx, epr_check)?;
 
         global_ctx = ctx.free();
 

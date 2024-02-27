@@ -97,6 +97,7 @@ pub struct Ctx {
     pub expand_flag: bool,
     pub debug_expand_targets: Vec<crate::messages::Message>,
     pub arch_word_bits: ArchWordBits,
+    pub epr: bool,
 }
 
 impl Ctx {
@@ -183,6 +184,7 @@ fn datatypes_invs(
                             roots.insert(container_path.clone());
                         }
                         TypX::Primitive(Primitive::Slice, _) => {}
+                        TypX::Dummy => {}
                     }
                 }
             }
@@ -458,6 +460,7 @@ impl Ctx {
         bound_traits: HashSet<Path>,
         fndef_types: Vec<Fun>,
         debug: bool,
+        epr: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
@@ -511,6 +514,7 @@ impl Ctx {
             expand_flag: false,
             debug_expand_targets: vec![],
             arch_word_bits: krate.arch.word_bits,
+            epr,
         })
     }
 
@@ -519,7 +523,11 @@ impl Ctx {
     }
 
     pub fn prelude(prelude_config: crate::prelude::PreludeConfig) -> Commands {
-        let nodes = crate::prelude::prelude_nodes(prelude_config);
+        let nodes = if prelude_config.mbqi_mode {
+            crate::prelude::prelude_nodes_mbqi()
+        } else {
+            crate::prelude::prelude_nodes(prelude_config)
+        };
         air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
             .expect("internal error: malformed prelude")

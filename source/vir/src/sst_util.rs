@@ -182,10 +182,10 @@ fn subst_exp_rec(
                     );
                     BndX::Let(binders)
                 }
-                BndX::Quant(quant, binders, ts) => {
+                BndX::Quant(quant, binders, ts, is_mbqi) => {
                     let binders =
                         subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts))
+                    BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts), *is_mbqi)
                 }
                 BndX::Lambda(binders, ts) => {
                     let binders =
@@ -301,6 +301,7 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
+                Constant::Dummy => (format!("no_arg"), 99),
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
@@ -467,7 +468,7 @@ impl ExpX {
                             .join(", ");
                         format!("let {} in {}", assigns, exp.x.to_user_string(global))
                     }
-                    BndX::Quant(Quant { quant: q, .. }, bnds, _trigs) => {
+                    BndX::Quant(Quant { quant: q, .. }, bnds, _trigs, _mbqi) => {
                         let q_str = match q {
                             air::ast::Quant::Forall => "forall",
                             air::ast::Quant::Exists => "exists",

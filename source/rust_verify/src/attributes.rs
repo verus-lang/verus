@@ -211,6 +211,8 @@ pub(crate) enum Attr {
     OpaqueOutsideModule,
     // inline spec function in SMT query
     Inline,
+    // TODO
+    InlineOnly,
     // generate ext_equal lemmas for datatype
     ExtEqual,
     // Rust ghost block
@@ -230,6 +232,8 @@ pub(crate) enum Attr {
     AutoTrigger,
     // accept all possible triggers chosen by triggers_auto without printing any diagnostics
     AllTriggers,
+    // do not produce any patterns for this quantifier (Z3 will pick, or if pi.enabled = false, won't use triggers at all)
+    NoTriggers,
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
     // when used in a ghost context, redirect to a specified spec method
@@ -278,6 +282,8 @@ pub(crate) enum Attr {
     SizeOfGlobal,
     // Marks generated -> functions that are unsupported because a field appears in multiple variants
     InternalGetFieldManyVariants,
+    /// Marks a module to run through the EPR Checker
+    EPRCheck,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -336,6 +342,7 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
                 AttrTree::Fun(_, name, None) if name == "all_triggers" => v.push(Attr::AllTriggers),
+                AttrTree::Fun(_, name, None) if name == "no_triggers" => v.push(Attr::NoTriggers),
                 AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                 AttrTree::Fun(_, arg, None) if arg == "external_body" => v.push(Attr::ExternalBody),
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
@@ -349,7 +356,9 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::OpaqueOutsideModule)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "inline" => v.push(Attr::Inline),
+                AttrTree::Fun(_, arg, None) if arg == "inline_only" => v.push(Attr::InlineOnly),
                 AttrTree::Fun(_, arg, None) if arg == "ext_equal" => v.push(Attr::ExtEqual),
+                AttrTree::Fun(_, arg, None) if arg == "epr_check" => v.push(Attr::EPRCheck),
                 AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
@@ -507,6 +516,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, name, None) if name == "all_triggers" => {
                         v.push(Attr::AllTriggers)
                     }
+                    AttrTree::Fun(_, name, None) if name == "no_triggers" => {
+                        v.push(Attr::NoTriggers)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
@@ -625,6 +637,7 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>,
         match attr {
             Attr::AutoTrigger => groups.push(TriggerAnnotation::AutoTrigger),
             Attr::AllTriggers => groups.push(TriggerAnnotation::AllTriggers),
+            Attr::NoTriggers => groups.push(TriggerAnnotation::NoTriggers),
             Attr::Trigger(None) => groups.push(TriggerAnnotation::Trigger(None)),
             Attr::Trigger(Some(group_ids)) => {
                 groups.extend(group_ids.into_iter().map(|id| TriggerAnnotation::Trigger(Some(id))));
@@ -661,6 +674,26 @@ pub(crate) fn get_publish(
     }
 }
 
+/// Attributes specified at the module level
+#[derive(Debug)]
+pub struct ModuleAttrs {
+    pub epr_check: bool,
+}
+
+pub fn get_module_attrs(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<ModuleAttrs, VirErr> {
+    let mut ms = ModuleAttrs { epr_check: false };
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::EPRCheck => ms.epr_check = true,
+            _ => {}
+        }
+    }
+    Ok(ms)
+}
+
 #[derive(Debug)]
 pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
@@ -671,6 +704,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) publish: Option<bool>,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
+    pub(crate) inline_only: bool,
     pub(crate) ext_equal: bool,
     // TODO: get rid of *_recursive_types: bool
     pub(crate) reject_recursive_types_in_ground_variants: bool,
@@ -728,6 +762,7 @@ pub(crate) fn get_verifier_attrs(
         publish: None,
         opaque_outside_module: false,
         inline: false,
+        inline_only: false,
         ext_equal: false,
         reject_recursive_types: false,
         reject_recursive_types_in_ground_variants: false,
@@ -769,6 +804,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::Inline => vs.inline = true,
+            Attr::InlineOnly => vs.inline_only = true,
             Attr::ExtEqual => vs.ext_equal = true,
             Attr::RejectRecursiveTypes(None) => vs.reject_recursive_types = true,
             Attr::RejectRecursiveTypes(Some(s)) => {

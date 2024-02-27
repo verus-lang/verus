@@ -263,7 +263,8 @@ impl<'a> State<'a> {
                 Ok(exp.clone())
             }
             ExpX::Bind(bnd, body) => match &bnd.x {
-                BndX::Quant(quant, bs, trigs) => {
+                BndX::Quant(quant, bs, trigs, is_mbqi) => {
+                    assert!(!is_mbqi);
                     assert!(trigs.len() == 0);
                     let mut vars: Vec<(Ident, TriggerBoxing)> = Vec::new();
                     for b in bs.iter() {
@@ -275,16 +276,18 @@ impl<'a> State<'a> {
                             _ => vars.push((b.name.clone(), typ_boxing(ctx, &b.a))),
                         }
                     }
-                    let trigs =
+                    let (trigs, is_mbqi) =
                         crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, false)?;
-                    let bnd =
-                        Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs));
+                    let bnd = Spanned::new(
+                        bnd.span.clone(),
+                        BndX::Quant(*quant, bs.clone(), trigs, is_mbqi),
+                    );
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
                 BndX::Choose(bs, trigs, cond) => {
                     assert!(trigs.len() == 0);
                     let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
-                    let trigs =
+                    let (trigs, _) =
                         crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, false)?;
                     let bnd = Spanned::new(
                         bnd.span.clone(),
@@ -295,7 +298,7 @@ impl<'a> State<'a> {
                 BndX::Lambda(bs, trigs) => {
                     assert!(trigs.len() == 0);
                     let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
-                    let trigs =
+                    let (trigs, _) =
                         crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true)?;
                     let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
@@ -1404,7 +1407,8 @@ pub(crate) fn expr_to_stm_opt(
             let exp = expr_to_pure_exp_skip_checks(ctx, state, body)?;
             state.pop_scope();
             let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
-            let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
+            let bnd =
+                Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs, false));
             let e = mk_exp(ExpX::Bind(bnd, exp));
             let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
             Ok((check_stms, ReturnValue::Some(e)))
@@ -1547,8 +1551,10 @@ pub(crate) fn expr_to_stm_opt(
             let e_choose = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_choose));
             if state.checking_recommends(ctx) {
                 let quant = crate::ast::Quant { quant: air::ast::Quant::Exists };
-                let bnd_exists =
-                    Spanned::new(body.span.clone(), BndX::Quant(quant, params.clone(), trigs));
+                let bnd_exists = Spanned::new(
+                    body.span.clone(),
+                    BndX::Quant(quant, params.clone(), trigs, false),
+                );
                 let e_exists = mk_exp(ExpX::Bind(bnd_exists, cond_exp.clone()));
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_exists));
                 let error = error(

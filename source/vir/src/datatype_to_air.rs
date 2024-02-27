@@ -77,6 +77,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
         TypX::FnDef(..) => false,
+        TypX::Dummy => panic!("internal error: uses_ext_equal of Dummy"),
     }
 }
 

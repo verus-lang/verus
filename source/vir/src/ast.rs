@@ -196,6 +196,8 @@ pub enum TypX {
     Char,
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
+    /// Dummy argument type
+    Dummy,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -204,6 +206,8 @@ pub enum TriggerAnnotation {
     /// with no diagnostics printed
     AutoTrigger,
     AllTriggers,
+    /// Do not produce any triggers for the expression containing this annotation
+    NoTriggers,
     /// Each trigger group is named by either Some integer, or the unnamed group None.
     /// (None is just another name; it is no different from an integer-named group.)
     /// Example: #[trigger] expr is translated into Trigger(None) applied to expr
@@ -476,6 +480,8 @@ pub enum Constant {
     StrSlice(Arc<String>),
     // Hold unicode values here
     Char(char),
+    // Dummy argument
+    Dummy,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -804,6 +810,8 @@ pub struct FunctionAttrsX {
     pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
+    /// Suppress the function definition axiom
+    pub inline_only: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
@@ -1064,7 +1072,7 @@ pub type Module = Arc<Spanned<ModuleX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct ModuleX {
     pub path: Path,
-    // add attrs here
+    pub epr_check: bool,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]

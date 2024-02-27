@@ -93,6 +93,7 @@ pub const FNDEF_SINGLETON: &str = "fndef_singleton";
 // List of constant strings that can appear in generated AIR code
 pub const FUEL_ID: &str = "FuelId";
 pub const FUEL_TYPE: &str = "Fuel";
+pub const DUMMY: &str = "Dummy";
 pub const ZERO: &str = "zero";
 pub const SUCC: &str = "succ";
 pub const FUEL_PARAM: &str = "fuel%";
@@ -125,11 +126,13 @@ pub const BOX_BOOL: &str = "B";
 pub const BOX_STRSLICE: &str = "S";
 pub const BOX_CHAR: &str = "C";
 pub const BOX_FNDEF: &str = "F";
+pub const BOX_DUMMY: &str = "D";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
 pub const UNBOX_STRSLICE: &str = "%S";
 pub const UNBOX_CHAR: &str = "%C";
 pub const UNBOX_FNDEF: &str = "%F";
+pub const UNBOX_DUMMY: &str = "%D";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
@@ -139,6 +142,7 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
+pub const TYPE_ID_DUMMY: &str = "DUMMY";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL: &str = "$";
 pub const DECORATE_REF: &str = "REF";
@@ -156,6 +160,7 @@ pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
 pub const DUMMY_PARAM: &str = "no%param";
+pub const DUMMY_ARG: &str = "no_arg";
 pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
@@ -164,6 +169,8 @@ pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";
+
+pub const MBQI_QID_PREFIX: &str = "!!mbqi!!";
 
 pub const UINT_XOR: &str = "uintxor";
 pub const UINT_AND: &str = "uintand";
@@ -520,11 +527,13 @@ pub fn name_as_vstd_name(name: &String) -> Option<String> {
 }
 
 // Generate a unique quantifier name
-pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
+pub fn new_user_qid_name(fun_name: &str, q_count: u64, enable_mbqi: bool) -> String {
+    let mbqi_prefix = if enable_mbqi { crate::def::MBQI_QID_PREFIX } else { "" };
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars
     let fun_name = str::replace(&fun_name, ":", "_");
-    let qid = format!("{}{}_{}", air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
+    let qid =
+        format!("{}{}{}_{}", mbqi_prefix, air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
     qid
 }
 

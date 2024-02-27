@@ -363,6 +363,7 @@ impl Visitor {
                     Ok(
                         found @ (ExtractQuantTriggersFound::Auto
                         | ExtractQuantTriggersFound::AllTriggers
+                        | ExtractQuantTriggersFound::NoTriggers
                         | ExtractQuantTriggersFound::Triggers(..)),
                     ) => {
                         if exprs.exprs.len() == 0 {
@@ -383,6 +384,11 @@ impl Visitor {
                                 ExtractQuantTriggersFound::AllTriggers => {
                                     exprs.exprs[0] = Expr::Verbatim(
                                         quote_spanned!(exprs.exprs[0].span() => #[verus::internal(all_triggers)] (#e)),
+                                    );
+                                }
+                                ExtractQuantTriggersFound::NoTriggers => {
+                                    exprs.exprs[0] = Expr::Verbatim(
+                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(no_triggers)] (#e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::Triggers(tuple) => {
@@ -1246,6 +1252,15 @@ impl Visitor {
                 }
                 _ => panic!("expected closure for quantifier"),
             },
+            Ok(ExtractQuantTriggersFound::NoTriggers) => match &mut *arg {
+                Expr::Closure(closure) => {
+                    let body = take_expr(&mut closure.body);
+                    closure.body = Box::new(Expr::Verbatim(
+                        quote_spanned!(span => #[verus::internal(no_triggers)] (#body)),
+                    ));
+                }
+                _ => panic!("expected closure for quantifier"),
+            },
             Ok(ExtractQuantTriggersFound::Triggers(tuple)) => match &mut *arg {
                 Expr::Closure(closure) => {
                     let body = take_expr(&mut closure.body);
@@ -1584,6 +1599,9 @@ impl Visitor {
                 (Ok(trigger), Some(id)) if id == &"all_triggers" && trigger.exprs.len() == 0 => {
                     return Ok(ExtractQuantTriggersFound::AllTriggers);
                 }
+                (Ok(trigger), Some(id)) if id == &"no_triggers" && trigger.exprs.len() == 0 => {
+                    return Ok(ExtractQuantTriggersFound::NoTriggers);
+                }
                 (Ok(trigger), Some(id)) if id == &"trigger" => {
                     let mut exprs = trigger.exprs;
                     for expr in exprs.iter_mut() {
@@ -1628,6 +1646,7 @@ enum ExtractQuantTriggersFound {
     Auto,
     AllTriggers,
     Triggers(ExprTuple),
+    NoTriggers,
     None,
 }
 
@@ -2252,6 +2271,11 @@ impl VisitMut for Visitor {
                         Ok(ExtractQuantTriggersFound::AllTriggers) => {
                             arg = Box::new(Expr::Verbatim(
                                 quote_spanned!(arg.span() => #[verus::internal(all_triggers)] #arg),
+                            ));
+                        }
+                        Ok(ExtractQuantTriggersFound::NoTriggers) => {
+                            arg = Box::new(Expr::Verbatim(
+                                quote_spanned!(arg.span() => #[verus::internal(no_triggers)] #arg),
                             ));
                         }
                         Ok(ExtractQuantTriggersFound::Triggers(tuple)) => {

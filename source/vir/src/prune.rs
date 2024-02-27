@@ -87,6 +87,15 @@ struct State {
     fndef_types: HashSet<Fun>,
 }
 
+pub struct PruneKrateResult {
+    pub pruned_krate: Krate,
+    pub mono_abstract_datatypes: Vec<MonoTyp>,
+    pub lambda_types: Vec<usize>,
+    pub bound_traits: HashSet<Path>,
+    pub fndef_types: Vec<Fun>,
+    pub types_are_uninterpreted: bool,
+}
+
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
     match &**typ {
         TypX::Bool => ReachedType::Bool,
@@ -106,6 +115,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::StrSlice => ReachedType::StrSlice,
         TypX::Char => ReachedType::Char,
         TypX::Primitive(_, _) => ReachedType::Primitive,
+        TypX::Dummy => ReachedType::None,
     }
 }
 
@@ -192,9 +202,11 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
-        TypX::Tuple(_) | TypX::AnonymousClosure(..) | TypX::Air(_) => {
+        TypX::Tuple(_) | TypX::AnonymousClosure(..) => {
             panic!("unexpected TypX")
         }
+        TypX::Dummy => {}
+        TypX::Air(_) => panic!("unexpected TypX"),
         TypX::Decorate(_, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
         TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
@@ -407,11 +419,23 @@ impl AssocTypeImplX {
     }
 }
 
-pub fn prune_krate_for_module(
-    krate: &Krate,
-    module: &Path,
-    fun: Option<&Fun>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>, Vec<Fun>) {
+fn datatypes_are_uninterpreted_sorts(state: &State, ctxt: &Ctxt, module: &Path) -> bool {
+    // dbg!(&state.reached_types);
+    state.reached_types.iter().fold(true, |acc, dt| {
+        let epr_type = match dt {
+            // TODO: Finish the match cases?
+            ReachedType::Datatype(x) => {
+                !is_datatype_transparent(module, ctxt.datatype_map.get(x).expect("not in map"))
+                    || x == &crate::def::prefix_tuple_type(0)
+            }
+            ReachedType::Bool => true,
+            _ => false,
+        };
+        acc && epr_type
+    })
+}
+
+pub fn prune_krate_for_module(krate: &Krate, module: &Path, fun: Option<&Fun>) -> PruneKrateResult {
     let is_root = |function: &Function| match fun {
         Some(f) => &function.x.name == f,
         None => match &function.x.owning_module {
@@ -602,6 +626,8 @@ pub fn prune_krate_for_module(
         traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
     }
 
+    let epr_check = datatypes_are_uninterpreted_sorts(&state, &ctxt, module);
+
     let kratex = KrateX {
         functions: functions
             .into_iter()
@@ -638,5 +664,12 @@ pub fn prune_krate_for_module(
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
     let State { reached_bound_traits, .. } = state;
-    (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits, fndef_types)
+    PruneKrateResult {
+        pruned_krate: Arc::new(kratex),
+        mono_abstract_datatypes,
+        lambda_types,
+        bound_traits: reached_bound_traits,
+        fndef_types,
+        types_are_uninterpreted: epr_check,
+    }
 }
