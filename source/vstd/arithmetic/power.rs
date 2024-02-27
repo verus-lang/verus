@@ -113,13 +113,10 @@ pub proof fn lemma0_pow(e: nat)
 /// Proof that 0 to the power of any positive integer is 0
 pub proof fn lemma0_pow_auto()
     ensures
-        forall|e: nat|
-            e > 0 ==> #[trigger]
-            pow(0, e) == 0,
+        forall|e: nat| e > 0 ==> #[trigger] pow(0, e) == 0,
 {
     reveal(pow);
-    assert forall|e: nat| e > 0 implies #[trigger]
-    pow(0, e) == 0 by {
+    assert forall|e: nat| e > 0 implies #[trigger] pow(0, e) == 0 by {
         lemma0_pow(e);
     }
 }
@@ -140,13 +137,10 @@ pub proof fn lemma1_pow(e: nat)
 /// Proof that 1 to the power of any natural number is 1
 pub proof fn lemma1_pow_auto()
     ensures
-        forall|e: nat|
-            e > 0 ==> #[trigger]
-            pow(1, e) == 1,
+        forall|e: nat| e > 0 ==> #[trigger] pow(1, e) == 1,
 {
     reveal(pow);
-    assert forall|e: nat| e > 0 implies #[trigger]
-    pow(1, e) == 1 by {
+    assert forall|e: nat| e > 0 implies #[trigger] pow(1, e) == 1 by {
         lemma1_pow(e);
     }
 }
@@ -163,13 +157,10 @@ pub proof fn lemma_square_is_pow2(x: int)
 /// equivalent to multiplying that integer by itself
 pub proof fn lemma_square_is_pow2_auto()
     ensures
-        forall|x: int|
-            x > 0 ==> #[trigger]
-            pow(x, 2) == x * x,
+        forall|x: int| x > 0 ==> #[trigger] pow(x, 2) == x * x,
 {
     reveal(pow);
-    assert forall|x: int| x > 0 implies #[trigger]
-    pow(x, 2) == x * x by {
+    assert forall|x: int| x > 0 implies #[trigger] pow(x, 2) == x * x by {
         lemma_square_is_pow2(x);
     }
 }
@@ -193,13 +184,10 @@ pub proof fn lemma_pow_positive(b: int, e: nat)
 /// produces a positive result
 pub proof fn lemma_pow_positive_auto()
     ensures
-        forall|b: int, e: nat|
-            b > 0 ==> 0 < #[trigger]
-            pow(b, e),
+        forall|b: int, e: nat| b > 0 ==> 0 < #[trigger] pow(b, e),
 {
     reveal(pow);
-    assert forall|b: int, e: nat| b > 0 implies 0 < #[trigger]
-    pow(b, e) by {
+    assert forall|b: int, e: nat| b > 0 implies 0 < #[trigger] pow(b, e) by {
         lemma_pow_positive(b, e);
     }
 }
@@ -266,11 +254,12 @@ pub proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
 pub proof fn lemma_pow_sub_add_cancel_auto()
     ensures
         forall|x: int, y: nat, z: nat|
-            y >= z ==> #[trigger]
-            pow(x, (y - z) as nat) * pow(x, z) == pow(x, y),
+            y >= z ==> #[trigger] pow(x, (y - z) as nat) * pow(x, z) == pow(x, y),
 {
-    assert forall|x: int, y: nat, z: nat| y >= z implies #[trigger]
-    pow(x, (y - z) as nat) * pow(x, z) == pow(x, y) by {
+    assert forall|x: int, y: nat, z: nat| y >= z implies #[trigger] pow(x, (y - z) as nat) * pow(
+        x,
+        z,
+    ) == pow(x, y) by {
         lemma_pow_sub_add_cancel(x, y, z);
     }
 }
@@ -305,13 +294,15 @@ pub proof fn lemma_pow_subtracts_auto()
     ensures
         forall|b: int, e1: nat| b > 0 ==> pow(b, e1) > 0,
         forall|b: int, e1: nat, e2: nat|
-            b > 0 && e1 <= e2 ==> #[trigger]
-            pow(b, (e2 - e1) as nat) == pow(b, e2) / pow(b, e1) > 0,
+            b > 0 && e1 <= e2 ==> #[trigger] pow(b, (e2 - e1) as nat) == pow(b, e2) / pow(b, e1)
+                > 0,
 {
     reveal(pow);
     lemma_pow_positive_auto();
-    assert forall|b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 implies #[trigger]
-    pow(b, (e2 - e1) as nat) == pow(b, e2) / pow(b, e1) > 0 by {
+    assert forall|b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 implies #[trigger] pow(
+        b,
+        (e2 - e1) as nat,
+    ) == pow(b, e2) / pow(b, e1) > 0 by {
         lemma_pow_subtracts(b, e1, e2);
     }
 }
@@ -367,9 +358,7 @@ pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
 /// taking that to the power of `c`
 pub proof fn lemma_pow_multiplies_auto()
     ensures
-        forall|b: nat, c: nat|
-            0 <= #[trigger]
-            (b * c),
+        forall|b: nat, c: nat| 0 <= #[trigger] (b * c),
         forall|a: int, b: nat, c: nat| #[trigger] pow(pow(a, b), c) == pow(a, b * c),
 {
     assert forall|a: int, b: nat, c: nat| #[trigger] pow(pow(a, b), c) == pow(a, b * c) by {
@@ -411,8 +400,7 @@ pub proof fn lemma_pow_distributes_auto()
         forall|x: int, y: nat, z: nat| #[trigger] pow(x * y, z) == pow(x, z) * pow(y as int, z),
 {
     // reveal pow();
-    assert forall|x: int, y: nat, z: nat|
-        #[trigger]
+    assert forall|x: int, y: nat, z: nat| #[trigger]
         pow(x * y, z) == pow(x, z) * pow(y as int, z) by {
         lemma_pow_distributes(x, y as int, z);
     }
@@ -423,22 +411,13 @@ pub proof fn lemma_pow_auto()
     ensures
         forall|x: int| pow(x, 0) == 1,
         forall|x: int| #[trigger] pow(x, 1) == x,
-        forall|x: int, y: int|
-            y == 0 ==> #[trigger]
-            pow(x, y as nat) == 1,
-        forall|x: int, y: int|
-            y == 1 ==> #[trigger]
-            pow(x, y as nat) == x,
-        forall|x: int, y: int|
-            0 < x && 0 < y ==> x <= #[trigger]
-            (x * y as nat),
-        forall|x: int, y: int|
-            0 < x && 1 < y ==> x < #[trigger]
-            (x * y as nat),
+        forall|x: int, y: int| y == 0 ==> #[trigger] pow(x, y as nat) == 1,
+        forall|x: int, y: int| y == 1 ==> #[trigger] pow(x, y as nat) == x,
+        forall|x: int, y: int| 0 < x && 0 < y ==> x <= #[trigger] (x * y as nat),
+        forall|x: int, y: int| 0 < x && 1 < y ==> x < #[trigger] (x * y as nat),
         forall|x: int, y: nat, z: nat| #[trigger] pow(x, y + z) == pow(x, y) * pow(x, z),
         forall|x: int, y: nat, z: nat|
-            y >= z ==> #[trigger]
-            pow(x, (y - z) as nat) * pow(x, z) == pow(x, y),
+            y >= z ==> #[trigger] pow(x, (y - z) as nat) * pow(x, z) == pow(x, y),
         forall|x: int, y: nat, z: nat| #[trigger] pow(x * y, z) == pow(x, z) * pow(y as int, z),
 {
     reveal(pow);
@@ -464,9 +443,7 @@ pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
         pow(b as int, e1) < pow(b as int, e2),
 {
     let f = |e: int| 0 < e ==> pow(b as int, e1) < pow(b as int, (e1 + e) as nat);
-    assert forall|i: int|
-        (#[trigger]
-        is_le(0, i) && f(i)) implies f(i + 1) by {
+    assert forall|i: int| (#[trigger] is_le(0, i) && f(i)) implies f(i + 1) by {
         calc! {(<=)
         pow(b as int, (e1 + i) as nat);
         (<=) {
@@ -500,14 +477,11 @@ pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
 pub proof fn lemma_pow_strictly_increases_auto()
     ensures
         forall|b: int, e1: nat, e2: nat|
-            1 < b && e1 < e2 ==> #[trigger]
-            pow(b, e1) < #[trigger]
-            pow(b, e2),
+            1 < b && e1 < e2 ==> #[trigger] pow(b, e1) < #[trigger] pow(b, e2),
 {
     reveal(pow);
-    assert forall|b: int, e1: nat, e2: nat| 1 < b && e1 < e2 implies #[trigger]
-    pow(b, e1) < #[trigger]
-    pow(b, e2) by {
+    assert forall|b: int, e1: nat, e2: nat| 1 < b && e1 < e2 implies #[trigger] pow(b, e1)
+        < #[trigger] pow(b, e2) by {
         lemma_pow_strictly_increases(b as nat, e1, e2);
     }
 }
@@ -537,14 +511,11 @@ pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
 pub proof fn lemma_pow_increases_auto()
     ensures
         forall|b: int, e1: nat, e2: nat|
-            b > 0 && e1 <= e2 ==> #[trigger]
-            pow(b, e1) <= #[trigger]
-            pow(b, e2),
+            b > 0 && e1 <= e2 ==> #[trigger] pow(b, e1) <= #[trigger] pow(b, e2),
 {
     reveal(pow);
-    assert forall|b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 implies #[trigger]
-    pow(b, e1) <= #[trigger]
-    pow(b, e2) by {
+    assert forall|b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 implies #[trigger] pow(b, e1)
+        <= #[trigger] pow(b, e2) by {
         lemma_pow_increases(b as nat, e1, e2);
     }
 }
@@ -637,17 +608,16 @@ pub proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
 /// and `y * z >= 0` and `b > 0`, we know `(b^(xy))^z = (b^x)^(yz)`
 pub proof fn lemma_pull_out_pows_auto()
     ensures
-        forall|y: nat, z: nat|
-            0 <= #[trigger]
-            (z * y) && 0 <= y * z,
+        forall|y: nat, z: nat| 0 <= #[trigger] (z * y) && 0 <= y * z,
         forall|b: nat, x: nat, y: nat, z: nat|
-            b > 0 ==> #[trigger]
-            pow(pow(b as int, x * y), z) == pow(pow(b as int, x), y * z),
+            b > 0 ==> #[trigger] pow(pow(b as int, x * y), z) == pow(pow(b as int, x), y * z),
 {
     // reveal(pow);
     lemma_mul_nonnegative_auto();
-    assert forall|b: nat, x: nat, y: nat, z: nat| b > 0 implies #[trigger]
-    pow(pow(b as int, x * y), z) == pow(pow(b as int, x), y * z) by {
+    assert forall|b: nat, x: nat, y: nat, z: nat| b > 0 implies #[trigger] pow(
+        pow(b as int, x * y),
+        z,
+    ) == pow(pow(b as int, x), y * z) by {
         lemma_pull_out_pows(b, x, y, z);
     }
 }
@@ -688,16 +658,14 @@ pub proof fn lemma_pow_division_inequality_auto()
     ensures
         forall|b: int, e2: nat| b > 0 && e2 <= e2 ==> pow(b, e2) > 0,
         forall|x: nat, b: int, e1: nat, e2: nat|
-            b > 0 && e2 <= e1 && x < pow(b, e1) ==> #[trigger]
-            (x as int / pow(b, e2)) < #[trigger]
-            pow(b, (sub1(e1 as int, e2 as int)) as nat),
+            b > 0 && e2 <= e1 && x < pow(b, e1) ==> #[trigger] (x as int / pow(b, e2))
+                < #[trigger] pow(b, (sub1(e1 as int, e2 as int)) as nat),
 {
     reveal(pow);
     lemma_pow_positive_auto();
     assert forall|x: nat, b: int, e1: nat, e2: nat|
-        b > 0 && e2 <= e1 && x < pow(b, e1) implies #[trigger]
-    (x as int / pow(b, e2)) < #[trigger]
-    pow(b, (sub1(e1 as int, e2 as int)) as nat) by {
+        b > 0 && e2 <= e1 && x < pow(b, e1) implies #[trigger] (x as int / pow(b, e2))
+        < #[trigger] pow(b, (sub1(e1 as int, e2 as int)) as nat) by {
         lemma_pow_division_inequality(x, b as nat, e1, e2);
     };
 }
@@ -739,12 +707,10 @@ pub proof fn lemma_pow_mod(b: nat, e: nat)
 /// Proof that for any `b` and `e`, we know `pow(b, e)` modulo `b` is 0
 pub proof fn lemma_pow_mod_auto()
     ensures
-        forall|b: nat, e: nat|
-            b > 0 && e > 0 ==> #[trigger]
-            pow(b as int, e) % b as int == 0,
+        forall|b: nat, e: nat| b > 0 && e > 0 ==> #[trigger] pow(b as int, e) % b as int == 0,
 {
-    assert forall|b: nat, e: nat| b > 0 && e > 0 implies #[trigger]
-    pow(b as int, e) % b as int == 0 by {
+    assert forall|b: nat, e: nat| b > 0 && e > 0 implies #[trigger] pow(b as int, e) % b as int
+        == 0 by {
         lemma_pow_mod(b, e);
     }
 }
@@ -782,12 +748,10 @@ pub proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
 /// the modulo again
 pub proof fn lemma_pow_mod_noop_auto()
     ensures
-        forall|b: int, e: nat, m: int|
-            m > 0 ==> #[trigger]
-            pow(b % m, e) % m == pow(b, e) % m,
+        forall|b: int, e: nat, m: int| m > 0 ==> #[trigger] pow(b % m, e) % m == pow(b, e) % m,
 {
-    assert forall|b: int, e: nat, m: int| m > 0 implies #[trigger]
-    pow(b % m, e) % m == pow(b, e) % m by {
+    assert forall|b: int, e: nat, m: int| m > 0 implies #[trigger] pow(b % m, e) % m == pow(b, e)
+        % m by {
         lemma_pow_mod_noop(b, e, m);
     }
 }

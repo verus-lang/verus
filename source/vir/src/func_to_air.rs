@@ -630,7 +630,7 @@ pub fn func_decl_to_air(
     let mut ens_params = (*post_params).clone();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
-        if function.x.has_return() {
+        if function.x.has_return_name() {
             let ParamX { name, typ, .. } = &function.x.ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             ens_params.push(param_to_par(&function.x.ret, false));
@@ -908,7 +908,7 @@ pub fn func_def_to_air(
     state.fun_ssts = fun_ssts;
 
     let mut ens_params = (*function.x.params).clone();
-    let dest = if function.x.has_return() {
+    let dest = if function.x.has_return_name() {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
         state.declare_new_var(name, typ, false, false);

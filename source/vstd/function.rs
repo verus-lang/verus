@@ -7,22 +7,24 @@ use builtin_macros::*;
 
 verus! {
 
-  /// General properties of spec functions.
-  ///
-  /// For now, this just contains an axiom of function extensionality for
-  /// spec_fn.
-
-  /// DEPRECATED: use f1 =~= f2 or f1 =~~= f2 instead.
-  /// Axiom of function extensionality: two functions are equal if they are
-  /// equal on all inputs.
-  #[verifier(external_body)]
-  #[deprecated = "use f1 =~= f2 or f1 =~~= f2 instead"]
-  pub proof fn fun_ext<A, B>(f1: spec_fn(A) -> B, f2: spec_fn(A) -> B)
-    requires forall |x: A| #![trigger f1(x)] f1(x) == f2(x)
-    ensures f1 == f2
-  {}
+/// General properties of spec functions.
+///
+/// For now, this just contains an axiom of function extensionality for
+/// spec_fn.
+/// DEPRECATED: use f1 =~= f2 or f1 =~~= f2 instead.
+/// Axiom of function extensionality: two functions are equal if they are
+/// equal on all inputs.
+#[verifier(external_body)]
+#[deprecated = "use f1 =~= f2 or f1 =~~= f2 instead"]
+pub proof fn fun_ext<A, B>(f1: spec_fn(A) -> B, f2: spec_fn(A) -> B)
+    requires
+        forall|x: A| #![trigger f1(x)] f1(x) == f2(x),
+    ensures
+        f1 == f2,
+{
 }
 
+} // verus!
 /// A macro to conveniently generate similar functional extensionality axioms for functions that
 /// take `n` arguments.
 #[doc(hidden)]

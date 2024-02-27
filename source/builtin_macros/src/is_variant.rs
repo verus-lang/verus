@@ -1,14 +1,61 @@
+use std::sync::atomic::AtomicBool;
+
 use quote::quote;
+#[cfg(verus_keep_ghost)]
+use syn::spanned::Spanned;
+
+#[cfg(verus_keep_ghost)]
+use crate::cfg_erase;
 
 pub fn attribute_is_variant(
+    attr: proc_macro2::TokenStream,
+    s: synstructure::Structure,
+) -> proc_macro2::TokenStream {
+    attribute_is_variant_internal(attr, s, false)
+}
+
+pub fn attribute_is_variant_no_deprecation_warning(
+    attr: proc_macro2::TokenStream,
+    s: synstructure::Structure,
+) -> proc_macro2::TokenStream {
+    attribute_is_variant_internal(attr, s, true)
+}
+
+static IS_VARIANT_DEPRECATION_EMITTED: AtomicBool = AtomicBool::new(false);
+
+fn attribute_is_variant_internal(
     _attr: proc_macro2::TokenStream,
     s: synstructure::Structure,
+    #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))] no_deprecation_warning: bool,
 ) -> proc_macro2::TokenStream {
     let ast = &s.ast();
     match ast.data {
         syn::Data::Enum(_) => {}
-        _ => return quote! { compile_error!("#[is_variant] is only allowed on enums"); },
+        _ => {
+            return quote! { compile_error!("#[is_variant] is only allowed on enums\nthis message will only be emitted for the first invocation encountered"); };
+        }
     }
+
+    if IS_VARIANT_DEPRECATION_EMITTED
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_ok()
+    {
+        #[cfg(verus_keep_ghost)]
+        if !cfg_erase().erase() && !no_deprecation_warning {
+            proc_macro::Diagnostic::spanned(
+                ast.span().unwrap(),
+                proc_macro::Level::Warning,
+                "`#[is_variant]` is deprecated - use `->` or `matches` instead",
+            )
+            .emit();
+        }
+    }
+
     let struct_name = &s.ast().ident;
     let vis = &ast.vis;
     let publish = if matches!(vis, syn::Visibility::Inherited) {
@@ -95,6 +142,7 @@ pub fn attribute_is_variant(
 
     let generics = &ast.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     quote! {
         #ast
 

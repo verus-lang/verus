@@ -487,6 +487,11 @@ impl FunctionX {
         }
     }
 
+    // even if the return type is unit, it can still be named; if so, our AIR code must declare it
+    pub fn has_return_name(&self) -> bool {
+        self.has_return() || *self.ret.x.name != crate::def::RETURN_VALUE
+    }
+
     pub fn is_main(&self) -> bool {
         **self.name.path.segments.last().expect("last segment") == "main"
     }

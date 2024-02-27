@@ -1445,7 +1445,7 @@ fn check_function(
     }
 
     let mut ens_typing = fun_typing.push_var_scope();
-    if function.x.has_return() {
+    if function.x.has_return_name() {
         ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode);
     }
     for expr in function.x.ensure.iter() {

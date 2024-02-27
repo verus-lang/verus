@@ -1,22 +1,21 @@
 #![allow(unused_imports)]
 
 use core::sync::atomic::{
-    AtomicBool,
-    AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize,
-    AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize,
-    Ordering};
+    AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicU16, AtomicU32,
+    AtomicU64, AtomicU8, AtomicUsize, Ordering,
+};
 
+use crate::modes::*;
+use crate::pervasive::*;
 use builtin::*;
 use builtin_macros::*;
-use crate::pervasive::*;
-use crate::modes::*;
 
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         // TODO we could support `std::intrinsics::wrapping_add`
         // and use that instead.
 
-        verus!{
+        verus! {
 
         pub open spec fn $wrap_add(a: int, b: int) -> int {
             if a + b > (<$value_ty>::MAX as int) {
@@ -42,7 +41,7 @@ macro_rules! make_unsigned_integer_atomic {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
-    }
+    };
 }
 
 macro_rules! make_signed_integer_atomic {
@@ -77,9 +76,8 @@ macro_rules! make_signed_integer_atomic {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
-    }
+    };
 }
-
 
 macro_rules! make_bool_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
@@ -89,12 +87,12 @@ macro_rules! make_bool_atomic {
             atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
             atomic_bool_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
         }
-    }
+    };
 }
 
 macro_rules! atomic_types {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
-        verus!{
+        verus! {
 
         #[verifier::external_body] /* vattr */
         pub struct $at_ident {
@@ -125,7 +123,7 @@ macro_rules! atomic_types {
         }
 
         }
-    }
+    };
 }
 
 macro_rules! atomic_common_methods {
@@ -475,18 +473,104 @@ macro_rules! atomic_bool_methods {
     }
 }
 
-make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
+make_bool_atomic!(
+    PAtomicBool,
+    PermissionBool,
+    PermissionDataBool,
+    AtomicBool,
+    bool
+);
 
-make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, PermissionDataU8, AtomicU8, u8, wrapping_add_u8, wrapping_sub_u8);
-make_unsigned_integer_atomic!(PAtomicU16, PermissionU16, PermissionDataU16, AtomicU16, u16, wrapping_add_u16, wrapping_sub_u16);
-make_unsigned_integer_atomic!(PAtomicU32, PermissionU32, PermissionDataU32, AtomicU32, u32, wrapping_add_u32, wrapping_sub_u32);
-make_unsigned_integer_atomic!(PAtomicU64, PermissionU64, PermissionDataU64, AtomicU64, u64, wrapping_add_u64, wrapping_sub_u64);
-make_unsigned_integer_atomic!(PAtomicUsize, PermissionUsize, PermissionDataUsize, AtomicUsize, usize, wrapping_add_usize, wrapping_sub_usize);
+make_unsigned_integer_atomic!(
+    PAtomicU8,
+    PermissionU8,
+    PermissionDataU8,
+    AtomicU8,
+    u8,
+    wrapping_add_u8,
+    wrapping_sub_u8
+);
+make_unsigned_integer_atomic!(
+    PAtomicU16,
+    PermissionU16,
+    PermissionDataU16,
+    AtomicU16,
+    u16,
+    wrapping_add_u16,
+    wrapping_sub_u16
+);
+make_unsigned_integer_atomic!(
+    PAtomicU32,
+    PermissionU32,
+    PermissionDataU32,
+    AtomicU32,
+    u32,
+    wrapping_add_u32,
+    wrapping_sub_u32
+);
+make_unsigned_integer_atomic!(
+    PAtomicU64,
+    PermissionU64,
+    PermissionDataU64,
+    AtomicU64,
+    u64,
+    wrapping_add_u64,
+    wrapping_sub_u64
+);
+make_unsigned_integer_atomic!(
+    PAtomicUsize,
+    PermissionUsize,
+    PermissionDataUsize,
+    AtomicUsize,
+    usize,
+    wrapping_add_usize,
+    wrapping_sub_usize
+);
 
-make_signed_integer_atomic!(PAtomicI8, PermissionI8, PermissionDataI8, AtomicI8, i8, wrapping_add_i8, wrapping_sub_i8);
-make_signed_integer_atomic!(PAtomicI16, PermissionI16, PermissionDataI16, AtomicI16, i16, wrapping_add_i16, wrapping_sub_i16);
-make_signed_integer_atomic!(PAtomicI32, PermissionI32, PermissionDataI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32);
-make_signed_integer_atomic!(PAtomicI64, PermissionI64, PermissionDataI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64);
-make_signed_integer_atomic!(PAtomicIsize, PermissionIsize, PermissionDataIsize, AtomicIsize, isize, wrapping_add_isize, wrapping_sub_isize);
+make_signed_integer_atomic!(
+    PAtomicI8,
+    PermissionI8,
+    PermissionDataI8,
+    AtomicI8,
+    i8,
+    wrapping_add_i8,
+    wrapping_sub_i8
+);
+make_signed_integer_atomic!(
+    PAtomicI16,
+    PermissionI16,
+    PermissionDataI16,
+    AtomicI16,
+    i16,
+    wrapping_add_i16,
+    wrapping_sub_i16
+);
+make_signed_integer_atomic!(
+    PAtomicI32,
+    PermissionI32,
+    PermissionDataI32,
+    AtomicI32,
+    i32,
+    wrapping_add_i32,
+    wrapping_sub_i32
+);
+make_signed_integer_atomic!(
+    PAtomicI64,
+    PermissionI64,
+    PermissionDataI64,
+    AtomicI64,
+    i64,
+    wrapping_add_i64,
+    wrapping_sub_i64
+);
+make_signed_integer_atomic!(
+    PAtomicIsize,
+    PermissionIsize,
+    PermissionDataIsize,
+    AtomicIsize,
+    isize,
+    wrapping_add_isize,
+    wrapping_sub_isize
+);
 
 // TODO Support AtomicPtr

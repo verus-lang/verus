@@ -9,6 +9,7 @@
 
 use synstructure::{decl_attribute, decl_derive};
 mod atomic_ghost;
+mod enum_synthesize;
 mod fndecl;
 mod is_variant;
 mod rustdoc;
@@ -20,6 +21,15 @@ mod topological_sort;
 decl_derive!([Structural] => structural::derive_structural);
 
 decl_attribute!([is_variant] => is_variant::attribute_is_variant);
+decl_attribute!([is_variant_no_deprecation_warning] => is_variant::attribute_is_variant_no_deprecation_warning);
+
+#[proc_macro_attribute]
+pub fn verus_enum_synthesize(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    enum_synthesize::attribute_verus_enum_synthesize(&cfg_erase(), attr, input)
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EraseGhost {
