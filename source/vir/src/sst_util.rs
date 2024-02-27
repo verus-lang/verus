@@ -76,7 +76,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     f_typ: FT,
 ) -> VarBinders<A> {
     substs.push_scope(false);
-    free_vars.push_scope(false);
+    free_vars.push_scope(true);
     let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
@@ -223,7 +223,7 @@ pub(crate) fn subst_exp(
     let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
-    free_vars.push_scope(false);
+    free_vars.push_scope(true);
     for (y, _) in free_vars_exp(exp) {
         let _ = free_vars.insert(y.clone(), ());
     }
