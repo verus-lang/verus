@@ -415,7 +415,7 @@ impl ExpandErrorsDriver {
                                     add_indent(&mut v, &group_bars, line.indent);
                                 }
                                 v.push("let ".into());
-                                v.push((*binder.name).clone());
+                                v.push((*binder.name.0).clone());
                                 v.push(" = ".into());
                                 v.push(binder.a.x.to_user_string(&ctx.global));
                                 v.push(";".into());
@@ -425,13 +425,14 @@ impl ExpandErrorsDriver {
                         }
                         Introduction::Forall(binders) => {
                             let mut v = vec![];
-                            v.push("forall ".into());
+                            v.push("forall |".into());
                             for (i, binder) in binders.iter().enumerate() {
                                 if i != 0 {
                                     v.push(", ".into());
                                 }
-                                v.push((*binder.name).clone());
+                                v.push((*binder.name.0).clone());
                             }
+                            v.push("|".into());
                             vec![v.join("")]
                         }
                         Introduction::Hypothesis(exp) => {
