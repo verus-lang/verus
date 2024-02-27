@@ -79,7 +79,7 @@ pub(crate) struct State<'a> {
     containing_closure: Option<ClosureState>,
     // Statics that are referenced (not counting statics in loops)
     pub statics: IndexSet<Fun>,
-    pub assert_id_counter: usize,
+    pub assert_id_counter: u64,
 }
 
 #[derive(Clone)]
@@ -465,8 +465,8 @@ impl<'a> State<'a> {
         }
     }
 
-    pub fn next_assert_id(&mut self) -> Option<Ident> {
-        let aid = format!("{:}", self.assert_id_counter);
+    pub fn next_assert_id(&mut self) -> Option<air::ast::AssertId> {
+        let aid = vec![self.assert_id_counter];
         self.assert_id_counter += 1;
         Some(Arc::new(aid))
     }

@@ -320,7 +320,9 @@ struct State<'a> {
 }
 
 pub fn cons_id(assert_id: &AssertId, idx: u64) -> AssertId {
-    Arc::new(format!("{:}_{:}", assert_id, idx))
+    let mut aid = (**assert_id).clone();
+    aid.push(idx);
+    Arc::new(aid)
 }
 
 impl<'a> State<'a> {
