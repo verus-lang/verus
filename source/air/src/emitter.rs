@@ -1,4 +1,4 @@
-use crate::ast::{Decl, Expr, Query};
+use crate::ast::{Decl, Expr, Ident, Query};
 use crate::printer::{macro_push_node, NodeWriter, Printer};
 use crate::{node, nodes};
 use sise::Node;
@@ -137,9 +137,14 @@ impl Emitter {
         }
     }
 
-    pub fn log_assert(&mut self, expr: &Expr) {
+    pub fn log_assert(&mut self, named: &Option<Ident>, expr: &Expr) {
         if !self.is_none() {
-            self.log_node(&nodes!(assert {self.printer.expr_to_node(expr)}));
+            self.log_node(&
+                if let Some(named) = named {
+                    nodes!(assert ({Node::Atom("!".to_string())} {self.printer.expr_to_node(expr)} {Node::Atom(":named".to_string())} {Node::Atom((**named).clone())}))
+                } else {
+                    nodes!(assert {self.printer.expr_to_node(expr)})
+                })
         }
     }
 

@@ -238,6 +238,7 @@ impl Context {
             self.set_z3_param_bool("smt.delay_units", true, true);
             self.set_z3_param_u32("smt.arith.solver", 2, true);
             self.set_z3_param_bool("smt.arith.nl", false, true);
+            self.set_z3_param_bool("produce-unsat-cores", false, true);
             self.set_z3_param_bool("pi.enabled", false, true);
             self.set_z3_param_bool("rewriter.sort_disjunctions", false, true);
         } else if option == "disable_incremental_solving" && value {
