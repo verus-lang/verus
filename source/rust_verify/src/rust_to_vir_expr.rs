@@ -2021,6 +2021,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let mode = get_var_mode(bctx.mode, attrs);
+    let infer_mode = parse_attrs_opt(attrs, None).contains(&Attr::InferMode);
     let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::REGULAR)).transpose()?;
 
     if parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
@@ -2050,6 +2051,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     }
 
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
+    let mode = if infer_mode { None } else { Some(mode) };
     Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init })])
 }
 

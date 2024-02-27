@@ -1455,3 +1455,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use `old` in exec-code")
 }
+
+test_verify_one_file! {
+    #[test] match_tracked_ghost_field verus_code! {
+        struct Y;
+        struct Z;
+
+        tracked struct X {
+            tracked y: Y,
+            ghost z: Z
+        }
+
+        fn test(Tracked(x): Tracked<X>) {
+            let tracked X { y: yy, z: zz } = x;
+            assert(zz == zz);
+        }
+    } => Ok(())
+}

@@ -527,7 +527,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 span,
                 vir::ast::StmtX::Decl {
                     pattern: new_binding_pat,
-                    mode: mode,
+                    mode: Some(mode),
                     init: Some(new_init_expr),
                 },
             );

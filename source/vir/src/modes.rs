@@ -83,10 +83,18 @@ struct Record {
     infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
 }
 
+enum VarMode {
+    Infer(Span),
+    Mode(Mode),
+}
+
 // Temporary state pushed and popped during mode checking
 struct State {
     // for each variable: (is_mutable, mode)
-    pub(crate) vars: ScopeMap<Ident, (bool, Mode)>,
+    // mode = None is used for short-term internal inference -- we allow "let x1 ... x1 = x2;"
+    // where x2 retroactively determines the mode of x1, where no uses if x1
+    // are allowed between "let x1" and "x1 = x2;"
+    pub(crate) vars: ScopeMap<Ident, VarMode>,
     pub(crate) in_forall_stmt: bool,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
@@ -205,11 +213,30 @@ mod typing {
             assert_eq!(self.internal_state.vars.num_scopes(), 0);
         }
 
-        pub(super) fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
+        pub(super) fn to_be_inferred(&self, x: &Ident) -> Option<Span> {
+            if let VarMode::Infer(span) =
+                self.internal_state.vars.get(x).expect("internal error: missing mode")
+            {
+                Some(span.clone())
+            } else {
+                None
+            }
+        }
+
+        pub(super) fn insert_var_mode(&mut self, x: &Ident, mode: VarMode) {
             self.internal_state
                 .vars
-                .insert(x.clone(), (mutable, mode))
+                .insert(x.clone(), mode)
                 .expect("internal error: Typing insert");
+        }
+
+        pub(super) fn insert(&mut self, x: &Ident, mode: Mode) {
+            self.insert_var_mode(x, VarMode::Mode(mode))
+        }
+
+        pub(super) fn infer_as(&mut self, x: &Ident, mode: Mode) {
+            assert!(self.to_be_inferred(x).is_some());
+            self.internal_state.vars.replace(x.clone(), VarMode::Mode(mode)).expect("infer_as");
         }
 
         pub(super) fn update_atomic_insts<'a>(&'a mut self) -> &'a mut Option<AtomicInstCollector> {
@@ -228,8 +255,12 @@ mod typing {
 use typing::Typing;
 
 impl State {
-    fn get(&self, x: &Ident) -> (bool, Mode) {
-        *self.vars.get(x).expect("internal error: missing mode")
+    fn get(&self, x: &Ident, span: &Span) -> Result<Mode, VirErr> {
+        if let VarMode::Mode(mode) = self.vars.get(x).expect("internal error: missing mode") {
+            Ok(*mode)
+        } else {
+            return Err(error(span, "uninitialized infer-mode variable"));
+        }
     }
 }
 
@@ -325,8 +356,8 @@ fn add_pattern(
     let mut decls = vec![];
     add_pattern_rec(ctxt, record, typing, &mut decls, mode, pattern, false)?;
     for decl in decls {
-        let PatternBoundDecl { span, name, mutable, mode } = decl;
-        typing.insert(&span, &name, mutable, mode);
+        let PatternBoundDecl { span: _, name, mode } = decl;
+        typing.insert(&name, mode);
     }
     Ok(())
 }
@@ -334,7 +365,6 @@ fn add_pattern(
 struct PatternBoundDecl {
     span: Span,
     name: Ident,
-    mutable: bool,
     mode: Mode,
 }
 
@@ -357,13 +387,8 @@ fn add_pattern_rec(
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var { name: x, mutable } => {
-            decls.push(PatternBoundDecl {
-                span: pattern.span.clone(),
-                name: x.clone(),
-                mutable: *mutable,
-                mode,
-            });
+        PatternX::Var { name: x, mutable: _ } => {
+            decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
         PatternX::Tuple(patterns) => {
@@ -407,7 +432,6 @@ fn add_pattern_rec(
                     .iter()
                     .find(|d| d.name == d1.name)
                     .expect("both sides of 'or' pattern should bind the same variables");
-                assert!(d1.mutable == d2.mutable);
 
                 if d1.mode != d2.mode {
                     let e = error_bare(format!(
@@ -438,7 +462,7 @@ fn get_var_loc_mode(
 ) -> Result<Mode, VirErr> {
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
-            let (_, x_mode) = typing.get(x);
+            let x_mode = typing.get(x, &expr.span)?;
 
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
@@ -587,7 +611,7 @@ fn check_expr_handle_mut_arg(
                 return Ok((Mode::Spec, None));
             }
 
-            let x_mode = typing.get(x).1;
+            let x_mode = typing.get(x, &expr.span)?;
 
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
@@ -900,7 +924,7 @@ fn check_expr_handle_mut_arg(
             }
             let mut typing = typing.push_var_scope();
             for binder in binders.iter() {
-                typing.insert(&expr.span, &binder.name, false, Mode::Spec);
+                typing.insert(&binder.name, Mode::Spec);
             }
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e1, Mode::Spec)?;
             Ok(Mode::Spec)
@@ -911,7 +935,7 @@ fn check_expr_handle_mut_arg(
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
-                typing.insert(&expr.span, &binder.name, false, Mode::Spec);
+                typing.insert(&binder.name, Mode::Spec);
             }
             let mut typing = typing.push_atomic_insts(None);
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, body, Mode::Spec)?;
@@ -929,7 +953,7 @@ fn check_expr_handle_mut_arg(
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
-                typing.insert(&expr.span, &binder.name, false, Mode::Exec);
+                typing.insert(&binder.name, Mode::Exec);
             }
             let mut typing = typing.push_atomic_insts(None);
             let mut typing = typing.push_ret_mode(Some(Mode::Exec));
@@ -940,7 +964,7 @@ fn check_expr_handle_mut_arg(
             }
 
             let mut ens_typing = ghost_typing.push_var_scope();
-            ens_typing.insert(&expr.span, &ret.name, false, Mode::Exec);
+            ens_typing.insert(&ret.name, Mode::Exec);
             for ens in ensures.iter() {
                 check_expr_has_mode(ctxt, record, &mut ens_typing, Mode::Spec, ens, Mode::Spec)?;
             }
@@ -971,7 +995,7 @@ fn check_expr_handle_mut_arg(
             }
             let mut typing = typing.push_var_scope();
             for binder in params.iter() {
-                typing.insert(&expr.span, &binder.name, false, Mode::Spec);
+                typing.insert(&binder.name, Mode::Spec);
             }
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, cond, Mode::Spec)?;
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, body, Mode::Spec)?;
@@ -992,6 +1016,15 @@ fn check_expr_handle_mut_arg(
                     &expr.span,
                     "assignment is not allowed in 'assert ... by' statement",
                 ));
+            }
+            if let (ExprX::VarLoc(xl), ExprX::Var(xr)) = (&lhs.x, &rhs.x) {
+                // Special case mode inference just for our encoding of "let tracked pat = ..."
+                // in Rust as "let xl; ... { let pat ... xl = xr; }".
+                if let Some(span) = typing.to_be_inferred(xl) {
+                    let mode = typing.get(xr, &rhs.span)?;
+                    typing.infer_as(xl, mode);
+                    record.erasure_modes.var_modes.push((span, mode));
+                }
             }
             let x_mode =
                 get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs, *init_not_mut)?;
@@ -1036,7 +1069,7 @@ fn check_expr_handle_mut_arg(
             let mut typing = typing.push_in_forall_stmt(true);
             let mut typing = typing.push_var_scope();
             for var in vars.iter() {
-                typing.insert(&expr.span, &var.name, false, Mode::Spec);
+                typing.insert(&var.name, Mode::Spec);
             }
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, require, Mode::Spec)?;
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, ensure, Mode::Spec)?;
@@ -1273,7 +1306,7 @@ fn check_expr_handle_mut_arg(
                 return Err(error(&inv.span, "Invariant must be Proof mode."));
             }
             let mut typing = typing.push_var_scope();
-            typing.insert(&expr.span, &binder.name, /* mutable */ true, Mode::Proof);
+            typing.insert(&binder.name, Mode::Proof);
 
             if *atomicity == InvAtomicity::NonAtomic
                 || typing.atomic_insts.is_some()
@@ -1314,7 +1347,18 @@ fn check_stmt(
             let _ = check_expr(ctxt, record, typing, outer_mode, e)?;
             Ok(())
         }
-        StmtX::Decl { pattern, mode, init } => {
+        StmtX::Decl { pattern, mode: None, init } => {
+            // Special case mode inference just for our encoding of "let tracked pat = ..."
+            // in Rust as "let xl; ... { let pat ... xl = xr; }".
+            match (&pattern.x, init) {
+                (PatternX::Var { name: x, mutable: _ }, None) => {
+                    typing.insert_var_mode(x, VarMode::Infer(pattern.span.clone()));
+                }
+                _ => panic!("internal error: unexpected mode = None"),
+            }
+            Ok(())
+        }
+        StmtX::Decl { pattern, mode: Some(mode), init } => {
             let mode = if typing.block_ghostness != Ghost::Exec && *mode == Mode::Exec {
                 Mode::Spec
             } else {
@@ -1392,7 +1436,7 @@ fn check_function(
         }
         let inner_param_mode =
             if let Some((mode, _)) = param.x.unwrapped_info { mode } else { param.x.mode };
-        fun_typing.insert(&function.span, &param.x.name, param.x.is_mut, inner_param_mode);
+        fun_typing.insert(&param.x.name, inner_param_mode);
     }
 
     for expr in function.x.require.iter() {
@@ -1402,7 +1446,7 @@ fn check_function(
 
     let mut ens_typing = fun_typing.push_var_scope();
     if function.x.has_return_name() {
-        ens_typing.insert(&function.span, &function.x.ret.x.name, false, function.x.ret.x.mode);
+        ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode);
     }
     for expr in function.x.ensure.iter() {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
