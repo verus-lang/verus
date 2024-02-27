@@ -244,8 +244,7 @@ fn pattern_to_exprs_rec(
 
 fn rename_var(state: &State, scope_map: &VisitorScopeMap, x: &VarIdent) -> VarIdent {
     if let Some(rename) = state.rename_vars.get(x) {
-        let (scope, _) = scope_map.scope_and_index_of_key(x).expect("rename_var scope");
-        if scope == 0 {
+        if scope_map[x].is_outer_param_or_ret {
             return rename.clone();
         }
     }
@@ -937,8 +936,7 @@ fn simplify_function(
     for param in functionx.params.iter() {
         let prev = param.x.name.clone();
         let name = if rename_ok {
-            let dis = crate::ast::VarIdentDisambiguate::VirParam;
-            let name = VarIdent(prev.0.clone(), dis);
+            let name = VarIdent(prev.0.clone(), crate::ast::VarIdentDisambiguate::VirParam);
             state.rename_vars.insert(prev, name.clone()).map(|_| panic!("rename params"));
             name
         } else {
@@ -946,6 +944,14 @@ fn simplify_function(
         };
         param_names.push(name);
     }
+    let ret_name = if rename_ok && !param_ids.contains(&functionx.ret.x.name.0) {
+        let prev = functionx.ret.x.name.clone();
+        let name = VarIdent(prev.0.clone(), crate::ast::VarIdentDisambiguate::VirParam);
+        state.rename_vars.insert(prev, name.clone()).map(|_| panic!("rename ret"));
+        name
+    } else {
+        functionx.ret.x.name.clone()
+    };
 
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
     if functionx.typ_params.len() == 0
@@ -987,6 +993,8 @@ fn simplify_function(
             .map(|(p, x)| p.new_x(crate::ast::ParamX { name: x.clone(), ..p.x.clone() }))
             .collect(),
     );
+    functionx.ret =
+        functionx.ret.new_x(crate::ast::ParamX { name: ret_name, ..functionx.ret.x.clone() });
     Ok(Spanned::new(function.span.clone(), functionx))
 }
 
