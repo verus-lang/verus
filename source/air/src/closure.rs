@@ -20,6 +20,7 @@ pub(crate) enum App {
     IfElse,
     Let,
     Quant(Quant, Typs, Arc<Vec<usize>>),
+    Trigger,
     LabeledAssertion,
 }
 
@@ -289,12 +290,14 @@ fn simplify_choose(
     terms.push(t_body);
     for trigger in triggers.iter() {
         let mut new_trigger: Vec<Expr> = Vec::new();
+        let mut trigger_terms: Vec<Term> = Vec::new();
         for e in trigger.iter() {
             let (typ, e, t) = simplify_expr(ctxt, state, e);
             let (e, t) = enclose_force_hole(state.closure_states.last_mut().unwrap(), typ, e, t);
-            terms.push(t);
+            trigger_terms.push(t);
             new_trigger.push(e);
         }
+        terms.push(Arc::new(TermX::App(App::Trigger, Arc::new(trigger_terms))));
         new_triggers.push(Arc::new(new_trigger));
     }
     let closure_state = state.closure_states.pop().unwrap();

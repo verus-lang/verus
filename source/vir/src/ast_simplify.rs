@@ -94,7 +94,7 @@ fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
     let name = temp.clone();
     let patternx = PatternX::Var { name, mutable: false };
     let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
-    let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+    let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
 }
@@ -131,7 +131,7 @@ fn pattern_to_exprs(
         let patternx = PatternX::Var { name, mutable };
         let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
         // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
-        let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+        let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
         decls.push(Spanned::new(expr.span.clone(), decl));
     }
 
@@ -695,7 +695,7 @@ fn exec_closure_spec_requires(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Mode::Spec, init: Some(tuple_field) };
+        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
         decls.push(Spanned::new(span.clone(), decl));
     }
 
@@ -755,7 +755,7 @@ fn exec_closure_spec_ensures(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Mode::Spec, init: Some(tuple_field) };
+        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
         decls.push(Spanned::new(span.clone(), decl));
     }
 

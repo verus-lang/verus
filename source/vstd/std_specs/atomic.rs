@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
+use crate::prelude::*;
 use builtin::*;
 use builtin_macros::*;
-use crate::prelude::*;
 
 use core::sync::atomic::*;
 
@@ -19,51 +19,91 @@ macro_rules! atomic_specs_common {
         pub struct ExAtomic($at);
 
         #[verifier::external_fn_specification]
-        pub fn ex_new(v: $ty) -> $at { <$at>::new(v) }
+        pub fn ex_new(v: $ty) -> $at {
+            <$at>::new(v)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_compare_exchange(atomic: &$at, current: $ty, new: $ty, success: Ordering, failure: Ordering) -> Result<$ty, $ty> { atomic.compare_exchange(current, new, success, failure) }
+        pub fn ex_compare_exchange(
+            atomic: &$at,
+            current: $ty,
+            new: $ty,
+            success: Ordering,
+            failure: Ordering,
+        ) -> Result<$ty, $ty> {
+            atomic.compare_exchange(current, new, success, failure)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_compare_exchange_weak(atomic: &$at, current: $ty, new: $ty, success: Ordering, failure: Ordering) -> Result<$ty, $ty> { atomic.compare_exchange_weak(current, new, success, failure) }
+        pub fn ex_compare_exchange_weak(
+            atomic: &$at,
+            current: $ty,
+            new: $ty,
+            success: Ordering,
+            failure: Ordering,
+        ) -> Result<$ty, $ty> {
+            atomic.compare_exchange_weak(current, new, success, failure)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_and(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_and(val, order) }
+        pub fn ex_fetch_and(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_and(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_nand(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_nand(val, order) }
+        pub fn ex_fetch_nand(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_nand(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_or(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_or(val, order) }
+        pub fn ex_fetch_or(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_or(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_xor(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_xor(val, order) }
+        pub fn ex_fetch_xor(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_xor(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_load(atomic: &$at, order: Ordering) -> $ty { atomic.load(order) }
+        pub fn ex_load(atomic: &$at, order: Ordering) -> $ty {
+            atomic.load(order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_store(atomic: &$at, val: $ty, order: Ordering) { atomic.store(val, order) }
+        pub fn ex_store(atomic: &$at, val: $ty, order: Ordering) {
+            atomic.store(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_swap(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.swap(val, order) }
-    }
+        pub fn ex_swap(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.swap(val, order)
+        }
+    };
 }
 
 macro_rules! atomic_specs_int_specific {
     ($at:ty, $ty:ty) => {
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_add(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_add(val, order) }
+        pub fn ex_fetch_add(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_add(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_sub(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_sub(val, order) }
+        pub fn ex_fetch_sub(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_sub(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_min(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_min(val, order) }
+        pub fn ex_fetch_min(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_min(val, order)
+        }
 
         #[verifier::external_fn_specification]
-        pub fn ex_fetch_max(atomic: &$at, val: $ty, order: Ordering) -> $ty { atomic.fetch_max(val, order) }
-    }
+        pub fn ex_fetch_max(atomic: &$at, val: $ty, order: Ordering) -> $ty {
+            atomic.fetch_max(val, order)
+        }
+    };
 }
 
 macro_rules! atomic_specs_int {
@@ -73,7 +113,7 @@ macro_rules! atomic_specs_int {
             atomic_specs_common!($at, $ty);
             atomic_specs_int_specific!($at, $ty);
         }
-    }
+    };
 }
 
 macro_rules! atomic_specs_bool {
@@ -82,7 +122,7 @@ macro_rules! atomic_specs_bool {
             use super::*;
             atomic_specs_common!($at, $ty);
         }
-    }
+    };
 }
 
 atomic_specs_int!(atomic_specs_u8, AtomicU8, u8);

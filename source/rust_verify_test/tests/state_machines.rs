@@ -17,7 +17,6 @@ const IMPORTS: &str = code_str! {
 
     verus!{
 
-    #[is_variant]
     pub ghost enum Foo {
         Bar(int),
         Qax(int),
@@ -314,7 +313,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = pre.t.get_Some_0();
+                    update v = pre.t->Some_0;
                 }
             }
         }}
@@ -365,7 +364,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = pre.t.get_Some_0();
+                    update v = pre.t->Some_0;
                 }
             }
         }}
@@ -2032,9 +2031,9 @@ test_verify_one_file! {
 
             #[inductive(tr)]
             pub fn is_inductive(pre: Self, post: Self) {
-                assert(pre.t.is_None());
-                assert(post.t.is_Some());
-                assert(post.t.get_Some_0() == 5);
+                assert(pre.t is None);
+                assert(post.t is Some);
+                assert(post.t->Some_0 == 5);
             }
         }}
     } => Err(e) => assert_one_fails(e)
@@ -2056,9 +2055,9 @@ test_verify_one_file! {
 
             #[inductive(tr)]
             pub fn is_inductive(pre: Self, post: Self) {
-                assert(pre.t.is_None());
-                assert(post.t.is_Some());
-                assert(post.t.get_Some_0() == 5);
+                assert(pre.t is None);
+                assert(post.t is Some);
+                assert(post.t->Some_0 == 5);
             }
         }}
     } => Err(e) => assert_one_fails(e)
@@ -2213,9 +2212,9 @@ test_verify_one_file! {
 
             #[inductive(tr)]
             pub fn is_inductive(pre: Self, post: Self) {
-                assert(pre.t.is_Some());
-                assert(pre.t.get_Some_0() == 5);
-                assert(post.t.is_None());
+                assert(pre.t is Some);
+                assert(pre.t->Some_0 == 5);
+                assert(post.t is None);
             }
         }}
     } => Err(e) => assert_one_fails(e)
@@ -2306,7 +2305,7 @@ test_verify_one_file! {
                     guard t >= Some(5) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.is_Some() && t.get_Some_0() == 5);
+                    assert(t.is_Some() && t->0 == 5);
                 }
             }
         }}
@@ -2346,7 +2345,7 @@ test_verify_one_file! {
                     guard t >= (Option::Some(5)) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.is_Some() && t.get_Some_0() == 5);
+                    assert(t.is_Some() && t->0 == 5);
                 }
             }
         }}
@@ -2438,7 +2437,7 @@ test_verify_one_file! {
             pub fn is_inductive(pre: Self, post: Self) {
                 assert(pre.t.is_None());
                 assert(post.t.is_Some());
-                assert(post.t.get_Some_0() == 5);
+                assert(post.t->0 == 5);
             }
         }}
     } => Err(e) => assert_one_fails(e)
@@ -3167,7 +3166,7 @@ test_verify_one_file! {
                     match foo {
                         Foo::Bar(a) => { update z = pre.z + 1; }
                         Foo::Qax(b) if b == 20 => { assert(pre.y <= pre.z); }
-                        Foo::Duck(d) => { assert(foo.is_Duck()); }
+                        Foo::Duck(d) => { assert(foo is Duck); }
                         _ => { }
                     }
                     require(c);
@@ -6141,7 +6140,7 @@ test_verify_one_file! {
 
             let tracked opt_tok = inst.tr_add_gen(true);
             assert(opt_tok.is_Some());
-            assert(equal(opt_tok.get_Some_0().view().instance, inst));
+            assert(equal(opt_tok->0.view().instance, inst));
             inst.tr_have_gen(true, &opt_tok);
             inst.tr_remove_gen(true, opt_tok);
 
@@ -6163,7 +6162,7 @@ test_verify_one_file! {
         proof fn test_inst2() {
             let tracked (Tracked(inst), Tracked(token_t)) = Y::Instance::init_true();
             assert(token_t.is_Some());
-            assert(equal(token_t.get_Some_0().view().instance, inst));
+            assert(equal(token_t->0.view().instance, inst));
         }
 
         }
@@ -6276,7 +6275,7 @@ test_verify_one_file! {
 
             let tracked opt_tok = inst.tr_add_gen(true);
             assert(opt_tok.is_Some());
-            assert(equal(opt_tok.get_Some_0().view().instance, inst));
+            assert(equal(opt_tok->0.view().instance, inst));
             inst.tr_have_gen(true, &opt_tok);
 
             let tracked opt_tok = inst.tr_add_gen(false);
@@ -6296,7 +6295,7 @@ test_verify_one_file! {
         proof fn test_inst2() {
             let tracked (Tracked(inst), Tracked(token_t)) = Y::Instance::init_true();
             assert(token_t.is_Some());
-            assert(equal(token_t.get_Some_0().view().instance, inst));
+            assert(equal(token_t->0.view().instance, inst));
         }
 
         }
@@ -6911,12 +6910,12 @@ test_verify_one_file! {
                   (x.is_Some() ==> post.a == pre.a) && (!x.is_Some() ==> post.a == 99)
 
                   && (z ==> (
-                        (v.is_Some() ==> post.b == v.get_Some_0()) && (!v.is_Some() ==> post.b == pre.b)
+                        (v.is_Some() ==> post.b == v->0) && (!v.is_Some() ==> post.b == pre.b)
                         && (if x.is_Some() {
                             if v.is_Some() {
-                                post.m =~= pre.m.insert(0, x.get_Some_0())
+                                post.m =~= pre.m.insert(0, x->0)
                             } else {
-                                post.m =~= pre.m.insert(0, x.get_Some_0()).insert(1, 11)
+                                post.m =~= pre.m.insert(0, x->0).insert(1, 11)
                             }
                         } else {
                             if v.is_Some() {
@@ -6938,12 +6937,12 @@ test_verify_one_file! {
                 && z
 
                 && (x.is_Some() ==> post.a == pre.a) && (!x.is_Some() ==> post.a == 99)
-                && (v.is_Some() ==> post.b == v.get_Some_0()) && (!v.is_Some() ==> post.b == pre.b)
+                && (v.is_Some() ==> post.b == v->0) && (!v.is_Some() ==> post.b == pre.b)
                 && (if x.is_Some() {
                     if v.is_Some() {
-                        post.m =~= pre.m.insert(0, x.get_Some_0())
+                        post.m =~= pre.m.insert(0, x->0)
                     } else {
-                        post.m =~= pre.m.insert(0, x.get_Some_0()).insert(1, 11)
+                        post.m =~= pre.m.insert(0, x->0).insert(1, 11)
                     }
                 } else {
                     if v.is_Some() {
@@ -7194,4 +7193,50 @@ test_verify_one_file! {
         }}
 
     } => Err(e) => assert_vir_error_msg(e, "invalid generic param")
+}
+
+test_verify_one_file! {
+    #[test] arrow_functions_regression_1002_1 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ Example {
+            fields {}
+
+            pub enum Label
+            {
+                B { b: nat }
+            }
+
+            pub open spec fn test(t: Label) -> bool
+                recommends t is B
+            {
+                t->b > 10
+            }
+
+            transition!{
+                f(l: Label) {
+                    require l->b > 10;
+                }
+            }
+        }}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] arrow_functions_regression_1002_2 IMPORTS.to_string() + verus_code_str! {
+        state_machine!{ Example {
+            fields {
+                pub x: nat,
+            }
+
+            pub enum InitLabel
+            {
+                B { b: nat }
+            }
+
+            init!{
+                g(l: InitLabel) {
+                    init x = l->b;
+                }
+            }
+        }}
+    } => Ok(())
 }

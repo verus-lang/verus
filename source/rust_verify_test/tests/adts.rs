@@ -298,7 +298,7 @@ test_verify_one_file! {
                 Maybe::None => assert(m.is_None()),
             };
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -368,7 +368,7 @@ test_verify_one_file! {
         pub fn test1(m: Maybe<u64>) {
             requires(m.is_Some() && m.get_Some_0() > 10);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -400,7 +400,7 @@ test_verify_one_file! {
                 vstd::pervasive::unreached::<()>();
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -454,7 +454,7 @@ test_verify_one_file! {
             let r = test2(&Res::Ok { t: false });
             assert(!r);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -488,7 +488,7 @@ test_verify_one_file! {
                 self.is_One() && self.get_One_0() <= v
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -774,7 +774,7 @@ test_verify_one_file! {
                 };
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -809,7 +809,7 @@ test_verify_one_file! {
         {
             assert(h.get_A_Couple_More_0() == 10);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -871,7 +871,7 @@ test_verify_one_file! {
         enum X<T> {
             ZZ(T),
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -1563,4 +1563,102 @@ test_verify_one_file! {
             })
         }
     } => Err(err) => assert_vir_error_msg(err, "in &&&, a matches expression needs to be prefixed with &&&")
+}
+
+test_verify_one_file! {
+    #[test] field_of_unencoded_struct_in_impl_regression_881_1008 verus_code! {
+        mod m1 {
+            pub trait A {
+                spec fn foo(&self) -> u64;
+            }
+
+            pub struct S {
+                pub f1: u64,
+                f2: u64,
+            }
+
+            impl A for S {
+                open spec fn foo(&self) -> u64 {
+                    self.f1
+                }
+            }
+        }
+
+        mod m2 {
+            use crate::m1::*;
+
+            fn bar(a: S) {
+                let ghost f1 = a.foo();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot access any field of a datatype where one or more fields are private")
+}
+
+test_verify_one_file! {
+    #[test] field_of_unencoded_struct_in_impl_regression_578 verus_code! {
+        use vstd::prelude::*;
+
+        mod log {
+            use vstd::prelude::*;
+            pub struct Device{
+                pub dev: Vec<u8>,
+                size: usize,
+                head: usize,
+                pub tail: usize,
+            }
+
+            impl Device {
+                pub fn new(size: usize) -> Self
+                {
+                    Self {
+                        dev: Vec::with_capacity(size),
+                        size,
+                        head: 0,
+                        tail: 0,
+                    }
+                }
+
+                pub fn write_byte(&mut self, dst: usize, byte: u8)
+                    requires
+                        dst < old(self).dev.len()
+                {
+                    self.dev.set(dst, byte);
+                }
+            }
+        }
+
+        use crate::log::*;
+        fn main() {
+            let mut dev = Device::new(4096);
+            dev.write_byte(0, 0);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot access any field of a datatype where one or more fields are private")
+}
+
+test_verify_one_file! {
+    #[test] test_arrow_with_variant verus_code! {
+        #[is_variant]
+        pub enum E<T> {
+            One { t: T },
+            Two { t: T },
+            Three(T),
+        }
+
+        pub fn test1(e: E<u64>) -> (res: bool)
+            ensures
+                e is One ==> res == (e->One_t == 3),
+                e is Two ==> !res,
+                e is Three ==> res == (e->Three_0 == 4),
+        {
+            match e {
+                E::One { t } => t == 3,
+                E::Two { t: _ } => false,
+                E::Three(t) => t == 4,
+            }
+        }
+    } => Ok(err) => {
+        dbg!(&err);
+        assert!(err.errors.len() == 0);
+        assert!(err.warnings.iter().find(|w| w.message == "`#[is_variant]` is deprecated - use `->` or `matches` instead").is_some());
+    }
 }

@@ -173,7 +173,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
-) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind), VirErr> {
+) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
     if mode != Mode::Exec {
@@ -291,7 +291,9 @@ pub(crate) fn handle_external_fn<'tcx>(
         );
     }
 
-    Ok((external_path, external_item_visibility, kind))
+    let has_self_parameter = has_self_parameter(ctxt, external_id);
+
+    Ok((external_path, external_item_visibility, kind, has_self_parameter))
 }
 
 pub enum CheckItemFnEither<A, B> {
@@ -324,7 +326,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let mode = get_mode(Mode::Exec, attrs);
 
-    let (path, proxy, visibility, kind) = if vattrs.external_fn_specification {
+    let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification {
         if is_verus_spec {
             return err_span(
                 sig.span,
@@ -339,15 +341,16 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let (external_path, external_item_visibility, kind) =
+        let (external_path, external_item_visibility, kind, has_self_param) =
             handle_external_fn(ctxt, id, visibility, sig, self_generics, &body_id, mode, &vattrs)?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
 
-        (external_path, Some(proxy), external_item_visibility, kind)
+        (external_path, Some(proxy), external_item_visibility, kind, has_self_param)
     } else {
         // No proxy.
-        (this_path.clone(), None, visibility, kind)
+        let has_self_param = has_self_parameter(ctxt, id);
+        (this_path.clone(), None, visibility, kind, has_self_param)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -524,7 +527,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 span,
                 vir::ast::StmtX::Decl {
                     pattern: new_binding_pat,
-                    mode: mode,
+                    mode: Some(mode),
                     init: Some(new_init_expr),
                 },
             );
@@ -532,6 +535,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode)));
     }
+
+    let n_params = vir_params.len();
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
         (FunctionKind::TraitMethodDecl { .. }, false, false, false) => {}
@@ -736,6 +741,8 @@ pub(crate) fn check_item_fn<'tcx>(
         spinoff_prover: vattrs.spinoff_prover,
         memoize: vattrs.memoize,
         rlimit: vattrs.rlimit,
+        print_zero_args: n_params == 0,
+        print_as_method: has_self_param,
     };
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -796,6 +803,14 @@ pub(crate) fn check_item_fn<'tcx>(
     let function = ctxt.spanned_new(sig.span, func);
     functions.push(function);
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
+}
+
+fn has_self_parameter<'tcx>(ctxt: &Context<'tcx>, id: DefId) -> bool {
+    if let Some(assoc_item) = ctxt.tcx.opt_associated_item(id) {
+        assoc_item.fn_has_self_parameter
+    } else {
+        false
+    }
 }
 
 // &mut T => Some(T, None)

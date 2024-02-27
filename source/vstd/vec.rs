@@ -1,16 +1,16 @@
-#![deprecated(note="Use std::vec instead")]
+#![deprecated(note = "Use std::vec instead")]
 
+#[allow(unused_imports)]
+use crate::pervasive::*;
+use crate::seq::*;
+#[allow(unused_imports)]
+use crate::slice::*;
+use crate::view::*;
+use alloc::vec;
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
-#[allow(unused_imports)]
-use crate::pervasive::*;
-use crate::view::*;
-use crate::seq::*;
-use alloc::vec;
-#[allow(unused_imports)]
-use crate::slice::*;
 
 verus! {
 
@@ -30,6 +30,7 @@ impl<A: View> View for Vec<A> {
 
 impl<A> View for Vec<A> {
     type V = Seq<A>;
+
     spec fn view(&self) -> Seq<A>;
 }
 
@@ -89,6 +90,7 @@ impl<A> Vec<A> {
     {
         unsafe {
             self.vec.pop().unwrap_unchecked()  // Safe to unwrap given the precondition above
+
         }
     }
 
@@ -123,7 +125,7 @@ impl<A> Vec<A> {
             i < old(self).len(),
         ensures
             self@ == old(self)@.update(i as int, *old(a)),
-            *a == old(self)@.index(i as int)
+            *a == old(self)@.index(i as int),
     {
         core::mem::swap(&mut self.vec[i], a);
     }
@@ -162,14 +164,16 @@ impl<A> Vec<A> {
 
     #[verifier(external_body)]
     pub fn as_slice(&self) -> (slice: &[A])
-        ensures slice@ == self@
+        ensures
+            slice@ == self@,
     {
         self.vec.as_slice()
     }
 
     #[verifier(external_body)]
     pub fn clear(&mut self)
-        ensures self.view() == Seq::<A>::empty(),
+        ensures
+            self.view() == Seq::<A>::empty(),
     {
         self.vec.clear();
     }
@@ -178,7 +182,7 @@ impl<A> Vec<A> {
     pub fn append(&mut self, other: &mut Vec<A>)
         ensures
             self@ == old(self)@ + old(other)@,
-            other@ == Seq::<A>::empty()
+            other@ == Seq::<A>::empty(),
     {
         self.vec.append(&mut other.vec);
     }

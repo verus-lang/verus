@@ -5,7 +5,6 @@ use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
-use std::collections::HashMap;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
@@ -687,10 +686,8 @@ impl VisitMut for ExecGhostPatVisitor {
                 let span = id.span();
                 let decl = if self.ghost.is_some() {
                     parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
-                } else if id.mutability.is_some() {
-                    parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x;)
                 } else {
-                    parse_quote_spanned!(span => #[verus::internal(proof)] let #x;)
+                    parse_quote_spanned!(span => #[verus::internal(infer_mode)] let mut #x;)
                 };
                 let assign = quote_spanned!(span => #x = #tmp_x);
                 id.ident = tmp_x;
@@ -983,178 +980,14 @@ impl Visitor {
         let mut i = 0;
         while i < items.len() {
             if let Item::Enum(enum_) = &mut items[i] {
-                if let Some(new_item) = self.visit_item_enum_synthesize(enum_) {
+                if let Some(new_item) =
+                    crate::enum_synthesize::visit_item_enum_synthesize(&self.erase_ghost, enum_)
+                {
                     items.insert(i + 1, new_item);
                     i += 1;
                 }
             }
             i += 1;
-        }
-    }
-
-    fn visit_item_enum_synthesize(&mut self, enum_: &mut ItemEnum) -> Option<Item> {
-        let mut allow_inconsistent_fields = false;
-
-        enum_.attrs.retain(|attr| {
-            if let syn_verus::AttrStyle::Outer = attr.style {
-                match &attr.path.segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
-                    [attr_name] if attr_name.to_string() == "allow" => {
-                        if attr.tokens.to_string() == "(inconsistent_fields)" {
-                            allow_inconsistent_fields = true;
-                            return false;
-                        }
-                    }
-                    _ => (),
-                }
-            }
-            true
-        });
-
-        if self.erase_ghost.erase_all() {
-            return None;
-        }
-
-        #[derive(PartialEq, Eq, Hash, Debug, Clone)]
-        enum FieldName {
-            Named(Ident),
-            Unnamed(usize),
-        }
-
-        #[derive(PartialEq, Eq, Debug)]
-        struct FieldInfo {
-            ty: Type,
-            vis: Visibility,
-        }
-
-        impl FieldInfo {
-            fn from(field: &Field) -> FieldInfo {
-                FieldInfo { ty: field.ty.clone(), vis: field.vis.clone() }
-            }
-        }
-
-        let mut all_fields: HashMap<FieldName, (FieldInfo, Vec<Ident>)> = HashMap::new();
-        let mut invalid_fields: Vec<Ident> = Vec::new();
-        for variant in &enum_.variants {
-            match &variant.fields {
-                syn_verus::Fields::Named(named) => {
-                    for field in &named.named {
-                        let ident = field.ident.as_ref().expect("named field").clone();
-                        let name = FieldName::Named(ident.clone());
-                        let info = FieldInfo::from(field);
-                        use std::collections::hash_map::Entry;
-                        match all_fields.entry(name.clone()) {
-                            Entry::Occupied(mut occ) => {
-                                if occ.get().0 != info {
-                                    occ.remove_entry();
-                                    invalid_fields.push(ident);
-                                } else {
-                                    occ.get_mut().1.push(variant.ident.clone());
-                                }
-                            }
-                            Entry::Vacant(vac) => {
-                                vac.insert((info, vec![variant.ident.clone()]));
-                            }
-                        }
-                    }
-                }
-                syn_verus::Fields::Unnamed(unnamed) => {
-                    for (i, field) in unnamed.unnamed.iter().enumerate() {
-                        let name = FieldName::Unnamed(i);
-                        let info = FieldInfo::from(field);
-                        use std::collections::hash_map::Entry;
-                        match all_fields.entry(name.clone()) {
-                            Entry::Occupied(mut occ) => {
-                                if occ.get().0 != info {
-                                    occ.remove_entry();
-                                } else {
-                                    occ.get_mut().1.push(variant.ident.clone());
-                                }
-                            }
-                            Entry::Vacant(vac) => {
-                                vac.insert((info, vec![variant.ident.clone()]));
-                            }
-                        }
-                    }
-                }
-                syn_verus::Fields::Unit => {}
-            }
-        }
-
-        #[cfg(verus_keep_ghost)]
-        if !self.erase_ghost.erase() && !allow_inconsistent_fields {
-            for invalid_field in invalid_fields {
-                proc_macro::Diagnostic::spanned(enum_.span().unwrap(), proc_macro::Level::Warning, {
-                    format!("field `{}` has inconsistent type or visibility in different variants\n->{} syntax will not be available for this field\nuse #[allow(inconsistent_fields)] on the struct to silence the warnign", &invalid_field, &invalid_field)
-                }).emit();
-            }
-        }
-
-        let enum_vis_pub = !matches!(enum_.vis, syn_verus::Visibility::Inherited);
-        if all_fields.len() != 0 {
-            let enum_ident = &enum_.ident;
-            let methods = all_fields
-                .iter()
-                .map(|(name, (info, variants))| {
-                    let method_ident = match name {
-                        FieldName::Named(named) => quote::format_ident!("arrow_{}", named),
-                        FieldName::Unnamed(unnamed) => {
-                            quote::format_ident!("arrow_{}", unnamed)
-                        }
-                    };
-                    let field_str = match name {
-                        FieldName::Named(named) => named.to_string(),
-                        FieldName::Unnamed(unnamed) => unnamed.to_string(),
-                    };
-                    let ty_ = &info.ty;
-                    let vis = enum_.vis.clone();
-
-                    let publish = if enum_vis_pub {
-                        quote! {
-                            #[verus::internal(open)]
-                        }
-                    } else {
-                        quote! {}
-                    };
-
-                    assert!(!variants.is_empty());
-                    if variants.len() == 1 {
-                        let variant_ident = variants[0].to_string();
-                        quote_spanned! { enum_.span() =>
-                            #[cfg(verus_keep_ghost)]
-                            #[allow(non_snake_case)]
-                            #[verus::internal(verus_macro)]
-                            #[verus::internal(spec)]
-                            #[verifier::inline]
-                            #publish
-                            #vis fn #method_ident(self) -> #ty_ {
-                                ::builtin::get_variant_field(self, #variant_ident, #field_str)
-                            }
-                        }
-                    } else {
-                        quote_spanned! { enum_.span() =>
-                            #[cfg(verus_keep_ghost)]
-                            #[allow(non_snake_case)]
-                            #[verus::internal(verus_macro)]
-                            #[verus::internal(spec)]
-                            #[verus::internal(get_field_many_variants)]
-                            #[verifier::external]
-                            #publish
-                            #vis fn #method_ident(self) -> #ty_ {
-                                unimplemented!()
-                            }
-                        }
-                    }
-                })
-                .collect::<proc_macro2::TokenStream>();
-            let (impl_generics, ty_generics, where_clause) = enum_.generics.split_for_impl();
-            Some(Item::Verbatim(quote_spanned! { enum_.span() =>
-                #[verus::internal(verus_macro)]
-                impl #impl_generics #enum_ident #ty_generics #where_clause {
-                    #methods
-                }
-            }))
-        } else {
-            None
         }
     }
 
@@ -2939,6 +2772,7 @@ impl VisitMut for Visitor {
         self.filter_attrs(&mut item.attrs);
     }
 
+    #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))]
     fn visit_type_mut(&mut self, ty: &mut Type) {
         self.inside_type += 1;
         syn_verus::visit_mut::visit_type_mut(self, ty);
@@ -3381,7 +3215,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
 // Try to put the original tokens back together here.
 #[cfg(verus_keep_ghost)]
-fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use proc_macro::{Group, Punct, Spacing::*, Span, TokenTree};
     let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
     let pun = |t: &TokenTree| match t {

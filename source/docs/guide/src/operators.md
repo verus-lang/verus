@@ -81,6 +81,19 @@ If, in addition, all the fields have distinct names, like in the example above
 you can then access the fields with `t->v` or `t->0` (for positional fields note
 that these are supported if only one variant has "tuple like" fields).
 
+If field in different variants have the same name, you can still use
+the `->` arrow syntax by also specifying the field, for example, for:
+
+```rust
+enum ThisOrThat {
+    This { t: int },
+    That { t: int },
+}
+```
+
+you can use `v->This_t` or `v->That_t`.
+
+
 # `matches` with `&&&`, `==>`, and `&&`
 
 For more complex cases, and where you need an enum where multiple variants have

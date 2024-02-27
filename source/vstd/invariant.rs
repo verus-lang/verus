@@ -1,6 +1,9 @@
-#[allow(unused_imports)] use builtin::*;
-#[allow(unused_imports)] use builtin_macros::*;
-#[allow(unused_imports)] use crate::pervasive::*;
+#[allow(unused_imports)]
+use crate::pervasive::*;
+#[allow(unused_imports)]
+use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 
 // TODO:
 //  * utility for conveniently creating unique namespaces
@@ -19,7 +22,7 @@
 //
 // So each Invariant object has 3 type parameters:
 //  * K - A "constant" which is specified at constructor time
-//  * V - Type of the stored 'tracked' object 
+//  * V - Type of the stored 'tracked' object
 //  * Pred: InvariantPredicate - provides the predicate (K, V) -> bool
 //
 // With this setup, we can now declare both K and V without reject_recursive_types.
@@ -29,7 +32,7 @@
 // ```
 //    Inductive InvariantPredicate K V :=
 //        | inv_pred : (K -> V -> bool) -> InvariantPredicate K V.
-//    
+//
 //    Inductive Inv (K V: Type) (x: InvariantPredicate K V) :=
 //      | inv : K -> Inv K V x.
 //
@@ -46,40 +49,38 @@
 // type level. By doing so, the user opts in to the negative usage of V in exchange
 // for the flexibility.
 
-verus!{
+verus! {
 
 /// Trait used to specify an _invariant predicate_ for
 /// [`LocalInvariant`] and [`AtomicInvariant`].
-
 pub trait InvariantPredicate<K, V> {
     spec fn inv(k: K, v: V) -> bool;
 }
-}
 
-// LocalInvariant is NEVER `Sync`.
-//
-// Furthermore, for either type:
-//
-//  * If an Invariant<T> is Sync, then T must be Send
-//      * We could put the T in an Invariant, sync the invariant to another thread,
-//        and then extract the T, having effectively send it to the other thread.
-//  * If Invariant<T> is Send, then T must be Send
-//      * We could put the T in an Invariant, send the invariant to another thread,
-//        and then take the T out.
-//
-// So the Sync/Send-ness of the Invariant depends on the Send-ness of T;
-// however, the Sync-ness of T is unimportant (the invariant doesn't give you an extra
-// ability to share a reference to a T across threads).
-//
-// In conclusion, we should have:
-//
-//    T                   AtomicInvariant<T>  LocalInvariant<T>
-//
-//    {}          ==>     {}                  {}
-//    Send        ==>     Send+Sync           Send
-//    Sync        ==>     {}                  {}
-//    Sync+Send   ==>     Send+Sync           Send
-
+} // verus!
+  // LocalInvariant is NEVER `Sync`.
+  //
+  // Furthermore, for either type:
+  //
+  //  * If an Invariant<T> is Sync, then T must be Send
+  //      * We could put the T in an Invariant, sync the invariant to another thread,
+  //        and then extract the T, having effectively send it to the other thread.
+  //  * If Invariant<T> is Send, then T must be Send
+  //      * We could put the T in an Invariant, send the invariant to another thread,
+  //        and then take the T out.
+  //
+  // So the Sync/Send-ness of the Invariant depends on the Send-ness of T;
+  // however, the Sync-ness of T is unimportant (the invariant doesn't give you an extra
+  // ability to share a reference to a T across threads).
+  //
+  // In conclusion, we should have:
+  //
+  //    T                   AtomicInvariant<T>  LocalInvariant<T>
+  //
+  //    {}          ==>     {}                  {}
+  //    Send        ==>     Send+Sync           Send
+  //    Sync        ==>     {}                  {}
+  //    Sync+Send   ==>     Send+Sync           Send
 /// An `AtomicInvariant` is a ghost object that provides "interior mutability"
 /// for ghost objects, specifically, for `tracked` ghost objects.
 /// A reference `&AtomicInvariant` may be shared between clients.
@@ -115,8 +116,6 @@ pub trait InvariantPredicate<K, V> {
 ///
 /// **Note:** Rather than using `AtomicInvariant` directly, we generally recommend
 /// using the [`atomic_ghost` APIs](crate::atomic_ghost).
-
-
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(K))]
@@ -157,7 +156,6 @@ pub struct AtomicInvariant<K, V, Pred> {
 /// use the macro [`open_local_invariant!`].
 ///
 /// The `LocalInvariant` API is an instance of the ["invariant" method in Verus's general philosophy on interior mutability](https://verus-lang.github.io/verus/guide/interior_mutability.html).
-
 
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
@@ -253,12 +251,13 @@ pub struct InvariantBlockGuard;
 //  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
 //  last the entire block.
 
-
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
-pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a AtomicInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
+pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
+    _inv: &'a AtomicInvariant<K, V, Pred>,
+) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
@@ -266,7 +265,9 @@ pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_in
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_local_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
-pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(_inv: &'a LocalInvariant<K, V, Pred>) -> (&'a InvariantBlockGuard, V) {
+pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
+    _inv: &'a LocalInvariant<K, V, Pred>,
+) -> (&'a InvariantBlockGuard, V) {
     unimplemented!();
 }
 
@@ -301,7 +302,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 ///    cannot contain any `exec`-mode code with the exception of a _single_ atomic operation.
 ///
 /// (Of course, the code block can still contain an arbitrary amount of ghost code.)
-/// 
+///
 /// The atomicity constraint is needed because an `AtomicInvariant` must be thread-safe;
 /// that is, it can be shared across threads. In order for the ghost state to be shared
 /// safely, it must be restored after each atomic operation.
@@ -349,10 +350,10 @@ macro_rules! open_atomic_invariant_internal {
     }
 }
 
-#[doc(hidden)]
-pub use open_atomic_invariant_internal;
 pub use open_atomic_invariant;
 pub use open_atomic_invariant_in_proof;
+#[doc(hidden)]
+pub use open_atomic_invariant_internal;
 
 /// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
 /// value within.
@@ -366,7 +367,7 @@ pub use open_atomic_invariant_in_proof;
 ///     // Inner scope
 /// });
 /// ```
-/// 
+///
 /// The operation of opening an invariant is a ghost one; however, the inner code block
 /// may contain arbitrary `exec`-mode code. The invariant remains "open" for the duration
 /// of the inner code block, and it is closed again of the end of the block.
@@ -444,7 +445,7 @@ pub use open_atomic_invariant_in_proof;
 ///
 /// ### More Examples
 ///
-/// TODO fill this in 
+/// TODO fill this in
 
 #[macro_export]
 macro_rules! open_local_invariant {
@@ -453,7 +454,6 @@ macro_rules! open_local_invariant {
             $crate::invariant::open_local_invariant_internal!($($tail)*))
     };
 }
-
 
 #[macro_export]
 macro_rules! open_local_invariant_in_proof {
@@ -475,7 +475,7 @@ macro_rules! open_local_invariant_internal {
     }
 }
 
-#[doc(hidden)]
-pub use open_local_invariant_internal;
 pub use open_local_invariant;
 pub use open_local_invariant_in_proof;
+#[doc(hidden)]
+pub use open_local_invariant_internal;

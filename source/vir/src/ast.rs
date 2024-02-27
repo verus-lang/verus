@@ -746,7 +746,8 @@ pub enum StmtX {
     /// Declare a local variable, which may be mutable, and may have an initial value
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
-    Decl { pattern: Pattern, mode: Mode, init: Option<Expr> },
+    /// (The mode is only allowed to be None for one special case; see modes.rs)
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr> },
 }
 
 /// Function parameter
@@ -832,6 +833,11 @@ pub struct FunctionAttrsX {
     pub memoize: bool,
     /// override default rlimit
     pub rlimit: Option<f32>,
+    /// does this function take zero args (this is useful to keep track
+    /// of because we add a dummy arg to zero functions)
+    pub print_zero_args: bool,
+    /// is this a method, i.e., written with x.f() syntax? useful for printing
+    pub print_as_method: bool,
 }
 
 /// Function specification of its invariant mask

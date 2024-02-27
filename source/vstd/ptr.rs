@@ -3,19 +3,18 @@
 use alloc::alloc::Layout;
 use core::{marker, mem, mem::MaybeUninit};
 
+use crate::layout::*;
+use crate::modes::*;
+use crate::pervasive::*;
+use crate::prelude::*;
+use crate::*;
 use builtin::*;
 use builtin_macros::*;
-use crate::*;
-use crate::pervasive::*;
-use crate::modes::*;
-use crate::prelude::*;
-use crate::layout::*;
 
 #[cfg(verus_keep_ghost)]
 use crate::set_lib::set_int_range;
 
-verus!{
-
+verus! {
 
 /// `PPtr<V>` (which stands for "permissioned pointer")
 /// is a wrapper around a raw pointer to `V` on the heap.
@@ -62,9 +61,8 @@ verus!{
 ///    the contents, but also to deallocate.
 ///
 /// ### Example (TODO)
-
 // Notes about pointer provenance:
-// 
+//
 // "Pointer provenance" is this complicated subject which is a necessary
 // evil if you want to understand the abstract machine semantics of a language
 // with pointers and what is or is not UB with int-to-pointer casts.
@@ -78,7 +76,7 @@ verus!{
 //   ***** VERUS POINTER MODEL *****
 //    "Provenance" comes from the `tracked ghost` PointsTo object.
 //   *******************************
-// 
+//
 // Pretty simple, right?
 //
 // Of course, this trusted pointer library still needs to actually run and
@@ -97,7 +95,7 @@ verus!{
 // that will be sound in the Rust backend.
 //
 // In the "PNVI-ae-udi" model:
-//  * A ptr->int cast "exposes" a pointer (adding it some global list in the 
+//  * A ptr->int cast "exposes" a pointer (adding it some global list in the
 //    abstract machine)
 //  * An int->ptr cast acquires the provenance of that pointer only if it
 //    was previously exposed.
@@ -130,9 +128,7 @@ verus!{
 // Perhaps what we could do is specify a low-level pointer library with
 // strict provenance rules + exposed pointers,
 // and then verify user libraries on top of that?
-
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
-
 // TODO just replace this with `*mut V`
 #[repr(C)]
 #[verifier(external_body)]
@@ -143,15 +139,17 @@ pub struct PPtr<V> {
 
 // PPtr is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
 // It doesn't matter if you send the pointer to another thread if you can't access it.
+#[verifier(external)]
+unsafe impl<T> Sync for PPtr<T> {
+
+}
 
 #[verifier(external)]
-unsafe impl<T> Sync for PPtr<T> {}
+unsafe impl<T> Send for PPtr<T> {
 
-#[verifier(external)]
-unsafe impl<T> Send for PPtr<T> {}
+}
 
 // TODO some of functionality could have V: ?Sized
-
 /// A `tracked` ghost object that gives the user permission to dereference a pointer
 /// for reading or writing, or to free the memory at that pointer.
 ///
@@ -159,7 +157,6 @@ unsafe impl<T> Send for PPtr<T> {}
 /// `View` object, [`PointsToData`].
 ///
 /// See the [`PPtr`] documentation for more details.
-
 #[verifier(external_body)]
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub tracked struct PointsTo<V> {
@@ -168,38 +165,36 @@ pub tracked struct PointsTo<V> {
 }
 
 /// Represents the meaning of a [`PointsTo`] object.
-
 pub ghost struct PointsToData<V> {
     /// Indicates that this token is for a pointer `ptr: PPtr<V>`
     /// such that [`ptr.id()`](PPtr::id) equal to this value.
-
     pub pptr: int,
-
     /// Indicates that this token gives the ability to read a value `V` from memory.
     /// When `None`, it indicates that the memory is uninitialized.
-
     pub value: Option<V>,
 }
 
 // TODO add similiar height axioms for other ghost objects
-
 #[verifier(broadcast_forall)]
 #[verifier(external_body)]
 pub proof fn points_to_height_axiom<V>(points_to: PointsTo<V>)
-    ensures #[trigger] is_smaller_than(points_to@, points_to)
+    ensures
+        #[trigger] is_smaller_than(points_to@, points_to),
 {
     unimplemented!()
 }
 
 /// Points to uninitialized memory.
-
 #[verifier(external_body)]
 pub tracked struct PointsToRaw {
     no_copy: NoCopy,
 }
 
 #[verifier(external_body)]
-pub tracked struct Dealloc<#[verifier(strictly_positive)] V> {
+pub tracked struct Dealloc<
+    #[verifier(strictly_positive)]
+    V,
+> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }
@@ -226,17 +221,18 @@ impl<V> PointsTo<V> {
     /// (Note that null pointers _do_ exist and are representable by `PPtr`;
     /// however, it is not possible to obtain a `PointsTo` token for
     /// any such a pointer.)
-
     #[verifier(external_body)]
     pub proof fn is_nonnull(tracked &self)
-        ensures self@.pptr != 0,
+        ensures
+            self@.pptr != 0,
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
     pub proof fn leak_contents(tracked &mut self)
-        ensures self@.pptr == old(self)@.pptr && self@.value.is_None(),
+        ensures
+            self@.pptr == old(self)@.pptr && self@.value.is_None(),
     {
         unimplemented!();
     }
@@ -284,21 +280,24 @@ impl PointsToRaw {
 
     #[verifier(external_body)]
     pub proof fn is_nonnull(tracked &self)
-        ensures !self@.dom().contains(0)
+        ensures
+            !self@.dom().contains(0),
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
     pub proof fn is_in_bounds(tracked &self)
-        ensures forall |i: int| self@.dom().contains(i) ==> 0 < i <= usize::MAX,
+        ensures
+            forall|i: int| self@.dom().contains(i) ==> 0 < i <= usize::MAX,
     {
         unimplemented!();
     }
 
     #[verifier(external_body)]
     pub proof fn empty() -> (tracked points_to_raw: Self)
-        ensures points_to_raw@ == Map::<int, u8>::empty(),
+        ensures
+            points_to_raw@ == Map::<int, u8>::empty(),
     {
         unimplemented!();
     }
@@ -339,9 +338,11 @@ impl PointsToRaw {
     }
 
     #[verifier(external_body)]
-    pub proof fn borrow_join<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
+    pub proof fn borrow_join<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined:
+        &'a Self)
         ensures
-            (forall |i| #![trigger self@.dom().contains(i), other@.dom().contains(i)]
+            (forall|i|
+                #![trigger self@.dom().contains(i), other@.dom().contains(i)]
                 self@.dom().contains(i) && other@.dom().contains(i) ==> self@[i] == other@[i]),
             joined@ == self@.union_prefer_right(other@),
     {
@@ -358,7 +359,7 @@ impl PointsToRaw {
     {
         unimplemented!();
     }
-            
+
     #[verifier(external_body)]
     pub proof fn borrow_subset(tracked &self, range: Set<int>) -> (tracked res: &Self)
         requires
@@ -377,7 +378,8 @@ impl<V> Dealloc<V> {
 impl<V> Dealloc<V> {
     #[verifier(external_body)]
     pub proof fn is_nonnull(tracked &self)
-        ensures self@.pptr != 0,
+        ensures
+            self@.pptr != 0,
     {
         unimplemented!();
     }
@@ -410,7 +412,8 @@ impl DeallocRaw {
 
     #[verifier(external_body)]
     pub proof fn is_nonnull(tracked &self)
-        ensures self@.pptr != 0,
+        ensures
+            self@.pptr != 0,
     {
         unimplemented!();
     }
@@ -443,17 +446,19 @@ impl DeallocRaw {
 impl<A> Clone for PPtr<A> {
     #[verifier(external_body)]
     fn clone(&self) -> (s: Self)
-        ensures s == *self,
+        ensures
+            s == *self,
     {
         PPtr { uptr: self.uptr }
     }
 }
 
-impl<A> Copy for PPtr<A> { }
+impl<A> Copy for PPtr<A> {
+
+}
 
 impl<V> PPtr<V> {
     /// Cast a pointer to an integer.
-
     #[inline(always)]
     #[verifier(external_body)]
     pub fn to_usize(&self) -> (u: usize)
@@ -464,11 +469,10 @@ impl<V> PPtr<V> {
     }
 
     /// integer address of the pointer
-
     pub spec fn id(&self) -> int;
 
     /// Cast an integer to a pointer.
-    /// 
+    ///
     /// Note that this does _not_ require or ensure that the pointer is valid.
     /// Of course, if the user creates an invalid pointer, they would still not be able to
     /// create a valid [`PointsTo`] token for it, and thus they would never
@@ -478,24 +482,23 @@ impl<V> PPtr<V> {
     /// but dereferencing a pointer is an `unsafe` operation.
     /// In Verus, casting to a pointer is likewise always possible,
     /// while dereferencing it is only allowed when the right preconditions are met.
-
     #[inline(always)]
     #[verifier(external_body)]
     pub fn from_usize(u: usize) -> (p: Self)
-        ensures p.id() == u as int,
+        ensures
+            p.id() == u as int,
     {
         let uptr = u as *mut V;
         PPtr { uptr }
     }
 
     /// Allocates heap memory for type `V`, leaving it uninitialized.
-
     #[inline(always)]
     #[verifier(external_body)]
     pub fn empty() -> (pt: (PPtr<V>, Tracked<PointsTo<V>>, Tracked<Dealloc<V>>))
         ensures
-            pt.1@@ === (PointsToData{ pptr: pt.0.id(), value: None }),
-            pt.2@@ === (DeallocData{ pptr: pt.0.id() }),
+            pt.1@@ === (PointsToData { pptr: pt.0.id(), value: None }),
+            pt.2@@ === (DeallocData { pptr: pt.0.id() }),
         opens_invariants none
     {
         let layout = Layout::new::<V>();
@@ -507,12 +510,16 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn alloc(size: usize, align: usize) -> (pt: (PPtr<V>, Tracked<PointsToRaw>, Tracked<DeallocRaw>))
+    pub fn alloc(size: usize, align: usize) -> (pt: (
+        PPtr<V>,
+        Tracked<PointsToRaw>,
+        Tracked<DeallocRaw>,
+    ))
         requires
             valid_layout(size, align),
         ensures
             pt.1@.is_range(pt.0.id(), size as int),
-            pt.2@@ === (DeallocRawData{ pptr: pt.0.id(), size: size as nat, align: align as nat }),
+            pt.2@@ === (DeallocRawData { pptr: pt.0.id(), size: size as nat, align: align as nat }),
             pt.0.id() % align as int == 0,
         opens_invariants none
     {
@@ -520,13 +527,9 @@ impl<V> PPtr<V> {
         // Constructing the layout object might fail if the allocation becomes too big.
         // The 'add' can't overflow, since we already know (size, align) is a valid layout.
         let layout = Layout::from_size_align(size + align, align).unwrap();
-        let p = PPtr {
-            uptr: unsafe { ::alloc::alloc::alloc(layout) as *mut V },
-        };
-
+        let p = PPtr { uptr: unsafe { ::alloc::alloc::alloc(layout) as *mut V } };
         // See explanation about exposing pointers, above
         let _exposed_addr = p.uptr as usize;
-
         (p, Tracked::assume_new(), Tracked::assume_new())
     }
 
@@ -535,7 +538,6 @@ impl<V> PPtr<V> {
     ///
     /// In the ghost perspective, this updates `perm.value`
     /// from `None` to `Some(v)`.
-
     #[inline(always)]
     #[verifier(external_body)]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
@@ -549,7 +551,6 @@ impl<V> PPtr<V> {
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
-
         unsafe {
             // We use `write` here because it does not attempt to "drop" the memory at `*ptr`.
             core::ptr::write(ptr, v);
@@ -563,7 +564,6 @@ impl<V> PPtr<V> {
     /// In the ghost perspective, this updates `perm.value`
     /// from `Some(v)` to `None`,
     /// while returning the `v` as an `exec` value.
-
     #[inline(always)]
     #[verifier(external_body)]
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
@@ -578,15 +578,11 @@ impl<V> PPtr<V> {
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
-
-        unsafe {
-            core::ptr::read(ptr)
-        }
+        unsafe { core::ptr::read(ptr) }
     }
 
     /// Swaps the `in_v: V` passed in as an argument with the value in memory.
     /// Requires the memory to be initialized, and leaves it initialized with the new value.
-
     #[inline(always)]
     #[verifier(external_body)]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
@@ -601,7 +597,6 @@ impl<V> PPtr<V> {
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
-
         unsafe {
             let mut m = in_v;
             mem::swap(&mut m, &mut *ptr);
@@ -610,25 +605,21 @@ impl<V> PPtr<V> {
     }
 
     /// Given a shared borrow of the `PointsTo<V>`, obtain a shared borrow of `V`.
-
-    // Note that `self` is just a pointer, so it doesn't need to outlive 
+    // Note that `self` is just a pointer, so it doesn't need to outlive
     // the returned borrow.
-
     #[inline(always)]
     #[verifier(external_body)]
     pub fn borrow<'a>(&self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             self.id() === perm@.pptr,
             perm@.value.is_Some(),
-        ensures *v === perm@.value.get_Some_0(),
+        ensures
+            *v === perm@.value.get_Some_0(),
         opens_invariants none
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
-
-        unsafe {
-            &*ptr
-        }
+        unsafe { &*ptr }
     }
 
     /// Free the memory pointed to be `perm`.
@@ -636,10 +627,13 @@ impl<V> PPtr<V> {
     ///
     /// This consumes `perm`, since it will no longer be safe to access
     /// that memory location.
-
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dispose(&self, Tracked(perm): Tracked<PointsTo<V>>, Tracked(dealloc): Tracked<Dealloc<V>>)
+    pub fn dispose(
+        &self,
+        Tracked(perm): Tracked<PointsTo<V>>,
+        Tracked(dealloc): Tracked<Dealloc<V>>,
+    )
         requires
             self.id() === perm@.pptr,
             perm@.value === None,
@@ -658,11 +652,12 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn dealloc(&self,
+    pub fn dealloc(
+        &self,
         size: usize,
         align: usize,
         Tracked(perm): Tracked<PointsToRaw>,
-        Tracked(dealloc): Tracked<DeallocRaw>
+        Tracked(dealloc): Tracked<DeallocRaw>,
     )
         requires
             perm.is_range(self.id(), size as int),
@@ -682,15 +677,17 @@ impl<V> PPtr<V> {
 
     //////////////////////////////////
     // Verified library functions below here
-
-    /// Free the memory pointed to be `perm` and return the 
+    /// Free the memory pointed to be `perm` and return the
     /// value that was previously there.
     /// Requires the memory to be initialized.
     /// This consumes the [`PointsTo`] token, since the user is giving up
     /// access to the memory by freeing it.
-
     #[inline(always)]
-    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>, Tracked(dealloc): Tracked<Dealloc<V>>) -> (v: V)
+    pub fn into_inner(
+        self,
+        Tracked(perm): Tracked<PointsTo<V>>,
+        Tracked(dealloc): Tracked<Dealloc<V>>,
+    ) -> (v: V)
         requires
             self.id() === perm@.pptr,
             perm@.pptr == dealloc@.pptr,
@@ -707,12 +704,11 @@ impl<V> PPtr<V> {
 
     /// Allocates heap memory for type `V`, leaving it initialized
     /// with the given value `v`.
-
     #[inline(always)]
     pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<PointsTo<V>>, Tracked<Dealloc<V>>))
         ensures
-            (pt.1@@ === PointsToData{ pptr: pt.0.id(), value: Some(v) }),
-            (pt.2@@ === DeallocData{ pptr: pt.0.id() }),
+            (pt.1@@ === PointsToData { pptr: pt.0.id(), value: Some(v) }),
+            (pt.2@@ === DeallocData { pptr: pt.0.id() }),
     {
         let (p, Tracked(mut t), Tracked(d)) = Self::empty();
         p.put(Tracked(&mut t), v);
@@ -730,7 +726,9 @@ impl<V: Copy> PPtr<V> {
             perm@.value === Some(in_v),
         opens_invariants none
     {
-        proof { perm.leak_contents(); }
+        proof {
+            perm.leak_contents();
+        }
         self.put(Tracked(&mut *perm), in_v);
     }
 
@@ -748,30 +746,39 @@ impl<V: Copy> PPtr<V> {
 }
 
 // Manipulating the contents in a PointsToRaw
-
 impl PPtr<u8> {
     #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))]
     #[verifier::external_body]
-    fn copy_nonoverlapping(&self, dst: PPtr<u8>, count: usize, perm_src: &PointsToRaw, perm_dst: &mut PointsToRaw)
-        requires perm_src.contains_range(self.id(), count as int),
+    fn copy_nonoverlapping(
+        &self,
+        dst: PPtr<u8>,
+        count: usize,
+        perm_src: &PointsToRaw,
+        perm_dst: &mut PointsToRaw,
+    )
+        requires
+            perm_src.contains_range(self.id(), count as int),
             old(perm_dst).contains_range(dst.id(), count as int),
         ensures
             perm_dst@ == old(perm_dst)@.union_prefer_right(
-                perm_src@.restrict(set_int_range(self.id(), self.id() + count)))
+                perm_src@.restrict(set_int_range(self.id(), self.id() + count)),
+            ),
     {
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.uptr, dst.uptr, count)
-        }
+        unsafe { core::ptr::copy_nonoverlapping(self.uptr, dst.uptr, count) }
     }
 
     #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))]
     #[verifier::external_body]
     fn write_bytes(&self, val: u8, count: usize, perm: &mut PointsToRaw)
-        requires old(perm).contains_range(self.id(), count as int),
+        requires
+            old(perm).contains_range(self.id(), count as int),
         ensures
             perm@ == old(perm)@.union_prefer_right(
-                Map::new(|addr| set_int_range(self.id(), self.id() + count).contains(addr),
-                    |addr| val))
+                Map::new(
+                    |addr| set_int_range(self.id(), self.id() + count).contains(addr),
+                    |addr| val,
+                ),
+            ),
     {
         unsafe {
             core::ptr::write_bytes::<u8>(self.uptr, val, count);
@@ -779,4 +786,4 @@ impl PPtr<u8> {
     }
 }
 
-}
+} // verus!
