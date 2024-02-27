@@ -531,10 +531,10 @@ fn check_function(
         }
     }
 
-    let ret_name = user_local_name(&*function.x.ret.x.name);
+    let ret_name = user_local_name(&function.x.ret.x.name);
     for p in function.x.params.iter() {
         check_typ(ctxt, &p.x.typ, &p.span)?;
-        if user_local_name(&*p.x.name) == ret_name {
+        if user_local_name(&p.x.name) == ret_name {
             return Err(error(
                 &p.span,
                 "parameter name cannot be the same as the return value name",

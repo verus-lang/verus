@@ -186,6 +186,7 @@ proof fn lemma_div_auto_plus(n: int)
 
 /// Proof of `div_auto_mius(n)`, not exported publicly because it's
 /// just used as part of [`lemma_div_auto`] to prove `div_auto(n)`
+#[verifier::spinoff_prover]
 proof fn lemma_div_auto_minus(n: int)
     requires
         n > 0,

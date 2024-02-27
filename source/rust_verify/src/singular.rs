@@ -36,7 +36,7 @@ const RESERVED_KEYWORDS: [&str; 10] = [
     IDEAL_G,
 ];
 
-fn sanitize_var_name(name: String) -> String {
+fn sanitize_var_name(name: &String) -> String {
     // From singular docs
     // (See Sec. 3.5.3 of https://www.singular.uni-kl.de/index.php/singular.pdf)
     // Var names should start with a letter
@@ -54,6 +54,8 @@ fn sanitize_var_name(name: String) -> String {
             res.push(c);
         } else if c == '_' {
             res.push_str("__");
+        } else if c == '!' {
+            res.push_str("____");
         } else {
             res.push('_');
             res.push_str(&format!("{:x}", c as u32));
@@ -90,7 +92,7 @@ pub(crate) fn expr_to_singular(
     let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
-            let sanitized = sanitize_var_name(x.to_string());
+            let sanitized = sanitize_var_name(&**x);
             assert_not_reserved(&sanitized)?;
             sanitized
         }
@@ -194,15 +196,8 @@ pub fn singular_printer(
     ens_expr: &(Expr, Message),
 ) -> Result<String, Message> {
     let mut tmp_count: u32 = 0; // count the number of required tmp vars
-    let mut vars2: Vec<String> = vec![];
+    let vars: Vec<_> = vars.iter().map(|x| sanitize_var_name(&**x)).collect();
     let mut node_map: HashMap<Node, Ident> = HashMap::new(); // for uninterpreted functions and mod translation
-
-    // Using @ is safe. For example, `poly g1 = x2+y3` is translated as poly `g1 = x^2 + y^3`
-    for v in vars {
-        let mut v2 = v.to_string();
-        v2.push('@');
-        vars2.push(sanitize_var_name(v2));
-    }
 
     // gather polynomials that will be the basis of ideal
     // for requires,  equality -> register ideal (rhs - lhs)
@@ -292,7 +287,7 @@ pub fn singular_printer(
             RING_DECL,
             RING_R,
             TO_INTEGER_RING,
-            vars2.join(","),
+            vars.join(","),
             DP_ORDERING
         );
     } else {
@@ -306,7 +301,7 @@ pub fn singular_printer(
             RING_DECL,
             RING_R,
             TO_INTEGER_RING,
-            vars2.join(","),
+            vars.join(","),
             tmp_vars.join(","),
             DP_ORDERING
         );

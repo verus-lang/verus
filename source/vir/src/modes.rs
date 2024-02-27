@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
-    FunctionKind, Ident, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
-    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VirErr,
+    FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
+    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -94,7 +94,7 @@ struct State {
     // mode = None is used for short-term internal inference -- we allow "let x1 ... x1 = x2;"
     // where x2 retroactively determines the mode of x1, where no uses if x1
     // are allowed between "let x1" and "x1 = x2;"
-    pub(crate) vars: ScopeMap<Ident, VarMode>,
+    pub(crate) vars: ScopeMap<VarIdent, VarMode>,
     pub(crate) in_forall_stmt: bool,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
@@ -213,7 +213,7 @@ mod typing {
             assert_eq!(self.internal_state.vars.num_scopes(), 0);
         }
 
-        pub(super) fn to_be_inferred(&self, x: &Ident) -> Option<Span> {
+        pub(super) fn to_be_inferred(&self, x: &VarIdent) -> Option<Span> {
             if let VarMode::Infer(span) =
                 self.internal_state.vars.get(x).expect("internal error: missing mode")
             {
@@ -223,18 +223,18 @@ mod typing {
             }
         }
 
-        pub(super) fn insert_var_mode(&mut self, x: &Ident, mode: VarMode) {
+        pub(super) fn insert_var_mode(&mut self, x: &VarIdent, mode: VarMode) {
             self.internal_state
                 .vars
                 .insert(x.clone(), mode)
                 .expect("internal error: Typing insert");
         }
 
-        pub(super) fn insert(&mut self, x: &Ident, mode: Mode) {
+        pub(super) fn insert(&mut self, x: &VarIdent, mode: Mode) {
             self.insert_var_mode(x, VarMode::Mode(mode))
         }
 
-        pub(super) fn infer_as(&mut self, x: &Ident, mode: Mode) {
+        pub(super) fn infer_as(&mut self, x: &VarIdent, mode: Mode) {
             assert!(self.to_be_inferred(x).is_some());
             self.internal_state.vars.replace(x.clone(), VarMode::Mode(mode)).expect("infer_as");
         }
@@ -255,7 +255,7 @@ mod typing {
 use typing::Typing;
 
 impl State {
-    fn get(&self, x: &Ident, span: &Span) -> Result<Mode, VirErr> {
+    fn get(&self, x: &VarIdent, span: &Span) -> Result<Mode, VirErr> {
         if let VarMode::Mode(mode) = self.vars.get(x).expect("internal error: missing mode") {
             Ok(*mode)
         } else {
@@ -364,7 +364,7 @@ fn add_pattern(
 
 struct PatternBoundDecl {
     span: Span,
-    name: Ident,
+    name: VarIdent,
     mode: Mode,
 }
 
@@ -436,7 +436,7 @@ fn add_pattern_rec(
                 if d1.mode != d2.mode {
                     let e = error_bare(format!(
                         "variable `{}` has different modes across alternatives separated by `|`",
-                        user_local_name(&d1.name.to_string())
+                        user_local_name(&d1.name)
                     ));
                     let e = e.primary_label(&d1.span, format!("has mode `{}`", d1.mode));
                     let e = e.primary_label(&d2.span, format!("has mode `{}`", d2.mode));

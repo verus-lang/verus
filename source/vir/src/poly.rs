@@ -77,9 +77,9 @@ because x is used both for f and for +.
 
 use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
-    Function, FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp,
-    Param, ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, Variant,
+    Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
+    ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarBinder, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -103,7 +103,7 @@ pub enum MonoTypX {
 }
 
 struct State {
-    types: ScopeMap<Ident, Typ>,
+    types: ScopeMap<VarIdent, Typ>,
     is_trait: bool,
     in_exec_closure: bool,
 }
@@ -510,7 +510,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::Quant(quant, binders, e1) => {
             let natives = crate::triggers::predict_native_quant_vars(binders, &vec![e1]);
-            let mut bs: Vec<Binder<Typ>> = Vec::new();
+            let mut bs: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in binders.iter() {
                 let native = natives.contains(&binder.name);
@@ -527,7 +527,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::Quant(*quant, Arc::new(bs), e1))
         }
         ExprX::Closure(binders, e1) => {
-            let mut bs: Vec<Binder<Typ>> = Vec::new();
+            let mut bs: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in binders.iter() {
                 let typ = coerce_typ_to_poly(ctx, &binder.a);
@@ -539,7 +539,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::Closure(Arc::new(bs), e1))
         }
         ExprX::ExecClosure { params, ret, body, requires, ensures, external_spec } => {
-            let mut params1: Vec<Binder<Typ>> = Vec::new();
+            let mut params1: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in params.iter() {
                 let typ = coerce_typ_to_native(ctx, &binder.a);
@@ -591,7 +591,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::ExecFnByName(fun) => mk_expr(ExprX::ExecFnByName(fun.clone())),
         ExprX::Choose { params, cond, body } => {
-            let mut bs: Vec<Binder<Typ>> = Vec::new();
+            let mut bs: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in params.iter() {
                 let typ = coerce_typ_to_poly(ctx, &binder.a);
@@ -632,7 +632,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
-            let mut bs: Vec<Binder<Typ>> = Vec::new();
+            let mut bs: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);
             let natives = crate::triggers::predict_native_quant_vars(vars, &vec![require, ensure]);
             for binder in vars.iter() {
@@ -888,10 +888,10 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let broadcast_forall = if attrs.broadcast_forall {
         // Create a coerce_typ_to_poly version of the parameters, requires, ensures
         state.types.push_scope(true);
-        let mut bs: Vec<Binder<Typ>> = Vec::new();
+        let mut bs: Vec<VarBinder<Typ>> = Vec::new();
         for param in params.iter() {
             let ParamX { name, typ, .. } = &param.x;
-            bs.push(Arc::new(air::ast::BinderX { name: name.clone(), a: typ.clone() }));
+            bs.push(Arc::new(crate::ast::VarBinderX { name: name.clone(), a: typ.clone() }));
         }
         let all_exps: Vec<&Expr> =
             (function.x.require.iter()).chain(function.x.ensure.iter()).collect();

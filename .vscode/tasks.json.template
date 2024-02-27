@@ -10,6 +10,16 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "build-no-vstd",
+      "type": "shell",
+      "command": "bash -c 'cd source; . ../tools/activate && vargo build --exclude vstd'",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     }
   ]
 }
