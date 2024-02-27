@@ -796,7 +796,8 @@ pub enum StmtX {
     /// Declare a local variable, which may be mutable, and may have an initial value
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
-    Decl { pattern: Pattern, mode: Mode, init: Option<Expr> },
+    /// (The mode is only allowed to be None for one special case; see modes.rs)
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr> },
 }
 
 /// Function parameter

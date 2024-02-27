@@ -375,6 +375,7 @@ pub fn req_ens_to_air(
     is_singular: bool,
     typ: air::ast::Typ,
     inherit_from: Option<(Ident, Typs)>,
+    filter: Option<Ident>,
 ) -> Result<bool, VirErr> {
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
@@ -415,7 +416,7 @@ pub fn req_ens_to_air(
                 Some(msg) => {
                     let l = MessageLabel { span: e.span.clone(), note: msg.clone() };
                     let ls: Vec<ArcDynMessageLabel> = vec![Arc::new(l)];
-                    Arc::new(ExprX::LabeledAxiom(ls, expr))
+                    Arc::new(ExprX::LabeledAxiom(ls, filter.clone(), expr))
                 }
             };
             exprs.push(loc_expr);
@@ -586,6 +587,7 @@ pub fn func_decl_to_air(
             function.x.attrs.integer_ring,
             bool_typ(),
             None,
+            Some(fun_to_air_ident(&function.x.name)),
         )?;
     }
 
@@ -609,6 +611,7 @@ pub fn func_decl_to_air(
                     &None,
                     function.x.attrs.integer_ring,
                     int_typ(),
+                    None,
                     None,
                 );
             }
@@ -669,6 +672,7 @@ pub fn func_decl_to_air(
         function.x.attrs.integer_ring,
         bool_typ(),
         inherit_fn_ens,
+        None,
     )?;
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 

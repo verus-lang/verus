@@ -337,7 +337,7 @@ pub fn check_singular_valid(
 
     let arc_ens: &air::ast::Stmt = stmts.last().unwrap();
     let ens = match &**arc_ens {
-        air::ast::StmtX::Assert(error, exp) => (exp.clone(), error.clone()),
+        air::ast::StmtX::Assert(error, _, exp) => (exp.clone(), error.clone()),
         _ => {
             panic!("internal error");
         }
@@ -355,7 +355,7 @@ pub fn check_singular_valid(
         // last element is ensures clause
         let stm = &stmts[idx];
         match &**stm {
-            air::ast::StmtX::Assert(error, exp) => {
+            air::ast::StmtX::Assert(error, _, exp) => {
                 reqs.push((exp.clone(), error.clone()));
             }
             _ => {
