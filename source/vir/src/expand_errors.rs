@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, BinaryOpr, FieldOpr, Fun, Function, Ident, Path, Quant, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, Variant, VariantCheck,
+    Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -10,13 +10,10 @@ use crate::func_to_air::FunctionSst;
 use crate::func_to_air::SstInfo;
 use crate::func_to_air::SstMap;
 use crate::messages::Span;
-use crate::sst::{
-    AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent,
-};
+use crate::sst::{AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX};
 use crate::sst_to_air::PostConditionSst;
 use crate::sst_util::{sst_conjoin, sst_equal_ext, sst_implies, sst_not, subst_typ_for_datatype};
 use crate::sst_visitor::map_stm_visitor_for_assert_id_nodes;
-use air::ast::Binders;
 use air::ast::Quant::{Exists, Forall};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,8 +22,8 @@ use std::sync::Arc;
 pub enum Introduction {
     UnfoldFunctionDef(Fun, Exp),
     SplitEquality(Exp),
-    Let(Binders<Exp>),
-    Forall(Binders<Typ>),
+    Let(VarBinders<Exp>),
+    Forall(VarBinders<Typ>),
     Hypothesis(Exp),
 }
 
@@ -171,7 +168,8 @@ pub fn do_expansion(
     function_sst: &FunctionSst,
     assert_id: &AssertId,
 ) -> (FunctionSst, ExpansionTree) {
-    let (body, tree, mut local_decls) = do_expansion_body(
+    let mut fsst = function_sst.clone();
+    let (body, tree) = do_expansion_body(
         ctx,
         ectx,
         previous_intros,
@@ -179,10 +177,9 @@ pub fn do_expansion(
         &function_sst.post_condition,
         &function_sst.body,
         assert_id,
+        &mut fsst.local_decls,
     );
-    let mut fsst = function_sst.clone();
     fsst.body = body;
-    fsst.local_decls.append(&mut local_decls);
     (fsst, tree)
 }
 
@@ -194,7 +191,8 @@ pub fn do_expansion_body(
     post_condition_sst: &PostConditionSst,
     stm: &Stm,
     assert_id: &AssertId,
-) -> (Stm, ExpansionTree, Vec<LocalDecl>) {
+    local_decls: &mut Vec<LocalDecl>,
+) -> (Stm, ExpansionTree) {
     let mut record = None;
     let new_stm = map_stm_visitor_for_assert_id_nodes(stm, &mut |one_stm, prev_stm| {
         let maybe_expanded = do_expansion_if_assert_id_matches(
@@ -206,22 +204,23 @@ pub fn do_expansion_body(
             one_stm,
             prev_stm,
             assert_id,
+            local_decls,
         );
         match maybe_expanded {
             None => Ok(one_stm.clone()),
-            Some((new_stm, expansion_tree, local_decls)) => {
+            Some((new_stm, expansion_tree)) => {
                 if record.is_some() {
                     panic!("do_expansion_body found duplicate assert_id");
                 }
-                record = Some((expansion_tree, local_decls));
+                record = Some(expansion_tree);
                 Ok(new_stm)
             }
         }
     })
     .unwrap();
 
-    if let Some((expansion_tree, local_decls)) = record {
-        (new_stm, expansion_tree, local_decls)
+    if let Some(expansion_tree) = record {
+        (new_stm, expansion_tree)
     } else {
         panic!("do_expansion_body did not find the given assert_id");
     }
@@ -236,10 +235,10 @@ fn do_expansion_if_assert_id_matches(
     stm: &Stm,
     prev_stm: Option<&Stm>,
     assert_id: &AssertId,
-) -> Option<(Stm, ExpansionTree, Vec<LocalDecl>)> {
+    local_decls: &mut Vec<LocalDecl>,
+) -> Option<(Stm, ExpansionTree)> {
     // TODO expand BreakOrContinue
     // TODO expand for invariant_open
-    // TODO expand postcondition
 
     match &stm.x {
         StmX::Assert(Some(a_id), _message, exp) if a_id == assert_id => {
@@ -265,7 +264,7 @@ fn do_expansion_if_assert_id_matches(
                 }
             }
 
-            Some(expand_exp(ctx, ectx, previous_intros, fun_ssts, assert_id, the_exp))
+            Some(expand_exp(ctx, ectx, previous_intros, fun_ssts, assert_id, the_exp, local_decls))
         }
         StmX::Call { assert_id: Some(a_id), fun, typ_args, args, .. } if a_id == assert_id => {
             let preconditions = split_precondition(ctx, fun_ssts, &stm.span, fun, typ_args, args);
@@ -274,12 +273,27 @@ fn do_expansion_if_assert_id_matches(
             // so the easiest thing is conjoin everything and then use the common-case
             // logic, which will split it back up.
             let precondition = sst_conjoin(&stm.span, &preconditions);
-            Some(expand_exp(ctx, ectx, previous_intros, fun_ssts, assert_id, &precondition))
+            Some(expand_exp(
+                ctx,
+                ectx,
+                previous_intros,
+                fun_ssts,
+                assert_id,
+                &precondition,
+                local_decls,
+            ))
         }
         StmX::Return { assert_id: Some(a_id), ret_exp, .. } if a_id == assert_id => {
             let postcondition = sst_conjoin(&stm.span, &post_condition_sst.ens_exps);
-            let (stm, tree, decls) =
-                expand_exp(ctx, ectx, previous_intros, fun_ssts, assert_id, &postcondition);
+            let (stm, tree) = expand_exp(
+                ctx,
+                ectx,
+                previous_intros,
+                fun_ssts,
+                assert_id,
+                &postcondition,
+                local_decls,
+            );
             let stm = match (&post_condition_sst.dest, ret_exp) {
                 (Some(dest_uid), Some(ret_exp)) => Spanned::new(
                     stm.span.clone(),
@@ -290,7 +304,7 @@ fn do_expansion_if_assert_id_matches(
                 ),
                 _ => stm,
             };
-            Some((stm, tree, decls))
+            Some((stm, tree))
         }
         _ => None,
     }
@@ -331,21 +345,17 @@ impl<'a> State<'a> {
     fn mk_fresh_ids<T: Clone>(
         &mut self,
         span: &Span,
-        binders: &Binders<T>,
+        binders: &VarBinders<T>,
         e: &Exp,
         to_typ: impl Fn(&T) -> Typ,
-    ) -> (Vec<(T, UniqueIdent)>, Exp) {
+    ) -> (Vec<(T, VarIdent)>, Exp) {
         let mut v = vec![];
-        let mut substs = HashMap::<UniqueIdent, Exp>::new();
+        let mut substs = HashMap::<VarIdent, Exp>::new();
         for binder in binders.iter() {
-            let new_name = UniqueIdent {
-                name: Arc::new(format!(
-                    "{:}{:}",
-                    crate::def::PREFIX_EXPAND_ERRORS_TEMP_VAR,
-                    self.base_id
-                )),
-                local: Some(self.tmp_var_count),
-            };
+            let new_name = VarIdent(
+                binder.name.0.clone(),
+                VarIdentDisambiguate::ExpandErrorsDecl(self.tmp_var_count),
+            );
             self.tmp_var_count += 1;
 
             let typ = to_typ(&binder.a);
@@ -354,7 +364,7 @@ impl<'a> State<'a> {
             self.local_decls.push(decl);
 
             let var_exp = SpannedTyped::new(span, &typ, ExpX::Var(new_name.clone()));
-            substs.insert(UniqueIdent { name: binder.name.clone(), local: None }, var_exp);
+            substs.insert(binder.name.clone(), var_exp);
 
             v.push((binder.a.clone(), new_name));
         }
@@ -370,7 +380,8 @@ fn expand_exp(
     fun_ssts: &SstMap,
     assert_id: &AssertId,
     exp: &Exp,
-) -> (Stm, ExpansionTree, Vec<LocalDecl>) {
+    local_decls: &mut Vec<LocalDecl>,
+) -> (Stm, ExpansionTree) {
     let mut unfold_counts = HashMap::<Fun, u32>::new();
     for intro in previous_intros {
         if let Introduction::UnfoldFunctionDef(fun, _) = intro {
@@ -382,17 +393,24 @@ fn expand_exp(
         }
     }
 
+    let mut tmp_var_count_start = 0;
+    for ld in local_decls.iter() {
+        if let VarIdentDisambiguate::ExpandErrorsDecl(i) = &ld.ident.1 {
+            tmp_var_count_start = std::cmp::max(tmp_var_count_start, i + 1);
+        }
+    }
+
     let mut state = State {
         fun_ssts,
         unfold_counts,
-        tmp_var_count: 0,
+        tmp_var_count: tmp_var_count_start,
         assert_id_count: 0,
         base_id: assert_id.clone(),
-        local_decls: vec![],
+        local_decls: std::mem::take(local_decls),
     };
     let (stm, tree) = expand_exp_rec(ctx, ectx, &mut state, exp, false, false, false);
-    let State { local_decls, .. } = state;
-    (stm, tree, local_decls)
+    std::mem::swap(local_decls, &mut state.local_decls);
+    (stm, tree)
 }
 
 fn branch_trees(tree1: ExpansionTree, tree2: ExpansionTree) -> ExpansionTree {

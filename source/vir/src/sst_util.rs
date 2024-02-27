@@ -1,7 +1,7 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder,
-    VarBinderX, VarBinders,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp,
+    IntRange, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::get_variant;
 use crate::context::GlobalCtx;
