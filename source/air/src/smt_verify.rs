@@ -147,7 +147,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
         if only_check_earlier && !found_enabled {
             // no earlier assertions to check
-            return ValidityResult::Valid;
+            return ValidityResult::Valid(crate::context::UsageInfo::None);
         }
         Some(mk_and(&disabled))
     } else {
@@ -314,7 +314,27 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ResultDetermination::Determined(r) => r,
         ResultDetermination::Undetermined(true) => {
             context.state = ContextState::FoundResult;
-            ValidityResult::Valid
+
+            context.smt_log.log_word("get-unsat-core");
+
+            let smt_data = context.smt_log.take_pipe_data();
+            let smt_output = context.get_smt_process().send_commands(smt_data);
+
+            let mut smt_output = smt_output.into_iter();
+            let unsat_core_str =
+                smt_output.next().expect("expected one line in the unsat core output");
+            assert!(smt_output.next().is_none());
+
+            let fun_names: Vec<Ident> = unsat_core_str
+                .strip_prefix('(')
+                .expect("invalid unsat core")
+                .strip_suffix(')')
+                .expect("invalid unsat core")
+                .split_terminator(' ')
+                .map(|x| Arc::new(x.to_owned()))
+                .collect();
+
+            ValidityResult::Valid(crate::context::UsageInfo::UsedAxioms(fun_names))
         }
         ResultDetermination::Undetermined(false) => smt_get_model(context, infos, air_model),
     }
