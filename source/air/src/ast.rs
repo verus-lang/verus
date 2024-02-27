@@ -127,6 +127,8 @@ pub enum BindX {
     Choose(Binders<Typ>, Triggers, Qid, Expr),
 }
 
+pub type AxiomInfoFilter = Option<Ident>;
+
 pub type Expr = Arc<ExprX>;
 pub type Exprs = Arc<Vec<Expr>>;
 #[derive(Debug)]
@@ -145,8 +147,8 @@ pub enum ExprX {
     Bind(Bind, Expr),
     // Sometimes an axiom will have additional error messages. If an assert fails
     // and this axiom was relevant, then we append the error labels to the Message.
-    LabeledAxiom(Vec<ArcDynMessage>, Expr),
-    LabeledAssertion(ArcDynMessage, Expr),
+    LabeledAxiom(Vec<ArcDynMessage>, AxiomInfoFilter, Expr),
+    LabeledAssertion(ArcDynMessage, AxiomInfoFilter, Expr),
 }
 
 pub type Stmt = Arc<StmtX>;
@@ -154,7 +156,7 @@ pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
-    Assert(ArcDynMessage, Expr),
+    Assert(ArcDynMessage, AxiomInfoFilter, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
     // create a named snapshot of the state of the variables

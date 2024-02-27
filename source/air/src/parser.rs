@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX, Stmts, Trigger,
-    Triggers, Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX, Stmts,
+    Trigger, Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
@@ -136,6 +136,18 @@ impl Parser {
         Ok(labels)
     }
 
+    fn nodes_to_filter(&self, nodes: &Vec<Node>) -> Result<Option<Ident>, String> {
+        if nodes.len() == 0 {
+            Ok(None)
+        } else {
+            assert!(nodes.len() == 1);
+            match &nodes[0] {
+                Node::Atom(s) if is_symbol(s) => Ok(Some(Arc::new(s.clone()))),
+                _ => Err(format!("expected symbol, found: {}", node_to_string(&nodes[0]))),
+            }
+        }
+    }
+
     pub(crate) fn node_to_expr(&self, node: &Node) -> Result<Expr, String> {
         match node {
             Node::Atom(s) if s.to_string() == "true" => {
@@ -150,16 +162,22 @@ impl Parser {
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(ExprX::Var(Arc::new(s.clone())))),
             Node::List(nodes) if nodes.len() > 0 => {
                 match &nodes[..] {
-                    [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "location" => {
+                    [Node::Atom(s), Node::List(nodes), Node::List(filter), e]
+                        if s.to_string() == "location" && filter.len() <= 1 =>
+                    {
                         let error =
                             self.message_interface.from_labels(&self.nodes_to_labels(nodes)?);
+                        let filter = self.nodes_to_filter(filter)?;
                         let expr = self.node_to_expr(e)?;
-                        return Ok(Arc::new(ExprX::LabeledAssertion(error, expr)));
+                        return Ok(Arc::new(ExprX::LabeledAssertion(error, filter, expr)));
                     }
-                    [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "axiom_location" => {
+                    [Node::Atom(s), Node::List(nodes), Node::List(filter), e]
+                        if s.to_string() == "axiom_location" && filter.len() <= 1 =>
+                    {
                         let labels = self.nodes_to_labels(nodes)?;
+                        let filter = self.nodes_to_filter(filter)?;
                         let expr = self.node_to_expr(e)?;
-                        return Ok(Arc::new(ExprX::LabeledAxiom(labels, expr)));
+                        return Ok(Arc::new(ExprX::LabeledAxiom(labels, filter, expr)));
                     }
                     [Node::Atom(s), Node::Atom(snap), Node::Atom(x)]
                         if s.to_string() == "old" && is_symbol(snap) && is_symbol(x) =>
@@ -465,7 +483,7 @@ impl Parser {
                 }
                 [Node::Atom(s), e] if s.to_string() == "assert" => {
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(self.message_interface.empty(), expr)))
+                    Ok(Arc::new(StmtX::Assert(self.message_interface.empty(), None, expr)))
                 }
                 [Node::Atom(s), Node::Atom(x)] if s.to_string() == "havoc" && is_symbol(x) => {
                     Ok(Arc::new(StmtX::Havoc(Arc::new(x.clone()))))
@@ -479,11 +497,14 @@ impl Parser {
                 {
                     Ok(Arc::new(StmtX::Snapshot(Arc::new(snap.clone()))))
                 }
-                [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "assert" => {
+                [Node::Atom(s), Node::List(nodes), Node::List(filter), e]
+                    if s.to_string() == "assert" && filter.len() <= 1 =>
+                {
                     let labels = self.nodes_to_labels(nodes)?;
                     let error = self.message_interface.from_labels(&labels);
+                    let filter = self.nodes_to_filter(filter)?;
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(error, expr)))
+                    Ok(Arc::new(StmtX::Assert(error, filter, expr)))
                 }
                 [Node::Atom(s), e] if s.to_string() == "deadend" => {
                     let stmt = self.node_to_stmt(&e)?;
