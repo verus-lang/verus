@@ -12,7 +12,7 @@ use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
-use air::ast_util::str_typ;
+use air::ast_util::{mk_unnamed_axiom, str_typ};
 use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -605,7 +605,7 @@ impl Ctx {
             commands.push(Arc::new(CommandX::Global(decl)));
         }
         let distinct = Arc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Arc::new(ids)));
-        let decl = Arc::new(DeclX::Axiom(distinct));
+        let decl = mk_unnamed_axiom(distinct);
         commands.push(Arc::new(CommandX::Global(decl)));
         for group in &self.reveal_groups {
             crate::func_to_air::broadcast_forall_group_axioms(

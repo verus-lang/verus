@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
-    MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs,
+    Ident, MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::def::mk_skolem_id;
 use crate::util::vec_map;
@@ -366,6 +366,15 @@ impl Printer {
         nodes!(declare-var {str_to_node(x)} {self.typ_to_node(typ)})
     }
 
+    pub fn axiom_to_node(&self, axiom: &Axiom) -> Node {
+        let Axiom { named, expr } = axiom;
+        if let Some(named) = named {
+            nodes!(axiom ({str_to_node("!")} {self.expr_to_node(expr)} {str_to_node(":named")} {str_to_node(named)}))
+        } else {
+            nodes!(axiom {self.expr_to_node(expr)})
+        }
+    }
+
     pub fn decl_to_node(&self, decl: &Decl) -> Node {
         match &**decl {
             DeclX::Sort(x) => self.sort_decl_to_node(x),
@@ -373,7 +382,7 @@ impl Printer {
             DeclX::Const(x, typ) => self.const_decl_to_node(x, typ),
             DeclX::Fun(x, typs, typ) => self.fun_decl_to_node(x, typs, typ),
             DeclX::Var(x, typ) => self.var_decl_to_node(x, typ),
-            DeclX::Axiom(expr) => nodes!(axiom {self.expr_to_node(expr)}),
+            DeclX::Axiom(axiom) => self.axiom_to_node(axiom),
         }
     }
 
