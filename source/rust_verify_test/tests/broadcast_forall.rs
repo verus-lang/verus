@@ -439,3 +439,57 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
 }
+
+const RING_ALGEBRA_MEMBERS_GENERIC: &str = verus_code_str! {
+    mod ring {
+        use builtin::*;
+
+        pub struct Ring<T: Copy> {
+            pub i: nat,
+            pub t: T,
+        }
+
+        impl<T: Copy> Ring<T> {
+            pub closed spec fn inv(&self) -> bool {
+                self.i < 10
+            }
+
+            pub closed spec fn succ(&self) -> Self {
+                Ring { i: if self.i == 9 { 0 } else { self.i + 1 }, t: self.t }
+            }
+
+            pub closed spec fn prev(&self) -> Self {
+                Ring { i: if self.i == 0 { 9 } else { (self.i - 1) as nat }, t: self.t }
+            }
+
+            #[verifier::broadcast_forall]
+            pub proof fn succ_ensures(p: Self)
+                requires p.inv()
+                ensures p.inv() && (#[trigger] p.succ()).prev() == p
+            { }
+
+            #[verifier::broadcast_forall]
+            pub proof fn prev_ensures(p: Self)
+                requires p.inv()
+                ensures p.inv() && (#[trigger] p.prev()).succ() == p
+            { }
+
+            reveal_group! {
+            pub properties =>
+                Ring::succ_ensures,
+                Ring::prev_ensures,
+            }
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_member_generic RING_ALGEBRA_MEMBERS_GENERIC.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            reveal Ring::properties;
+        }
+    } => Ok(())
+}
