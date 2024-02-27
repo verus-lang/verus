@@ -151,7 +151,7 @@ pub enum ExprX {
     LabeledAssertion(Option<AssertId>, ArcDynMessage, AxiomInfoFilter, Expr),
 }
 
-pub type AssertId = Ident;
+pub type AssertId = Arc<Vec<u64>>;
 
 pub type Stmt = Arc<StmtX>;
 pub type Stmts = Arc<Vec<Stmt>>;

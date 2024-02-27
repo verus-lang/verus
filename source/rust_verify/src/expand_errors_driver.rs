@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::Function;
 use vir::context::Ctx;
-use vir::expand_errors::{CanExpandFurther, ExpansionContext, ExpansionTree, Introduction};
+use vir::expand_errors::{
+    cons_id, CanExpandFurther, ExpansionContext, ExpansionTree, Introduction,
+};
 use vir::func_to_air::FunctionSst;
 use vir::func_to_air::SstMap;
 use vir::sst::{AssertId, Exp};
@@ -20,10 +22,6 @@ pub enum ExpandErrorsResult {
     // be equivalent. Instead, we 'presume' it to be a fail.
     PresumedFail,
 }
-
-/// AssertIds are strings, like 42_0_2, but sometimes we need to
-/// to actually represent them as real vectors, e.g., [42, 0, 2].
-type IdVec = Vec<u64>;
 
 /// Object responsible for maintaining state during an expand-errors
 /// invocation and determining which expansions to perform.
@@ -74,7 +72,7 @@ pub struct ExpandErrorsDriver {
     pub function: Function,
 
     /// Initial ID to be expanded, should be length 1.
-    base_id: IdVec,
+    base_id: AssertId,
     /// FunctionSst from the query that prompted the expand-errors mechancism.
     base_function_sst: FunctionSst,
     /// Pre-computed context information
@@ -85,18 +83,18 @@ pub struct ExpandErrorsDriver {
     /// with assert_ids 42_1_0, 42_1_1, 42_2_2, 42_2_3.
     /// The ExapansionTree is the tree that explains how 42_1
     /// was expanded into its sub-assertions.
-    expansions: HashMap<IdVec, (ExpansionTree, FunctionSst)>,
+    expansions: HashMap<AssertId, (ExpansionTree, FunctionSst)>,
 
     /// The ID for the query we're currently running.
     /// Becomes empty [] when execution finishes.
-    current: IdVec,
+    current: Vec<u64>,
     /// Maximum index at each level in the current stack.
     caps: Vec<u64>,
     /// num_leaf_failures
     leaf_fails: u64,
 
     /// Result for a given assertion
-    results: HashMap<IdVec, ExpandErrorsResult>,
+    results: HashMap<AssertId, ExpandErrorsResult>,
 
     /// A "mega tree" of all the expansion trees glued together,
     /// flatted (pre-order) into a list where each line has an 'indentation',
@@ -108,7 +106,7 @@ pub struct ExpandErrorsDriver {
 #[derive(Debug)]
 enum LineKind {
     Intro(Introduction),
-    Leaf(IdVec, Exp),
+    Leaf(AssertId, Exp),
     Explanation(String),
 }
 
@@ -127,17 +125,16 @@ enum Style {
 impl ExpandErrorsDriver {
     /// Create a new driver object which will repeatedly expand the given assert_id
     pub fn new(function: &Function, assert_id: &AssertId, function_sst: FunctionSst) -> Self {
-        let base_id = to_id_vec(assert_id);
-        assert!(base_id.len() == 1);
+        assert!(assert_id.len() == 1);
         Self {
             function: function.clone(),
-            base_id: base_id.clone(),
+            base_id: assert_id.clone(),
             ectx: vir::expand_errors::get_expansion_ctx(&function_sst.body, assert_id),
             base_function_sst: function_sst,
             expansions: HashMap::new(),
             results: HashMap::new(),
-            caps: vec![base_id[0] + 1],
-            current: base_id.clone(),
+            caps: vec![assert_id[0] + 1],
+            current: (**assert_id).clone(),
             output: vec![],
             leaf_fails: 0,
         }
@@ -156,14 +153,13 @@ impl ExpandErrorsDriver {
         assert_id: &AssertId,
         result: ExpandErrorsResult,
     ) {
-        let id = to_id_vec(assert_id);
-        assert!(self.current == id);
-        if id.len() == 1 {
+        assert!(&self.current == &**assert_id);
+        if assert_id.len() == 1 {
             assert!(result != ExpandErrorsResult::Pass);
         }
-        let cur_depth = id.len();
+        let cur_depth = assert_id.len();
 
-        self.results.insert(id, result);
+        self.results.insert(assert_id.clone(), result);
 
         if result == ExpandErrorsResult::Pass {
             self.advance();
@@ -198,7 +194,7 @@ impl ExpandErrorsDriver {
         if self.current.len() > 0 {
             let parent_id = self.current[..self.current.len() - 1].to_vec();
             let fsst = self.expansions.get(&parent_id).unwrap().1.clone();
-            let assert_id = from_id_vec(&self.current);
+            let assert_id = Arc::new(self.current.clone());
             Some((assert_id, fsst))
         } else {
             None
@@ -229,12 +225,11 @@ impl ExpandErrorsDriver {
 
     fn expand(&mut self, ctx: &Ctx, fun_ssts: &SstMap, assert_id: &AssertId) -> u64 {
         assert!(ctx.fun.as_ref().unwrap().current_fun == self.function.x.name);
-        let id = to_id_vec(assert_id);
-        let previous_intros = self.get_intros_up_to(&id);
-        let function_sst = if &self.base_id == &id {
+        let previous_intros = self.get_intros_up_to(&assert_id);
+        let function_sst = if &self.base_id == assert_id {
             &self.base_function_sst
         } else {
-            let parent_id = id[..id.len() - 1].to_vec();
+            let parent_id = assert_id[..assert_id.len() - 1].to_vec();
             &self.expansions.get(&parent_id).unwrap().1
         };
 
@@ -247,21 +242,20 @@ impl ExpandErrorsDriver {
             assert_id,
         );
         let num_leaves = expansion_tree.count_leaves();
-        self.add_lines_to_output(&id, &expansion_tree, num_leaves == 1);
-        self.expansions.insert(id.clone(), (expansion_tree, new_function_sst));
+        self.add_lines_to_output(&assert_id, &expansion_tree, num_leaves == 1);
+        self.expansions.insert(assert_id.clone(), (expansion_tree, new_function_sst));
         if num_leaves == 1 {
-            let mut one_assert_id = id.clone();
-            one_assert_id.push(0);
+            let one_assert_id = cons_id(assert_id, 0);
             self.results.insert(one_assert_id, ExpandErrorsResult::PresumedFail);
         }
         num_leaves
     }
 
-    fn get_intros_up_to(&self, id: &IdVec) -> Vec<Introduction> {
+    fn get_intros_up_to(&self, id: &AssertId) -> Vec<Introduction> {
         let mut v = vec![];
         for i in 1..id.len() {
-            let id1 = id[..i].to_vec();
-            let id2 = from_id_vec(&id[..i + 1].to_vec());
+            let id1 = Arc::new(id[..i].to_vec());
+            let id2 = Arc::new(id[..i + 1].to_vec());
             let mut intros =
                 self.expansions[&id1].0.intros_up_to(&id2).unwrap().into_iter().rev().collect();
             v.append(&mut intros);
@@ -292,7 +286,7 @@ impl ExpandErrorsDriver {
     ///
     /// We need to be careful not to repeat the 'h()' line, since it's already there,
     /// but it's also going to be the first unfolding in the ExpansionTree.
-    fn add_lines_to_output(&mut self, id: &IdVec, tree: &ExpansionTree, explain: bool) {
+    fn add_lines_to_output(&mut self, id: &AssertId, tree: &ExpansionTree, explain: bool) {
         // Flatten the given tree to a list
         fn rec(tree: &ExpansionTree, indent: u64, lines: &mut Vec<Line>, explain: bool) {
             match tree {
@@ -306,8 +300,7 @@ impl ExpandErrorsDriver {
                     rec(&child, indent + 1, lines, explain);
                 }
                 ExpansionTree::Leaf(assert_id, e, can_expand_further) => {
-                    let id = to_id_vec(assert_id);
-                    lines.push(Line { indent, kind: LineKind::Leaf(id, e.clone()) });
+                    lines.push(Line { indent, kind: LineKind::Leaf(assert_id.clone(), e.clone()) });
                     if let CanExpandFurther::No(Some(msg)) = can_expand_further {
                         if explain {
                             lines.push(Line {
@@ -444,7 +437,7 @@ impl ExpandErrorsDriver {
                 LineKind::Leaf(id, exp) => {
                     let (status, style) = match self.results.get(id) {
                         None => {
-                            let s = if id == &self.current { "..." } else { "" };
+                            let s = if &**id == &self.current { "..." } else { "" };
                             (s, Style::Normal)
                         }
                         Some(ExpandErrorsResult::Fail) => ("✘", Style::FailRed),
@@ -539,10 +532,9 @@ impl ExpandErrorsDriver {
         false
     }
 
-    fn all_direct_children_succeed(&self, id: &IdVec, num_leaves: u64) -> bool {
+    fn all_direct_children_succeed(&self, id: &AssertId, num_leaves: u64) -> bool {
         for i in 0..num_leaves {
-            let mut child_id = id.clone();
-            child_id.push(i);
+            let child_id = cons_id(id, i);
             if self.results.get(&child_id) != Some(&ExpandErrorsResult::Pass) {
                 return false;
             }
@@ -563,12 +555,4 @@ indicates that the proof is "flaky"."###
         use vir::messages::ToAny;
         vir::messages::note_bare(s).to_any()
     }
-}
-
-fn to_id_vec(assert_id: &AssertId) -> IdVec {
-    assert_id.split('_').map(|m| m.parse::<u64>().unwrap()).collect()
-}
-
-fn from_id_vec(id: &IdVec) -> AssertId {
-    Arc::new(id.iter().map(|m| format!("{}", m)).collect::<Vec<_>>().join("_"))
 }
