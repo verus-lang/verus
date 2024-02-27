@@ -629,7 +629,7 @@ pub enum ProverChoice {
     Singular,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CommandContext {
     pub fun: Fun,
     pub span: crate::messages::Span,
@@ -647,6 +647,7 @@ impl CommandContext {
     }
 }
 
+#[derive(Debug)]
 #[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,

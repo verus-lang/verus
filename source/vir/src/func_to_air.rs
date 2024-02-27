@@ -22,7 +22,7 @@ use crate::sst_util::{subst_exp, subst_stm};
 use crate::update_cell::UpdateCell;
 use crate::util::vec_map;
 use air::ast::{
-    BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
+    Axiom, BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
     Triggers,
 };
 use air::ast_util::{
@@ -176,7 +176,11 @@ pub(crate) fn broadcast_forall_group_axioms(
     if member_fuels.len() > 0 {
         // (axiom (=> (fuel_bool_default fuel%group) (and ... (fuel_bool_default fuel%member) ...)))
         let imply = mk_implies(&fuel_group, &mk_and(&member_fuels));
-        let axiom = mk_unnamed_axiom(imply);
+        let axiom = Arc::new(DeclX::Axiom(Axiom {
+            named: Some(fun_to_air_ident(&group.x.name)),
+            expr: imply,
+        }));
+
         decl_commands.push(Arc::new(CommandX::Global(axiom)));
     }
 }
@@ -965,7 +969,11 @@ pub fn func_axioms_to_air(
                     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                     mk_implies(&fuel_bool, &expr)
                 };
-                let axiom = mk_unnamed_axiom(fuel_imply);
+                // let axiom = mk_unnamed_axiom(fuel_imply);
+                let axiom = Arc::new(DeclX::Axiom(Axiom {
+                    named: Some(fun_to_air_ident(&function.x.name)),
+                    expr: fuel_imply,
+                }));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
         }

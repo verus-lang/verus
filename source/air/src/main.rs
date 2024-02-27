@@ -1,5 +1,5 @@
 use air::ast::CommandX;
-use air::context::{Context, ValidityResult};
+use air::context::{Context, UsageInfo, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
 use air::profiler::{Profiler, PROVER_LOG_FILE};
 use getopts::Options;
@@ -138,9 +138,20 @@ pub fn main() {
         let result =
             air_context.command(&*message_interface, &reporter, &command, Default::default());
         match result {
-            ValidityResult::Valid => {
+            ValidityResult::Valid(usage_info) => {
                 if let CommandX::CheckValid(_) = &**command {
                     count_verified += 1;
+
+                    if let UsageInfo::UsedAxioms(axioms) = usage_info {
+                        println!(
+                            "Query used named axioms: {}",
+                            axioms
+                                .iter()
+                                .map(|x| (**x).clone())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        )
+                    }
                 }
             }
             ValidityResult::TypeError(err) => {
