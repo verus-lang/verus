@@ -8,7 +8,7 @@
 
 use crate::ast::{
     AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, NullaryOpr, Path, Quant,
-    SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
+    SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -32,18 +32,14 @@ pub struct BndInfo {
 pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
 pub enum BndX {
-    Let(Binders<Exp>),
-    Quant(Quant, Binders<Typ>, Trigs),
-    Lambda(Binders<Typ>, Trigs),
-    Choose(Binders<Typ>, Trigs, Exp),
+    Let(VarBinders<Exp>),
+    Quant(Quant, VarBinders<Typ>, Trigs),
+    Lambda(VarBinders<Typ>, Trigs),
+    Choose(VarBinders<Typ>, Trigs, Exp),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UniqueIdent {
-    pub name: Ident,
-    // None for bound vars, Some disambiguating integer for local vars
-    pub local: Option<u64>,
-}
+// TODO: remove UniqueIdent
+pub type UniqueIdent = VarIdent;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InternalFun {
@@ -103,7 +99,7 @@ pub type Par = Arc<Spanned<ParX>>;
 pub type Pars = Arc<Vec<Par>>;
 #[derive(Debug, Clone)]
 pub struct ParX {
-    pub name: Ident,
+    pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
     pub purpose: ParPurpose,

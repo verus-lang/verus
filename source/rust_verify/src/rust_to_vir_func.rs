@@ -4,7 +4,7 @@ use crate::attributes::{
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
+    check_generics_bounds_fun, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::util::{err_span, err_span_bare, unsupported_err_span};
@@ -23,8 +23,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, MaskSpec, Mode, ParamX,
-    SpannedTyped, Typ, TypDecoration, TypX, VirErr,
+    SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
+use vir::ast_util::air_unique_var;
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
@@ -415,42 +416,42 @@ pub(crate) fn check_item_fn<'tcx>(
     )?;
     let fuel = get_fuel(&vattrs);
 
-    let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>, bool)>) = match body_id
-    {
-        CheckItemFnEither::BodyId(body_id) => {
-            let body = find_body(ctxt, body_id);
-            let Body { params, value: _, generator_kind } = body;
-            match generator_kind {
-                None => {}
-                _ => {
-                    unsupported_err!(sig.span, "generator_kind", generator_kind);
+    let (vir_body, header, params): (_, _, Vec<(VarIdent, Span, Option<HirId>, bool)>) =
+        match body_id {
+            CheckItemFnEither::BodyId(body_id) => {
+                let body = find_body(ctxt, body_id);
+                let Body { params, value: _, generator_kind } = body;
+                match generator_kind {
+                    None => {}
+                    _ => {
+                        unsupported_err!(sig.span, "generator_kind", generator_kind);
+                    }
                 }
+                let mut ps = Vec::new();
+                for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                    let (is_mut_var, name) = pat_to_mut_var(pat)?;
+                    // is_mut_var: means a parameter is like `mut x: X`
+                    // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
+                    ps.push((name, *span, Some(*hir_id), is_mut_var));
+                }
+                let external_body = vattrs.external_body || vattrs.external_fn_specification;
+                let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
+                let header = vir::headers::read_header(&mut vir_body)?;
+                (Some(vir_body), header, ps)
             }
-            let mut ps = Vec::new();
-            for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                let (is_mut_var, name) = pat_to_mut_var(pat)?;
-                // is_mut_var: means a parameter is like `mut x: X`
-                // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-                ps.push((name, *span, Some(*hir_id), is_mut_var));
+            CheckItemFnEither::ParamNames(params) => {
+                let params =
+                    params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect();
+                let header = vir::headers::read_header_block(&mut vec![])?;
+                (None, header, params)
             }
-            let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
-            let header = vir::headers::read_header(&mut vir_body)?;
-            (Some(vir_body), header, ps)
-        }
-        CheckItemFnEither::ParamNames(params) => {
-            let params = params.iter().map(|p| (p.to_string(), p.span, None, false)).collect();
-            let header = vir::headers::read_header_block(&mut vec![])?;
-            (None, header, params)
-        }
-    };
+        };
 
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
-        let name = Arc::new(name);
         let param_mode = if let Some(hir_id) = hir_id {
             get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
         } else {
@@ -606,9 +607,9 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     use vir::ast::UnwrapParameter;
-    let mut all_param_names: Vec<vir::ast::Ident> = Vec::new();
-    let mut all_param_name_set: HashSet<vir::ast::Ident> = HashSet::new();
-    let mut unwrap_param_map: HashMap<vir::ast::Ident, UnwrapParameter> = HashMap::new();
+    let mut all_param_names: Vec<vir::ast::VarIdent> = Vec::new();
+    let mut all_param_name_set: HashSet<vir::ast::VarIdent> = HashSet::new();
+    let mut unwrap_param_map: HashMap<vir::ast::VarIdent, UnwrapParameter> = HashMap::new();
     for unwrap in header.unwrap_parameters.iter() {
         all_param_names.push(unwrap.inner_name.clone());
         unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
@@ -648,9 +649,9 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
         (None, None) => {
-            (Arc::new(RETURN_VALUE.to_string()), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
+            (air_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
         }
-        (None, Some((typ, mode))) => (Arc::new(RETURN_VALUE.to_string()), typ, mode),
+        (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
@@ -1054,7 +1055,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         return err_span(span, "spec functions cannot have ensures");
     }
 
-    let ret_name = Arc::new(RETURN_VALUE.to_string());
+    let ret_name = air_unique_var(RETURN_VALUE);
     let ret = ctxt.spanned_new(
         span,
         ParamX {
@@ -1148,7 +1149,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
-        let name = Arc::new(foreign_param_to_var(param));
+        let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
         let typ = mid_ty_to_vir(
             ctxt.tcx,
@@ -1171,7 +1172,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         Some((typ, mode)) => (typ, mode),
     };
     let ret_param = ParamX {
-        name: Arc::new(RETURN_VALUE.to_string()),
+        name: air_unique_var(RETURN_VALUE),
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,

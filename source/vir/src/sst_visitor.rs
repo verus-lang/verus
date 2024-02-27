@@ -1,15 +1,17 @@
-use crate::ast::{Ident, SpannedTyped, Typ, UnaryOpr, VirErr};
+use crate::ast::{
+    SpannedTyped, Typ, UnaryOpr, VarBinder, VarBinderX, VarBinders, VarIdent, VirErr,
+};
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LoopInv, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
-use air::ast::{Binder, BinderX, Binders};
+use air::ast::Binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub type VisitorScopeMap = ScopeMap<Ident, bool>;
+pub type VisitorScopeMap = ScopeMap<VarIdent, bool>;
 
 pub(crate) fn exp_visitor_check<E, MF>(
     expr: &Exp,
@@ -93,7 +95,7 @@ where
                     expr_visitor_control_flow!(exp_visitor_dfs(body, map, f));
                 }
                 ExpX::Bind(bnd, e1) => {
-                    let mut bvars: Vec<(Ident, bool)> = Vec::new();
+                    let mut bvars: Vec<(VarIdent, bool)> = Vec::new();
                     let mut trigs: Trigs = Arc::new(vec![]);
                     match &bnd.x {
                         BndX::Let(bs) => {
@@ -366,10 +368,10 @@ where
         ExpX::Bind(bnd, e1) => {
             let bndx = match &bnd.x {
                 BndX::Let(bs) => {
-                    let mut binders: Vec<Binder<Exp>> = Vec::new();
+                    let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         let a = map_exp_visitor_bind(&b.a, map, f)?;
-                        binders.push(Arc::new(BinderX { name: b.name.clone(), a }));
+                        binders.push(Arc::new(VarBinderX { name: b.name.clone(), a }));
                     }
                     map.push_scope(true);
                     for b in binders.iter() {
@@ -487,8 +489,8 @@ where
         }
         Ok(Arc::new(trigs))
     };
-    let fbndtyps = |env: &mut E, bs: &Binders<Typ>| -> Result<Binders<Typ>, VirErr> {
-        let mut binders: Vec<Binder<Typ>> = Vec::new();
+    let fbndtyps = |env: &mut E, bs: &VarBinders<Typ>| -> Result<VarBinders<Typ>, VirErr> {
+        let mut binders: Vec<VarBinder<Typ>> = Vec::new();
         for binder in bs.iter() {
             binders.push(binder.new_a(ft(env, &binder.a)?));
         }
@@ -562,7 +564,7 @@ where
         ExpX::Bind(bnd, e1) => {
             let bnd = match &bnd.x {
                 BndX::Let(bs) => {
-                    let mut binders: Vec<Binder<Exp>> = Vec::new();
+                    let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         binders.push(b.new_a(fe(env, &b.a)?));
                     }

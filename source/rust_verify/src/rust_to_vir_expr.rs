@@ -18,7 +18,7 @@ use crate::verus_items::{
     self, CompilableOprItem, OpenInvariantBlockItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
-use air::ast::{Binder, BinderX};
+use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::{Attribute, BorrowKind, ByRef, LitKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
@@ -40,12 +40,15 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
     HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped,
-    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VariantCheck, VirErr,
+    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent, VariantCheck,
+    VirErr,
 };
-use vir::ast_util::{ident_binder, typ_to_diagnostic_str, types_equal, undecorate_typ};
+use vir::ast_util::{
+    ident_binder, str_unique_var, typ_to_diagnostic_str, types_equal, undecorate_typ,
+};
 use vir::def::{field_ident_from_rust, positional_field_ident};
 
-pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, String), VirErr> {
+pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, VarIdent), VirErr> {
     let Pat { hir_id: _, kind, span, default_binding_modes } = pat;
     unsupported_err_unless!(default_binding_modes, *span, "default_binding_modes");
     match kind {
@@ -69,7 +72,7 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, String), VirErr> 
     }
 }
 
-pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> Result<String, VirErr> {
+pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> Result<VarIdent, VirErr> {
     let (_, name) = pat_to_mut_var(pat)?;
     Ok(name)
 }
@@ -443,10 +446,10 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
         PatKind::Binding(BindingAnnotation(_, Mutability::Not), canonical, x, None) => {
-            PatternX::Var { name: Arc::new(local_to_var(x, canonical.local_id)), mutable: false }
+            PatternX::Var { name: local_to_var(x, canonical.local_id), mutable: false }
         }
         PatKind::Binding(BindingAnnotation(_, Mutability::Mut), canonical, x, None) => {
-            PatternX::Var { name: Arc::new(local_to_var(x, canonical.local_id)), mutable: true }
+            PatternX::Var { name: local_to_var(x, canonical.local_id), mutable: true }
         }
         PatKind::Path(qpath) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
@@ -805,9 +808,9 @@ fn invariant_block_to_vir<'tcx>(
 
     let vir_arg = expr_to_vir(bctx, &inv_arg, modifier)?;
 
-    let name = Arc::new(pat_to_var(inner_pat)?);
+    let name = pat_to_var(inner_pat)?;
     let inner_ty = typ_of_node(bctx, inner_pat.span, &inner_hir, false)?;
-    let vir_binder = Arc::new(BinderX { name, a: inner_ty });
+    let vir_binder = Arc::new(VarBinderX { name, a: inner_ty });
 
     let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity);
     Ok(bctx.spanned_typed_new(expr.span, &typ_of_node(bctx, expr.span, &expr.hir_id, false)?, e))
@@ -1432,9 +1435,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             match res {
                 Res::Local(id) => match tcx.hir().get(id) {
                     Node::Pat(pat) => mk_expr(if modifier.addr_of {
-                        ExprX::VarLoc(Arc::new(pat_to_var(pat)?))
+                        ExprX::VarLoc(pat_to_var(pat)?)
                     } else {
-                        ExprX::Var(Arc::new(pat_to_var(pat)?))
+                        ExprX::Var(pat_to_var(pat)?)
                     }),
                     node => unsupported_err!(expr.span, format!("Path {:?}", node)),
                 },
@@ -2073,7 +2076,7 @@ fn unwrap_parameter_to_vir<'tcx>(
         ..
     }) = &stmt1.kind
     {
-        Some((pat.hir_id, Arc::new(local_to_var(x, hir_id.local_id))))
+        Some((pat.hir_id, local_to_var(x, hir_id.local_id)))
     } else {
         None
     };
@@ -2227,7 +2230,7 @@ pub(crate) fn closure_to_vir<'tcx>(
 
         let typs = closure_param_typs(bctx, closure_expr)?;
         assert!(typs.len() == body.params.len());
-        let params: Vec<Binder<Typ>> = body
+        let params: Vec<VarBinder<Typ>> = body
             .params
             .iter()
             .zip(typs.clone())
@@ -2242,7 +2245,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 if is_mut {
                     return err_span(x.span, "Verus does not support 'mut' params for closures");
                 }
-                Ok(Arc::new(BinderX { name: Arc::new(name), a: t }))
+                Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut body = expr_to_vir(bctx, &body.value, modifier)?;
@@ -2271,13 +2274,13 @@ pub(crate) fn closure_to_vir<'tcx>(
                     }
                     id
                 }
-                None => Arc::new(
-                    vir::def::CLOSURE_RETURN_VALUE_PREFIX.to_string()
-                        + &body_id.hir_id.local_id.index().to_string(),
+                None => str_unique_var(
+                    vir::def::CLOSURE_RETURN_VALUE_PREFIX,
+                    vir::ast::VarIdentDisambiguate::RustcId(body_id.hir_id.local_id.index()),
                 ),
             };
 
-            let ret = Arc::new(BinderX { name: id, a: ret_typ });
+            let ret = Arc::new(VarBinderX { name: id, a: ret_typ });
 
             ExprX::ExecClosure {
                 params: Arc::new(params),

@@ -1,8 +1,8 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
-    Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX,
+    Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
     Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs, UnaryOpr,
-    Variant, VirErr,
+    VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::error;
@@ -16,13 +16,17 @@ pub struct ScopeEntry {
     pub typ: Typ,
     pub is_mut: bool,
     pub init: bool,
+    pub is_outer_param_or_ret: bool,
 }
 
-pub type VisitorScopeMap = ScopeMap<Ident, ScopeEntry>;
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
 
 impl ScopeEntry {
     fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
-        ScopeEntry { typ: typ.clone(), is_mut, init }
+        ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: false }
+    }
+    fn new_outer_param_ret(typ: &Typ, is_mut: bool, init: bool) -> Self {
+        ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: true }
     }
 }
 
@@ -538,7 +542,7 @@ where
         typ_params: _,
         typ_bounds: _,
         params,
-        ret: _,
+        ret,
         require,
         ensure,
         decrease,
@@ -556,14 +560,23 @@ where
 
     map.push_scope(true);
     for p in params.iter() {
-        let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
+        let _ = map
+            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
     }
     for e in require.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
+
+    map.push_scope(true);
+    if function.x.has_return_name() {
+        let _ = map
+            .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
+    }
     for e in ensure.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
+    map.pop_scope();
+
     for e in decrease.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
@@ -1105,15 +1118,17 @@ where
     map.push_scope(true);
     let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
     for p in params.iter() {
-        let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
+        let _ = map
+            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
     }
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
 
     map.push_scope(true);
-    if function.x.has_return() {
-        let _ = map.insert(ret.x.name.clone(), ScopeEntry::new(&ret.x.typ, false, true));
+    if function.x.has_return_name() {
+        let _ = map
+            .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
