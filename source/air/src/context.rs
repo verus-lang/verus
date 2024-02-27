@@ -1,4 +1,4 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
+use crate::ast::{AxiomInfoFilter, Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::messages::{ArcDynMessage, Diagnostics};
@@ -20,6 +20,7 @@ use std::time::Duration;
 pub(crate) struct AssertionInfo {
     pub(crate) error: ArcDynMessage,
     pub(crate) label: Ident,
+    pub(crate) filter: AxiomInfoFilter,
     pub(crate) decl: Decl,
     pub(crate) disabled: bool,
 }
@@ -28,6 +29,7 @@ pub(crate) struct AssertionInfo {
 pub(crate) struct AxiomInfo {
     pub(crate) labels: Vec<Arc<dyn Any + Send + Sync>>,
     pub(crate) label: Ident,
+    pub(crate) filter: AxiomInfoFilter,
     pub(crate) decl: Decl,
 }
 

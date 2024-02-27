@@ -47,7 +47,7 @@ fn lower_stmt(
         lower_expr_visitor(versions, snapshots, e)
     });
     match &*stmt {
-        StmtX::Assume(_) | StmtX::Assert(_, _) => stmt,
+        StmtX::Assume(_) | StmtX::Assert(..) => stmt,
         StmtX::Havoc(x) | StmtX::Assign(x, _) => {
             let n = find_version(&versions, x);
             let typ = types[x].clone();

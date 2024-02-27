@@ -10,9 +10,10 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
             // wp((assume Q), P) = Q ==> P
             mk_implies(&expr, &pred)
         }
-        StmtX::Assert(span, expr) => {
+        StmtX::Assert(span, filter, expr) => {
             // wp((assert Q), P) = Q /\ P
-            let assertion: Expr = Arc::new(ExprX::LabeledAssertion(span.clone(), expr.clone()));
+            let assertion: Expr =
+                Arc::new(ExprX::LabeledAssertion(span.clone(), filter.clone(), expr.clone()));
             mk_and(&vec![assertion, pred])
         }
         StmtX::Havoc(_) => panic!("internal error: Havoc in block_to_assert"),
@@ -59,6 +60,6 @@ pub(crate) fn lower_query(
     let mut locals: Vec<Decl> = (*query.local).clone();
     let mut switch_label: u64 = 0;
     let expr = stmt_to_expr(&mut switch_label, &mut locals, &query.assertion, mk_true());
-    let assertion = Arc::new(StmtX::Assert(message_interface.empty(), expr));
+    let assertion = Arc::new(StmtX::Assert(message_interface.empty(), None, expr));
     Arc::new(QueryX { local: Arc::new(locals), assertion })
 }

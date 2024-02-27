@@ -112,6 +112,10 @@ impl Printer {
         node!((_ {bv_node} {width_node}))
     }
 
+    pub(crate) fn filter_to_node(&self, filter: &Option<Ident>) -> Node {
+        if let Some(filter) = filter { nodes!({ str_to_node(filter) }) } else { Node::List(vec![]) }
+    }
+
     pub fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
@@ -276,24 +280,26 @@ impl Printer {
                     }
                 }
             }
-            ExprX::LabeledAxiom(labels, expr) => {
+            ExprX::LabeledAxiom(labels, filter, expr) => {
                 let spans = vec_map(labels, |s| {
                     Node::Atom(format!("\"{}\"", self.message_interface.get_message_label_note(s)))
                 });
-                if spans.len() == 0 {
+                if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
-                    nodes!(axiom_location {Node::List(spans)} {self.expr_to_node(expr)})
+                    let filter_nodes = self.filter_to_node(filter);
+                    nodes!(axiom_location {Node::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
                 }
             }
-            ExprX::LabeledAssertion(error, expr) => {
+            ExprX::LabeledAssertion(error, filter, expr) => {
                 let spans = vec_map(&self.message_interface.all_msgs(error), |s| {
                     Node::Atom(format!("\"{}\"", s))
                 });
-                if spans.len() == 0 {
+                if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
-                    nodes!(location {Node::List(spans)} {self.expr_to_node(expr)})
+                    let filter_nodes = self.filter_to_node(filter);
+                    nodes!(location {Node::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
                 }
             }
         }
@@ -374,14 +380,15 @@ impl Printer {
     pub fn stmt_to_node(&self, stmt: &Stmt) -> Node {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
-            StmtX::Assert(labels, expr) => {
+            StmtX::Assert(labels, filter, expr) => {
                 let spans = vec_map(&self.message_interface.all_msgs(labels), |s| {
                     Node::Atom(format!("\"{}\"", s))
                 });
-                if spans.len() == 0 {
+                if spans.len() == 0 && filter.is_none() {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {
-                    nodes!(assert {Node::List(spans)} {self.expr_to_node(expr)})
+                    let filter_nodes = self.filter_to_node(filter);
+                    nodes!(assert {Node::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
                 }
             }
             StmtX::Havoc(x) => nodes!(havoc {str_to_node(x)}),
