@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
     GenericBoundX, Idents, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VarIdent,
-    VirErr,
+    VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -1059,6 +1059,9 @@ fn check_generics_bounds_main<'tcx>(
     vattrs: Option<&crate::attributes::VerifierAttrs>,
     mut diagnostics: Option<&mut Vec<vir::ast::VirErrAs>>,
 ) -> Result<(vir::ast::TypPositives, vir::ast::GenericBounds), VirErr> {
+    use vir::ast::AcceptRecursiveType;
+    let mut accept_recs: HashMap<String, AcceptRecursiveType> = HashMap::new();
+
     if let Some(hir_generics) = hir_generics {
         for hir_param in hir_generics.params.iter() {
             let GenericParam {
@@ -1083,19 +1086,35 @@ fn check_generics_bounds_main<'tcx>(
                 || vattrs.reject_recursive_types_in_ground_variants
                 || vattrs.accept_recursive_types
             {
-                let attr = if vattrs.reject_recursive_types {
-                    "reject_recursive_types"
+                let (attr_name, attr) = if vattrs.reject_recursive_types {
+                    ("reject_recursive_types", AcceptRecursiveType::Reject)
                 } else if vattrs.reject_recursive_types_in_ground_variants {
-                    "reject_recursive_types_in_ground_variants"
+                    (
+                        "reject_recursive_types_in_ground_variants",
+                        AcceptRecursiveType::RejectInGround,
+                    )
                 } else {
-                    "accept_recursive_types"
+                    ("accept_recursive_types", AcceptRecursiveType::Accept)
                 };
                 let ident = hir_param.name.ident();
                 let name = ident.as_str();
-                return err_span(
-                    *span,
-                    format!("use the attribute style `#[{attr:}({name:})]` at the item level"),
-                );
+
+                // TODO stop supporthing this entirely
+                //return err_span(
+                //    *span,
+                //    format!("use the attribute style `#[{attr_name:}({name:})]` at the item level"),
+                //);
+
+                accept_recs.insert(name.to_string(), attr);
+
+                if let Some(diagnostics) = &mut diagnostics {
+                    diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+                        *span,
+                        format!(
+                            "use the attribute style `#[{attr_name:}({name:})]` at the item level"
+                        ),
+                    )));
+                }
             }
         }
     }
@@ -1124,8 +1143,6 @@ fn check_generics_bounds_main<'tcx>(
     let first_param_is_self = mid_params.len() > 0 && mid_params[0].name == kw::SelfUpper;
     let skip_n = if first_param_is_self { 1 } else { 0 };
 
-    use vir::ast::AcceptRecursiveType;
-    let mut accept_recs: HashMap<String, AcceptRecursiveType> = HashMap::new();
     if let Some(vattrs) = vattrs {
         for (x, acc) in &vattrs.accept_recursive_type_list {
             if accept_recs.contains_key(x) {
