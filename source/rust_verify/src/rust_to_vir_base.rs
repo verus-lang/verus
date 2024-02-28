@@ -1068,15 +1068,12 @@ fn check_generics_bounds_main<'tcx>(
                 hir_id: _,
                 name: _,
                 span,
-                pure_wrt_drop,
+                pure_wrt_drop: _,
                 kind: _,
                 def_id: _,
                 colon_span: _,
                 source: _,
             } = hir_param;
-
-            // TODO give this error based on rustc_middle instead of hir information?
-            unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
 
             let vattrs = get_verifier_attrs(
                 tcx.hir().attrs(hir_param.hir_id),
@@ -1153,6 +1150,8 @@ fn check_generics_bounds_main<'tcx>(
     }
 
     for mid_param in mid_params.iter().skip(skip_n) {
+        unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "may_dangle attribute");
+
         match mid_param.kind {
             GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {}
             _ => {
