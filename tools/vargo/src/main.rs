@@ -14,7 +14,9 @@ use filetime::FileTime as FFileTime;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-fn test_rust_min_stack() -> String { (20 * 1024 * 1024).to_string() }
+fn test_rust_min_stack() -> String {
+    (20 * 1024 * 1024).to_string()
+}
 
 const VARGO_SOURCE_FILES: &[(&'static str, &'static [u8])] = &[
     ("src/main.rs", include_bytes!("main.rs")),
