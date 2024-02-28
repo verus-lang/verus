@@ -247,8 +247,10 @@ pub fn output_primary_stuff(
         })
         .collect();
 
+    let attrs = &bundle.sm.attrs;
     let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #(#attrs)*
         pub struct State #gen {
             #(#fields),*
         }
@@ -554,12 +556,14 @@ fn output_step_datatype(
 
     let self_ty = get_self_ty(sm);
     let step_ty = get_step_ty(sm, is_init);
+    let attrs = &sm.attrs;
 
     root_stream.extend(quote! {
         #[allow(non_camel_case_types)]
         #[::builtin_macros::is_variant_no_deprecation_warning]
         #[::builtin_macros::verus_enum_synthesize]
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #(#attrs)*
         pub enum #type_ident#generics {
             #(#variants,)*
             // We add this extra variant with the self_ty in order to avoid
