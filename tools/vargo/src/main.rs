@@ -14,6 +14,8 @@ use filetime::FileTime as FFileTime;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+fn test_rust_min_stack() -> String { (20 * 1024 * 1024).to_string() }
+
 const VARGO_SOURCE_FILES: &[(&'static str, &'static [u8])] = &[
     ("src/main.rs", include_bytes!("main.rs")),
     ("src/util.rs", include_bytes!("util.rs")),
@@ -414,6 +416,7 @@ fn run() -> Result<(), String> {
 
     if task == Task::Cmd {
         return std::process::Command::new("rustup")
+            .env("RUST_MIN_STACK", test_rust_min_stack())
             .arg("run")
             .arg(toolchain.expect("not in nextest"))
             .args(args_bucket)
@@ -630,6 +633,7 @@ fn run() -> Result<(), String> {
             } else {
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
+                    .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
                     .env("RUSTFLAGS", RUST_FLAGS)
@@ -704,6 +708,7 @@ fn run() -> Result<(), String> {
                     std::env::current_exe().expect("no path for the current executable");
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
+                    .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
@@ -718,6 +723,7 @@ fn run() -> Result<(), String> {
             } else {
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
+                    .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
                     .env("RUSTFLAGS", RUST_FLAGS)
@@ -732,6 +738,7 @@ fn run() -> Result<(), String> {
         (Task::Metadata | Task::Test { .. }, _, true) => {
             let mut cargo = std::process::Command::new("cargo");
             let cargo = cargo
+                .env("RUST_MIN_STACK", test_rust_min_stack())
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
                 .env("RUSTFLAGS", RUST_FLAGS)
@@ -751,6 +758,7 @@ fn run() -> Result<(), String> {
         (Task::Build, Some("air"), false) => {
             let mut cargo = std::process::Command::new("cargo");
             let cargo = cargo
+                .env("RUST_MIN_STACK", test_rust_min_stack())
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
                 .env("RUSTFLAGS", RUST_FLAGS)
@@ -784,6 +792,7 @@ fn run() -> Result<(), String> {
                     info(format!("building {}", target).as_str());
                     let mut cmd = std::process::Command::new("cargo");
                     let mut cmd = cmd
+                        .env("RUST_MIN_STACK", test_rust_min_stack())
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
                         .env("RUSTFLAGS", RUST_FLAGS)
