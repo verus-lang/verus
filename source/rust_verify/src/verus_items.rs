@@ -119,6 +119,7 @@ pub(crate) enum DirectiveItem {
     RevealHideInternalPath,
     RevealStrlit,
     InlineAirStmt,
+    Resolve,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -358,6 +359,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
         ("verus::builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
         ("verus::builtin::inline_air_stmt",         VerusItem::Directive(DirectiveItem::InlineAirStmt)),
+        ("verus::builtin::resolve",                 VerusItem::Directive(DirectiveItem::Resolve)),
 
         ("verus::builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
         ("verus::builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),

@@ -189,6 +189,7 @@ pub enum StmX {
         body: Stm,
     },
     Air(Arc<String>),
+    Resolve(UniqueIdent),
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

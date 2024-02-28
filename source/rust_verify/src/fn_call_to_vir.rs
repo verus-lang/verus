@@ -25,6 +25,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
+use rustc_trait_selection::traits::query::type_op::outlives::DropckOutlives;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
@@ -602,6 +603,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "inline AIR is only allowed with the relevant command line flag"
                             .to_string(),
                     )
+                }
+            }
+            DirectiveItem::Resolve => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                unsupported_err_unless!(args_len == 1, expr.span, "expected resolve", &args);
+                let ExprKind::Path(qpath) = &args[0].kind else {
+                    unsupported_err!(expr.span, "resolve with this argument", &args[0]);
+                };
+                let res = bctx.types.qpath_res(&qpath, expr.hir_id);
+                if let Res::Local(id) = res {
+                    let Node::Pat(pat) = tcx.hir().get(id) else {
+                        unsupported_err!(expr.span, format!("Path {:?}", args[0]));
+                    };
+                    mk_expr(ExprX::Resolve(pat_to_var(pat)?))
+                } else {
+                    err_span(args[0].span, "expected local variable for resolve")
                 }
             }
         },
@@ -1830,22 +1847,28 @@ fn mk_vir_args<'tcx>(
     assert!(raw_inputs.len() == args.len());
     args.iter()
         .zip(raw_inputs)
-        .map(|(arg, raw_param)| {
-            let is_mut_ref_param = match raw_param.kind() {
-                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                _ => false,
-            };
-            if is_mut_ref_param {
-                let expr =
-                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
-                Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
-            } else {
-                expr_to_vir(
-                    bctx,
-                    arg,
-                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
-                )
-            }
+        // TODO(&mut) remove?
+        .map(|(arg, _raw_param)| {
+            // let is_mut_ref_param = match raw_param.kind() {
+            //     TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
+            //     _ => false,
+            // };
+            // if is_mut_ref_param {
+            // let expr = expr_to_vir(
+            //         bctx,
+            //         arg,
+            //         ExprModifier { deref_mut: true, deref: false, addr_of_mut: false },
+            //     )?;
+            // Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
+            // } else {
+
+            // TODO(&mut) need different modifier for argument?
+            expr_to_vir(
+                bctx,
+                arg,
+                is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
+            )
+            // }
         })
         .collect::<Result<Vec<_>, _>>()
 }

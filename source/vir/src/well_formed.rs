@@ -1,7 +1,6 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun,
-    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr,
-    VirErrAs,
+    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOpr, VirErr, VirErrAs,
 };
 use crate::ast_util::{is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -214,34 +213,35 @@ fn check_one_expr(
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 ));
             }
-            for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
-                fn is_ok(e: &Expr) -> bool {
-                    match &e.x {
-                        ExprX::VarLoc(_) => true,
-                        ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
-                        ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
-                        ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
-                        ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
-                        _ => false,
-                    }
-                }
-                let arg_x = match &arg.x {
-                    // Tracked(&mut x) and Ghost(&mut x) arguments appear as
-                    // Expr::Ghost { ... Expr::Loc ... }
-                    ExprX::Ghost { alloc_wrapper: true, tracked: _, expr: e } => &e.x,
-                    e => e,
-                };
-                let is_ok = match &arg_x {
-                    ExprX::Loc(l) => is_ok(l),
-                    _ => false,
-                };
-                if !is_ok {
-                    return Err(error(
-                        &arg.span,
-                        "complex arguments to &mut parameters are currently unsupported",
-                    ));
-                }
-            }
+            // TODO (&mut)
+            // for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
+            //     fn is_ok(e: &Expr) -> bool {
+            //         match &e.x {
+            //             ExprX::VarLoc(_) => true,
+            //             ExprX::Unary(UnaryOp::CoerceMode { .. }, e1) => is_ok(e1),
+            //             ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
+            //             ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => is_ok(e1),
+            //             ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => is_ok(e1),
+            //             _ => false,
+            //         }
+            //     }
+            //     let arg_x = match &arg.x {
+            //         // Tracked(&mut x) and Ghost(&mut x) arguments appear as
+            //         // Expr::Ghost { ... Expr::Loc ... }
+            //         ExprX::Ghost { alloc_wrapper: true, tracked: _, expr: e } => &e.x,
+            //         e => e,
+            //     };
+            //     let is_ok = match &arg_x {
+            //         ExprX::Loc(l) => is_ok(l),
+            //         _ => false,
+            //     };
+            //     if !is_ok {
+            //         return Err(error(
+            //             &arg.span,
+            //             "complex arguments to &mut parameters are currently unsupported",
+            //         ));
+            //     }
+            // }
         }
         ExprX::Ctor(path, _variant, _fields, _update) => {
             let dt = check_path_and_get_datatype(ctxt, path, &expr.span)?;

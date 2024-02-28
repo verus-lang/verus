@@ -285,14 +285,17 @@ fn simplify_one_expr(
             // in the majority of cases, it's nicer to have rustc catch the error
             // for its better diagnostics. So the check is here in ast_simplify,
             // which comes after our lifetime checking pass.
-            match scope_map.get(x) {
-                None => Err(error(&expr.span, "Verus Internal Error: cannot find this variable")),
-                Some(entry) if !entry.is_mut && entry.init => {
-                    let name = user_local_name(x);
-                    Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
-                }
-                _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
-            }
+            //
+            // TODO(&mut) FIX
+            // match scope_map.get(x) {
+            //     None => Err(error(&expr.span, "Verus Internal Error: cannot find this variable")),
+            //     Some(entry) if !entry.is_mut && entry.init => {
+            //         let name = user_local_name(x);
+            //         Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
+            //     }
+            //     _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
+            // }
+            Ok(expr.clone())
         }
         ExprX::ConstVar(x, autospec) => {
             let call = ExprX::Call(

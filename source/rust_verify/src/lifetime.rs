@@ -118,6 +118,7 @@ use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verus_items::VerusItems;
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
+use rustc_middle::mir::BorrowCheckResult;
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
@@ -169,6 +170,10 @@ macro_rules! ldbg {
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
 pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
+    // fn bck_analysis<'tcx>(def_id: rustc_span::def_id::DefId, bck_results: &BorrowCheckResult<'tcx>) {
+    //     dbg!(&def_id, &bck_results);
+    // }
+
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
@@ -177,13 +182,21 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
                 match owner.node() {
                     OwnerNode::Item(item) => match &item.kind {
                         rustc_hir::ItemKind::Fn(..) => {
-                            tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                            tcx.ensure().mir_borrowck(item.owner_id.def_id);
+                            // tcx.enter(|tcx| {
+                            //     let bck_results = tcx.mir_borrowck(item.owner_id.def_id);
+                            //     bck_analysis(item.owner_id.def_id.to_def_id(), &bck_results);
+                            // })
                         }
                         ItemKind::Impl(impll) => {
                             for item in impll.items {
                                 match item.kind {
                                     AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
+                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id);
+                                        // tcx.enter(|tcx| {
+                                        //     let bck_results = tcx.mir_borrowck(item.id.owner_id.def_id);
+                                        //     bck_analysis(item.id.owner_id.def_id.to_def_id(), &bck_results);
+                                        // })
                                     }
                                     _ => {}
                                 }
@@ -281,6 +294,17 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
+    // TODO(&mut)
+    fn config(&mut self, config: &mut rustc_interface::Config) {
+        config.override_queries = Some(|_session, providers, _| {
+            providers.mir_promoted = |tcx, def_id| {
+                let result = (rustc_interface::DEFAULT_QUERY_PROVIDERS.mir_promoted)(tcx, def_id);
+                ldbg!(&def_id, &result.0.borrow());
+                result
+            };
+        });
+    }
+
     fn after_parsing<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
@@ -374,6 +398,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         .args(&rustc_args[..])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        // TODO(&mut)
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("could not execute lifetime rustc process");

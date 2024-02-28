@@ -1297,6 +1297,12 @@ pub fn is_smaller_than_recursive_function_field<A, B>(_: A, _: B) -> bool {
     unimplemented!();
 }
 
+// TODO(&mut) #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::resolve"]
+pub fn resolve<A>(_: &mut A) {
+    unimplemented!();
+}
+
 #[macro_export]
 macro_rules! decreases_to_internal {
     ($($x:expr),* $(,)? => $($y:expr),* $(,)?) => {

@@ -187,6 +187,12 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::Block(stms))
         }
+        StmX::Resolve(dest) => {
+            // let var = get_loc_var(dest);
+            // TODO (&mut) assigned.insert(var.clone());
+            modified.insert(dest.clone());
+            stm.clone()
+        }
     };
 
     assign_map.insert(Arc::as_ptr(&result), to_ident_set(assigned));

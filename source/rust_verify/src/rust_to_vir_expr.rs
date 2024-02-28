@@ -1446,11 +1446,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if current_modifier.deref_mut {
                 // * &mut cancels out
-                let mut new_modifier = current_modifier;
-                new_modifier.deref_mut = false;
-                expr_to_vir_inner(bctx, e, new_modifier)
+                expr_to_vir_inner(bctx, e, ExprModifier { deref_mut: false, ..current_modifier })
             } else {
-                unsupported_err!(expr.span, format!("&mut dereference in this position"))
+                let expr = expr_to_vir_inner(
+                    bctx,
+                    e,
+                    ExprModifier { addr_of_mut: true, ..current_modifier },
+                )?;
+                Ok(bctx.spanned_typed_new(e.span, &expr.typ.clone(), ExprX::Loc(expr)))
             }
         }
         ExprKind::AddrOf(BorrowKind::Raw, _, _) => {
