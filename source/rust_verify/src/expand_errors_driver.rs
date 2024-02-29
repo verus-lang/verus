@@ -101,6 +101,9 @@ pub struct ExpandErrorsDriver {
     /// resulting in a tree structure.
     /// Corresponds directly with the diagnostic output
     output: Vec<Line>,
+
+    /// Source spans to point to corresponding to the erroring lines
+    spans: Vec<(vir::messages::Span, AssertId)>,
 }
 
 #[derive(Debug)]
@@ -134,9 +137,10 @@ impl ExpandErrorsDriver {
             expansions: HashMap::new(),
             results: HashMap::new(),
             caps: vec![assert_id[0] + 1],
+            leaf_fails: 0,
             current: (**assert_id).clone(),
             output: vec![],
-            leaf_fails: 0,
+            spans: vec![],
         }
     }
 
@@ -164,6 +168,10 @@ impl ExpandErrorsDriver {
         if result == ExpandErrorsResult::Pass {
             self.advance();
         } else {
+            if assert_id.len() > 1 {
+                self.spans.push((self.get_span_for(assert_id), assert_id.clone()));
+            }
+
             let n = self.expand(ctx, fun_ssts, assert_id);
             if n == 1 {
                 self.leaf_fails += 1;
@@ -542,17 +550,30 @@ impl ExpandErrorsDriver {
         true
     }
 
+    fn get_span_for(&self, assert_id: &AssertId) -> vir::messages::Span {
+        let parent = Arc::new(assert_id[.. assert_id.len() - 1].to_vec());
+        let tree = &self.expansions[&parent].0;
+        tree.get_exp_for_assert_id(assert_id).unwrap().span.clone()
+    }
+
     pub fn get_output_as_message(&self, ctx: &Ctx) -> air::messages::ArcDynMessage {
         let mut s = self.get_output(ctx);
 
         if self.has_strange_result() {
             s += r###"
 NOTE: Verus failed to prove an assertion even though all of its
-sub-assertions succeeded. This is usually unexpected, and it probably
-indicates that the proof is "flaky"."###
+sub-assertions succeeded. This is usually unexpected, and it may
+indicate that the proof is "flaky". It might also be a result
+of additional expressions in the triggering context in the expanded
+version."###
+        }
+
+        let mut note = vir::messages::note_bare(s);
+        for (span, _) in self.spans.iter() {
+            note = note.primary_span(span);
         }
 
         use vir::messages::ToAny;
-        vir::messages::note_bare(s).to_any()
+        note.to_any()
     }
 }

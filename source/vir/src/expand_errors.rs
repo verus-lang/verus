@@ -55,6 +55,30 @@ impl ExpansionTree {
         }
     }
 
+    pub fn get_exp_for_assert_id(&self, assert_id: &AssertId) -> Option<Exp> {
+        match self {
+            ExpansionTree::Branch(v) => {
+                for t in v.iter() {
+                    let res = t.get_exp_for_assert_id(assert_id);
+                    if res.is_some() {
+                        return res;
+                    }
+                }
+                None
+            }
+            ExpansionTree::Leaf(a_id, exp, _) => {
+                if a_id == assert_id {
+                    Some(exp.clone())
+                } else {
+                    None
+                }
+            }
+            ExpansionTree::Intro(_intro, child) => {
+                child.get_exp_for_assert_id(assert_id)
+            }
+        }
+    }
+
     pub fn intros_up_to(&self, assert_id: &AssertId) -> Option<Vec<Introduction>> {
         match self {
             ExpansionTree::Branch(v) => {
@@ -159,6 +183,16 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
         }
     }
 }
+
+/// Given a function's SST body an assertion ID,
+/// we expand the given assertion (or other obligation,
+/// like a precondition or postcondition) into multiple assertions.
+/// The assertion IDs are all extensions of the given assertion ID, e.g.,
+/// if the given assertion ID is 42, then assertion 42 will be replaced
+/// with assertions with IDs 42_0, 42_1, 42_2, ...
+///
+/// The second argument, the 'expansion tree' describes the transformations that were
+/// performed to do the expansion. 
 
 pub fn do_expansion(
     ctx: &Ctx,
@@ -410,7 +444,7 @@ fn expand_exp(
         base_id: assert_id.clone(),
         local_decls: std::mem::take(local_decls),
     };
-    let (stm, tree) = expand_exp_rec(ctx, ectx, &mut state, exp, false, false, false);
+    let (stm, tree) = expand_exp_rec(ctx, ectx, &mut state, exp, false, false);
     std::mem::swap(local_decls, &mut state.local_decls);
     (stm, tree)
 }
@@ -443,7 +477,6 @@ fn expand_exp_rec(
     exp: &Exp,
     did_split_yet: bool,
     negate: bool,
-    unbox: bool,
 ) -> (Stm, ExpansionTree) {
     let mk_stm = |stmx| Spanned::new(exp.span.clone(), stmx);
     let sequence_stms = |stm1: Stm, stm2: Stm| {
@@ -460,7 +493,7 @@ fn expand_exp_rec(
     };
 
     let leaf = |state: &mut State, can_expand_further| {
-        let e = if unbox { crate::poly::coerce_exp_to_native(ctx, exp) } else { exp.clone() };
+        let e = crate::poly::coerce_exp_to_native(ctx, exp);
         let e = if negate { sst_not(&exp.span, &e) } else { e };
         let assert_id = state.get_next_assert_id();
         let stm1 = mk_stm(StmX::Assert(Some(assert_id.clone()), None, e.clone()));
@@ -472,7 +505,7 @@ fn expand_exp_rec(
 
     match &exp.x {
         ExpX::Unary(UnaryOp::Not, e) => {
-            expand_exp_rec(ctx, ectx, state, e, did_split_yet, !negate, unbox)
+            expand_exp_rec(ctx, ectx, state, e, did_split_yet, !negate)
         }
         ExpX::Binary(op @ (BinaryOp::And | BinaryOp::Or | BinaryOp::Implies), e1, e2) => {
             // Treat this like an '&&' or an '==>', negating either argument appropriately.
@@ -494,14 +527,14 @@ fn expand_exp_rec(
 
             if is_and {
                 // A && B
-                let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e1, true, neg1, unbox);
-                let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e2, true, neg2, unbox);
+                let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e1, true, neg1);
+                let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e2, true, neg2);
                 (sequence_stms(stm1, stm2), branch_trees(tree1, tree2))
             } else {
                 // A ==> B
                 let e1 = if neg1 { sst_not(&exp.span, &e1) } else { e1.clone() };
                 let intro = Introduction::Hypothesis(e1.clone());
-                let (stm, tree) = expand_exp_rec(ctx, ectx, state, e2, did_split_yet, neg2, unbox);
+                let (stm, tree) = expand_exp_rec(ctx, ectx, state, e2, did_split_yet, neg2);
                 (
                     mk_stm(StmX::If(e1.clone(), stm, None)),
                     ExpansionTree::Intro(intro, Box::new(tree)),
@@ -532,10 +565,10 @@ fn expand_exp_rec(
                     // e2 ==> !e1
 
                     let hyp1 = sst_not(&exp.span, e1);
-                    let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e2, true, false, unbox);
+                    let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e2, true, false);
 
                     let hyp2 = e2.clone();
-                    let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e1, true, true, unbox);
+                    let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e1, true, true);
 
                     let hyp_tree1 =
                         ExpansionTree::Intro(Introduction::Hypothesis(hyp1), Box::new(tree1));
@@ -553,10 +586,10 @@ fn expand_exp_rec(
                     // e2 ==> e1
 
                     let hyp1 = e1.clone();
-                    let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e2, true, false, unbox);
+                    let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e2, true, false);
 
                     let hyp2 = e2.clone();
-                    let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e1, true, false, unbox);
+                    let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e1, true, false);
 
                     let hyp_tree1 =
                         ExpansionTree::Intro(Introduction::Hypothesis(hyp1), Box::new(tree1));
@@ -569,7 +602,7 @@ fn expand_exp_rec(
                     match try_split_datatype_eq(ctx, e1, e2, ext) {
                         Ok(dt_eq) => {
                             let (stm, tree) =
-                                expand_exp_rec(ctx, ectx, state, &dt_eq, true, false, unbox);
+                                expand_exp_rec(ctx, ectx, state, &dt_eq, true, false);
                             return (stm, ExpansionTree::Intro(intro, Box::new(tree)));
                         }
                         Err(reason) => {
@@ -583,8 +616,8 @@ fn expand_exp_rec(
         ExpX::If(cond, e1, e2) => {
             let intro = Introduction::Hypothesis(cond.clone());
             let intro_neg = Introduction::Hypothesis(sst_not(&exp.span, &cond));
-            let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e1, did_split_yet, negate, unbox);
-            let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e2, did_split_yet, negate, unbox);
+            let (stm1, tree1) = expand_exp_rec(ctx, ectx, state, e1, did_split_yet, negate);
+            let (stm2, tree2) = expand_exp_rec(ctx, ectx, state, e2, did_split_yet, negate);
             (
                 mk_stm(StmX::If(cond.clone(), stm1, Some(stm2))),
                 branch_trees(
@@ -619,7 +652,7 @@ fn expand_exp_rec(
 
                 state.push_unfold(fun_name);
                 let (stm, tree) =
-                    expand_exp_rec(ctx, ectx, state, &inline_exp, did_split_yet, negate, unbox);
+                    expand_exp_rec(ctx, ectx, state, &inline_exp, did_split_yet, negate);
                 state.pop_unfold(fun_name);
 
                 let intro = Introduction::UnfoldFunctionDef(fun_name.clone(), exp.clone());
@@ -635,7 +668,7 @@ fn expand_exp_rec(
                     stms.push(crate::ast_to_sst::init_var(&exp.span, &uniq_id, &exp));
                 }
                 let (stm, tree) =
-                    expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate, unbox);
+                    expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 stms.push(stm);
                 let intro = Introduction::Let(binders.clone());
                 (mk_stm(StmX::Block(Arc::new(stms))), ExpansionTree::Intro(intro, Box::new(tree)))
@@ -645,7 +678,7 @@ fn expand_exp_rec(
             {
                 let (_, e) = state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
                 let (stm, tree) =
-                    expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate, unbox);
+                    expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 let intro = Introduction::Forall(binders.clone());
 
                 let dead_end = mk_stm(StmX::DeadEnd(stm));
@@ -656,14 +689,8 @@ fn expand_exp_rec(
             }
             _ => leaf(state, CanExpandFurther::No(None)),
         },
-        ExpX::WithTriggers(_, e) => {
-            expand_exp_rec(ctx, ectx, state, e, did_split_yet, negate, unbox)
-        }
-        ExpX::UnaryOpr(UnaryOpr::Box(_), e) => {
-            expand_exp_rec(ctx, ectx, state, e, did_split_yet, negate, false)
-        }
-        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => {
-            expand_exp_rec(ctx, ectx, state, e, did_split_yet, negate, true)
+        ExpX::WithTriggers(_, e) | ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => {
+            expand_exp_rec(ctx, ectx, state, e, did_split_yet, negate)
         }
         _ => leaf(state, CanExpandFurther::No(None)),
     }
