@@ -361,3 +361,78 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_expand_fails(e, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
+        use vstd::set::*;
+
+        spec fn maybe() -> bool;
+
+        // spec fn yes() -> bool { true }
+        // spec fn both(s: Set<nat>) -> bool {
+        //     &&& maybe()
+        //     &&& s.contains(0) // EXPAND-ERRORS
+        // }
+
+        proof fn test(s: Set<nat>) {
+            assert(maybe()); // FAILS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("function is uninterpreted"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_2 ["--expand-errors"] => verus_code! {
+        struct Z { _temp: (), }
+
+        mod X {
+            pub trait T {
+                spec fn foo(&self) -> bool;
+            }
+
+            impl T for super::Z {
+                open spec fn foo(&self) -> bool {
+                    false
+                }
+            }
+        }
+
+        use X::T;
+
+        fn f() {
+            let z = Z { _temp: () };
+            assert(z.foo()); // FAILS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("|   false"));
+        assert_expand_fails(err, 0);
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_requires_resolved_trait_fn ["--expand-errors"] => verus_code! {
+        struct Z { _temp: (), }
+
+        mod X {
+            pub trait T {
+                fn foo(&self)
+                    requires false;
+            }
+
+            impl T for super::Z {
+                fn foo(&self) { }
+            }
+        }
+
+        use X::T;
+
+        fn f() {
+            let z = Z { _temp: () };
+            z.foo(); // FAILS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("false"));
+        assert_expand_fails(err, 0);
+    }
+}

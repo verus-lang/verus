@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs expand-errors
+
 #![allow(unused_imports)]
 
 use builtin_macros::*;
