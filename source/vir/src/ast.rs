@@ -904,6 +904,7 @@ pub struct FunctionAttrsX {
     pub print_zero_args: bool,
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
+    pub prophecy_dependent: bool,
 }
 
 /// Function specification of its invariant mask

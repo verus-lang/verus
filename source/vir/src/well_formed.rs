@@ -889,6 +889,7 @@ fn check_function(
         };
         check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
     }
+
     Ok(())
 }
 
