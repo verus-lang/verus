@@ -622,9 +622,9 @@ fn expand_exp_rec(
             )
         }
         ExpX::Call(CallFun::Fun(fun_name, resolved), typs, args) => {
-            let fun_name = match resolved {
-                Some((resolved_fun_name, _)) => resolved_fun_name,
-                None => fun_name,
+            let (fun_name, typs) = match resolved {
+                Some((resolved_fun_name, resolved_typs)) => (resolved_fun_name, resolved_typs),
+                None => (fun_name, typs),
             };
             let function = get_function(ctx, &exp.span, fun_name).unwrap();
             let can_inline = can_inline_function(ctx, state, ectx, function, &exp.span);
