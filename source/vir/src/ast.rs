@@ -850,7 +850,7 @@ pub enum FunctionKind {
     },
     /// Method implementation inside an impl, implementing a trait method for a trait for a type
     TraitMethodImpl {
-        /// Fun declarted by trait for this method
+        /// Fun declared by trait for this method
         method: Fun,
         /// Path of the impl (e.g. "impl2") that contains the method implementation
         impl_path: Path,

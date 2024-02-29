@@ -473,7 +473,7 @@ pub(crate) fn expand_call_graph(
     // When instantiating A: T with D: T, note that D: T could, from Rust's perspective,
     // be the Self: T bound that we remove (see the comments in recursive_types.rs) and
     // that therefore shouldn't be available here.  Fortunately, in this case,
-    // rustc gives us the concrete D: T bound for the actualy impl, so that
+    // rustc gives us the concrete D: T bound for the actual impl, so that
     // impl_paths contains the necessary impl_path to instantiate Self: T explicitly,
     // and we catch the nontermination resulting from Self: T.
     // See, for example, test_termination_1 in rust_verify_test/tests/traits.rs.
