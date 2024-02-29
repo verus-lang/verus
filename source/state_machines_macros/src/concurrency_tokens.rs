@@ -211,12 +211,14 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     let self_ty = get_self_ty(sm);
     let gen = &sm.generics;
+    let attrs = &sm.attrs;
 
     let storage_types = get_storage_type_tuple(sm);
 
     return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
+        #(#attrs)*
         pub struct #insttype #gen {
             // This is not marked external_body, but the fields are private, so the
             // user should not be able to do illegal things with this type from outside
@@ -301,6 +303,7 @@ fn token_struct_stream(
     let token_data_ty = field_token_data_type(sm, field);
     let token_ty = field_token_type(sm, field);
     let gen = &sm.generics;
+    let attrs = &sm.attrs;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
     let mut impl_token_stream = collection_relation_fns_stream(sm, field);
@@ -330,6 +333,7 @@ fn token_struct_stream(
     return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
+        #(#attrs)*
         pub struct #tokenname#gen {
             // These are private so they can't be accessed outside this module.
             // I would have marked it external_body, but I want to make sure
@@ -342,6 +346,7 @@ fn token_struct_stream(
 
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[allow(non_camel_case_types)]
+        #(#attrs)*
         pub struct #tokenname_data#gen {
             #[cfg_attr(verus_keep_ghost, verifier::spec)] pub instance: #insttype,
             #key_field

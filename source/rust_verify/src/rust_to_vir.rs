@@ -10,7 +10,7 @@ use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
+    check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
     process_predicate_bounds, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
@@ -346,13 +346,15 @@ fn check_item<'tcx>(
                 let types = Arc::new(types);
                 let path_span = path.span.to(impll.self_ty.span);
                 let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
-                let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_fun(
-                    ctxt.tcx,
-                    &ctxt.verus_items,
-                    impll.generics,
-                    impl_def_id,
-                    Some(&mut *ctxt.diagnostics.borrow_mut()),
-                )?;
+                let (typ_params, typ_bounds) =
+                    crate::rust_to_vir_base::check_generics_bounds_no_polarity(
+                        ctxt.tcx,
+                        &ctxt.verus_items,
+                        impll.generics.span,
+                        Some(impll.generics),
+                        impl_def_id,
+                        Some(&mut *ctxt.diagnostics.borrow_mut()),
+                    )?;
                 let trait_impl = vir::ast::TraitImplX {
                     impl_path: impl_path.clone(),
                     typ_params,
@@ -451,10 +453,11 @@ fn check_item<'tcx>(
                                 trait_path_typ_args.clone()
                             {
                                 let (typ_params, typ_bounds) =
-                                    crate::rust_to_vir_base::check_generics_bounds_fun(
+                                    crate::rust_to_vir_base::check_generics_bounds_no_polarity(
                                         ctxt.tcx,
                                         &ctxt.verus_items,
-                                        impll.generics,
+                                        impll.generics.span,
+                                        Some(impll.generics),
                                         impl_def_id,
                                         Some(&mut *ctxt.diagnostics.borrow_mut()),
                                     )?;
@@ -564,10 +567,11 @@ fn check_item<'tcx>(
             let trait_def_id = item.owner_id.to_def_id();
             let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def_id);
             let (generics_params, typ_bounds) = {
-                let (generics_params, mut typ_bounds) = check_generics_bounds(
+                let (generics_params, mut typ_bounds) = check_generics_bounds_with_polarity(
                     ctxt.tcx,
                     &ctxt.verus_items,
-                    trait_generics,
+                    trait_generics.span,
+                    Some(trait_generics),
                     false,
                     trait_def_id,
                     None,
@@ -613,10 +617,11 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let (generics_params, generics_bnds) = check_generics_bounds(
+                let (generics_params, generics_bnds) = check_generics_bounds_with_polarity(
                     ctxt.tcx,
                     &ctxt.verus_items,
-                    item_generics,
+                    item_generics.span,
+                    Some(item_generics),
                     false,
                     owner_id.to_def_id(),
                     None,

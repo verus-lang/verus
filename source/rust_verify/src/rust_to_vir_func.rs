@@ -4,7 +4,7 @@ use crate::attributes::{
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_fun, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
+    check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::util::{err_span, err_span_bare, unsupported_err_span};
@@ -363,10 +363,11 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
-        Some(check_generics_bounds_fun(
+        Some(check_generics_bounds_no_polarity(
             ctxt.tcx,
             &ctxt.verus_items,
-            cg,
+            cg.span,
+            Some(cg),
             impl_def_id,
             Some(&mut *ctxt.diagnostics.borrow_mut()),
         )?)
@@ -407,10 +408,11 @@ pub(crate) fn check_item_fn<'tcx>(
         return Ok(None);
     }
 
-    let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_fun(
+    let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
@@ -1137,10 +1139,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     let ret_typ_mode =
         check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?;
-    let (typ_params, typ_bounds) = check_generics_bounds_fun(
+    let (typ_params, typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;

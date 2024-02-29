@@ -27,7 +27,8 @@ test_verify_one_file! {
 
         #[verifier(external_type_specification)]
         #[verifier(external_body)]
-        struct ExSomeExternalBodyThing<#[verifier(maybe_negative)] U>(SomeExternalBodyThing<U>);
+        #[verifier(reject_recursive_types(U))]
+        struct ExSomeExternalBodyThing<U>(SomeExternalBodyThing<U>);
 
         fn test() {
             let ss = SomeStruct::<u64> { t: 5 };
@@ -397,7 +398,8 @@ test_verify_one_file! {
 
         #[verifier(external_type_specification)]
         #[verifier(external_body)]
-        pub struct ExSomeStruct<#[verifier(maybe_negative)] U>(SomeStruct<U>);
+        #[verifier(reject_recursive_types(U))]
+        pub struct ExSomeStruct<U>(SomeStruct<U>);
 
         fn test() {
             let x = SomeStruct::<u64> { t: 5 };
@@ -410,7 +412,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] type_recursion_is_handled verus_code! {
         #[verifier(external_type_specification)]
-        pub struct ExOption<#[verifier::reject_recursive_types] U>(core::option::Option<U>);
+        #[verifier::reject_recursive_types(U)]
+        pub struct ExOption<U>(core::option::Option<U>);
 
         struct Test {
             t: Box<core::option::Option<Test>>,

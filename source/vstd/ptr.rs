@@ -191,10 +191,8 @@ pub tracked struct PointsToRaw {
 }
 
 #[verifier(external_body)]
-pub tracked struct Dealloc<
-    #[verifier(strictly_positive)]
-    V,
-> {
+#[verifier(reject_recursive_types_in_ground_variants(V))]
+pub tracked struct Dealloc<V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
 }

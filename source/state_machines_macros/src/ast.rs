@@ -1,10 +1,13 @@
 use proc_macro2::Span;
 use std::rc::Rc;
 use syn_verus::token;
-use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Item, Pat, Type};
+use syn_verus::{
+    Attribute, Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Item, Pat, Type,
+};
 
 #[derive(Clone, Debug)]
 pub struct SM {
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub generics: Option<Generics>,
     pub fields: Vec<Field>,
