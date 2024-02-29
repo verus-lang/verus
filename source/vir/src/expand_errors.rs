@@ -73,9 +73,7 @@ impl ExpansionTree {
                     None
                 }
             }
-            ExpansionTree::Intro(_intro, child) => {
-                child.get_exp_for_assert_id(assert_id)
-            }
+            ExpansionTree::Intro(_intro, child) => child.get_exp_for_assert_id(assert_id),
         }
     }
 
@@ -192,7 +190,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
 /// with assertions with IDs 42_0, 42_1, 42_2, ...
 ///
 /// The second argument, the 'expansion tree' describes the transformations that were
-/// performed to do the expansion. 
+/// performed to do the expansion.
 
 pub fn do_expansion(
     ctx: &Ctx,
@@ -504,9 +502,7 @@ fn expand_exp_rec(
     };
 
     match &exp.x {
-        ExpX::Unary(UnaryOp::Not, e) => {
-            expand_exp_rec(ctx, ectx, state, e, did_split_yet, !negate)
-        }
+        ExpX::Unary(UnaryOp::Not, e) => expand_exp_rec(ctx, ectx, state, e, did_split_yet, !negate),
         ExpX::Binary(op @ (BinaryOp::And | BinaryOp::Or | BinaryOp::Implies), e1, e2) => {
             // Treat this like an '&&' or an '==>', negating either argument appropriately.
             let (is_and, neg1, neg2) = match (op, negate) {
@@ -601,8 +597,7 @@ fn expand_exp_rec(
                 } else {
                     match try_split_datatype_eq(ctx, e1, e2, ext) {
                         Ok(dt_eq) => {
-                            let (stm, tree) =
-                                expand_exp_rec(ctx, ectx, state, &dt_eq, true, false);
+                            let (stm, tree) = expand_exp_rec(ctx, ectx, state, &dt_eq, true, false);
                             return (stm, ExpansionTree::Intro(intro, Box::new(tree)));
                         }
                         Err(reason) => {
@@ -667,8 +662,7 @@ fn expand_exp_rec(
                 for (exp, uniq_id) in new_ids {
                     stms.push(crate::ast_to_sst::init_var(&exp.span, &uniq_id, &exp));
                 }
-                let (stm, tree) =
-                    expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
+                let (stm, tree) = expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 stms.push(stm);
                 let intro = Introduction::Let(binders.clone());
                 (mk_stm(StmX::Block(Arc::new(stms))), ExpansionTree::Intro(intro, Box::new(tree)))
@@ -677,8 +671,7 @@ fn expand_exp_rec(
                 if (*q == Exists) == negate =>
             {
                 let (_, e) = state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
-                let (stm, tree) =
-                    expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
+                let (stm, tree) = expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 let intro = Introduction::Forall(binders.clone());
 
                 let dead_end = mk_stm(StmX::DeadEnd(stm));
