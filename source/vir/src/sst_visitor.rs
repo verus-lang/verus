@@ -67,7 +67,7 @@ Typically, the user-supplied `visit_typ`, `visit_exp`, and `visit_stm`
 will do some preprocessing before recursing, and/or postprocessing after recursing,
 and/or filtering to decide whether to recurse or not.
 */
-pub(crate) trait Visitor<Err, R: Returner<Err>, Scope: Scoper> {
+pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     // These methods are often overridden to make a specific sort of visit
 
     fn visit_typ(&mut self, typ: &Typ) -> Result<R::Ret<Typ>, Err> {
@@ -485,7 +485,7 @@ struct ExpVisitorDfs<'a, F> {
     f: &'a mut F,
 }
 
-impl<'a, T, F> Visitor<T, Walk, VisitorScopeMap> for ExpVisitorDfs<'a, F>
+impl<'a, T, F> Visitor<Walk, T, VisitorScopeMap> for ExpVisitorDfs<'a, F>
 where
     F: FnMut(&Exp, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
 {
@@ -521,7 +521,7 @@ struct StmVisitorDfs<'a, F> {
     f: &'a mut F,
 }
 
-impl<'a, T, F> Visitor<T, Walk, NoScoper> for StmVisitorDfs<'a, F>
+impl<'a, T, F> Visitor<Walk, T, NoScoper> for StmVisitorDfs<'a, F>
 where
     F: FnMut(&Stm) -> VisitorControlFlow<T>,
 {
@@ -551,7 +551,7 @@ struct StmExpVisitorDfs<'a, F> {
     f: &'a mut F,
 }
 
-impl<'a, T, F> Visitor<T, Walk, VisitorScopeMap> for StmExpVisitorDfs<'a, F>
+impl<'a, T, F> Visitor<Walk, T, VisitorScopeMap> for StmExpVisitorDfs<'a, F>
 where
     F: FnMut(&Exp, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
 {
@@ -589,7 +589,7 @@ struct MapExpVisitorBind<'a, F> {
     f: &'a mut F,
 }
 
-impl<'a, F> Visitor<VirErr, Rewrite, VisitorScopeMap> for MapExpVisitorBind<'a, F>
+impl<'a, F> Visitor<Rewrite, VirErr, VisitorScopeMap> for MapExpVisitorBind<'a, F>
 where
     F: FnMut(&Exp, &mut VisitorScopeMap) -> Result<Exp, VirErr>,
 {
@@ -649,7 +649,7 @@ struct MapShallowExp<'a, E, FT, FE> {
     fe: &'a FE,
 }
 
-impl<'a, E, FT, FE> Visitor<VirErr, Rewrite, NoScoper> for MapShallowExp<'a, E, FT, FE>
+impl<'a, E, FT, FE> Visitor<Rewrite, VirErr, NoScoper> for MapShallowExp<'a, E, FT, FE>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FE: Fn(&mut E, &Exp) -> Result<Exp, VirErr>,
@@ -682,7 +682,7 @@ struct MapStmVisitor<'a, F> {
     fs: &'a mut F,
 }
 
-impl<'a, F> Visitor<VirErr, Rewrite, NoScoper> for MapStmVisitor<'a, F>
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapStmVisitor<'a, F>
 where
     F: FnMut(&Stm) -> Result<Stm, VirErr>,
 {
@@ -704,7 +704,7 @@ struct MapShallowStm<'a, F> {
     fs: &'a mut F,
 }
 
-impl<'a, F> Visitor<VirErr, Rewrite, NoScoper> for MapShallowStm<'a, F>
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapShallowStm<'a, F>
 where
     F: FnMut(&Stm) -> Result<Stm, VirErr>,
 {
@@ -726,7 +726,7 @@ struct MapShallowStmTyp<'a, F> {
     ft: &'a F,
 }
 
-impl<'a, F> Visitor<VirErr, Rewrite, NoScoper> for MapShallowStmTyp<'a, F>
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapShallowStmTyp<'a, F>
 where
     F: Fn(&Typ) -> Result<Typ, VirErr>,
 {
@@ -750,7 +750,7 @@ struct MapStmExpVisitor<'a, F> {
     fe: &'a F,
 }
 
-impl<'a, F> Visitor<VirErr, Rewrite, NoScoper> for MapStmExpVisitor<'a, F>
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapStmExpVisitor<'a, F>
 where
     F: Fn(&Exp) -> Result<Exp, VirErr>,
 {

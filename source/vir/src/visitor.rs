@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-pub(crate) trait Returner<Err> {
+pub(crate) trait Returner {
     type Ret<A>;
     type Vec<A>;
     type Opt<A>;
@@ -11,21 +11,21 @@ pub(crate) trait Returner<Err> {
     fn get_opt<A>(r: Self::Opt<A>) -> Option<A>;
     fn vec<A>() -> Self::Vec<A>;
     fn push<A>(v: &mut Self::Vec<A>, a: Self::Ret<A>);
-    fn map_vec<A, B>(
+    fn map_vec<A, B, Err>(
         v: &Vec<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Vec<B>, Err>;
-    fn map_opt<A, B>(
+    fn map_opt<A, B, Err>(
         o: &Option<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Opt<B>, Err>;
-    fn ret<A>(f: impl FnOnce() -> A) -> Result<Self::Ret<A>, Err>;
+    fn ret<A, Err>(f: impl FnOnce() -> A) -> Result<Self::Ret<A>, Err>;
 }
 
 pub(crate) struct Walk;
 pub(crate) struct Rewrite;
 
-impl<Err> Returner<Err> for Walk {
+impl Returner for Walk {
     type Ret<A> = ();
     type Vec<A> = ();
     type Opt<A> = ();
@@ -48,7 +48,7 @@ impl<Err> Returner<Err> for Walk {
         ()
     }
     fn push<A>(_: &mut Self::Vec<A>, _: Self::Ret<A>) {}
-    fn map_vec<A, B>(
+    fn map_vec<A, B, Err>(
         v: &Vec<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Vec<B>, Err> {
@@ -57,7 +57,7 @@ impl<Err> Returner<Err> for Walk {
         }
         Ok(())
     }
-    fn map_opt<A, B>(
+    fn map_opt<A, B, Err>(
         o: &Option<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Opt<B>, Err> {
@@ -66,12 +66,12 @@ impl<Err> Returner<Err> for Walk {
         }
         Ok(())
     }
-    fn ret<A>(_: impl FnOnce() -> A) -> Result<Self::Ret<A>, Err> {
+    fn ret<A, Err>(_: impl FnOnce() -> A) -> Result<Self::Ret<A>, Err> {
         Ok(())
     }
 }
 
-impl<Err> Returner<Err> for Rewrite {
+impl Returner for Rewrite {
     type Ret<A> = A;
     type Vec<A> = Vec<A>;
     type Opt<A> = Option<A>;
@@ -96,7 +96,7 @@ impl<Err> Returner<Err> for Rewrite {
     fn push<A>(v: &mut Self::Vec<A>, a: Self::Ret<A>) {
         v.push(a);
     }
-    fn map_vec<A, B>(
+    fn map_vec<A, B, Err>(
         v: &Vec<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Vec<B>, Err> {
@@ -106,13 +106,13 @@ impl<Err> Returner<Err> for Rewrite {
         }
         Ok(vec)
     }
-    fn map_opt<A, B>(
+    fn map_opt<A, B, Err>(
         o: &Option<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Opt<B>, Err> {
         if let Some(a) = o { Ok(Some(f(a)?)) } else { Ok(None) }
     }
-    fn ret<A>(f: impl FnOnce() -> A) -> Result<Self::Ret<A>, Err> {
+    fn ret<A, Err>(f: impl FnOnce() -> A) -> Result<Self::Ret<A>, Err> {
         Ok(f())
     }
 }
