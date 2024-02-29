@@ -917,12 +917,6 @@ pub fn func_def_to_sst(
     fun_ssts: SstMap,
     function: &Function,
 ) -> Result<(SstMap, FunctionSst), VirErr> {
-    if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind {
-        // We are inheriting a trait default method.
-        // It's already verified in the trait, so we don't need to reverify it here.
-        return Ok((Arc::new(vec![]), vec![], fun_ssts));
-    }
-
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
