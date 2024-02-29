@@ -9,7 +9,7 @@ use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
-use rustc_middle::ty::{ClauseKind, GenericParamDefKind};
+use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{ImplPolarity, TraitPredicate};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
@@ -193,23 +193,93 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ClauseFrom<'tcx> {
+    clause: Clause<'tcx>,
+    is_self_trait_bound: bool,
+    source_id: DefId,
+    span: Span,
+}
+
+fn instantiate_pred_clauses<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    mut def_id: DefId,
+    args: rustc_middle::ty::GenericArgsRef<'tcx>,
+) -> Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> {
+    // We could get the information directly like this:
+    let direct_clauses = tcx.predicates_of(def_id).instantiate(tcx, args).predicates;
+    // but we need a little more information, so we manually reimplement some of instantiate here:
+    let mut ancestors: Vec<DefId> = Vec::new();
+    loop {
+        ancestors.push(def_id);
+        let preds = tcx.predicates_of(def_id);
+        if let Some(id) = preds.parent {
+            def_id = id;
+        } else {
+            break;
+        }
+    }
+    let mut clauses: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = Vec::new();
+    for def_id in ancestors.iter().rev() {
+        let preds = tcx.predicates_of(def_id);
+        let preds_on = tcx.predicates_defined_on(def_id);
+        assert!(
+            preds.predicates.len() == preds_on.predicates.len()
+                || preds.predicates.len() == preds_on.predicates.len() + 1
+        );
+        assert!(preds_on.predicates.iter().all(|p| preds.predicates.contains(p)));
+        for (clause, span) in preds.predicates {
+            // This is based on GenericPredicates.instantiate_into, which is close to what
+            // we need but doesn't track the relation between the uninstantiated and
+            // instantiated clauses.
+            let inst = rustc_middle::ty::EarlyBinder::bind(*clause).instantiate(tcx, args);
+            let is_self_trait_bound = !preds_on.predicates.contains(&(*clause, *span));
+            if is_self_trait_bound {
+                if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =
+                    clause.kind().skip_binder()
+                {
+                    assert!(trait_ref.def_id == *def_id);
+                    assert!(args.len() > 0);
+                    match trait_ref.args.types().collect::<Vec<_>>()[0].kind() {
+                        TyKind::Param(param) if param.name == kw::SelfUpper => (),
+                        _ => panic!("expected Self: Trait bound to have args[0] = Self"),
+                    }
+                } else {
+                    panic!("expected Self: Trait bound to be TraitPredicate");
+                }
+            }
+            let clause_from = ClauseFrom {
+                clause: *clause,
+                is_self_trait_bound,
+                source_id: *def_id,
+                span: *span,
+            };
+            clauses.push((Some(clause_from), inst));
+        }
+    }
+    // just in case, check that the results mach the direct version of instantiate:
+    assert!(direct_clauses == clauses.iter().map(|(_, c)| *c).collect::<Vec<_>>());
+    clauses
+}
+
 pub(crate) fn get_impl_paths<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
     target_id: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
 ) -> vir::ast::ImplPaths {
-    let preds = tcx.predicates_of(target_id);
-    let clauses = preds.instantiate(tcx, node_substs).predicates;
-    get_impl_paths_for_clauses(tcx, verus_items, param_env_src, clauses)
+    let clauses = instantiate_pred_clauses(tcx, target_id, node_substs);
+    get_impl_paths_for_clauses(tcx, verus_items, param_env_src, clauses, remove_self_trait_bound)
 }
 
 pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
     param_env_src: DefId,
-    clauses: Vec<rustc_middle::ty::Clause<'tcx>>,
+    clauses: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)>,
+    mut remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
 ) -> vir::ast::ImplPaths {
     let mut impl_paths = Vec::new();
     let param_env = tcx.param_env(param_env_src);
@@ -225,7 +295,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     // impls once you start nesting?
     // So I'm implementing this with a predicate worklist to be safe.
 
-    let mut predicate_worklist: Vec<rustc_middle::ty::Clause> = clauses;
+    let mut predicate_worklist: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = clauses;
 
     let mut idx = 0;
     while idx < predicate_worklist.len() {
@@ -233,7 +303,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             panic!("get_impl_paths nesting depth exceeds 1000");
         }
 
-        let inst_pred = &predicate_worklist[idx];
+        let (inst_bound, inst_pred) = &predicate_worklist[idx];
         idx += 1;
 
         if let ClauseKind::Trait(_) = inst_pred.kind().skip_binder() {
@@ -261,10 +331,21 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
-                    impl_paths.push(ImplPath::TraitImplPath(impl_path));
+                    let impl_path = ImplPath::TraitImplPath(impl_path);
+                    match (&mut remove_self_trait_bound, inst_bound) {
+                        (Some((expected_id, self_trait_impl_path)), Some(b))
+                            if *expected_id == b.source_id && b.is_self_trait_bound =>
+                        {
+                            assert!(self_trait_impl_path.is_none());
+                            **self_trait_impl_path = Some(impl_path);
+                        }
+                        _ => {
+                            impl_paths.push(impl_path);
+                        }
+                    }
 
-                    let preds = tcx.predicates_of(u.impl_def_id);
-                    for p in preds.instantiate(tcx, u.args).predicates {
+                    let clauses = instantiate_pred_clauses(tcx, u.impl_def_id, u.args);
+                    for p in clauses {
                         if !predicate_worklist.contains(&p) {
                             predicate_worklist.push(p);
                         }
@@ -303,8 +384,12 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                         let fn_fun = Arc::new(vir::ast::FunX { path: fn_path });
                                         impl_paths.push(ImplPath::FnDefImplPath(fn_fun));
 
-                                        let preds = tcx.predicates_of(fn_def_id);
-                                        for p in preds.instantiate(tcx, fn_node_substs).predicates {
+                                        let clauses = instantiate_pred_clauses(
+                                            tcx,
+                                            *fn_def_id,
+                                            fn_node_substs,
+                                        );
+                                        for p in clauses {
                                             if !predicate_worklist.contains(&p) {
                                                 predicate_worklist.push(p);
                                             }
@@ -584,7 +669,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     return Ok((Arc::new(TypX::Lambda(param_typs, ret_typ)), false));
                 }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
-                let impl_paths = get_impl_paths(tcx, verus_items, param_env_src, did, args);
+                let impl_paths = get_impl_paths(tcx, verus_items, param_env_src, did, args, None);
                 let datatypex =
                     def_id_to_datatype(tcx, verus_items, did, Arc::new(typ_args), impl_paths);
                 (Arc::new(datatypex), false)
@@ -965,7 +1050,7 @@ pub(crate) fn process_predicate_bounds<'tcx, 'a>(
     tcx: TyCtxt<'tcx>,
     param_env_src: DefId,
     verus_items: &crate::verus_items::VerusItems,
-    predicates: impl Iterator<Item = &'a (rustc_middle::ty::Clause<'tcx>, Span)>,
+    predicates: impl Iterator<Item = &'a (Clause<'tcx>, Span)>,
 ) -> Result<Vec<vir::ast::GenericBound>, VirErr>
 where
     'tcx: 'a,

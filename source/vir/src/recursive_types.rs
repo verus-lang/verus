@@ -722,7 +722,14 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // This also ensures that whenever A is used in f and g,
     // the dictionary a: Dictionary_U<A> is available.
 
-    // To handle bounds on Self like this:
+    // In Rust, declaring a subtrait "trait T: U" is equivalent to declaring
+    // a trait with a Self bound: "trait T where Self: U".
+    // We handle the bound "Self: U" the same as we handle a bound "A: U"
+    // on any other type parameter A.
+    // (Note that Rust also adds an implicit recursive "Self: T" bound for every "trait T";
+    // as explained above, we remove this one particular "Self: T" bound,
+    // even though we retain every other bounds on Self.)
+    // For example:
     //   trait T: U {
     //     fn f(x: Self, y: Self) -> bool;
     //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };

@@ -542,10 +542,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let n_params = vir_params.len();
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
-        (FunctionKind::TraitMethodDecl { .. }, false, false, false) => {}
-        (FunctionKind::TraitMethodDecl { .. }, false, false, true) => {
-            return err_span(sig.span, "trait default methods are not yet supported");
-        }
+        (FunctionKind::TraitMethodDecl { .. }, false, false, _) => {}
         (FunctionKind::TraitMethodDecl { .. }, true, true, _) => {}
         (FunctionKind::TraitMethodDecl { .. }, false, true, _) => {
             return err_span(
@@ -692,7 +689,9 @@ pub(crate) fn check_item_fn<'tcx>(
     let publish = {
         let (publish, open_closed_present) = get_publish(&vattrs);
         match kind {
-            FunctionKind::TraitMethodImpl { .. } => {
+            FunctionKind::TraitMethodImpl { .. } | FunctionKind::TraitMethodDecl { .. }
+                if body.is_some() =>
+            {
                 if mode == Mode::Spec
                     && visibility.restricted_to.as_ref() != Some(module_path)
                     && body.is_some()

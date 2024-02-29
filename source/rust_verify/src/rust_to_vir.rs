@@ -329,6 +329,7 @@ fn check_item<'tcx>(
                     impl_def_id,
                     trait_did,
                     trait_ref.skip_binder().args,
+                    None,
                 );
                 // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
                 // We keep this full list, with the first element being the Self type X
@@ -362,6 +363,7 @@ fn check_item<'tcx>(
                     trait_path: path.clone(),
                     trait_typ_args: types.clone(),
                     trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
+                    owning_module: Some(module_path()),
                 };
                 vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
                 Some((trait_ref, path, types))
@@ -402,6 +404,7 @@ fn check_item<'tcx>(
                                         impl_path: impl_path.clone(),
                                         trait_path,
                                         trait_typ_args,
+                                        inherit_body_from: None,
                                     }
                                 } else {
                                     FunctionKind::Static
