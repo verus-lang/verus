@@ -42,6 +42,31 @@ impl Scoper for ScopeMap<VarIdent, bool> {
     }
 }
 
+/*
+The central general-purpose SST visitor trait is `vir::sst_visitor::Visitor`.
+A specific visitor specializes `Visitor` by providing the following:
+- An error type `Err` that is returned when a visit exits early
+- A normal return type, specified by instantiating `R: Returner`
+  with either `R = Walk` or `R = Rewrite`:
+  - `Walk` defines the return type `R::Ret<A> = ()`, so that `visit_typ`, `visit_exp`,
+    and `visit_stm` return type `()`.
+  - `Rewrite` defines the return type `R::Ret<A> = A`, so that `visit_typ` returns `Typ`,
+    `visit_exp` returns `Exp`, and `visit_stm` returns `Stm`.
+- An optional scoped variable tracker specified by type `Scope` and data supplied by `scoper`.
+  This could be anything, but the current visitors either use `Scope = NoScoper`
+  or `Scope = VisitorScopeMap`.
+- Overridden `visit_typ`, `visit_exp`, and `visit_stm` methods.
+  (For convenience, these have no-op default implementations,
+  so if you don't override these you get a visitor that returns immediately without recursing.)
+
+The `visit_typ`, `visit_exp`, and `visit_stm` methods could do anything they want, but typically
+at least one of them will call the built-in recursive traversal methods provided by `visit_exp_rec`
+and `visit_stm_rec`.  These built-in recursive traversal methods recursively call back into the
+user-supplied `visit_typ`, `visit_exp`, and `visit_stm`.
+Typically, the user-supplied `visit_typ`, `visit_exp`, and `visit_stm`
+will do some preprocessing before recursing, and/or postprocessing after recursing,
+and/or filtering to decide whether to recurse or not.
+*/
 pub(crate) trait Visitor<Err, R: Returner<Err>, Scope: Scoper> {
     // These methods are often overridden to make a specific sort of visit
 
