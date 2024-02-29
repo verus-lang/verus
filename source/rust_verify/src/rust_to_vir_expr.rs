@@ -1238,7 +1238,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 ),
                             )),
                         );
-                        let clauses = vec![
+                        let clause =
                             rustc_middle::ty::Binder::dummy(ClauseKind::Trait(TraitPredicate {
                                 trait_ref: TraitRef::new(
                                     tcx,
@@ -1247,13 +1247,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 ),
                                 polarity: ImplPolarity::Positive,
                             }))
-                            .to_predicate(tcx),
-                        ];
+                            .to_predicate(tcx);
                         let impl_paths = get_impl_paths_for_clauses(
                             tcx,
                             &bctx.ctxt.verus_items,
                             bctx.fun_id,
-                            clauses,
+                            vec![(None, clause)],
+                            None,
                         );
 
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);

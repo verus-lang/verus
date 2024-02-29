@@ -908,11 +908,14 @@ pub enum FunctionKind {
     },
     /// Method implementation inside an impl, implementing a trait method for a trait for a type
     TraitMethodImpl {
+        /// Fun declared by trait for this method
         method: Fun,
         /// Path of the impl (e.g. "impl2") that contains the method implementation
         impl_path: Path,
         trait_path: Path,
         trait_typ_args: Typs,
+        /// If Some, inherit default method body from function in the trait:
+        inherit_body_from: Option<Fun>,
     },
     /// These should get demoted into Static functions in `demote_foreign_traits`.
     /// This really only exists so that we can check the trait really is foreign.
@@ -1105,6 +1108,7 @@ pub struct TraitImplX {
     pub trait_path: Path,
     pub trait_typ_args: Typs,
     pub trait_typ_arg_impls: Arc<Spanned<ImplPaths>>,
+    pub owning_module: Option<Path>,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]

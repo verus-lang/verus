@@ -112,15 +112,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ill_formed_2 code! {
-        trait T1 {
-            fn f(&self) {
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "trait default methods are not yet supported")
-}
-
-test_verify_one_file! {
     #[test] test_ill_formed_3 code! {
         trait T1 {
             fn f(&self) {
@@ -2896,6 +2887,354 @@ test_verify_one_file! {
         {
             t.foo();
             assert(t.b());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default1 verus_code! {
+        trait T {
+            spec fn f() -> int { 3 }
+        }
+        struct S1;
+        struct S2;
+        impl T for S1 { }
+        impl T for S2 { spec fn f() -> int { 4 } }
+        proof fn test() {
+            assert(S1::f() == 3);
+            assert(S2::f() == 4);
+            assert(S2::f() == 3); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default2 verus_code! {
+        trait T {
+            spec fn f() -> int;
+            spec fn g() -> int { 3 }
+        }
+        struct S;
+        impl T for S { spec fn f() -> int { Self::g() } }
+        proof fn test() {
+            assert(S::f() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default3 verus_code! {
+        trait T {
+            spec fn f() -> int;
+            spec fn g() -> int { Self::f() }
+        }
+        struct S;
+        impl T for S { spec fn f() -> int { 3 } }
+        proof fn test() {
+            assert(S::g() == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default4 verus_code! {
+        trait T {
+            spec fn f() -> int;
+            spec fn g() -> int { Self::f() }
+        }
+        struct S;
+        impl T for S { spec fn f() -> int { Self::g() } }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default5 verus_code! {
+        trait T {
+            spec fn f(i: int) -> int;
+            spec fn g(i: int) -> int decreases i { Self::f(i) }
+        }
+        struct S;
+        impl T for S { spec fn f(i: int) -> int decreases i { Self::g(i) } }
+    } => Err(err) => assert_vir_error_msg(err, "trait default methods do not yet support recursion and decreases")
+}
+
+test_verify_one_file! {
+    #[test] test_default6 verus_code! {
+        trait T<A, B> {
+            spec fn f(a: A, b: B) -> (A, B) { (a, b) }
+            spec fn g(a: A, b: B) -> (A, B);
+        }
+        struct S<C>(C);
+        impl<D> T<bool, D> for S<D> {
+            spec fn g(x: bool, y: D) -> (bool, D) { Self::f(x, y) }
+        }
+        proof fn test() {
+            assert(S::g(true, 5int) == (true, 5int));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default7 verus_code! {
+        trait T {
+            proof fn f() {
+                assert(false); // FAILS
+            }
+        }
+        struct S1;
+        struct S2;
+        impl T for S1 {}
+        impl T for S2 {}
+        proof fn test() {
+            S1::f();
+            S2::f();
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default8 verus_code! {
+        pub trait T {
+            spec fn f() -> int;
+            proof fn g() ensures Self::f() > 10;
+            proof fn h() ensures Self::f() >= 10 {
+                Self::g()
+            }
+        }
+        mod m1 {
+            pub struct S;
+            impl crate::T for S {
+                closed spec fn f() -> builtin::int { 15 }
+                proof fn g() {}
+            }
+        }
+        proof fn test() {
+            crate::m1::S::h();
+            assert(crate::m1::S::f() >= 10);
+            assert(crate::m1::S::f() > 10); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default9 verus_code! {
+        struct S;
+        trait T {
+            proof fn f(tracked s: S) -> (tracked r: (S, S)) {
+                (s, s)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `s`")
+}
+
+test_verify_one_file! {
+    #[test] test_default10 verus_code! {
+        trait T {
+            proof fn f();
+            proof fn g() {}
+        }
+
+        proof fn h() {
+            <bool as T>::g();
+        }
+
+        impl T for bool {
+            proof fn f() { h(); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default11 verus_code! {
+        trait T {
+            proof fn f();
+            proof fn g() {}
+        }
+
+        proof fn h() {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn f() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default11b verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g() }
+            proof fn g() ensures false;
+        }
+
+        proof fn h() ensures false {
+            <bool as T>::f();
+        }
+
+        impl T for bool {
+            proof fn g() { h(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default12 verus_code! {
+        trait T1 {
+            proof fn f() ensures false;
+        }
+
+        // "trait T2: T1" is equivalent to "trait T2 where Self: T1".
+        // We treat "Self: T1" just like we would treat "A: T1" for an explicit type parameter A.
+        // This means that Self::f is unconditionally available to call inside g.
+        // It also means that in h(), <bool as T2>::g() must provide "impl T1 for bool" for g.
+        // This is what causes the cycle.
+        // This approach has advantages and disadvantages:
+        // - disadvantage: even if g() doesn't call Self::f(), it's still a (spurious) cycle
+        // - advantage: "Self: T1" is available for instantiating other bounds; see test_default13
+        trait T2: T1 {
+            proof fn g() ensures false { Self::f(); }
+        }
+
+        impl T1 for bool {
+            proof fn f() { h(); }
+        }
+
+        impl T2 for bool {
+        }
+
+        proof fn h()
+             ensures false
+        {
+            <bool as T2>::g();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default13 verus_code! {
+        trait T1: Sized {
+            proof fn f();
+        }
+
+        proof fn m<A: T1>() {
+            A::f();
+        }
+
+        trait T2: T1 {
+            proof fn g() { m::<Self>(); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default14 verus_code! {
+        trait T: Sized {
+            proof fn g()
+                ensures false
+            {
+                // For termination's sake, the "Self: T" bound is not available inside methods,
+                // including default methods.
+                // In ordinary impl methods, we catch uses of "Self: T" by seeing that impl_paths
+                // recursively refer to the current impl whenever "Self: T" is used.
+                // In default methods, on the other hand, there's no impl to use in impl_paths,
+                // so impl_paths is empty in the following call (f::<Self>()).
+                // Therefore, we catch the termination failure a different way:
+                // whoever we're calling who needs "Self: T" as a bound (in this case, f)
+                // must depend on T itself -- there must be a path from f to T in the call graph.
+                // We then make sure that T depends on T's default methods,
+                // so that there's a cycle.
+                f::<Self>();
+            }
+        }
+
+        proof fn f<A: T>()
+            ensures false
+        {
+            A::g();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default15 verus_code! {
+        trait T1: Sized {
+            proof fn f1() ensures false;
+        }
+        trait T2: T1 {
+            proof fn f2() ensures false {
+                <Self as T1>::f1();
+            }
+        }
+        impl T1 for bool {
+            proof fn f1() {
+                <Self as T2>::f2();
+            }
+        }
+        impl T2 for bool {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default16 verus_code! {
+        trait T1: Sized {
+            proof fn f1() ensures false;
+        }
+        trait T2<A: T1> {
+            proof fn f2() ensures false {
+                A::f1();
+            }
+        }
+        impl T1 for bool {
+            proof fn f1() {
+                <bool as T2<bool>>::f2();
+            }
+        }
+        impl T2<bool> for bool {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+}
+
+test_verify_one_file! {
+    #[test] test_default17 verus_code! {
+        trait T {
+            proof fn f() ensures false { Self::g(); }
+            proof fn g() ensures false { Self::f(); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] test_default18 verus_code! {
+        struct S;
+        trait T {
+            fn f(s: S) -> S { s }
+        }
+        impl T for bool {
+        }
+        fn test(s: S) -> S {
+            <bool as T>::f(s)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default19 verus_code! {
+        mod m1 {
+            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            pub trait T {
+                open spec fn f() -> int { 3 }
+            }
+            impl T for bool {}
+        }
+        mod m2 {
+            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            use crate::m1::*;
+            proof fn test() {
+                assert(<bool as T>::f() == 3);
+            }
         }
     } => Ok(())
 }

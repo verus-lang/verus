@@ -78,6 +78,7 @@ const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
 const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
+const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 const DUMMY_PARAM: &str = "no%param";
@@ -238,6 +239,34 @@ pub fn decrease_at_entry(n: usize) -> VarIdent {
 
 pub fn trait_self_type_param() -> Ident {
     Arc::new(TRAIT_SELF_TYPE_PARAM.to_string())
+}
+
+pub(crate) fn trait_default_name(default_fun: &Fun) -> Fun {
+    let path = (**default_fun).path.clone();
+    let mut segments = (*path.segments).clone();
+    let x = segments.last().expect("segment").to_string() + TRAIT_DEFAULT_SEPARATOR;
+    *segments.last_mut().unwrap() = Arc::new(x);
+    Arc::new(crate::ast::FunX {
+        path: Arc::new(crate::ast::PathX {
+            krate: path.krate.clone(),
+            segments: Arc::new(segments),
+        }),
+    })
+}
+
+pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
+    let path = (**impl_path).clone();
+    let mut segments = (*path.segments).clone();
+    let x = segments.last().expect("segment").to_string()
+        + TRAIT_DEFAULT_SEPARATOR
+        + default_fun.path.segments.last().unwrap();
+    *segments.last_mut().unwrap() = Arc::new(x);
+    Arc::new(crate::ast::FunX {
+        path: Arc::new(crate::ast::PathX {
+            krate: path.krate.clone(),
+            segments: Arc::new(segments),
+        }),
+    })
 }
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
@@ -572,7 +601,7 @@ impl<X> Spanned<X> {
         Arc::new(Spanned { span: span, x: x })
     }
 
-    pub fn new_x(&self, x: X) -> Arc<Spanned<X>> {
+    pub fn new_x<X2>(&self, x: X2) -> Arc<Spanned<X2>> {
         Arc::new(Spanned { span: self.span.clone(), x })
     }
 

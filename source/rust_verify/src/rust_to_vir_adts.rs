@@ -1,7 +1,8 @@
 use crate::attributes::{get_mode, get_verifier_attrs, VerifierAttrs};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility, mk_visibility_from_vis,
+    check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
+    mk_visibility_from_vis,
 };
 use crate::unsupported_err_unless;
 use crate::util::err_span;
@@ -161,10 +162,11 @@ pub fn check_item_struct<'tcx>(
     }
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),
@@ -246,10 +248,11 @@ pub fn check_item_enum<'tcx>(
     }
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),
@@ -333,10 +336,11 @@ pub fn check_item_union<'tcx>(
     }
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),
@@ -547,10 +551,11 @@ pub(crate) fn check_item_external<'tcx>(
     // Turn it into VIR
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),
