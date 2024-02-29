@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::Visibility;
-use vir::ast::{Fun, Function, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr};
+use vir::ast::{
+    Fun, Function, FunctionKind, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr,
+};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
@@ -281,6 +283,13 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         style: Style,
         expand_targets: Option<Vec<Message>>,
     ) -> Result<Vec<Op>, VirErr> {
+        if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind
+        {
+            // We are inheriting a trait default method.
+            // It's already verified in the trait, so we don't need to reverify it here.
+            return Ok(vec![]);
+        }
+
         let fun = &function.x.name;
 
         if !self.bucket.contains(fun) {
