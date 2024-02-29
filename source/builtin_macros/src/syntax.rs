@@ -1067,31 +1067,24 @@ impl Visitor {
         // In a later pass, this becomes:
         //   fn VERUS_SPEC__f() { requires(x); ... }
         //   fn f();
-        // Note: we don't do this if there's a default body (although default bodies
-        // aren't supported yet anyway), because it turns out that the parameter names
+        // Note: we don't do this if there's a default body,
+        // because it turns out that the parameter names
         // don't exactly match between fun and fun.clone() (they have different macro contexts),
         // which would cause the body and specs to mismatch.
         let erase_ghost = self.erase_ghost.erase();
         let mut spec_items: Vec<TraitItem> = Vec::new();
         for item in items.iter_mut() {
             match item {
-                TraitItem::Method(ref mut fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
-                        fun.default = None;
-                        continue;
-                    }
-                    _ if !erase_ghost && fun.default.is_none() => {
-                        // Copy into separate spec method, then remove spec from original method
-                        let mut spec_fun = fun.clone();
-                        let x = &fun.sig.ident;
-                        let span = x.span();
-                        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), span);
-                        spec_fun.attrs.push(mk_rust_attr(span, "doc", quote! { hidden }));
-                        fun.sig.erase_spec_fields();
-                        spec_items.push(TraitItem::Method(spec_fun));
-                    }
-                    _ => {}
-                },
+                TraitItem::Method(ref mut fun) if !erase_ghost && fun.default.is_none() => {
+                    // Copy into separate spec method, then remove spec from original method
+                    let mut spec_fun = fun.clone();
+                    let x = &fun.sig.ident;
+                    let span = x.span();
+                    spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), span);
+                    spec_fun.attrs.push(mk_rust_attr(span, "doc", quote! { hidden }));
+                    fun.sig.erase_spec_fields();
+                    spec_items.push(TraitItem::Method(spec_fun));
+                }
                 _ => {}
             }
         }

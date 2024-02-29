@@ -391,7 +391,7 @@ impl<X> SpannedTyped<X> {
         Arc::new(SpannedTyped { span: span.clone(), typ: typ.clone(), x })
     }
 
-    pub fn new_x(&self, x: X) -> Arc<Self> {
+    pub fn new_x<X2>(&self, x: X2) -> Arc<SpannedTyped<X2>> {
         Arc::new(SpannedTyped { span: self.span.clone(), typ: self.typ.clone(), x })
     }
 }

@@ -166,6 +166,7 @@ fn new_span_info_typ_node(span_infos: &mut Vec<Span>, span: Span, text: String) 
 
 // polarity = Some(true) for positive, Some(false) for negative, None for neither
 fn check_positive_uses(
+    datatype: &Datatype,
     global: &CheckPositiveGlobal,
     local: &CheckPositiveLocal,
     polarity: Option<bool>,
@@ -186,9 +187,9 @@ fn check_positive_uses(
             */
             let flip_polarity = None; // strict positivity
             for t in ts.iter() {
-                check_positive_uses(global, local, flip_polarity, t)?;
+                check_positive_uses(datatype, global, local, flip_polarity, t)?;
             }
-            check_positive_uses(global, local, polarity, tr)?;
+            check_positive_uses(datatype, global, local, polarity, tr)?;
             Ok(())
         }
         TypX::AnonymousClosure(..) => {
@@ -196,7 +197,7 @@ fn check_positive_uses(
         }
         TypX::Tuple(ts) => {
             for t in ts.iter() {
-                check_positive_uses(global, local, polarity, t)?;
+                check_positive_uses(datatype, global, local, polarity, t)?;
             }
             Ok(())
         }
@@ -224,7 +225,7 @@ fn check_positive_uses(
                 let strictly_positive = *accept_rec != AcceptRecursiveType::Reject;
                 let t_polarity =
                     if strictly_positive && polarity == Some(true) { Some(true) } else { None };
-                check_positive_uses(global, local, t_polarity, t)?;
+                check_positive_uses(datatype, global, local, t_polarity, t)?;
             }
             for impl_path in impl_paths.iter() {
                 // REVIEW: this check isn't actually about polarity; should it be somewhere else?
@@ -242,17 +243,17 @@ fn check_positive_uses(
             }
             Ok(())
         }
-        TypX::Decorate(_, t) => check_positive_uses(global, local, polarity, t),
+        TypX::Decorate(_, t) => check_positive_uses(datatype, global, local, polarity, t),
         TypX::Primitive(_, ts) => {
             for t in ts.iter() {
-                check_positive_uses(global, local, polarity, t)?;
+                check_positive_uses(datatype, global, local, polarity, t)?;
             }
             Ok(())
         }
         TypX::FnDef(_fun, _type_args, _res_fun) => {
             panic!("FnDef type is not expected in struct definitions");
         }
-        TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
+        TypX::Boxed(t) => check_positive_uses(datatype, global, local, polarity, t),
         TypX::TypParam(x) => {
             let strictly_positive = local.tparams[x] != AcceptRecursiveType::Reject;
             match (strictly_positive, polarity) {
@@ -261,8 +262,9 @@ fn check_positive_uses(
                 (true, _) => Err(error(
                     &local.span,
                     format!(
-                        "Type parameter {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
-                        x
+                        "Type parameter {} of {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
+                        x,
+                        path_as_friendly_rust_name(&datatype.x.path),
                     ),
                 )),
             }
@@ -373,7 +375,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
             for field in variant.fields.iter() {
                 // Check that field type only uses SCC siblings in positive positions
                 let (typ, _, _) = &field.a;
-                check_positive_uses(&global, &local, Some(true), typ)?;
+                check_positive_uses(datatype, &global, &local, Some(true), typ)?;
             }
         }
     }
@@ -720,7 +722,14 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // This also ensures that whenever A is used in f and g,
     // the dictionary a: Dictionary_U<A> is available.
 
-    // To handle bounds on Self like this:
+    // In Rust, declaring a subtrait "trait T: U" is equivalent to declaring
+    // a trait with a Self bound: "trait T where Self: U".
+    // We handle the bound "Self: U" the same as we handle a bound "A: U"
+    // on any other type parameter A.
+    // (Note that Rust also adds an implicit recursive "Self: T" bound for every "trait T";
+    // as explained above, we remove this one particular "Self: T" bound,
+    // even though we retain every other bounds on Self.)
+    // For example:
     //   trait T: U {
     //     fn f(x: Self, y: Self) -> bool;
     //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };

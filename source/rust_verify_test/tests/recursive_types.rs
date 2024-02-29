@@ -211,7 +211,7 @@ test_verify_one_file! {
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of crate::D must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -259,7 +259,7 @@ test_verify_one_file! {
         struct X<A>(A);
         struct Y<A>(Set<X<A>>);
         struct Z(Y<Z>);
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of crate::Y must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
 }
 
 test_verify_one_file! {
