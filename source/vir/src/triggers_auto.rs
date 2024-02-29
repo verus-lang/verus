@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    VarIdent, VirErr,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
@@ -72,7 +72,7 @@ enum TermX {
 impl std::fmt::Debug for TermX {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            TermX::Var(x) => write!(f, "{}", &x.name),
+            TermX::Var(x) => write!(f, "{}", x),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
@@ -95,7 +95,7 @@ impl std::fmt::Debug for TermX {
                 write!(f, "_")
             }
             TermX::App(App::VarAt(x, VarAt::Pre), _) => {
-                write!(f, "old({})", &x.name)
+                write!(f, "old({})", x)
             }
             TermX::App(App::BitOp(bop), _) => {
                 write!(f, "BitOp: {:?}", bop)
@@ -142,6 +142,7 @@ REVIEW: these heuristics are experimental -- are they useful in practice?  Can t
 // Score for a single term in a trigger.
 // Can be summed to compute a total score for all terms in a trigger
 // (lower scores are better)
+#[derive(Debug)]
 struct Score {
     // number of bitwise operators
     num_operators: u64,
@@ -163,7 +164,7 @@ impl Score {
 
 struct Ctxt {
     // variables the triggers must cover
-    trigger_vars: HashSet<Ident>,
+    trigger_vars: HashSet<VarIdent>,
     // terms with App
     all_terms: HashMap<Term, Span>,
     // terms with App and without Other
@@ -172,7 +173,7 @@ struct Ctxt {
     // all_terms, indexed by head App
     all_terms_by_app: HashMap<App, HashMap<Term, Span>>,
     // pure_terms, indexed by trigger_vars
-    pure_terms_by_var: HashMap<Ident, HashMap<Term, Span>>,
+    pure_terms_by_var: HashMap<VarIdent, HashMap<Term, Span>>,
     // best score for this term
     pure_best_scores: HashMap<Term, Score>,
     // used for Other
@@ -205,9 +206,9 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
     }
 }
 
-fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<Ident>, term: &Term) {
+fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<VarIdent>, term: &Term) {
     match &**term {
-        TermX::Var(UniqueIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
+        TermX::Var(x) if ctxt.trigger_vars.contains(x) => {
             vars.insert(x.clone());
         }
         TermX::Var(..) => {}
@@ -228,9 +229,7 @@ fn term_size(term: &Term) -> u64 {
 
 fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     match &**term {
-        TermX::Var(UniqueIdent { name: x, local: None }) if ctxt.trigger_vars.contains(x) => {
-            Some(depth)
-        }
+        TermX::Var(x) if ctxt.trigger_vars.contains(x) => Some(depth),
         TermX::Var(..) => None,
         TermX::App(_, args) => {
             args.iter().filter_map(|t| trigger_var_depth(ctxt, t, depth + 1)).max()
@@ -459,16 +458,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 // Second bool: is the instantiation potentially bigger than the original template?
 fn structure_matches(ctxt: &Ctxt, template: &Term, term: &Term) -> (bool, bool) {
     match (&**template, &**term) {
-        (TermX::Var(UniqueIdent { name: x1, local: None }), TermX::App(_, _))
-            if ctxt.trigger_vars.contains(x1) =>
-        {
-            (true, true)
-        }
-        (TermX::Var(UniqueIdent { name: x1, local: None }), _)
-            if ctxt.trigger_vars.contains(x1) =>
-        {
-            (true, false)
-        }
+        (TermX::Var(x1), TermX::App(_, _)) if ctxt.trigger_vars.contains(x1) => (true, true),
+        (TermX::Var(x1), _) if ctxt.trigger_vars.contains(x1) => (true, false),
         (TermX::Var(x1), TermX::Var(x2)) => (x1 == x2, false),
         (TermX::App(a1, args1), TermX::App(a2, args2))
             if a1 == a2 && args1.len() == args2.len() =>
@@ -513,7 +504,7 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
 type Trigger = Vec<(Term, Span)>;
 
 struct State {
-    remaining_vars: HashSet<Ident>,
+    remaining_vars: HashSet<VarIdent>,
     accumulated_terms: HashMap<Term, Span>,
     // if AutoType::All, chosen_triggers will contain all minimal covers of the variable set
     // if AutoType::Auto, chosen_triggers will contain a single minimal cover chosen by Score heuristic
@@ -548,7 +539,7 @@ fn compute_triggers(
     if state.remaining_vars.len() == 0 {
         let trigger: Vec<(Term, Span)> =
             state.accumulated_terms.iter().map(|(t, s)| (t.clone(), s.clone())).collect();
-        // println!("found: {:?} {}", trigger, trigger_score(ctxt, &trigger));
+        // println!("found: {:?} {:?}", trigger, trigger_score(ctxt, &trigger));
         if all_triggers {
             // when trying to compute all minimal triggers, we need only concern
             // ourselves with ensuring
@@ -613,8 +604,8 @@ fn compute_triggers(
     for (term, span) in &ctxt.pure_terms_by_var[&x] {
         if !state.accumulated_terms.contains_key(term) {
             state.accumulated_terms.insert(term.clone(), span.clone());
-            let mut vars: HashSet<Ident> = HashSet::new();
-            let mut removed: Vec<Ident> = Vec::new();
+            let mut vars: HashSet<VarIdent> = HashSet::new();
+            let mut removed: Vec<VarIdent> = Vec::new();
             trigger_vars_in_term(ctxt, &mut vars, &term);
             // remove term's vars
             for y in vars {
@@ -637,7 +628,7 @@ fn compute_triggers(
 pub(crate) fn build_triggers(
     ctx: &Ctx,
     span: &Span,
-    vars: &Vec<Ident>,
+    vars: &Vec<VarIdent>,
     exp: &Exp,
     auto_trigger: AutoType,
 ) -> Result<Trigs, VirErr> {
@@ -663,13 +654,13 @@ pub(crate) fn build_triggers(
     }
     println!("pure:");
     for t in ctxt.pure_terms.keys() {
-        println!("  {:?} {}", t, ctxt.pure_best_scores[t].lex());
+        println!("  {:?} {:?}", t, ctxt.pure_best_scores[t].lex());
     }
     */
     remove_obvious_potential_loops(&mut ctxt, &mut timer)?;
     // println!("pure after loop removal:");
     for (term, (e, _)) in ctxt.pure_terms.iter() {
-        let mut vars: HashSet<Ident> = HashSet::new();
+        let mut vars: HashSet<VarIdent> = HashSet::new();
         trigger_vars_in_term(&ctxt, &mut vars, &term);
         for x in &vars {
             ctxt.pure_terms_by_var.get_mut(x).unwrap().insert(term.clone(), e.span.clone());

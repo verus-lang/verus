@@ -4,7 +4,7 @@ use crate::attributes::{
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_fun, def_id_to_vir_path, foreign_param_to_var, mid_ty_to_vir,
+    check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::util::{err_span, err_span_bare, unsupported_err_span};
@@ -23,8 +23,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX, MaskSpec, Mode, ParamX,
-    SpannedTyped, Typ, TypDecoration, TypX, VirErr,
+    SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
+use vir::ast_util::air_unique_var;
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
@@ -173,7 +174,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
-) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind), VirErr> {
+) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
     if mode != Mode::Exec {
@@ -291,7 +292,9 @@ pub(crate) fn handle_external_fn<'tcx>(
         );
     }
 
-    Ok((external_path, external_item_visibility, kind))
+    let has_self_parameter = has_self_parameter(ctxt, external_id);
+
+    Ok((external_path, external_item_visibility, kind, has_self_parameter))
 }
 
 pub enum CheckItemFnEither<A, B> {
@@ -324,7 +327,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
     let mode = get_mode(Mode::Exec, attrs);
 
-    let (path, proxy, visibility, kind) = if vattrs.external_fn_specification {
+    let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification {
         if is_verus_spec {
             return err_span(
                 sig.span,
@@ -339,15 +342,16 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let (external_path, external_item_visibility, kind) =
+        let (external_path, external_item_visibility, kind, has_self_param) =
             handle_external_fn(ctxt, id, visibility, sig, self_generics, &body_id, mode, &vattrs)?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
 
-        (external_path, Some(proxy), external_item_visibility, kind)
+        (external_path, Some(proxy), external_item_visibility, kind, has_self_param)
     } else {
         // No proxy.
-        (this_path.clone(), None, visibility, kind)
+        let has_self_param = has_self_parameter(ctxt, id);
+        (this_path.clone(), None, visibility, kind, has_self_param)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -359,10 +363,11 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
-        Some(check_generics_bounds_fun(
+        Some(check_generics_bounds_no_polarity(
             ctxt.tcx,
             &ctxt.verus_items,
-            cg,
+            cg.span,
+            Some(cg),
             impl_def_id,
             Some(&mut *ctxt.diagnostics.borrow_mut()),
         )?)
@@ -403,51 +408,52 @@ pub(crate) fn check_item_fn<'tcx>(
         return Ok(None);
     }
 
-    let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_fun(
+    let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let fuel = get_fuel(&vattrs);
 
-    let (vir_body, header, params): (_, _, Vec<(String, Span, Option<HirId>, bool)>) = match body_id
-    {
-        CheckItemFnEither::BodyId(body_id) => {
-            let body = find_body(ctxt, body_id);
-            let Body { params, value: _, generator_kind } = body;
-            match generator_kind {
-                None => {}
-                _ => {
-                    unsupported_err!(sig.span, "generator_kind", generator_kind);
+    let (vir_body, header, params): (_, _, Vec<(VarIdent, Span, Option<HirId>, bool)>) =
+        match body_id {
+            CheckItemFnEither::BodyId(body_id) => {
+                let body = find_body(ctxt, body_id);
+                let Body { params, value: _, generator_kind } = body;
+                match generator_kind {
+                    None => {}
+                    _ => {
+                        unsupported_err!(sig.span, "generator_kind", generator_kind);
+                    }
                 }
+                let mut ps = Vec::new();
+                for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                    let (is_mut_var, name) = pat_to_mut_var(pat)?;
+                    // is_mut_var: means a parameter is like `mut x: X`
+                    // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
+                    ps.push((name, *span, Some(*hir_id), is_mut_var));
+                }
+                let external_body = vattrs.external_body || vattrs.external_fn_specification;
+                let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
+                let header = vir::headers::read_header(&mut vir_body)?;
+                (Some(vir_body), header, ps)
             }
-            let mut ps = Vec::new();
-            for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                let (is_mut_var, name) = pat_to_mut_var(pat)?;
-                // is_mut_var: means a parameter is like `mut x: X`
-                // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-                ps.push((name, *span, Some(*hir_id), is_mut_var));
+            CheckItemFnEither::ParamNames(params) => {
+                let params =
+                    params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect();
+                let header = vir::headers::read_header_block(&mut vec![])?;
+                (None, header, params)
             }
-            let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
-            let header = vir::headers::read_header(&mut vir_body)?;
-            (Some(vir_body), header, ps)
-        }
-        CheckItemFnEither::ParamNames(params) => {
-            let params = params.iter().map(|p| (p.to_string(), p.span, None, false)).collect();
-            let header = vir::headers::read_header_block(&mut vec![])?;
-            (None, header, params)
-        }
-    };
+        };
 
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
-        let name = Arc::new(name);
         let param_mode = if let Some(hir_id) = hir_id {
             get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
         } else {
@@ -524,7 +530,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 span,
                 vir::ast::StmtX::Decl {
                     pattern: new_binding_pat,
-                    mode: mode,
+                    mode: Some(mode),
                     init: Some(new_init_expr),
                 },
             );
@@ -532,6 +538,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode)));
     }
+
+    let n_params = vir_params.len();
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
         (FunctionKind::TraitMethodDecl { .. }, false, false, _) => {}
@@ -598,9 +606,9 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     use vir::ast::UnwrapParameter;
-    let mut all_param_names: Vec<vir::ast::Ident> = Vec::new();
-    let mut all_param_name_set: HashSet<vir::ast::Ident> = HashSet::new();
-    let mut unwrap_param_map: HashMap<vir::ast::Ident, UnwrapParameter> = HashMap::new();
+    let mut all_param_names: Vec<vir::ast::VarIdent> = Vec::new();
+    let mut all_param_name_set: HashSet<vir::ast::VarIdent> = HashSet::new();
+    let mut unwrap_param_map: HashMap<vir::ast::VarIdent, UnwrapParameter> = HashMap::new();
     for unwrap in header.unwrap_parameters.iter() {
         all_param_names.push(unwrap.inner_name.clone());
         unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
@@ -640,9 +648,9 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
         (None, None) => {
-            (Arc::new(RETURN_VALUE.to_string()), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
+            (air_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
         }
-        (None, Some((typ, mode))) => (Arc::new(RETURN_VALUE.to_string()), typ, mode),
+        (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
@@ -735,6 +743,8 @@ pub(crate) fn check_item_fn<'tcx>(
         spinoff_prover: vattrs.spinoff_prover,
         memoize: vattrs.memoize,
         rlimit: vattrs.rlimit,
+        print_zero_args: n_params == 0,
+        print_as_method: has_self_param,
     };
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -795,6 +805,14 @@ pub(crate) fn check_item_fn<'tcx>(
     let function = ctxt.spanned_new(sig.span, func);
     functions.push(function);
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
+}
+
+fn has_self_parameter<'tcx>(ctxt: &Context<'tcx>, id: DefId) -> bool {
+    if let Some(assoc_item) = ctxt.tcx.opt_associated_item(id) {
+        assoc_item.fn_has_self_parameter
+    } else {
+        false
+    }
 }
 
 // &mut T => Some(T, None)
@@ -1038,7 +1056,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         return err_span(span, "spec functions cannot have ensures");
     }
 
-    let ret_name = Arc::new(RETURN_VALUE.to_string());
+    let ret_name = air_unique_var(RETURN_VALUE);
     let ret = ctxt.spanned_new(
         span,
         ParamX {
@@ -1120,10 +1138,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     let ret_typ_mode =
         check_fn_decl(span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?;
-    let (typ_params, typ_bounds) = check_generics_bounds_fun(
+    let (typ_params, typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
@@ -1132,7 +1151,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
-        let name = Arc::new(foreign_param_to_var(param));
+        let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
         let typ = mid_ty_to_vir(
             ctxt.tcx,
@@ -1155,7 +1174,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         Some((typ, mode)) => (typ, mode),
     };
     let ret_param = ParamX {
-        name: Arc::new(RETURN_VALUE.to_string()),
+        name: air_unique_var(RETURN_VALUE),
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,

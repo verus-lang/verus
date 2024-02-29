@@ -34,6 +34,57 @@ pub struct PathX {
     pub segments: Idents,
 }
 
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    ToDebugSNode
+)]
+pub enum VarIdentDisambiguate {
+    // AIR names that don't derive from rustc's names:
+    AirLocal,
+    // rustc's parameter unique id comes from the function body; no body means no id:
+    NoBodyParam,
+    // TypParams are normally Idents, but sometimes we mix TypParams into lists of VarIdents:
+    TypParamBare,
+    TypParamSuffixed,
+    TypParamDecorated,
+    // Fields are normally Idents, but sometimes we mix field names into lists of VarIdents:
+    Field,
+    RustcId(usize),
+    // We track whether the variable is SST/AIR statement-bound or expression-bound,
+    // to help drop unnecessary ids from expression-bound variables
+    VirRenumbered { is_stmt: bool, does_shadow: bool, id: u64 },
+    // Some expression-bound variables don't need an id
+    VirExprNoNumber,
+    // We rename parameters to VirParam if the parameters don't conflict with each other
+    VirParam,
+    // Recursive definitions have an extra copy of the parameters
+    VirParamRecursion(usize),
+    // Capture-avoiding substitution creates new names:
+    VirSubst(u64),
+    VirTemp(u64),
+}
+
+/// A local variable name, possibly renamed for disambiguation
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
+pub struct VarIdent(pub Ident, pub VarIdentDisambiguate);
+
+pub type VarBinder<A> = Arc<VarBinderX<A>>;
+pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;
+#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
+pub struct VarBinderX<A: Clone> {
+    pub name: VarIdent,
+    pub a: A,
+}
+
 /// Static function identifier
 pub type Fun = Arc<FunX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -422,9 +473,9 @@ pub struct UnwrapParameter {
     // indicates Ghost or Tracked
     pub mode: Mode,
     // dummy name chosen for official Rust parameter name
-    pub outer_name: Ident,
+    pub outer_name: VarIdent,
     // rename the parameter to a different name using a "let" binding
-    pub inner_name: Ident,
+    pub inner_name: VarIdent,
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -439,7 +490,7 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(Ident, Typ)>, Exprs),
+    Ensures(Option<(VarIdent, Typ)>, Exprs),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
@@ -501,7 +552,7 @@ pub enum PatternX {
     Wildcard(bool),
     /// x or mut x
     Var {
-        name: Ident,
+        name: VarIdent,
         mutable: bool,
     },
     /// Note: ast_simplify replaces this with Constructor
@@ -632,11 +683,11 @@ pub enum ExprX {
     /// Constant
     Const(Constant),
     /// Local variable as a right-hand side
-    Var(Ident),
+    Var(VarIdent),
     /// Local variable as a left-hand side
-    VarLoc(Ident),
+    VarLoc(VarIdent),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
-    VarAt(Ident, VarAt),
+    VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
@@ -665,27 +716,27 @@ pub enum ExprX {
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
-    Quant(Quant, Binders<Typ>, Expr),
+    Quant(Quant, VarBinders<Typ>, Expr),
     /// Specification closure
-    Closure(Binders<Typ>, Expr),
+    Closure(VarBinders<Typ>, Expr),
     /// Executable closure
     ExecClosure {
-        params: Binders<Typ>,
+        params: VarBinders<Typ>,
         body: Expr,
         requires: Exprs,
         ensures: Exprs,
-        ret: Binder<Typ>,
+        ret: VarBinder<Typ>,
         /// The 'external spec' is an Option because it gets filled in during
         /// ast_simplify. It contains the assumptions that surrounding context
         /// can assume about a closure object after it is created.
-        external_spec: Option<(Ident, Expr)>,
+        external_spec: Option<(VarIdent, Expr)>,
     },
     /// Array literal (can also be used for sequence literals in the future)
     ArrayLiteral(Exprs),
     /// Executable function (declared with 'fn' and referred to by name)
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
-    Choose { params: Binders<Typ>, cond: Expr, body: Expr },
+    Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
@@ -702,7 +753,7 @@ pub enum ExprX {
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
     /// Assert-forall or assert-by statement
-    AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
     /// Assertion discharged via computation
@@ -720,7 +771,7 @@ pub enum ExprX {
         invs: LoopInvariants,
     },
     /// Open invariant
-    OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
+    OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
@@ -745,7 +796,8 @@ pub enum StmtX {
     /// Declare a local variable, which may be mutable, and may have an initial value
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
-    Decl { pattern: Pattern, mode: Mode, init: Option<Expr> },
+    /// (The mode is only allowed to be None for one special case; see modes.rs)
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr> },
 }
 
 /// Function parameter
@@ -753,7 +805,7 @@ pub type Param = Arc<Spanned<ParamX>>;
 pub type Params = Arc<Vec<Param>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub struct ParamX {
-    pub name: Ident,
+    pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
     /// An &mut parameter
@@ -761,7 +813,7 @@ pub struct ParamX {
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
     /// We also save a copy of the original wrapped name for lifetime_generate
-    pub unwrapped_info: Option<(Mode, Ident)>,
+    pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
@@ -831,6 +883,11 @@ pub struct FunctionAttrsX {
     pub memoize: bool,
     /// override default rlimit
     pub rlimit: Option<f32>,
+    /// does this function take zero args (this is useful to keep track
+    /// of because we add a dummy arg to zero functions)
+    pub print_zero_args: bool,
+    /// is this a method, i.e., written with x.f() syntax? useful for printing
+    pub print_as_method: bool,
 }
 
 /// Function specification of its invariant mask

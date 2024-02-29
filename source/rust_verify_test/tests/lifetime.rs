@@ -435,7 +435,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] lifetime_copy_succeed verus_code! {
         #[verifier(external_body)]
-        struct S<#[verifier(maybe_negative)]A, #[verifier(maybe_negative)]B>(A, std::marker::PhantomData<B>);
+        #[verifier(reject_recursive_types(A))]
+        #[verifier(reject_recursive_types(B))]
+        struct S<A, B>(A, std::marker::PhantomData<B>);
 
         #[verifier(external)]
         impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
@@ -452,7 +454,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] lifetime_copy_fail verus_code! {
         #[verifier(external_body)]
-        struct S<#[verifier(maybe_negative)]A, #[verifier(maybe_negative)]B>(A, std::marker::PhantomData<B>);
+        #[verifier(reject_recursive_types(A))]
+        #[verifier(reject_recursive_types(B))]
+        struct S<A, B>(A, std::marker::PhantomData<B>);
 
         #[verifier(external)]
         impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }

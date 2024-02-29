@@ -2,12 +2,12 @@ use crate::prelude::*;
 use builtin::*;
 
 use alloc::vec::Vec;
-use core::option::Option;
-use core::option::Option::Some;
-use core::option::Option::None;
 use core::alloc::Allocator;
+use core::option::Option;
+use core::option::Option::None;
+use core::option::Option::Some;
 
-verus!{
+verus! {
 
 #[verifier(external_type_specification)]
 #[verifier(external_body)]
@@ -20,15 +20,18 @@ pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 pub struct ExGlobal(alloc::alloc::Global);
 
 ////// Declare 'view' function
-
 pub trait VecAdditionalSpecFns<T> {
     spec fn spec_len(&self) -> nat;
+
     spec fn spec_index(&self, i: int) -> T
-        recommends 0 <= i < self.spec_len();
+        recommends
+            0 <= i < self.spec_len(),
+    ;
 }
 
 impl<T, A: Allocator> View for Vec<T, A> {
     type V = Seq<T>;
+
     spec fn view(&self) -> Seq<T>;
 }
 
@@ -53,28 +56,27 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
 //
 // It's not ideal, but I think it's better than the alternative, which would
 // be to have users call some function with a nonstandard name to perform indexing.
-
 /// This is a specification for the indexing operator `vec[i]`
 #[verifier::external_body]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
-    requires i < vec.view().len(),
-    ensures *element == vec.view().index(i as int)
+    requires
+        i < vec.view().len(),
+    ensures
+        *element == vec.view().index(i as int),
 {
     &vec[i]
 }
 
 ////// Len (with autospec)
-
 pub open spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
 
 // This axiom is slightly better than defining spec_vec_len to just be `v@.len() as usize`
 // (the axiom also shows that v@.len() is in-bounds for usize)
-
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub proof fn axiom_spec_len<A>(v: &Vec<A>)
     ensures
-        #[trigger] spec_vec_len(v) == v@.len()
+        #[trigger] spec_vec_len(v) == v@.len(),
 {
 }
 
@@ -82,13 +84,12 @@ pub proof fn axiom_spec_len<A>(v: &Vec<A>)
 #[verifier::when_used_as_spec(spec_vec_len)]
 pub fn ex_vec_len<T, A: Allocator>(vec: &Vec<T, A>) -> (len: usize)
     ensures
-        len == spec_vec_len(vec)
+        len == spec_vec_len(vec),
 {
     vec.len()
 }
 
 ////// Other functions
-
 #[verifier::external_fn_specification]
 pub fn ex_vec_new<T>() -> (v: Vec<T>)
     ensures
@@ -124,12 +125,10 @@ pub fn ex_vec_push<T, A: Allocator>(vec: &mut Vec<T, A>, value: T)
 #[verifier::external_fn_specification]
 pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
     ensures
-        old(vec)@.len() > 0 ==>
-            value == Some(old(vec)@[old(vec)@.len() - 1])
-            && vec@ == old(vec)@.subrange(0, old(vec)@.len() - 1),
-        old(vec)@.len() == 0 ==>
-            value == None::<T>
-            && vec@ == old(vec)@
+        old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1]) && vec@ == old(
+            vec,
+        )@.subrange(0, old(vec)@.len() - 1),
+        old(vec)@.len() == 0 ==> value == None::<T> && vec@ == old(vec)@,
 {
     vec.pop()
 }
@@ -159,7 +158,6 @@ pub fn index<T, A: Allocator>(vec: &Vec<T>, i: usize) -> (r: &T)
 }
 */
 
-
 #[verifier::external_fn_specification]
 pub fn ex_vec_insert<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize, element: T)
     requires
@@ -183,22 +181,27 @@ pub fn ex_vec_remove<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element
 
 #[verifier::external_fn_specification]
 pub fn ex_vec_clear<T, A: Allocator>(vec: &mut Vec<T, A>)
-    ensures vec.view() == Seq::<T>::empty(),
+    ensures
+        vec.view() == Seq::<T>::empty(),
 {
     vec.clear()
 }
 
 #[verifier::external_fn_specification]
 pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
-    ensures slice@ == vec@
+    ensures
+        slice@ == vec@,
 {
     vec.as_slice()
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_vec_split_off<T, A: Allocator+ core::clone::Clone>(vec: &mut Vec<T, A>, at: usize) -> (return_value: Vec<T, A>)
+pub fn ex_vec_split_off<T, A: Allocator + core::clone::Clone>(
+    vec: &mut Vec<T, A>,
+    at: usize,
+) -> (return_value: Vec<T, A>)
     ensures
-        vec@ == old(vec)@.subrange(0,at as int),
+        vec@ == old(vec)@.subrange(0, at as int),
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
 {
     vec.split_off(at)
@@ -207,10 +210,10 @@ pub fn ex_vec_split_off<T, A: Allocator+ core::clone::Clone>(vec: &mut Vec<T, A>
 #[verifier::external_fn_specification]
 pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
     ensures
-        len <= vec.len() ==> vec@ == old(vec)@.subrange(0,len as int),
+        len <= vec.len() ==> vec@ == old(vec)@.subrange(0, len as int),
         len > vec.len() ==> vec@ == old(vec)@,
 {
     vec.truncate(len)
 }
 
-}
+} // verus!

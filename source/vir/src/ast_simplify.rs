@@ -2,6 +2,10 @@
 
 use crate::ast::Quant;
 use crate::ast::Typs;
+use crate::ast::VarBinder;
+use crate::ast::VarBinderX;
+use crate::ast::VarBinders;
+use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
@@ -14,6 +18,8 @@ use crate::ast_util::is_integer_type;
 use crate::ast_util::{conjoin, disjoin, if_then_else, typ_args_for_datatype_typ, wrap_in_trigger};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
+use crate::def::dummy_param_name;
+use crate::def::is_dummy_param_name;
 use crate::def::{
     positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
 };
@@ -21,8 +27,6 @@ use crate::messages::error;
 use crate::messages::Span;
 use crate::sst_util::subst_typ_for_datatype;
 use crate::util::vec_map_result;
-use air::ast::BinderX;
-use air::ast::Binders;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -31,6 +35,8 @@ use std::sync::Arc;
 struct State {
     // Counter to generate temporary variables
     next_var: u64,
+    // Rename parameters to simplify their names
+    rename_vars: HashMap<VarIdent, VarIdent>,
     // Name of a datatype to represent each tuple arity
     tuple_typs: HashMap<usize, Path>,
     // Name of a datatype to represent each tuple arity
@@ -43,6 +49,7 @@ impl State {
     fn new() -> Self {
         State {
             next_var: 0,
+            rename_vars: HashMap::new(),
             tuple_typs: HashMap::new(),
             closure_typs: HashMap::new(),
             fndef_typs: HashSet::new(),
@@ -51,11 +58,12 @@ impl State {
 
     fn reset_for_function(&mut self) {
         self.next_var = 0;
+        self.rename_vars = HashMap::new();
     }
 
-    fn next_temp(&mut self) -> Ident {
+    fn next_temp(&mut self) -> VarIdent {
         self.next_var += 1;
-        crate::def::prefix_simplify_temp_var(self.next_var)
+        crate::def::simplify_temp_var(self.next_var)
     }
 
     fn tuple_type_name(&mut self, arity: usize) -> Path {
@@ -94,7 +102,7 @@ fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
     let name = temp.clone();
     let patternx = PatternX::Var { name, mutable: false };
     let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
-    let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+    let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
 }
@@ -131,7 +139,7 @@ fn pattern_to_exprs(
         let patternx = PatternX::Var { name, mutable };
         let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
         // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
-        let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+        let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
         decls.push(Spanned::new(expr.span.clone(), decl));
     }
 
@@ -139,7 +147,7 @@ fn pattern_to_exprs(
 }
 
 struct PatternBoundDecl {
-    name: Ident,
+    name: VarIdent,
     mutable: bool,
     expr: Expr,
 }
@@ -234,6 +242,15 @@ fn pattern_to_exprs_rec(
 // that is, if node A is the parent of children B and C,
 // then simplify_one_expr is called first on B and C, and then on A
 
+fn rename_var(state: &State, scope_map: &VisitorScopeMap, x: &VarIdent) -> VarIdent {
+    if let Some(rename) = state.rename_vars.get(x) {
+        if scope_map[x].is_outer_param_or_ret {
+            return rename.clone();
+        }
+    }
+    x.clone()
+}
+
 fn simplify_one_expr(
     ctx: &GlobalCtx,
     state: &mut State,
@@ -242,6 +259,8 @@ fn simplify_one_expr(
 ) -> Result<Expr, VirErr> {
     use crate::ast::CallTargetKind;
     match &expr.x {
+        ExprX::Var(x) => Ok(expr.new_x(ExprX::Var(rename_var(state, scope_map, x)))),
+        ExprX::VarAt(x, at) => Ok(expr.new_x(ExprX::VarAt(rename_var(state, scope_map, x), *at))),
         ExprX::VarLoc(x) => {
             // If we try to mutate `x`, check that `x` is actually marked mut.
             // This is *usually* caught by rustc for us, during our lifetime checking phase.
@@ -267,7 +286,7 @@ fn simplify_one_expr(
                     let name = user_local_name(x);
                     Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
                 }
-                _ => Ok(expr.clone()),
+                _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
             }
         }
         ExprX::ConstVar(x, autospec) => {
@@ -591,7 +610,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             Ok(typ.clone())
         }
         TypX::TypParam(x) => {
-            if !local.typ_params.contains(x) {
+            if !local.typ_params.contains(&x) {
                 return Err(error(
                     &local.span,
                     format!("type parameter {} used before being declared", x),
@@ -606,7 +625,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
 // TODO: a lot of this closure stuff could get its own file
 // rename to apply to all fn types, not just closure types
 
-fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &Binders<Typ>) -> Typs {
+fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &VarBinders<Typ>) -> Typs {
     let path = state.tuple_type_name(params.len());
 
     let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
@@ -618,7 +637,7 @@ fn closure_trait_call_typ_args(state: &mut State, fn_val: &Expr, params: &Binder
 fn mk_closure_req_call(
     state: &mut State,
     span: &Span,
-    params: &Binders<Typ>,
+    params: &VarBinders<Typ>,
     fn_val: &Expr,
     arg_tuple: &Expr,
 ) -> Expr {
@@ -640,7 +659,7 @@ fn mk_closure_req_call(
 fn mk_closure_ens_call(
     state: &mut State,
     span: &Span,
-    params: &Binders<Typ>,
+    params: &VarBinders<Typ>,
     fn_val: &Expr,
     arg_tuple: &Expr,
     ret_arg: &Expr,
@@ -664,7 +683,7 @@ fn exec_closure_spec_requires(
     state: &mut State,
     span: &Span,
     closure_var: &Expr,
-    params: &Binders<Typ>,
+    params: &VarBinders<Typ>,
     requires: &Exprs,
 ) -> Result<Expr, VirErr> {
     // For requires:
@@ -695,7 +714,7 @@ fn exec_closure_spec_requires(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Mode::Spec, init: Some(tuple_field) };
+        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
         decls.push(Spanned::new(span.clone(), decl));
     }
 
@@ -713,7 +732,7 @@ fn exec_closure_spec_requires(
     );
 
     let forall = Quant { quant: air::ast::Quant::Forall };
-    let binders = Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ })]);
+    let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
     let req_forall =
         SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, req_quant_body));
 
@@ -724,8 +743,8 @@ fn exec_closure_spec_ensures(
     state: &mut State,
     span: &Span,
     closure_var: &Expr,
-    params: &Binders<Typ>,
-    ret: &Binder<Typ>,
+    params: &VarBinders<Typ>,
+    ret: &VarBinder<Typ>,
     ensures: &Exprs,
 ) -> Result<Expr, VirErr> {
     // For ensures:
@@ -743,8 +762,8 @@ fn exec_closure_spec_ensures(
     let tuple_ident = state.next_temp();
     let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
 
-    let ret_ident = &ret.name;
-    let ret_var = SpannedTyped::new(span, &ret.a, ExprX::Var(ret_ident.clone()));
+    let ret_ident = ret.clone();
+    let ret_var = SpannedTyped::new(span, &ret.a, ExprX::Var(ret_ident.name.clone()));
 
     let enss = conjoin(span, ensures);
 
@@ -755,7 +774,7 @@ fn exec_closure_spec_ensures(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Mode::Spec, init: Some(tuple_field) };
+        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
         decls.push(Spanned::new(span.clone(), decl));
     }
 
@@ -780,7 +799,7 @@ fn exec_closure_spec_ensures(
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =
-        Arc::new(vec![Arc::new(BinderX { name: tuple_ident, a: tuple_typ }), ret.clone()]);
+        Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ }), ret.clone()]);
     let ens_forall =
         SpannedTyped::new(span, &bool_typ, ExprX::Quant(forall, binders, ens_quant_body));
 
@@ -791,8 +810,8 @@ fn exec_closure_spec(
     state: &mut State,
     span: &Span,
     closure_var: &Expr,
-    params: &Binders<Typ>,
-    ret: &Binder<Typ>,
+    params: &VarBinders<Typ>,
+    ret: &VarBinder<Typ>,
     requires: &Exprs,
     ensures: &Exprs,
 ) -> Result<Expr, VirErr> {
@@ -827,8 +846,8 @@ fn add_fndef_axioms_to_function(
         .x
         .params
         .iter()
-        .filter(|p| &**p.x.name != crate::def::DUMMY_PARAM)
-        .map(|p| Arc::new(BinderX { name: p.x.name.clone(), a: p.x.typ.clone() }))
+        .filter(|p| !is_dummy_param_name(&p.x.name))
+        .map(|p| Arc::new(VarBinderX { name: p.x.name.clone(), a: p.x.typ.clone() }))
         .collect();
     let params = Arc::new(params);
 
@@ -869,7 +888,7 @@ fn add_fndef_axioms_to_function(
     }
 
     if function.x.ensure.len() > 0 {
-        let ret = Arc::new(BinderX {
+        let ret = Arc::new(VarBinderX {
             name: function.x.ret.x.name.clone(),
             a: function.x.ret.x.typ.clone(),
         });
@@ -903,6 +922,37 @@ fn simplify_function(
 
     let is_trait_impl = matches!(functionx.kind, FunctionKind::TraitMethodImpl { .. });
 
+    // If possible, rename parameters to drop the rustc id
+    let mut param_ids: HashSet<Ident> = HashSet::new();
+    let mut rename_ok = true;
+    for p in functionx.params.iter() {
+        let x = &p.x.name.0;
+        if param_ids.contains(x) {
+            rename_ok = false;
+        }
+        param_ids.insert(x.clone());
+    }
+    let mut param_names: Vec<VarIdent> = Vec::new();
+    for param in functionx.params.iter() {
+        let prev = param.x.name.clone();
+        let name = if rename_ok {
+            let name = VarIdent(prev.0.clone(), crate::ast::VarIdentDisambiguate::VirParam);
+            state.rename_vars.insert(prev, name.clone()).map(|_| panic!("rename params"));
+            name
+        } else {
+            prev
+        };
+        param_names.push(name);
+    }
+    let ret_name = if rename_ok && !param_ids.contains(&functionx.ret.x.name.0) {
+        let prev = functionx.ret.x.name.clone();
+        let name = VarIdent(prev.0.clone(), crate::ast::VarIdentDisambiguate::VirParam);
+        state.rename_vars.insert(prev, name.clone()).map(|_| panic!("rename ret"));
+        name
+    } else {
+        functionx.ret.x.name.clone()
+    };
+
     // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
     if functionx.typ_params.len() == 0
         && functionx.params.len() == 0
@@ -912,26 +962,40 @@ fn simplify_function(
         && !is_trait_impl
     {
         let paramx = crate::ast::ParamX {
-            name: Arc::new(crate::def::DUMMY_PARAM.to_string()),
+            name: dummy_param_name(),
             typ: Arc::new(TypX::Int(IntRange::Int)),
             mode: Mode::Spec,
             is_mut: false,
             unwrapped_info: None,
         };
+        param_names.push(paramx.name.clone());
         let param = Spanned::new(function.span.clone(), paramx);
         functionx.params = Arc::new(vec![param]);
     }
 
     let function = Spanned::new(function.span.clone(), functionx);
     let mut map: VisitorScopeMap = ScopeMap::new();
-    crate::ast_visitor::map_function_visitor_env(
+    let function = crate::ast_visitor::map_function_visitor_env(
         &function,
         &mut map,
         state,
         &|state, map, expr| simplify_one_expr(ctx, state, map, expr),
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
-    )
+    )?;
+    let mut functionx = function.x.clone();
+    assert!(functionx.params.len() == param_names.len());
+    functionx.params = Arc::new(
+        functionx
+            .params
+            .iter()
+            .zip(param_names.iter())
+            .map(|(p, x)| p.new_x(crate::ast::ParamX { name: x.clone(), ..p.x.clone() }))
+            .collect(),
+    );
+    functionx.ret =
+        functionx.ret.new_x(crate::ast::ParamX { name: ret_name, ..functionx.ret.x.clone() });
+    Ok(Spanned::new(function.span.clone(), functionx))
 }
 
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {

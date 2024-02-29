@@ -1,4 +1,4 @@
-use crate::ast::{Typ, UnaryOpr};
+use crate::ast::{Typ, UnaryOpr, VarIdent};
 use crate::def::Spanned;
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
@@ -6,10 +6,10 @@ use air::scope_map::ScopeMap;
 use indexmap::{IndexMap, IndexSet};
 use std::sync::Arc;
 
-fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<Arc<String>> {
+fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<VarIdent> {
     let mut output = IndexSet::new();
     for item in input {
-        output.insert(item.name.clone());
+        output.insert(item.clone());
     }
     output
 }
@@ -17,7 +17,7 @@ fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<Arc<String>> {
 // Compute:
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
-pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<Arc<String>>>;
+pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<VarIdent>>;
 
 pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
     match &exp.x {

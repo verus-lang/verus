@@ -35,17 +35,9 @@ proof fn lemma_induction_helper_pos(n: int, f: spec_fn(int) -> bool, x: int)
     requires
         x >= 0,
         n > 0,
-        forall|i: int|
-            0 <= i < n ==> #[trigger]
-            f(i),
-        forall|i: int|
-            i >= 0 && #[trigger]
-            f(i) ==> #[trigger]
-            f(add1(i, n)),
-        forall|i: int|
-            i < n && #[trigger]
-            f(i) ==> #[trigger]
-            f(sub1(i, n)),
+        forall|i: int| 0 <= i < n ==> #[trigger] f(i),
+        forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, n)),
+        forall|i: int| i < n && #[trigger] f(i) ==> #[trigger] f(sub1(i, n)),
     ensures
         f(x),
     decreases x,
@@ -65,17 +57,9 @@ proof fn lemma_induction_helper_neg(n: int, f: spec_fn(int) -> bool, x: int)
     requires
         x < 0,
         n > 0,
-        forall|i: int|
-            0 <= i < n ==> #[trigger]
-            f(i),
-        forall|i: int|
-            i >= 0 && #[trigger]
-            f(i) ==> #[trigger]
-            f(add1(i, n)),
-        forall|i: int|
-            i < n && #[trigger]
-            f(i) ==> #[trigger]
-            f(sub1(i, n)),
+        forall|i: int| 0 <= i < n ==> #[trigger] f(i),
+        forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, n)),
+        forall|i: int| i < n && #[trigger] f(i) ==> #[trigger] f(sub1(i, n)),
     ensures
         f(x),
     decreases -x,
@@ -118,17 +102,9 @@ proof fn lemma_induction_helper_neg(n: int, f: spec_fn(int) -> bool, x: int)
 pub proof fn lemma_induction_helper(n: int, f: spec_fn(int) -> bool, x: int)
     requires
         n > 0,
-        forall|i: int|
-            0 <= i < n ==> #[trigger]
-            f(i),
-        forall|i: int|
-            i >= 0 && #[trigger]
-            f(i) ==> #[trigger]
-            f(add1(i, n)),
-        forall|i: int|
-            i < n && #[trigger]
-            f(i) ==> #[trigger]
-            f(sub1(i, n)),
+        forall|i: int| 0 <= i < n ==> #[trigger] f(i),
+        forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, n)),
+        forall|i: int| i < n && #[trigger] f(i) ==> #[trigger] f(sub1(i, n)),
     ensures
         f(x),
 {

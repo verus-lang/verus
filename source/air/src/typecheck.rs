@@ -412,8 +412,8 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             typing.decls.pop_scope();
             Ok(tb)
         }
-        ExprX::LabeledAssertion(_, expr) => check_expr(typing, expr),
-        ExprX::LabeledAxiom(_, expr) => check_expr(typing, expr),
+        ExprX::LabeledAssertion(_, _, expr) => check_expr(typing, expr),
+        ExprX::LabeledAxiom(_, _, expr) => check_expr(typing, expr),
     };
     match result {
         Ok(t) => Ok(t),
@@ -433,7 +433,7 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
             &bt(),
             "assume statement expects expression of type bool",
         ),
-        StmtX::Assert(_, expr) => expect_typ(
+        StmtX::Assert(_, _, expr) => expect_typ(
             &check_expr(typing, expr)?,
             &bt(),
             "assert statement expects expression of type bool",

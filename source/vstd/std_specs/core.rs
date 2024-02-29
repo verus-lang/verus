@@ -1,10 +1,12 @@
 use crate::prelude::*;
 
-verus!{
+verus! {
 
 #[verifier(external_fn_specification)]
 pub fn ex_swap<T>(a: &mut T, b: &mut T)
-    ensures *a == *old(b), *b == *old(a),
+    ensures
+        *a == *old(b),
+        *b == *old(a),
 {
     core::mem::swap(a, b)
 }
@@ -26,7 +28,8 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
 #[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
 pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
-    ensures r == i
+    ensures
+        r == i,
 {
     i.into_iter()
 }
@@ -35,7 +38,6 @@ pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
 // this is mostly here because I wanted an easy way to test
 // the combination of external_type_specification & external_body
 // in a cross-crate context.
-
 #[verifier(external_type_specification)]
 #[verifier(external_body)]
 pub struct ExDuration(core::time::Duration);
@@ -47,14 +49,16 @@ pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
 #[verifier::external_fn_specification]
 pub fn ex_intrinsics_likely(b: bool) -> (c: bool)
-    ensures c == b
+    ensures
+        c == b,
 {
     core::intrinsics::likely(b)
 }
 
 #[verifier::external_fn_specification]
 pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
-    ensures c == b
+    ensures
+        c == b,
 {
     core::intrinsics::unlikely(b)
 }
@@ -64,4 +68,4 @@ pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
 
-}
+} // verus!

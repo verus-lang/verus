@@ -20,6 +20,7 @@ pub(crate) enum App {
     IfElse,
     Let,
     Quant(Quant, Typs, Arc<Vec<usize>>),
+    Trigger,
     LabeledAssertion,
 }
 
@@ -289,12 +290,14 @@ fn simplify_choose(
     terms.push(t_body);
     for trigger in triggers.iter() {
         let mut new_trigger: Vec<Expr> = Vec::new();
+        let mut trigger_terms: Vec<Term> = Vec::new();
         for e in trigger.iter() {
             let (typ, e, t) = simplify_expr(ctxt, state, e);
             let (e, t) = enclose_force_hole(state.closure_states.last_mut().unwrap(), typ, e, t);
-            terms.push(t);
+            trigger_terms.push(t);
             new_trigger.push(e);
         }
+        terms.push(Arc::new(TermX::App(App::Trigger, Arc::new(trigger_terms))));
         new_triggers.push(Arc::new(new_trigger));
     }
     let closure_state = state.closure_states.pop().unwrap();
@@ -572,17 +575,17 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 simplify_choose(ctxt, state, binders, triggers, qid, cond, e1)
             }
         },
-        ExprX::LabeledAssertion(l, e1) => {
+        ExprX::LabeledAssertion(l, filter, e1) => {
             let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);
             let (typ, _) = ts[0].clone();
             let (es, t) = enclose(state, App::LabeledAssertion, es, ts);
-            (typ, Arc::new(ExprX::LabeledAssertion(l.clone(), es[0].clone())), t)
+            (typ, Arc::new(ExprX::LabeledAssertion(l.clone(), filter.clone(), es[0].clone())), t)
         }
-        ExprX::LabeledAxiom(l, e1) => {
+        ExprX::LabeledAxiom(l, filter, e1) => {
             let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);
             let (typ, _) = ts[0].clone();
             let (es, t) = enclose(state, App::LabeledAssertion, es, ts);
-            (typ, Arc::new(ExprX::LabeledAxiom(l.clone(), es[0].clone())), t)
+            (typ, Arc::new(ExprX::LabeledAxiom(l.clone(), filter.clone(), es[0].clone())), t)
         }
     }
 }
@@ -593,9 +596,9 @@ fn simplify_stmt_rec(ctxt: &mut Context, state: &mut State, stmt: &Stmt) -> Stmt
             let (_, expr, _) = simplify_expr(ctxt, state, expr);
             Arc::new(StmtX::Assume(expr))
         }
-        StmtX::Assert(span, expr) => {
+        StmtX::Assert(span, filter, expr) => {
             let (_, expr, _) = simplify_expr(ctxt, state, expr);
-            Arc::new(StmtX::Assert(span.clone(), expr))
+            Arc::new(StmtX::Assert(span.clone(), filter.clone(), expr))
         }
         StmtX::Havoc(_) => stmt.clone(),
         StmtX::Assign(x, expr) => {

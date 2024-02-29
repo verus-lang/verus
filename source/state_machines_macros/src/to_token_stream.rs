@@ -247,8 +247,10 @@ pub fn output_primary_stuff(
         })
         .collect();
 
+    let attrs = &bundle.sm.attrs;
     let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #(#attrs)*
         pub struct State #gen {
             #(#fields),*
         }
@@ -392,18 +394,23 @@ pub fn output_primary_stuff(
     let mut show_stream = TokenStream::new();
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, false);
     output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, true);
-    if sm.init_label.is_some() {
+    if let Some(init_label) = &sm.init_label {
         root_stream.extend(quote! {
-            #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+            ::builtin_macros::verus!{
+                #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+                #init_label
+            }
+        });
+        root_stream.extend(quote! {});
+    }
+    if let Some(transition_label) = &sm.transition_label {
+        root_stream.extend(quote! {
+            ::builtin_macros::verus!{
+                #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+                #transition_label
+            }
         });
     }
-    sm.init_label.to_tokens(root_stream);
-    if sm.transition_label.is_some() {
-        root_stream.extend(quote! {
-            #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
-        });
-    }
-    sm.transition_label.to_tokens(root_stream);
     root_stream.extend(quote! {
         pub mod show {
             use super::*;
@@ -549,11 +556,14 @@ fn output_step_datatype(
 
     let self_ty = get_self_ty(sm);
     let step_ty = get_step_ty(sm, is_init);
+    let attrs = &sm.attrs;
 
     root_stream.extend(quote! {
         #[allow(non_camel_case_types)]
-        #[::builtin_macros::is_variant]
+        #[::builtin_macros::is_variant_no_deprecation_warning]
+        #[::builtin_macros::verus_enum_synthesize]
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #(#attrs)*
         pub enum #type_ident#generics {
             #(#variants,)*
             // We add this extra variant with the self_ty in order to avoid

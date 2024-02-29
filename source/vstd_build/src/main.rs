@@ -126,7 +126,7 @@ fn main() {
 
     let cmd = verus_target_path.join("rust_verify");
     let mut child = std::process::Command::new(cmd);
-    child.env("RUST_MIN_STACK", "5242880");
+    child.env("RUST_MIN_STACK", (5 * 1024 * 1024).to_string());
     child.args(&child_args[..]);
 
     if verbose {

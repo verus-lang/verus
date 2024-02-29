@@ -5,7 +5,7 @@ use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
-use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, QPath, Ty};
+use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
@@ -18,10 +18,10 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    GenericBoundX, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VirErr,
+    GenericBoundX, Idents, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VarIdent,
+    VirErr, VirErrAs,
 };
-use vir::ast_util::{types_equal, undecorate_typ};
-use vir::def::unique_local_name;
+use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
 // TODO: eventually, this should just always be true
 thread_local! {
@@ -160,21 +160,22 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     TypX::Datatype(def_id_to_vir_path(tcx, verus_items, def_id), typ_args, impl_paths)
 }
 
-pub(crate) fn foreign_param_to_var<'tcx>(ident: &Ident) -> String {
-    ident.to_string()
+pub(crate) fn no_body_param_to_var<'tcx>(ident: &Ident) -> VarIdent {
+    str_unique_var(ident.as_str(), vir::ast::VarIdentDisambiguate::NoBodyParam)
 }
 
 pub(crate) fn local_to_var<'tcx>(
     ident: &Ident,
     local_id: rustc_hir::hir_id::ItemLocalId,
-) -> String {
-    unique_local_name(ident.to_string(), local_id.index())
+) -> VarIdent {
+    let dis = vir::ast::VarIdentDisambiguate::RustcId(local_id.index());
+    str_unique_var(&ident.to_string(), dis)
 }
 
 pub(crate) fn qpath_to_ident<'tcx>(
     tcx: TyCtxt<'tcx>,
     qpath: &QPath<'tcx>,
-) -> Option<vir::ast::Ident> {
+) -> Option<vir::ast::VarIdent> {
     use rustc_hir::def::Res;
     use rustc_hir::{BindingAnnotation, Node, Pat, PatKind};
     if let QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. }) = qpath {
@@ -183,7 +184,7 @@ pub(crate) fn qpath_to_ident<'tcx>(
             ..
         }) = tcx.hir().get(*id)
         {
-            Some(Arc::new(local_to_var(x, hir_id.local_id)))
+            Some(local_to_var(x, hir_id.local_id))
         } else {
             None
         }
@@ -1132,27 +1133,74 @@ where
     Ok(bounds)
 }
 
-pub(crate) fn check_generics_bounds<'tcx>(
+fn check_generics_bounds_main<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
-    hir_generics: &'tcx Generics<'tcx>,
+    span: Span,
+    hir_generics: Option<&'tcx Generics<'tcx>>,
     check_that_external_body_datatype_declares_positivity: bool,
+    error_on_polarity: bool,
     def_id: DefId,
     vattrs: Option<&crate::attributes::VerifierAttrs>,
     mut diagnostics: Option<&mut Vec<vir::ast::VirErrAs>>,
 ) -> Result<(vir::ast::TypPositives, vir::ast::GenericBounds), VirErr> {
-    // TODO the 'predicates' object contains the parent def_id; we can use that
-    // to handle all the params and bounds from the impl at once,
-    // so then we can handle the case where a method adds extra bounds to an impl
-    // type parameter
+    use vir::ast::AcceptRecursiveType;
+    let mut accept_recs: HashMap<String, AcceptRecursiveType> = HashMap::new();
 
-    let Generics {
-        params: hir_params,
-        has_where_clause_predicates: _,
-        predicates: _,
-        where_clause_span: _,
-        span: generics_span,
-    } = hir_generics;
+    if let Some(hir_generics) = hir_generics {
+        for hir_param in hir_generics.params.iter() {
+            let GenericParam {
+                hir_id: _,
+                name: _,
+                span,
+                pure_wrt_drop: _,
+                kind: _,
+                def_id: _,
+                colon_span: _,
+                source: _,
+            } = hir_param;
+
+            let vattrs = get_verifier_attrs(
+                tcx.hir().attrs(hir_param.hir_id),
+                if let Some(diagnostics) = &mut diagnostics { Some(diagnostics) } else { None },
+            )?;
+            if vattrs.reject_recursive_types
+                || vattrs.reject_recursive_types_in_ground_variants
+                || vattrs.accept_recursive_types
+            {
+                let (attr_name, attr) = if vattrs.reject_recursive_types {
+                    ("reject_recursive_types", AcceptRecursiveType::Reject)
+                } else if vattrs.reject_recursive_types_in_ground_variants {
+                    (
+                        "reject_recursive_types_in_ground_variants",
+                        AcceptRecursiveType::RejectInGround,
+                    )
+                } else {
+                    ("accept_recursive_types", AcceptRecursiveType::Accept)
+                };
+                let ident = hir_param.name.ident();
+                let name = ident.as_str();
+
+                // TODO stop supporthing this entirely
+                //return err_span(
+                //    *span,
+                //    format!("use the attribute style `#[{attr_name:}({name:})]` at the item level"),
+                //);
+
+                accept_recs.insert(name.to_string(), attr);
+
+                if let Some(diagnostics) = &mut diagnostics {
+                    diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+                        *span,
+                        format!(
+                            "use the attribute style `#[{attr_name:}({name:})]` at the item level"
+                        ),
+                    )));
+                }
+            }
+        }
+    }
+
     let generics = tcx.generics_of(def_id);
 
     let mut mid_params: Vec<&rustc_middle::ty::GenericParamDef> = vec![];
@@ -1164,17 +1212,6 @@ pub(crate) fn check_generics_bounds<'tcx>(
             }
         }
     }
-
-    let hir_params: Vec<&GenericParam> = hir_params
-        .iter()
-        .filter(|p| {
-            match &p.kind {
-                GenericParamKind::Lifetime { kind: _ } => false, // ignore
-                GenericParamKind::Type { default: _, synthetic: _ } => true,
-                GenericParamKind::Const { ty: _, default: _ } => true,
-            }
-        })
-        .collect();
 
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::AcceptRecursiveType)> = Vec::new();
 
@@ -1188,20 +1225,18 @@ pub(crate) fn check_generics_bounds<'tcx>(
     let first_param_is_self = mid_params.len() > 0 && mid_params[0].name == kw::SelfUpper;
     let skip_n = if first_param_is_self { 1 } else { 0 };
 
-    assert!(hir_params.len() + skip_n == mid_params.len());
-
-    use vir::ast::AcceptRecursiveType;
-    let mut accept_recs: HashMap<String, AcceptRecursiveType> = HashMap::new();
     if let Some(vattrs) = vattrs {
         for (x, acc) in &vattrs.accept_recursive_type_list {
             if accept_recs.contains_key(x) {
-                return err_span(*generics_span, format!("duplicate parameter attribute {x}"));
+                return err_span(span, format!("duplicate parameter attribute {x}"));
             }
             accept_recs.insert(x.clone(), *acc);
         }
     }
 
-    for (idx, mid_param) in mid_params.iter().skip(skip_n).enumerate() {
+    for mid_param in mid_params.iter().skip(skip_n) {
+        unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "may_dangle attribute");
+
         match mid_param.kind {
             GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {}
             _ => {
@@ -1209,16 +1244,9 @@ pub(crate) fn check_generics_bounds<'tcx>(
             }
         }
 
-        // We still need to look at the HIR param because we need to check the attributes.
-        let hir_param = &hir_params[idx];
-
-        let vattrs = get_verifier_attrs(
-            tcx.hir().attrs(hir_param.hir_id),
-            if let Some(diagnostics) = &mut diagnostics { Some(diagnostics) } else { None },
-        )?;
-        let mut neg = vattrs.reject_recursive_types;
-        let mut pos_some = vattrs.reject_recursive_types_in_ground_variants;
-        let mut pos_all = vattrs.accept_recursive_types;
+        let mut neg = false;
+        let mut pos_some = false;
+        let mut pos_all = false;
         let param_name = generic_param_def_to_vir_name(mid_param);
         match accept_recs.get(&param_name) {
             None => {}
@@ -1227,6 +1255,12 @@ pub(crate) fn check_generics_bounds<'tcx>(
             Some(AcceptRecursiveType::Accept) => pos_all = true,
         }
         if accept_recs.contains_key(&param_name) {
+            if error_on_polarity {
+                return err_span(
+                    span,
+                    "the accept_recursive_type/reject_recursive_type attributes are not expected for this kind of item",
+                );
+            }
             accept_recs.remove(&param_name);
         }
         let accept_rec = match (neg, pos_some, pos_all) {
@@ -1236,38 +1270,23 @@ pub(crate) fn check_generics_bounds<'tcx>(
             (false, false, true) => AcceptRecursiveType::Accept,
             _ => {
                 return err_span(
-                    hir_param.span,
+                    span,
                     "type parameter can only have one of reject_recursive_types, reject_recursive_types_in_ground_variants, accept_recursive_types",
                 );
             }
         };
-        let GenericParam {
-            hir_id: _,
-            name: _,
-            span,
-            pure_wrt_drop,
-            kind,
-            def_id: _,
-            colon_span: _,
-            source: _,
-        } = hir_param;
 
-        unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
-
-        if let GenericParamKind::Type { .. } = kind {
+        if let GenericParamDefKind::Type { .. } = &mid_param.kind {
             if check_that_external_body_datatype_declares_positivity
                 && !neg
                 && !pos_some
                 && !pos_all
             {
                 return err_span(
-                    *span,
+                    span,
                     "in external_body datatype, each type parameter must be one of: #[verifier::reject_recursive_types], #[verifier::reject_recursive_types_in_ground_variants], #[verifier::accept_recursive_types] (reject_recursive_types is always safe to use)",
                 );
             }
-        } else if let GenericParamKind::Const { .. } = kind {
-        } else {
-            panic!("mid_param is a Type, so we expected the HIR param to be a Type");
         }
 
         match &mid_param.kind {
@@ -1277,27 +1296,60 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 typ_params.push((Arc::new(param_name), accept_rec));
             }
             _ => {
-                unsupported_err!(*span, "this kind of generic param");
+                unsupported_err!(span, "this kind of generic param");
             }
         }
     }
     for x in accept_recs.keys() {
-        return err_span(*generics_span, format!("unused parameter attribute {x}"));
+        return err_span(span, format!("unused parameter attribute {x}"));
     }
     Ok((Arc::new(typ_params), Arc::new(bounds)))
 }
 
-pub(crate) fn check_generics_bounds_fun<'tcx>(
+pub(crate) fn check_generics_bounds_no_polarity<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
-    generics: &'tcx Generics<'tcx>,
+    span: Span,
+    hir_generics: Option<&'tcx Generics<'tcx>>,
     def_id: DefId,
     diagnostics: Option<&mut Vec<vir::ast::VirErrAs>>,
-) -> Result<(vir::ast::Idents, vir::ast::GenericBounds), VirErr> {
-    let (typ_params, typ_bounds) =
-        check_generics_bounds(tcx, verus_items, generics, false, def_id, None, diagnostics)?;
+) -> Result<(Idents, vir::ast::GenericBounds), VirErr> {
+    let (typ_params, typ_bounds) = check_generics_bounds_main(
+        tcx,
+        verus_items,
+        span,
+        hir_generics,
+        false,
+        true,
+        def_id,
+        None,
+        diagnostics,
+    )?;
     let typ_params = typ_params.iter().map(|(x, _)| x.clone()).collect();
     Ok((Arc::new(typ_params), typ_bounds))
+}
+
+pub(crate) fn check_generics_bounds_with_polarity<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    span: Span,
+    hir_generics: Option<&'tcx Generics<'tcx>>,
+    check_that_external_body_datatype_declares_positivity: bool,
+    def_id: DefId,
+    vattrs: Option<&crate::attributes::VerifierAttrs>,
+    diagnostics: Option<&mut Vec<vir::ast::VirErrAs>>,
+) -> Result<(vir::ast::TypPositives, vir::ast::GenericBounds), VirErr> {
+    check_generics_bounds_main(
+        tcx,
+        verus_items,
+        span,
+        hir_generics,
+        check_that_external_body_datatype_declares_positivity,
+        false,
+        def_id,
+        vattrs,
+        diagnostics,
+    )
 }
 
 pub(crate) fn auto_deref_supported_for_ty<'tcx>(

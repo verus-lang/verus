@@ -2,12 +2,12 @@ use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
     GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
     PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
-    Variant, Variants, VirErr, Visibility,
+    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
-use air::ast::{Binder, BinderX, Binders};
+use air::ast::{Binder, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
 use num_bigint::{BigInt, Sign};
 use std::collections::{HashMap, HashSet};
@@ -451,20 +451,24 @@ pub fn if_then_else(span: &Span, cond: &Expr, thn: &Expr, els: &Expr) -> Expr {
     SpannedTyped::new(span, &thn.typ, ExprX::If(cond.clone(), thn.clone(), Some(els.clone())))
 }
 
-pub fn param_to_binder(param: &Param) -> Binder<Typ> {
-    Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
+pub fn param_to_binder(param: &Param) -> VarBinder<Typ> {
+    Arc::new(VarBinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
 }
 
-pub fn par_to_binder(param: &Par) -> Binder<Typ> {
-    Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
+pub fn par_to_binder(param: &Par) -> VarBinder<Typ> {
+    Arc::new(VarBinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
 }
 
-pub fn params_to_binders(params: &Params) -> Binders<Typ> {
+pub fn params_to_binders(params: &Params) -> VarBinders<Typ> {
     Arc::new(vec_map(&**params, param_to_binder))
 }
 
-pub fn pars_to_binders(pars: &Pars) -> Binders<Typ> {
+pub fn pars_to_binders(pars: &Pars) -> VarBinders<Typ> {
     Arc::new(vec_map(&**pars, par_to_binder))
+}
+
+pub fn ident_var_binder<A: Clone>(x: &VarIdent, a: &A) -> VarBinder<A> {
+    Arc::new(VarBinderX { name: x.clone(), a: a.clone() })
 }
 
 impl crate::ast::CallTargetKind {
@@ -485,6 +489,11 @@ impl FunctionX {
             TypX::Datatype(path, _, _) if path == &crate::def::prefix_tuple_type(0) => false,
             _ => true,
         }
+    }
+
+    // even if the return type is unit, it can still be named; if so, our AIR code must declare it
+    pub fn has_return_name(&self) -> bool {
+        self.has_return() || *self.ret.x.name.0 != crate::def::RETURN_VALUE
     }
 
     pub fn is_main(&self) -> bool {
@@ -517,8 +526,8 @@ impl DatatypeX {
     }
 }
 
-pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<Ident> {
-    let mut vars: HashSet<Ident> = HashSet::new();
+pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
+    let mut vars: HashSet<VarIdent> = HashSet::new();
     crate::ast_visitor::expr_visitor_dfs::<(), _>(
         exp,
         &mut crate::ast_visitor::VisitorScopeMap::new(),
@@ -608,7 +617,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             format!("!")
         }
         TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
-        TypX::TypParam(ident) => (**ident).clone(),
+        TypX::TypParam(ident) => (&**ident).into(),
         TypX::Projection { trait_typ_args, trait_path, name } => {
             let self_typ = typ_to_diagnostic_str(&trait_typ_args[0]);
             format!(
@@ -645,5 +654,92 @@ impl ItemKind {
             ItemKind::Const => "const item",
             ItemKind::Static => "static item",
         }
+    }
+}
+
+impl Into<String> for &VarIdent {
+    fn into(self) -> String {
+        let VarIdent(ident, uniq_id) = self;
+        crate::def::unique_var_name(ident.to_string(), *uniq_id)
+    }
+}
+
+impl fmt::Display for VarIdent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s: String = self.into();
+        f.write_str(&s)
+    }
+}
+
+impl<A: Clone + std::fmt::Debug> std::fmt::Debug for VarBinderX<A> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.name.fmt(fmt)?;
+        fmt.write_str(" -> ")?;
+        self.a.fmt(fmt)?;
+        Ok(())
+    }
+}
+
+impl<A: Clone> VarBinderX<A> {
+    pub fn rename(&self, name: VarIdent) -> VarBinder<A> {
+        Arc::new(VarBinderX { name, a: self.a.clone() })
+    }
+
+    pub fn new_a<B: Clone>(&self, a: B) -> VarBinder<B> {
+        Arc::new(VarBinderX { name: self.name.clone(), a })
+    }
+
+    pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> VarBinder<B> {
+        Arc::new(VarBinderX { name: self.name.clone(), a: f(&self.a) })
+    }
+
+    pub fn map_result<B: Clone, E>(
+        &self,
+        f: impl FnOnce(&A) -> Result<B, E>,
+    ) -> Result<VarBinder<B>, E> {
+        Ok(Arc::new(VarBinderX { name: self.name.clone(), a: f(&self.a)? }))
+    }
+}
+
+pub fn str_unique_var(s: &str, dis: crate::ast::VarIdentDisambiguate) -> VarIdent {
+    VarIdent(Arc::new(s.to_string()), dis)
+}
+
+pub fn air_unique_var(s: &str) -> VarIdent {
+    VarIdent(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::AirLocal)
+}
+
+pub fn typ_unique_var<S: ToString>(s: S) -> VarIdent {
+    VarIdent(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::TypParamBare)
+}
+
+pub trait LowerUniqueVar {
+    type Target;
+
+    fn lower(&self) -> Self::Target;
+}
+
+impl LowerUniqueVar for VarIdent {
+    type Target = Ident;
+
+    fn lower(&self) -> Ident {
+        let VarIdent(ident, uniq_id) = self;
+        Arc::new(crate::def::unique_var_name(ident.to_string(), *uniq_id))
+    }
+}
+
+impl LowerUniqueVar for Vec<VarIdent> {
+    type Target = Vec<Ident>;
+
+    fn lower(&self) -> Vec<Ident> {
+        self.iter().map(|x| x.lower()).collect()
+    }
+}
+
+impl LowerUniqueVar for Arc<Vec<VarIdent>> {
+    type Target = Arc<Vec<Ident>>;
+
+    fn lower(&self) -> Arc<Vec<Ident>> {
+        Arc::new(self.iter().map(|x| x.lower()).collect())
     }
 }
