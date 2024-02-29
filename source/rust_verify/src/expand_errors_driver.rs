@@ -551,7 +551,7 @@ impl ExpandErrorsDriver {
     }
 
     fn get_span_for(&self, assert_id: &AssertId) -> vir::messages::Span {
-        let parent = Arc::new(assert_id[.. assert_id.len() - 1].to_vec());
+        let parent = Arc::new(assert_id[..assert_id.len() - 1].to_vec());
         let tree = &self.expansions[&parent].0;
         tree.get_exp_for_assert_id(assert_id).unwrap().span.clone()
     }

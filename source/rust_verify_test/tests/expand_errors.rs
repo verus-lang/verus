@@ -76,7 +76,7 @@ test_verify_one_file_with_options! {
             match msg {
                 Message::Quit(b) => b,
             //  ^^^^^^^^^^^^^^^^ (TODO bad span due to match span)
-                Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),    
+                Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),
             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 Message::Write(b) => b,
             }
@@ -120,7 +120,7 @@ test_verify_one_file_with_options! {
         spec fn is_good_message_4(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
-                Message::Move{x, y} => is_good_integer_4( (x as int)  - (y as int)),      
+                Message::Move{x, y} => is_good_integer_4( (x as int)  - (y as int)),
             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 Message::Write(b) => b,
             }
@@ -165,7 +165,7 @@ test_verify_one_file_with_options! {
         }
         spec fn is_prime(candidate: nat) -> bool {
             &&& 1 < candidate
-            &&& forall|factor: nat| 1 < factor && factor < candidate ==>  
+            &&& forall|factor: nat| 1 < factor && factor < candidate ==>
                 !divides(factor, candidate) // EXPAND-ERRORS
         }
         proof fn test_trigger() {
@@ -191,7 +191,7 @@ test_verify_one_file_with_options! {
         }
 
         #[verifier(opaque)]
-        spec fn is_good_message_10(msg:Message) -> bool { 
+        spec fn is_good_message_10(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
                 Message::Move{x, y} => is_good_integer( (x as int)  - (y as int)),
