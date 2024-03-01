@@ -82,10 +82,6 @@ pub fn demote_foreign_traits(
             let our_trait = traits.contains(trait_path);
             let mut functionx = function.x.clone();
             if our_trait {
-                //return Err(error(
-                //    &function.x.proxy.as_ref().unwrap().span,
-                //    "external_fn_specification can only be used on trait functions when the trait itself is external",
-                //));
                 functionx.kind = FunctionKind::TraitMethodImpl {
                     method: method.clone(),
                     impl_path: impl_path.clone(),

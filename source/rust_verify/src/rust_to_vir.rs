@@ -783,17 +783,6 @@ fn collect_external_trait_impls<'tcx>(
     let mut new_trait_impls = IndexMap::<Path, (DefId, Vec<(DefId, rustc_span::Span)>)>::new();
 
     for (def_id, span) in external_fn_specification_trait_method_impls.iter() {
-        /*let trait_impl = trait_method_impl.path.pop_segment();
-            vir.trait_impls.push(vir::def::Spanned::new(ctxt.no_span.clone(), vir::ast::TraitImplX {
-                impl_path: trait_impl,
-                typ_params: Arc::new(vec![]),
-                typ_bounds: Arc::new(vec![]),
-                trait_path: vir::path!("core" => "clone", "Clone"),
-                trait_typ_args: Arc::new(vec![]),
-                trait_typ_arg_impls: vir::def::Spanned::new(ctxt.no_span.clone(), Arc::new(vec![])),
-            }));
-        }*/
-
         let trait_method_impl = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *def_id);
         let trait_impl = trait_method_impl.pop_segment();
         match new_trait_impls.get_mut(&trait_impl) {

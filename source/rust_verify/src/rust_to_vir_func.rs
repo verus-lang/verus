@@ -844,7 +844,8 @@ fn fix_external_fn_specification_trait_method_decl_typs(
     func: FunctionX,
 ) -> Result<FunctionX, VirErr> {
     if matches!(func.kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
-        // TODO
+        // There's nothing to do here. It's fine if the param names of
+        // a traim method impl don't line up with the type params of the impl.
         Ok(func)
     } else if let FunctionKind::TraitMethodDecl { .. } = &func.kind {
         let FunctionX {
