@@ -1202,6 +1202,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] syntax_named_return_type_issue603 verus_code! {
+        // Make sure a type gets translated when it gets copied into
+        // the macro-generated 'ensures' call.
+        pub proof fn test(x: nat) -> (t: spec_fn(nat) -> nat)
+            ensures true,
+        {
+            |i| i
+        }
+
+        pub fn test2(x: nat)
+            ensures true,
+        {
+            let clos = || -> (t: Ghost<spec_fn(nat) -> nat>)
+                ensures true
+            {
+                let ghost s = |i| i;
+                Ghost(s)
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] struct_with_updater_and_tuple_type_in_field_issue857 verus_code! {
         use vstd::prelude::*;
         use vstd::set::*;
