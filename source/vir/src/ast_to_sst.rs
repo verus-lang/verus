@@ -7,7 +7,7 @@ use crate::ast::{
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
 use crate::context::Ctx;
-use crate::def::{unique_bound, unique_local, Spanned};
+use crate::def::{unique_local, Spanned};
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::interpreter::eval_expr;
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
@@ -1493,43 +1493,23 @@ pub(crate) fn expr_to_stm_opt(
             let params = state.rename_binders_exp(params);
             // Use expr_to_pure_exp_skip_checks,
             // because we checked spec preconditions with check_pure_expr_bind
-            let mut exp = expr_to_pure_exp_skip_checks(ctx, state, body)?;
+            let exp = expr_to_pure_exp_skip_checks(ctx, state, body)?;
             state.pop_scope();
 
-            // Parameters and return types must be boxed, so insert necessary box/unboxing
-            match &*body.typ {
-                TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. } => {}
-                _ => {
-                    let boxed_typ = Arc::new(TypX::Boxed(body.typ.clone()));
-                    let boxx = ExpX::UnaryOpr(UnaryOpr::Box(body.typ.clone()), exp);
-                    exp = SpannedTyped::new(&body.span, &boxed_typ, boxx);
-                }
-            }
-            let mut let_box_binds: Vec<VarBinder<Exp>> = Vec::new();
-            let mut boxed_params: Vec<VarBinder<Typ>> = Vec::new();
+            // Parameters and return types must have been boxed by poly.rs
+            assert!(matches!(
+                &*body.typ,
+                TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
+            ));
             for p in params.iter() {
-                match &*p.a {
-                    TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. } => {
-                        boxed_params.push(p.clone());
-                    }
-                    _ => {
-                        let boxed_typ = Arc::new(TypX::Boxed(p.a.clone()));
-                        boxed_params.push(p.new_a(boxed_typ.clone()));
-                        let varx = ExpX::Var(unique_bound(&p.name));
-                        let var = SpannedTyped::new(&expr.span, &boxed_typ, varx);
-                        let unboxx = ExpX::UnaryOpr(UnaryOpr::Unbox(p.a.clone()), var);
-                        let unbox = SpannedTyped::new(&expr.span, &p.a, unboxx);
-                        let_box_binds.push(p.new_a(unbox));
-                    }
-                };
-            }
-            if let_box_binds.len() != 0 {
-                let bnd = Spanned::new(body.span.clone(), BndX::Let(Arc::new(let_box_binds)));
-                exp = SpannedTyped::new(&body.span, &exp.typ, ExpX::Bind(bnd, exp.clone()));
+                assert!(matches!(
+                    &*p.a,
+                    TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
+                ));
             }
 
             let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
-            let bnd = Spanned::new(body.span.clone(), BndX::Lambda(Arc::new(boxed_params), trigs));
+            let bnd = Spanned::new(body.span.clone(), BndX::Lambda(params.clone(), trigs));
             state.disable_recommends -= 1;
             Ok((check_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }

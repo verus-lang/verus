@@ -1106,3 +1106,231 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] trait_default_method_call_ensures verus_code! {
+        trait Tr {
+            fn hello(i: u64, j: u64)
+                ensures i == j,
+            {
+                assume(false);
+            }
+        }
+
+        struct X<A> { a: A }
+
+        impl<A> Tr for X<A> {
+        }
+
+        struct Y<A> { a: A }
+
+        impl<A> Tr for Y<A> {
+            fn hello(i: u64, j: u64)
+                ensures i >= 5,
+            {
+                assume(false);
+            }
+        }
+
+        fn test<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> i == j);
+        }
+
+        fn test2(i: u64, j: u64) {
+            assert(call_ensures(X::<bool>::hello, (i, j), ()) ==> i == j);
+        }
+
+        fn test3(i: u64, j: u64) {
+            assert(call_ensures(Y::<bool>::hello, (i, j), ()) ==> i == j && i >= 5);
+        }
+
+        fn test4<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> i == j);
+            assert(call_ensures(X::<bool>::hello, (i, j), ()) ==> i == j);
+            assert(call_ensures(Y::<bool>::hello, (i, j), ()) ==> i == j && i >= 5);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] trait_default_method_call_ensures_with_default_spec_fn verus_code! {
+        trait Tr {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j }
+
+            fn hello(i: u64, j: u64)
+                ensures Self::stuff(i, j)
+            {
+                assume(false);
+            }
+        }
+
+        struct X<A> { a: A }
+        impl<A> Tr for X<A> {
+        }
+
+        struct Y<A> { a: A }
+        impl<A> Tr for Y<A> {
+            fn hello(i: u64, j: u64)
+                ensures i >= 5, // and implied stuff()
+            {
+                assume(false);
+            }
+        }
+
+        struct Z<A> { a: A }
+        impl<A> Tr for Z<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+        }
+
+        struct W<A> { a: A }
+        impl<A> Tr for W<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+
+            fn hello(i: u64, j: u64)
+                ensures i >= 5, // and implied stuff()
+            {
+                assume(false);
+            }
+        }
+
+        struct U<A> { a: A }
+        trait FromInt : Sized {
+            spec fn from_int(i: u64) -> Self;
+        }
+        impl FromInt for bool {
+            spec fn from_int(i: u64) -> Self { i == 4 }
+        }
+        impl<A: FromInt> Tr for U<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { A::from_int(i) == A::from_int(j) }
+        }
+
+
+
+        fn test<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> T::stuff(i, j));
+        }
+
+        fn test_fail<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> i == j); // FAILS
+        }
+
+        fn test2(i: u64, j: u64) {
+            assert(call_ensures(X::<bool>::hello, (i, j), ()) ==> i == j);
+        }
+
+        fn test3(i: u64, j: u64) {
+            assert(call_ensures(Y::<bool>::hello, (i, j), ()) ==> i == j && i >= 5);
+        }
+
+        fn test4(i: u64, j: u64) {
+            assert(call_ensures(Z::<bool>::hello, (i, j), ()) ==> i == j + 1);
+        }
+
+        fn test4_fail(i: u64, j: u64) {
+            assert(call_ensures(Z::<bool>::hello, (i, j), ()) ==> i == j); // FAILS
+        }
+
+        fn test5(i: u64, j: u64) {
+            assert(call_ensures(W::<bool>::hello, (i, j), ()) ==> i == j + 1 && i >= 5);
+        }
+
+        fn test5_fail(i: u64, j: u64) {
+            assert(call_ensures(W::<bool>::hello, (i, j), ()) ==> i == j); // FAILS
+        }
+
+        fn test6(i: u64, j: u64) {
+            assert(call_ensures(U::<bool>::hello, (i, j), ()) ==> (i == 4) == (j == 4));
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_default_method_call_requires_with_default_spec_fn verus_code! {
+        trait Tr {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j }
+
+            fn hello(i: u64, j: u64)
+                requires Self::stuff(i, j)
+            {
+                assume(false);
+            }
+        }
+
+        struct X<A> { a: A }
+        impl<A> Tr for X<A> {
+        }
+
+        struct Y<A> { a: A }
+        impl<A> Tr for Y<A> {
+            fn hello(i: u64, j: u64)
+            {
+                assume(false);
+            }
+        }
+
+        struct Z<A> { a: A }
+        impl<A> Tr for Z<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+        }
+
+        struct W<A> { a: A }
+        impl<A> Tr for W<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+
+            fn hello(i: u64, j: u64)
+            {
+                assume(false);
+            }
+        }
+
+        struct U<A> { a: A }
+        trait FromInt : Sized {
+            spec fn from_int(i: u64) -> Self;
+        }
+        impl FromInt for bool {
+            spec fn from_int(i: u64) -> Self { i == 4 }
+        }
+        impl<A: FromInt> Tr for U<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { A::from_int(i) == A::from_int(j) }
+        }
+
+
+
+        fn test<T: Tr>(i: u64, j: u64) {
+            assert(call_requires(T::hello, (i, j)) <== T::stuff(i, j));
+        }
+
+        fn test_fail<T: Tr>(i: u64, j: u64) {
+            assert(call_requires(T::hello, (i, j)) <== i == j); // FAILS
+        }
+
+        fn test2(i: u64, j: u64) {
+            assert(call_requires(X::<bool>::hello, (i, j)) <== i == j);
+        }
+
+        fn test3(i: u64, j: u64) {
+            assert(call_requires(Y::<bool>::hello, (i, j)) <== i == j);
+        }
+
+        fn test4(i: u64, j: u64) {
+            assert(call_requires(Z::<bool>::hello, (i, j)) <== i == j + 1);
+        }
+
+        fn test4_fail(i: u64, j: u64) {
+            assert(call_requires(Z::<bool>::hello, (i, j)) <== i == j); // FAILS
+        }
+
+        fn test5(i: u64, j: u64) {
+            assert(call_requires(W::<bool>::hello, (i, j)) <== i == j + 1);
+        }
+
+        fn test5_fail(i: u64, j: u64) {
+            assert(call_requires(W::<bool>::hello, (i, j)) <== i == j); // FAILS
+        }
+
+        fn test6(i: u64, j: u64) {
+            assert(call_requires(U::<bool>::hello, (i, j)) <== (i == 4) == (j == 4));
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
