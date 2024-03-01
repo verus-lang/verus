@@ -235,6 +235,7 @@ impl Visitor {
         let ret_pat = match &mut sig.output {
             ReturnType::Default => None,
             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+                self.visit_type_mut(ty);
                 if let Some(token) = tracked {
                     if !self.erase_ghost.erase_all() {
                         attrs.push(mk_verus_attr(token.span, quote! { returns(proof) }));
@@ -2333,6 +2334,7 @@ impl VisitMut for Visitor {
                         let ret_pat = match &mut clos.output {
                             ReturnType::Default => None,
                             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+                                self.visit_type_mut(ty);
                                 if let Some(tracked) = tracked {
                                     *expr = Expr::Verbatim(quote_spanned!(tracked.span() =>
                                         compile_error!("'tracked' not supported here")
