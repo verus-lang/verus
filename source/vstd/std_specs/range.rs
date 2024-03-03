@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use core::ops::Range;
 
-verus!{
+verus! {
 
 #[verifier(external_type_specification)]
 #[verifier::reject_recursive_types_in_ground_variants(Idx)]
@@ -10,11 +10,17 @@ pub struct ExRange<Idx>(Range<Idx>);
 pub trait StepSpec where Self: Sized {
     // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
     spec fn spec_is_lt(self, other: Self) -> bool;
+
     spec fn spec_steps_between(self, end: Self) -> Option<usize>;
+
     spec fn spec_steps_between_int(self, end: Self) -> int;
+
     spec fn spec_forward_checked(self, count: usize) -> Option<Self>;
+
     spec fn spec_forward_checked_int(self, count: int) -> Option<Self>;
+
     spec fn spec_backward_checked(self, count: usize) -> Option<Self>;
+
     spec fn spec_backward_checked_int(self, count: int) -> Option<Self>;
 }
 
@@ -22,7 +28,8 @@ pub spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
 #[verifier::external_fn_specification]
 pub fn ex_range_next<A: core::iter::Step>(range: &mut Range<A>) -> (r: Option<A>)
-    ensures (*range, r) == spec_range_next(*old(range))
+    ensures
+        (*range, r) == spec_range_next(*old(range)),
 {
     range.next()
 }
@@ -37,17 +44,17 @@ impl<A: StepSpec> crate::pervasive::ForLoopGhostIteratorNew for Range<A> {
     type GhostIter = RangeGhostIterator<A>;
 
     open spec fn ghost_iter(&self) -> RangeGhostIterator<A> {
-        RangeGhostIterator {
-            start: self.start,
-            cur: self.start,
-            end: self.end,
-        }
+        RangeGhostIterator { start: self.start, cur: self.start, end: self.end }
     }
 }
 
-impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for RangeGhostIterator<A> {
+impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for RangeGhostIterator<
+    A,
+> {
     type ExecIter = Range<A>;
+
     type Item = A;
+
     type Decrease = int;
 
     open spec fn exec_invariant(&self, exec_iter: &Range<A>) -> bool {
@@ -57,15 +64,17 @@ impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for 
 
     open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
         &&& self.start.spec_is_lt(self.cur) || self.start == self.cur
-        &&& self.cur.spec_is_lt(self.end) || self.cur == self.end
+        &&& self.cur.spec_is_lt(self.end) || self.cur
+            == self.end
         // TODO (not important): use new "matches ==>" syntax here
+
         &&& if let Some(init) = init {
-                &&& init.start == init.cur
-                &&& init.start == self.start
-                &&& init.end == self.end
-            } else {
-                true
-            }
+            &&& init.start == init.cur
+            &&& init.start == self.start
+            &&& init.end == self.end
+        } else {
+            true
+        }
     }
 
     open spec fn ghost_ensures(&self) -> bool {
@@ -87,6 +96,7 @@ impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for 
 
 impl<A: StepSpec + core::iter::Step> crate::view::View for RangeGhostIterator<A> {
     type V = Seq<A>;
+
     // generate seq![start, start + 1, start + 2, ..., cur - 1]
     open spec fn view(&self) -> Seq<A> {
         Seq::new(
@@ -97,7 +107,6 @@ impl<A: StepSpec + core::iter::Step> crate::view::View for RangeGhostIterator<A>
 }
 
 } // verus!
-
 macro_rules! step_specs {
     ($t: ty, $axiom: ident) => {
         verus! {
@@ -155,7 +164,7 @@ macro_rules! step_specs {
         {
         }
         } // verus!
-    }
+    };
 }
 
 step_specs!(u8, axiom_spec_range_next_u8);

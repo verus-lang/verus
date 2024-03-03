@@ -41,9 +41,7 @@ pub proof fn lemma_div_by_self(d: int)
 #[verifier::nonlinear]
 pub proof fn lemma_small_div()
     ensures
-        forall|x: int, d: int|
-            0 <= x < d && d > 0 ==> #[trigger]
-            (x / d) == 0,
+        forall|x: int, d: int| 0 <= x < d && d > 0 ==> #[trigger] (x / d) == 0,
 {
 }
 

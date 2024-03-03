@@ -1,8 +1,9 @@
 use crate::ast::{
-    Expr, ExprX, Exprs, Fun, Function, FunctionX, GenericBoundX, HeaderExprX, Ident, LoopInvariant,
-    LoopInvariantKind, LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VirErr,
+    Expr, ExprX, Exprs, Fun, Function, FunctionX, GenericBoundX, HeaderExprX, LoopInvariant,
+    LoopInvariantKind, LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent,
+    VirErr,
 };
-use crate::ast_util::params_equal_opt;
+use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
 use crate::messages::error;
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ pub struct Header {
     pub hidden: Vec<Fun>,
     pub require: Exprs,
     pub recommend: Exprs,
-    pub ensure_id_typ: Option<(Ident, Typ)>,
+    pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
     pub invariant: Exprs,
     pub invariant_ensure: Exprs,
@@ -31,7 +32,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
-    let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
+    let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
     let mut invariant_ensure: Option<Exprs> = None;
@@ -253,11 +254,11 @@ impl Header {
                 // const decl ensures clauses can refer to the const's "return value"
                 // using the name of the const (which is a ConstVar to the const):
                 ExprX::ConstVar(fun, _) if fun == const_name && !is_static => {
-                    expr.new_x(ExprX::Var(Arc::new(crate::def::RETURN_VALUE.to_string())))
+                    expr.new_x(ExprX::Var(air_unique_var(crate::def::RETURN_VALUE)))
                 }
                 // likewise for static
                 ExprX::StaticVar(fun) if fun == const_name && is_static => {
-                    expr.new_x(ExprX::Var(Arc::new(crate::def::RETURN_VALUE.to_string())))
+                    expr.new_x(ExprX::Var(air_unique_var(crate::def::RETURN_VALUE)))
                 }
                 _ => expr.clone(),
             })

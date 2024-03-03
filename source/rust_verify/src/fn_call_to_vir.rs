@@ -17,7 +17,6 @@ use crate::verus_items::{
     SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
-use air::ast::{Binder, BinderX};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
@@ -31,7 +30,7 @@ use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
     ChainedOp, ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
     IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VariantCheck, VirErr,
+    UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
 use vir::def::field_ident_from_rust;
@@ -177,6 +176,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     let node_substs = fix_node_substs(tcx, bctx.types, node_substs, rust_item, &args, expr);
 
+    let mut record_name = name.clone();
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
@@ -187,18 +187,34 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         if let Ok(Some(inst)) = inst {
             if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
                 let typs = mk_typ_args(bctx, &inst.args, expr.span)?;
-                let f =
+                let mut f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
-                let impl_paths = get_impl_paths(bctx, did, &inst.args);
+                record_name = f.clone();
+
+                let mut self_trait_impl_path = None;
+                let mut remove_self_trait_bound = None;
+                if let Some(trait_id) = tcx.trait_of_item(did) {
+                    // We resolved to the trait method itself, which means this must be
+                    // a default method implementation in the trait.
+                    // Redirect this to the appropriate per-instance copy of the default method.
+                    remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
+                }
+                let impl_paths = get_impl_paths(bctx, did, &inst.args, remove_self_trait_bound);
+                if tcx.trait_of_item(did).is_some() {
+                    if let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
+                    {
+                        f = vir::def::trait_inherit_default_name(&f, &impl_path);
+                    } else {
+                        panic!(
+                            "{} {:?}",
+                            "could not resolve call to trait default method", &expr.span
+                        );
+                    }
+                }
                 resolved = Some((f, typs, impl_paths));
             }
         }
         vir::ast::CallTargetKind::Method(resolved)
-    };
-
-    let record_name = match &target_kind {
-        vir::ast::CallTargetKind::Method(Some((fun, _, _))) => fun.clone(),
-        _ => name.clone(),
     };
 
     record_call(bctx, expr, ResolvedCall::Call(record_name, autospec_usage));
@@ -206,7 +222,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
 
     let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
-    let impl_paths = get_impl_paths(bctx, f, node_substs);
+    let impl_paths = get_impl_paths(bctx, f, node_substs, None);
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
 }
@@ -489,7 +505,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         return Ok(bctx.spanned_typed_new(
                             expr.span,
                             &typ,
-                            ExprX::VarAt(Arc::new(pat_to_var(pat)?), VarAt::Pre),
+                            ExprX::VarAt(pat_to_var(pat)?, VarAt::Pre),
                         ));
                     }
                 }
@@ -1288,7 +1304,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             typ_args.swap(0, 1);
             let typ_args = Arc::new(typ_args);
 
-            let impl_paths = get_impl_paths(bctx, f, node_substs);
+            let impl_paths = get_impl_paths(bctx, f, node_substs, None);
 
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
@@ -1306,6 +1322,7 @@ fn get_impl_paths<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
 ) -> vir::ast::ImplPaths {
     if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).skip_binder().kind() {
         crate::rust_to_vir_base::get_impl_paths(
@@ -1314,6 +1331,7 @@ fn get_impl_paths<'tcx>(
             bctx.fun_id,
             *fid,
             node_substs,
+            remove_self_trait_bound,
         )
     } else {
         panic!("unexpected function {:?}", f)
@@ -1330,14 +1348,14 @@ fn extract_ensures<'tcx>(
         ExprKind::Closure(closure) => {
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
             let body = tcx.hir().body(closure.body);
-            let mut xs: Vec<String> = Vec::new();
+            let mut xs: Vec<VarIdent> = Vec::new();
             for param in body.params.iter() {
                 xs.push(pat_to_var(param.pat)?);
             }
             let expr = &body.value;
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
             if typs.len() == 1 && xs.len() == 1 {
-                let id_typ = Some((Arc::new(xs[0].clone()), typs[0].clone()));
+                let id_typ = Some((xs[0].clone(), typs[0].clone()));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
             } else if typs.len() == 0 && xs.len() == 0 {
                 Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
@@ -1365,9 +1383,9 @@ fn extract_quant<'tcx>(
             let body = tcx.hir().body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
-            let mut binders: Vec<Binder<Typ>> = Vec::new();
+            let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
-                binders.push(Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)?), a: t }));
+                binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
@@ -1408,9 +1426,9 @@ fn extract_assert_forall_by<'tcx>(
             let body = tcx.hir().body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
-            let mut binders: Vec<Binder<Typ>> = Vec::new();
+            let mut binders: Vec<VarBinder<Typ>> = Vec::new();
             for (x, t) in body.params.iter().zip(typs) {
-                binders.push(Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)?), a: t }));
+                binders.push(Arc::new(VarBinderX { name: pat_to_var(x.pat)?, a: t }));
             }
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
@@ -1455,17 +1473,17 @@ fn extract_choose<'tcx>(
     match &expr.kind {
         ExprKind::Closure(closure) => {
             let closure_body = tcx.hir().body(closure.body);
-            let mut params: Vec<Binder<Typ>> = Vec::new();
+            let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
             let typs = closure_param_typs(bctx, expr)?;
             assert!(closure_body.params.len() == typs.len());
             for (x, typ) in closure_body.params.iter().zip(typs) {
-                let name = Arc::new(pat_to_var(x.pat)?);
+                let name = pat_to_var(x.pat)?;
                 let vir_expr = bctx.spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                 erasure_info.hir_vir_ids.push((x.pat.hir_id, vir_expr.span.id));
                 vars.push(vir_expr);
-                params.push(Arc::new(BinderX { name, a: typ }));
+                params.push(Arc::new(VarBinderX { name, a: typ }));
             }
             let typs = vec_map(&params, |p| p.a.clone());
             let cond_expr = &closure_body.value;

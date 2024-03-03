@@ -50,9 +50,7 @@ pub proof fn lemma_fundamental_div_mod(x: int, d: int)
 /// Proof that 0 modulo any integer is 0
 proof fn lemma_0_mod_anything()
     ensures
-        forall|m: int|
-            m > 0 ==> #[trigger]
-            modulus(0, m) == 0,
+        forall|m: int| m > 0 ==> #[trigger] modulus(0, m) == 0,
 {
 }
 
@@ -64,8 +62,7 @@ pub proof fn lemma_small_mod(x: nat, m: nat)
         x < m,
         0 < m,
     ensures
-        #[trigger]
-        modulus(x as int, m as int) == x as int,
+        #[trigger] modulus(x as int, m as int) == x as int,
 {
 }
 
@@ -76,8 +73,7 @@ pub proof fn lemma_mod_range(x: int, m: int)
     requires
         m > 0,
     ensures
-        0 <= #[trigger]
-        modulus(x, m) < m,
+        0 <= #[trigger] modulus(x, m) < m,
 {
 }
 

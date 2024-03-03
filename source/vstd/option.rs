@@ -1,10 +1,10 @@
-#![deprecated(note="Use std::option instead")]
+#![deprecated(note = "Use std::option instead")]
 
+#[allow(unused_imports)]
+use crate::pervasive::*;
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-#[allow(unused_imports)]
-use crate::pervasive::*;
 
 verus! {
 
@@ -13,7 +13,7 @@ verus! {
 #[verifier::accept_recursive_types(A)]
 pub enum Option<A> {
     None,
-    Some(A)
+    Some(A),
 }
 
 pub use crate::option::Option::None;
@@ -32,7 +32,9 @@ impl<A: Clone> Clone for Option<A> {
     }
 }
 
-impl<A: Copy> Copy for Option<A> { }
+impl<A: Copy> Copy for Option<A> {
+
+}
 
 impl<A> Option<A> {
     pub open spec fn or(self, optb: Option<A>) -> Option<A> {
@@ -44,7 +46,8 @@ impl<A> Option<A> {
 
     #[inline(always)]
     pub const fn is_some(&self) -> (res: bool)
-        ensures res <==> self.is_Some(),
+        ensures
+            res <==> self.is_Some(),
     {
         match self {
             Option::Some(_) => true,
@@ -54,7 +57,8 @@ impl<A> Option<A> {
 
     #[inline(always)]
     pub const fn is_none(&self) -> (res: bool)
-        ensures res <==> self.is_None(),
+        ensures
+            res <==> self.is_None(),
     {
         match self {
             Option::Some(_) => false,
@@ -64,8 +68,8 @@ impl<A> Option<A> {
 
     pub fn as_ref(&self) -> (a: Option<&A>)
         ensures
-          a.is_Some() <==> self.is_Some(),
-          a.is_Some() ==> self.get_Some_0() == a.get_Some_0(),
+            a.is_Some() <==> self.is_Some(),
+            a.is_Some() ==> self.get_Some_0() == a.get_Some_0(),
     {
         match self {
             Option::Some(x) => Option::Some(x),
@@ -76,7 +80,8 @@ impl<A> Option<A> {
     // A more-readable synonym for get_Some_0().
     #[verifier(inline)]
     pub open spec fn spec_unwrap(self) -> A
-    recommends self.is_Some()
+        recommends
+            self.is_Some(),
     {
         self.get_Some_0()
     }
@@ -108,7 +113,6 @@ impl<A> Option<A> {
 }
 
 } // verus!
-
 /// A poor-person's `?` operator, until Verus switches to the "real" Rust `Option`.
 #[macro_export]
 #[allow(unused_macros)]

@@ -235,6 +235,7 @@ impl Visitor {
         let ret_pat = match &mut sig.output {
             ReturnType::Default => None,
             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+                self.visit_type_mut(ty);
                 if let Some(token) = tracked {
                     if !self.erase_ghost.erase_all() {
                         attrs.push(mk_verus_attr(token.span, quote! { returns(proof) }));
@@ -686,10 +687,8 @@ impl VisitMut for ExecGhostPatVisitor {
                 let span = id.span();
                 let decl = if self.ghost.is_some() {
                     parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x;)
-                } else if id.mutability.is_some() {
-                    parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x;)
                 } else {
-                    parse_quote_spanned!(span => #[verus::internal(proof)] let #x;)
+                    parse_quote_spanned!(span => #[verus::internal(infer_mode)] let mut #x;)
                 };
                 let assign = quote_spanned!(span => #x = #tmp_x);
                 id.ident = tmp_x;
@@ -1087,31 +1086,24 @@ impl Visitor {
         // In a later pass, this becomes:
         //   fn VERUS_SPEC__f() { requires(x); ... }
         //   fn f();
-        // Note: we don't do this if there's a default body (although default bodies
-        // aren't supported yet anyway), because it turns out that the parameter names
+        // Note: we don't do this if there's a default body,
+        // because it turns out that the parameter names
         // don't exactly match between fun and fun.clone() (they have different macro contexts),
         // which would cause the body and specs to mismatch.
         let erase_ghost = self.erase_ghost.erase();
         let mut spec_items: Vec<TraitItem> = Vec::new();
         for item in items.iter_mut() {
             match item {
-                TraitItem::Method(ref mut fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
-                        fun.default = None;
-                        continue;
-                    }
-                    _ if !erase_ghost && fun.default.is_none() => {
-                        // Copy into separate spec method, then remove spec from original method
-                        let mut spec_fun = fun.clone();
-                        let x = &fun.sig.ident;
-                        let span = x.span();
-                        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), span);
-                        spec_fun.attrs.push(mk_rust_attr(span, "doc", quote! { hidden }));
-                        fun.sig.erase_spec_fields();
-                        spec_items.push(TraitItem::Method(spec_fun));
-                    }
-                    _ => {}
-                },
+                TraitItem::Method(ref mut fun) if !erase_ghost && fun.default.is_none() => {
+                    // Copy into separate spec method, then remove spec from original method
+                    let mut spec_fun = fun.clone();
+                    let x = &fun.sig.ident;
+                    let span = x.span();
+                    spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), span);
+                    spec_fun.attrs.push(mk_rust_attr(span, "doc", quote! { hidden }));
+                    fun.sig.erase_spec_fields();
+                    spec_items.push(TraitItem::Method(spec_fun));
+                }
                 _ => {}
             }
         }
@@ -2360,6 +2352,7 @@ impl VisitMut for Visitor {
                         let ret_pat = match &mut clos.output {
                             ReturnType::Default => None,
                             ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+                                self.visit_type_mut(ty);
                                 if let Some(tracked) = tracked {
                                     *expr = Expr::Verbatim(quote_spanned!(tracked.span() =>
                                         compile_error!("'tracked' not supported here")

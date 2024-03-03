@@ -1,6 +1,6 @@
 use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
 use crate::erase::{ErasureHints, ResolvedCall};
-use crate::rust_to_vir_base::{def_id_to_vir_path, local_to_var, mid_ty_const_to_vir};
+use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{RustItem, VerusItem, VerusItems, VstdItem};
 use crate::{lifetime_ast::*, verus_items};
@@ -74,7 +74,7 @@ pub(crate) struct State {
     reached: HashSet<(Option<Path>, DefId)>,
     datatype_worklist: Vec<DefId>,
     imported_fun_worklist: Vec<DefId>,
-    id_to_name: HashMap<String, Id>,
+    id_to_name: HashMap<(String, usize), Id>,
     field_to_name: HashMap<String, Id>,
     typ_param_to_name: HashMap<(String, Option<u32>), Id>,
     lifetime_to_name: HashMap<(String, Option<u32>), Id>,
@@ -142,10 +142,16 @@ impl State {
         name
     }
 
-    fn local<S: Into<String>>(&mut self, raw_id: S) -> Id {
+    fn local<S: Into<String>>(&mut self, raw_id: S, local_id_index: usize) -> Id {
         let raw_id = raw_id.into();
         let f = || raw_id.clone();
-        Self::id(&mut self.rename_count, &mut self.id_to_name, IdKind::Local, &raw_id, f)
+        Self::id(
+            &mut self.rename_count,
+            &mut self.id_to_name,
+            IdKind::Local,
+            &(raw_id.to_string(), local_id_index),
+            f,
+        )
     }
 
     fn field<S: Into<String>>(&mut self, raw_id: S) -> Id {
@@ -200,10 +206,10 @@ impl State {
 
     pub(crate) fn unmangle_names<S: Into<String>>(&self, s: S) -> String {
         let mut s = s.into();
-        for (k, v) in self.id_to_name.iter() {
+        for ((k, _), v) in self.id_to_name.iter() {
             let sv = v.to_string();
             if s.contains(&sv) {
-                s = s.replace(&sv, vir::def::user_local_name(k));
+                s = s.replace(&sv, k);
             }
         }
         for (k, v) in self.datatype_to_name.iter() {
@@ -539,7 +545,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
         PatKind::Binding(ann, hir_id, x, None) => {
-            let id = state.local(local_to_var(x, hir_id.local_id));
+            let id = state.local(&x.to_string(), hir_id.local_id.index());
             let BindingAnnotation(_, mutability) = ann;
             mk_pat(PatternX::Binding(id, mutability.to_owned()))
         }
@@ -1035,7 +1041,7 @@ fn erase_expr<'tcx>(
                         if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                             None
                         } else {
-                            mk_exp(ExpX::Var(state.local(local_to_var(&ident, id.local_id))))
+                            mk_exp(ExpX::Var(state.local(&ident.to_string(), id.local_id.index())))
                         }
                     }
                     _ => panic!("unsupported"),
@@ -1411,8 +1417,14 @@ fn erase_expr<'tcx>(
             let body = ctxt.tcx.hir().body(*body_id);
             let ps = &body.params;
             for p in ps.iter() {
-                let x =
-                    state.local(crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var"));
+                let pat_var = crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var");
+                let (x, local_id) = match &pat_var {
+                    vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
+                        (x, local_id)
+                    }
+                    _ => panic!("pat_to_var"),
+                };
+                let x = state.local(x.to_string(), *local_id);
                 let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
                 params.push((p.pat.span, x, typ));
             }
@@ -1837,14 +1849,17 @@ fn erase_fn_common<'tcx>(
         for ((input, param), param_info) in
             inputs.iter().zip(f_vir.x.params.iter()).zip(params_info.iter())
         {
-            let name = if let Some((_, name)) = &param.x.unwrapped_info {
-                name.to_string()
-            } else {
-                param.x.name.to_string()
+            let name =
+                if let Some((_, name)) = &param.x.unwrapped_info { name } else { &param.x.name };
+            let (x, local_id) = match name {
+                vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
+                    (x, local_id)
+                }
+                _ => panic!("pat_to_var"),
             };
             let is_mut_var = param_info.1;
             let span = param_info.0;
-            let name = state.local(name);
+            let name = state.local(x.to_string(), *local_id);
             let typ = if param.x.mode == Mode::Spec {
                 TypX::mk_unit()
             } else {
@@ -2092,7 +2107,7 @@ fn erase_trait_item<'tcx>(
                     id,
                     sig,
                     Some(trait_id),
-                    true,
+                    body_id.is_none(),
                     false,
                     body_id,
                 );
@@ -2207,7 +2222,8 @@ fn erase_variant_data<'tcx>(
         None => {
             let mut fields: Vec<Field> = Vec::new();
             for field in &variant.fields {
-                let name = state.field(field.ident(ctxt.tcx).to_string());
+                let ident = field.ident(ctxt.tcx);
+                let name = state.field(ident.to_string());
                 let typ = erase_ty(ctxt, state, &ctxt.tcx.type_of(field.did).skip_binder());
                 fields.push(Field { name, typ: revise_typ(field.did, typ) });
             }

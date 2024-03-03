@@ -1,6 +1,7 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, CtorPrintStyle, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp, IntRange,
+    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder,
+    VarBinderX, VarBinders,
 };
 use crate::ast_util::get_variant;
 use crate::context::GlobalCtx;
@@ -8,7 +9,6 @@ use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ fn free_vars_exp_scope(
     let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
-            ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(&x.name) => {
+            ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
             _ => (),
@@ -71,15 +71,16 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     span: &Span,
     substs: &mut ScopeMap<UniqueIdent, Exp>,
     free_vars: &mut ScopeMap<UniqueIdent, ()>,
-    bs: &Binders<A>,
+    bs: &VarBinders<A>,
     fa: FA,
     f_typ: FT,
-) -> Binders<A> {
+) -> VarBinders<A> {
     substs.push_scope(false);
-    free_vars.push_scope(false);
-    let mut binders: Vec<Binder<A>> = Vec::new();
+    free_vars.push_scope(true);
+    let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
+        free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
         let name = if free_vars.contains_key(&unique) {
             // capture-avoiding substitution:
             // rename bound variable to avoid capturing free variable
@@ -99,7 +100,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
         } else {
             b.name.clone()
         };
-        binders.push(Arc::new(BinderX { name, a: fa(&b.a) }));
+        binders.push(Arc::new(VarBinderX { name, a: fa(&b.a) }));
     }
     Arc::new(binders)
 }
@@ -135,10 +136,13 @@ fn subst_exp_rec(
             &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) => match substs.get(x) {
-            None => mk_exp(ExpX::Var(x.clone())),
-            Some(e) => e.clone(),
-        },
+        ExpX::Var(x) => {
+            assert!(free_vars.contains_key(x));
+            match substs.get(x) {
+                None => mk_exp(ExpX::Var(x.clone())),
+                Some(e) => e.clone(),
+            }
+        }
         ExpX::VarLoc(x) => match substs.get(x) {
             None => mk_exp(ExpX::VarLoc(x.clone())),
             Some(_) => panic!("cannot substitute for VarLoc"),
@@ -164,7 +168,7 @@ fn subst_exp_rec(
             };
             let bndx = match &bnd.x {
                 BndX::Let(bs) => {
-                    let mut binders: Vec<Binder<Exp>> = Vec::new();
+                    let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         binders.push(b.new_a(subst_exp_rec(typ_substs, substs, free_vars, &b.a)));
                     }
@@ -219,7 +223,10 @@ pub(crate) fn subst_exp(
     let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
-    free_vars.push_scope(false);
+    free_vars.push_scope(true);
+    for (y, _) in free_vars_exp(exp) {
+        let _ = free_vars.insert(y.clone(), ());
+    }
     for (x, v) in substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
@@ -295,8 +302,8 @@ impl ExpX {
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
             },
-            Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
-            VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
+            Var(id) | VarLoc(id) => (format!("{}", user_local_name(id)), 99),
+            VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
             StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
             Loc(exp) => {
                 return exp.x.to_string_prec(global, precedence);
@@ -538,7 +545,7 @@ impl ExpX {
             Interp(e) => {
                 use InterpExp::*;
                 match e {
-                    FreeVar(id) => (format!("{}", user_local_name(&id.name)), 99),
+                    FreeVar(id) => (format!("{}", user_local_name(id)), 99),
                     Seq(s) => {
                         let v = s
                             .iter()

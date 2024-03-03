@@ -80,17 +80,9 @@ pub open spec fn mod_recursive(x: int, d: int) -> int
 pub proof fn lemma_mod_induction_forall(n: int, f: spec_fn(int) -> bool)
     requires
         n > 0,
-        forall|i: int|
-            0 <= i < n ==> #[trigger]
-            f(i),
-        forall|i: int|
-            i >= 0 && #[trigger]
-            f(i) ==> #[trigger]
-            f(add1(i, n)),
-        forall|i: int|
-            i < n && #[trigger]
-            f(i) ==> #[trigger]
-            f(sub1(i, n)),
+        forall|i: int| 0 <= i < n ==> #[trigger] f(i),
+        forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, n)),
+        forall|i: int| i < n && #[trigger] f(i) ==> #[trigger] f(sub1(i, n)),
     ensures
         forall|i| #[trigger] f(i),
 {
@@ -129,31 +121,16 @@ pub proof fn lemma_mod_induction_forall(n: int, f: spec_fn(int) -> bool)
 pub proof fn lemma_mod_induction_forall2(n: int, f: spec_fn(int, int) -> bool)
     requires
         n > 0,
-        forall|i: int, j: int|
-            0 <= i < n && 0 <= j < n ==> #[trigger]
-            f(i, j),
-        forall|i: int, j: int|
-            i >= 0 && #[trigger]
-            f(i, j) ==> #[trigger]
-            f(add1(i, n), j),
-        forall|i: int, j: int|
-            j >= 0 && #[trigger]
-            f(i, j) ==> #[trigger]
-            f(i, add1(j, n)),
-        forall|i: int, j: int|
-            i < n && #[trigger]
-            f(i, j) ==> #[trigger]
-            f(sub1(i, n), j),
-        forall|i: int, j: int|
-            j < n && #[trigger]
-            f(i, j) ==> #[trigger]
-            f(i, sub1(j, n)),
+        forall|i: int, j: int| 0 <= i < n && 0 <= j < n ==> #[trigger] f(i, j),
+        forall|i: int, j: int| i >= 0 && #[trigger] f(i, j) ==> #[trigger] f(add1(i, n), j),
+        forall|i: int, j: int| j >= 0 && #[trigger] f(i, j) ==> #[trigger] f(i, add1(j, n)),
+        forall|i: int, j: int| i < n && #[trigger] f(i, j) ==> #[trigger] f(sub1(i, n), j),
+        forall|i: int, j: int| j < n && #[trigger] f(i, j) ==> #[trigger] f(i, sub1(j, n)),
     ensures
         forall|i: int, j: int| #[trigger] f(i, j),
 {
     assert forall|x: int, y: int| #[trigger] f(x, y) by {
-        assert forall|i: int| 0 <= i < n implies #[trigger]
-        f(i, y) by {
+        assert forall|i: int| 0 <= i < n implies #[trigger] f(i, y) by {
             let fj = |j| f(i, j);
             lemma_mod_induction_forall(n, fj);
             assert(fj(y));
@@ -269,9 +246,7 @@ pub proof fn lemma_mod_below_denominator(n: int, x: int)
     ensures
         0 <= x < n <==> x % n == x,
 {
-    assert forall|x: int|
-        0 <= x < n <==> #[trigger]
-        (x % n) == x by {
+    assert forall|x: int| 0 <= x < n <==> #[trigger] (x % n) == x by {
         if (0 <= x < n) {
             lemma_small_mod(x as nat, n as nat);
         }
@@ -297,9 +272,7 @@ pub proof fn lemma_mod_basics(n: int)
         forall|x: int| #[trigger] ((x - n) % n) == x % n,
         forall|x: int| #[trigger] ((x + n) / n) == x / n + 1,
         forall|x: int| #[trigger] ((x - n) / n) == x / n - 1,
-        forall|x: int|
-            0 <= x < n <==> #[trigger]
-            (x % n) == x,
+        forall|x: int| 0 <= x < n <==> #[trigger] (x % n) == x,
 {
     assert forall|x: int| #[trigger] ((x + n) % n) == x % n by {
         lemma_mod_add_denominator(n, x);
@@ -314,9 +287,7 @@ pub proof fn lemma_mod_basics(n: int)
     assert forall|x: int| #[trigger] ((x - n) / n) == x / n - 1 by {
         lemma_div_sub_denominator(n, x);
     };
-    assert forall|x: int|
-        0 <= x < n <==> #[trigger]
-        (x % n) == x by {
+    assert forall|x: int| 0 <= x < n <==> #[trigger] (x % n) == x by {
         lemma_mod_below_denominator(n, x);
     };
 }
@@ -367,8 +338,8 @@ pub open spec fn mod_auto_plus(n: int) -> bool
     forall|x: int, y: int|
         {
             let z = (x % n) + (y % n);
-            ((0 <= z < n && #[trigger]
-            ((x + y) % n) == z) || (n <= z < n + n && ((x + y) % n) == z - n))
+            ((0 <= z < n && #[trigger] ((x + y) % n) == z) || (n <= z < n + n && ((x + y) % n) == z
+                - n))
         }
 }
 
@@ -383,8 +354,8 @@ pub open spec fn mod_auto_minus(n: int) -> bool
     forall|x: int, y: int|
         {
             let z = (x % n) - (y % n);
-            ((0 <= z < n && #[trigger]
-            ((x - y) % n) == z) || (-n <= z < 0 && ((x - y) % n) == z + n))
+            ((0 <= z < n && #[trigger] ((x - y) % n) == z) || (-n <= z < 0 && ((x - y) % n) == z
+                + n))
         }
 }
 
@@ -396,9 +367,7 @@ pub open spec fn mod_auto(n: int) -> bool
 {
     &&& (n % n == 0 && (-n) % n == 0)
     &&& (forall|x: int| #[trigger] ((x % n) % n) == x % n)
-    &&& (forall|x: int|
-        0 <= x < n <==> #[trigger]
-        (x % n) == x)
+    &&& (forall|x: int| 0 <= x < n <==> #[trigger] (x % n) == x)
     &&& mod_auto_plus(n)
     &&& mod_auto_minus(n)
 }
@@ -417,8 +386,8 @@ pub proof fn lemma_mod_auto(n: int)
     assert forall|x: int, y: int|
         {
             let z = (x % n) + (y % n);
-            ((0 <= z < n && #[trigger]
-            ((x + y) % n) == z) || (n <= z < n + n && ((x + y) % n) == z - n))
+            ((0 <= z < n && #[trigger] ((x + y) % n) == z) || (n <= z < n + n && ((x + y) % n) == z
+                - n))
         } by {
         let xq = x / n;
         let xr = x % n;
@@ -437,8 +406,8 @@ pub proof fn lemma_mod_auto(n: int)
     assert forall|x: int, y: int|
         {
             let z = (x % n) - (y % n);
-            ((0 <= z < n && #[trigger]
-            ((x - y) % n) == z) || (-n <= z < 0 && ((x - y) % n) == z + n))
+            ((0 <= z < n && #[trigger] ((x - y) % n) == z) || (-n <= z < 0 && ((x - y) % n) == z
+                + n))
         } by {
         let xq = x / n;
         let xr = x % n;
@@ -496,16 +465,9 @@ pub proof fn lemma_mod_induction_auto(n: int, x: int, f: spec_fn(int) -> bool)
         f(x),
 {
     lemma_mod_auto(n);
-    assert(forall|i: int|
-        is_le(0, i) && #[trigger]
-        f(i) ==> #[trigger]
-        f(add1(i, n)));
-    assert(forall|i: int|
-        is_le(i + 1, n) && #[trigger]
-        f(i) ==> #[trigger]
-        f(sub1(i, n)));
-    assert forall|i: int| 0 <= i < n implies #[trigger]
-    f(i) by {
+    assert(forall|i: int| is_le(0, i) && #[trigger] f(i) ==> #[trigger] f(add1(i, n)));
+    assert(forall|i: int| is_le(i + 1, n) && #[trigger] f(i) ==> #[trigger] f(sub1(i, n)));
+    assert forall|i: int| 0 <= i < n implies #[trigger] f(i) by {
         assert(forall|i: int| is_le(0, i) && i < n ==> f(i));
         assert(is_le(0, i) && i < n);
     };

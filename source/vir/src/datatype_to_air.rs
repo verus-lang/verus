@@ -1,11 +1,15 @@
-use crate::ast::{DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, Variants};
-use crate::ast_util::{is_visible_to_of_owner, path_as_friendly_rust_name};
+use crate::ast::{
+    DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, VarIdent, Variants,
+};
+use crate::ast_util::{
+    air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name, LowerUniqueVar,
+};
 use crate::context::Ctx;
 use crate::def::{
     is_variant_ident, prefix_box, prefix_lambda_type, prefix_tuple_param, prefix_type_id,
-    prefix_unbox, suffix_local_stmt_id, variant_field_ident, variant_field_ident_internal,
-    variant_ident, Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR,
-    QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
+    prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident, Spanned,
+    QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
+    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::messages::Span;
@@ -44,10 +48,11 @@ pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Data
 }
 
 fn field_to_par(span: &Span, f: &Field) -> Par {
+    let dis = crate::ast::VarIdentDisambiguate::Field;
     Spanned::new(
         span.clone(),
         ParX {
-            name: Arc::new("_".to_string() + &f.name),
+            name: crate::ast_util::str_unique_var(&("_".to_string() + &f.name), dis),
             typ: f.a.0.clone(),
             mode: f.a.1,
             purpose: ParPurpose::Regular,
@@ -99,8 +104,8 @@ fn datatype_or_fun_to_air_commands(
     add_ext_equal: bool,
 ) {
     use crate::def::QID_EXT_EQUAL;
-    let x = str_ident("x");
-    let x_var = ident_var(&suffix_local_stmt_id(&x));
+    let x = air_unique_var("x");
+    let x_var = ident_var(&x.lower());
     let apolytyp = str_typ(crate::def::POLY);
 
     if dtyp_id.is_none() {
@@ -136,7 +141,7 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // datatype axioms
-    let var_param = |x: Ident, typ: &Typ| {
+    let var_param = |x: VarIdent, typ: &Typ| {
         Spanned::new(
             span.clone(),
             ParX {
@@ -191,8 +196,8 @@ fn datatype_or_fun_to_air_commands(
         let mut args: Vec<Expr> = Vec::new();
         let mut pre: Vec<Expr> = Vec::new();
         for i in 0..tparams.len() - 1 {
-            let name = prefix_tuple_param(i);
-            let arg = ident_var(&suffix_local_stmt_id(&name));
+            let name = crate::ast_util::typ_unique_var(prefix_tuple_param(i));
+            let arg = ident_var(&name.lower());
             if let Some(inv) = typ_invariant(ctx, &typ_args[i], &arg) {
                 pre.push(inv);
             }
@@ -294,8 +299,9 @@ fn datatype_or_fun_to_air_commands(
             let mut pre: Vec<Expr> = Vec::new();
             for field in variant.fields.iter() {
                 let (typ, _, _) = &field.a;
-                let name = suffix_local_stmt_id(&Arc::new("_".to_string() + &field.name));
-                if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
+                let dis = crate::ast::VarIdentDisambiguate::Field;
+                let name = crate::ast_util::str_unique_var(&("_".to_string() + &field.name), dis);
+                if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name.lower())) {
                     pre.push(inv);
                 }
             }
@@ -468,13 +474,13 @@ fn datatype_or_fun_to_air_commands(
 
     // ext_equal axiom for datatypes
     if add_ext_equal {
-        let deep = str_ident("deep");
-        let deep_var = ident_var(&suffix_local_stmt_id(&deep));
+        let deep = air_unique_var("deep");
+        let deep_var = ident_var(&deep.lower());
         let deep_param = var_param(deep, &Arc::new(TypX::Bool));
         let has_x = has;
         let y = str_ident("y");
-        let y_var = ident_var(&suffix_local_stmt_id(&y));
-        let y_param = |typ: &Typ| var_param(y.clone(), typ);
+        let y_var = ident_var(&y);
+        let y_param = |typ: &Typ| var_param(air_unique_var(&y), typ);
         let unbox_y = ident_apply(&prefix_unbox(&dpath), &vec![y_var.clone()]);
         let has_y = expr_has_type(&y_var, &id);
         let eq_command = |s_name: &str, pre: &Vec<Expr>| {

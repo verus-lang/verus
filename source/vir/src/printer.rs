@@ -263,6 +263,16 @@ impl<A: ToDebugSNode + Clone> ToDebugSNode for Binder<A> {
     }
 }
 
+impl<A: ToDebugSNode + Clone> ToDebugSNode for VarBinder<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        Node::List(vec![
+            Node::Atom("->".to_string()),
+            Node::Atom((&self.name).into()),
+            self.a.to_node(opts),
+        ])
+    }
+}
+
 impl ToDebugSNode for Quant {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         let Quant { quant } = self;

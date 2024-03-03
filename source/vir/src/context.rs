@@ -290,6 +290,16 @@ impl GlobalCtx {
             );
         }
 
+        // map (method, impl) to impl Fun
+        let mut trait_impl_map: HashMap<(Fun, Path), Fun> = HashMap::new();
+        for f in &krate.functions {
+            if let crate::ast::FunctionKind::TraitMethodImpl { method, impl_path, .. } = &f.x.kind {
+                let key = (method.clone(), impl_path.clone());
+                assert!(!trait_impl_map.contains_key(&key));
+                trait_impl_map.insert(key, f.x.name.clone());
+            }
+        }
+
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             let fun_node = Node::Fun(f.x.name.clone());
@@ -302,6 +312,7 @@ impl GlobalCtx {
 
             crate::recursion::expand_call_graph(
                 &func_map,
+                &trait_impl_map,
                 &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,

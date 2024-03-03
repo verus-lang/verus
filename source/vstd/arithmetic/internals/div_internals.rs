@@ -80,9 +80,7 @@ pub proof fn lemma_div_basics(n: int)
         n > 0,
     ensures
         (n / n) == 1 && -((-n) / n) == 1,
-        forall|x: int|
-            0 <= x < n <==> #[trigger]
-            (x / n) == 0,
+        forall|x: int| 0 <= x < n <==> #[trigger] (x / n) == 0,
         forall|x: int| #[trigger] ((x + n) / n) == x / n + 1,
         forall|x: int| #[trigger] ((x - n) / n) == x / n - 1,
 {
@@ -90,9 +88,7 @@ pub proof fn lemma_div_basics(n: int)
     lemma_mod_basics(n);
     div_internals_nonlinear::lemma_small_div();
     div_internals_nonlinear::lemma_div_by_self(n);
-    assert forall|x: int|
-        0 <= x < n <== #[trigger]
-        (x / n) == 0 by {
+    assert forall|x: int| 0 <= x < n <== #[trigger] (x / n) == 0 by {
         mod_internals_nonlinear::lemma_fundamental_div_mod(x, n);
     }
 }
@@ -135,9 +131,7 @@ pub open spec fn div_auto(n: int) -> bool
 {
     &&& mod_auto(n)
     &&& (n / n == -((-n) / n) == 1)
-    &&& forall|x: int|
-        0 <= x < n <==> #[trigger]
-        (x / n) == 0
+    &&& forall|x: int| 0 <= x < n <==> #[trigger] (x / n) == 0
     &&& div_auto_plus(n)
     &&& div_auto_minus(n)
 }
@@ -155,9 +149,8 @@ proof fn lemma_div_auto_plus(n: int)
     assert forall|x: int, y: int|
         {
             let z = (x % n) + (y % n);
-            ((0 <= z < n && #[trigger]
-            ((x + y) / n) == x / n + y / n) || (n <= z < n + n && ((x + y) / n) == x / n + y / n
-                + 1))
+            ((0 <= z < n && #[trigger] ((x + y) / n) == x / n + y / n) || (n <= z < n + n && ((x
+                + y) / n) == x / n + y / n + 1))
         } by {
         let f = |xx: int, yy: int|
             {
@@ -170,8 +163,7 @@ proof fn lemma_div_auto_plus(n: int)
                 // changing this from j + n to mod's addition speeds up the verification
                 // otherwise you need higher rlimit
                 // might be a good case for profilers
-                &&& (j >= 0 && #[trigger]
-                f(i, j) ==> f(i, add1(j, n)))
+                &&& (j >= 0 && #[trigger] f(i, j) ==> f(i, add1(j, n)))
                 &&& (i < n && f(i, j) ==> f(i - n, j))
                 &&& (j < n && f(i, j) ==> f(i, j - n))
                 &&& (i >= 0 && f(i, j) ==> f(i + n, j))
@@ -181,9 +173,7 @@ proof fn lemma_div_auto_plus(n: int)
             assert(((i - n) + j) / n == ((i + j) - n) / n);
             assert((i + (j - n)) / n == ((i + j) - n) / n);
         }
-        assert forall|i: int, j: int|
-            0 <= i < n && 0 <= j < n ==> #[trigger]
-            f(i, j) by {
+        assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n ==> #[trigger] f(i, j) by {
             assert(((i + n) + j) / n == ((i + j) + n) / n);
             assert((i + (j + n)) / n == ((i + j) + n) / n);
             assert(((i - n) + j) / n == ((i + j) - n) / n);
@@ -196,6 +186,7 @@ proof fn lemma_div_auto_plus(n: int)
 
 /// Proof of `div_auto_mius(n)`, not exported publicly because it's
 /// just used as part of [`lemma_div_auto`] to prove `div_auto(n)`
+#[verifier::spinoff_prover]
 proof fn lemma_div_auto_minus(n: int)
     requires
         n > 0,
@@ -207,8 +198,8 @@ proof fn lemma_div_auto_minus(n: int)
     assert forall|x: int, y: int|
         {
             let z = (x % n) - (y % n);
-            ((0 <= z < n && #[trigger]
-            ((x - y) / n) == x / n - y / n) || (-n <= z < 0 && ((x - y) / n) == x / n - y / n - 1))
+            ((0 <= z < n && #[trigger] ((x - y) / n) == x / n - y / n) || (-n <= z < 0 && ((x - y)
+                / n) == x / n - y / n - 1))
         } by {
         let f = |xx: int, yy: int|
             {
@@ -218,8 +209,7 @@ proof fn lemma_div_auto_minus(n: int)
             };
         assert forall|i: int, j: int|
             {
-                &&& (j >= 0 && #[trigger]
-                f(i, j) ==> f(i, add1(j, n)))
+                &&& (j >= 0 && #[trigger] f(i, j) ==> f(i, add1(j, n)))
                 &&& (i < n && f(i, j) ==> f(sub1(i, n), j))
                 &&& (j < n && f(i, j) ==> f(i, sub1(j, n)))
                 &&& (i >= 0 && f(i, j) ==> f(add1(i, n), j))
@@ -229,8 +219,7 @@ proof fn lemma_div_auto_minus(n: int)
             assert(((i - n) - j) / n == ((i - j) - n) / n);
             assert((i - (j + n)) / n == ((i - j) - n) / n);
         }
-        assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n implies #[trigger]
-        f(i, j) by {
+        assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n implies #[trigger] f(i, j) by {
             assert(((i + n) - j) / n == ((i - j) + n) / n);
             assert((i - (j - n)) / n == ((i - j) + n) / n);
             assert(((i - n) - j) / n == ((i - j) - n) / n);
@@ -251,9 +240,7 @@ pub proof fn lemma_div_auto(n: int)
 {
     lemma_mod_auto(n);
     lemma_div_basics(n);
-    assert forall|x: int|
-        0 <= x < n <==> #[trigger]
-        (x / n) == 0 by {
+    assert forall|x: int| 0 <= x < n <==> #[trigger] (x / n) == 0 by {
         lemma_div_basics(n);
     }
     assert((0 + n) / n == 1);
@@ -303,16 +290,9 @@ pub proof fn lemma_div_induction_auto(n: int, x: int, f: spec_fn(int) -> bool)
 {
     lemma_div_auto(n);
     assert(forall|i: int| is_le(0, i) && i < n ==> f(i));
-    assert(forall|i: int|
-        is_le(0, i) && #[trigger]
-        f(i) ==> #[trigger]
-        f(add1(i, n)));
-    assert(forall|i: int|
-        is_le(i + 1, n) && #[trigger]
-        f(i) ==> #[trigger]
-        f(sub1(i, n)));
-    assert forall|i: int| 0 <= i < n implies #[trigger]
-    f(i) by {
+    assert(forall|i: int| is_le(0, i) && #[trigger] f(i) ==> #[trigger] f(add1(i, n)));
+    assert(forall|i: int| is_le(i + 1, n) && #[trigger] f(i) ==> #[trigger] f(sub1(i, n)));
+    assert forall|i: int| 0 <= i < n implies #[trigger] f(i) by {
         assert(f(i)) by {
             assert(forall|i: int| is_le(0, i) && i < n ==> f(i));
             assert(is_le(0, i) && i < n);

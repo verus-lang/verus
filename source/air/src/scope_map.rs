@@ -2,12 +2,14 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::ops::Index;
 
+#[derive(Debug)]
 struct Scope<K, V> {
     undo_map: HashMap<K, (Option<V>, usize)>,
     allow_shadowing: bool,
     count: usize,
 }
 
+#[derive(Debug)]
 pub struct ScopeMap<K, V> {
     map: HashMap<K, V>,
     cannot_shadow: HashSet<K>,
@@ -78,6 +80,15 @@ impl<K: Eq + Hash + Clone, V> ScopeMap<K, V> {
             panic!("internal error: must push at least one scope in ScopeMap")
         } else {
             self.insert_at(self.scopes.len() - 1, key, value)
+        }
+    }
+
+    pub fn replace(&mut self, key: K, value: V) -> Result<(), ()> {
+        if self.contains_key(&key) {
+            self.map.insert(key, value).expect("replace");
+            Ok(())
+        } else {
+            Err(())
         }
     }
 

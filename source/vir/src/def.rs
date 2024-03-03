@@ -1,6 +1,6 @@
-use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast_util::air_unique_var;
 use crate::messages::Span;
-use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
@@ -34,11 +34,13 @@ For VIR -> AIR, we use these suffixes:
 
 // List of prefixes, suffixes, and separators that can appear in generated AIR code
 const SUFFIX_GLOBAL: &str = "?";
+const SUFFIX_PARAM: &str = "!";
 const SUFFIX_LOCAL_STMT: &str = "@";
 const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
+const SUFFIX_RUSTC_ID: &str = "~";
 const SUFFIX_DECORATE_TYPE_PARAM: &str = "&.";
-const SUFFIX_RENAME: &str = "!";
+const SUFFIX_REC_PARAM: &str = "!$";
 const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
@@ -46,7 +48,7 @@ const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_RECURSIVE: &str = "rec%";
-const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
+const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
@@ -65,7 +67,6 @@ const PREFIX_STATIC: &str = "static%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
-const LOCAL_UNIQUE_ID_SEPARATOR: char = '~';
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
@@ -76,8 +77,10 @@ const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
 const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
+const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
+const DUMMY_PARAM: &str = "no%param";
 
 pub const PREFIX_IMPL_TYPE_PARAM: &str = "impl%";
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
@@ -96,7 +99,6 @@ pub const FUEL_TYPE: &str = "Fuel";
 pub const ZERO: &str = "zero";
 pub const SUCC: &str = "succ";
 pub const FUEL_PARAM: &str = "fuel%";
-pub const FUEL_LOCAL: &str = "fuel%@";
 pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
@@ -155,7 +157,6 @@ pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
-pub const DUMMY_PARAM: &str = "no%param";
 pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
@@ -231,93 +232,122 @@ pub fn fun_to_string(fun: &Fun) -> String {
     path_to_string(path)
 }
 
-pub fn decrease_at_entry(n: usize) -> Ident {
-    Arc::new(format!("{}{}", DECREASE_AT_ENTRY, n))
+pub fn decrease_at_entry(n: usize) -> VarIdent {
+    air_unique_var(&format!("{}{}", DECREASE_AT_ENTRY, n))
 }
 
 pub fn trait_self_type_param() -> Ident {
     Arc::new(TRAIT_SELF_TYPE_PARAM.to_string())
 }
 
+pub(crate) fn trait_default_name(default_fun: &Fun) -> Fun {
+    let path = (**default_fun).path.clone();
+    let mut segments = (*path.segments).clone();
+    let x = segments.last().expect("segment").to_string() + TRAIT_DEFAULT_SEPARATOR;
+    *segments.last_mut().unwrap() = Arc::new(x);
+    Arc::new(crate::ast::FunX {
+        path: Arc::new(crate::ast::PathX {
+            krate: path.krate.clone(),
+            segments: Arc::new(segments),
+        }),
+    })
+}
+
+pub fn trait_inherit_default_name(default_fun: &Fun, impl_path: &Path) -> Fun {
+    let path = (**impl_path).clone();
+    let mut segments = (*path.segments).clone();
+    let x = segments.last().expect("segment").to_string()
+        + TRAIT_DEFAULT_SEPARATOR
+        + default_fun.path.segments.last().unwrap();
+    *segments.last_mut().unwrap() = Arc::new(x);
+    Arc::new(crate::ast::FunX {
+        path: Arc::new(crate::ast::PathX {
+            krate: path.krate.clone(),
+            segments: Arc::new(segments),
+        }),
+    })
+}
+
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_GLOBAL)
 }
 
-pub fn suffix_local_expr_id(ident: &Ident) -> Ident {
-    Arc::new(ident.to_string() + SUFFIX_LOCAL_EXPR)
-}
-
+// TODO: this is currently only used by debugger.rs; consider replacing this
 pub fn suffix_local_stmt_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_LOCAL_STMT)
 }
 
-pub(crate) fn unique_bound(id: &Ident) -> UniqueIdent {
-    UniqueIdent { name: id.clone(), local: None }
+// TODO: get rid of this
+pub(crate) fn unique_bound(id: &VarIdent) -> VarIdent {
+    id.clone()
 }
 
-pub(crate) fn unique_local(id: &Ident) -> UniqueIdent {
-    UniqueIdent { name: id.clone(), local: Some(0) }
+// TODO: get rid of this
+pub(crate) fn unique_local(id: &VarIdent) -> VarIdent {
+    id.clone()
 }
 
-pub fn suffix_local_unique_id(ident: &UniqueIdent) -> Ident {
-    let UniqueIdent { name: x, local: id } = ident;
-    match id {
-        None => suffix_local_expr_id(x),
-        Some(0) => suffix_local_stmt_id(x),
-        Some(i) => {
-            Arc::new(format!("{}{}{}{}", x.to_string(), SUFFIX_LOCAL_EXPR, i, SUFFIX_LOCAL_STMT))
-        }
-    }
+// TODO: get rid of this
+pub fn suffix_local_unique_id(ident: &VarIdent) -> Ident {
+    use crate::ast_util::LowerUniqueVar;
+    ident.lower()
 }
 
-pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
-    let mut name = ident.to_string();
-    if name.ends_with(SUFFIX_LOCAL_STMT) {
-        name = name[..name.len() - SUFFIX_LOCAL_STMT.len()].to_string();
-    }
-    match name.rfind(SUFFIX_LOCAL_EXPR) {
-        None => {}
-        Some(i) => {
-            name = name[..i].to_string();
-        }
-    }
-    Arc::new(name)
+pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
+    let dis = crate::ast::VarIdentDisambiguate::VirSubst(n);
+    crate::ast::VarIdent(x.0.clone(), dis)
 }
 
-pub fn subst_rename_ident(x: &Ident, n: u64) -> Ident {
-    Arc::new(format!("{}{}{}", x.to_string(), SUBST_RENAME_SEPARATOR, n))
+pub(crate) fn suffix_typ_param_var(x: &VarIdent) -> VarIdent {
+    assert!(x.1 == crate::ast::VarIdentDisambiguate::TypParamBare);
+    let dis = crate::ast::VarIdentDisambiguate::TypParamSuffixed;
+    crate::ast::VarIdent(x.0.clone(), dis)
 }
 
-pub(crate) fn suffix_typ_param_id(ident: &Ident) -> Ident {
-    Arc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
+pub(crate) fn suffix_decorate_typ_param_var(x: &VarIdent) -> VarIdent {
+    assert!(x.1 == crate::ast::VarIdentDisambiguate::TypParamBare);
+    let dis = crate::ast::VarIdentDisambiguate::TypParamDecorated;
+    crate::ast::VarIdent(x.0.clone(), dis)
 }
 
-pub(crate) fn suffix_decorate_typ_param_id(ident: &Ident) -> Ident {
-    Arc::new(ident.to_string() + SUFFIX_DECORATE_TYPE_PARAM)
-}
-
-pub(crate) fn suffix_typ_param_ids(ident: &Ident) -> Vec<Ident> {
+pub(crate) fn suffix_typ_param_vars(unique_var: &VarIdent) -> Vec<VarIdent> {
     if crate::context::DECORATE {
-        vec![suffix_decorate_typ_param_id(ident), suffix_typ_param_id(ident)]
+        vec![suffix_decorate_typ_param_var(unique_var), suffix_typ_param_var(unique_var)]
     } else {
-        vec![suffix_typ_param_id(ident)]
+        vec![suffix_typ_param_var(unique_var)]
     }
 }
 
-pub(crate) fn suffix_typ_param_ids_types(ident: &Ident) -> Vec<(Ident, &'static str)> {
+pub(crate) fn suffix_typ_param_vars_types(unique_var: &VarIdent) -> Vec<(VarIdent, &'static str)> {
     if crate::context::DECORATE {
-        vec![(suffix_decorate_typ_param_id(ident), DECORATION), (suffix_typ_param_id(ident), TYPE)]
+        vec![
+            (suffix_decorate_typ_param_var(unique_var), DECORATION),
+            (suffix_typ_param_var(unique_var), TYPE),
+        ]
     } else {
-        vec![(suffix_typ_param_id(ident), TYPE)]
+        vec![(suffix_typ_param_var(unique_var), TYPE)]
     }
+}
+
+pub(crate) fn suffix_typ_param_id(ident: &Ident) -> VarIdent {
+    suffix_typ_param_var(&crate::ast_util::typ_unique_var(ident))
+}
+
+pub(crate) fn suffix_typ_param_ids(ident: &Ident) -> Vec<VarIdent> {
+    suffix_typ_param_vars(&crate::ast_util::typ_unique_var(ident))
+}
+
+pub(crate) fn suffix_typ_param_ids_types(ident: &Ident) -> Vec<(VarIdent, &'static str)> {
+    suffix_typ_param_vars_types(&crate::ast_util::typ_unique_var(ident))
 }
 
 pub(crate) fn types() -> Vec<&'static str> {
     if crate::context::DECORATE { vec![DECORATION, TYPE] } else { vec![TYPE] }
 }
 
-pub fn suffix_rename(ident: &Ident) -> Ident {
-    Arc::new(ident.to_string() + SUFFIX_RENAME)
+pub fn rename_rec_param(ident: &VarIdent, n: usize) -> VarIdent {
+    let dis = crate::ast::VarIdentDisambiguate::VirParamRecursion(n);
+    crate::ast::VarIdent(ident.0.clone(), dis)
 }
 
 pub fn slice_type() -> Path {
@@ -430,17 +460,13 @@ pub fn prefix_recursive_fun(fun: &Fun) -> Fun {
     Arc::new(FunX { path })
 }
 
-pub fn prefix_temp_var(n: u64) -> Ident {
-    Arc::new(PREFIX_TEMP_VAR.to_string() + &n.to_string())
-}
-
-pub fn is_temp_var(x: &Ident) -> bool {
-    x.starts_with(PREFIX_TEMP_VAR)
+pub fn new_temp_var(n: u64) -> VarIdent {
+    crate::ast_util::str_unique_var(PREFIX_TEMP_VAR, crate::ast::VarIdentDisambiguate::VirTemp(n))
 }
 
 // ast_simplify introduces its own temporary variables; we don't want these to conflict with prefix_temp_var
-pub fn prefix_simplify_temp_var(n: u64) -> Ident {
-    Arc::new(PREFIX_SIMPLIFY_TEMP_VAR.to_string() + &n.to_string())
+pub fn simplify_temp_var(n: u64) -> VarIdent {
+    crate::ast_util::str_unique_var(SIMPLIFY_TEMP_VAR, crate::ast::VarIdentDisambiguate::VirTemp(n))
 }
 
 pub fn prefix_pre_var(name: &Ident) -> Ident {
@@ -574,7 +600,7 @@ impl<X> Spanned<X> {
         Arc::new(Spanned { span: span, x: x })
     }
 
-    pub fn new_x(&self, x: X) -> Arc<Spanned<X>> {
+    pub fn new_x<X2>(&self, x: X2) -> Arc<Spanned<X2>> {
         Arc::new(Spanned { span: self.span.clone(), x })
     }
 
@@ -686,15 +712,66 @@ pub fn strslice_defn_path(vstd_crate_name: &Ident) -> Path {
 
 /// Inverse of unique_local_name: extracts the user_given_name from
 /// a unique name (e.g., given "a~2", returns "a"
-pub fn user_local_name<'a>(s: &'a str) -> &'a str {
-    match s.find(LOCAL_UNIQUE_ID_SEPARATOR) {
-        None => s,
-        Some(idx) => &s[0..idx],
-    }
+pub fn user_local_name<'a>(s: &'a VarIdent) -> &'a str {
+    &s.0
 }
 
-pub fn unique_local_name(user_given_name: String, uniq_id: usize) -> String {
-    user_given_name + &LOCAL_UNIQUE_ID_SEPARATOR.to_string() + &uniq_id.to_string()
+pub fn unique_var_name(
+    user_given_name: String,
+    uniq_id: crate::ast::VarIdentDisambiguate,
+) -> String {
+    use {crate::ast::VarIdentDisambiguate, std::fmt::Write};
+    let mut out = user_given_name;
+    match uniq_id {
+        VarIdentDisambiguate::AirLocal => {}
+        VarIdentDisambiguate::NoBodyParam => {
+            out.push_str(SUFFIX_PARAM);
+        }
+        VarIdentDisambiguate::Field => {
+            out.push_str(SUFFIX_PARAM);
+        }
+        VarIdentDisambiguate::TypParamBare => {}
+        VarIdentDisambiguate::TypParamSuffixed => {
+            out.push_str(SUFFIX_TYPE_PARAM);
+        }
+        VarIdentDisambiguate::TypParamDecorated => {
+            out.push_str(SUFFIX_DECORATE_TYPE_PARAM);
+        }
+        VarIdentDisambiguate::RustcId(id) => {
+            out.push_str(SUFFIX_RUSTC_ID);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::VirRenumbered { is_stmt, id, .. } => {
+            if is_stmt {
+                if id != 0 {
+                    out.push_str(SUFFIX_LOCAL_EXPR);
+                    write!(&mut out, "{}", id).unwrap();
+                }
+                out.push_str(SUFFIX_LOCAL_STMT);
+            } else {
+                out.push_str(SUFFIX_LOCAL_EXPR);
+                write!(&mut out, "{}", id).unwrap();
+            }
+        }
+        VarIdentDisambiguate::VirExprNoNumber => {
+            out.push_str(SUFFIX_LOCAL_EXPR);
+        }
+        VarIdentDisambiguate::VirParam => {
+            out.push_str(SUFFIX_PARAM);
+        }
+        VarIdentDisambiguate::VirParamRecursion(n) => {
+            out.push_str(SUFFIX_REC_PARAM);
+            write!(&mut out, "{}", n).unwrap();
+        }
+        VarIdentDisambiguate::VirSubst(n) => {
+            out.push_str(SUBST_RENAME_SEPARATOR);
+            write!(&mut out, "{}", n).unwrap();
+        }
+        VarIdentDisambiguate::VirTemp(id) => {
+            write!(&mut out, "{}", id).unwrap();
+        }
+    }
+    out
 }
 
 pub fn exec_nonstatic_call_fun(vstd_crate_name: &Ident) -> Fun {
@@ -734,4 +811,12 @@ pub(crate) fn option_type_path() -> Path {
         krate: Some(Arc::new("core".to_string())),
         segments: Arc::new(vec![Arc::new("option".to_string()), Arc::new("Option".to_string())]),
     })
+}
+
+pub(crate) fn dummy_param_name() -> VarIdent {
+    air_unique_var(DUMMY_PARAM)
+}
+
+pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
+    v.0.to_string() == DUMMY_PARAM
 }

@@ -451,14 +451,6 @@ fn check_function(
     _no_verify: bool,
 ) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
-        if function.x.body.is_some() && function.x.mode != Mode::Exec {
-            // REVIEW: If we allow default method implementations, we'll need to make sure
-            // it doesn't introduce nontermination into proof/spec.
-            return Err(error(
-                &function.span,
-                "trait proof/spec method declaration cannot provide a default implementation",
-            ));
-        }
         if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
             return Err(error(
                 &function.span,
@@ -535,10 +527,10 @@ fn check_function(
         }
     }
 
-    let ret_name = user_local_name(&*function.x.ret.x.name);
+    let ret_name = user_local_name(&function.x.ret.x.name);
     for p in function.x.params.iter() {
         check_typ(ctxt, &p.x.typ, &p.span)?;
-        if user_local_name(&*p.x.name) == ret_name {
+        if user_local_name(&p.x.name) == ret_name {
             return Err(error(
                 &p.span,
                 "parameter name cannot be the same as the return value name",
@@ -1155,6 +1147,16 @@ pub fn check_crate(
         }
         if function.x.body.is_none() && function.x.fuel == 0 {
             return Err(error(&function.span, "opaque has no effect on a function without a body"));
+        }
+        if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
+            if function.x.body.is_some() {
+                if function.x.decrease.len() > 0 {
+                    return Err(error(
+                        &function.span,
+                        "trait default methods do not yet support recursion and decreases",
+                    ));
+                }
+            }
         }
     }
     for function in krate.functions.iter() {

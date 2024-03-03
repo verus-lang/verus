@@ -211,12 +211,14 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     let self_ty = get_self_ty(sm);
     let gen = &sm.generics;
+    let attrs = &sm.attrs;
 
     let storage_types = get_storage_type_tuple(sm);
 
     return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
+        #(#attrs)*
         pub struct #insttype #gen {
             // This is not marked external_body, but the fields are private, so the
             // user should not be able to do illegal things with this type from outside
@@ -301,6 +303,7 @@ fn token_struct_stream(
     let token_data_ty = field_token_data_type(sm, field);
     let token_ty = field_token_type(sm, field);
     let gen = &sm.generics;
+    let attrs = &sm.attrs;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
     let mut impl_token_stream = collection_relation_fns_stream(sm, field);
@@ -330,6 +333,7 @@ fn token_struct_stream(
     return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
+        #(#attrs)*
         pub struct #tokenname#gen {
             // These are private so they can't be accessed outside this module.
             // I would have marked it external_body, but I want to make sure
@@ -342,6 +346,7 @@ fn token_struct_stream(
 
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[allow(non_camel_case_types)]
+        #(#attrs)*
         pub struct #tokenname_data#gen {
             #[cfg_attr(verus_keep_ghost, verifier::spec)] pub instance: #insttype,
             #key_field
@@ -753,7 +758,7 @@ pub fn exchange_stream(
                     let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
                     let e = e_opt.expect("get_post_value_for_variable");
                     let lhs = get_const_field_value(&ctxt, field, field.name.span());
-                    ctxt.ensures.push(mk_eq(&lhs, &e));
+                    ctxt.ensures.push(mk_eq(lhs.span(), &lhs, &e));
                     continue;
                 }
                 _ => {}
@@ -932,7 +937,7 @@ pub fn exchange_stream(
                         let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
                         let e = e_opt.expect("get_post_value_for_variable");
                         let lhs = get_new_field_value(field);
-                        ctxt.ensures.push(mk_eq(&lhs, &e));
+                        ctxt.ensures.push(mk_eq(lhs.span(), &lhs, &e));
                     }
                 }
                 ShardableType::Option(_)
@@ -1151,7 +1156,7 @@ fn add_initialization_input_conditions(
 ) {
     match &field.stype {
         ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
-            requires.push(mk_eq(&param_value, &init_value));
+            requires.push(mk_eq(param_value.span(), &param_value, &init_value));
         }
         _ => {
             panic!("this should implement each case enabled by get_init_param_input_type");
@@ -1707,14 +1712,14 @@ fn add_token_param_in_out(
     }
 }
 
-fn mk_and(lhs: Expr, rhs: Expr) -> Expr {
-    Expr::Verbatim(quote! {
+fn mk_and(span: Span, lhs: Expr, rhs: Expr) -> Expr {
+    Expr::Verbatim(quote_spanned! { span =>
         ((#lhs) && (#rhs))
     })
 }
 
-fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
-    Expr::Verbatim(quote! {
+fn mk_eq(span: Span, lhs: &Expr, rhs: &Expr) -> Expr {
+    Expr::Verbatim(quote_spanned! { span =>
         ::builtin::equal(#lhs, #rhs)
     })
 }
@@ -2038,6 +2043,7 @@ pub fn assign_pat_or_arbitrary(pat: &Pat, init_e: &Expr) -> Option<(Pat, Expr)> 
 }
 
 fn token_matches_elt(
+    span: Span,
     token_is_ref: bool,
     token_name: &Ident,
     elt: &MonoidElt,
@@ -2051,9 +2057,9 @@ fn token_matches_elt(
             let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
             if is_definitely_irrefutable(pat) {
                 // TODO for cleaner output, avoid emitting anything here
-                Expr::Verbatim(quote! { true })
+                Expr::Verbatim(quote_spanned! { span => true })
             } else {
-                Expr::Verbatim(quote! {
+                Expr::Verbatim(quote_spanned! { span =>
                     match #token_name.view().value {
                         #pat => true,
                         #[allow(unreachable_patterns)]
@@ -2063,44 +2069,52 @@ fn token_matches_elt(
             }
         }
         MonoidElt::OptionSome(Some(e)) => {
-            mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &e)
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().value}), &e)
         }
         MonoidElt::SingletonMultiset(e) => mk_and(
-            mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &e),
-            Expr::Verbatim(quote! { #token_name.view().count == 1 }),
+            span,
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().key}), &e),
+            Expr::Verbatim(quote_spanned! { span => #token_name.view().count == 1 }),
         ),
         MonoidElt::SingletonKV(key, None) => {
-            let e1 = mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &key);
+            let e1 = mk_eq(
+                span,
+                &Expr::Verbatim(quote_spanned! { span => #token_name.view().key}),
+                &key,
+            );
 
             let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
             if is_definitely_irrefutable(pat) {
                 e1
             } else {
-                let e2 = Expr::Verbatim(quote! {
+                let e2 = Expr::Verbatim(quote_spanned! { span =>
                     match #token_name.view().value {
                         #pat => true,
                         #[allow(unreachable_patterns)]
                         _ => false,
                     }
                 });
-                mk_and(e1, e2)
+                mk_and(span, e1, e2)
             }
         }
         MonoidElt::SingletonKV(key, Some(val)) => mk_and(
-            mk_eq(&Expr::Verbatim(quote! {#token_name.view().key}), &key),
-            mk_eq(&Expr::Verbatim(quote! {#token_name.view().value}), &val),
+            span,
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().key}), &key),
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().value}), &val),
         ),
-        MonoidElt::SingletonSet(e) => mk_eq(&Expr::Verbatim(quote! { #token_name.view().key }), &e),
-        MonoidElt::True => Expr::Verbatim(quote! { true }),
+        MonoidElt::SingletonSet(e) => {
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().key }), &e)
+        }
+        MonoidElt::True => Expr::Verbatim(quote_spanned! { span => true }),
         MonoidElt::General(e) => match &field.stype {
             ShardableType::Count | ShardableType::PersistentCount => {
-                mk_eq(&Expr::Verbatim(quote! {#token_name.view().count}), &e)
+                mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().count}), &e)
             }
             _ => {
                 let token_value = if token_is_ref {
-                    Expr::Verbatim(quote! { *#token_name })
+                    Expr::Verbatim(quote_spanned! { span => *#token_name })
                 } else {
-                    Expr::Verbatim(quote! { #token_name })
+                    Expr::Verbatim(quote_spanned! { span => #token_name })
                 };
                 relation_for_collection_of_internal_tokens(
                     &ctxt.sm,
@@ -2144,7 +2158,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::Require(
                 span,
-                token_matches_elt(true, &ident, &elt, pat_opt, ctxt, &field, false),
+                token_matches_elt(span, true, &ident, &elt, pat_opt, ctxt, &field, false),
             ))
         }
 
@@ -2168,7 +2182,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::PostCondition(
                 span,
-                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field, true),
+                token_matches_elt(span, false, &ident, &elt, pat_opt, ctxt, &field, true),
             ))
         }
 
@@ -2192,7 +2206,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::Require(
                 span,
-                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field, false),
+                token_matches_elt(span, false, &ident, &elt, pat_opt, ctxt, &field, false),
             ))
         }
 
@@ -2215,7 +2229,10 @@ fn translate_special_condition(
                 is_collection: false,
             });
 
-            Some(TransitionStmt::PostCondition(span, mk_eq(&Expr::Verbatim(quote! {*#ident}), &e)))
+            Some(TransitionStmt::PostCondition(
+                span,
+                mk_eq(span, &Expr::Verbatim(quote! {*#ident}), &e),
+            ))
         }
 
         SpecialOp { stmt: MonoidStmtType::Deposit, elt } => {
@@ -2236,7 +2253,7 @@ fn translate_special_condition(
                 is_collection: false,
             });
 
-            Some(TransitionStmt::Require(span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e)))
+            Some(TransitionStmt::Require(span, mk_eq(span, &Expr::Verbatim(quote! {#ident}), &e)))
         }
 
         SpecialOp { stmt: MonoidStmtType::Withdraw, elt } => {
@@ -2259,7 +2276,7 @@ fn translate_special_condition(
             if let Some(e) = e_opt {
                 Some(TransitionStmt::PostCondition(
                     span,
-                    mk_eq(&Expr::Verbatim(quote! {#ident}), &e),
+                    mk_eq(span, &Expr::Verbatim(quote! {#ident}), &e),
                 ))
             } else {
                 let pat = pat_opt.as_ref().expect("for pat-binding case, pat is expected");

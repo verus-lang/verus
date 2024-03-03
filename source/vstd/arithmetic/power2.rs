@@ -30,7 +30,7 @@ use crate::arithmetic::internals::general_internals::is_le;
 #[verifier(opaque)]
 pub open spec fn pow2(e: nat) -> nat
     decreases
-            e// ensures pow2(e) > 0
+            e  // ensures pow2(e) > 0
             // cannot have ensurs clause in spec functions
             // a workaround is the lemma_pow2_pos below
             ,
@@ -105,8 +105,8 @@ pub proof fn lemma_pow2_mask_div2_auto()
         forall|e: nat| #![trigger pow2(e)] 0 < e ==> (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
 {
     reveal(pow2);
-    assert forall|e: nat| 0 < e implies (#[trigger]
-    (pow2(e)) - 1) / 2 == pow2((e - 1) as nat) - 1 by {
+    assert forall|e: nat| 0 < e implies (#[trigger] (pow2(e)) - 1) / 2 == pow2((e - 1) as nat)
+        - 1 by {
         lemma_pow2_mask_div2(e);
     }
 }
@@ -151,6 +151,7 @@ pub proof fn lemma2_to64()
 {
     reveal(pow2);
     reveal(pow);
+    #[verusfmt::skip]
     assert(
         pow2(0) == 0x1 &&
         pow2(1) == 0x2 &&
@@ -186,7 +187,7 @@ pub proof fn lemma2_to64()
         pow2(31) == 0x80000000 &&
         pow2(32) == 0x100000000 &&
         pow2(64) == 0x10000000000000000
-   ) by(compute_only);
+    ) by(compute_only);
 }
 
 } // verus!
