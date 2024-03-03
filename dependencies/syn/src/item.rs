@@ -82,6 +82,9 @@ ast_enum_of_structs! {
         /// Item-level reveal
         Reveal(ItemReveal),
 
+        /// Broadcast group definition
+        BroadcastGroup(ItemBroadcastGroup),
+
         // Not public API.
         //
         // For testing exhaustiveness in downstream code, use the following idiom:
@@ -398,7 +401,8 @@ impl Item {
             | Item::Macro(ItemMacro { attrs, .. })
             | Item::Macro2(ItemMacro2 { attrs, .. })
             | Item::Global(Global { attrs, .. })
-            | Item::Reveal(ItemReveal { attrs, .. }) => mem::replace(attrs, new),
+            | Item::Reveal(ItemReveal { attrs, .. })
+            | Item::BroadcastGroup(ItemBroadcastGroup { attrs, .. }) => mem::replace(attrs, new),
             Item::Verbatim(_) => Vec::new(),
 
             #[cfg(syn_no_non_exhaustive)]
@@ -824,6 +828,9 @@ ast_enum_of_structs! {
         /// Tokens within an impl block not interpreted by Syn.
         Verbatim(TokenStream),
 
+        /// A broadcast group
+        BroadcastGroup(ItemBroadcastGroup),
+
         // Not public API.
         //
         // For testing exhaustiveness in downstream code, use the following idiom:
@@ -1047,6 +1054,8 @@ pub mod parsing {
                 let vis: Visibility = input.parse()?;
                 let sig: Signature = input.parse()?;
                 parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
+            } else if lookahead.peek(Token![broadcast]) {
+                input.parse().map(Item::BroadcastGroup)
             } else if lookahead.peek(Token![extern]) {
                 ahead.parse::<Token![extern]>()?;
                 let lookahead = ahead.lookahead1();
@@ -2772,6 +2781,8 @@ pub mod parsing {
 
             let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 input.parse().map(ImplItem::Method)
+            } else if lookahead.peek(Token![broadcast]) {
+                input.parse().map(ImplItem::BroadcastGroup)
             } else if lookahead.peek(Token![const])
                 || lookahead.peek(Token![open])
                 || lookahead.peek(Token![closed])
@@ -2831,6 +2842,7 @@ pub mod parsing {
                     ImplItem::Method(item) => &mut item.attrs,
                     ImplItem::Type(item) => &mut item.attrs,
                     ImplItem::Macro(item) => &mut item.attrs,
+                    ImplItem::BroadcastGroup(item) => &mut item.attrs,
                     ImplItem::Verbatim(_) => return Ok(item),
 
                     #[cfg(syn_no_non_exhaustive)]

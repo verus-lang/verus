@@ -1174,6 +1174,9 @@ impl PartialEq for ImplItem {
             (ImplItem::Verbatim(self0), ImplItem::Verbatim(other0)) => {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
+            (ImplItem::BroadcastGroup(self0), ImplItem::BroadcastGroup(other0)) => {
+                self0 == other0
+            }
             _ => false,
         }
     }
@@ -1314,8 +1317,20 @@ impl PartialEq for Item {
             }
             (Item::Global(self0), Item::Global(other0)) => self0 == other0,
             (Item::Reveal(self0), Item::Reveal(other0)) => self0 == other0,
+            (Item::BroadcastGroup(self0), Item::BroadcastGroup(other0)) => {
+                self0 == other0
+            }
             _ => false,
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ItemBroadcastGroup {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ItemBroadcastGroup {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
+            && self.paths == other.paths
     }
 }
 #[cfg(feature = "full")]

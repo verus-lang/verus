@@ -1202,6 +1202,7 @@ impl Clone for ImplItem {
             ImplItem::Type(v0) => ImplItem::Type(v0.clone()),
             ImplItem::Macro(v0) => ImplItem::Macro(v0.clone()),
             ImplItem::Verbatim(v0) => ImplItem::Verbatim(v0.clone()),
+            ImplItem::BroadcastGroup(v0) => ImplItem::BroadcastGroup(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1356,8 +1357,22 @@ impl Clone for Item {
             Item::Verbatim(v0) => Item::Verbatim(v0.clone()),
             Item::Global(v0) => Item::Global(v0.clone()),
             Item::Reveal(v0) => Item::Reveal(v0.clone()),
+            Item::BroadcastGroup(v0) => Item::BroadcastGroup(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ItemBroadcastGroup {
+    fn clone(&self) -> Self {
+        ItemBroadcastGroup {
+            attrs: self.attrs.clone(),
+            vis: self.vis.clone(),
+            broadcast_group_tokens: self.broadcast_group_tokens.clone(),
+            ident: self.ident.clone(),
+            brace_token: self.brace_token.clone(),
+            paths: self.paths.clone(),
         }
     }
 }

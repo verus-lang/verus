@@ -3388,6 +3388,13 @@ impl Debug for Lite<syn::ImplItem> {
                 formatter.write_str("`)")?;
                 Ok(())
             }
+            syn::ImplItem::BroadcastGroup(_val) => {
+                formatter.write_str("BroadcastGroup")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             _ => unreachable!(),
         }
     }
@@ -4148,8 +4155,35 @@ impl Debug for Lite<syn::Item> {
                 }
                 formatter.finish()
             }
+            syn::Item::BroadcastGroup(_val) => {
+                let mut formatter = formatter.debug_struct("Item::BroadcastGroup");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("vis", Lite(&_val.vis));
+                formatter.field("ident", Lite(&_val.ident));
+                if !_val.paths.is_empty() {
+                    formatter.field("paths", Lite(&_val.paths));
+                }
+                formatter.finish()
+            }
             _ => unreachable!(),
         }
+    }
+}
+impl Debug for Lite<syn::ItemBroadcastGroup> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ItemBroadcastGroup");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("vis", Lite(&_val.vis));
+        formatter.field("ident", Lite(&_val.ident));
+        if !_val.paths.is_empty() {
+            formatter.field("paths", Lite(&_val.paths));
+        }
+        formatter.finish()
     }
 }
 impl Debug for Lite<syn::ItemConst> {

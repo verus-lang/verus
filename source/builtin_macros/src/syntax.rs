@@ -4,8 +4,10 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 use quote::format_ident;
+use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use syn_verus::parse::{Parse, ParseStream};
+use syn_verus::parse_quote_spanned;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
@@ -17,15 +19,13 @@ use syn_verus::visit_mut::{
     visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
     visit_specification_mut, visit_trait_item_method_mut, VisitMut,
 };
-use syn_verus::ExprMatches;
-use syn_verus::MatchesOpExpr;
-use syn_verus::MatchesOpToken;
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
-    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
-    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemMethod,
-    Invariant, InvariantEnsures, InvariantNameSet, InvariantNameSetList, Item, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, ModeSpec,
+    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
+    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident,
+    ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantNameSet, InvariantNameSetList,
+    Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic,
+    ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, ModeSpec,
     ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends, Requires,
     ReturnType, Signature, SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem,
     TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
@@ -606,7 +606,6 @@ impl VisitMut for ExecGhostPatVisitor {
         //   pat[tmp_x, tmp_y, tmp_z]
         //   x_decls: let tracked x; let ghost mut y; let [mode] mut z;
         //   x_assigns: x = tmp_x.get(); y = tmp_y.view(); z = tmp_z;
-        use syn_verus::parse_quote_spanned;
         let pat_span = pat.span();
         let mk_ident_tmp = |x: &Ident| {
             Ident::new(
@@ -773,7 +772,6 @@ impl Visitor {
             stmts.push(Stmt::Semi(mk_proof_block(block), Semi { spans: [span] }));
             (false, stmts)
         } else {
-            use syn_verus::parse_quote_spanned;
             let tmp = Ident::new("verus_tmp", Span::mixed_site().located_at(local.span()));
             let tmp_decl = if local.tracked.is_some() {
                 parse_quote_spanned!(span => #[verus::internal(proof)] #[verus::internal(unwrapped_binding)] let #tmp;)
@@ -807,7 +805,6 @@ impl Visitor {
     }
 
     fn visit_stream_expr(&mut self, stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-        use quote::ToTokens;
         let mut expr: Expr = parse_macro_input!(stream as Expr);
         let mut new_stream = TokenStream::new();
         self.visit_expr_mut(&mut expr);
@@ -903,7 +900,6 @@ impl Visitor {
         for item in items.iter_mut() {
             match &item {
                 Item::Global(global) => {
-                    use quote::ToTokens;
                     let Global { attrs: _, global_token: _, inner, semi: _ } = global;
                     let (type_, size_lit, align_lit) = match inner {
                         syn_verus::GlobalInner::SizeOf(size_of) => {
@@ -990,8 +986,43 @@ impl Visitor {
                         });
                     }
                 }
+                Item::BroadcastGroup(item_broadcast_group) => {
+                    *item = Item::Verbatim(
+                        self.handle_broadcast_group(item_broadcast_group, item.span()),
+                    );
+                }
                 _ => (),
             }
+        }
+    }
+
+    fn handle_broadcast_group(
+        &mut self,
+        item_broadcast_group: &ItemBroadcastGroup,
+        span: Span,
+    ) -> TokenStream {
+        let ItemBroadcastGroup {
+            attrs,
+            vis,
+            broadcast_group_tokens: _,
+            ident,
+            brace_token: _,
+            paths,
+        } = item_broadcast_group;
+        if self.erase_ghost.erase() {
+            TokenStream::new()
+        } else {
+            let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(quote!(
+                ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); ))))
+                .collect();
+            let block = Block { brace_token: token::Brace { span }, stmts };
+            let mut item_fn: ItemFn = parse_quote_spanned! { span =>
+                #[verus::internal(reveal_group)]
+                #[verus::internal(proof)]
+                #vis fn #ident() #block
+            };
+            item_fn.attrs.extend(attrs.into_iter().cloned());
+            item_fn.to_token_stream()
         }
     }
 
@@ -1062,6 +1093,10 @@ impl Visitor {
                     }
                     _ => {}
                 },
+                ImplItem::BroadcastGroup(item_broadcast_group) => {
+                    *item =
+                        ImplItem::Verbatim(self.handle_broadcast_group(item_broadcast_group, span));
+                }
                 _ => {}
             }
         }
@@ -1337,7 +1372,6 @@ impl Visitor {
     }
 
     fn desugar_for_loop(&mut self, for_loop: syn_verus::ExprForLoop) -> Expr {
-        use syn_verus::parse_quote_spanned;
         // The regular Rust for-loop doesn't give us direct access to the iterator,
         // which we need for writing invariants.
         // Therefore, rather than letting Rust desugar a for-loop into a loop with a break,
@@ -2903,6 +2937,10 @@ impl VisitMut for Visitor {
     fn visit_reveal_hide_mut(&mut self, _i: &mut syn_verus::RevealHide) {
         // we have already transformed this, do not recurse into it
     }
+
+    fn visit_item_broadcast_group_mut(&mut self, _i: &mut ItemBroadcastGroup) {
+        // we have already transformed this, do not recurse into it
+    }
 }
 
 struct Items {
@@ -3069,7 +3107,7 @@ impl Parse for MacroInvokeExplicitExpr {
     }
 }
 
-impl quote::ToTokens for MacroElement {
+impl ToTokens for MacroElement {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             MacroElement::Comma(e) => e.to_tokens(tokens),
@@ -3080,7 +3118,7 @@ impl quote::ToTokens for MacroElement {
     }
 }
 
-impl quote::ToTokens for MacroElementExplicitExpr {
+impl ToTokens for MacroElementExplicitExpr {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             MacroElementExplicitExpr::Comma(e) => e.to_tokens(tokens),
@@ -3161,7 +3199,6 @@ pub(crate) fn rewrite_items(
     erase_ghost: EraseGhost,
     use_spec_traits: bool,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut items: Items = parse_macro_input!(stream as Items);
     let mut new_stream = TokenStream::new();
@@ -3194,7 +3231,6 @@ pub(crate) fn rewrite_expr(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut expr: Expr = parse_macro_input!(stream as Expr);
     let mut new_stream = TokenStream::new();
@@ -3325,7 +3361,6 @@ pub(crate) fn proof_macro_exprs(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
     let mut new_stream = TokenStream::new();
@@ -3355,7 +3390,6 @@ pub(crate) fn inv_macro_exprs(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
     let mut new_stream = TokenStream::new();
@@ -3387,7 +3421,6 @@ pub(crate) fn proof_macro_explicit_exprs(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut invoke: MacroInvokeExplicitExpr = parse_macro_input!(stream as MacroInvokeExplicitExpr);
     let mut new_stream = TokenStream::new();

@@ -240,10 +240,21 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ItemBroadcastGroup {
+        pub attrs: Vec<Attribute>,
+        pub vis: Visibility,
+        pub broadcast_group_tokens: (Token![broadcast], Token![group]),
+        pub ident: Ident,
+        pub brace_token: token::Brace,
+        pub paths: Punctuated<ExprPath, Token![,]>,
+    }
+}
+
+ast_struct! {
     pub struct ItemReveal {
         pub attrs: Vec<Attribute>,
         pub reveal_token: Token![reveal],
-        pub paths: Punctuated<Box<ExprPath>, Token![,]>,
+        pub paths: Punctuated<ExprPath, Token![,]>,
         pub semi: Token![;],
     }
 }
@@ -954,10 +965,9 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
             let reveal_token: Token![reveal] = input.parse()?;
-            // let paths = input.parse()?;
             let mut paths = Punctuated::new();
             let semi = loop {
-                let path: Box<ExprPath> = input.parse()?;
+                let path: ExprPath = input.parse()?;
                 paths.push(path);
                 if input.peek(Token![,]) {
                     let _: Token![,] = input.parse()?;
@@ -973,6 +983,29 @@ pub mod parsing {
                 reveal_token,
                 paths,
                 semi,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ItemBroadcastGroup {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let vis: Visibility = input.parse()?;
+            let broadcast_group_tokens: (Token![broadcast], Token![group]) =
+                (input.parse()?, input.parse()?);
+            let ident = input.parse()?;
+            let content;
+            let brace_token = braced!(content in input);
+            let paths = content.parse_terminated(ExprPath::parse)?;
+
+            Ok(ItemBroadcastGroup {
+                attrs,
+                vis,
+                ident,
+                broadcast_group_tokens,
+                brace_token,
+                paths,
             })
         }
     }
@@ -1322,6 +1355,28 @@ mod printing {
             reveal_token.to_tokens(tokens);
             paths.to_tokens(tokens);
             semi.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ItemBroadcastGroup {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
+            let ItemBroadcastGroup {
+                attrs: _,
+                vis,
+                ident,
+                broadcast_group_tokens,
+                brace_token,
+                paths,
+            } = self;
+            vis.to_tokens(tokens);
+            broadcast_group_tokens.0.to_tokens(tokens);
+            broadcast_group_tokens.1.to_tokens(tokens);
+            ident.to_tokens(tokens);
+            brace_token.surround(tokens, |tokens| {
+                paths.to_tokens(tokens);
+            });
         }
     }
 

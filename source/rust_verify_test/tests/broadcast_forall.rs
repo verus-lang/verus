@@ -204,8 +204,7 @@ const RING_ALGEBRA: &str = verus_code_str! {
             ensures p.inv() && (#[trigger] p.prev()).succ() == p
         { }
 
-        reveal_group! {
-        pub Ring_properties =>
+        pub broadcast group Ring_properties {
             Ring_succ,
             Ring_prev,
         }
@@ -286,8 +285,7 @@ const RING_ALGEBRA_MEMBERS: &str = verus_code_str! {
                 ensures p.inv() && (#[trigger] p.prev()).succ() == p
             { }
 
-            reveal_group! {
-            pub properties =>
+            pub broadcast group properties {
                 Ring::succ_ensures,
                 Ring::prev_ensures,
             }
@@ -474,8 +472,7 @@ const RING_ALGEBRA_MEMBERS_GENERIC: &str = verus_code_str! {
                 ensures p.inv() && (#[trigger] p.prev()).succ() == p
             { }
 
-            reveal_group! {
-            pub properties =>
+            pub broadcast group properties {
                 Ring::succ_ensures,
                 Ring::prev_ensures,
             }

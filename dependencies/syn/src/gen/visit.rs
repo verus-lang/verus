@@ -437,6 +437,9 @@ pub trait Visit<'ast> {
     fn visit_item(&mut self, i: &'ast Item) {
         visit_item(self, i);
     }
+    fn visit_item_broadcast_group(&mut self, i: &'ast ItemBroadcastGroup) {
+        visit_item_broadcast_group(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item_const(&mut self, i: &'ast ItemConst) {
         visit_item_const(self, i);
@@ -2558,6 +2561,9 @@ where
         ImplItem::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }
+        ImplItem::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2766,8 +2772,31 @@ where
         Item::Reveal(_binding_0) => {
             v.visit_item_reveal(_binding_0);
         }
+        Item::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
+    }
+}
+pub fn visit_item_broadcast_group<'ast, V>(v: &mut V, node: &'ast ItemBroadcastGroup)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_visibility(&node.vis);
+    tokens_helper(v, &(node.broadcast_group_tokens).0.span);
+    tokens_helper(v, &(node.broadcast_group_tokens).1.span);
+    v.visit_ident(&node.ident);
+    tokens_helper(v, &node.brace_token.span);
+    for el in Punctuated::pairs(&node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -2959,7 +2988,7 @@ where
     tokens_helper(v, &node.reveal_token.span);
     for el in Punctuated::pairs(&node.paths) {
         let (it, p) = el.into_tuple();
-        v.visit_expr_path(&**it);
+        v.visit_expr_path(it);
         if let Some(p) = p {
             tokens_helper(v, &p.spans);
         }

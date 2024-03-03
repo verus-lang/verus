@@ -1739,6 +1739,11 @@ impl Debug for ImplItem {
                 formatter.field(v0);
                 formatter.finish()
             }
+            ImplItem::BroadcastGroup(v0) => {
+                let mut formatter = formatter.debug_tuple("BroadcastGroup");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1981,9 +1986,27 @@ impl Debug for Item {
                 formatter.field(v0);
                 formatter.finish()
             }
+            Item::BroadcastGroup(v0) => {
+                let mut formatter = formatter.debug_tuple("BroadcastGroup");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ItemBroadcastGroup {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ItemBroadcastGroup");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("vis", &self.vis);
+        formatter.field("broadcast_group_tokens", &self.broadcast_group_tokens);
+        formatter.field("ident", &self.ident);
+        formatter.field("brace_token", &self.brace_token);
+        formatter.field("paths", &self.paths);
+        formatter.finish()
     }
 }
 #[cfg(feature = "full")]

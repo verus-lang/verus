@@ -447,6 +447,12 @@ pub trait Fold {
     fn fold_item(&mut self, i: Item) -> Item {
         fold_item(self, i)
     }
+    fn fold_item_broadcast_group(
+        &mut self,
+        i: ItemBroadcastGroup,
+    ) -> ItemBroadcastGroup {
+        fold_item_broadcast_group(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_item_const(&mut self, i: ItemConst) -> ItemConst {
         fold_item_const(self, i)
@@ -2327,6 +2333,9 @@ where
             ImplItem::Macro(f.fold_impl_item_macro(_binding_0))
         }
         ImplItem::Verbatim(_binding_0) => ImplItem::Verbatim(_binding_0),
+        ImplItem::BroadcastGroup(_binding_0) => {
+            ImplItem::BroadcastGroup(f.fold_item_broadcast_group(_binding_0))
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2505,8 +2514,30 @@ where
         Item::Verbatim(_binding_0) => Item::Verbatim(_binding_0),
         Item::Global(_binding_0) => Item::Global(f.fold_global(_binding_0)),
         Item::Reveal(_binding_0) => Item::Reveal(f.fold_item_reveal(_binding_0)),
+        Item::BroadcastGroup(_binding_0) => {
+            Item::BroadcastGroup(f.fold_item_broadcast_group(_binding_0))
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
+    }
+}
+pub fn fold_item_broadcast_group<F>(
+    f: &mut F,
+    node: ItemBroadcastGroup,
+) -> ItemBroadcastGroup
+where
+    F: Fold + ?Sized,
+{
+    ItemBroadcastGroup {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        vis: f.fold_visibility(node.vis),
+        broadcast_group_tokens: (
+            Token![broadcast](tokens_helper(f, &(node.broadcast_group_tokens).0.span)),
+            Token![group](tokens_helper(f, &(node.broadcast_group_tokens).1.span)),
+        ),
+        ident: f.fold_ident(node.ident),
+        brace_token: Brace(tokens_helper(f, &node.brace_token.span)),
+        paths: FoldHelper::lift(node.paths, |it| f.fold_expr_path(it)),
     }
 }
 #[cfg(feature = "full")]
@@ -2663,7 +2694,7 @@ where
     ItemReveal {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         reveal_token: Token![reveal](tokens_helper(f, &node.reveal_token.span)),
-        paths: FoldHelper::lift(node.paths, |it| Box::new(f.fold_expr_path(*it))),
+        paths: FoldHelper::lift(node.paths, |it| f.fold_expr_path(it)),
         semi: Token![;](tokens_helper(f, &node.semi.spans)),
     }
 }

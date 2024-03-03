@@ -3066,6 +3066,11 @@
           {
             "proc_macro2": "TokenStream"
           }
+        ],
+        "BroadcastGroup": [
+          {
+            "syn": "ItemBroadcastGroup"
+          }
         ]
       },
       "exhaustive": false
@@ -3429,9 +3434,54 @@
           {
             "syn": "ItemReveal"
           }
+        ],
+        "BroadcastGroup": [
+          {
+            "syn": "ItemBroadcastGroup"
+          }
         ]
       },
       "exhaustive": false
+    },
+    {
+      "ident": "ItemBroadcastGroup",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "vis": {
+          "syn": "Visibility"
+        },
+        "broadcast_group_tokens": {
+          "tuple": [
+            {
+              "token": "Broadcast"
+            },
+            {
+              "token": "BroadcastGroup"
+            }
+          ]
+        },
+        "ident": {
+          "proc_macro2": "Ident"
+        },
+        "brace_token": {
+          "group": "Brace"
+        },
+        "paths": {
+          "punctuated": {
+            "element": {
+              "syn": "ExprPath"
+            },
+            "punct": "Comma"
+          }
+        }
+      }
     },
     {
       "ident": "ItemConst",
@@ -3816,9 +3866,7 @@
         "paths": {
           "punctuated": {
             "element": {
-              "box": {
-                "syn": "ExprPath"
-              }
+              "syn": "ExprPath"
             },
             "punct": "Comma"
           }
@@ -6912,6 +6960,8 @@
     "BigOr": "|||",
     "Box": "box",
     "Break": "break",
+    "Broadcast": "broadcast",
+    "BroadcastGroup": "group",
     "By": "by",
     "Caret": "^",
     "CaretEq": "^=",

@@ -438,6 +438,9 @@ pub trait VisitMut {
     fn visit_item_mut(&mut self, i: &mut Item) {
         visit_item_mut(self, i);
     }
+    fn visit_item_broadcast_group_mut(&mut self, i: &mut ItemBroadcastGroup) {
+        visit_item_broadcast_group_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item_const_mut(&mut self, i: &mut ItemConst) {
         visit_item_const_mut(self, i);
@@ -2558,6 +2561,9 @@ where
         ImplItem::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }
+        ImplItem::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2760,8 +2766,31 @@ where
         Item::Reveal(_binding_0) => {
             v.visit_item_reveal_mut(_binding_0);
         }
+        Item::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
+    }
+}
+pub fn visit_item_broadcast_group_mut<V>(v: &mut V, node: &mut ItemBroadcastGroup)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_visibility_mut(&mut node.vis);
+    tokens_helper(v, &mut (node.broadcast_group_tokens).0.span);
+    tokens_helper(v, &mut (node.broadcast_group_tokens).1.span);
+    v.visit_ident_mut(&mut node.ident);
+    tokens_helper(v, &mut node.brace_token.span);
+    for el in Punctuated::pairs_mut(&mut node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -2953,7 +2982,7 @@ where
     tokens_helper(v, &mut node.reveal_token.span);
     for el in Punctuated::pairs_mut(&mut node.paths) {
         let (it, p) = el.into_tuple();
-        v.visit_expr_path_mut(&mut **it);
+        v.visit_expr_path_mut(it);
         if let Some(p) = p {
             tokens_helper(v, &mut p.spans);
         }
