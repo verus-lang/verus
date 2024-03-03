@@ -3,7 +3,9 @@ use crate::ast::{
     Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr,
     VirErrAs,
 };
-use crate::ast_util::{is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr};
+use crate::ast_util::{
+    fun_as_friendly_rust_name, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
+};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -1179,6 +1181,25 @@ pub fn check_crate(
         }
     }
 
+    for module in krate.modules.iter() {
+        if let Some(reveals) = &module.x.reveals {
+            for reveal in reveals.x.iter() {
+                if let Some(function) = funs.get(reveal) {
+                    if !function.x.attrs.broadcast_forall {
+                        return Err(error(
+                            &reveals.span,
+                            format!(
+                                "{} is not a broadcast proof fn",
+                                fun_as_friendly_rust_name(reveal)
+                            ),
+                        ));
+                    }
+                } else {
+                    assert!(reveal_groups.contains(reveal));
+                }
+            }
+        }
+    }
     let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;

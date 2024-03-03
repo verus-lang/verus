@@ -505,7 +505,7 @@ test_verify_one_file! {
         fn test<T: Tr>(x: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -535,7 +535,7 @@ test_verify_one_file! {
         fn test<T: Tr>(x: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -597,7 +597,7 @@ test_verify_one_file! {
         fn test<T: Tr>(x: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -626,7 +626,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {

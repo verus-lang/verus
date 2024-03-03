@@ -186,7 +186,7 @@ test_verify_one_file! {
         trait T { type X; }
         struct S(<Self as T>::X) where Self: T;
         impl T for S { type X = u8; }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 fn trait_assoc_type_bound_code(pass: bool) -> String {
@@ -374,7 +374,7 @@ test_verify_one_file! {
                 bool::a(v)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {

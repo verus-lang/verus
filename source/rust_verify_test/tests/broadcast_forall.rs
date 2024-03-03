@@ -449,7 +449,7 @@ test_verify_one_file! {
             {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 const RING_ALGEBRA_MEMBERS_GENERIC: &str = verus_code_str! {
