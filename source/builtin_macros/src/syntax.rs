@@ -1044,7 +1044,13 @@ impl Visitor {
             paths,
         } = item_broadcast_group;
         if self.erase_ghost.erase() {
-            TokenStream::new()
+            if matches!(vis, Visibility::Public(_)) {
+                quote_spanned! { span =>
+                    #vis fn #ident() { panic!() }
+                }
+            } else {
+                TokenStream::new()
+            }
         } else {
             let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(quote!(
                 ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); ))))
