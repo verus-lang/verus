@@ -51,8 +51,7 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
+pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] ar@.len()) == N,
 {

@@ -189,8 +189,7 @@ impl<A> Vec<A> {
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_spec_len<A>(v: Vec<A>)
+pub broadcast proof fn axiom_spec_len<A>(v: Vec<A>)
     ensures
         #[trigger] v.spec_len() == v.view().len(),
 {

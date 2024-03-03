@@ -1,4 +1,4 @@
-# Adding Ambient Facts to the Proof Environment with `broadcast_forall`
+# Adding Ambient Facts to the Proof Environment with `broadcast`
 
 In a typical Verus project,
 a developer might prove a fact 
@@ -31,8 +31,9 @@ fact slows the prover's overall performance.
 
 Suppose that after considering the impact on the solver's performance, the
 programmer decides to make the above fact about `reverse` ambient.  To do so,
-they can add the `#[verifier(broadcast_forall)]` attribute just before the
-definition of `seq_reverse_len`.  The effect is to introduce the following
+they can add the `broadcast` modifier in the
+definition of `seq_reverse_len`: `pub broadcast proof fn seq_reverse_len<A>(s: Seq<A>)`.
+The effect is to introduce the following
 quantified fact to the proof environment:
 ```rust
 forall |s| reverse(s).len() == s.len()
@@ -41,7 +42,7 @@ Because this introduces a quantifier, Verus will typically ask you to
 explicitly choose a trigger, e.g., by adding a `#[trigger]` annotation.
 Hence, the final version of our example might look like this:
 ```rust
-pub proof fn seq_reverse_len<A>(s: Seq<A>)
+pub broadcast proof fn seq_reverse_len<A>(s: Seq<A>)
     ensures
         #[trigger] reverse(s).len() == s.len(), 
 {
@@ -49,9 +50,6 @@ pub proof fn seq_reverse_len<A>(s: Seq<A>)
 }
 ```
 
-
-At present, the `#[broadcast_forall]` attribute can only be applied to
-axioms, i.e., proof functions that have been annotated with `#[verifier(external_body)]`
-to indicate that Verus should not verify them.
-In future, we plan to add support for verified proof functions as well.
-
+To bring this ambient lemma into scope, for a specific proof, or for an entire
+module, you can use `broadcast use seq_reverse_len;` or, in a proof, call
+the quantified fact directly in a proof with `seq_reverse_len(*)`.

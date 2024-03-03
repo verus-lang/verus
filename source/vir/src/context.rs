@@ -269,7 +269,7 @@ impl GlobalCtx {
             //   trait View { spec fn view(...) -> ...; }
             //   struct S;
             //   impl View for S { ... }
-            //   #[verifier::broadcast_forall] fn b<A: View>(a: A) ensures foo(a) { ... }
+            //   #[verus::internal(broadcast_forall)] fn b<A: View>(a: A) ensures foo(a) { ... }
             //   fn test(s: S) { assert(foo(s)); }
             // Here, there are no explicit dependencies in the call graph that force
             // TraitImpl for S: View to appear before "test" in the generated AIR code.

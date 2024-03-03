@@ -184,8 +184,7 @@ impl<A> Seq<A> {
 
 // Trusted axioms
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
+pub broadcast proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     requires
         0 <= i < s.len(),
     ensures
@@ -194,24 +193,21 @@ pub proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_empty<A>()
+pub broadcast proof fn axiom_seq_empty<A>()
     ensures
         #[trigger] Seq::<A>::empty().len() == 0,
 {
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
+pub broadcast proof fn axiom_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
 {
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
+pub broadcast proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
     requires
         0 <= i < len,
     ensures
@@ -220,16 +216,14 @@ pub proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
+pub broadcast proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
     ensures
         #[trigger] s.push(a).len() == s.len() + 1,
 {
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
+pub broadcast proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     requires
         i == s.len(),
     ensures
@@ -238,8 +232,7 @@ pub proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
+pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
     requires
         0 <= i < s.len(),
     ensures
@@ -248,8 +241,7 @@ pub proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
+pub broadcast proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
@@ -258,8 +250,7 @@ pub proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
+pub broadcast proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
@@ -268,8 +259,7 @@ pub proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
+pub broadcast proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
         0 <= i1 < s.len(),
         0 <= i2 < s.len(),
@@ -280,8 +270,7 @@ pub proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
+pub broadcast proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] (s1 =~= s2) <==> {
             &&& s1.len() == s2.len()
@@ -291,8 +280,7 @@ pub proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
+pub broadcast proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] (s1 =~~= s2) <==> {
             &&& s1.len() == s2.len()
@@ -302,8 +290,7 @@ pub proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
+pub broadcast proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
     ensures
@@ -312,8 +299,7 @@ pub proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
+pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
     requires
         0 <= j <= k <= s.len(),
         0 <= i < k - j,
@@ -323,16 +309,14 @@ pub proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
+pub broadcast proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] s1.add(s2).len() == s1.len() + s2.len(),
 {
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+pub broadcast proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= i < s1.len(),
     ensures
@@ -341,8 +325,7 @@ pub proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         s1.len() <= i < s1.len() + s2.len(),
     ensures

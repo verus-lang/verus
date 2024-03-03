@@ -1521,8 +1521,7 @@ test_verify_one_file! {
         spec fn t<A>() -> bool { true }
 
         #[verifier::external_body] /* vattr */
-        #[verifier::broadcast_forall] /* vattr */
-        proof fn f_not_g<A: T>()
+        broadcast proof fn f_not_g<A: T>()
             ensures
                 #[trigger] t::<A>(),
                 g::<A>(),
@@ -1583,8 +1582,7 @@ test_verify_one_file! {
         spec fn f<A>(i: int) -> bool;
 
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        proof fn p<A: T2<S<int>, u16>>(i: int)
+        broadcast proof fn p<A: T2<S<int>, u16>>(i: int)
             ensures f::<A>(i)
         {
         }
@@ -1613,9 +1611,8 @@ test_verify_one_file! {
             }
 
             // note the external_body isn't necessary here
-            #[verifier::broadcast_forall]
             #[verifier::external_body]
-            pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+            pub broadcast proof fn proves_false_requiring_trait_bound<T: Tr>()
                 ensures #[trigger] T::f() == !T::f(),
             {
                 T::bad();
@@ -1663,9 +1660,8 @@ test_verify_one_file! {
             proof fn bad() ensures false; // FAILS
         }
 
-        #[verifier::broadcast_forall]
         #[verifier::external_body]
-        pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+        pub broadcast proof fn proves_false_requiring_trait_bound<T: Tr>()
             ensures
                 #[trigger] T::f() == !T::f(),
         { }
@@ -2734,8 +2730,7 @@ test_verify_one_file! {
         spec fn t<A>() -> bool { true }
 
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        proof fn axiom_f<A: T>()
+        broadcast proof fn axiom_f<A: T>()
             ensures
                 #[trigger] t::<A>(),
         {
@@ -2760,8 +2755,7 @@ test_verify_one_file! {
         spec fn f<A>(i: int) -> bool { false }
 
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        proof fn p<A: T>(i: int)
+        broadcast proof fn p<A: T>(i: int)
             ensures f::<A>(i)
         {
         }
