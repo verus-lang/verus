@@ -440,6 +440,9 @@ pub trait Visit<'ast> {
     fn visit_item_broadcast_group(&mut self, i: &'ast ItemBroadcastGroup) {
         visit_item_broadcast_group(self, i);
     }
+    fn visit_item_broadcast_use(&mut self, i: &'ast ItemBroadcastUse) {
+        visit_item_broadcast_use(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item_const(&mut self, i: &'ast ItemConst) {
         visit_item_const(self, i);
@@ -475,9 +478,6 @@ pub trait Visit<'ast> {
     #[cfg(feature = "full")]
     fn visit_item_mod(&mut self, i: &'ast ItemMod) {
         visit_item_mod(self, i);
-    }
-    fn visit_item_reveal(&mut self, i: &'ast ItemReveal) {
-        visit_item_reveal(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_item_static(&mut self, i: &'ast ItemStatic) {
@@ -2770,7 +2770,7 @@ where
             v.visit_global(_binding_0);
         }
         Item::Reveal(_binding_0) => {
-            v.visit_item_reveal(_binding_0);
+            v.visit_item_broadcast_use(_binding_0);
         }
         Item::BroadcastGroup(_binding_0) => {
             v.visit_item_broadcast_group(_binding_0);
@@ -2798,6 +2798,24 @@ where
             tokens_helper(v, &p.spans);
         }
     }
+}
+pub fn visit_item_broadcast_use<'ast, V>(v: &mut V, node: &'ast ItemBroadcastUse)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &(node.broadcast_use_tokens).0.span);
+    tokens_helper(v, &(node.broadcast_use_tokens).1.span);
+    for el in Punctuated::pairs(&node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+    tokens_helper(v, &node.semi.spans);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_const<'ast, V>(v: &mut V, node: &'ast ItemConst)
@@ -2977,23 +2995,6 @@ where
     if let Some(it) = &node.semi {
         tokens_helper(v, &it.spans);
     }
-}
-pub fn visit_item_reveal<'ast, V>(v: &mut V, node: &'ast ItemReveal)
-where
-    V: Visit<'ast> + ?Sized,
-{
-    for it in &node.attrs {
-        v.visit_attribute(it);
-    }
-    tokens_helper(v, &node.reveal_token.span);
-    for el in Punctuated::pairs(&node.paths) {
-        let (it, p) = el.into_tuple();
-        v.visit_expr_path(it);
-        if let Some(p) = p {
-            tokens_helper(v, &p.spans);
-        }
-    }
-    tokens_helper(v, &node.semi.spans);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_static<'ast, V>(v: &mut V, node: &'ast ItemStatic)

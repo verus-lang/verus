@@ -157,7 +157,7 @@ fn check_item<'tcx>(
             if reveals.is_some() {
                 return err_span(
                     item.span,
-                    "only one module-level revealed allowed for each module",
+                    "only one module-level `broadcast use` allowed for each module",
                 );
             }
             let span = crate::spans::err_air_span(item.span);

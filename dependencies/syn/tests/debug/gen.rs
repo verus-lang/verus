@@ -4146,14 +4146,11 @@ impl Debug for Lite<syn::Item> {
                 Ok(())
             }
             syn::Item::Reveal(_val) => {
-                let mut formatter = formatter.debug_struct("Item::Reveal");
-                if !_val.attrs.is_empty() {
-                    formatter.field("attrs", Lite(&_val.attrs));
-                }
-                if !_val.paths.is_empty() {
-                    formatter.field("paths", Lite(&_val.paths));
-                }
-                formatter.finish()
+                formatter.write_str("Reveal")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
             }
             syn::Item::BroadcastGroup(_val) => {
                 let mut formatter = formatter.debug_struct("Item::BroadcastGroup");
@@ -4180,6 +4177,19 @@ impl Debug for Lite<syn::ItemBroadcastGroup> {
         }
         formatter.field("vis", Lite(&_val.vis));
         formatter.field("ident", Lite(&_val.ident));
+        if !_val.paths.is_empty() {
+            formatter.field("paths", Lite(&_val.paths));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ItemBroadcastUse> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ItemBroadcastUse");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
         if !_val.paths.is_empty() {
             formatter.field("paths", Lite(&_val.paths));
         }
@@ -4525,19 +4535,6 @@ impl Debug for Lite<syn::ItemMod> {
                 }
             }
             formatter.field("semi", Print::ref_cast(val));
-        }
-        formatter.finish()
-    }
-}
-impl Debug for Lite<syn::ItemReveal> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let _val = &self.value;
-        let mut formatter = formatter.debug_struct("ItemReveal");
-        if !_val.attrs.is_empty() {
-            formatter.field("attrs", Lite(&_val.attrs));
-        }
-        if !_val.paths.is_empty() {
-            formatter.field("paths", Lite(&_val.paths));
         }
         formatter.finish()
     }

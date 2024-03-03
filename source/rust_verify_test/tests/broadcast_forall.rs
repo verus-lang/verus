@@ -327,7 +327,7 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            reveal Ring_succ;
+            broadcast use Ring_succ;
 
             proof fn t2(p: Ring) requires p.inv() {
                 assert(p.succ().prev() == p);
@@ -342,7 +342,7 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            reveal Ring_properties;
+            broadcast use Ring_properties;
 
             proof fn t2(p: Ring) requires p.inv() {
                 assert(p.succ().prev() == p);
@@ -358,9 +358,24 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            reveal Ring_prev, Ring_succ;
+            broadcast use Ring_prev, Ring_succ;
 
             proof fn t2(p: Ring) requires p.inv() {
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_broadcast_use_stmt_3 RING_ALGEBRA.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            proof fn t2(p: Ring) requires p.inv() {
+                broadcast use Ring_prev, Ring_succ;
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -374,15 +389,15 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            reveal Ring_prev;
-            reveal Ring_succ;
+            broadcast use Ring_prev;
+            broadcast use Ring_succ;
 
             proof fn t2(p: Ring) requires p.inv() {
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "only one module-level revealed allowed for each module")
+    } => Err(err) => assert_vir_error_msg(err, "only one module-level `broadcast use` allowed for each module")
 }
 
 test_verify_one_file! {
@@ -398,7 +413,7 @@ test_verify_one_file! {
             use crate::mf::*;
             use crate::m2::*;
 
-            reveal q;
+            broadcast use q;
 
             pub broadcast proof fn p(i: int)
                 ensures f(i)
@@ -412,7 +427,7 @@ test_verify_one_file! {
             use crate::mf::*;
             use crate::m1::*;
 
-            reveal p;
+            broadcast use p;
 
             pub broadcast proof fn q(i: int)
                 ensures f(i)
@@ -469,7 +484,7 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            reveal Ring::properties;
+            broadcast use Ring::properties;
         }
     } => Ok(())
 }

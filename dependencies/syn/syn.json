@@ -3432,7 +3432,7 @@
         ],
         "Reveal": [
           {
-            "syn": "ItemReveal"
+            "syn": "ItemBroadcastUse"
           }
         ],
         "BroadcastGroup": [
@@ -3480,6 +3480,40 @@
             },
             "punct": "Comma"
           }
+        }
+      }
+    },
+    {
+      "ident": "ItemBroadcastUse",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "broadcast_use_tokens": {
+          "tuple": [
+            {
+              "token": "Broadcast"
+            },
+            {
+              "token": "Use"
+            }
+          ]
+        },
+        "paths": {
+          "punctuated": {
+            "element": {
+              "syn": "ExprPath"
+            },
+            "punct": "Comma"
+          }
+        },
+        "semi": {
+          "token": "Semi"
         }
       }
     },
@@ -3846,33 +3880,6 @@
           "option": {
             "token": "Semi"
           }
-        }
-      }
-    },
-    {
-      "ident": "ItemReveal",
-      "features": {
-        "any": []
-      },
-      "fields": {
-        "attrs": {
-          "vec": {
-            "syn": "Attribute"
-          }
-        },
-        "reveal_token": {
-          "token": "Reveal"
-        },
-        "paths": {
-          "punctuated": {
-            "element": {
-              "syn": "ExprPath"
-            },
-            "punct": "Comma"
-          }
-        },
-        "semi": {
-          "token": "Semi"
         }
       }
     },

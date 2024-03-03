@@ -251,9 +251,9 @@ ast_struct! {
 }
 
 ast_struct! {
-    pub struct ItemReveal {
+    pub struct ItemBroadcastUse {
         pub attrs: Vec<Attribute>,
-        pub reveal_token: Token![reveal],
+        pub broadcast_use_tokens: (Token![broadcast], Token![use]),
         pub paths: Punctuated<ExprPath, Token![,]>,
         pub semi: Token![;],
     }
@@ -961,10 +961,11 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for ItemReveal {
+    impl Parse for ItemBroadcastUse {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
-            let reveal_token: Token![reveal] = input.parse()?;
+            let broadcast_use_tokens: (Token![broadcast], Token![use]) =
+                (input.parse()?, input.parse()?);
             let mut paths = Punctuated::new();
             let semi = loop {
                 let path: ExprPath = input.parse()?;
@@ -978,9 +979,9 @@ pub mod parsing {
                 }
             };
 
-            Ok(ItemReveal {
+            Ok(ItemBroadcastUse {
                 attrs,
-                reveal_token,
+                broadcast_use_tokens,
                 paths,
                 semi,
             })
@@ -1343,16 +1344,17 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
-    impl ToTokens for ItemReveal {
+    impl ToTokens for ItemBroadcastUse {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
-            let ItemReveal {
+            let ItemBroadcastUse {
                 attrs: _,
-                reveal_token,
+                broadcast_use_tokens,
                 paths,
                 semi,
             } = self;
-            reveal_token.to_tokens(tokens);
+            broadcast_use_tokens.0.to_tokens(tokens);
+            broadcast_use_tokens.1.to_tokens(tokens);
             paths.to_tokens(tokens);
             semi.to_tokens(tokens);
         }

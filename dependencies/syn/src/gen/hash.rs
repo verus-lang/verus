@@ -1856,6 +1856,16 @@ impl Hash for ItemBroadcastGroup {
         self.paths.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ItemBroadcastUse {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.paths.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ItemConst {
@@ -1984,16 +1994,6 @@ impl Hash for ItemMod {
         self.ident.hash(state);
         self.content.hash(state);
         self.semi.hash(state);
-    }
-}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl Hash for ItemReveal {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.attrs.hash(state);
-        self.paths.hash(state);
     }
 }
 #[cfg(feature = "full")]

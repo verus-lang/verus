@@ -1376,6 +1376,17 @@ impl Clone for ItemBroadcastGroup {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ItemBroadcastUse {
+    fn clone(&self) -> Self {
+        ItemBroadcastUse {
+            attrs: self.attrs.clone(),
+            broadcast_use_tokens: self.broadcast_use_tokens.clone(),
+            paths: self.paths.clone(),
+            semi: self.semi.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ItemConst {
@@ -1505,17 +1516,6 @@ impl Clone for ItemMod {
             mod_token: self.mod_token.clone(),
             ident: self.ident.clone(),
             content: self.content.clone(),
-            semi: self.semi.clone(),
-        }
-    }
-}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
-impl Clone for ItemReveal {
-    fn clone(&self) -> Self {
-        ItemReveal {
-            attrs: self.attrs.clone(),
-            reveal_token: self.reveal_token.clone(),
-            paths: self.paths.clone(),
             semi: self.semi.clone(),
         }
     }

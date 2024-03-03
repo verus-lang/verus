@@ -1333,6 +1333,14 @@ impl PartialEq for ItemBroadcastGroup {
             && self.paths == other.paths
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ItemBroadcastUse {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ItemBroadcastUse {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.paths == other.paths
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ItemConst {}
@@ -1436,14 +1444,6 @@ impl PartialEq for ItemMod {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
             && self.content == other.content && self.semi == other.semi
-    }
-}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl Eq for ItemReveal {}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl PartialEq for ItemReveal {
-    fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.paths == other.paths
     }
 }
 #[cfg(feature = "full")]

@@ -441,6 +441,9 @@ pub trait VisitMut {
     fn visit_item_broadcast_group_mut(&mut self, i: &mut ItemBroadcastGroup) {
         visit_item_broadcast_group_mut(self, i);
     }
+    fn visit_item_broadcast_use_mut(&mut self, i: &mut ItemBroadcastUse) {
+        visit_item_broadcast_use_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item_const_mut(&mut self, i: &mut ItemConst) {
         visit_item_const_mut(self, i);
@@ -476,9 +479,6 @@ pub trait VisitMut {
     #[cfg(feature = "full")]
     fn visit_item_mod_mut(&mut self, i: &mut ItemMod) {
         visit_item_mod_mut(self, i);
-    }
-    fn visit_item_reveal_mut(&mut self, i: &mut ItemReveal) {
-        visit_item_reveal_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_item_static_mut(&mut self, i: &mut ItemStatic) {
@@ -2764,7 +2764,7 @@ where
             v.visit_global_mut(_binding_0);
         }
         Item::Reveal(_binding_0) => {
-            v.visit_item_reveal_mut(_binding_0);
+            v.visit_item_broadcast_use_mut(_binding_0);
         }
         Item::BroadcastGroup(_binding_0) => {
             v.visit_item_broadcast_group_mut(_binding_0);
@@ -2792,6 +2792,24 @@ where
             tokens_helper(v, &mut p.spans);
         }
     }
+}
+pub fn visit_item_broadcast_use_mut<V>(v: &mut V, node: &mut ItemBroadcastUse)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut (node.broadcast_use_tokens).0.span);
+    tokens_helper(v, &mut (node.broadcast_use_tokens).1.span);
+    for el in Punctuated::pairs_mut(&mut node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
+    tokens_helper(v, &mut node.semi.spans);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_const_mut<V>(v: &mut V, node: &mut ItemConst)
@@ -2971,23 +2989,6 @@ where
     if let Some(it) = &mut node.semi {
         tokens_helper(v, &mut it.spans);
     }
-}
-pub fn visit_item_reveal_mut<V>(v: &mut V, node: &mut ItemReveal)
-where
-    V: VisitMut + ?Sized,
-{
-    for it in &mut node.attrs {
-        v.visit_attribute_mut(it);
-    }
-    tokens_helper(v, &mut node.reveal_token.span);
-    for el in Punctuated::pairs_mut(&mut node.paths) {
-        let (it, p) = el.into_tuple();
-        v.visit_expr_path_mut(it);
-        if let Some(p) = p {
-            tokens_helper(v, &mut p.spans);
-        }
-    }
-    tokens_helper(v, &mut node.semi.spans);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_static_mut<V>(v: &mut V, node: &mut ItemStatic)

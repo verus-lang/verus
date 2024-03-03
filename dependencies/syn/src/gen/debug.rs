@@ -2009,6 +2009,17 @@ impl Debug for ItemBroadcastGroup {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ItemBroadcastUse {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ItemBroadcastUse");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("broadcast_use_tokens", &self.broadcast_use_tokens);
+        formatter.field("paths", &self.paths);
+        formatter.field("semi", &self.semi);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ItemConst {
@@ -2138,17 +2149,6 @@ impl Debug for ItemMod {
         formatter.field("mod_token", &self.mod_token);
         formatter.field("ident", &self.ident);
         formatter.field("content", &self.content);
-        formatter.field("semi", &self.semi);
-        formatter.finish()
-    }
-}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl Debug for ItemReveal {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let mut formatter = formatter.debug_struct("ItemReveal");
-        formatter.field("attrs", &self.attrs);
-        formatter.field("reveal_token", &self.reveal_token);
-        formatter.field("paths", &self.paths);
         formatter.field("semi", &self.semi);
         formatter.finish()
     }
