@@ -283,7 +283,9 @@ pub(crate) enum Attr {
     // global size_of
     SizeOfGlobal,
     // reveal item
-    ItemReveal,
+    ItemBroadcastUse,
+    // reveal item in a broadcast use
+    BroadcastUseReveal,
     // Marks generated -> functions that are unsupported because a field appears in multiple variants
     InternalGetFieldManyVariants,
 }
@@ -555,6 +557,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "reveal_fn" => {
                         v.push(Attr::InternalRevealFn)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "broadcast_use_reveal" => {
+                        v.push(Attr::BroadcastUseReveal)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
                         v.push(Attr::BroadcastForall)
                     }
@@ -574,7 +579,9 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::UnwrappedBinding)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "size_of" => v.push(Attr::SizeOfGlobal),
-                    AttrTree::Fun(_, arg, None) if arg == "item_reveal" => v.push(Attr::ItemReveal),
+                    AttrTree::Fun(_, arg, None) if arg == "item_broadcast_use" => {
+                        v.push(Attr::ItemBroadcastUse)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "get_field_many_variants" => {
                         v.push(Attr::InternalGetFieldManyVariants)
                     }
@@ -725,10 +732,11 @@ pub(crate) struct VerifierAttrs {
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
+    pub(crate) broadcast_use_reveal: bool,
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
-    pub(crate) item_reveal: bool,
+    pub(crate) item_broadcast_use: bool,
 }
 
 impl VerifierAttrs {
@@ -785,10 +793,11 @@ pub(crate) fn get_verifier_attrs(
         unwrapped_binding: false,
         sets_mode: false,
         internal_reveal_fn: false,
+        broadcast_use_reveal: false,
         trusted: false,
         size_of_global: false,
         internal_get_field_many_variants: false,
-        item_reveal: false,
+        item_broadcast_use: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -840,9 +849,10 @@ pub(crate) fn get_verifier_attrs(
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
+            Attr::BroadcastUseReveal => vs.broadcast_use_reveal = true,
             Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,
-            Attr::ItemReveal => vs.item_reveal = true,
+            Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
             _ => {}
         }

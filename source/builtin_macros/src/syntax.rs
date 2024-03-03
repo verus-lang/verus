@@ -824,7 +824,7 @@ impl Visitor {
                     (true, vec![])
                 } else {
                     let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
-                        quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); )
+                        quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
                     ))).collect();
                     let block = Stmt::Expr(Expr::Block(ExprBlock {
                         attrs: attrs.clone(),
@@ -1005,18 +1005,18 @@ impl Visitor {
                         }
                     }
                 }
-                Item::BroadcastUse(item_reveal) => {
+                Item::BroadcastUse(item_broadcast_use) => {
                     let span = item.span();
-                    let paths = &item_reveal.paths;
+                    let paths = &item_broadcast_use.paths;
                     if self.erase_ghost.erase() {
                         *item = Item::Verbatim(quote! { const _: () = (); });
                     } else {
                         let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
-                            quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); )
+                            quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
                         ))).collect();
                         let block = Block { brace_token: token::Brace { span }, stmts };
                         *item = Item::Verbatim(quote_spanned! { span =>
-                            #[verus::internal(item_reveal)] const _: () = #block;
+                            #[verus::internal(item_broadcast_use)] const _: () = #block;
                         });
                     }
                 }

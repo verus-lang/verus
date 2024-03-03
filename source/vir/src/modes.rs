@@ -1037,7 +1037,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, rhs, x_mode)?;
             Ok(x_mode)
         }
-        ExprX::Fuel(_, _) => {
+        ExprX::Fuel(_, _, _) => {
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use reveal/hide in exec mode")
                     .help("wrap the reveal call in a `proof` block"));

@@ -508,7 +508,7 @@ pub fn prune_krate_for_module(
                     body,
                     &mut |_scope_map, e: &Expr| {
                         match &e.x {
-                            ExprX::Fuel(path, fuel) if *fuel > 0 => {
+                            ExprX::Fuel(path, fuel, _is_broadcast_use) if *fuel > 0 => {
                                 revealed_functions.insert(path.clone());
                             }
                             _ => {}

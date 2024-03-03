@@ -2491,7 +2491,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         }
                         ItemKind::Const(_ty, _, body_id) | ItemKind::Static(_ty, _, body_id) => {
                             if vattrs.size_of_global
-                                || vattrs.item_reveal
+                                || vattrs.item_broadcast_use
                                 || vattrs.is_external(&ctxt.cmd_line_args)
                             {
                                 continue;

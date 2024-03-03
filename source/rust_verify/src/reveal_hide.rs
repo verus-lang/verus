@@ -29,8 +29,18 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     if block.stmts.len() != 1 || !matches!(block.stmts[0].kind, rustc_hir::StmtKind::Item(_)) {
         unsupported_err!(expr.span, "invalid reveal", &args);
     }
-    let Some(ExprKind::Path(QPath::Resolved(None, path))) = block.expr.as_ref().map(|x| &x.kind)
-    else {
+    let Some(block_expr) = block.expr.as_ref() else {
+        unsupported_err!(expr.span, "invalid reveal", &args);
+    };
+    let is_broadcast_use = {
+        let expr_attrs = ctxt.tcx.hir().attrs(block_expr.hir_id);
+        let expr_vattrs = crate::attributes::get_verifier_attrs(
+            expr_attrs,
+            Some(&mut *ctxt.diagnostics.borrow_mut()),
+        )?;
+        expr_vattrs.broadcast_use_reveal
+    };
+    let ExprKind::Path(QPath::Resolved(None, path)) = &block_expr.kind else {
         unsupported_err!(expr.span, "invalid reveal", &args);
     };
     let id = {
@@ -120,7 +130,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
             let header = Arc::new(HeaderExprX::Hide(fun));
             mk_expr(ExprX::Header(header))
         } else {
-            mk_expr(ExprX::Fuel(fun, fuel_n))
+            mk_expr(ExprX::Fuel(fun, fuel_n, is_broadcast_use))
         })
         .map(RevealHideResult::Expr)
     } else {

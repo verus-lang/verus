@@ -966,7 +966,7 @@ impl<A> Seq<Seq<A>> {
         ensures
             self.len() == 1 ==> self.flatten() == self.first(),
     {
-        reveal(Seq::add_empty_right);
+        broadcast use Seq::add_empty_right;
         if self.len() == 1 {
             assert(self.flatten() =~= self.first().add(self.drop_first().flatten()));
         }
@@ -1017,8 +1017,7 @@ impl<A> Seq<Seq<A>> {
             self.flatten() == self.flatten_alt(),
         decreases self.len(),
     {
-        reveal(Seq::add_empty_right);
-        reveal(Seq::push_distributes_over_add);
+        broadcast use Seq::add_empty_right, Seq::push_distributes_over_add;
         if self.len() != 0 {
             self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
             seq![self.last()].lemma_flatten_one_element();

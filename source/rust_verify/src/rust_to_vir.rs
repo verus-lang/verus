@@ -83,8 +83,8 @@ fn check_item<'tcx>(
         if vattrs.size_of_global {
             return Ok(()); // handled earlier
         }
-        if vattrs.item_reveal {
-            let err = crate::util::err_span(item.span, "invalid module-level reveals");
+        if vattrs.item_broadcast_use {
+            let err = crate::util::err_span(item.span, "invalid module-level broadcast use");
             let ItemKind::Const(_ty, generics, body_id) = item.kind else {
                 return err;
             };
@@ -105,7 +105,8 @@ fn check_item<'tcx>(
                 .stmts
                 .iter()
                 .map(|stmt| {
-                    let err = crate::util::err_span(item.span, "invalid module-level reveals");
+                    let err =
+                        crate::util::err_span(item.span, "invalid module-level broadcast use");
 
                     let rustc_hir::StmtKind::Semi(expr) = stmt.kind else {
                         return err;
@@ -146,7 +147,7 @@ fn check_item<'tcx>(
                 .collect::<Result<Vec<_>, _>>()?;
 
             let Some(Some(mpath)) = mpath else {
-                unsupported_err!(item.span, "unsupported reveal here", item);
+                unsupported_err!(item.span, "unsupported broadcast use here", item);
             };
             let module = vir
                 .modules

@@ -743,7 +743,7 @@ pub enum ExprX {
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
-    Fuel(Fun, u32),
+    Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.

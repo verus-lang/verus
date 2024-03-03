@@ -376,25 +376,34 @@ fn check_one_expr(
 
             crate::closures::check_closure_well_formed(expr)?;
         }
-        ExprX::Fuel(f, fuel) => {
+        ExprX::Fuel(f, fuel, is_broadcast_use) => {
             if ctxt.reveal_groups.contains(f) && *fuel == 1 {
                 return Ok(());
             }
             let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
-            if f.x.mode != Mode::Spec && !f.x.attrs.broadcast_forall {
-                return Err(error(
-                    &expr.span,
-                    &format!(
-                        "reveal/fuel statements require a spec-mode function or broadcast_forall function, got {:}-mode function",
-                        f.x.mode
-                    ),
-                ));
-            }
-            if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decrease.is_empty()) {
-                return Err(error(
-                    &expr.span,
-                    "reveal_with_fuel statements require a spec function with a decreases clause",
-                ));
+            if *is_broadcast_use {
+                if !f.x.attrs.broadcast_forall {
+                    return Err(error(
+                        &expr.span,
+                        &format!("`broadcast use` statements require a broadcast proof fn",),
+                    ));
+                }
+            } else {
+                if f.x.mode != Mode::Spec {
+                    return Err(error(
+                        &expr.span,
+                        &format!(
+                            "reveal/fuel statements require a spec-mode function, got {:}-mode function",
+                            f.x.mode
+                        ),
+                    ));
+                }
+                if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decrease.is_empty()) {
+                    return Err(error(
+                        &expr.span,
+                        "reveal_with_fuel statements require a spec function with a decreases clause",
+                    ));
+                }
             }
         }
         ExprX::ExecFnByName(fun) => {

@@ -15,7 +15,7 @@ test_verify_one_file! {
         }
 
         proof fn test1() {
-            reveal(p);
+            broadcast use p;
             assert(f(10));
         }
 
@@ -36,7 +36,7 @@ test_verify_one_file! {
         }
 
         proof fn test1() {
-            reveal(p);
+            broadcast use p;
             assert(f(10));
         }
     } => Err(err) => assert_one_fails(err)
@@ -50,7 +50,7 @@ test_verify_one_file! {
         broadcast proof fn p1(i: int)
             ensures f(i)
         {
-            reveal(p2);
+            broadcast use p2;
         }
 
         broadcast proof fn p2(i: int)
@@ -69,9 +69,9 @@ test_verify_one_file! {
             ensures f(i)
             decreases i
         {
-            reveal(p);
+            broadcast use p;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot recursively reveal broadcast_forall")
+    } => Err(err) => assert_vir_error_msg(err, "cannot recursively use a broadcast proof fn")
 }
 
 test_verify_one_file! {
@@ -83,16 +83,16 @@ test_verify_one_file! {
             ensures f(i)
             decreases i
         {
-            reveal(q);
+            broadcast use q;
         }
 
         broadcast proof fn q(i: int)
             ensures f(i)
             decreases i
         {
-            reveal(p);
+            broadcast use p;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot recursively reveal broadcast_forall")
+    } => Err(err) => assert_vir_error_msg(err, "cannot recursively use a broadcast proof fn")
 }
 
 test_verify_one_file! {
@@ -111,9 +111,9 @@ test_verify_one_file! {
             ensures f(i)
             decreases i
         {
-            reveal(p);
+            broadcast use p;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot recursively reveal broadcast_forall")
+    } => Err(err) => assert_vir_error_msg(err, "cannot recursively use a broadcast proof fn")
 }
 
 test_verify_one_file! {
@@ -211,12 +211,12 @@ test_verify_one_file! {
             }
 
             proof fn t2(p: Ring) requires p.inv() {
-                reveal(Ring_succ);
+                broadcast use Ring_succ;
                 assert(p.succ().prev() == p);
             }
 
             proof fn t3(p: Ring) requires p.inv() {
-                reveal(Ring_succ);
+                broadcast use Ring_succ;
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p); // FAILS
             }
@@ -226,14 +226,13 @@ test_verify_one_file! {
             }
 
             proof fn t5(p: Ring) requires p.inv() {
-                reveal(Ring_succ);
-                reveal(Ring_prev);
+                broadcast use Ring_succ, Ring_prev;
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
 
             proof fn t6(p: Ring) requires p.inv() {
-                reveal(Ring_properties);
+                broadcast use Ring_properties;
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -291,12 +290,12 @@ test_verify_one_file! {
             }
 
             proof fn t2(p: Ring) requires p.inv() {
-                reveal(Ring::succ_ensures);
+                broadcast use Ring::succ_ensures;
                 assert(p.succ().prev() == p);
             }
 
             proof fn t3(p: Ring) requires p.inv() {
-                reveal(Ring::succ_ensures);
+                broadcast use Ring::succ_ensures;
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p); // FAILS
             }
@@ -306,14 +305,13 @@ test_verify_one_file! {
             }
 
             proof fn t5(p: Ring) requires p.inv() {
-                reveal(Ring::succ_ensures);
-                reveal(Ring::prev_ensures);
+                broadcast use Ring::succ_ensures, Ring::prev_ensures;
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
 
             proof fn t6(p: Ring) requires p.inv() {
-                reveal(Ring::properties);
+                broadcast use Ring::properties;
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -381,6 +379,22 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ring_algebra_reveal_broadcast RING_ALGEBRA.to_string() + verus_code_str! {
+        mod m2 {
+            use builtin::*;
+            use crate::ring::*;
+
+            proof fn t2(p: Ring) requires p.inv() {
+                reveal(Ring_prev);
+                reveal(Ring_succ);
+                assert(p.succ().prev() == p);
+                assert(p.prev().succ() == p);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statements require a spec-mode function, got proof-mode function")
 }
 
 test_verify_one_file! {

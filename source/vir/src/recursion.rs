@@ -405,7 +405,7 @@ fn check_termination<'a>(
                 // This isn't needed for soundness, since the broadcast_forall axiom isn't
                 // declared until after this SCC, but we might as well signal an error,
                 // since this reveal will have no effect.
-                return Err(error(&s.span, "cannot recursively reveal broadcast_forall"));
+                return Err(error(&s.span, "cannot recursively use a broadcast proof fn"));
             }
             Ok(s.clone())
         }
@@ -547,7 +547,7 @@ pub(crate) fn expand_call_graph(
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
             }
-            ExprX::Fuel(callee, fuel) if *fuel >= 1 => {
+            ExprX::Fuel(callee, fuel, _is_broadcast_use) if *fuel >= 1 => {
                 let broadcast_forall =
                     reveal_group_set.contains(callee) || func_map[callee].x.attrs.broadcast_forall;
                 if broadcast_forall {

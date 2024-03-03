@@ -317,7 +317,7 @@ fn create_reveal_group<'tcx>(
             let mut members: Vec<Fun> = Vec::new();
             for stmt in stmts.iter() {
                 if let vir::ast::StmtX::Expr(expr) = &stmt.x {
-                    if let vir::ast::ExprX::Fuel(f, 1) = &expr.x {
+                    if let vir::ast::ExprX::Fuel(f, 1, _is_broadcast_use) = &expr.x {
                         members.push(f.clone());
                         continue;
                     }
