@@ -309,11 +309,12 @@ pub(crate) fn parse_attrs(
     let diagnostics = &mut diagnostics;
     let mut v: Vec<Attr> = Vec::new();
     for (prefix, span, attr) in attrs_to_trees(attrs)? {
-        let mut report_deprecated = |attr_name: &str| {
+        let mut report_deprecated = |attr_name: &str, msg: &str| {
             if let Some(diagnostics) = diagnostics {
-                diagnostics.push(VirErrAs::Warning(
-                    crate::util::err_span_bare(span, format!("#[verifier({attr_name})] is deprecated, use `open spec fn` and `closed spec fn` instead"))
-                ));
+                diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+                    span,
+                    format!("#[verifier({attr_name})] is deprecated, {msg}"),
+                )));
             }
         };
 
@@ -350,7 +351,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "publish" => {
-                    report_deprecated("publish");
+                    report_deprecated("publish", "use `open spec fn` and `closed spec fn` instead");
                     v.push(Attr::Publish(true))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
@@ -405,6 +406,7 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::AcceptRecursiveTypes(Some(ident.clone())))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
+                    report_deprecated("broadcast_forall", "use `broadcast proof fn` instead");
                     v.push(Attr::BroadcastForall)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "hidden_unless_this_module_is_used" => {
@@ -552,6 +554,9 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "reveal_fn" => {
                         v.push(Attr::InternalRevealFn)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
+                        v.push(Attr::BroadcastForall)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "for_loop" => v.push(Attr::ForLoop),
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
