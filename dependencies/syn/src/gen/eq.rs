@@ -194,6 +194,14 @@ impl PartialEq for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for BroadcastUse {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for BroadcastUse {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.paths == other.paths
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for Closed {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Closed {
@@ -1316,7 +1324,7 @@ impl PartialEq for Item {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
             (Item::Global(self0), Item::Global(other0)) => self0 == other0,
-            (Item::Reveal(self0), Item::Reveal(other0)) => self0 == other0,
+            (Item::BroadcastUse(self0), Item::BroadcastUse(other0)) => self0 == other0,
             (Item::BroadcastGroup(self0), Item::BroadcastGroup(other0)) => {
                 self0 == other0
             }
@@ -1331,14 +1339,6 @@ impl PartialEq for ItemBroadcastGroup {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
             && self.paths == other.paths
-    }
-}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl Eq for ItemBroadcastUse {}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl PartialEq for ItemBroadcastUse {
-    fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.paths == other.paths
     }
 }
 #[cfg(feature = "full")]

@@ -1,4 +1,4 @@
-use self::verus::ItemBroadcastUse;
+use self::verus::BroadcastUse;
 
 use super::*;
 use crate::derive::{Data, DataEnum, DataStruct, DataUnion, DeriveInput};
@@ -80,7 +80,7 @@ ast_enum_of_structs! {
         Global(Global),
 
         /// Item-level reveal
-        Reveal(ItemBroadcastUse),
+        BroadcastUse(BroadcastUse),
 
         /// Broadcast group definition
         BroadcastGroup(ItemBroadcastGroup),
@@ -401,7 +401,7 @@ impl Item {
             | Item::Macro(ItemMacro { attrs, .. })
             | Item::Macro2(ItemMacro2 { attrs, .. })
             | Item::Global(Global { attrs, .. })
-            | Item::Reveal(ItemBroadcastUse { attrs, .. })
+            | Item::BroadcastUse(BroadcastUse { attrs, .. })
             | Item::BroadcastGroup(ItemBroadcastGroup { attrs, .. }) => mem::replace(attrs, new),
             Item::Verbatim(_) => Vec::new(),
 
@@ -1252,7 +1252,7 @@ pub mod parsing {
             } else if lookahead.peek(Token![global]) {
                 input.parse().map(Item::Global)
             } else if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![use]) {
-                input.parse().map(Item::Reveal)
+                input.parse().map(Item::BroadcastUse)
             } else if lookahead.peek(Token![macro]) {
                 input.parse().map(Item::Macro2)
             } else if vis.is_inherited()

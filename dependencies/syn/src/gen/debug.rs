@@ -363,6 +363,17 @@ impl Debug for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for BroadcastUse {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("BroadcastUse");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("broadcast_use_tokens", &self.broadcast_use_tokens);
+        formatter.field("paths", &self.paths);
+        formatter.field("semi", &self.semi);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for Closed {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Closed");
@@ -1981,8 +1992,8 @@ impl Debug for Item {
                 formatter.field(v0);
                 formatter.finish()
             }
-            Item::Reveal(v0) => {
-                let mut formatter = formatter.debug_tuple("Reveal");
+            Item::BroadcastUse(v0) => {
+                let mut formatter = formatter.debug_tuple("BroadcastUse");
                 formatter.field(v0);
                 formatter.finish()
             }
@@ -2006,17 +2017,6 @@ impl Debug for ItemBroadcastGroup {
         formatter.field("ident", &self.ident);
         formatter.field("brace_token", &self.brace_token);
         formatter.field("paths", &self.paths);
-        formatter.finish()
-    }
-}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl Debug for ItemBroadcastUse {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let mut formatter = formatter.debug_struct("ItemBroadcastUse");
-        formatter.field("attrs", &self.attrs);
-        formatter.field("broadcast_use_tokens", &self.broadcast_use_tokens);
-        formatter.field("paths", &self.paths);
-        formatter.field("semi", &self.semi);
         formatter.finish()
     }
 }

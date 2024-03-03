@@ -89,6 +89,9 @@ pub trait Visit<'ast> {
     fn visit_bound_lifetimes(&mut self, i: &'ast BoundLifetimes) {
         visit_bound_lifetimes(self, i);
     }
+    fn visit_broadcast_use(&mut self, i: &'ast BroadcastUse) {
+        visit_broadcast_use(self, i);
+    }
     fn visit_closed(&mut self, i: &'ast Closed) {
         visit_closed(self, i);
     }
@@ -439,9 +442,6 @@ pub trait Visit<'ast> {
     }
     fn visit_item_broadcast_group(&mut self, i: &'ast ItemBroadcastGroup) {
         visit_item_broadcast_group(self, i);
-    }
-    fn visit_item_broadcast_use(&mut self, i: &'ast ItemBroadcastUse) {
-        visit_item_broadcast_use(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_item_const(&mut self, i: &'ast ItemConst) {
@@ -1236,6 +1236,24 @@ where
         }
     }
     tokens_helper(v, &node.gt_token.spans);
+}
+pub fn visit_broadcast_use<'ast, V>(v: &mut V, node: &'ast BroadcastUse)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &(node.broadcast_use_tokens).0.span);
+    tokens_helper(v, &(node.broadcast_use_tokens).1.span);
+    for el in Punctuated::pairs(&node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+    tokens_helper(v, &node.semi.spans);
 }
 pub fn visit_closed<'ast, V>(v: &mut V, node: &'ast Closed)
 where
@@ -2769,8 +2787,8 @@ where
         Item::Global(_binding_0) => {
             v.visit_global(_binding_0);
         }
-        Item::Reveal(_binding_0) => {
-            v.visit_item_broadcast_use(_binding_0);
+        Item::BroadcastUse(_binding_0) => {
+            v.visit_broadcast_use(_binding_0);
         }
         Item::BroadcastGroup(_binding_0) => {
             v.visit_item_broadcast_group(_binding_0);
@@ -2798,24 +2816,6 @@ where
             tokens_helper(v, &p.spans);
         }
     }
-}
-pub fn visit_item_broadcast_use<'ast, V>(v: &mut V, node: &'ast ItemBroadcastUse)
-where
-    V: Visit<'ast> + ?Sized,
-{
-    for it in &node.attrs {
-        v.visit_attribute(it);
-    }
-    tokens_helper(v, &(node.broadcast_use_tokens).0.span);
-    tokens_helper(v, &(node.broadcast_use_tokens).1.span);
-    for el in Punctuated::pairs(&node.paths) {
-        let (it, p) = el.into_tuple();
-        v.visit_expr_path(it);
-        if let Some(p) = p {
-            tokens_helper(v, &p.spans);
-        }
-    }
-    tokens_helper(v, &node.semi.spans);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_const<'ast, V>(v: &mut V, node: &'ast ItemConst)

@@ -87,6 +87,9 @@ pub trait Fold {
     fn fold_bound_lifetimes(&mut self, i: BoundLifetimes) -> BoundLifetimes {
         fold_bound_lifetimes(self, i)
     }
+    fn fold_broadcast_use(&mut self, i: BroadcastUse) -> BroadcastUse {
+        fold_broadcast_use(self, i)
+    }
     fn fold_closed(&mut self, i: Closed) -> Closed {
         fold_closed(self, i)
     }
@@ -452,9 +455,6 @@ pub trait Fold {
         i: ItemBroadcastGroup,
     ) -> ItemBroadcastGroup {
         fold_item_broadcast_group(self, i)
-    }
-    fn fold_item_broadcast_use(&mut self, i: ItemBroadcastUse) -> ItemBroadcastUse {
-        fold_item_broadcast_use(self, i)
     }
     #[cfg(feature = "full")]
     fn fold_item_const(&mut self, i: ItemConst) -> ItemConst {
@@ -1246,6 +1246,20 @@ where
         lt_token: Token![<](tokens_helper(f, &node.lt_token.spans)),
         lifetimes: FoldHelper::lift(node.lifetimes, |it| f.fold_lifetime_def(it)),
         gt_token: Token![>](tokens_helper(f, &node.gt_token.spans)),
+    }
+}
+pub fn fold_broadcast_use<F>(f: &mut F, node: BroadcastUse) -> BroadcastUse
+where
+    F: Fold + ?Sized,
+{
+    BroadcastUse {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        broadcast_use_tokens: (
+            Token![broadcast](tokens_helper(f, &(node.broadcast_use_tokens).0.span)),
+            Token![use](tokens_helper(f, &(node.broadcast_use_tokens).1.span)),
+        ),
+        paths: FoldHelper::lift(node.paths, |it| f.fold_expr_path(it)),
+        semi: Token![;](tokens_helper(f, &node.semi.spans)),
     }
 }
 pub fn fold_closed<F>(f: &mut F, node: Closed) -> Closed
@@ -2513,7 +2527,9 @@ where
         Item::Use(_binding_0) => Item::Use(f.fold_item_use(_binding_0)),
         Item::Verbatim(_binding_0) => Item::Verbatim(_binding_0),
         Item::Global(_binding_0) => Item::Global(f.fold_global(_binding_0)),
-        Item::Reveal(_binding_0) => Item::Reveal(f.fold_item_broadcast_use(_binding_0)),
+        Item::BroadcastUse(_binding_0) => {
+            Item::BroadcastUse(f.fold_broadcast_use(_binding_0))
+        }
         Item::BroadcastGroup(_binding_0) => {
             Item::BroadcastGroup(f.fold_item_broadcast_group(_binding_0))
         }
@@ -2538,20 +2554,6 @@ where
         ident: f.fold_ident(node.ident),
         brace_token: Brace(tokens_helper(f, &node.brace_token.span)),
         paths: FoldHelper::lift(node.paths, |it| f.fold_expr_path(it)),
-    }
-}
-pub fn fold_item_broadcast_use<F>(f: &mut F, node: ItemBroadcastUse) -> ItemBroadcastUse
-where
-    F: Fold + ?Sized,
-{
-    ItemBroadcastUse {
-        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
-        broadcast_use_tokens: (
-            Token![broadcast](tokens_helper(f, &(node.broadcast_use_tokens).0.span)),
-            Token![use](tokens_helper(f, &(node.broadcast_use_tokens).1.span)),
-        ),
-        paths: FoldHelper::lift(node.paths, |it| f.fold_expr_path(it)),
-        semi: Token![;](tokens_helper(f, &node.semi.spans)),
     }
 }
 #[cfg(feature = "full")]

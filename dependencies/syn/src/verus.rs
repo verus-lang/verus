@@ -251,7 +251,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    pub struct ItemBroadcastUse {
+    pub struct BroadcastUse {
         pub attrs: Vec<Attribute>,
         pub broadcast_use_tokens: (Token![broadcast], Token![use]),
         pub paths: Punctuated<ExprPath, Token![,]>,
@@ -961,7 +961,7 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for ItemBroadcastUse {
+    impl Parse for BroadcastUse {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
             let broadcast_use_tokens: (Token![broadcast], Token![use]) =
@@ -979,7 +979,7 @@ pub mod parsing {
                 }
             };
 
-            Ok(ItemBroadcastUse {
+            Ok(BroadcastUse {
                 attrs,
                 broadcast_use_tokens,
                 paths,
@@ -1344,10 +1344,10 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
-    impl ToTokens for ItemBroadcastUse {
+    impl ToTokens for BroadcastUse {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
-            let ItemBroadcastUse {
+            let BroadcastUse {
                 attrs: _,
                 broadcast_use_tokens,
                 paths,

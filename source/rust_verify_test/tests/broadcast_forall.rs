@@ -369,7 +369,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ring_algebra_broadcast_use_stmt_3 RING_ALGEBRA.to_string() + verus_code_str! {
+    #[test] test_ring_algebra_broadcast_use_stmt_1 RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
             use builtin::*;
             use crate::ring::*;

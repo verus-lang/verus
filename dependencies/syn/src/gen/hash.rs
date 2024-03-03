@@ -290,6 +290,16 @@ impl Hash for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for BroadcastUse {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.paths.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for Closed {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -1831,7 +1841,7 @@ impl Hash for Item {
                 state.write_u8(17u8);
                 v0.hash(state);
             }
-            Item::Reveal(v0) => {
+            Item::BroadcastUse(v0) => {
                 state.write_u8(18u8);
                 v0.hash(state);
             }
@@ -1853,16 +1863,6 @@ impl Hash for ItemBroadcastGroup {
         self.attrs.hash(state);
         self.vis.hash(state);
         self.ident.hash(state);
-        self.paths.hash(state);
-    }
-}
-#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-impl Hash for ItemBroadcastUse {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.attrs.hash(state);
         self.paths.hash(state);
     }
 }

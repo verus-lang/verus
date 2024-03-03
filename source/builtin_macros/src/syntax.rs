@@ -19,6 +19,8 @@ use syn_verus::visit_mut::{
     visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
     visit_specification_mut, visit_trait_item_method_mut, VisitMut,
 };
+use syn_verus::BroadcastUse;
+use syn_verus::ExprBlock;
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
@@ -813,8 +815,25 @@ impl Visitor {
     }
 
     fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
+        let span = stmt.span();
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
+            Stmt::Item(Item::BroadcastUse(broadcast_use)) => {
+                let BroadcastUse { attrs, broadcast_use_tokens: _, paths, semi: _ } = broadcast_use;
+                if self.erase_ghost.erase() {
+                    (true, vec![])
+                } else {
+                    let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
+                        quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); )
+                    ))).collect();
+                    let block = Stmt::Expr(Expr::Block(ExprBlock {
+                        attrs: attrs.clone(),
+                        label: None,
+                        block: Block { brace_token: token::Brace(span), stmts },
+                    }));
+                    (true, vec![block])
+                }
+            }
             _ => (false, vec![]),
         }
     }
@@ -986,7 +1005,7 @@ impl Visitor {
                         }
                     }
                 }
-                Item::Reveal(item_reveal) => {
+                Item::BroadcastUse(item_reveal) => {
                     let span = item.span();
                     let paths = &item_reveal.paths;
                     if self.erase_ghost.erase() {
