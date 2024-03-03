@@ -81,11 +81,11 @@ pub open spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
 
 // This axiom is slightly better than defining spec_vec_len to just be `v@.len() as usize`
 // (the axiom also shows that v@.len() is in-bounds for usize)
-#[verifier(external_body)]
 pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
     ensures
         #[trigger] spec_vec_len(v) == v@.len(),
 {
+    admit();
 }
 
 #[verifier::external_fn_specification]
@@ -253,6 +253,11 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
         len > vec.len() ==> vec@ == old(vec)@,
 {
     vec.truncate(len)
+}
+
+#[verifier::prune_unless_this_module_is_used]
+pub broadcast group vec_axioms {
+    axiom_spec_len,
 }
 
 } // verus!

@@ -52,11 +52,11 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
     &ar[i]
 }
 
-#[verifier(external_body)]
 pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] ar@.len()) == N,
 {
+    admit();
 }
 
 // Referenced by Verus' internal encoding for array literals
@@ -93,6 +93,11 @@ pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
         ar@ == out@,
 {
     ar.as_slice()
+}
+
+#[verifier::prune_unless_this_module_is_used]
+pub broadcast group array_axioms {
+    array_len_matches_n,
 }
 
 } // verus!

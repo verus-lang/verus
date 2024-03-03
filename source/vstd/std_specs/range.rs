@@ -148,7 +148,6 @@ macro_rules! step_specs {
         }
         // TODO: we might be able to make this generic over A: StepSpec
         // once we settle on a way to connect std traits like Step with spec traits like StepSpec.
-        #[verifier::external_body]
         pub broadcast proof fn $axiom(range: Range<$t>)
             ensures
                 range.start.spec_is_lt(range.end) ==>
@@ -161,6 +160,7 @@ macro_rules! step_specs {
                 !range.start.spec_is_lt(range.end) ==>
                     #[trigger] spec_range_next(range) == (range, None::<$t>),
         {
+            admit();
         }
         } // verus!
     };
@@ -178,3 +178,23 @@ step_specs!(i32, axiom_spec_range_next_i32);
 step_specs!(i64, axiom_spec_range_next_i64);
 step_specs!(i128, axiom_spec_range_next_i128);
 step_specs!(isize, axiom_spec_range_next_isize);
+
+verus! {
+
+#[verifier::prune_unless_this_module_is_used]
+pub broadcast group range_axioms {
+    axiom_spec_range_next_u8,
+    axiom_spec_range_next_u16,
+    axiom_spec_range_next_u32,
+    axiom_spec_range_next_u64,
+    axiom_spec_range_next_u128,
+    axiom_spec_range_next_usize,
+    axiom_spec_range_next_i8,
+    axiom_spec_range_next_i16,
+    axiom_spec_range_next_i32,
+    axiom_spec_range_next_i64,
+    axiom_spec_range_next_i128,
+    axiom_spec_range_next_isize,
+}
+
+} // verus!

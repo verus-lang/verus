@@ -12,6 +12,8 @@ use crate::view::*;
 
 verus! {
 
+broadcast use seq_axioms;
+
 // Conversion between u16 and little-endian byte sequences
 pub closed spec fn spec_u16_to_le_bytes(x: u16) -> Seq<u8> {
     #[verusfmt::skip]
@@ -28,6 +30,7 @@ pub closed spec fn spec_u16_from_le_bytes(s: Seq<u8>) -> u16
     (s[0] as u16) | (s[1] as u16) << 8
 }
 
+#[verifier::spinoff_prover]
 pub proof fn lemma_auto_spec_u16_to_from_le_bytes()
     ensures
         forall|x: u16|
@@ -113,7 +116,6 @@ pub closed spec fn spec_u32_from_le_bytes(s: Seq<u8>) -> u32
     (s[0] as u32) | (s[1] as u32) << 8 | (s[2] as u32) << 16 | (s[3] as u32) << 24
 }
 
-#[verifier::spinoff_prover]
 pub proof fn lemma_auto_spec_u32_to_from_le_bytes()
     ensures
         forall|x: u32|
@@ -221,6 +223,7 @@ pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
     (s[7] as u64) << 56
 }
 
+#[verifier::spinoff_prover]
 pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
     ensures
         forall|x: u64|

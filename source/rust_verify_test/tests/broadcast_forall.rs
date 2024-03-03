@@ -155,6 +155,7 @@ test_verify_one_file! {
 
             #[inductive(stuff)]
             fn stuff_inductive(pre: Self, post: Self) {
+                broadcast use f_is_true;
                 assert(f());
             }
         }}

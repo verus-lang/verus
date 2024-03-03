@@ -54,11 +54,11 @@ pub fn ex_option_from_residual<T>(option: Option<Infallible>) -> (option2: Optio
 
 pub spec fn spec_from<S, T>(value: T, ret: S) -> bool;
 
-#[verifier::external_body]
 pub broadcast proof fn spec_from_blanket_identity<T>(t: T, s: T)
     ensures
         spec_from::<T, T>(t, s) ==> t == s,
 {
+    admit();
 }
 
 #[verifier::external_fn_specification]
@@ -73,6 +73,11 @@ pub fn ex_result_from_residual<T, E, F: From<E>>(result: Result<Infallible, E>) 
         },
 {
     Result::from_residual(result)
+}
+
+#[verifier::prune_unless_this_module_is_used]
+pub broadcast group control_flow_axioms {
+    spec_from_blanket_identity,
 }
 
 } // verus!
