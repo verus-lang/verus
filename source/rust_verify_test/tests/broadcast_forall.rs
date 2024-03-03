@@ -8,8 +8,7 @@ test_verify_one_file! {
         #[verifier::opaque]
         spec fn f(i: int) -> bool { true }
 
-        #[verifier::broadcast_forall]
-        proof fn p(i: int)
+        broadcast proof fn p(i: int)
             ensures f(i)
         {
             reveal(f);
@@ -31,8 +30,7 @@ test_verify_one_file! {
         #[verifier::opaque]
         spec fn f(i: int) -> bool { true }
 
-        #[verifier::broadcast_forall]
-        proof fn p(i: int)
+        broadcast proof fn p(i: int)
             ensures f(i) // FAILS
         {
         }
@@ -49,15 +47,13 @@ test_verify_one_file! {
         #[verifier::opaque]
         spec fn f(i: int) -> bool { true }
 
-        #[verifier::broadcast_forall]
-        proof fn p1(i: int)
+        broadcast proof fn p1(i: int)
             ensures f(i)
         {
             reveal(p2);
         }
 
-        #[verifier::broadcast_forall]
-        proof fn p2(i: int)
+        broadcast proof fn p2(i: int)
             ensures f(i) // FAILS
         {
         }
@@ -69,8 +65,7 @@ test_verify_one_file! {
         #[verifier::opaque]
         spec fn f(i: int) -> bool { true }
 
-        #[verifier::broadcast_forall]
-        proof fn p(i: int)
+        broadcast proof fn p(i: int)
             ensures f(i)
             decreases i
         {
@@ -84,16 +79,14 @@ test_verify_one_file! {
         #[verifier::opaque]
         spec fn f(i: int) -> bool { false }
 
-        #[verifier::broadcast_forall]
-        proof fn p(i: int)
+        broadcast proof fn p(i: int)
             ensures f(i)
             decreases i
         {
             reveal(q);
         }
 
-        #[verifier::broadcast_forall]
-        proof fn q(i: int)
+        broadcast proof fn q(i: int)
             ensures f(i)
             decreases i
         {
@@ -107,8 +100,7 @@ test_verify_one_file! {
         #[verifier::opaque]
         spec fn f(i: int) -> bool { false }
 
-        #[verifier::broadcast_forall]
-        proof fn p(i: int)
+        broadcast proof fn p(i: int)
             ensures f(i)
             decreases i
         {
@@ -140,8 +132,7 @@ test_verify_one_file! {
         pub spec fn f() -> bool;
 
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        proof fn f_is_true()
+        broadcast proof fn f_is_true()
             ensures f(),
         {
         }
@@ -192,14 +183,12 @@ const RING_ALGEBRA: &str = verus_code_str! {
             }
         }
 
-        #[verifier::broadcast_forall]
-        pub proof fn Ring_succ(p: Ring)
+        pub broadcast proof fn Ring_succ(p: Ring)
             requires p.inv()
             ensures p.inv() && (#[trigger] p.succ()).prev() == p
         { }
 
-        #[verifier::broadcast_forall]
-        pub proof fn Ring_prev(p: Ring)
+        pub broadcast proof fn Ring_prev(p: Ring)
             requires p.inv()
             ensures p.inv() && (#[trigger] p.prev()).succ() == p
         { }
@@ -273,14 +262,12 @@ const RING_ALGEBRA_MEMBERS: &str = verus_code_str! {
                 Ring { i: if self.i == 0 { 9 } else { (self.i - 1) as nat } }
             }
 
-            #[verifier::broadcast_forall]
-            pub proof fn succ_ensures(p: Ring)
+            pub broadcast proof fn succ_ensures(p: Ring)
                 requires p.inv()
                 ensures p.inv() && (#[trigger] p.succ()).prev() == p
             { }
 
-            #[verifier::broadcast_forall]
-            pub proof fn prev_ensures(p: Ring)
+            pub broadcast proof fn prev_ensures(p: Ring)
                 requires p.inv()
                 ensures p.inv() && (#[trigger] p.prev()).succ() == p
             { }
@@ -413,8 +400,7 @@ test_verify_one_file! {
 
             reveal q;
 
-            #[verifier::broadcast_forall]
-            pub proof fn p(i: int)
+            pub broadcast proof fn p(i: int)
                 ensures f(i)
                 decreases i
             {
@@ -428,8 +414,7 @@ test_verify_one_file! {
 
             reveal p;
 
-            #[verifier::broadcast_forall]
-            pub proof fn q(i: int)
+            pub broadcast proof fn q(i: int)
                 ensures f(i)
                 decreases i
             {
@@ -460,14 +445,12 @@ const RING_ALGEBRA_MEMBERS_GENERIC: &str = verus_code_str! {
                 Ring { i: if self.i == 0 { 9 } else { (self.i - 1) as nat }, t: self.t }
             }
 
-            #[verifier::broadcast_forall]
-            pub proof fn succ_ensures(p: Self)
+            pub broadcast proof fn succ_ensures(p: Self)
                 requires p.inv()
                 ensures p.inv() && (#[trigger] p.succ()).prev() == p
             { }
 
-            #[verifier::broadcast_forall]
-            pub proof fn prev_ensures(p: Self)
+            pub broadcast proof fn prev_ensures(p: Self)
                 requires p.inv()
                 ensures p.inv() && (#[trigger] p.prev()).succ() == p
             { }

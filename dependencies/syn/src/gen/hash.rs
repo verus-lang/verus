@@ -2887,6 +2887,7 @@ impl Hash for Signature {
         self.asyncness.hash(state);
         self.unsafety.hash(state);
         self.abi.hash(state);
+        self.broadcast.hash(state);
         self.mode.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);

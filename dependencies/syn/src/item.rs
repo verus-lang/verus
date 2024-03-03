@@ -933,6 +933,7 @@ ast_struct! {
         pub asyncness: Option<Token![async]>,
         pub unsafety: Option<Token![unsafe]>,
         pub abi: Option<Abi>,
+        pub broadcast: Option<Token![broadcast]>,
         pub mode: FnMode,
         pub fn_token: Token![fn],
         pub ident: Ident,
@@ -1050,12 +1051,13 @@ pub mod parsing {
             ahead.parse::<DataMode>()?;
 
             let lookahead = ahead.lookahead1();
-            let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
+
+            let mut item = if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![group]) {
+                input.parse().map(Item::BroadcastGroup)
+            } else if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 let vis: Visibility = input.parse()?;
                 let sig: Signature = input.parse()?;
                 parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
-            } else if lookahead.peek(Token![broadcast]) {
-                input.parse().map(Item::BroadcastGroup)
             } else if lookahead.peek(Token![extern]) {
                 ahead.parse::<Token![extern]>()?;
                 let lookahead = ahead.lookahead1();
@@ -1683,6 +1685,7 @@ pub mod parsing {
             && fork.parse::<Option<Token![async]>>().is_ok()
             && fork.parse::<Option<Token![unsafe]>>().is_ok()
             && fork.parse::<Option<Abi>>().is_ok()
+            && fork.parse::<Option<Token![broadcast]>>().is_ok()
             && fork.parse::<FnMode>().is_ok()
             && fork.peek(Token![fn])
     }
@@ -1695,6 +1698,7 @@ pub mod parsing {
             let asyncness: Option<Token![async]> = input.parse()?;
             let unsafety: Option<Token![unsafe]> = input.parse()?;
             let abi: Option<Abi> = input.parse()?;
+            let broadcast: Option<Token![broadcast]> = input.parse()?;
             let mode: FnMode = input.parse()?;
             let fn_token: Token![fn] = input.parse()?;
             let ident: Ident = input.parse()?;
@@ -1728,6 +1732,7 @@ pub mod parsing {
                 asyncness,
                 unsafety,
                 abi,
+                broadcast,
                 mode,
                 fn_token,
                 ident,
@@ -2779,10 +2784,10 @@ pub mod parsing {
                 None
             };
 
-            let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
-                input.parse().map(ImplItem::Method)
-            } else if lookahead.peek(Token![broadcast]) {
+            let mut item = if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![group]) {
                 input.parse().map(ImplItem::BroadcastGroup)
+            } else if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
+                input.parse().map(ImplItem::Method)
             } else if lookahead.peek(Token![const])
                 || lookahead.peek(Token![open])
                 || lookahead.peek(Token![closed])

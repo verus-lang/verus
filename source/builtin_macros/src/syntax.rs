@@ -277,6 +277,20 @@ impl Visitor {
             ));
         }
 
+        if sig.broadcast.is_some() && !matches!(sig.mode, FnMode::Proof(_)) {
+            let broadcast_span = sig.broadcast.span();
+            stmts.push(stmt_with_semi!(
+                broadcast_span =>
+                compile_error!("only `proof` functions can be marked `broadcast`")
+            ));
+        }
+
+        let broadcast_attrs = if let Some(b) = sig.broadcast {
+            vec![mk_verus_attr(b.span, quote! { broadcast_forall })]
+        } else {
+            vec![]
+        };
+
         let publish_attrs = match &sig.publish {
             Publish::Default => vec![],
             Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
@@ -491,6 +505,7 @@ impl Visitor {
 
         sig.publish = Publish::Default;
         sig.mode = FnMode::Default;
+        attrs.extend(broadcast_attrs);
         attrs.extend(publish_attrs);
         attrs.extend(mode_attrs);
         attrs.extend(prover_attr.into_iter());
@@ -959,7 +974,7 @@ impl Visitor {
 
                             ::builtin_macros::verus! {
                                 #[verifier::external_body]
-                                #[verifier::broadcast_forall]
+                                #[verus::internal(broadcast_forall)]
                                 #[allow(non_snake_case)]
                                 proof fn #lemma_ident()
                                     ensures

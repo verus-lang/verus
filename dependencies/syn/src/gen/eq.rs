@@ -2161,13 +2161,13 @@ impl PartialEq for Signature {
     fn eq(&self, other: &Self) -> bool {
         self.publish == other.publish && self.constness == other.constness
             && self.asyncness == other.asyncness && self.unsafety == other.unsafety
-            && self.abi == other.abi && self.mode == other.mode
-            && self.ident == other.ident && self.generics == other.generics
-            && self.inputs == other.inputs && self.variadic == other.variadic
-            && self.output == other.output && self.prover == other.prover
-            && self.requires == other.requires && self.recommends == other.recommends
-            && self.ensures == other.ensures && self.decreases == other.decreases
-            && self.invariants == other.invariants
+            && self.abi == other.abi && self.broadcast == other.broadcast
+            && self.mode == other.mode && self.ident == other.ident
+            && self.generics == other.generics && self.inputs == other.inputs
+            && self.variadic == other.variadic && self.output == other.output
+            && self.prover == other.prover && self.requires == other.requires
+            && self.recommends == other.recommends && self.ensures == other.ensures
+            && self.decreases == other.decreases && self.invariants == other.invariants
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

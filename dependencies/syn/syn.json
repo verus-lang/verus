@@ -5661,6 +5661,11 @@
             "syn": "Abi"
           }
         },
+        "broadcast": {
+          "option": {
+            "token": "Broadcast"
+          }
+        },
         "mode": {
           "syn": "FnMode"
         },

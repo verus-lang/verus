@@ -3979,6 +3979,9 @@ where
     if let Some(it) = &node.abi {
         v.visit_abi(it);
     }
+    if let Some(it) = &node.broadcast {
+        tokens_helper(v, &it.span);
+    }
     v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.fn_token.span);
     v.visit_ident(&node.ident);

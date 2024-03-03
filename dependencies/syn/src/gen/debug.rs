@@ -3078,6 +3078,7 @@ impl Debug for Signature {
         formatter.field("asyncness", &self.asyncness);
         formatter.field("unsafety", &self.unsafety);
         formatter.field("abi", &self.abi);
+        formatter.field("broadcast", &self.broadcast);
         formatter.field("mode", &self.mode);
         formatter.field("fn_token", &self.fn_token);
         formatter.field("ident", &self.ident);

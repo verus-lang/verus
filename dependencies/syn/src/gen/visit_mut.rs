@@ -3973,6 +3973,9 @@ where
     if let Some(it) = &mut node.abi {
         v.visit_abi_mut(it);
     }
+    if let Some(it) = &mut node.broadcast {
+        tokens_helper(v, &mut it.span);
+    }
     v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.fn_token.span);
     v.visit_ident_mut(&mut node.ident);

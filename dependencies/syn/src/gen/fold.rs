@@ -3567,6 +3567,8 @@ where
         asyncness: (node.asyncness).map(|it| Token![async](tokens_helper(f, &it.span))),
         unsafety: (node.unsafety).map(|it| Token![unsafe](tokens_helper(f, &it.span))),
         abi: (node.abi).map(|it| f.fold_abi(it)),
+        broadcast: (node.broadcast)
+            .map(|it| Token![broadcast](tokens_helper(f, &it.span))),
         mode: f.fold_fn_mode(node.mode),
         fn_token: Token![fn](tokens_helper(f, &node.fn_token.span)),
         ident: f.fold_ident(node.ident),

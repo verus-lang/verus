@@ -6169,6 +6169,18 @@ impl Debug for Lite<syn::Signature> {
             }
             formatter.field("abi", Print::ref_cast(val));
         }
+        if let Some(val) = &_val.broadcast {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Broadcast);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("broadcast", Print::ref_cast(val));
+        }
         formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("generics", Lite(&_val.generics));

@@ -2256,6 +2256,7 @@ impl Clone for Signature {
             asyncness: self.asyncness.clone(),
             unsafety: self.unsafety.clone(),
             abi: self.abi.clone(),
+            broadcast: self.broadcast.clone(),
             mode: self.mode.clone(),
             fn_token: self.fn_token.clone(),
             ident: self.ident.clone(),
