@@ -30,11 +30,9 @@ pub mod map_lib;
 pub mod math;
 pub mod modes;
 pub mod multiset;
-pub mod option;
 pub mod pervasive;
 #[cfg(feature = "alloc")]
 pub mod ptr;
-pub mod result;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
@@ -44,8 +42,6 @@ pub mod state_machine_internal;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
-#[cfg(feature = "alloc")]
-pub mod vec;
 pub mod view;
 
 pub mod relations;

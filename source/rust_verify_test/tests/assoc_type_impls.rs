@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] trait_poly verus_code! {
-        use vstd::{prelude::*, vec::*};
+        use vstd::{prelude::*};
         proof fn p<A: View>(x: A) -> (r: (A::V, A::V))
             ensures r.1 == x.view(),
         {
@@ -27,12 +27,12 @@ test_verify_one_file! {
                 assert(y.1[0]);
             }
         }
-    } => Ok(_err) => { /* TODO: fix warning */ }
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] trait_poly_fail verus_code! {
-        use vstd::{prelude::*, vec::*};
+        use vstd::{prelude::*};
         proof fn p<A: View>(x: A) -> (r: (A::V, A::V))
             ensures r.1 == x.view(),
         {

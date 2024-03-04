@@ -183,16 +183,6 @@ pub fn print_u64(i: u64) {
     println!("{}", i);
 }
 
-#[verifier(external_body)]
-#[deprecated(note="please use `std::mem::swap` instead")]
-pub fn swap<A>(x: &mut A, y: &mut A)
-    ensures
-        *x == *old(y),
-        *y == *old(x),
-{
-    core::mem::swap(x, y)
-}
-
 #[verifier::external_body]
 pub fn runtime_assert(b: bool)
     requires
