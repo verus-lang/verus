@@ -826,8 +826,12 @@ impl Visitor {
                     let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
                         quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
                     ))).collect();
+                    let mut attrs = attrs.clone();
+                    if self.inside_ghost == 0 {
+                        attrs.push(mk_verus_attr(span, quote! { proof_block }));
+                    }
                     let block = Stmt::Expr(Expr::Block(ExprBlock {
-                        attrs: attrs.clone(),
+                        attrs: attrs,
                         label: None,
                         block: Block { brace_token: token::Brace(span), stmts },
                     }));

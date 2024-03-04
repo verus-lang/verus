@@ -528,6 +528,9 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::AllTriggers)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
+                    AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
+                        v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
                     }
