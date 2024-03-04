@@ -630,7 +630,11 @@ fn check_expr_handle_mut_arg(
                 ));
             }
 
-            let mode = mode_join(outer_mode, x_mode);
+            let mode = if matches!(&expr.x, ExprX::VarAt(..)) {
+                Mode::Spec
+            } else {
+                mode_join(outer_mode, x_mode)
+            };
 
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
