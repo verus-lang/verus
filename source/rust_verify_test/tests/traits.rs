@@ -3270,6 +3270,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default20 verus_code! {
+        trait T<A> {
+            spec fn f(a: &A) -> int { 7 }
+        }
+
+        struct S<X, Y, Z>(X, Y, Z);
+
+        impl<X, Y, Z> T<X> for S<X, Y, Z> {
+        }
+
+        fn test() {
+            assert(<S<u8, u16, bool> as T<u8>>::f(&3u8) == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[ignore] #[test] associated_type_bound_lifetime_regression_955 verus_code! {
         use vstd::prelude::View;
 
