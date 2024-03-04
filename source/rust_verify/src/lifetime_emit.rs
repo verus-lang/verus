@@ -637,6 +637,20 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             emit_exp(state, e2);
             state.write("))");
         }
+        ExpX::Resolve(x) => {
+            // REVIEW if typ_args.len() > 0 {
+            // REVIEW     state.write("::<");
+            // REVIEW     for typ_arg in typ_args {
+            // REVIEW         state.write(typ_arg.to_string());
+            // REVIEW         state.write(", ");
+            // REVIEW     }
+            // REVIEW     state.write(">");
+            // REVIEW }
+            state.write("resolve");
+            state.write("(");
+            state.write(x.to_string());
+            state.write(")");
+        }
     }
     state.end_span(*span);
 }

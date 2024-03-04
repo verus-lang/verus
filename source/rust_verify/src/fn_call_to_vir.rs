@@ -606,7 +606,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             }
             DirectiveItem::Resolve => {
-                record_spec_fn_no_proof_args(bctx, expr);
+                record_resolve_call(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected resolve", &args);
                 let ExprKind::Path(qpath) = &args[0].kind else {
                     unsupported_err!(expr.span, "resolve with this argument", &args[0]);
@@ -2052,6 +2052,12 @@ fn record_compilable_operator<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, op: Comp
 
 fn record_spec_fn_allow_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
     let resolved_call = ResolvedCall::SpecAllowProofArgs;
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+}
+
+fn record_resolve_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
+    let resolved_call = ResolvedCall::Resolve;
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
 }

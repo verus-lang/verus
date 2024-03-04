@@ -772,6 +772,34 @@ fn erase_call<'tcx>(
                 .collect(); // REVIEW(main_new) correct?
             erase_spec_exps_typ(ctxt, state, expr.span, |_| TypX::mk_unit(), exps, false)
         }
+        ResolvedCall::Resolve => {
+            // dbg!(&args_slice[0]);
+            match &args_slice[0].kind {
+                ExprKind::Path(qpath) => {
+                    let res = ctxt.types().qpath_res(qpath, expr.hir_id);
+
+                    match res {
+                        Res::Local(id) => match ctxt.tcx.hir().get(id) {
+                            Node::Pat(Pat {
+                                kind: PatKind::Binding(_ann, id, ident, _pat),
+                                ..
+                            }) => {
+                                let local_id = state.local(&ident.to_string(), id.local_id.index());
+                                mk_exp(ExpX::Resolve(local_id))
+                                // if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
+                                //     None
+                                // } else {
+                                //     mk_exp(ExpX::Var(state.local(&ident.to_string(), id.local_id.index())))
+                                // }
+                            }
+                            _ => panic!("unsupported"),
+                        },
+                        _ => todo!(),
+                    }
+                }
+                _ => todo!(),
+            }
+        }
         ResolvedCall::CompilableOperator(op) => {
             use crate::erase::CompilableOperator::*;
             let builtin_method = match op {
