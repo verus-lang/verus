@@ -918,6 +918,8 @@ pub struct FunctionAttrsX {
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
     pub prophecy_dependent: bool,
+    /// broadcast proof from size_of global
+    pub size_of_broadcast_proof: bool,
 }
 
 /// Function specification of its invariant mask

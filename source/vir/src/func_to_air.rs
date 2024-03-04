@@ -957,7 +957,10 @@ pub fn func_axioms_to_air(
                     ExprCtxt::new_mode(ExprMode::Spec)
                 };
                 let expr = exp_to_expr(ctx, &forall, &expr_ctxt)?;
-                let fuel_imply = {
+                let fuel_imply = if function.x.attrs.size_of_broadcast_proof {
+                    // special broadcast lemma for size_of global
+                    expr
+                } else {
                     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
                     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                     mk_implies(&fuel_bool, &expr)

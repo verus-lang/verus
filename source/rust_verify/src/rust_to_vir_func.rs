@@ -956,6 +956,7 @@ pub(crate) fn check_item_fn<'tcx>(
         print_zero_args: n_params == 0,
         print_as_method: has_self_param,
         prophecy_dependent: vattrs.prophecy_dependent,
+        size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
     };
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
