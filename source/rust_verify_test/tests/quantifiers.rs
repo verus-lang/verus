@@ -300,6 +300,7 @@ test_verify_one_file! {
             requires a.f1(),
             ensures a.f2(),
         {
+            broadcast use ab;
         }
     } => Ok(())
 }
