@@ -31,6 +31,8 @@ pub enum ResolvedCall {
     Spec,
     /// The call is to a spec or proof function, but may have proof-mode arguments
     SpecAllowProofArgs,
+    /// The "call" is to `resolve`
+    Resolve,
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the resolved name of the function here.
