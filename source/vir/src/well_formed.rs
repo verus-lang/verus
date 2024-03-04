@@ -1027,11 +1027,11 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
 pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
     let mut reveal_group_default = None;
     for group in krate.reveal_groups.iter() {
-        if group.x.revealed_by_default_when_this_crate_is_imported.is_some() {
+        if group.x.broadcast_use_by_default_when_this_crate_is_imported.is_some() {
             if let Some(prev) = reveal_group_default {
                 let err = error(
                     &group.span,
-                    "only one revealed_by_default_when_this_crate_is_imported is allowed",
+                    "only one broadcast_use_by_default_when_this_crate_is_imported is allowed",
                 );
                 let err = err.primary_span(&prev);
                 return Err(err);

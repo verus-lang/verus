@@ -1032,7 +1032,7 @@ pub struct RevealGroupX {
     pub hidden_unless_this_module_is_used: bool,
     /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
     /// No more than one such group is allowed in each crate.
-    pub revealed_by_default_when_this_crate_is_imported: Option<Ident>,
+    pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,
     /// All the subgroups or functions included in this group
     pub members: Arc<Vec<Fun>>,
 }

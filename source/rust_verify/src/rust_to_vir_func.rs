@@ -324,8 +324,8 @@ fn create_reveal_group<'tcx>(
                 }
                 return err_span(span, "reveal_group must consist of reveal statements");
             }
-            let revealed_by_default_when_this_crate_is_imported =
-                if vattrs.revealed_by_default_when_this_crate_is_imported {
+            let broadcast_use_by_default_when_this_crate_is_imported =
+                if vattrs.broadcast_use_by_default_when_this_crate_is_imported {
                     Some(ctxt.crate_name.clone())
                 } else {
                     None
@@ -335,7 +335,7 @@ fn create_reveal_group<'tcx>(
                 visibility,
                 owning_module: Some(module_path.clone()),
                 hidden_unless_this_module_is_used: vattrs.hidden_unless_this_module_is_used,
-                revealed_by_default_when_this_crate_is_imported,
+                broadcast_use_by_default_when_this_crate_is_imported,
                 members: Arc::new(members),
             };
             if let Some(groups) = reveal_groups {

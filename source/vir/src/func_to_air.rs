@@ -159,7 +159,7 @@ pub(crate) fn broadcast_forall_group_axioms(
 ) {
     let id_group = prefix_fuel_id(&fun_to_air_ident(&group.x.name));
     let fuel_group = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_group)]);
-    if let Some(group_crate) = &group.x.revealed_by_default_when_this_crate_is_imported {
+    if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {
         let is_imported = crate_name != group_crate;
         if is_imported {
             // (axiom (fuel_bool_default fuel%group))
