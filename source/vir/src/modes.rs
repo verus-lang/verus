@@ -1463,6 +1463,10 @@ fn check_function(
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
         check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
     }
+    for expr in function.x.mask_spec.exprs().iter() {
+        let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
+    }
 
     let ret_mode = if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;

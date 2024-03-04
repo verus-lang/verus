@@ -1,7 +1,7 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
-    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
-    PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
+    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
+    Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
     VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
@@ -741,5 +741,15 @@ impl LowerUniqueVar for Arc<Vec<VarIdent>> {
 
     fn lower(&self) -> Arc<Vec<Ident>> {
         Arc::new(self.iter().map(|x| x.lower()).collect())
+    }
+}
+
+impl MaskSpec {
+    pub fn exprs(&self) -> Exprs {
+        match self {
+            MaskSpec::InvariantOpens(exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+            MaskSpec::NoSpec => Arc::new(vec![]),
+        }
     }
 }
