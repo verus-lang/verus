@@ -298,12 +298,13 @@ test_verify_one_file! {
 
         fn test_bool_vec(v: Vec<bool>) {
             let w = v.clone();
-            proof {
-                assert_seqs_equal!(w@, v@, i => {
-                    assert(call_ensures(<bool>::clone, (&v@[i],), w@[i]));
-                    assert(w@[i] == v@[i]);
-                });
-            }
+            assert(w@ =~= v@);
+        }
+
+        struct Y { }
+
+        fn test_vec_ref(v: Vec<&Y>) {
+            let w = v.clone();
             assert(w@ =~= v@);
         }
 

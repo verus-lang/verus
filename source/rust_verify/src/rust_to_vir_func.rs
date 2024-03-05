@@ -15,7 +15,9 @@ use rustc_hir::{
     def::Res, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
     MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
 };
-use rustc_middle::ty::{Clause, GenericArgsRef, TyCtxt};
+use rustc_middle::ty::{
+    BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region, TyCtxt,
+};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -227,41 +229,72 @@ pub(crate) fn handle_external_fn<'tcx>(
         );
     }
 
+    // The comparison is a little tricky because we could have a situation like this:
+    //
+    // ctxt.tcx.type_of(id) = EarlyBinder {
+    //   value: for<'a, 'b> fn(&'a &'b T) -> &'b T {std_specs::clone::ex_ref_clone::<T>},
+    // }
+    // substs1 = [
+    //   T,
+    // ]
+    //
+    // ctxt.tcx.type_of(external_id) = EarlyBinder {
+    //   value: for<'a> fn(&'a &T) -> &T {std::clone::impls::<impl std::clone::Clone for &T>::clone},
+    // }
+    // substs2 = [
+    //   ReEarlyBound(DefId(2:54293 ~ core[739c]::clone::impls::{impl#3}::'_), 0, '_),
+    //   T,
+    // ]
+    //
+    // In this case, 'b is early-bound when looking at the external_id and late-bound when
+    // looking at the proxy. In order to treat these as 'identical', we have to consider
+    // the early-binder and the outermost late-binder together.
+
     let ty1 = ctxt.tcx.type_of(id).skip_binder();
     let ty2 = ctxt.tcx.type_of(external_id).skip_binder();
+
     use rustc_middle::ty::FnDef;
-    let (poly_sig1, poly_sig2, substs1) = match (ty1.kind(), ty2.kind()) {
-        (FnDef(def_id1, substs1), FnDef(def_id2, substs2)) if substs1.len() == substs2.len() => {
-            // Note we substitute `substs1` in both cases
-            // This is to ensure that we are comparing the type signatures with
-            // the same type params even if the user inputs different generic params
-            // note: rustc 1.69.0 has replaced bound_fn_sig with just fn_sig I think
-            let poly_sig1 = ctxt.tcx.fn_sig(*def_id1).instantiate(ctxt.tcx, substs1);
-            let poly_sig2 = ctxt.tcx.fn_sig(*def_id2).instantiate(ctxt.tcx, substs1);
-            (poly_sig1, poly_sig2, substs1)
-        }
+    let (substs1_early, substs2_early) = match (ty1.kind(), ty2.kind()) {
+        (FnDef(_, substs1), FnDef(_, substs2)) => (substs1, substs2),
         _ => {
-            return err_span(
-                sig.span,
-                format!(
-                    "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
-                ),
-            );
+            return err_span(sig.span, "Verus internal error: expected FnDef");
         }
     };
 
-    // Make sure names of (lifetime) binders don't influence equality check
-    let sig1_anon = ctxt.tcx.anonymize_bound_vars(poly_sig1);
-    let sig2_anon = ctxt.tcx.anonymize_bound_vars(poly_sig2);
+    let poly_sig1 = ctxt.tcx.fn_sig(id);
+    let poly_sig2 = ctxt.tcx.fn_sig(external_id);
+
+    let Some((substs1_early, substs2_early, substs1_late, substs2_late)) = equalize_substs(
+        ctxt.tcx,
+        substs1_early,
+        substs2_early,
+        poly_sig1.skip_binder().bound_vars().len(),
+        poly_sig2.skip_binder().bound_vars().len(),
+    ) else {
+        println!("hi");
+        return err_span(
+            sig.span,
+            format!(
+                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+            ),
+        );
+    };
+
+    let poly_sig1 = poly_sig1.instantiate(ctxt.tcx, substs1_early);
+    let poly_sig1 =
+        ctxt.tcx.replace_late_bound_regions(poly_sig1, |br| substs1_late[usize::from(br.var)]).0;
+
+    let poly_sig2 = poly_sig2.instantiate(ctxt.tcx, substs2_early);
+    let poly_sig2 =
+        ctxt.tcx.replace_late_bound_regions(poly_sig2, |br| substs2_late[usize::from(br.var)]).0;
 
     // Ignore abi for the sake of comparison
     // Useful for rust-intrinsics
-    let sig1_anon = {
-        let mut fnsig = sig1_anon.skip_binder();
-        fnsig.abi = sig2_anon.abi();
-        sig1_anon.rebind(fnsig)
-    };
-    if sig1_anon != sig2_anon {
+    let mut poly_sig1 = poly_sig1;
+    poly_sig1.abi = poly_sig2.abi;
+
+    if poly_sig1 != poly_sig2 {
+        println!("hi2");
         return err_span(
             sig.span,
             format!(
@@ -271,8 +304,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     }
 
     // trait bounds aren't part of the type signature - we have to check those separately
-    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1);
-    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs1);
+    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1_early);
+    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs2_early);
     remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
     remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
     if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
@@ -301,6 +334,86 @@ pub(crate) fn handle_external_fn<'tcx>(
     }
 
     Ok((external_path, external_item_visibility, kind, has_self_parameter))
+}
+
+pub fn equalize_substs<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    substs1_early: GenericArgsRef<'tcx>,
+    substs2_early: GenericArgsRef<'tcx>,
+    num_late1: usize,
+    num_late2: usize,
+) -> Option<(GenericArgsRef<'tcx>, GenericArgsRef<'tcx>, Vec<Region<'tcx>>, Vec<Region<'tcx>>)> {
+    let mut s2 = vec![];
+    let mut l1 = vec![];
+    let mut l2 = vec![];
+
+    if substs1_early.len() + num_late1 != substs2_early.len() + num_late2 {
+        return None;
+    }
+
+    let mut reg =
+        substs1_early.iter().filter(|g| matches!(g.unpack(), GenericArgKind::Lifetime(_)));
+    let mut other =
+        substs1_early.iter().filter(|g| !matches!(g.unpack(), GenericArgKind::Lifetime(_)));
+
+    for i in 0..substs2_early.len() {
+        match substs2_early[i].unpack() {
+            GenericArgKind::Type(_) => {
+                let Some(arg) = other.next() else {
+                    return None;
+                };
+                if !matches!(arg.unpack(), GenericArgKind::Type(_)) {
+                    return None;
+                }
+                s2.push(arg);
+            }
+            GenericArgKind::Const(_) => {
+                let Some(arg) = other.next() else {
+                    return None;
+                };
+                if !matches!(arg.unpack(), GenericArgKind::Const(_)) {
+                    return None;
+                }
+                s2.push(arg);
+            }
+            GenericArgKind::Lifetime(r) => match reg.next() {
+                Some(arg) => {
+                    s2.push(arg);
+                }
+                None => {
+                    l1.push(r);
+                    s2.push(substs2_early[i]);
+                }
+            },
+        }
+    }
+
+    if other.next().is_some() {
+        return None;
+    }
+
+    for arg in reg {
+        let GenericArgKind::Lifetime(r) = arg.unpack() else {
+            unreachable!();
+        };
+        l2.push(r);
+    }
+
+    while l1.len() < num_late1 {
+        let idx = l1.len();
+        let region = Region::new_late_bound(
+            tcx,
+            rustc_middle::ty::INNERMOST,
+            BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::BrAnon(None) },
+        );
+        l1.push(region);
+        l2.push(region);
+    }
+
+    assert!(l1.len() == num_late1);
+    assert!(l2.len() == num_late2);
+
+    Some((substs1_early, tcx.mk_args(&s2), l1, l2))
 }
 
 pub enum CheckItemFnEither<A, B> {

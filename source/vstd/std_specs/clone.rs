@@ -26,6 +26,15 @@ pub fn ex_bool_clone(b: &bool) -> (res: bool)
     b.clone()
 }
 
+
+#[allow(suspicious_double_ref_op)]
+#[verifier::external_fn_specification]
+pub fn ex_ref_clone<'b, T: ?Sized, 'a>(b: &'a &'b T) -> (res: &'b T)
+    ensures res == b,
+{
+    b.clone()
+}
+
 /*
 #[verifier::external_fn_specification]
 pub fn ex_bool_clone_from(dest: &mut bool, source: &bool)
