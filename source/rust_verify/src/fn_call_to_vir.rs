@@ -24,7 +24,6 @@ use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
-use rustc_trait_selection::traits::query::type_op::outlives::DropckOutlives;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
