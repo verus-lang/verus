@@ -992,12 +992,20 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     adjustment_idx - 1,
                 )
             } else {
-                unsupported_err!(
-                    expr.span,
-                    format!(
-                        "&mut dereference in this position (note: &mut dereference is implicit here)"
-                    )
+                // TODO(&mut)
+                expr_to_vir_with_adjustments(
+                    bctx,
+                    expr,
+                    current_modifier,
+                    adjustments,
+                    adjustment_idx - 1,
                 )
+                // TODO(&mut) unsupported_err!(
+                // TODO(&mut)    expr.span,
+                // TODO(&mut)    format!(
+                // TODO(&mut)        "&mut dereference in this position (note: &mut dereference is implicit here)"
+                // TODO(&mut)    )
+                // TODO(&mut) )
             }
         }
         Adjust::Borrow(AutoBorrow::RawPtr(_)) => {
