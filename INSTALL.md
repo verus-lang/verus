@@ -122,8 +122,6 @@ directory, which is useful when verifying and compiling a project elsewhere on y
 
 # IDE Support
 
-**NOTE: These IDE Support instructions are currently outdated, and need to be updated for the new build process.**
-
 Once you have built Verus, you can use it in IDE clients (such as Visual Studio
 Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).
 
