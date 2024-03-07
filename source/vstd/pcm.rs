@@ -12,7 +12,7 @@ verus!{
 
 #[verifier::external_body]
 #[verifier::reject_recursive_types_in_ground_variants(P)]
-tracked struct Resource<P> {
+pub tracked struct Resource<P> {
     p: P,
 }
 
