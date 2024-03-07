@@ -51,6 +51,10 @@ pub open spec fn incl<P: PCM>(a: P, b: P) -> bool {
     exists |c| P::op(a, c) == b
 }
 
+pub open spec fn conjunct_shared<P: PCM>(a: P, b: P, c: P) -> bool {
+    forall |p: P| p.valid() && incl(a, p) && incl(b, p) ==> #[trigger] incl(c, p)
+}
+
 pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
     forall |c|
         #![trigger P::op(a, c), P::op(b, c)]
@@ -64,14 +68,14 @@ impl<P: PCM> Resource<P> {
     #[verifier::external_body]
     pub proof fn alloc(value: P) -> (tracked out: Self)
         requires value.valid(),
-        ensures
-            out.value() == value,
+        ensures out.value() == value,
     { unimplemented!(); }
 
     #[verifier::external_body]
     pub proof fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires self.loc() == other.loc(),
-        ensures out.loc() == self.loc(),
+        ensures
+            out.loc() == self.loc(),
             out.value() == P::op(self.value(), other.value()),
     { unimplemented!(); }
 
@@ -88,7 +92,8 @@ impl<P: PCM> Resource<P> {
     #[verifier::external_body]
     pub proof fn create_unit(loc: Loc) -> (tracked out: Self)
         where P: UnitalPCM
-        ensures out.value() == P::unit(),
+        ensures
+            out.value() == P::unit(),
             out.loc() == loc,
     { unimplemented!(); }
 
@@ -99,8 +104,50 @@ impl<P: PCM> Resource<P> {
 
     #[verifier::external_body]
     pub proof fn update(tracked self, new_value: P) -> (tracked out: Self)
-        requires frame_preserving_update(self.value(), new_value)
-        ensures out.loc() == self.loc(),
+        requires
+            frame_preserving_update(self.value(), new_value)
+        ensures
+            out.loc() == self.loc(),
+            out.value() == new_value,
+    { unimplemented!(); }
+
+    // Operations with shared references
+
+    #[verifier::external_body]
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self, target: P) -> (tracked out: &'a Self)
+        requires
+            self.loc() == other.loc(),
+            conjunct_shared(self.value(), other.value(), target),
+        ensures
+            out.loc() == self.loc(),
+            out.value() == target,
+    { unimplemented!(); }
+
+    #[verifier::external_body]
+    pub proof fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+        requires
+            incl(target, self.value()),
+        ensures
+            out.loc() == self.loc(),
+            out.value() == target,
+    { unimplemented!(); }
+
+    #[verifier::external_body]
+    pub proof fn is_valid_2(tracked &mut self, tracked other: &Self)
+        requires
+            old(self).loc() == other.loc(),
+        ensures
+            *self == *old(self),
+            P::op(self.value(), other.value()).valid()
+    { unimplemented!(); }
+
+    #[verifier::external_body]
+    pub proof fn update_with_shared(tracked self, tracked other: &Self, new_value: P) -> (tracked out: Self)
+        requires
+            self.loc() == other.loc(),
+            frame_preserving_update(P::op(self.value(), other.value()), P::op(new_value, other.value())),
+        ensures
+            out.loc() == self.loc(),
             out.value() == new_value,
     { unimplemented!(); }
 }

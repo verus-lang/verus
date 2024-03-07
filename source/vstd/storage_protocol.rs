@@ -56,6 +56,14 @@ pub trait Protocol<K, V> : Sized {
     //    ensures self.interp().valid();
 }
 
+pub open spec fn incl<K, V, P: Protocol<K, V>>(a: P, b: P) -> bool {
+    exists |c| P::op(a, c) == b
+}
+
+pub open spec fn conjunct_shared<K, V, P: Protocol<K, V>>(a: P, b: P, c: P) -> bool {
+    forall |p: P| p.inv() && #[trigger] incl(a, p) && #[trigger] incl(b, p) ==> #[trigger] incl(c, p)
+}
+
 pub open spec fn guards<K, V, P: Protocol<K, V>>(p: P, b: Map<K, V>) -> bool {
     forall |q: P| #![all_triggers] P::op(p, q).inv() ==> b.submap_of(P::op(p, q).interp())
 }
@@ -172,6 +180,50 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     pub proof fn guard(tracked &self, b: Map<K, V>) -> (tracked out: &Map<K,V>)
         requires guards(self.value(), b),
         ensures out == b,
+    { unimplemented!(); }
+
+    // Operations with shared references
+
+    #[verifier::external_body]
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self, target: P) -> (tracked out: &'a Self)
+        requires
+            self.loc() == other.loc(),
+            conjunct_shared(self.value(), other.value(), target),
+        ensures
+            out.loc() == self.loc(),
+            out.value() == target,
+    { unimplemented!(); }
+
+    #[verifier::external_body]
+    pub proof fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+        requires
+            incl(target, self.value()),
+        ensures
+            out.loc() == self.loc(),
+            out.value() == target,
+    { unimplemented!(); }
+
+    #[verifier::external_body]
+    pub proof fn is_valid_2(tracked &mut self, tracked other: &Self) -> (x: P)
+        requires
+            old(self).loc() == other.loc(),
+        ensures
+            *self == *old(self),
+            P::op(P::op(self.value(), other.value()), x).inv()
+    { unimplemented!(); }
+
+    // See `logic_exchange_with_extra_guard`
+    // https://github.com/secure-foundations/leaf/blob/70c391162fa4c0198b0581ae274e68cc97204388/src/guarding/protocol.v#L503
+
+    #[verifier::external_body]
+    pub proof fn exchange_with_shared(tracked self, tracked other: &Self, tracked base: Map<K, V>, new_value: P, new_base: Map<K, V>) -> (tracked out: (Self, Map<K,V>))
+        requires
+            self.loc() == other.loc(),
+            exchanges(P::op(self.value(), other.value()), base, P::op(new_value, other.value()), new_base)
+        ensures
+            out.0.loc() == self.loc(),
+            out.0.value() == new_value,
+            out.1 == new_base,
     { unimplemented!(); }
 }
 
