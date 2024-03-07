@@ -6,17 +6,20 @@ verus!{
 /// presentations of PCMs / resource algebras.
 ///
 /// For applications, I generally advise using the
-/// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/).
-/// This interface may be more familiar to many people, and it may be
-/// useful for academic purposes.
+/// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
+/// which lets you focus on updates and invariants rather than composition.
+///
+/// However, the PCM interface you'll find here may be more familiar to people.
 
 #[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(P)]
+#[verifier::accept_recursive_types(P)]
 pub tracked struct Resource<P> {
-    p: P,
+    p: core::marker::PhantomData<P>,
 }
 
-type Loc = int;
+pub type Loc = int;
+
+/// See [`Resource`] for more information.
 
 pub trait PCM : Sized {
     spec fn valid(self) -> bool;
@@ -83,13 +86,6 @@ impl<P: PCM> Resource<P> {
     { unimplemented!(); }
 
     #[verifier::external_body]
-    pub proof fn update(tracked self, new_value: P) -> (tracked out: Self)
-        requires frame_preserving_update(self.value(), new_value)
-        ensures out.loc() == self.loc(),
-            out.value() == new_value,
-    { unimplemented!(); }
-
-    #[verifier::external_body]
     pub proof fn create_unit(loc: Loc) -> (tracked out: Self)
         where P: UnitalPCM
         ensures out.value() == P::unit(),
@@ -99,6 +95,13 @@ impl<P: PCM> Resource<P> {
     #[verifier::external_body]
     pub proof fn is_valid(tracked &self)
         ensures self.value().valid(),
+    { unimplemented!(); }
+
+    #[verifier::external_body]
+    pub proof fn update(tracked self, new_value: P) -> (tracked out: Self)
+        requires frame_preserving_update(self.value(), new_value)
+        ensures out.loc() == self.loc(),
+            out.value() == new_value,
     { unimplemented!(); }
 }
 
