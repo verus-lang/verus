@@ -490,9 +490,17 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 if !rustc_middle::ty::TypeVisitableExt::has_escaping_bound_vars(&resolved_ty) {
                     let norm = at.normalize(*ty);
                     if norm.value != *ty {
-                        if let TyKind::Infer(..) = norm.value.kind() {
-                            // It's not clear why normalize returns Infer, but it's not what we want
-                        } else {
+                        let mut has_infer = false;
+                        for arg in norm.value.walk().into_iter() {
+                            if let GenericArgKind::Type(t) = arg.unpack() {
+                                if let TyKind::Infer(..) = t.kind() {
+                                    // It's not clear why normalize returns Infer
+                                    // but it's not what we want
+                                    has_infer = true;
+                                }
+                            }
+                        }
+                        if !has_infer {
                             return erase_ty(ctxt, state, &norm.value);
                         }
                     }
