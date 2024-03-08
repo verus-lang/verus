@@ -383,3 +383,31 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] lifetime_generate_alias_infer verus_code! {
+        // test lifetime_generate TyKind::Alias case that was normalizing to TyKind::Infer
+        #[verifier::external]
+        struct S<T>(T);
+
+        #[verifier(external_type_specification)]
+        #[verifier(external_body)]
+        #[verifier::accept_recursive_types(T)]
+        struct ExS<T>(S<T>);
+
+        pub trait DeepView {
+            type V;
+        }
+
+        struct W<T>(T);
+        impl<T: DeepView> DeepView for S<T> {
+            type V = W<T::V>;
+        }
+
+        #[allow(unconditional_recursion)]
+        #[verifier(external_body)]
+        fn new_s<T>() -> S<T> {
+            new_s()
+        }
+    } => Ok(())
+}
