@@ -6,7 +6,7 @@ if [ `uname` == "Darwin" ]; then
     if [[ $(uname -m) == 'arm64' ]]; then
         filename=z3-$z3_version-arm64-osx-11.0
     else
-        filename=z3-$z3_version-x64-osx-10.16
+        filename=z3-$z3_version-x64-osx-11.7.10
     fi
 elif [ `uname` == "Linux" ]; then
     filename=z3-$z3_version-x64-glibc-2.31
