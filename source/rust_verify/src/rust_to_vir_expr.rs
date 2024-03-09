@@ -39,9 +39,9 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
-    HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped,
-    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent, VariantCheck,
-    VirErr,
+    HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Primitive,
+    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent,
+    VariantCheck, VirErr,
 };
 use vir::ast_util::{
     ident_binder, str_unique_var, typ_to_diagnostic_str, types_equal, undecorate_typ,
@@ -208,14 +208,24 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let expr = expr.peel_drop_temps();
+
+    if bctx.external_body {
+        // we want just requires/ensures, not the whole body
+        match &expr.kind {
+            ExprKind::Block(..) | ExprKind::Call(..) => {}
+            _ => {
+                return Ok(bctx.spanned_typed_new(
+                    expr.span,
+                    &Arc::new(TypX::Bool),
+                    ExprX::Block(Arc::new(vec![]), None),
+                ));
+            }
+        }
+    }
+
     let adjustments = bctx.types.expr_adjustments(expr);
 
-    let vir_expr =
-        expr_to_vir_with_adjustments(bctx, expr, modifier, adjustments, adjustments.len())?;
-
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span.id));
-    Ok(vir_expr)
+    expr_to_vir_with_adjustments(bctx, expr, modifier, adjustments, adjustments.len())
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
@@ -880,7 +890,11 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     // Whereas the node (expr, 0) is just expr by itself.
 
     if adjustment_idx == 0 {
-        return expr_to_vir_innermost(bctx, expr, current_modifier);
+        let vir_expr = expr_to_vir_innermost(bctx, expr, current_modifier)?;
+
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span.id));
+        return Ok(vir_expr);
     }
 
     // Gets the type of the *child* of the current node
@@ -974,10 +988,84 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             )
         }
         Adjust::Pointer(PointerCoercion::Unsize) => {
-            unsupported_err!(
-                expr.span,
-                "unsizing operation (e.g., implicit cast from array [T; N] to slice [T])"
-            );
+            let ty1 = get_inner_ty();
+            let ty2 = adjustment.target;
+
+            if current_modifier != ExprModifier::REGULAR {
+                unsupported_err!(
+                    expr.span,
+                    format!("unsizing operation from `{ty1:}` to `{ty2:}`")
+                );
+            }
+
+            let arg = expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                current_modifier,
+                adjustments,
+                adjustment_idx - 1,
+            )?;
+
+            let f = match (ty1.kind(), ty2.kind()) {
+                (TyKind::Ref(_, t1, Mutability::Not), TyKind::Ref(_, t2, Mutability::Not)) => {
+                    match (t1.kind(), t2.kind()) {
+                        (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
+                            if el_ty1 == el_ty2 {
+                                // coercing from &[el_ty, const_len] -> &[el_ty]
+                                if bctx.ctxt.no_vstd {
+                                    return err_span(
+                                        expr.span,
+                                        "Coercing an array to a slice is not supported with --no-vstd",
+                                    );
+                                }
+                                let fun = vir::fun!("vstd" => "array", "array_as_slice");
+                                let typ_args = match &*undecorate_typ(&arg.typ) {
+                                    TypX::Primitive(Primitive::Array, typs) => typs.clone(),
+                                    _ => {
+                                        return err_span(
+                                            expr.span,
+                                            "Verus internal error: expected array",
+                                        );
+                                    }
+                                };
+                                Some((fun, typ_args))
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+
+            if let Some((fun, typ_args)) = f {
+                let autospec_usage =
+                    if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                let call_target = CallTarget::Fun(
+                    vir::ast::CallTargetKind::Static,
+                    fun,
+                    typ_args,
+                    Arc::new(vec![]),
+                    autospec_usage,
+                );
+                let args = Arc::new(vec![arg.clone()]);
+                let x = ExprX::Call(call_target, args);
+                let expr_typ = mid_ty_to_vir(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    expr.span,
+                    &ty2,
+                    false,
+                )?;
+                Ok(bctx.spanned_typed_new(expr.span, &expr_typ, x))
+            } else {
+                unsupported_err!(
+                    expr.span,
+                    format!("unsizing operation from `{ty1:}` to `{ty2:}`")
+                );
+            }
         }
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
@@ -993,20 +1081,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if bctx.external_body {
-        // we want just requires/ensures, not the whole body
-        match &expr.kind {
-            ExprKind::Block(..) | ExprKind::Call(..) => {}
-            _ => {
-                return Ok(bctx.spanned_typed_new(
-                    expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExprX::Block(Arc::new(vec![]), None),
-                ));
-            }
-        }
-    }
-
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
     let expr_typ = || {
