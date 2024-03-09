@@ -616,8 +616,12 @@ fn run() -> Result<(), String> {
 
     match (task, package.as_ref().map(|x| x.as_str()), in_nextest) {
         (Task::Clean | Task::Fmt | Task::Run | Task::Metadata | Task::Update, package, false) => {
+            let original_args = args.clone();
+
             if let Task::Fmt = task {
                 let pos = dashdash_pos.unwrap();
+
+                info(format!("formatting source").as_str());
 
                 args.insert(pos + 1, "--config".to_string());
                 args.insert(pos + 2, "unstable_features=true,version=Two".to_string());
@@ -676,6 +680,61 @@ fn run() -> Result<(), String> {
                                     format!("could not remove target-verus directory ({})", x)
                                 })?;
                             }
+                        }
+                        Ok(())
+                    }
+                    Task::Fmt => {
+                        if !status.success() {
+                            return Err(format!(
+                                "`cargo fmt` returned status code {:?}",
+                                status.code()
+                            ));
+                        }
+
+                        let original_args = original_args
+                            .iter()
+                            .map(|x| x.as_str())
+                            .collect::<std::collections::HashSet<&str>>();
+                        if !original_args.is_subset(&std::collections::HashSet::from([
+                            "--",
+                            "--check",
+                            "fmt",
+                            "--color=always",
+                        ])) {
+                            return Err(format!("some of the arguments to fmt are unsupported"));
+                        }
+                        let fmt_check = original_args.contains("--check");
+
+                        info(format!("formatting syn").as_str());
+
+                        let syn_path = std::path::Path::new("../dependencies/syn");
+                        let mut syn_fmt = std::process::Command::new("cargo");
+                        syn_fmt.current_dir(syn_path).arg("fmt");
+                        if fmt_check {
+                            syn_fmt.arg("--check");
+                        }
+                        let syn_fmt_status = syn_fmt.status().expect("failed to run cargo");
+                        if !syn_fmt_status.success() {
+                            return Err(format!(
+                                "cargo fmt on syn returned status code {:?}",
+                                syn_fmt_status.code()
+                            ));
+                        }
+
+                        info(format!("formatting prettyplease").as_str());
+
+                        let syn_path = std::path::Path::new("../dependencies/prettyplease");
+                        let mut syn_fmt = std::process::Command::new("cargo");
+                        syn_fmt.current_dir(syn_path).arg("fmt");
+                        if fmt_check {
+                            syn_fmt.arg("--check");
+                        }
+                        let syn_fmt_status = syn_fmt.status().expect("failed to run cargo");
+                        if !syn_fmt_status.success() {
+                            return Err(format!(
+                                "cargo fmt on prettyplease returned status code {:?}",
+                                syn_fmt_status.code()
+                            ));
                         }
                         Ok(())
                     }
