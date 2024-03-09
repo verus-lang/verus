@@ -938,6 +938,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
+                        CastToInteger => {
+                            panic!("CastToInteger should have been removed by poly!")
+                        }
                     }
                 }
                 Const(Int(i)) => {
@@ -1036,6 +1039,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
+                        }
+                        CastToInteger => {
+                            panic!("CastToInteger should have been removed by poly!")
                         }
                         Not
                         | HeightTrigger

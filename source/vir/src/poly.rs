@@ -423,12 +423,16 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
                 }
                 UnaryOp::MustBeFinalized => panic!("internal error: MustBeFinalized in AST"),
+                UnaryOp::CastToInteger => {
+                    let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
+                    mk_expr(ExprX::UnaryOpr(unbox, e1.clone()))
+                }
             }
         }
         ExprX::UnaryOpr(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
-                UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::HasType(_) => {
+                UnaryOpr::Box(_) | UnaryOpr::HasType(_) | UnaryOpr::Unbox(_) => {
                     panic!("internal error: already has Box/Unbox/HasType")
                 }
                 UnaryOpr::TupleField { .. } => {

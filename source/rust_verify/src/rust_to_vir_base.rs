@@ -1049,7 +1049,7 @@ pub(crate) fn implements_structural<'tcx>(
         .get(&VerusItem::Marker(crate::verus_items::MarkerItem::Structural))
         .expect("structural trait is not defined");
 
-    let infcx = ctxt.tcx.infer_ctxt().build(); // TODO(main_new) correct?
+    let infcx = ctxt.tcx.infer_ctxt().build();
     let ty = ctxt.tcx.erase_regions(ty);
     if ty.has_escaping_bound_vars() {
         return false;

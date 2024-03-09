@@ -850,6 +850,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let exp = crate::loop_inference::make_option_exp(None, &exp.span, &exp.typ);
                 exp_to_expr(ctx, &exp, expr_ctxt)?
             }
+            UnaryOp::CastToInteger => {
+                panic!("internal error: CastToInteger should have been removed before here")
+            }
         },
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {

@@ -364,7 +364,12 @@ impl ExpX {
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     return exp.x.to_string_prec(global, precedence);
                 }
-                UnaryOp::InferSpecForLoopIter { .. } => ("InferSpecForLoopIter".to_string(), 0),
+                UnaryOp::InferSpecForLoopIter { .. } => {
+                    (format!("InferSpecForLoopIter({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::CastToInteger => {
+                    (format!("{} as int", exp.x.to_user_string(global)), precedence)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;

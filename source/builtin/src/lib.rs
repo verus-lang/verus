@@ -719,6 +719,7 @@ impl<T> SyncSendIfSend<T> {
 // Marker for integer types (i8 ... u128, isize, usize, nat, int)
 // so that we get reasonable type error messages when someone uses a non-Integer type
 // in an arithmetic operation.
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Integer")]
 pub trait Integer {}
 impl Integer for u8 {}
 impl Integer for u16 {}
