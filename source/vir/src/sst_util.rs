@@ -43,7 +43,7 @@ pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
     vars
 }
 
-fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
+pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
     crate::ast_visitor::map_typ_visitor(typ, &|t: &Typ| match &**t {
         TypX::TypParam(x) => match typ_substs.get(x) {
             Some(t) => Ok(t.clone()),

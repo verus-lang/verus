@@ -116,6 +116,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 return Ok(arg);
             }
         }
+        Some(RustItem::CloneFrom) => {
+            return err_span(expr.span, "Verus does not yet support `clone_from`");
+        }
         _ => {}
     }
 

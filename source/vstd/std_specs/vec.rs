@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use core::alloc::Allocator;
 use core::option::Option;
 use core::option::Option::None;
-use core::option::Option::Some;
+use core::clone::Clone;
 
 verus! {
 
@@ -205,6 +205,16 @@ pub fn ex_vec_split_off<T, A: Allocator + core::clone::Clone>(
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
 {
     vec.split_off(at)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Vec<T, A>)
+    ensures
+        res.len() == vec.len(),
+        forall |i| #![all_triggers] 0 <= i < vec.len() ==>
+            call_ensures(T::clone, (&vec[i],), res[i])
+{
+    vec.clone()
 }
 
 #[verifier::external_fn_specification]

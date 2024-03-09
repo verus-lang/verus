@@ -60,7 +60,7 @@ mod scc;
 pub mod split_expression;
 pub mod sst;
 mod sst_to_air;
-mod sst_util;
+pub mod sst_util;
 mod sst_vars;
 mod sst_visitor;
 pub mod traits;

@@ -549,6 +549,7 @@ pub(crate) enum RustItem {
     ArcNew,
     RcNew,
     Clone,
+    CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
     TryTraitBranch,
@@ -626,6 +627,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
 
     if rust_path == Some("core::clone::Clone::clone") {
         return Some(RustItem::Clone);
+    }
+    if rust_path == Some("core::clone::Clone::clone_from") {
+        return Some(RustItem::CloneFrom);
     }
 
     if rust_path == Some("alloc::alloc::Global") {
