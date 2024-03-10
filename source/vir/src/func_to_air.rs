@@ -892,12 +892,15 @@ pub fn func_axioms_to_air(
                     ExprCtxt::new_mode(ExprMode::Spec)
                 };
                 let expr = exp_to_expr(ctx, &forall, &expr_ctxt)?;
-                let fuel_imply = if function.x.body.is_some() {
+                let fuel_imply = if !function.x.attrs.external_body {
                     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
                     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                     mk_implies(&fuel_bool, &expr)
                 } else {
+                    // a broadcast_forall, external_body function
+
                     // TODO: eventually, all broadcast_forall should be controlled by fuel
+                    // TODO: remove external_body from FunctionAttrsX; it was only needed here
                     expr
                 };
                 let axiom = Arc::new(DeclX::Axiom(fuel_imply));

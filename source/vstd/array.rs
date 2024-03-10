@@ -2,6 +2,7 @@
 use crate::seq::*;
 use builtin::*;
 use builtin_macros::*;
+use crate::slice::SliceAdditionalSpecFns;
 
 verus! {
 
@@ -64,5 +65,36 @@ pub proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
 pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
     ar.view().index(i)
 }
+
+pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
+    ensures
+        (#[trigger] spec_array_as_slice(ar))@ == ar@
+{
+}
+
+// Referenced by Verus' internal encoding for array -> slice coercion
+#[doc(hidden)]
+#[verifier(external_body)]
+#[verifier::when_used_as_spec(spec_array_as_slice)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "vstd::array::array_as_slice")]
+pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
+    ensures
+        ar@ == out@,
+{
+    ar
+}
+
+#[verifier(external_fn_specification)]
+pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
+    ensures
+        ar@ == out@,
+{
+    ar.as_slice()
+}
+
 
 } // verus!

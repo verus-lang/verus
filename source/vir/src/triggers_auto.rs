@@ -329,12 +329,16 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(UnaryOp::CoerceMode { .. }, e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(UnaryOp::MustBeFinalized, e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::Unary(UnaryOp::CastToInteger, _) => {
+            panic!("internal error: CastToInteger should have been removed before here")
+        }
         ExpX::Unary(op, e1) => {
             let depth = match op {
                 UnaryOp::Not
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
-                | UnaryOp::CharToInt => 0,
+                | UnaryOp::CharToInt
+                | UnaryOp::CastToInteger => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,

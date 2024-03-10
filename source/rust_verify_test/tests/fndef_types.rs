@@ -1334,3 +1334,56 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] bound_vars_issue1005 verus_code! {
+        use vstd::prelude::*;
+
+        fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(&T) -> U) -> (result: Vec<U>)
+            requires
+                forall |i| 0 <= i < v.len() ==> call_requires(f, (&v[i],)),
+            ensures
+                result.len() == v.len(),
+                forall |i| 0 <= i < v.len() ==> call_ensures(f, (&v[i],), #[trigger] result[i])
+        {
+            assume(false);
+            Vec::new()
+        }
+
+        fn double(x: &u8) -> (res: u8)
+            requires 0 <= *x < 128,
+            ensures res == 2 * (*x),
+        {
+            2 * (*x)
+        }
+
+        fn test_vec_map() {
+            let mut v = Vec::new();
+            v.push(0);
+            v.push(10);
+            v.push(20);
+
+            let w = vec_map(&v, double);
+            assert(w[2] == 40);
+        }
+
+        // Similar test, but with closures:
+
+        struct X { }
+
+        fn constrain<T>(t: T) -> T
+            where T: for<'a> Fn(&'a X) -> &'a X
+        {
+            t
+        }
+
+        fn test() {
+            let f = constrain(|x: &X| -> &X {
+                &x
+            });
+
+            let x = X { };
+            let t: &X = f(&x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

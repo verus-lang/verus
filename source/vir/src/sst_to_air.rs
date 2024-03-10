@@ -850,6 +850,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let exp = crate::loop_inference::make_option_exp(None, &exp.span, &exp.typ);
                 exp_to_expr(ctx, &exp, expr_ctxt)?
             }
+            UnaryOp::CastToInteger => {
+                panic!("internal error: CastToInteger should have been removed before here")
+            }
         },
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
@@ -2293,6 +2296,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.pop_scope();
             }
             stmts
+        }
+        StmX::Air(s) => {
+            let mut parser = sise::Parser::new(s.as_bytes());
+            let node = sise::read_into_tree(&mut parser).unwrap();
+
+            let stmt = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+                .node_to_stmt(&node);
+            match stmt {
+                Ok(stmt) => vec![stmt],
+                Err(err) => {
+                    return Err(error(&stm.span, format!("Invalid inline AIR statement: {}", err)));
+                }
+            }
         }
     };
     Ok(result)

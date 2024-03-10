@@ -468,6 +468,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
+            StmX::Air(_) => R::ret(|| stm.clone()),
         }
     }
 }

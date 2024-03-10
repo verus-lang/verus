@@ -276,7 +276,8 @@ where
                 | ExprX::VarLoc(_)
                 | ExprX::VarAt(_, _)
                 | ExprX::ConstVar(..)
-                | ExprX::StaticVar(..) => (),
+                | ExprX::StaticVar(..)
+                | ExprX::AirStmt(_) => (),
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
@@ -967,6 +968,7 @@ where
             map.pop_scope();
             ExprX::OpenInvariant(expr1, binder, expr2, *atomicity)
         }
+        ExprX::AirStmt(s) => ExprX::AirStmt(s.clone()),
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)
@@ -1110,9 +1112,7 @@ where
     let name = name.clone();
     let proxy = proxy.clone();
     let kind = match kind {
-        FunctionKind::Static
-        | FunctionKind::TraitMethodDecl { trait_path: _ }
-        | FunctionKind::ForeignTraitMethodImpl(_) => kind.clone(),
+        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
         FunctionKind::TraitMethodImpl {
             method,
             impl_path,
@@ -1126,6 +1126,14 @@ where
             trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
             inherit_body_from: inherit_body_from.clone(),
         },
+        FunctionKind::ForeignTraitMethodImpl { method, impl_path, trait_path, trait_typ_args } => {
+            FunctionKind::ForeignTraitMethodImpl {
+                method: method.clone(),
+                impl_path: impl_path.clone(),
+                trait_path: trait_path.clone(),
+                trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
+            }
+        }
     };
     let visibility = visibility.clone();
     let owning_module = owning_module.clone();

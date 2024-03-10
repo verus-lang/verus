@@ -630,7 +630,11 @@ fn check_expr_handle_mut_arg(
                 ));
             }
 
-            let mode = mode_join(outer_mode, x_mode);
+            let mode = if matches!(&expr.x, ExprX::VarAt(..)) {
+                Mode::Spec
+            } else {
+                mode_join(outer_mode, x_mode)
+            };
 
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
@@ -1331,6 +1335,7 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
+        ExprX::AirStmt(_) => Ok(Mode::Exec),
     };
     Ok((mode?, None))
 }
@@ -1455,6 +1460,10 @@ fn check_function(
     drop(ens_typing);
 
     for expr in function.x.decrease.iter() {
+        let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+    for expr in function.x.mask_spec.exprs().iter() {
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
         check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
     }

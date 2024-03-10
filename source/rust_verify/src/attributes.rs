@@ -280,6 +280,9 @@ pub(crate) enum Attr {
     SizeOfGlobal,
     // Marks generated -> functions that are unsupported because a field appears in multiple variants
     InternalGetFieldManyVariants,
+    // Marks a trait as "sealed", i.e. not implementable in Verus code
+    // requires it to also be marked `unsafe`
+    Sealed,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -480,6 +483,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "external_type_specification" => {
                     v.push(Attr::ExternalTypeSpecification)
                 }
+                AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
@@ -747,6 +751,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
+    pub(crate) sealed: bool,
 }
 
 impl VerifierAttrs {
@@ -804,6 +809,7 @@ pub(crate) fn get_verifier_attrs(
         trusted: false,
         size_of_global: false,
         internal_get_field_many_variants: false,
+        sealed: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -854,6 +860,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
+            Attr::Sealed => vs.sealed = true,
             _ => {}
         }
     }

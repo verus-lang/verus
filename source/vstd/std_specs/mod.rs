@@ -1,5 +1,6 @@
 pub mod atomic;
 pub mod bits;
+pub mod clone;
 pub mod control_flow;
 pub mod core;
 pub mod num;

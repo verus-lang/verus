@@ -7,10 +7,12 @@ use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
+use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{ImplPolarity, TraitPredicate};
+use rustc_middle::ty::{TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
@@ -193,6 +195,135 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
+fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(
+    tcx: TyCtxt<'tcx>,
+    value: T,
+    param_env_src: DefId,
+) -> T {
+    let mut regions = HashMap::new();
+    let delegate = rustc_middle::ty::fold::FnMutDelegate {
+        regions: &mut |br| {
+            *regions.entry(br).or_insert(rustc_middle::ty::Region::new_free(
+                tcx,
+                param_env_src,
+                br.kind,
+            ))
+        },
+        types: &mut |b| panic!("unexpected bound ty in binder: {:?}", b),
+        consts: &mut |b, ty| panic!("unexpected bound ct in binder: {:?} {}", b, ty),
+    };
+
+    replace_all_escaping_bound_vars_uncached(tcx, value, delegate)
+}
+
+// This implementation is based off of of the impl of
+// replace_escaping_bound_vars with a minor change
+// https://doc.rust-lang.org/1.73.0/nightly-rustc/src/rustc_middle/ty/fold.rs.html#296
+//
+// The reason we need to modify it is this:
+// when we move into a binder (via 'skip_binder') we need to
+// replace all the vars in the binder. 'replace_escaping_bound_vars_uncached' is meant
+// to do this, but it only replaces the vars at one level, the level currently being
+// stripped off. However, when we're ready to call this, we might have already
+// called skip_binder multiple times before ever even calling get_impl_paths.
+//
+// This modified version of replace_escaping_bound_vars_uncached will replace ALL
+// escaped bound vars, including the ones at higher binding levels.
+fn replace_all_escaping_bound_vars_uncached<
+    'tcx,
+    T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>,
+>(
+    tcx: TyCtxt<'tcx>,
+    value: T,
+    delegate: impl BoundVarReplacerDelegate<'tcx>,
+) -> T {
+    if !value.has_escaping_bound_vars() {
+        value
+    } else {
+        let mut replacer = BoundVarReplacer::new(tcx, delegate);
+        value.fold_with(&mut replacer)
+    }
+}
+
+struct BoundVarReplacer<'tcx, D> {
+    tcx: TyCtxt<'tcx>,
+    current_index: rustc_middle::ty::DebruijnIndex,
+    delegate: D,
+}
+
+impl<'tcx, D: BoundVarReplacerDelegate<'tcx>> BoundVarReplacer<'tcx, D> {
+    fn new(tcx: TyCtxt<'tcx>, delegate: D) -> Self {
+        BoundVarReplacer { tcx, current_index: rustc_middle::ty::INNERMOST, delegate }
+    }
+}
+
+impl<'tcx, D> TypeFolder<TyCtxt<'tcx>> for BoundVarReplacer<'tcx, D>
+where
+    D: BoundVarReplacerDelegate<'tcx>,
+{
+    fn interner(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
+    fn fold_binder<T: TypeFoldable<TyCtxt<'tcx>>>(
+        &mut self,
+        t: rustc_middle::ty::Binder<'tcx, T>,
+    ) -> rustc_middle::ty::Binder<'tcx, T> {
+        self.current_index.shift_in(1);
+        let t = t.super_fold_with(self);
+        self.current_index.shift_out(1);
+        t
+    }
+
+    fn fold_ty(&mut self, t: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
+        match *t.kind() {
+            rustc_middle::ty::Bound(debruijn, bound_ty) if debruijn == self.current_index => {
+                let ty = self.delegate.replace_ty(bound_ty);
+                debug_assert!(!ty.has_vars_bound_above(rustc_middle::ty::INNERMOST));
+                rustc_middle::ty::fold::shift_vars(self.tcx, ty, self.current_index.as_u32())
+            }
+            _ if t.has_vars_bound_at_or_above(self.current_index) => t.super_fold_with(self),
+            _ => t,
+        }
+    }
+
+    fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
+        match *r {
+            // NOTE(verus): This is the one change, we replace == with >=
+            rustc_middle::ty::ReLateBound(debruijn, br) if debruijn >= self.current_index => {
+                let region = self.delegate.replace_region(br);
+                if let rustc_middle::ty::ReLateBound(debruijn1, br) = *region {
+                    assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
+                    rustc_middle::ty::Region::new_late_bound(self.tcx, debruijn, br)
+                } else {
+                    region
+                }
+            }
+            _ => r,
+        }
+    }
+
+    fn fold_const(&mut self, ct: rustc_middle::ty::Const<'tcx>) -> rustc_middle::ty::Const<'tcx> {
+        match ct.kind() {
+            rustc_middle::ty::ConstKind::Bound(debruijn, bound_const)
+                if debruijn == self.current_index =>
+            {
+                let ct = self.delegate.replace_const(bound_const, ct.ty());
+                debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
+                rustc_middle::ty::fold::shift_vars(self.tcx, ct, self.current_index.as_u32())
+            }
+            _ => ct.super_fold_with(self),
+        }
+    }
+
+    fn fold_predicate(
+        &mut self,
+        p: rustc_middle::ty::Predicate<'tcx>,
+    ) -> rustc_middle::ty::Predicate<'tcx> {
+        if p.has_vars_bound_at_or_above(self.current_index) { p.super_fold_with(self) } else { p }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ClauseFrom<'tcx> {
     clause: Clause<'tcx>,
@@ -307,27 +438,16 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
         idx += 1;
 
         if let ClauseKind::Trait(_) = inst_pred.kind().skip_binder() {
-            let inst_pred_erased = inst_pred.kind();
+            let inst_pred_kind = inst_pred.kind().skip_binder();
+            let inst_pred_kind = clean_all_escaping_bound_vars(tcx, inst_pred_kind, param_env_src);
 
-            let trait_refs = inst_pred_erased.map_bound(|p| {
-                if let ClauseKind::Trait(tp) = &p { tp.trait_ref } else { unreachable!() }
-            });
-
-            let mut regions = HashMap::new();
-            let delegate = rustc_middle::ty::fold::FnMutDelegate {
-                regions: &mut |br| {
-                    *regions.entry(br).or_insert(rustc_middle::ty::Region::new_free(
-                        tcx,
-                        param_env_src,
-                        br.kind,
-                    ))
-                },
-                types: &mut |b| panic!("unexpected bound ty in binder: {:?}", b),
-                consts: &mut |b, ty| panic!("unexpected bound ct in binder: {:?} {}", b, ty),
+            let trait_refs = if let ClauseKind::Trait(tp) = &inst_pred_kind {
+                tp.trait_ref
+            } else {
+                unreachable!()
             };
-            let trait_refs = tcx.replace_escaping_bound_vars_uncached(trait_refs, delegate);
 
-            let candidate = tcx.codegen_select_candidate((param_env, trait_refs.skip_binder()));
+            let candidate = tcx.codegen_select_candidate((param_env, trait_refs));
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
@@ -363,7 +483,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                     // I think codegen_select_candidate lacks some information because
                     // it's used for codegen
 
-                    match inst_pred_erased.skip_binder() {
+                    match inst_pred_kind {
                         ClauseKind::Trait(TraitPredicate {
                             trait_ref:
                                 rustc_middle::ty::TraitRef {
@@ -929,8 +1049,7 @@ pub(crate) fn implements_structural<'tcx>(
         .get(&VerusItem::Marker(crate::verus_items::MarkerItem::Structural))
         .expect("structural trait is not defined");
 
-    use crate::rustc_middle::ty::TypeVisitableExt;
-    let infcx = ctxt.tcx.infer_ctxt().build(); // TODO(main_new) correct?
+    let infcx = ctxt.tcx.infer_ctxt().build();
     let ty = ctxt.tcx.erase_regions(ty);
     if ty.has_escaping_bound_vars() {
         return false;

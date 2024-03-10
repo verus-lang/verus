@@ -324,6 +324,8 @@ pub enum UnaryOp {
     /// that e evaluates to is immutable and v == s, where v may contain local variables.
     /// For example, if v == (n..m), then n and m must be immutable local variables.
     InferSpecForLoopIter { print_hint: bool },
+    /// May need coercion after casting a type argument
+    CastToInteger,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -785,6 +787,8 @@ pub enum ExprX {
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
+    /// Inline AIR statement
+    AirStmt(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -858,6 +862,9 @@ pub struct FunctionAttrsX {
     pub inline: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
+    /// Do not process or verify function body
+    /// TODO: needed only until https://github.com/verus-lang/verus/pull/1022 is merged
+    pub external_body: bool,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
@@ -919,7 +926,12 @@ pub enum FunctionKind {
     },
     /// These should get demoted into Static functions in `demote_foreign_traits`.
     /// This really only exists so that we can check the trait really is foreign.
-    ForeignTraitMethodImpl(Path),
+    ForeignTraitMethodImpl {
+        method: Fun,
+        impl_path: Path,
+        trait_path: Path,
+        trait_typ_args: Typs,
+    },
 }
 
 /// Function, including signature and body

@@ -513,3 +513,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "in 'opens_invariants' clause of public function, cannot refer to private function")
 }
+
+test_verify_one_file! {
+    #[test] opens_invariants_mode verus_code! {
+        fn exec_int_fn() -> int {
+            loop { }
+        }
+
+        fn test()
+            opens_invariants [ exec_int_fn() ]
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+}

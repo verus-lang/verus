@@ -118,6 +118,7 @@ pub(crate) enum DirectiveItem {
     RevealHide,
     RevealHideInternalPath,
     RevealStrlit,
+    InlineAirStmt,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -293,6 +294,11 @@ pub(crate) enum BuiltinTypeItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinTraitItem {
+    Integer,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinFunctionItem {
     CallRequires,
     CallEnsures,
@@ -319,6 +325,7 @@ pub(crate) enum VerusItem {
     Vstd(VstdItem, Option<Ident>),
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
+    BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
 }
@@ -350,6 +357,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
         ("verus::builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
         ("verus::builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
+        ("verus::builtin::inline_air_stmt",         VerusItem::Directive(DirectiveItem::InlineAirStmt)),
 
         ("verus::builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
         ("verus::builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
@@ -468,6 +476,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
 
+        ("verus::builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
+
         ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
         ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
         
@@ -547,6 +557,7 @@ pub(crate) enum RustItem {
     ArcNew,
     RcNew,
     Clone,
+    CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
     TryTraitBranch,
@@ -624,6 +635,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
 
     if rust_path == Some("core::clone::Clone::clone") {
         return Some(RustItem::Clone);
+    }
+    if rust_path == Some("core::clone::Clone::clone_from") {
+        return Some(RustItem::CloneFrom);
     }
 
     if rust_path == Some("alloc::alloc::Global") {

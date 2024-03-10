@@ -28,6 +28,14 @@ jobs:
         working-directory: ./tools/vargo
         run: |
           cargo fmt -- --check
+      - name: check cargo fmt for prettyplease
+        working-directory: ./dependencies/syn
+        run: |
+          cargo fmt -- --check
+      - name: check cargo fmt for syn
+        working-directory: ./dependencies/prettyplease
+        run: |
+          cargo fmt -- --check
 
   test:
     runs-on: ubuntu-latest
