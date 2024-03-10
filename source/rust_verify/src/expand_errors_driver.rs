@@ -393,7 +393,7 @@ impl ExpandErrorsDriver {
             }
         }
 
-        let mut b: Vec<String> = vec!["Diagnostics via iterative expansion:\n".into()];
+        let mut b: Vec<String> = vec!["diagnostics via expansion:\n".into()];
 
         for (i, line) in self.output.iter().enumerate() {
             close_up_group_bars(&mut b, &mut group_bars, line.indent);
