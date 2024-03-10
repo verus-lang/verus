@@ -5,6 +5,7 @@ pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub(crate) trait Scoper {
     fn push_scope(&mut self) {}
@@ -330,7 +331,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_stm_rec(&mut self, stm: &Stm) -> Result<R::Ret<Stm>, Err> {
         let stm_new = |s: StmX| Spanned::new(stm.span.clone(), s);
         match &stm.x {
-            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest } => {
+            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest, assert_id } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
                     R::ret(|| Some((f.clone(), R::get_vec_a(ts))))
@@ -349,12 +350,13 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         args: R::get_vec_a(args),
                         split: split.clone(),
                         dest: R::get_opt(dest),
+                        assert_id: assert_id.clone(),
                     })
                 })
             }
-            StmX::Assert(span2, exp) => {
+            StmX::Assert(assert_id, span2, exp) => {
                 let exp = self.visit_exp(exp)?;
-                R::ret(|| stm_new(StmX::Assert(span2.clone(), R::get(exp))))
+                R::ret(|| stm_new(StmX::Assert(assert_id.clone(), span2.clone(), R::get(exp))))
             }
             StmX::AssertBitVector { requires, ensures } => {
                 let requires = self.visit_exps(requires)?;
@@ -381,13 +383,14 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let s = self.visit_stm(&stm)?;
                 R::ret(|| stm_new(StmX::DeadEnd(R::get(s))))
             }
-            StmX::Return { base_error, ret_exp, inside_body } => {
+            StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
                 let ret_exp = R::map_opt(ret_exp, &mut |e| self.visit_exp(e))?;
                 R::ret(|| {
                     stm_new(StmX::Return {
                         base_error: base_error.clone(),
                         ret_exp: R::get_opt(ret_exp),
                         inside_body: *inside_body,
+                        assert_id: assert_id.clone(),
                     })
                 })
             }
@@ -789,6 +792,7 @@ where
 /// Only maps over nodes with the 'assert_id'
 /// F: FnMut(stm: &Stm, previous_stm: Option<&Stm>) -> Result<Stm, VirErr>
 /// The second argument, previous_stm, is the directly previous Stm in the block, if it exists
+// TODO use the new visitor pattern
 pub(crate) fn map_stm_visitor_for_assert_id_nodes<F>(stm: &Stm, fs: &mut F) -> Result<Stm, VirErr>
 where
     F: FnMut(&Stm, Option<&Stm>) -> Result<Stm, VirErr>,
@@ -813,6 +817,7 @@ where
 
         StmX::Assume(_) => Ok(stm.clone()),
         StmX::Assign { .. } => Ok(stm.clone()),
+        StmX::Air { .. } => Ok(stm.clone()),
         StmX::AssertBitVector { .. } => Ok(stm.clone()),
         StmX::Fuel(..) => Ok(stm.clone()),
         StmX::RevealString(_) => Ok(stm.clone()),
