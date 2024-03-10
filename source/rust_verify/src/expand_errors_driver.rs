@@ -16,6 +16,7 @@ const MAX_DEPTH: usize = 7;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ExpandErrorsResult {
     Fail,
+    Timeout,
     Pass,
     // If we do an expansion and there are no branches,
     // then we don't actually run a sub-query since it should
@@ -449,6 +450,9 @@ impl ExpandErrorsDriver {
                             (s, Style::Normal)
                         }
                         Some(ExpandErrorsResult::Fail) => ("✘", Style::FailRed),
+                        Some(ExpandErrorsResult::Timeout) => {
+                            ("✘ [rlimit exceeded]", Style::FailRed)
+                        }
                         Some(ExpandErrorsResult::PresumedFail) => {
                             // Don't use an X because we didn't actually run a query
                             // But still mark it red
@@ -511,7 +515,11 @@ impl ExpandErrorsDriver {
                     None => {
                         all_ok = false;
                     }
-                    Some(ExpandErrorsResult::Fail | ExpandErrorsResult::PresumedFail) => {
+                    Some(
+                        ExpandErrorsResult::Fail
+                        | ExpandErrorsResult::PresumedFail
+                        | ExpandErrorsResult::Timeout,
+                    ) => {
                         return Style::FailRed;
                     }
                     Some(ExpandErrorsResult::Pass) => {}
@@ -525,7 +533,7 @@ impl ExpandErrorsDriver {
     pub fn has_strange_result(&self) -> bool {
         for (id, result) in self.results.iter() {
             let needs_check = match result {
-                ExpandErrorsResult::Fail => true,
+                ExpandErrorsResult::Fail | ExpandErrorsResult::Timeout => true,
                 ExpandErrorsResult::Pass | ExpandErrorsResult::PresumedFail => false,
             };
             if needs_check {
