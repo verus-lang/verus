@@ -442,3 +442,25 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
 }
+
+test_verify_one_file! {
+    #[test] test_integer_trait_sealed_1 verus_code! {
+        struct S;
+        impl Integer for S {}
+    } => Err(err) => assert_rust_error_msg(err, "the trait `builtin::Integer` requires an `unsafe impl` declaration")
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_sealed_2 verus_code! {
+        pub open spec fn plus_three<T: Integer>(t: T) -> nat {
+            t as nat + 3
+        }
+
+        struct S;
+        unsafe impl Integer for S {}
+
+        proof fn test() {
+            assert(plus_three(S) + 1 == 1 + plus_three(S));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
+}
