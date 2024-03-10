@@ -720,6 +720,9 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
+                    if self.expand_flag {
+                        invalidity = true;
+                    }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
@@ -1329,6 +1332,7 @@ impl Verifier {
                         let mut spinoff_context_counter = 1;
 
                         let mut any_invalid = false;
+                        let mut any_timed_out = false;
                         let mut failed_assert_ids = vec![];
                         self.expand_targets = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
@@ -1433,6 +1437,7 @@ impl Verifier {
                             }
 
                             any_invalid |= command_invalidity;
+                            any_timed_out |= command_timed_out;
 
                             if let Some(profile_file_name) = profile_file_name {
                                 if command_not_skipped && query_air_context.check_valid_used() {
@@ -1556,7 +1561,9 @@ impl Verifier {
                         }
 
                         if matches!(query_op, QueryOp::Body(Style::Expanded)) {
-                            let res = if any_invalid {
+                            let res = if any_timed_out {
+                                ExpandErrorsResult::Timeout
+                            } else if any_invalid {
                                 ExpandErrorsResult::Fail
                             } else {
                                 ExpandErrorsResult::Pass
