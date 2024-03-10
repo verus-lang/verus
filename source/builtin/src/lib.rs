@@ -720,7 +720,7 @@ impl<T> SyncSendIfSend<T> {
 // so that we get reasonable type error messages when someone uses a non-Integer type
 // in an arithmetic operation.
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Integer")]
-#[verifier::sealed]
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub unsafe trait Integer {}
 unsafe impl Integer for u8 {}
 unsafe impl Integer for u16 {}
