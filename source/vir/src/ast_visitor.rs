@@ -448,7 +448,7 @@ where
                         map.pop_scope();
                     }
                 }
-                ExprX::Loop { is_for_loop: _, label: _, cond, body, invs } => {
+                ExprX::Loop { spinoff_loop: _, is_for_loop: _, label: _, cond, body, invs } => {
                     if let Some(cond) = cond {
                         expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
                     }
@@ -906,7 +906,7 @@ where
             });
             ExprX::Match(expr1, Arc::new(arms?))
         }
-        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { spinoff_loop, is_for_loop, label, cond, body, invs } => {
             let cond =
                 cond.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
@@ -916,6 +916,7 @@ where
                 invs1.push(crate::ast::LoopInvariant { inv: e1, ..inv.clone() });
             }
             ExprX::Loop {
+                spinoff_loop: *spinoff_loop,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 cond,

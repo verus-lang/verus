@@ -258,6 +258,8 @@ pub(crate) enum Attr {
     IntegerRing,
     // Use a new dedicated Z3 process just for this query
     SpinoffProver,
+    // Use a new dedicated Z3 process for loops
+    SpinoffLoop(bool),
     // Memoize function call results during interpretation
     Memoize,
     // Override default rlimit
@@ -448,6 +450,19 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "spinoff_prover" => {
                     v.push(Attr::SpinoffProver)
                 }
+                AttrTree::Fun(_, arg, None) if arg == "spinoff_loop" => {
+                    v.push(Attr::SpinoffLoop(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "spinoff_loop" && r == "true" =>
+                {
+                    v.push(Attr::SpinoffLoop(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "spinoff_loop" && r == "false" =>
+                {
+                    v.push(Attr::SpinoffLoop(false))
+                }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
                 AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
                     if name == "rlimit" =>
@@ -583,6 +598,37 @@ pub(crate) fn parse_attrs_opt(
     }
 }
 
+pub(crate) fn parse_attrs_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    mut def_id: rustc_span::def_id::DefId,
+) -> Vec<Attr> {
+    let mut vattrs: Vec<Attr> = Vec::new();
+    loop {
+        if let Some(did) = def_id.as_local() {
+            let hir_id = tcx.hir().local_def_id_to_hir_id(did);
+            let attrs = tcx.hir().attrs(hir_id);
+            vattrs.extend(parse_attrs_opt(attrs, None));
+        }
+        if let Some(id) = tcx.opt_parent(def_id) {
+            def_id = id;
+        } else {
+            return vattrs;
+        }
+    }
+}
+
+pub(crate) fn get_spinoff_loop_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> Option<bool> {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::SpinoffLoop(flag) = attr {
+            return Some(flag);
+        }
+    }
+    None
+}
+
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
@@ -693,6 +739,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) check_recommends: bool,
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
+    pub(crate) spinoff_loop: Option<bool>,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
     pub(crate) truncate: bool,
@@ -750,6 +797,7 @@ pub(crate) fn get_verifier_attrs(
         check_recommends: false,
         nonlinear: false,
         spinoff_prover: false,
+        spinoff_loop: None,
         memoize: false,
         rlimit: None,
         truncate: false,
@@ -802,6 +850,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
+            Attr::SpinoffLoop(flag) => vs.spinoff_loop = Some(flag),
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,

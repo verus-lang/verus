@@ -398,7 +398,16 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let s2 = R::map_opt(s2, &mut |s| self.visit_stm(s))?;
                 R::ret(|| stm_new(StmX::If(R::get(exp), R::get(s1), R::get_opt(s2))))
             }
-            StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+            StmX::Loop {
+                spinoff_loop,
+                is_for_loop,
+                label,
+                cond,
+                body,
+                invs,
+                typ_inv_vars,
+                modified_vars,
+            } => {
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
                     let cond_exp = self.visit_exp(cond_exp)?;
@@ -409,6 +418,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
                 R::ret(|| {
                     stm_new(StmX::Loop {
+                        spinoff_loop: *spinoff_loop,
                         is_for_loop: *is_for_loop,
                         label: label.clone(),
                         cond: R::get_opt(cond),

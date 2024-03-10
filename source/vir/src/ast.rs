@@ -766,6 +766,7 @@ pub enum ExprX {
     Match(Expr, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
+        spinoff_loop: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<Expr>,
