@@ -132,6 +132,9 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 UnaryOp::InferSpecForLoopIter { .. } => {
                     panic!("internal error: unexpected Option type (from InferSpecForLoopIter)")
                 }
+                UnaryOp::CastToInteger => {
+                    panic!("internal error: unexpected CastToInteger")
+                }
             }
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {

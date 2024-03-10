@@ -294,6 +294,11 @@ pub(crate) enum BuiltinTypeItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinTraitItem {
+    Integer,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinFunctionItem {
     CallRequires,
     CallEnsures,
@@ -320,6 +325,7 @@ pub(crate) enum VerusItem {
     Vstd(VstdItem, Option<Ident>),
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
+    BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
 }
@@ -469,6 +475,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::FnSpec",                  VerusItem::BuiltinType(BuiltinTypeItem::FnSpec)),
         ("verus::builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
+
+        ("verus::builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
 
         ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
         ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),

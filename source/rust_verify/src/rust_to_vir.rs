@@ -234,7 +234,8 @@ fn check_item<'tcx>(
             if vattrs.is_external(&ctxt.cmd_line_args) {
                 return Ok(());
             }
-            if impll.unsafety != Unsafety::Normal {
+
+            if impll.unsafety != Unsafety::Normal && impll.of_trait.is_none() {
                 return err_span(item.span, "the verifier does not support `unsafe` here");
             }
 
@@ -250,6 +251,19 @@ fn check_item<'tcx>(
                 }
 
                 let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
+
+                /* sealed, `unsafe` */
+                {
+                    let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
+                    let trait_vattrs =
+                        get_verifier_attrs(trait_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+
+                    if trait_vattrs.sealed {
+                        return err_span(item.span, "cannot implement `sealed` trait");
+                    } else if impll.unsafety != Unsafety::Normal {
+                        return err_span(item.span, "the verifier does not support `unsafe` here");
+                    }
+                }
 
                 let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {
                     let ty = {

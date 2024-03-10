@@ -24,6 +24,7 @@ use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
+use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
@@ -1050,14 +1051,24 @@ fn verus_item_to_vir<'tcx, 'a>(
             let source_vir = mk_one_vir_arg(bctx, expr.span, &args)?;
             let source_ty = undecorate_typ(&source_vir.typ);
             let to_ty = undecorate_typ(&expr_typ()?);
-            match (&*source_ty, &*to_ty) {
-                (TypX::Int(IntRange::U(_)), TypX::Int(IntRange::Nat)) => Ok(source_vir),
-                (TypX::Int(IntRange::USize), TypX::Int(IntRange::Nat)) => Ok(source_vir),
-                (TypX::Int(IntRange::Nat), TypX::Int(IntRange::Nat)) => Ok(source_vir),
-                (TypX::Int(IntRange::Int), TypX::Int(IntRange::Nat)) => {
+            let source_is_integer = {
+                let integer_trait_def_id = bctx.ctxt.verus_items.name_to_id
+                    [&VerusItem::BuiltinTrait(verus_items::BuiltinTraitItem::Integer)];
+                let ty = bctx.types.node_type(args[0].hir_id);
+                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build();
+                matches!(&*source_vir.typ, TypX::TypParam(_))
+                    && infcx
+                        .type_implements_trait(integer_trait_def_id, vec![ty], tcx.param_env(f))
+                        .must_apply_modulo_regions()
+            };
+            match ((&*source_ty, source_is_integer), &*to_ty) {
+                ((TypX::Int(IntRange::U(_)), _), TypX::Int(IntRange::Nat)) => Ok(source_vir),
+                ((TypX::Int(IntRange::USize), _), TypX::Int(IntRange::Nat)) => Ok(source_vir),
+                ((TypX::Int(IntRange::Nat), _), TypX::Int(IntRange::Nat)) => Ok(source_vir),
+                ((TypX::Int(IntRange::Int), _), TypX::Int(IntRange::Nat)) => {
                     Ok(mk_ty_clip(&to_ty, &source_vir, true))
                 }
-                (TypX::Int(_), TypX::Int(_)) => {
+                ((TypX::Int(_), _), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
                     let expr_vattrs = get_verifier_attrs(
                         expr_attrs,
@@ -1065,7 +1076,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     )?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
-                (TypX::Char, TypX::Int(_)) => {
+                ((TypX::Char, _), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
                     let expr_vattrs = get_verifier_attrs(
                         expr_attrs,
@@ -1074,6 +1085,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let source_unicode =
                         mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()))?;
                     Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
+                }
+                ((_, true), TypX::Int(IntRange::Int)) => {
+                    mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))
+                }
+                ((_, true), TypX::Int(IntRange::Nat)) => {
+                    let cast_to_integer =
+                        mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))?;
+                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_vattrs = get_verifier_attrs(
+                        expr_attrs,
+                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+                    )?;
+                    Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
                 _ => err_span(
                     expr.span,
@@ -1436,6 +1460,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
+        | VerusItem::BuiltinTrait(_)
         | VerusItem::Global(_) => unreachable!(),
     }
 }

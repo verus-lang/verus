@@ -155,6 +155,7 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CharToInt
+            | UnaryOp::CastToInteger
             | UnaryOp::InferSpecForLoopIter { .. } => Ok(()),
         },
         ExpX::UnaryOpr(op, arg) => match op {
@@ -260,7 +261,8 @@ fn check_trigger_expr(
                 UnaryOp::Trigger(_)
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
-                | UnaryOp::MustBeFinalized => Ok(()),
+                | UnaryOp::MustBeFinalized
+                | UnaryOp::CastToInteger => Ok(()),
                 UnaryOp::InferSpecForLoopIter { .. } => {
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
                 }

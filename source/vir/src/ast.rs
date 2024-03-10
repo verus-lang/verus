@@ -324,6 +324,8 @@ pub enum UnaryOp {
     /// that e evaluates to is immutable and v == s, where v may contain local variables.
     /// For example, if v == (n..m), then n and m must be immutable local variables.
     InferSpecForLoopIter { print_hint: bool },
+    /// May need coercion after casting a type argument
+    CastToInteger,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
