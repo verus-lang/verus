@@ -222,7 +222,9 @@ pub(crate) fn handle_external_fn<'tcx>(
         get_external_def_id(ctxt.tcx, &ctxt.verus_items, id, body_id, body, sig)?;
     let external_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_id);
 
-    if external_path.krate == Some(Arc::new("builtin".to_string())) {
+    if external_path.krate == Some(Arc::new("builtin".to_string()))
+        && &*external_path.last_segment() != "clone"
+    {
         return err_span(
             sig.span,
             "cannot apply `external_fn_specification` to Verus builtin functions",

@@ -659,6 +659,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] tracked_is_copy_if_type_param_is_copy verus_code! {
+        use vstd::*;
+
         #[verifier::external_body]
         tracked struct T { }
 
@@ -677,6 +679,14 @@ test_verify_one_file! {
         fn test2(t: Tracked<T>) {
             test(t);
             test(t);
+        }
+
+        fn test3(t: Tracked<T>) {
+            test(t.clone());
+            test(t.clone());
+
+            let x = t.clone();
+            assert(x == t);
         }
     } => Ok(())
 }
