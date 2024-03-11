@@ -79,6 +79,7 @@ pub(crate) struct State<'a> {
     containing_closure: Option<ClosureState>,
     // Statics that are referenced (not counting statics in loops)
     pub statics: IndexSet<Fun>,
+    pub assert_id_counter: u64,
 }
 
 #[derive(Clone)]
@@ -145,6 +146,7 @@ impl<'a> State<'a> {
             diagnostics,
             containing_closure: None,
             statics: IndexSet::new(),
+            assert_id_counter: 0,
         }
     }
 
@@ -408,25 +410,8 @@ impl<'a> State<'a> {
         diagnostics: &impl Diagnostics,
         fun_ssts: &SstMap,
         stm: &Stm,
-        ensures: &Vec<Exp>,
-        ens_pars: &Pars,
-        dest: Option<UniqueIdent>,
     ) -> Result<Stm, VirErr> {
-        let stm =
-            map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, diagnostics, fun_ssts, exp))?;
-        if ctx.expand_flag {
-            crate::split_expression::all_split_exp(
-                ctx,
-                diagnostics,
-                fun_ssts,
-                &stm,
-                &Arc::new(ensures.clone()),
-                ens_pars,
-                dest,
-            )
-        } else {
-            Ok(stm)
-        }
+        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, diagnostics, fun_ssts, exp))
     }
 
     pub(crate) fn finalize(&mut self) {
@@ -473,13 +458,19 @@ impl<'a> State<'a> {
             Mode::Proof | Mode::Exec => !self.checking_spec_preconditions(ctx),
         }
     }
+
+    pub fn next_assert_id(&mut self) -> Option<air::ast::AssertId> {
+        let aid = vec![self.assert_id_counter];
+        self.assert_id_counter += 1;
+        Some(Arc::new(aid))
+    }
 }
 
 pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
     SpannedTyped::new(span, typ, ExpX::VarLoc(lhs))
 }
 
-fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
+pub(crate) fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     Spanned::new(
         span.clone(),
         StmX::Assign {
@@ -869,7 +860,12 @@ pub(crate) fn expr_to_one_stm_with_post(
 
             stms.push(Spanned::new(
                 expr.span.clone(),
-                StmX::Return { base_error, ret_exp: Some(exp), inside_body: false },
+                StmX::Return {
+                    base_error,
+                    ret_exp: Some(exp),
+                    inside_body: false,
+                    assert_id: state.next_assert_id(),
+                },
             ));
         }
         None => {
@@ -925,19 +921,6 @@ fn stm_call(
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
-    if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
-        let error = error(span, crate::def::SPLIT_PRE_FAILURE.to_string());
-        let call = StmX::Call {
-            fun: name.clone(),
-            resolved_method: resolved_method.clone(),
-            mode: fun.x.mode,
-            typ_args: typs.clone(),
-            args: args.clone(),
-            split: Some(error),
-            dest: None,
-        };
-        stms.push(Spanned::new(span.clone(), call));
-    }
 
     let mut small_args: Vec<Exp> = Vec::new();
     for arg in args.iter() {
@@ -959,6 +942,7 @@ fn stm_call(
         args: Arc::new(small_args),
         split: None,
         dest,
+        assert_id: state.next_assert_id(),
     };
     stms.push(Spanned::new(span.clone(), call));
     Ok(stms_to_one_stm(span, stms))
@@ -1308,7 +1292,7 @@ pub(crate) fn expr_to_stm_opt(
                     &expr.span,
                     "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
                 );
-                let assert = StmX::Assert(Some(error), has_type);
+                let assert = StmX::Assert(state.next_assert_id(), Some(error), has_type);
                 let assert = Spanned::new(expr.span.clone(), assert);
                 stms.push(assert);
             }
@@ -1339,7 +1323,7 @@ pub(crate) fn expr_to_stm_opt(
                         &expr.span,
                         "requirement not met: to access this field, the union must be in the correct variant",
                     );
-                    let assert = StmX::Assert(Some(error), is_variant);
+                    let assert = StmX::Assert(state.next_assert_id(), Some(error), is_variant);
                     let assert = Spanned::new(expr.span.clone(), assert);
                     stms.push(assert);
                 }
@@ -1420,7 +1404,8 @@ pub(crate) fn expr_to_stm_opt(
                                     }
                                 };
                                 let error = error(&expr.span, msg);
-                                let assert = StmX::Assert(Some(error), assert_exp);
+                                let assert =
+                                    StmX::Assert(state.next_assert_id(), Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
                             }
@@ -1452,7 +1437,8 @@ pub(crate) fn expr_to_stm_opt(
 
                                 let msg = "possible bit shift underflow/overflow";
                                 let error = error(&expr.span, msg);
-                                let assert = StmX::Assert(Some(error), assert_exp);
+                                let assert =
+                                    StmX::Assert(state.next_assert_id(), Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
                             }
@@ -1617,7 +1603,7 @@ pub(crate) fn expr_to_stm_opt(
                     &cond_exp.span,
                     "recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression",
                 );
-                let assertx = StmX::Assert(Some(error), e_exists);
+                let assertx = StmX::Assert(state.next_assert_id(), Some(error), e_exists);
                 check_stms.push(Spanned::new(cond_exp.span.clone(), assertx));
             }
             Ok((check_stms, ReturnValue::Some(e_choose)))
@@ -1671,13 +1657,12 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
             } else {
                 let mut stms: Vec<Stm> = Vec::new();
-                let split = crate::split_expression::need_split_expression(ctx, &e.span);
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with expr_to_stm_or_error
                 let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
                 let exp = crate::heuristics::insert_ext_eq_in_assert(ctx, &exp);
                 let small = is_small_exp_or_loc(&exp);
-                let exp = if small || split {
+                let exp = if small {
                     exp.clone()
                 } else {
                     // To avoid copying exp in Assert and Assume,
@@ -1686,7 +1671,10 @@ pub(crate) fn expr_to_stm_opt(
                     stms.push(init_var(&exp.span, &temp_id, &exp));
                     temp_var
                 };
-                stms.push(Spanned::new(e.span.clone(), StmX::Assert(None, exp.clone())));
+                stms.push(Spanned::new(
+                    e.span.clone(),
+                    StmX::Assert(state.next_assert_id(), None, exp.clone()),
+                ));
                 stms.push(Spanned::new(e.span.clone(), StmX::Assume(exp)));
                 Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
             }
@@ -1732,7 +1720,10 @@ pub(crate) fn expr_to_stm_opt(
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with check_pure_expr
                 let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &ensure)?;
-                let assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, ensure_exp));
+                let assert = Spanned::new(
+                    ensure.span.clone(),
+                    StmX::Assert(state.next_assert_id(), None, ensure_exp),
+                );
                 body.push(assert);
             }
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(body)));
@@ -1792,8 +1783,10 @@ pub(crate) fn expr_to_stm_opt(
                             // because we checked spec preconditions above with check_pure_expr
                             let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &e)?;
                             vars.extend(free_vars_exp(&ensure_exp).into_iter());
-                            let assert =
-                                Spanned::new(e.span.clone(), StmX::Assert(None, ensure_exp));
+                            let assert = Spanned::new(
+                                e.span.clone(),
+                                StmX::Assert(state.next_assert_id(), None, ensure_exp),
+                            );
                             inner_body.push(assert);
                         }
                     }
@@ -1815,6 +1808,7 @@ pub(crate) fn expr_to_stm_opt(
                             let assert = Spanned::new(
                                 r.span.clone(),
                                 StmX::Assert(
+                                    state.next_assert_id(),
                                     Some(crate::messages::error(
                                         &r.span.clone(),
                                         "requires not satisfied".to_string(),
@@ -1897,6 +1891,7 @@ pub(crate) fn expr_to_stm_opt(
                             let assert = Spanned::new(
                                 r.span.clone(),
                                 StmX::Assert(
+                                    state.next_assert_id(),
                                     Some(error(
                                         &r.span.clone(),
                                         "requires not satisfied".to_string(),
@@ -1952,7 +1947,10 @@ pub(crate) fn expr_to_stm_opt(
                 format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
             );
             if matches!(mode, ComputeMode::Z3) {
-                let assert = Spanned::new(expr.span.clone(), StmX::Assert(Some(err), interp_exp));
+                let assert = Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(err), interp_exp),
+                );
                 stms.push(assert);
             }
             let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
@@ -2132,7 +2130,12 @@ pub(crate) fn expr_to_stm_opt(
 
                     stms.push(Spanned::new(
                         expr.span.clone(),
-                        StmX::Return { base_error, ret_exp: Some(ret_exp), inside_body: true },
+                        StmX::Return {
+                            base_error,
+                            ret_exp: Some(ret_exp),
+                            inside_body: true,
+                            assert_id: state.next_assert_id(),
+                        },
                     ));
                     stms.push(assume_false(&expr.span));
                 }
@@ -2437,7 +2440,10 @@ fn closure_emit_postconditions(
                 "returning this expression",
             )
             .secondary_label(&ens.span, crate::def::THIS_POST_FAILED);
-            let stm = Spanned::new(ens.span.clone(), StmX::Assert(Some(er), ens.clone()));
+            let stm = Spanned::new(
+                ens.span.clone(),
+                StmX::Assert(state.next_assert_id(), Some(er), ens.clone()),
+            );
             stms.push(stm);
         }
     }

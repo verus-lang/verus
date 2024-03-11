@@ -10,7 +10,7 @@ use crate::def::{
     decrease_at_entry, rename_rec_param, unique_bound, unique_local, CommandsWithContext, Spanned,
     FUEL_PARAM, FUEL_TYPE,
 };
-use crate::func_to_air::{params_to_pars, SstMap};
+use crate::func_to_air::{params_to_pars, FunctionSst, SstMap};
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
@@ -232,10 +232,14 @@ fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
+/// fuel param:
+/// `None` for normal case (the usual 'fuel' param)
+/// `Some(fuel)` means use a constant fuel
 pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &Function,
     body: &Exp,
+    fuel: Option<usize>,
 ) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
@@ -259,7 +263,10 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
             if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM)));
+            let varx = match fuel {
+                None => ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM))),
+                Some(f) => ExpX::FuelConst(f),
+            };
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));
@@ -301,25 +308,27 @@ pub(crate) fn check_termination_commands(
         &function.span,
         &function.x.typ_params,
         &function.x.params,
-        &Arc::new(local_decls),
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        &PostConditionSst {
-            dest: None,
-            kind: if uses_decreases_by {
-                PostConditionKind::DecreasesBy
-            } else {
-                PostConditionKind::DecreasesImplicitLemma
+        &FunctionSst {
+            post_condition: PostConditionSst {
+                dest: None,
+                kind: if uses_decreases_by {
+                    PostConditionKind::DecreasesBy
+                } else {
+                    PostConditionKind::DecreasesImplicitLemma
+                },
+                ens_exps: vec![],
+                ens_spec_precondition_stms: vec![],
             },
-            ens_exps: vec![],
-            ens_spec_precondition_stms: vec![],
+            body: stm_block,
+            local_decls,
+            statics: vec![],
+            reqs: Arc::new(vec![]),
+            mask_set: MaskSet::empty(),
         },
-        &MaskSet::empty(),
-        &stm_block,
-        false,
-        false,
-        false,
         &vec![],
+        false,
+        false,
+        false,
     )?;
 
     Ok(commands)
@@ -364,7 +373,7 @@ fn check_termination<'a>(
                 args,
             )?;
             let error = error(&s.span, "could not prove termination");
-            let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
+            let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
             let mut stms = vec![stm_assert];
             // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
