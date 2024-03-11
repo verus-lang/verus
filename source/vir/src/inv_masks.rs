@@ -80,7 +80,7 @@ impl MaskSet {
                         "function might open this invariant namespace".to_string())
                     .primary_label(call_span, "might not be allowed at this call-site"),
                 };
-                results.push(Arc::new(StmtX::Assert(None, error, None, equals_one)));
+                results.push(Arc::new(StmtX::Assert(error, None, equals_one)));
             }
             SetBase::Full => {}
         }
@@ -99,7 +99,7 @@ impl MaskSet {
                     error = error.primary_label(call_span, "at this call-site");
                 }
             }
-            results.push(Arc::new(StmtX::Assert(None, error, None, not_equal)));
+            results.push(Arc::new(StmtX::Assert(error, None, not_equal)));
         }
     }
 
@@ -131,7 +131,7 @@ impl MaskSet {
                     } else {
                         error(call_span, "callee may open invariants that caller cannot")
                     };
-                    results.push(Arc::new(StmtX::Assert(None, error, None, fa)));
+                    results.push(Arc::new(StmtX::Assert(error, None, fa)));
                 }
                 SetBase::Full => {
                     for e in &other.minus {
@@ -146,7 +146,7 @@ impl MaskSet {
                             "invariant opened here".to_string(),
                         )
                         .primary_label(call_span, "might be opened again in this call".to_string());
-                        results.push(Arc::new(StmtX::Assert(None, error, None, equals_one)));
+                        results.push(Arc::new(StmtX::Assert(error, None, equals_one)));
                     }
                 }
             },

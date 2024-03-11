@@ -41,17 +41,11 @@ fn run_example_for_file(file_path: &str) {
 
     let mut mode = Mode::ExpectSuccess;
 
-    let mut options = vec!["--external-by-default"];
-
     if let ["//", "rust_verify/tests/example.rs", command, ..] = &first_line_elements[..] {
         match *command {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
-            "expand-errors" => {
-                mode = Mode::ExpectFailures;
-                options.push("--expand-errors");
-            }
             "ignore" => {
                 if first_line_elements.len() > 3 {
                     // We require that any comment is separated by a `---` which acts as a good
@@ -83,7 +77,7 @@ fn run_example_for_file(file_path: &str) {
 
     let relative_path = PathBuf::from(relative_path);
     let output = run_verus(
-        &options,
+        &["--external-by-default"],
         relative_path.parent().expect("no parent dir"),
         &relative_path,
         true,

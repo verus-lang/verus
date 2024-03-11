@@ -50,7 +50,6 @@ const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
-pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
@@ -70,7 +69,6 @@ const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
-const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
@@ -644,7 +642,6 @@ impl CommandContext {
     }
 }
 
-#[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
@@ -772,10 +769,6 @@ pub fn unique_var_name(
             write!(&mut out, "{}", n).unwrap();
         }
         VarIdentDisambiguate::VirTemp(id) => {
-            write!(&mut out, "{}", id).unwrap();
-        }
-        VarIdentDisambiguate::ExpandErrorsDecl(id) => {
-            out.push_str(EXPAND_ERRORS_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }

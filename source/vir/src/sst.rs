@@ -85,7 +85,6 @@ pub enum ExpX {
     ExecFnByName(Fun),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
-    FuelConst(usize),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,8 +122,6 @@ pub struct LoopInv {
     pub inv: Exp,
 }
 
-pub type AssertId = air::ast::AssertId;
-
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
@@ -139,10 +136,9 @@ pub enum StmX {
         // if split is Some, this is a dummy call to be replaced with assertions for error splitting
         split: Option<Message>,
         dest: Option<Dest>,
-        assert_id: Option<AssertId>,
     },
     // note: failed assertion reports Stm's span, plus an optional additional span
-    Assert(Option<AssertId>, Option<Message>, Exp),
+    Assert(Option<Message>, Exp),
     AssertBitVector {
         requires: Exps,
         ensures: Exps,
@@ -157,7 +153,6 @@ pub enum StmX {
     DeadEnd(Stm),
     // Assert that the postcondition holds with the given return value
     Return {
-        assert_id: Option<AssertId>,
         base_error: Message,
         ret_exp: Option<Exp>,
         // If inside_body = true, we will add an assume false after the statement

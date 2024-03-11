@@ -146,7 +146,7 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
-            ValidityResult::Invalid(_m, err, _assert_id) => {
+            ValidityResult::Invalid(_m, err) => {
                 count_errors += 1;
                 let err: &AirMessage =
                     err.downcast_ref().expect("unexpected value in Any -> Message conversion");

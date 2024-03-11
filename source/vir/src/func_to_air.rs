@@ -13,7 +13,7 @@ use crate::def::{
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
-use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::PostConditionSst;
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
@@ -166,9 +166,7 @@ fn func_body_to_air(
 
     // Rewrite recursive calls to use fuel
     let (is_recursive, body_exp, scc_rep) =
-        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
-            ctx, function, &body_exp, None,
-        )?;
+        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(ctx, function, &body_exp)?;
 
     // Check termination and/or recommends
     let mut check_state = crate::ast_to_sst::State::new(diagnostics);
@@ -180,7 +178,16 @@ fn func_body_to_air(
     check_state.check_spec_decreases = Some((function.x.name.clone(), scc_rep));
     let check_body_stm =
         crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
-    let check_body_stm = check_state.finalize_stm(ctx, &check_state.fun_ssts, &check_body_stm)?;
+    let check_body_stm = check_state.finalize_stm(
+        ctx,
+        diagnostics,
+        &check_state.fun_ssts,
+        &check_body_stm,
+        // TODO: when ensures are supported, they should be added here for splitting:
+        &Arc::new(vec![]),
+        &Arc::new(vec![]),
+        None,
+    )?;
 
     let mut proof_body: Vec<crate::ast::Expr> = Vec::new();
     let mut def_reqs: Vec<Expr> = Vec::new();
@@ -243,7 +250,15 @@ fn func_body_to_air(
         proof_body_stms.append(&mut stms);
     }
     let proof_body_stm = crate::ast_to_sst::stms_to_one_stm(&body.span, proof_body_stms);
-    let proof_body_stm = check_state.finalize_stm(ctx, &check_state.fun_ssts, &proof_body_stm)?;
+    let proof_body_stm = check_state.finalize_stm(
+        ctx,
+        diagnostics,
+        &check_state.fun_ssts,
+        &proof_body_stm,
+        &Arc::new(vec![]),
+        &Arc::new(vec![]),
+        None,
+    )?;
     check_state.finalize();
 
     let termination_commands = crate::recursion::check_termination_commands(
@@ -896,16 +911,22 @@ pub fn func_axioms_to_air(
     Ok((Arc::new(decl_commands), check_commands, new_fun_ssts))
 }
 
-pub fn func_def_to_sst(
+pub fn func_def_to_air(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
-) -> Result<(SstMap, FunctionSst), VirErr> {
+) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
+    if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind {
+        // We are inheriting a trait default method.
+        // It's already verified in the trait, so we don't need to reverify it here.
+        return Ok((Arc::new(vec![]), vec![], fun_ssts));
+    }
+
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
-            panic!("func_def_to_air should only be called for function with a body");
+            return Ok((Arc::new(vec![]), vec![], fun_ssts));
         }
     };
 
@@ -1087,10 +1108,28 @@ pub fn func_def_to_sst(
         stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
     }
 
-    let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
+    let stm = state.finalize_stm(
+        &ctx,
+        diagnostics,
+        &state.fun_ssts,
+        &stm,
+        &enss,
+        &ens_pars,
+        dest.clone(),
+    )?;
     let ens_spec_precondition_stms: Result<Vec<_>, _> = ens_spec_precondition_stms
         .iter()
-        .map(|s| state.finalize_stm(&ctx, &state.fun_ssts, &s))
+        .map(|s| {
+            state.finalize_stm(
+                &ctx,
+                diagnostics,
+                &state.fun_ssts,
+                &s,
+                &enss,
+                &ens_pars,
+                dest.clone(),
+            )
+        })
         .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
 
@@ -1108,55 +1147,30 @@ pub fn func_def_to_sst(
         state.local_decls.push(decl.clone());
     }
 
-    state.finalize();
-    let crate::ast_to_sst::State { local_decls, statics, fun_ssts, .. } = state;
-
-    Ok((
-        fun_ssts,
-        FunctionSst {
-            reqs: Arc::new(reqs),
-            post_condition: PostConditionSst {
-                dest,
-                ens_exps: enss,
-                ens_spec_precondition_stms,
-                kind: PostConditionKind::Ensures,
-            },
-            mask_set,
-            body: stm,
-            local_decls: local_decls,
-            statics: statics.into_iter().collect(),
-        },
-    ))
-}
-
-pub fn func_sst_to_air(
-    ctx: &Ctx,
-    function: &Function,
-    function_sst: &FunctionSst,
-) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
         &function.x.typ_params,
         &function.x.params,
-        function_sst,
+        &state.local_decls,
         &function.x.attrs.hidden,
+        &reqs,
+        &PostConditionSst {
+            dest,
+            ens_exps: enss,
+            ens_spec_precondition_stms,
+            kind: PostConditionKind::Ensures,
+        },
+        &mask_set,
+        &stm,
         function.x.attrs.integer_ring,
         function.x.attrs.bit_vector,
         function.x.attrs.nonlinear,
+        &state.statics.iter().cloned().collect(),
     )?;
 
-    Ok((Arc::new(commands), snap_map))
-}
-
-#[derive(Clone)]
-pub struct FunctionSst {
-    pub reqs: Exps,
-    pub post_condition: PostConditionSst,
-    pub mask_set: MaskSet, // Actually AIR
-    pub body: Stm,
-    pub local_decls: Vec<LocalDecl>,
-    pub statics: Vec<Fun>,
+    state.finalize();
+    Ok((Arc::new(commands), snap_map, state.fun_ssts))
 }
 
 fn map_expr_rename_vars(

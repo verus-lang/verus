@@ -94,6 +94,8 @@ pub struct Ctx {
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
     // proof debug purposes
     pub debug: bool,
+    pub expand_flag: bool,
+    pub debug_expand_targets: Vec<crate::messages::Message>,
     pub arch_word_bits: ArchWordBits,
 }
 
@@ -517,6 +519,8 @@ impl Ctx {
             global,
             string_hashes,
             debug,
+            expand_flag: false,
+            debug_expand_targets: vec![],
             arch_word_bits: krate.arch.word_bits,
         })
     }

@@ -429,9 +429,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
-        ExpX::FuelConst(_) => {
-            panic!("Found a FuelConst expression in trigger selection")
-        }
     };
     if let TermX::Var(..) = *term {
         return (is_pure, term);

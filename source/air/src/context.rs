@@ -1,6 +1,4 @@
-use crate::ast::{
-    AssertId, AxiomInfoFilter, Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs,
-};
+use crate::ast::{AxiomInfoFilter, Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::messages::{ArcDynMessage, Diagnostics};
@@ -20,7 +18,6 @@ use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
-    pub(crate) assert_id: Option<crate::ast::AssertId>,
     pub(crate) error: ArcDynMessage,
     pub(crate) label: Ident,
     pub(crate) filter: AxiomInfoFilter,
@@ -39,7 +36,7 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Option<Model>, ArcDynMessage, Option<AssertId>),
+    Invalid(Option<Model>, ArcDynMessage),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),

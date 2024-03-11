@@ -1,9 +1,8 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
-    FunX, FunctionX, GenericBound, GenericBoundX, Ident, IntRange, ItemKind, MaskSpec, Mode, Param,
-    ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX,
-    Typs, UnaryOp, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, VirErr,
-    Visibility,
+    ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
+    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
+    Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
+    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
 use crate::sst::{Par, Pars};
@@ -352,13 +351,6 @@ pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bo
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
 }
 
-pub fn is_transparent_to(transparency: &DatatypeTransparency, source_module: &Path) -> bool {
-    match transparency {
-        DatatypeTransparency::Never => false,
-        DatatypeTransparency::WhenVisible(m) => is_visible_to(m, source_module),
-    }
-}
-
 /// Is the target visible to the module?
 /// (If source_module is None, then the target needs to be visible everywhere)
 pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<Path>) -> bool {
@@ -417,12 +409,8 @@ pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
 }
 
 pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
-    if exprs.len() == 0 {
-        return init.clone();
-    }
-
-    let mut expr = exprs[0].clone();
-    for e in exprs.iter().skip(1) {
+    let mut expr = init.clone();
+    for e in exprs.iter() {
         expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
     }
     expr
