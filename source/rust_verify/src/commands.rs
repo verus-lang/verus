@@ -1,17 +1,20 @@
 use crate::buckets::Bucket;
-use air::ast::Command;
+use crate::expand_errors_driver::{ExpandErrorsDriver, ExpandErrorsResult};
+use air::ast::{AssertId, Command};
 use air::messages::Diagnostics;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::Visibility;
-use vir::ast::{Fun, Function, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr};
+use vir::ast::{
+    Fun, Function, FunctionKind, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr,
+};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
 use vir::def::{CommandsWithContext, SnapPos};
+use vir::func_to_air::FunctionSst;
 use vir::func_to_air::SstMap;
-use vir::messages::Message;
 use vir::recursion::Node;
 use vir::update_cell::UpdateCell;
 
@@ -54,6 +57,7 @@ pub enum OpKind {
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         profile_rerun: bool,
+        function_sst: Option<FunctionSst>,
     },
 }
 
@@ -79,6 +83,7 @@ pub struct OpGenerator<'a, D: Diagnostics> {
 pub struct FunctionOpGenerator<'a: 'b, 'b, D: Diagnostics> {
     op_generator: &'b mut OpGenerator<'a, D>,
     current_queue: VecDeque<Op>,
+    expand_errors_driver: Option<ExpandErrorsDriver>,
 }
 
 impl<'a, D: Diagnostics> OpGenerator<'a, D> {
@@ -136,7 +141,11 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 self.handle_scc_component(self.ctx.global.func_call_sccs[self.scc_idx].clone())?,
             );
             self.scc_idx += 1;
-            Ok(Some(FunctionOpGenerator { op_generator: self, current_queue }))
+            Ok(Some(FunctionOpGenerator {
+                op_generator: self,
+                current_queue,
+                expand_errors_driver: None,
+            }))
         } else {
             Ok(None)
         }
@@ -149,7 +158,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
             Ok(vec![])
         } else {
-            self.handle_proof_body(function, Style::Normal, None)
+            self.handle_proof_body(function, Style::Normal)
         }
     }
 
@@ -245,7 +254,13 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             if !not_verifying_owning_bucket {
                 let snap_map = vec![];
                 let commands = Arc::new(check_commands);
-                query_ops.push(Op::query(QueryOp::SpecTermination, commands, snap_map, &function));
+                query_ops.push(Op::query(
+                    QueryOp::SpecTermination,
+                    commands,
+                    snap_map,
+                    &function,
+                    None,
+                ));
             }
 
             let op_kind = if function.x.broadcast_forall.is_some() {
@@ -261,40 +276,60 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         Ok((ops, post_ops))
     }
 
-    fn handle_proof_body(
-        &mut self,
-        function: Function,
-        style: Style,
-        expand_targets: Option<Vec<Message>>,
-    ) -> Result<Vec<Op>, VirErr> {
+    fn handle_proof_body(&mut self, function: Function, style: Style) -> Result<Vec<Op>, VirErr> {
+        if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind
+        {
+            // We are inheriting a trait default method.
+            // It's already verified in the trait, so we don't need to reverify it here.
+            return Ok(vec![]);
+        }
+
         let fun = &function.x.name;
 
         if !self.bucket.contains(fun) {
             return Ok(vec![]);
         }
+        if function.x.body.is_none() {
+            return Ok(vec![]);
+        }
 
-        let (recommend, expand) = match style {
-            Style::Normal => (false, false),
-            Style::RecommendsFollowupFromError | Style::RecommendsChecked => (true, false),
-            Style::Expanded => (false, true),
+        let recommend = match style {
+            Style::Normal => false,
+            Style::RecommendsFollowupFromError | Style::RecommendsChecked => true,
+            Style::Expanded => panic!("handle_proof_body doesn't support Expanded"),
         };
 
-        if expand {
-            self.ctx.debug_expand_targets = expand_targets.unwrap();
-            self.ctx.expand_flag = true;
-        }
         self.ctx.fun = mk_fun_ctx(&function, recommend);
 
         let mut sst_map = UpdateCell::new(HashMap::new());
         std::mem::swap(&mut sst_map, &mut self.sst_map);
-        let (commands, snap_map, mut new_sst_map) =
-            vir::func_to_air::func_def_to_air(self.ctx, self.reporter, sst_map, &function)?;
+        let (mut new_sst_map, function_sst) =
+            vir::func_to_air::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
         std::mem::swap(&mut new_sst_map, &mut self.sst_map);
 
-        self.ctx.fun = None;
-        self.ctx.expand_flag = false;
+        let (commands, snap_map) =
+            vir::func_to_air::func_sst_to_air(self.ctx, &function, &function_sst)?;
 
-        Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function)])
+        self.ctx.fun = None;
+
+        Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function, Some(function_sst))])
+    }
+
+    fn handle_proof_body_expand(
+        &mut self,
+        function: Function,
+        assert_id: &AssertId,
+        expanded_function_sst: &FunctionSst,
+    ) -> Result<Op, VirErr> {
+        self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
+
+        let (commands, snap_map) =
+            vir::func_to_air::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
+        let commands = focus_commands_with_context_on_assert_id(commands, assert_id);
+
+        self.ctx.fun = None;
+
+        Ok(Op::query(QueryOp::Body(Style::Expanded), commands, snap_map, &function, None))
     }
 }
 
@@ -319,14 +354,69 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         Ok(())
     }
 
-    pub fn retry_with_expand_errors(
-        &mut self,
-        op: &Op,
-        expand_targets: Vec<Message>,
-    ) -> Result<(), VirErr> {
-        let ops = self.handle_proof_body_expand(op.get_function().clone(), expand_targets)?;
-        self.append_to_front_of_queue(ops);
-        Ok(())
+    pub fn start_expand_errors_if_possible(&mut self, op: &Op, assert_id: AssertId) {
+        if let Op {
+            function: Some(function),
+            kind: OpKind::Query { function_sst: Some(fsst), .. },
+        } = &op
+        {
+            let mut driver = ExpandErrorsDriver::new(function, &assert_id, fsst.clone());
+
+            self.op_generator.ctx.fun = mk_fun_ctx(&function, false);
+            driver.report(
+                &self.op_generator.ctx,
+                &self.op_generator.sst_map,
+                &assert_id,
+                ExpandErrorsResult::Fail,
+            );
+            self.op_generator.ctx.fun = None;
+
+            self.expand_errors_driver = Some(driver);
+        }
+    }
+
+    /// If expand_errors is in progress, this either returns an Op
+    /// to run or the final diagnostic to print.
+    /// In the later case, it also disables the expand-error state.
+    pub fn expand_errors_next(&mut self) -> Option<Result<Op, air::messages::ArcDynMessage>> {
+        let Some(driver) = &self.expand_errors_driver else {
+            return None;
+        };
+        match driver.get_current() {
+            None => {
+                // It's done
+                let output = driver.get_output_as_message(&self.op_generator.ctx);
+                self.expand_errors_driver = None;
+                return Some(Err(output));
+            }
+            Some((assert_id, function_sst)) => {
+                let function = driver.function.clone();
+                // TODO propagate error properly
+                let op = self
+                    .op_generator
+                    .handle_proof_body_expand(function, &assert_id, &function_sst)
+                    .unwrap();
+                return Some(Ok(op));
+            }
+        }
+    }
+
+    pub fn report_expand_error_result(&mut self, result: ExpandErrorsResult) {
+        match &mut self.expand_errors_driver {
+            None => panic!("report_expand_error_result expected driver"),
+            Some(expand_errors_driver) => {
+                let assert_id = expand_errors_driver.get_current().unwrap().0;
+                let function = &expand_errors_driver.function;
+                self.op_generator.ctx.fun = mk_fun_ctx(function, false);
+                expand_errors_driver.report(
+                    &self.op_generator.ctx,
+                    &self.op_generator.sst_map,
+                    &assert_id,
+                    result,
+                );
+                self.op_generator.ctx.fun = None;
+            }
+        }
     }
 
     pub fn retry_with_profile(
@@ -335,6 +425,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         function: &Function,
+        function_sst: Option<FunctionSst>,
     ) {
         let op = Op {
             kind: OpKind::Query {
@@ -342,6 +433,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
                 commands_with_context_list,
                 snap_map,
                 profile_rerun: true,
+                function_sst,
             },
             function: Some(function.clone()),
         };
@@ -354,14 +446,6 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         }
     }
 
-    fn handle_proof_body_expand(
-        &mut self,
-        function: Function,
-        expand_targets: Vec<Message>,
-    ) -> Result<Vec<Op>, VirErr> {
-        self.op_generator.handle_proof_body(function, Style::Expanded, Some(expand_targets))
-    }
-
     fn handle_proof_body_recommends(
         &mut self,
         function: Function,
@@ -370,7 +454,6 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         self.op_generator.handle_proof_body(
             function,
             if from_error { Style::RecommendsFollowupFromError } else { Style::RecommendsChecked },
-            None,
         )
     }
 }
@@ -392,6 +475,23 @@ pub fn mk_fun_ctx_dec(
 
 pub fn mk_fun_ctx(f: &Function, checking_spec_preconditions: bool) -> Option<FunctionCtx> {
     mk_fun_ctx_dec(f, checking_spec_preconditions, false)
+}
+
+fn focus_commands_with_context_on_assert_id(
+    commands_with_context_list: Arc<Vec<CommandsWithContext>>,
+    assert_id: &AssertId,
+) -> Arc<Vec<CommandsWithContext>> {
+    let mut res = vec![];
+    for commands_with_context in commands_with_context_list.iter() {
+        if commands_with_context.prover_choice == vir::def::ProverChoice::DefaultProver {
+            let commands =
+                air::focus::focus_commands_on_assert_id(&commands_with_context.commands, assert_id);
+            let mut commands_with_context_x = (**commands_with_context).clone();
+            commands_with_context_x.commands = commands;
+            res.push(Arc::new(commands_with_context_x));
+        }
+    }
+    Arc::new(res)
 }
 
 impl Op {
@@ -465,6 +565,7 @@ impl Op {
         commands: Arc<Vec<CommandsWithContext>>,
         snap_map: Vec<(vir::messages::Span, SnapPos)>,
         f: &Function,
+        function_sst: Option<FunctionSst>,
     ) -> Self {
         Op {
             kind: OpKind::Query {
@@ -472,6 +573,7 @@ impl Op {
                 commands_with_context_list: commands,
                 snap_map: Arc::new(snap_map),
                 profile_rerun: false,
+                function_sst,
             },
             function: Some(f.clone()),
         }

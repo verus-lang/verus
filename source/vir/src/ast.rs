@@ -71,6 +71,7 @@ pub enum VarIdentDisambiguate {
     // Capture-avoiding substitution creates new names:
     VirSubst(u64),
     VirTemp(u64),
+    ExpandErrorsDecl(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
