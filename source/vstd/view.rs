@@ -16,12 +16,27 @@ pub trait View {
     spec fn view(&self) -> Self::V;
 }
 
+pub trait DeepView {
+    type V;
+
+    spec fn deep_view(&self) -> Self::V;
+}
+
 impl<A: View> View for &A {
     type V = A::V;
 
     #[verifier::inline]
     open spec fn view(&self) -> A::V {
         (**self).view()
+    }
+}
+
+impl<A: DeepView> DeepView for &A {
+    type V = A::V;
+
+    #[verifier::inline]
+    open spec fn deep_view(&self) -> A::V {
+        (**self).deep_view()
     }
 }
 
@@ -36,6 +51,16 @@ impl<A: View> View for alloc::boxed::Box<A> {
 }
 
 #[cfg(feature = "alloc")]
+impl<A: DeepView> DeepView for alloc::boxed::Box<A> {
+    type V = A::V;
+
+    #[verifier::inline]
+    open spec fn deep_view(&self) -> A::V {
+        (**self).deep_view()
+    }
+}
+
+#[cfg(feature = "alloc")]
 impl<A: View> View for alloc::rc::Rc<A> {
     type V = A::V;
 
@@ -46,12 +71,32 @@ impl<A: View> View for alloc::rc::Rc<A> {
 }
 
 #[cfg(feature = "alloc")]
+impl<A: DeepView> DeepView for alloc::rc::Rc<A> {
+    type V = A::V;
+
+    #[verifier::inline]
+    open spec fn deep_view(&self) -> A::V {
+        (**self).deep_view()
+    }
+}
+
+#[cfg(feature = "alloc")]
 impl<A: View> View for alloc::sync::Arc<A> {
     type V = A::V;
 
     #[verifier::inline]
     open spec fn view(&self) -> A::V {
         (**self).view()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<A: DeepView> DeepView for alloc::sync::Arc<A> {
+    type V = A::V;
+
+    #[verifier::inline]
+    open spec fn deep_view(&self) -> A::V {
+        (**self).deep_view()
     }
 }
 
@@ -66,6 +111,19 @@ macro_rules! declare_identity_view {
             #[verus::internal(open)]
             #[verifier::inline]
             fn view(&self) -> $t {
+                *self
+            }
+        }
+
+        #[cfg_attr(verus_keep_ghost, verifier::verify)]
+        impl DeepView for $t {
+            type V = $t;
+
+            #[cfg(verus_keep_ghost)]
+            #[verus::internal(spec)]
+            #[verus::internal(open)]
+            #[verifier::inline]
+            fn deep_view(&self) -> $t {
                 *self
             }
         }
@@ -110,6 +168,17 @@ macro_rules! declare_tuple_view {
             #[verus::internal(open)]
             fn view(&self) -> ($($a::V, )*) {
                 ($(self.$n.view(), )*)
+            }
+        }
+
+        #[cfg_attr(verus_keep_ghost, verifier::verify)]
+        impl<$($a: DeepView, )*> DeepView for ($($a, )*) {
+            type V = ($($a::V, )*);
+            #[cfg(verus_keep_ghost)]
+            #[verus::internal(spec)]
+            #[verus::internal(open)]
+            fn deep_view(&self) -> ($($a::V, )*) {
+                ($(self.$n.deep_view(), )*)
             }
         }
     }
