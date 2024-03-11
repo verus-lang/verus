@@ -207,8 +207,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] consume_tracked_twice verus_code! {
-        proof fn f(tracked x: u8, tracked y: u8) {}
-        fn g(x: Tracked<u8>, y: Tracked<u8>) {
+        struct X { }
+
+        proof fn f(tracked x: X, tracked y: X) {}
+        fn g(x: Tracked<X>, y: Tracked<X>) {
             proof {
                 f(x.get(), x.get())
             }
@@ -653,4 +655,81 @@ test_verify_one_file! {
             &(*v)[i]
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_is_copy_if_type_param_is_copy verus_code! {
+        use vstd::*;
+
+        #[verifier::external_body]
+        tracked struct T { }
+
+        impl Clone for T {
+            #[verifier::external_body]
+            fn clone(&self) -> Self {
+                T { }
+            }
+        }
+
+        impl Copy for T { }
+
+        fn test(t: Tracked<T>) {
+        }
+
+        fn test2(t: Tracked<T>) {
+            test(t);
+            test(t);
+        }
+
+        fn test3(t: Tracked<T>) {
+            test(t.clone());
+            test(t.clone());
+
+            let x = t.clone();
+            assert(x == t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_is_not_copy_just_because_type_param_is_clone verus_code! {
+        #[verifier::external_body]
+        tracked struct T { }
+
+        impl Clone for T {
+            #[verifier::external_body]
+            fn clone(&self) -> Self {
+                T { }
+            }
+        }
+
+        fn test(t: Tracked<T>) {
+        }
+
+        fn test2(t: Tracked<T>) {
+            test(t);
+            test(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] tracked_is_not_clone_just_because_type_param_is_clone verus_code! {
+        #[verifier::external_body]
+        tracked struct T { }
+
+        impl Clone for T {
+            #[verifier::external_body]
+            fn clone(&self) -> Self {
+                T { }
+            }
+        }
+
+        fn test(t: Tracked<T>) {
+        }
+
+        fn test2(t: Tracked<T>) {
+            test(t.clone());
+        }
+    } => Err(err) => assert_rust_error_msg(err, "the method `clone` exists for struct `Tracked<T>`, but its trait bounds were not satisfied")
 }

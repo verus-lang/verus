@@ -222,7 +222,9 @@ pub(crate) fn handle_external_fn<'tcx>(
         get_external_def_id(ctxt.tcx, &ctxt.verus_items, id, body_id, body, sig)?;
     let external_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_id);
 
-    if external_path.krate == Some(Arc::new("builtin".to_string())) {
+    if external_path.krate == Some(Arc::new("builtin".to_string()))
+        && &*external_path.last_segment() != "clone"
+    {
         return err_span(
             sig.span,
             "cannot apply `external_fn_specification` to Verus builtin functions",
@@ -1238,7 +1240,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.skip_binder().args.types() {
+                for ty in trait_ref.instantiate(tcx, inst.args).args.types() {
                     types.push(mid_ty_to_vir(tcx, &verus_items, did, sig.span, &ty, false)?);
                 }
 

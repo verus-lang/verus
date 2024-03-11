@@ -465,6 +465,16 @@ impl<A> Clone for Ghost<A> {
 
 impl<A> Copy for Ghost<A> {}
 
+impl<A: Copy> Clone for Tracked<A> {
+    #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        Tracked { phantom: PhantomData }
+    }
+}
+
+impl<A: Copy> Copy for Tracked<A> {}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::ghost_exec"]
 #[verifier::external_body]
