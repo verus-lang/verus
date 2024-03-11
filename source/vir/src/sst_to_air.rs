@@ -1157,6 +1157,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 choose_expr
             }
         },
+        ExpX::FuelConst(i) => {
+            let mut e = str_var(crate::def::ZERO);
+            for _j in 0..*i {
+                e = str_apply(SUCC, &vec![e]);
+            }
+            e
+        }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }

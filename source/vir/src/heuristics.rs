@@ -119,6 +119,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
         | ExpX::Ctor(..)
         | ExpX::NullaryOpr(_)
         | ExpX::ExecFnByName(_)
+        | ExpX::FuelConst(_)
         | ExpX::Interp(_) => exp.clone(),
     }
 }

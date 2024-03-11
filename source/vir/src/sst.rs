@@ -85,6 +85,7 @@ pub enum ExpX {
     ExecFnByName(Fun),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
+    FuelConst(usize),
 }
 
 #[derive(Debug, Clone, Copy)]

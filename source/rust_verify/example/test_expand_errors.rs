@@ -194,6 +194,33 @@ proof fn test_opaque3() {
     assert(some_non_opaque());
 }
 
+spec fn other(i: int) -> bool;
+
+spec fn recursive_function(i: int, base: bool) -> bool
+    decreases i,
+{
+    if i <= 0 {
+        base
+    } else {
+        recursive_function(i - 1, base)
+    }
+}
+
+proof fn test_rec() {
+    reveal_with_fuel(recursive_function, 3);
+    assert(recursive_function(3, true)); // should fail with "reached fuel limit for recursion"
+}
+
+proof fn test_rec2() {
+    reveal_with_fuel(recursive_function, 4);
+    assert(recursive_function(3, true)); // should pass
+}
+
+proof fn test_rec3() {
+    reveal_with_fuel(recursive_function, 4);
+    assert(recursive_function(3, false));
+}
+
 fn main() { }
 
 }
