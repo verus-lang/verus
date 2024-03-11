@@ -76,35 +76,6 @@ impl ExpansionTree {
             ExpansionTree::Intro(_intro, child) => child.get_exp_for_assert_id(assert_id),
         }
     }
-
-    pub fn intros_up_to(&self, assert_id: &AssertId) -> Option<Vec<Introduction>> {
-        match self {
-            ExpansionTree::Branch(v) => {
-                for t in v.iter() {
-                    let res = t.intros_up_to(assert_id);
-                    if res.is_some() {
-                        return res;
-                    }
-                }
-                None
-            }
-            ExpansionTree::Leaf(a_id, ..) => {
-                if a_id == assert_id {
-                    Some(vec![])
-                } else {
-                    None
-                }
-            }
-            ExpansionTree::Intro(intro, child) => {
-                if let Some(mut v) = child.intros_up_to(assert_id) {
-                    v.push(intro.clone());
-                    Some(v)
-                } else {
-                    None
-                }
-            }
-        }
-    }
 }
 
 pub struct ExpansionContext {
@@ -196,7 +167,6 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
 pub fn do_expansion(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    previous_intros: &[Introduction],
     fun_ssts: &SstMap,
     function_sst: &FunctionSst,
     assert_id: &AssertId,
@@ -205,7 +175,6 @@ pub fn do_expansion(
     let (body, tree) = do_expansion_body(
         ctx,
         ectx,
-        previous_intros,
         fun_ssts,
         &function_sst.post_condition,
         &function_sst.body,
@@ -219,7 +188,6 @@ pub fn do_expansion(
 pub fn do_expansion_body(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    previous_intros: &[Introduction],
     fun_ssts: &SstMap,
     post_condition_sst: &PostConditionSst,
     stm: &Stm,
@@ -231,7 +199,6 @@ pub fn do_expansion_body(
         let maybe_expanded = do_expansion_if_assert_id_matches(
             ctx,
             ectx,
-            previous_intros,
             fun_ssts,
             post_condition_sst,
             one_stm,
@@ -262,7 +229,6 @@ pub fn do_expansion_body(
 fn do_expansion_if_assert_id_matches(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    previous_intros: &[Introduction],
     fun_ssts: &SstMap,
     post_condition_sst: &PostConditionSst,
     stm: &Stm,
@@ -297,7 +263,7 @@ fn do_expansion_if_assert_id_matches(
                 }
             }
 
-            Some(expand_exp(ctx, ectx, previous_intros, fun_ssts, assert_id, the_exp, local_decls))
+            Some(expand_exp(ctx, ectx, fun_ssts, assert_id, the_exp, local_decls))
         }
         StmX::Call { assert_id: Some(a_id), fun, typ_args, args, .. } if a_id == assert_id => {
             let preconditions = split_precondition(ctx, fun_ssts, &stm.span, fun, typ_args, args);
@@ -306,27 +272,12 @@ fn do_expansion_if_assert_id_matches(
             // so the easiest thing is conjoin everything and then use the common-case
             // logic, which will split it back up.
             let precondition = sst_conjoin(&stm.span, &preconditions);
-            Some(expand_exp(
-                ctx,
-                ectx,
-                previous_intros,
-                fun_ssts,
-                assert_id,
-                &precondition,
-                local_decls,
-            ))
+            Some(expand_exp(ctx, ectx, fun_ssts, assert_id, &precondition, local_decls))
         }
         StmX::Return { assert_id: Some(a_id), ret_exp, .. } if a_id == assert_id => {
             let postcondition = sst_conjoin(&stm.span, &post_condition_sst.ens_exps);
-            let (stm, tree) = expand_exp(
-                ctx,
-                ectx,
-                previous_intros,
-                fun_ssts,
-                assert_id,
-                &postcondition,
-                local_decls,
-            );
+            let (stm, tree) =
+                expand_exp(ctx, ectx, fun_ssts, assert_id, &postcondition, local_decls);
             let stm = match (&post_condition_sst.dest, ret_exp) {
                 (Some(dest_uid), Some(ret_exp)) => Spanned::new(
                     stm.span.clone(),
@@ -345,7 +296,6 @@ fn do_expansion_if_assert_id_matches(
 
 struct State<'a> {
     fun_ssts: &'a SstMap,
-    unfold_counts: HashMap<Fun, u32>,
     tmp_var_count: u64,
     base_id: AssertId,
     assert_id_count: u64,
@@ -363,18 +313,6 @@ impl<'a> State<'a> {
         let id = cons_id(&self.base_id, self.assert_id_count);
         self.assert_id_count += 1;
         id
-    }
-
-    fn push_unfold(&mut self, fun: &Fun) {
-        if self.unfold_counts.contains_key(fun) {
-            *self.unfold_counts.get_mut(fun).unwrap() += 1;
-        } else {
-            self.unfold_counts.insert(fun.clone(), 1);
-        }
-    }
-
-    fn pop_unfold(&mut self, fun: &Fun) {
-        *self.unfold_counts.get_mut(fun).unwrap() -= 1;
     }
 
     fn mk_fresh_ids<T: Clone>(
@@ -411,23 +349,11 @@ impl<'a> State<'a> {
 fn expand_exp(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    previous_intros: &[Introduction],
     fun_ssts: &SstMap,
     assert_id: &AssertId,
     exp: &Exp,
     local_decls: &mut Vec<LocalDecl>,
 ) -> (Stm, ExpansionTree) {
-    let mut unfold_counts = HashMap::<Fun, u32>::new();
-    for intro in previous_intros {
-        if let Introduction::UnfoldFunctionDef(fun, _) = intro {
-            if unfold_counts.contains_key(fun) {
-                *unfold_counts.get_mut(fun).unwrap() += 1;
-            } else {
-                unfold_counts.insert(fun.clone(), 1);
-            }
-        }
-    }
-
     let mut tmp_var_count_start = 0;
     for ld in local_decls.iter() {
         if let VarIdentDisambiguate::ExpandErrorsDecl(i) = &ld.ident.1 {
@@ -437,7 +363,6 @@ fn expand_exp(
 
     let mut state = State {
         fun_ssts,
-        unfold_counts,
         tmp_var_count: tmp_var_count_start,
         assert_id_count: 0,
         base_id: assert_id.clone(),
@@ -672,10 +597,8 @@ fn expand_exp_rec(
                     inline_exp = e;
                 }
 
-                state.push_unfold(fun_name);
                 let (stm, tree) =
                     expand_exp_rec(ctx, ectx, state, &inline_exp, did_split_yet, negate);
-                state.pop_unfold(fun_name);
 
                 let intro = Introduction::UnfoldFunctionDef(fun_name.clone(), exp.clone());
                 (stm, ExpansionTree::Intro(intro, Box::new(tree)))

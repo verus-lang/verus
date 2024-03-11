@@ -234,7 +234,6 @@ impl ExpandErrorsDriver {
 
     fn expand(&mut self, ctx: &Ctx, fun_ssts: &SstMap, assert_id: &AssertId) -> u64 {
         assert!(ctx.fun.as_ref().unwrap().current_fun == self.function.x.name);
-        let previous_intros = self.get_intros_up_to(&assert_id);
         let function_sst = if &self.base_id == assert_id {
             &self.base_function_sst
         } else {
@@ -242,14 +241,8 @@ impl ExpandErrorsDriver {
             &self.expansions.get(&parent_id).unwrap().1
         };
 
-        let (new_function_sst, expansion_tree) = vir::expand_errors::do_expansion(
-            ctx,
-            &self.ectx,
-            &previous_intros,
-            fun_ssts,
-            function_sst,
-            assert_id,
-        );
+        let (new_function_sst, expansion_tree) =
+            vir::expand_errors::do_expansion(ctx, &self.ectx, fun_ssts, function_sst, assert_id);
         let num_leaves = expansion_tree.count_leaves();
         self.add_lines_to_output(&assert_id, &expansion_tree, num_leaves == 1);
         self.expansions.insert(assert_id.clone(), (expansion_tree, new_function_sst));
@@ -258,18 +251,6 @@ impl ExpandErrorsDriver {
             self.results.insert(one_assert_id, ExpandErrorsResult::PresumedFail);
         }
         num_leaves
-    }
-
-    fn get_intros_up_to(&self, id: &AssertId) -> Vec<Introduction> {
-        let mut v = vec![];
-        for i in 1..id.len() {
-            let id1 = Arc::new(id[..i].to_vec());
-            let id2 = Arc::new(id[..i + 1].to_vec());
-            let mut intros =
-                self.expansions[&id1].0.intros_up_to(&id2).unwrap().into_iter().rev().collect();
-            v.append(&mut intros);
-        }
-        v
     }
 
     /// Update self.output when we do a new expansion
