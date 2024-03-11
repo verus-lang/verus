@@ -1,6 +1,7 @@
 use crate::ast::{
-    BinaryOp, BinaryOpr, FieldOpr, Fun, Function, Ident, Path, Quant, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
+    BinaryOp, BinaryOpr, FieldOpr, Fun, Function, Ident, Params, Path, Quant, SpannedTyped, Typ,
+    TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant,
+    VariantCheck,
 };
 use crate::ast_to_sst::get_function;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -574,14 +575,8 @@ fn expand_exp_rec(
             } else {
                 let SstInfo { inline, params, body, .. } =
                     state.fun_ssts.borrow().get(fun_name).unwrap();
-                let mut inline_exp = crate::split_expression::inline_expression(
-                    ctx,
-                    &args,
-                    typs,
-                    params,
-                    &inline.typ_params,
-                    body,
-                );
+                let mut inline_exp =
+                    inline_expression(ctx, &args, typs, params, &inline.typ_params, body);
 
                 let fuel = can_inline.unwrap();
                 if let Some(fuel) = fuel {
@@ -880,6 +875,14 @@ fn fuel_arg_to_int(e: &Exp) -> usize {
     }
 }
 
+pub fn is_bool_type(t: &Typ) -> bool {
+    match &**t {
+        TypX::Bool => true,
+        TypX::Boxed(b) => is_bool_type(b),
+        _ => false,
+    }
+}
+
 fn can_inline_function(
     ctx: &Ctx,
     state: &State,
@@ -958,7 +961,7 @@ fn can_inline_function(
         }
 
         // Note: this should never happen
-        if !crate::split_expression::is_bool_type(&body.typ) {
+        if !is_bool_type(&body.typ) {
             return type_err;
         }
 
@@ -1020,8 +1023,7 @@ fn split_precondition(
             _ => e.clone(),
         };
         let exp = crate::sst_visitor::map_exp_visitor(&exp, &mut f_var_at);
-        let exp_substituted =
-            crate::split_expression::inline_expression(ctx, args, typs, params, typ_params, &exp);
+        let exp_substituted = inline_expression(ctx, args, typs, params, typ_params, &exp);
 
         exps.push(exp_substituted);
     }
@@ -1039,4 +1041,35 @@ impl air::messages::Diagnostics for DiagnosticsVoid {
         _msg_as: air::messages::MessageLevel,
     ) {
     }
+}
+
+// This function is to
+// 1) inline a function body at a call site
+// 2) inline a function's requires expression at a call site
+pub fn inline_expression(
+    ctx: &Ctx,
+    args: &Exps,
+    typs: &Typs,
+    params: &Params,
+    typ_params: &crate::ast::Idents,
+    body: &Exp,
+) -> Exp {
+    // code copied from crate::ast_to_sst::finalized_exp
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    let mut substs: HashMap<VarIdent, Exp> = HashMap::new();
+    assert!(typ_params.len() == typs.len());
+    for (name, typ) in typ_params.iter().zip(typs.iter()) {
+        assert!(!typ_substs.contains_key(name));
+        let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
+        typ_substs.insert(name.clone(), typ.clone());
+    }
+    assert!(params.len() == args.len());
+    for (param, arg) in params.iter().zip(args.iter()) {
+        let unique = &param.x.name;
+        assert!(!substs.contains_key(unique));
+        substs.insert(unique.clone(), arg.clone());
+    }
+    let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
+    let e = SpannedTyped::new(&body.span, &e.typ, e.x.clone());
+    return e;
 }

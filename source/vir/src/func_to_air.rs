@@ -180,16 +180,7 @@ fn func_body_to_air(
     check_state.check_spec_decreases = Some((function.x.name.clone(), scc_rep));
     let check_body_stm =
         crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
-    let check_body_stm = check_state.finalize_stm(
-        ctx,
-        diagnostics,
-        &check_state.fun_ssts,
-        &check_body_stm,
-        // TODO: when ensures are supported, they should be added here for splitting:
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        None,
-    )?;
+    let check_body_stm = check_state.finalize_stm(ctx, &check_state.fun_ssts, &check_body_stm)?;
 
     let mut proof_body: Vec<crate::ast::Expr> = Vec::new();
     let mut def_reqs: Vec<Expr> = Vec::new();
@@ -252,15 +243,7 @@ fn func_body_to_air(
         proof_body_stms.append(&mut stms);
     }
     let proof_body_stm = crate::ast_to_sst::stms_to_one_stm(&body.span, proof_body_stms);
-    let proof_body_stm = check_state.finalize_stm(
-        ctx,
-        diagnostics,
-        &check_state.fun_ssts,
-        &proof_body_stm,
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        None,
-    )?;
+    let proof_body_stm = check_state.finalize_stm(ctx, &check_state.fun_ssts, &proof_body_stm)?;
     check_state.finalize();
 
     let termination_commands = crate::recursion::check_termination_commands(
@@ -1104,28 +1087,10 @@ pub fn func_def_to_sst(
         stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
     }
 
-    let stm = state.finalize_stm(
-        &ctx,
-        diagnostics,
-        &state.fun_ssts,
-        &stm,
-        &enss,
-        &ens_pars,
-        dest.clone(),
-    )?;
+    let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
     let ens_spec_precondition_stms: Result<Vec<_>, _> = ens_spec_precondition_stms
         .iter()
-        .map(|s| {
-            state.finalize_stm(
-                &ctx,
-                diagnostics,
-                &state.fun_ssts,
-                &s,
-                &enss,
-                &ens_pars,
-                dest.clone(),
-            )
-        })
+        .map(|s| state.finalize_stm(&ctx, &state.fun_ssts, &s))
         .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
 

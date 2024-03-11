@@ -58,7 +58,6 @@ pub mod prune;
 pub mod recursion;
 pub mod recursive_types;
 mod scc;
-pub mod split_expression;
 pub mod sst;
 mod sst_to_air;
 pub mod sst_util;

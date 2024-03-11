@@ -397,27 +397,10 @@ impl<'a> State<'a> {
     pub(crate) fn finalize_stm(
         &self,
         ctx: &Ctx,
-        diagnostics: &impl Diagnostics,
         fun_ssts: &SstMap,
         stm: &Stm,
-        ensures: &Vec<Exp>,
-        ens_pars: &Pars,
-        dest: Option<UniqueIdent>,
     ) -> Result<Stm, VirErr> {
-        let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))?;
-        if ctx.expand_flag {
-            crate::split_expression::all_split_exp(
-                ctx,
-                diagnostics,
-                fun_ssts,
-                &stm,
-                &Arc::new(ensures.clone()),
-                ens_pars,
-                dest,
-            )
-        } else {
-            Ok(stm)
-        }
+        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))
     }
 
     pub(crate) fn finalize(&mut self) {
@@ -927,20 +910,6 @@ fn stm_call(
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
-    if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
-        let error = error(span, crate::def::SPLIT_PRE_FAILURE.to_string());
-        let call = StmX::Call {
-            fun: name.clone(),
-            resolved_method: resolved_method.clone(),
-            mode: fun.x.mode,
-            typ_args: typs.clone(),
-            args: args.clone(),
-            split: Some(error),
-            dest: None,
-            assert_id: state.next_assert_id(),
-        };
-        stms.push(Spanned::new(span.clone(), call));
-    }
 
     let mut small_args: Vec<Exp> = Vec::new();
     for arg in args.iter() {
@@ -1677,13 +1646,12 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
             } else {
                 let mut stms: Vec<Stm> = Vec::new();
-                let split = crate::split_expression::need_split_expression(ctx, &e.span);
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with expr_to_stm_or_error
                 let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
                 let exp = crate::heuristics::insert_ext_eq_in_assert(ctx, &exp);
                 let small = is_small_exp_or_loc(&exp);
-                let exp = if small || split {
+                let exp = if small {
                     exp.clone()
                 } else {
                     // To avoid copying exp in Assert and Assume,

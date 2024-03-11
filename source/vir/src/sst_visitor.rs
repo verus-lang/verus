@@ -729,6 +729,7 @@ where
 }
 
 // non-recursive visitor
+#[allow(unused)]
 pub(crate) fn map_shallow_stm<F>(stm: &Stm, fs: &mut F) -> Result<Stm, VirErr>
 where
     F: FnMut(&Stm) -> Result<Stm, VirErr>,

@@ -15,7 +15,6 @@ use vir::context::FunctionCtx;
 use vir::def::{CommandsWithContext, SnapPos};
 use vir::func_to_air::FunctionSst;
 use vir::func_to_air::SstMap;
-use vir::messages::Message;
 use vir::recursion::Node;
 use vir::update_cell::UpdateCell;
 
@@ -159,7 +158,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
             Ok(vec![])
         } else {
-            self.handle_proof_body(function, Style::Normal, None)
+            self.handle_proof_body(function, Style::Normal)
         }
     }
 
@@ -277,12 +276,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         Ok((ops, post_ops))
     }
 
-    fn handle_proof_body(
-        &mut self,
-        function: Function,
-        style: Style,
-        expand_targets: Option<Vec<Message>>,
-    ) -> Result<Vec<Op>, VirErr> {
+    fn handle_proof_body(&mut self, function: Function, style: Style) -> Result<Vec<Op>, VirErr> {
         if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind
         {
             // We are inheriting a trait default method.
@@ -299,16 +293,12 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             return Ok(vec![]);
         }
 
-        let (recommend, expand) = match style {
-            Style::Normal => (false, false),
-            Style::RecommendsFollowupFromError | Style::RecommendsChecked => (true, false),
-            Style::Expanded => (false, true),
+        let recommend = match style {
+            Style::Normal => false,
+            Style::RecommendsFollowupFromError | Style::RecommendsChecked => true,
+            Style::Expanded => panic!("handle_proof_body doesn't support Expanded"),
         };
 
-        if expand {
-            self.ctx.debug_expand_targets = expand_targets.unwrap();
-            self.ctx.expand_flag = true;
-        }
         self.ctx.fun = mk_fun_ctx(&function, recommend);
 
         let mut sst_map = UpdateCell::new(HashMap::new());
@@ -321,12 +311,11 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             vir::func_to_air::func_sst_to_air(self.ctx, &function, &function_sst)?;
 
         self.ctx.fun = None;
-        self.ctx.expand_flag = false;
 
         Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function, Some(function_sst))])
     }
 
-    fn handle_proof_body_expand2(
+    fn handle_proof_body_expand(
         &mut self,
         function: Function,
         assert_id: &AssertId,
@@ -405,7 +394,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
                 // TODO propagate error properly
                 let op = self
                     .op_generator
-                    .handle_proof_body_expand2(function, &assert_id, &function_sst)
+                    .handle_proof_body_expand(function, &assert_id, &function_sst)
                     .unwrap();
                 return Some(Ok(op));
             }
@@ -465,7 +454,6 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         self.op_generator.handle_proof_body(
             function,
             if from_error { Style::RecommendsFollowupFromError } else { Style::RecommendsChecked },
-            None,
         )
     }
 }

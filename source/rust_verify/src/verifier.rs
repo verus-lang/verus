@@ -280,7 +280,6 @@ pub struct Verifier {
 
     // proof debugging purposes
     expand_flag: bool,
-    pub expand_targets: Vec<Message>,
 }
 
 fn report_chosen_triggers(
@@ -384,7 +383,6 @@ impl Verifier {
             buckets: HashMap::new(),
 
             expand_flag: false,
-            expand_targets: vec![],
         }
     }
 
@@ -413,7 +411,6 @@ impl Verifier {
             current_crate_modules: self.current_crate_modules.clone(),
             buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
-            expand_targets: self.expand_targets.clone(),
         }
     }
 
@@ -773,7 +770,6 @@ impl Verifier {
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
-                            self.expand_targets.push(error.clone());
                         }
 
                         if self.args.debugger {
@@ -1334,7 +1330,6 @@ impl Verifier {
                         let mut any_invalid = false;
                         let mut any_timed_out = false;
                         let mut failed_assert_ids = vec![];
-                        self.expand_targets = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
@@ -1551,7 +1546,6 @@ impl Verifier {
 
                             if any_invalid && self.args.expand_errors && failed_assert_ids.len() > 0
                             {
-                                //let expand_targets = self.expand_targets.drain(..).collect();
                                 function_opgen.start_expand_errors_if_possible(
                                     &op,
                                     failed_assert_ids[0].clone(),

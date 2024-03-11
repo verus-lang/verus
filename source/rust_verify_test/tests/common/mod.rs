@@ -170,9 +170,7 @@ pub fn verify_files_vstd_all_diags(
             let diag: Result<Diagnostic, _> = serde_json::from_str(ss);
             if let Ok(diag) = diag {
                 eprintln!("{}", diag.rendered);
-                if diag.level == "note"
-                    && diag.message.starts_with("diagnostics via expansion")
-                {
+                if diag.level == "note" && diag.message.starts_with("diagnostics via expansion") {
                     // TODO(main_new) define in defs
                     expand_errors_notes.push(diag);
                     continue;
