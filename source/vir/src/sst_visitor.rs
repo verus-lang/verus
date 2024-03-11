@@ -183,6 +183,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             ExpX::VarLoc(..) => R::ret(|| exp.clone()),
             ExpX::StaticVar(..) => R::ret(|| exp.clone()),
             ExpX::ExecFnByName(_) => R::ret(|| exp.clone()),
+            ExpX::FuelConst(_) => R::ret(|| exp.clone()),
             ExpX::Loc(e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Loc(R::get(e1))))

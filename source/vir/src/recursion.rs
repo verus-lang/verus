@@ -232,10 +232,14 @@ fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
+/// fuel param:
+/// `None` for normal case (the usual 'fuel' param)
+/// `Some(fuel)` means use a constant fuel
 pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &Function,
     body: &Exp,
+    fuel: Option<usize>,
 ) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
@@ -259,7 +263,10 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
             if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM)));
+            let varx = match fuel {
+                None => ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM))),
+                Some(f) => ExpX::FuelConst(f),
+            };
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));

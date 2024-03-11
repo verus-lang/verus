@@ -166,7 +166,9 @@ fn func_body_to_air(
 
     // Rewrite recursive calls to use fuel
     let (is_recursive, body_exp, scc_rep) =
-        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(ctx, function, &body_exp)?;
+        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+            ctx, function, &body_exp, None,
+        )?;
 
     // Check termination and/or recommends
     let mut check_state = crate::ast_to_sst::State::new(diagnostics);

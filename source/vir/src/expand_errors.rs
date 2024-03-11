@@ -622,13 +622,25 @@ fn expand_exp_rec(
                 ),
             )
         }
-        ExpX::Call(CallFun::Fun(fun_name, resolved), typs, args) => {
-            let (fun_name, typs) = match resolved {
-                Some((resolved_fun_name, resolved_typs)) => (resolved_fun_name, resolved_typs),
-                None => (fun_name, typs),
+        ExpX::Call(cf @ (CallFun::Fun(..) | CallFun::Recursive(..)), typs, args) => {
+            let (fun_name, typs) = match cf {
+                CallFun::Fun(_, Some((resolved_fun_name, resolved_typs))) => {
+                    (resolved_fun_name, resolved_typs)
+                }
+                CallFun::Fun(fun_name, None) => (fun_name, typs),
+                CallFun::Recursive(fun_name) => (fun_name, typs),
+                _ => unreachable!(),
+            };
+            let (args, fuel_arg) = if matches!(cf, CallFun::Recursive(_)) {
+                let main_args = Arc::new(args[..args.len() - 1].to_vec());
+                let fuel_arg = fuel_arg_to_int(&args[args.len() - 1]);
+                (main_args, Some(fuel_arg))
+            } else {
+                (args.clone(), None)
             };
             let function = get_function(ctx, &exp.span, fun_name).unwrap();
-            let can_inline = can_inline_function(ctx, state, ectx, function, &exp.span);
+            let can_inline =
+                can_inline_function(ctx, state, ectx, function.clone(), fuel_arg, &exp.span);
             if let Err(err) = can_inline {
                 leaf(state, CanExpandFurther::No(err))
             } else if did_split_yet {
@@ -637,14 +649,28 @@ fn expand_exp_rec(
             } else {
                 let SstInfo { inline, params, body, .. } =
                     state.fun_ssts.borrow().get(fun_name).unwrap();
-                let inline_exp = crate::split_expression::inline_expression(
+                let mut inline_exp = crate::split_expression::inline_expression(
                     ctx,
-                    args,
+                    &args,
                     typs,
                     params,
                     &inline.typ_params,
                     body,
                 );
+
+                let fuel = can_inline.unwrap();
+                if let Some(fuel) = fuel {
+                    let (is_rec, e, _node) =
+                        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+                            ctx,
+                            &function,
+                            &inline_exp,
+                            Some(fuel - 1),
+                        )
+                        .unwrap();
+                    assert!(is_rec);
+                    inline_exp = e;
+                }
 
                 state.push_unfold(fun_name);
                 let (stm, tree) =
@@ -922,42 +948,32 @@ fn is_ctor_for_other(e: &Exp, variant: &Variant) -> bool {
     }
 }
 
+fn fuel_arg_to_int(e: &Exp) -> usize {
+    match &e.x {
+        ExpX::FuelConst(i) => *i,
+        _ => panic!(
+            "Verus Internal Error: expected fuel constant trying to unfold recursive function for --expand-errors"
+        ),
+    }
+}
+
 fn can_inline_function(
     ctx: &Ctx,
     state: &State,
     ectx: &ExpansionContext,
     fun_to_inline: Function,
+    cur_fuel_level: Option<usize>,
     span: &Span,
-) -> Result<(), Option<String>> {
+) -> Result<Option<usize>, Option<String>> {
     let opaque_err = Err(Some("function is opaque".to_string()));
     let hidden_err = Err(Some("function is hidden".to_string()));
     let closed_err = Err(Some("function is closed".to_string()));
     let uninterp_err = Err(Some("function is uninterpreted".to_string()));
     let foreign_module_err = Err(None);
     let type_err = Err(Some("not bool type".to_string()));
-    let recursive_err =
-        Err(Some("recursive function (not supported in expand-errors)".to_string()));
 
-    let mut found_local_fuel = false;
-    let fuel = match ectx.fuels.get(&fun_to_inline.x.name) {
-        Some(local_fuel) => {
-            found_local_fuel = true;
-            *local_fuel
-        }
-        None => fun_to_inline.x.fuel,
-    };
-
-    let mut hidden = false; // track `hide` statement
-    match &ctx.fun {
-        Some(f) => {
-            let fun_owner = get_function(ctx, span, &f.current_fun).unwrap();
-            let fs_to_hide = &fun_owner.x.attrs.hidden;
-            for f_to_hide in &**fs_to_hide {
-                if **f_to_hide == *fun_to_inline.x.name {
-                    hidden = true;
-                };
-            }
-        }
+    let fun_owner = match &ctx.fun {
+        Some(f) => get_function(ctx, span, &f.current_fun).unwrap(),
         None => {
             return Err(Some(
                 "Internal error: cannot find the owning function of this function call".to_string(),
@@ -965,12 +981,29 @@ fn can_inline_function(
         }
     };
 
-    let _unfold_count = match state.unfold_counts.get(&fun_to_inline.x.name) {
-        Some(x) => *x,
-        None => 0,
+    if cur_fuel_level == Some(0) {
+        return Err(Some("reached fuel limit for recursion".to_string()));
+    }
+
+    let mut fuel = fun_to_inline.x.fuel;
+    let mut hidden = false;
+
+    let fs_to_hide = &fun_owner.x.attrs.hidden;
+    for f_to_hide in &**fs_to_hide {
+        if **f_to_hide == *fun_to_inline.x.name {
+            fuel = 0;
+            hidden = true;
+        };
+    }
+
+    match ectx.fuels.get(&fun_to_inline.x.name) {
+        Some(local_fuel) => {
+            fuel = *local_fuel;
+        }
+        None => {}
     };
 
-    if fuel == 0 || (!found_local_fuel && hidden) {
+    if fuel == 0 {
         if hidden {
             return hidden_err;
         } else {
@@ -1006,10 +1039,6 @@ fn can_inline_function(
             return type_err;
         }
 
-        if fun_to_inline.x.decrease.len() != 0 {
-            return recursive_err;
-        }
-
         //if unfold_count >= fuel {
         //    return Err(format!("exhaused fuel {fuel}"));
         //}
@@ -1020,7 +1049,15 @@ fn can_inline_function(
             return Err(Some(format!("Internal error: not in SstMap")));
         }
 
-        return Ok(());
+        if fun_to_inline.x.decrease.len() != 0 {
+            let f = match cur_fuel_level {
+                Some(f) => f,
+                None => fuel as usize,
+            };
+            return Ok(Some(f));
+        } else {
+            return Ok(None);
+        }
     }
 }
 

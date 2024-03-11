@@ -129,6 +129,7 @@ fn subst_exp_rec(
         | ExpX::BinaryOpr(..)
         | ExpX::If(..)
         | ExpX::ExecFnByName(..)
+        | ExpX::FuelConst(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
             &mut (substs, free_vars),
@@ -312,10 +313,16 @@ impl ExpX {
             Loc(exp) => {
                 return exp.x.to_string_prec(global, precedence);
             }
-            Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
+            Call(cf @ (CallFun::Fun(fun, _) | CallFun::Recursive(fun)), _, exps) => {
                 let (zero_args, is_method) = match global.fun_attrs.get(fun) {
                     Some(attrs) => (attrs.print_zero_args, attrs.print_as_method),
                     None => (false, false),
+                };
+
+                let exps = if matches!(cf, CallFun::Recursive(..)) {
+                    &exps[0..exps.len() - 1]
+                } else {
+                    &exps
                 };
 
                 let fun_name = fun.path.segments.last().unwrap();
@@ -574,6 +581,7 @@ impl ExpX {
                     Closure(e, _ctx) => (format!("{}", e.x.to_user_string(global)), 99),
                 }
             }
+            FuelConst(i) => (format!("fuel({i:})"), 99),
             Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
         };
         if precedence <= inner_precedence { s } else { format!("({})", s) }
