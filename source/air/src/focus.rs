@@ -40,6 +40,11 @@ pub fn focus_stmt_on_assert_id(stmt: &Stmt, assert_id: &AssertId) -> (Stmt, bool
                 (Arc::new(StmtX::Block(Arc::new(vec![]))), false)
             }
         }
+        StmtX::Breakable(ident, stmt) => {
+            let (stmt, found) = focus_stmt_on_assert_id(stmt, assert_id);
+            (Arc::new(StmtX::Breakable(ident.clone(), stmt)), found)
+        }
+        StmtX::Break(_) => (stmt.clone(), false),
         StmtX::Block(stmts) => {
             let mut v = vec![];
             for stmt in stmts.iter() {

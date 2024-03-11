@@ -841,7 +841,16 @@ where
                 rhs.as_ref().map(|rhs| map_stm_visitor_for_assert_id_nodes(rhs, fs)).transpose()?;
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
-        StmX::Loop { label, cond, body, invs, typ_inv_vars, modified_vars, is_for_loop } => {
+        StmX::Loop {
+            label,
+            cond,
+            body,
+            invs,
+            typ_inv_vars,
+            modified_vars,
+            is_for_loop,
+            spinoff_loop,
+        } => {
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm = map_stm_visitor_for_assert_id_nodes(cond_stm, fs)?;
                 Some((cond_stm, cond_exp.clone()))
@@ -859,6 +868,7 @@ where
                     typ_inv_vars: typ_inv_vars.clone(),
                     modified_vars: modified_vars.clone(),
                     is_for_loop: *is_for_loop,
+                    spinoff_loop: spinoff_loop.clone(),
                 },
             ))
         }
