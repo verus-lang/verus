@@ -1240,7 +1240,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.skip_binder().args.types() {
+                for ty in trait_ref.instantiate(tcx, inst.args).args.types() {
                     types.push(mid_ty_to_vir(tcx, &verus_items, did, sig.span, &ty, false)?);
                 }
 
