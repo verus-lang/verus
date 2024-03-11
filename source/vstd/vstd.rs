@@ -38,9 +38,9 @@ pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
-pub mod storage_protocol;
 pub mod slice;
 pub mod state_machine_internal;
+pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;

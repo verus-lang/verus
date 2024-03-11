@@ -34,7 +34,6 @@ macro_rules! make_unsigned_integer_atomic {
         }
 
         } // verus!
-
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
@@ -69,7 +68,6 @@ macro_rules! make_signed_integer_atomic {
         }
 
         } // verus!
-
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
@@ -244,7 +242,7 @@ macro_rules! atomic_common_methods {
         }
 
         }
-    }
+    };
 }
 
 macro_rules! atomic_integer_methods {
@@ -402,7 +400,7 @@ macro_rules! atomic_integer_methods {
         }
 
         }
-    }
+    };
 }
 
 macro_rules! atomic_bool_methods {
@@ -470,7 +468,7 @@ macro_rules! atomic_bool_methods {
         }
 
         }
-    }
+    };
 }
 
 make_bool_atomic!(
