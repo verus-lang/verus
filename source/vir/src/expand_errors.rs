@@ -14,7 +14,7 @@ use crate::messages::Span;
 use crate::sst::{AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX};
 use crate::sst_to_air::PostConditionSst;
 use crate::sst_util::{sst_conjoin, sst_equal_ext, sst_implies, sst_not, subst_typ_for_datatype};
-use crate::sst_visitor::map_stm_visitor_for_assert_id_nodes;
+use crate::sst_visitor::map_stm_prev_visitor;
 use air::ast::Quant::{Exists, Forall};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -196,7 +196,7 @@ pub fn do_expansion_body(
     local_decls: &mut Vec<LocalDecl>,
 ) -> (Stm, ExpansionTree) {
     let mut record = None;
-    let new_stm = map_stm_visitor_for_assert_id_nodes(stm, &mut |one_stm, prev_stm| {
+    let new_stm = map_stm_prev_visitor(stm, &mut |one_stm, prev_stm| {
         let maybe_expanded = do_expansion_if_assert_id_matches(
             ctx,
             ectx,
