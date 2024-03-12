@@ -109,6 +109,22 @@ in the following example:
 use crate::arithmetic::internals::general_internals::is_le;
 ```
 
+## Maintaining consistent formatting using `verusfmt`
+
+The Verus CI ensures that `verus! { ... }` code (such as that in `vstd`) is formatted consistently using [verusfmt](https://github.com/verus-lang/verusfmt).
+
+If the CI complains about formatting, ensure that you are on the latest release of verusfmt ([installation instructions](https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt)), and run:
+```sh
+# To format a specific file
+verusfmt <file>.rs
+
+# To format all of vstd at once (on *nix)
+find source/vstd -name \*.rs -print0 | xargs -0 -n1 verusfmt
+
+# To format all of vstd at once (on Windows Powershell)
+Get-ChildItem -Path .\source\vstd -Filter *.rs -Recurse | ForEach-Object { verusfmt $_.FullName }
+```
+
 ## Other tips
 
 You can use `--vstd-no-verify` to skip verification of the `vstd` library. This is pretty useful if you're building or running tests a lot. Note that it will still _build_ `vstd`—it just skips the SMT step. For example:

@@ -3,9 +3,9 @@ use builtin::*;
 
 use alloc::vec::Vec;
 use core::alloc::Allocator;
+use core::clone::Clone;
 use core::option::Option;
 use core::option::Option::None;
-use core::clone::Clone;
 
 verus! {
 
@@ -211,8 +211,9 @@ pub fn ex_vec_split_off<T, A: Allocator + core::clone::Clone>(
 pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Vec<T, A>)
     ensures
         res.len() == vec.len(),
-        forall |i| #![all_triggers] 0 <= i < vec.len() ==>
-            call_ensures(T::clone, (&vec[i],), res[i])
+        forall|i|
+            #![all_triggers]
+            0 <= i < vec.len() ==> call_ensures(T::clone, (&vec[i],), res[i]),
 {
     vec.clone()
 }

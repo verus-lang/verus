@@ -58,29 +58,29 @@ pub trait InvariantPredicate<K, V> {
 }
 
 } // verus!
-  // LocalInvariant is NEVER `Sync`.
-  //
-  // Furthermore, for either type:
-  //
-  //  * If an Invariant<T> is Sync, then T must be Send
-  //      * We could put the T in an Invariant, sync the invariant to another thread,
-  //        and then extract the T, having effectively send it to the other thread.
-  //  * If Invariant<T> is Send, then T must be Send
-  //      * We could put the T in an Invariant, send the invariant to another thread,
-  //        and then take the T out.
-  //
-  // So the Sync/Send-ness of the Invariant depends on the Send-ness of T;
-  // however, the Sync-ness of T is unimportant (the invariant doesn't give you an extra
-  // ability to share a reference to a T across threads).
-  //
-  // In conclusion, we should have:
-  //
-  //    T                   AtomicInvariant<T>  LocalInvariant<T>
-  //
-  //    {}          ==>     {}                  {}
-  //    Send        ==>     Send+Sync           Send
-  //    Sync        ==>     {}                  {}
-  //    Sync+Send   ==>     Send+Sync           Send
+// LocalInvariant is NEVER `Sync`.
+//
+// Furthermore, for either type:
+//
+//  * If an Invariant<T> is Sync, then T must be Send
+//      * We could put the T in an Invariant, sync the invariant to another thread,
+//        and then extract the T, having effectively send it to the other thread.
+//  * If Invariant<T> is Send, then T must be Send
+//      * We could put the T in an Invariant, send the invariant to another thread,
+//        and then take the T out.
+//
+// So the Sync/Send-ness of the Invariant depends on the Send-ness of T;
+// however, the Sync-ness of T is unimportant (the invariant doesn't give you an extra
+// ability to share a reference to a T across threads).
+//
+// In conclusion, we should have:
+//
+//    T                   AtomicInvariant<T>  LocalInvariant<T>
+//
+//    {}          ==>     {}                  {}
+//    Send        ==>     Send+Sync           Send
+//    Sync        ==>     {}                  {}
+//    Sync+Send   ==>     Send+Sync           Send
 /// An `AtomicInvariant` is a ghost object that provides "interior mutability"
 /// for ghost objects, specifically, for `tracked` ghost objects.
 /// A reference `&AtomicInvariant` may be shared between clients.
@@ -223,7 +223,7 @@ macro_rules! declare_invariant_impl {
         }
 
         }
-    }
+    };
 }
 
 declare_invariant_impl!(AtomicInvariant);
