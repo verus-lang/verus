@@ -1029,7 +1029,7 @@ pub struct RevealGroupX {
     /// If true, then prune away group unless either the module that contains the group is used.
     /// (Without this, importing vstd would recursively reach and encode all the
     /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
-    pub hidden_unless_this_module_is_used: bool,
+    pub prune_unless_this_module_is_used: bool,
     /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
     /// No more than one such group is allowed in each crate.
     pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,

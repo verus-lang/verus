@@ -148,8 +148,8 @@ fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
 fn reach_reveal_group(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     let group = &ctxt.reveal_group_map[name];
     if let Some(module_path) = &group.x.owning_module {
-        if group.x.hidden_unless_this_module_is_used {
-            // We only reach into a hidden_unless_this_module_is_used group when its module is reached
+        if group.x.prune_unless_this_module_is_used {
+            // We only reach into a prune_unless_this_module_is_used group when its module is reached
             if !state.reached_modules.contains(module_path) {
                 return;
             }
@@ -420,7 +420,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let Some(fs) = ctxt.all_reveal_groups_in_each_module.get(&m) {
                 for f in fs {
                     if state.reached_functions.contains(f) {
-                        // revisit group to handle hidden_unless_this_module_is_used
+                        // revisit group to handle prune_unless_this_module_is_used
                         reach_reveal_group(ctxt, state, f);
                     }
                 }
@@ -450,10 +450,10 @@ fn overapproximate_revealed_functions(
 ) {
     // REVIEW: this is an unnecessary overapproximation;
     // we could be more precise in handling whether reveal_groups recursively reach and reveal
-    // opaque functions (depending on hidden_unless_this_module_is_used),
+    // opaque functions (depending on prune_unless_this_module_is_used),
     // but it would require refactoring the way we decide to keep or erase opaque function bodies,
     // which doesn't seem worth it now to optimize a feature that isn't really used yet.
-    // So we just make an overapproximation that ignores hidden_unless_this_module_is_used.
+    // So we just make an overapproximation that ignores prune_unless_this_module_is_used.
     // (As a result, we might unnecessarily include the body of an opaque function even if
     // we only need the opaque function's signature.)
     let mut reveal_group_map: HashMap<Fun, RevealGroup> = HashMap::new();
