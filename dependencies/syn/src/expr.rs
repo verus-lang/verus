@@ -555,6 +555,7 @@ ast_struct! {
         pub attrs: Vec<Attribute>,
         pub label: Option<Label>,
         pub loop_token: Token![loop],
+        pub invariant_except_break: Option<InvariantExceptBreak>,
         pub invariant: Option<Invariant>,
         pub invariant_ensures: Option<InvariantEnsures>,
         pub ensures: Option<Ensures>,
@@ -787,6 +788,7 @@ ast_struct! {
         pub label: Option<Label>,
         pub while_token: Token![while],
         pub cond: Box<Expr>,
+        pub invariant_except_break: Option<InvariantExceptBreak>,
         pub invariant: Option<Invariant>,
         pub invariant_ensures: Option<InvariantEnsures>,
         pub ensures: Option<Ensures>,
@@ -2493,6 +2495,7 @@ pub(crate) mod parsing {
             let mut attrs = input.call(Attribute::parse_outer)?;
             let label: Option<Label> = input.parse()?;
             let loop_token: Token![loop] = input.parse()?;
+            let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
             let ensures = input.parse()?;
@@ -2507,6 +2510,7 @@ pub(crate) mod parsing {
                 attrs,
                 label,
                 loop_token,
+                invariant_except_break,
                 invariant,
                 invariant_ensures,
                 ensures,
@@ -2822,6 +2826,7 @@ pub(crate) mod parsing {
             let label: Option<Label> = input.parse()?;
             let while_token: Token![while] = input.parse()?;
             let cond = Expr::parse_without_eager_brace(input)?;
+            let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
             let invariant_ensures = input.parse()?;
             let ensures = input.parse()?;
@@ -2837,6 +2842,7 @@ pub(crate) mod parsing {
                 label,
                 while_token,
                 cond: Box::new(cond),
+                invariant_except_break,
                 invariant,
                 invariant_ensures,
                 ensures,
@@ -3463,6 +3469,7 @@ pub(crate) mod printing {
             self.label.to_tokens(tokens);
             self.while_token.to_tokens(tokens);
             wrap_bare_struct(tokens, &self.cond);
+            self.invariant_except_break.to_tokens(tokens);
             self.invariant.to_tokens(tokens);
             self.invariant_ensures.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
@@ -3505,6 +3512,7 @@ pub(crate) mod printing {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.label.to_tokens(tokens);
             self.loop_token.to_tokens(tokens);
+            self.invariant_except_break.to_tokens(tokens);
             self.invariant.to_tokens(tokens);
             self.invariant_ensures.to_tokens(tokens);
             self.ensures.to_tokens(tokens);

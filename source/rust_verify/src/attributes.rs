@@ -259,7 +259,7 @@ pub(crate) enum Attr {
     // Use a new dedicated Z3 process just for this query
     SpinoffProver,
     // Use a new dedicated Z3 process for loops
-    SpinoffLoop(bool),
+    LoopIsolation(bool),
     // Memoize function call results during interpretation
     Memoize,
     // Override default rlimit
@@ -450,18 +450,18 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "spinoff_prover" => {
                     v.push(Attr::SpinoffProver)
                 }
-                AttrTree::Fun(_, arg, None) if arg == "spinoff_loop" => {
-                    v.push(Attr::SpinoffLoop(true))
+                AttrTree::Fun(_, arg, None) if arg == "loop_isolation" => {
+                    v.push(Attr::LoopIsolation(true))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
-                    if arg == "spinoff_loop" && r == "true" =>
+                    if arg == "loop_isolation" && r == "true" =>
                 {
-                    v.push(Attr::SpinoffLoop(true))
+                    v.push(Attr::LoopIsolation(true))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
-                    if arg == "spinoff_loop" && r == "false" =>
+                    if arg == "loop_isolation" && r == "false" =>
                 {
-                    v.push(Attr::SpinoffLoop(false))
+                    v.push(Attr::LoopIsolation(false))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
                 AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
@@ -622,7 +622,7 @@ pub(crate) fn get_spinoff_loop_walk_parents<'tcx>(
     def_id: rustc_span::def_id::DefId,
 ) -> Option<bool> {
     for attr in parse_attrs_walk_parents(tcx, def_id) {
-        if let Attr::SpinoffLoop(flag) = attr {
+        if let Attr::LoopIsolation(flag) = attr {
             return Some(flag);
         }
     }
@@ -739,7 +739,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) check_recommends: bool,
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
-    pub(crate) spinoff_loop: Option<bool>,
+    pub(crate) loop_isolation: Option<bool>,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
     pub(crate) truncate: bool,
@@ -797,7 +797,7 @@ pub(crate) fn get_verifier_attrs(
         check_recommends: false,
         nonlinear: false,
         spinoff_prover: false,
-        spinoff_loop: None,
+        loop_isolation: None,
         memoize: false,
         rlimit: None,
         truncate: false,
@@ -850,7 +850,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
-            Attr::SpinoffLoop(flag) => vs.spinoff_loop = Some(flag),
+            Attr::LoopIsolation(flag) => vs.loop_isolation = Some(flag),
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,

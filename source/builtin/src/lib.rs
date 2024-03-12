@@ -55,17 +55,17 @@ pub fn recommends<A>(_a: A) {
 
 // Can only appear at beginning of loop body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::invariant"]
+#[rustc_diagnostic_item = "verus::builtin::invariant_except_break"]
 #[verifier::proof]
-pub fn invariant<A>(_a: A) {
+pub fn invariant_except_break<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of loop body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::invariant_ensures"]
+#[rustc_diagnostic_item = "verus::builtin::invariant"]
 #[verifier::proof]
-pub fn invariant_ensures<A>(_a: A) {
+pub fn invariant<A>(_a: A) {
     unimplemented!();
 }
 

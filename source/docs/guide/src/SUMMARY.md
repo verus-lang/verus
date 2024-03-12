@@ -138,7 +138,7 @@
   - [recommends]()
 - [Loop specifications]()
   - [invariant]()
-  - [ensures / invariant_ensures]()
+  - [invariant_except_break / ensures]()
 - [Recursion and termination]()
   - [decreases ...]()
   - [decreases ... when ...]()

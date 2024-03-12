@@ -665,7 +665,7 @@ fn visit_split_stm(
             Ok(Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs)))
         }
         StmX::Loop {
-            spinoff_loop,
+            loop_isolation,
             is_for_loop,
             label,
             cond,
@@ -686,7 +686,7 @@ fn visit_split_stm(
             Ok(Spanned::new(
                 stm.span.clone(),
                 StmX::Loop {
-                    spinoff_loop: *spinoff_loop,
+                    loop_isolation: *loop_isolation,
                     is_for_loop: *is_for_loop,
                     label: label.clone(),
                     cond,

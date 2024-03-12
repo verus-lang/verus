@@ -686,6 +686,7 @@ impl Clone for ExprLoop {
             attrs: self.attrs.clone(),
             label: self.label.clone(),
             loop_token: self.loop_token.clone(),
+            invariant_except_break: self.invariant_except_break.clone(),
             invariant: self.invariant.clone(),
             invariant_ensures: self.invariant_ensures.clone(),
             ensures: self.ensures.clone(),
@@ -905,6 +906,7 @@ impl Clone for ExprWhile {
             label: self.label.clone(),
             while_token: self.while_token.clone(),
             cond: self.cond.clone(),
+            invariant_except_break: self.invariant_except_break.clone(),
             invariant: self.invariant.clone(),
             invariant_ensures: self.invariant_ensures.clone(),
             ensures: self.ensures.clone(),
@@ -1292,6 +1294,15 @@ impl Clone for Invariant {
 impl Clone for InvariantEnsures {
     fn clone(&self) -> Self {
         InvariantEnsures {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantExceptBreak {
+    fn clone(&self) -> Self {
+        InvariantExceptBreak {
             token: self.token.clone(),
             exprs: self.exprs.clone(),
         }

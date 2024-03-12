@@ -1128,8 +1128,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
     }
 
-    let spinoff_loop = || {
-        if let Some(flag) = expr_vattrs.spinoff_loop {
+    let loop_isolation = || {
+        if let Some(flag) = expr_vattrs.loop_isolation {
             flag
         } else if let Some(flag) =
             crate::attributes::get_spinoff_loop_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
@@ -1730,7 +1730,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let header = vir::headers::read_header(&mut body)?;
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
-                spinoff_loop: spinoff_loop(),
+                loop_isolation: loop_isolation(),
                 is_for_loop: expr_vattrs.for_loop,
                 label,
                 cond: None,
@@ -1791,7 +1791,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
-                spinoff_loop: spinoff_loop(),
+                loop_isolation: loop_isolation(),
                 is_for_loop: false,
                 label,
                 cond,

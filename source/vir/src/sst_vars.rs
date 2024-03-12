@@ -118,7 +118,7 @@ pub(crate) fn stm_assign(
             Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs))
         }
         StmX::Loop {
-            spinoff_loop,
+            loop_isolation,
             is_for_loop,
             label,
             cond,
@@ -156,7 +156,7 @@ pub(crate) fn stm_assign(
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
             let loop_x = StmX::Loop {
-                spinoff_loop: *spinoff_loop,
+                loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 cond,

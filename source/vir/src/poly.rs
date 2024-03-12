@@ -686,7 +686,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr_typ(&t, ExprX::If(e0, e1.clone(), Some(e2)))
         }
         ExprX::Match(..) => panic!("Match should already be removed"),
-        ExprX::Loop { spinoff_loop, is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs } => {
             let cond = cond.as_ref().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
             let body = poly_expr(ctx, state, body);
             let invs = invs.iter().map(|inv| crate::ast::LoopInvariant {
@@ -695,7 +695,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             });
             let invs = Arc::new(invs.collect());
             mk_expr(ExprX::Loop {
-                spinoff_loop: *spinoff_loop,
+                loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 cond,
