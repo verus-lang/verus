@@ -1061,6 +1061,7 @@ pub(crate) fn check_item_fn<'tcx>(
         broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
+        unwind_spec: header.unwind_spec,
         item_kind: ItemKind::Function,
         publish,
         attrs: fattrs,
@@ -1118,6 +1119,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             broadcast_forall,
             fndef_axioms,
             mask_spec,
+            unwind_spec,
             item_kind,
             publish,
             attrs,
@@ -1189,6 +1191,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
         unsupported_err_unless!(broadcast_forall.is_none(), span, "broadcast_forall");
         unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
+        unsupported_err_unless!(matches!(unwind_spec, None), span, "unwind");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
 
         Ok(FunctionX {
@@ -1211,6 +1214,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             broadcast_forall,
             fndef_axioms,
             mask_spec,
+            unwind_spec,
             item_kind,
             publish,
             attrs,
@@ -1600,6 +1604,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
+        unwind_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         publish: get_publish(&vattrs).0,
         attrs: fattrs,
@@ -1708,6 +1713,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
+        unwind_spec: None,
         item_kind: ItemKind::Function,
         publish: None,
         attrs: Default::default(),

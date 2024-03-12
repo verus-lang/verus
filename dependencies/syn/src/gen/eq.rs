@@ -2178,6 +2178,7 @@ impl PartialEq for Signature {
             && self.prover == other.prover && self.requires == other.requires
             && self.recommends == other.recommends && self.ensures == other.ensures
             && self.decreases == other.decreases && self.invariants == other.invariants
+            && self.unwind == other.unwind
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2195,6 +2196,14 @@ impl Eq for SignatureInvariants {}
 impl PartialEq for SignatureInvariants {
     fn eq(&self, other: &Self) -> bool {
         self.set == other.set
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for SignatureUnwind {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for SignatureUnwind {
+    fn eq(&self, other: &Self) -> bool {
+        self.when == other.when
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

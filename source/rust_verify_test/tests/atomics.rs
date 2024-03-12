@@ -12,12 +12,14 @@ const COMMON: &str = verus_code_str! {
     #[verifier(external_body)] /* vattr */
     fn atomic_op()
         opens_invariants none
+        no_unwind
     {
     }
 
     #[verifier(external_body)] /* vattr */
     fn non_atomic_op()
         opens_invariants none
+        no_unwind
     {
     }
 
@@ -233,10 +235,11 @@ test_verify_one_file! {
         pub fn test_clos<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) {
             let t = || { };
             open_local_invariant!(&i => inner => { // FAILS
-                t();
+                // also fails because of unwinding
+                t(); // FAILS
             });
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {

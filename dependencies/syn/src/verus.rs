@@ -169,6 +169,13 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct SignatureUnwind {
+        pub token: Token![no_unwind],
+        pub when: Option<(Token![when], Expr)>,
+    }
+}
+
 ast_enum_of_structs! {
     pub enum InvariantNameSet {
         Any(InvariantNameSetAny),
@@ -646,6 +653,21 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for SignatureUnwind {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token = input.parse()?;
+            let when = if input.peek(Token![when]) {
+                let when_token = input.parse()?;
+                let expr = Expr::parse_without_eager_brace(input)?;
+                Some((when_token, expr))
+            } else {
+                None
+            };
+            Ok(SignatureUnwind { token, when })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureInvariants {
         fn parse(input: ParseStream) -> Result<Self> {
             let opens_invariants = input.parse()?;
@@ -798,6 +820,17 @@ pub mod parsing {
     impl Parse for Option<SignatureDecreases> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![decreases]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<SignatureUnwind> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![no_unwind]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -1265,7 +1298,7 @@ mod printing {
     impl ToTokens for SignatureDecreases {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.decreases.to_tokens(tokens);
-            if let Some((when_token, when)) = &self.via {
+            if let Some((when_token, when)) = &self.when {
                 when_token.to_tokens(tokens);
                 when.to_tokens(tokens);
             }
@@ -1281,6 +1314,17 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.set.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for SignatureUnwind {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            if let Some((when_token, when)) = &self.when {
+                when_token.to_tokens(tokens);
+                when.to_tokens(tokens);
+            }
         }
     }
 
