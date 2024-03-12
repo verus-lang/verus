@@ -91,7 +91,7 @@ fn check_item<'tcx>(
             unsupported_err_unless!(
                 generics.params.len() == 0 && generics.predicates.len() == 0,
                 item.span,
-                "const generics"
+                "const generics with broadcast"
             );
             let _def_id = body_id.hir_id.owner.to_def_id();
 
