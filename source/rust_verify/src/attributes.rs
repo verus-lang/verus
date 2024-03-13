@@ -288,6 +288,8 @@ pub(crate) enum Attr {
     BroadcastUseReveal,
     // Marks generated -> functions that are unsupported because a field appears in multiple variants
     InternalGetFieldManyVariants,
+    // Broadcast proof for size_of global
+    SizeOfBroadcastProof,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -588,6 +590,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "get_field_many_variants" => {
                         v.push(Attr::InternalGetFieldManyVariants)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "size_of_broadcast_proof" => {
+                        v.push(Attr::SizeOfBroadcastProof)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -740,6 +745,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
     pub(crate) item_broadcast_use: bool,
+    pub(crate) size_of_broadcast_proof: bool,
 }
 
 impl VerifierAttrs {
@@ -801,6 +807,7 @@ pub(crate) fn get_verifier_attrs(
         size_of_global: false,
         internal_get_field_many_variants: false,
         item_broadcast_use: false,
+        size_of_broadcast_proof: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -857,6 +864,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::SizeOfGlobal => vs.size_of_global = true,
             Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
+            Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             _ => {}
         }
     }

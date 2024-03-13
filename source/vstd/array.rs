@@ -50,11 +50,11 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
     &ar[i]
 }
 
-#[verifier(external_body)]
 pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] ar@.len()) == N,
 {
+    admit();
 }
 
 // Referenced by Verus' internal encoding for array literals
@@ -62,6 +62,11 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "vstd::array::array_index")]
 pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
     ar.view().index(i)
+}
+
+#[verifier::hidden_unless_this_module_is_used]
+pub broadcast group array_axioms {
+    array_len_matches_n,
 }
 
 } // verus!

@@ -1520,7 +1520,7 @@ test_verify_one_file! {
         }
         spec fn t<A>() -> bool { true }
 
-        #[verifier::external_body] /* vattr */
+        #[verifier::external_body]
         broadcast proof fn f_not_g<A: T>()
             ensures
                 #[trigger] t::<A>(),
@@ -1535,6 +1535,7 @@ test_verify_one_file! {
             }
 
             proof fn p(&self) {
+                broadcast use f_not_g;
                 assert(exists|x: &Self| self.f() != x.f()); // FAILS
             }
         }
@@ -1548,21 +1549,25 @@ test_verify_one_file! {
             }
 
             proof fn p(&self) {
+                broadcast use f_not_g;
                 assert(self.f() != S3(!self.0).f())
             }
         }
 
         fn test1() {
+            broadcast use f_not_g;
             assert(t::<S1>());
             assert(false);
         }
 
         fn test2() {
+            broadcast use f_not_g;
             assert(t::<S2>());
             assert(false); // FAILS
         }
 
         fn test3() {
+            broadcast use f_not_g;
             assert(t::<S3>());
             assert(false); // FAILS
         }
@@ -1588,14 +1593,17 @@ test_verify_one_file! {
         }
 
         proof fn test1() {
+            broadcast use p;
             assert(f::<S<(bool, u8)>>(3));
         }
 
         proof fn test2() {
+            broadcast use p;
             assert(f::<S<(u32, u8)>>(3)); // FAILS
         }
 
         proof fn test3() {
+            broadcast use p;
             assert(f::<S<(bool, u32)>>(3)); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)

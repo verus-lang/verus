@@ -996,14 +996,15 @@ impl Visitor {
                             };
 
                             ::builtin_macros::verus! {
+                                #[verus::internal(size_of_broadcast_proof)]
                                 #[verifier::external_body]
-                                #[verus::internal(broadcast_forall)]
                                 #[allow(non_snake_case)]
-                                proof fn #lemma_ident()
+                                broadcast proof fn #lemma_ident()
                                     ensures
                                         ::vstd::layout::size_of::<#type_>() == #size_lit,
                                         #ensures_align
-                                {}
+                                {
+                                }
                             }
                             });
                         }

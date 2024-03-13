@@ -188,11 +188,16 @@ impl<A> Vec<A> {
     }
 }
 
-#[verifier(external_body)]
 pub broadcast proof fn axiom_spec_len<A>(v: Vec<A>)
     ensures
         #[trigger] v.spec_len() == v.view().len(),
 {
+    admit();
+}
+
+#[verifier::hidden_unless_this_module_is_used]
+pub broadcast group vec_axioms {
+    axiom_spec_len,
 }
 
 } // verus!
