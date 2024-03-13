@@ -1841,6 +1841,11 @@
         "loop_token": {
           "token": "Loop"
         },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
         "invariant": {
           "option": {
             "syn": "Invariant"
@@ -2361,6 +2366,11 @@
         "cond": {
           "box": {
             "syn": "Expr"
+          }
+        },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
           }
         },
         "invariant": {
@@ -3257,6 +3267,20 @@
       "fields": {
         "token": {
           "token": "InvariantEnsures"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "InvariantExceptBreak",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "InvariantExceptBreak"
         },
         "exprs": {
           "syn": "Specification"
@@ -6932,6 +6956,7 @@
     "InvNone": "none",
     "Invariant": "invariant",
     "InvariantEnsures": "invariant_ensures",
+    "InvariantExceptBreak": "invariant_except_break",
     "Is": "is",
     "LArrow": "<-",
     "Layout": "layout",

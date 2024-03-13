@@ -127,6 +127,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct InvariantExceptBreak {
+        pub token: Token![invariant_except_break],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct Invariant {
         pub token: Token![invariant],
         pub exprs: Specification,
@@ -467,6 +474,7 @@ pub mod parsing {
             while !(input.is_empty()
                 || input.peek(token::Brace)
                 || input.peek(Token![;])
+                || input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
@@ -496,13 +504,13 @@ pub mod parsing {
                 if input.peek2(Token![opens_invariants]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![invariant_ensures]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                if input.peek2(Token![invariant_except_break]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_except_break' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![invariant_ensures]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                if input.peek2(Token![invariant]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![invariant_ensures]) {
+                if input.peek2(Token![decreases]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a 'decreases' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
             }
@@ -546,6 +554,16 @@ pub mod parsing {
             Ok(Ensures {
                 attrs,
                 token,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantExceptBreak {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(InvariantExceptBreak {
+                token: input.parse()?,
                 exprs: input.parse()?,
             })
         }
@@ -705,6 +723,17 @@ pub mod parsing {
     impl Parse for Option<Ensures> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<InvariantExceptBreak> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![invariant_except_break]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -1123,6 +1152,14 @@ mod printing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Ensures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantExceptBreak {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.exprs.to_tokens(tokens);

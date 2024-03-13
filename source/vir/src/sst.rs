@@ -114,8 +114,8 @@ pub struct Dest {
 pub type LoopInvs = Arc<Vec<LoopInv>>;
 #[derive(Debug, Clone)]
 pub struct LoopInv {
-    // "invariant": at_entry = true, at_exit = false
-    // "invariant_ensures": at_entry = true, at_exit = true
+    // "invariant_except_break": at_entry = true, at_exit = false
+    // "invariant": at_entry = true, at_exit = true
     // "ensures": at_entry = false, at_exit = true
     pub at_entry: bool,
     pub at_exit: bool,
@@ -168,7 +168,7 @@ pub enum StmX {
         // 1. cond = Some(...), all invs are true on entry and exit, no break statements
         // 2. cond = None, invs may have false at_entry/at_exit, may have break statements
         // Any while loop not satisfying (1) is converted to (2).
-        spinoff_loop: bool,
+        loop_isolation: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<(Stm, Exp)>,

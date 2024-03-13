@@ -370,7 +370,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
                 mk_expr(ExprX::Header(header))
             }
-            SpecItem::Invariant | SpecItem::InvariantEnsures => {
+            SpecItem::InvariantExceptBreak | SpecItem::Invariant => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected invariant", &args);
                 let subargs = extract_array(args[0]);
@@ -383,10 +383,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let vir_args =
                     vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
                 let header = match spec_item {
-                    SpecItem::Invariant => Arc::new(HeaderExprX::Invariant(Arc::new(vir_args))),
-                    SpecItem::InvariantEnsures => {
-                        Arc::new(HeaderExprX::InvariantEnsures(Arc::new(vir_args)))
+                    SpecItem::InvariantExceptBreak => {
+                        Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
                     }
+                    SpecItem::Invariant => Arc::new(HeaderExprX::Invariant(Arc::new(vir_args))),
                     _ => unreachable!(),
                 };
                 mk_expr(ExprX::Header(header))
