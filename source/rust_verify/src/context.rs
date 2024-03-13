@@ -33,6 +33,7 @@ pub struct ContextX<'tcx> {
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
+    pub(crate) no_span: vir::messages::Span,
 }
 
 #[derive(Clone)]

@@ -43,7 +43,7 @@ pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
     vars
 }
 
-fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
+pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
     crate::ast_visitor::map_typ_visitor(typ, &|t: &Typ| match &**t {
         TypX::TypParam(x) => match typ_substs.get(x) {
             Some(t) => Ok(t.clone()),
@@ -364,7 +364,12 @@ impl ExpX {
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     return exp.x.to_string_prec(global, precedence);
                 }
-                UnaryOp::InferSpecForLoopIter { .. } => ("InferSpecForLoopIter".to_string(), 0),
+                UnaryOp::InferSpecForLoopIter { .. } => {
+                    (format!("InferSpecForLoopIter({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::CastToInteger => {
+                    (format!("{} as int", exp.x.to_user_string(global)), precedence)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;

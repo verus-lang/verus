@@ -950,6 +950,8 @@ pub fn func_axioms_to_air(
                     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                     mk_implies(&fuel_bool, &expr)
                 } else {
+                    // a broadcast_forall, external_body function
+
                     // TODO: eventually, all broadcast_forall should be controlled by fuel
                     // TODO: remove external_body from FunctionAttrsX; it was only needed here
                     expr

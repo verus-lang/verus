@@ -1472,3 +1472,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] old_is_spec_issue963 verus_code! {
+        struct X { }
+
+        proof fn g(tracked m: &X) {
+
+        }
+
+        proof fn f(tracked m: &mut X) {
+            g(&*old(m));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}

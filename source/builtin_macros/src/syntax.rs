@@ -1562,7 +1562,7 @@ impl Visitor {
         ));
         let invariant_ensure = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
-                *inv = Expr::Verbatim(quote_spanned!(span => {
+                *inv = Expr::Verbatim(quote_spanned!(inv.span() => {
                     let #pat =
                         ::vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
                         .unwrap_or(::vstd::pervasive::arbitrary());

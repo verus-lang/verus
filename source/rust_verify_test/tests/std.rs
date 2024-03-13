@@ -285,3 +285,40 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] clone_for_std_types verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+
+        fn test_bool(v: bool) {
+            let w = v.clone();
+            assert(w == v);
+        }
+
+        fn test_bool_vec(v: Vec<bool>) {
+            let w = v.clone();
+            assert(w@ =~= v@);
+        }
+
+        struct Y { }
+
+        fn test_vec_ref(v: Vec<&Y>) {
+            let w = v.clone();
+            assert(w@ =~= v@);
+        }
+
+        struct X { i: u64 }
+
+        impl Clone for X {
+            fn clone(&self) -> Self { X { i: 0 } }
+        }
+
+        fn test_vec_fail(v: Vec<X>)
+            requires v.len() >= 1,
+        {
+            let w = v.clone();
+            assert(v[0] == w[0]); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -14,6 +14,13 @@ macro_rules! num_specs {
         mod $modname_u {
             use super::*;
 
+            #[verifier::external_fn_specification]
+            pub fn ex_num_clone(x: &$uN) -> (res: $uN)
+                ensures res == x,
+            {
+                x.clone()
+            }
+
             pub open spec fn wrapping_add(x: $uN, y: $uN) -> $uN {
                 if x + y > <$uN>::MAX {
                     (x + y - $range) as $uN
@@ -69,6 +76,13 @@ macro_rules! num_specs {
 
         mod $modname_i {
             use super::*;
+
+            #[verifier::external_fn_specification]
+            pub fn ex_num_clone(x: &$iN) -> (res: $iN)
+                ensures res == x,
+            {
+                x.clone()
+            }
 
             pub open spec fn wrapping_add(x: $iN, y: $iN) -> $iN {
                 if x + y > <$iN>::MAX {

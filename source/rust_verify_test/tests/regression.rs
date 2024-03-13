@@ -408,7 +408,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file! {
     #[test] poly_invalid_air_regression_577 verus_code! {
-        use vstd::{prelude::*, vec::*};
+        use vstd::{prelude::*};
 
         pub trait Foo {
             fn do_something(&mut self, val: u8);
@@ -433,7 +433,7 @@ test_verify_one_file! {
                 self.field0 = val;
             }
         }
-    } => Ok(_err) => { /* allow deprecated warning */ }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

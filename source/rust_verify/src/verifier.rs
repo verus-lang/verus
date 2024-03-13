@@ -2333,6 +2333,7 @@ impl Verifier {
             arch_word_bits: None,
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
+            no_span: self.air_no_span.clone().unwrap(),
         });
         let multi_crate = self.args.export.is_some() || import_len > 0;
         crate::rust_to_vir_base::MULTI_CRATE
@@ -2345,6 +2346,7 @@ impl Verifier {
         // Convert HIR -> VIR
         let time1 = Instant::now();
         let vir_crate = crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
+
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());

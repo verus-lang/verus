@@ -423,12 +423,16 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
                 }
                 UnaryOp::MustBeFinalized => panic!("internal error: MustBeFinalized in AST"),
+                UnaryOp::CastToInteger => {
+                    let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
+                    mk_expr(ExprX::UnaryOpr(unbox, e1.clone()))
+                }
             }
         }
         ExprX::UnaryOpr(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
-                UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::HasType(_) => {
+                UnaryOpr::Box(_) | UnaryOpr::HasType(_) | UnaryOpr::Unbox(_) => {
                     panic!("internal error: already has Box/Unbox/HasType")
                 }
                 UnaryOpr::TupleField { .. } => {
@@ -682,7 +686,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr_typ(&t, ExprX::If(e0, e1.clone(), Some(e2)))
         }
         ExprX::Match(..) => panic!("Match should already be removed"),
-        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { spinoff_loop, is_for_loop, label, cond, body, invs } => {
             let cond = cond.as_ref().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
             let body = poly_expr(ctx, state, body);
             let invs = invs.iter().map(|inv| crate::ast::LoopInvariant {
@@ -691,6 +695,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             });
             let invs = Arc::new(invs.collect());
             mk_expr(ExprX::Loop {
+                spinoff_loop: *spinoff_loop,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 cond,
@@ -746,6 +751,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Some(e) => mk_expr_typ(&e.typ, ExprX::Block(Arc::new(stmts), e1)),
             }
         }
+        ExprX::AirStmt(_) => expr.clone(),
     }
 }
 

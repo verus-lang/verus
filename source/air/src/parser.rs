@@ -474,7 +474,7 @@ impl Parser {
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }
 
-    pub(crate) fn node_to_stmt(&self, node: &Node) -> Result<Stmt, String> {
+    pub fn node_to_stmt(&self, node: &Node) -> Result<Stmt, String> {
         match node {
             Node::List(nodes) => match &nodes[..] {
                 [Node::Atom(s), e] if s.to_string() == "assume" => {
@@ -509,6 +509,13 @@ impl Parser {
                 [Node::Atom(s), e] if s.to_string() == "deadend" => {
                     let stmt = self.node_to_stmt(&e)?;
                     Ok(Arc::new(StmtX::DeadEnd(stmt)))
+                }
+                [Node::Atom(s), Node::Atom(label), e] if s.to_string() == "breakable" => {
+                    let stmt = self.node_to_stmt(&e)?;
+                    Ok(Arc::new(StmtX::Breakable(Arc::new(label.clone()), stmt)))
+                }
+                [Node::Atom(s), Node::Atom(label)] if s.to_string() == "break" => {
+                    Ok(Arc::new(StmtX::Break(Arc::new(label.clone()))))
                 }
                 _ => match &nodes[0] {
                     Node::Atom(s) if s.to_string() == "block" => {

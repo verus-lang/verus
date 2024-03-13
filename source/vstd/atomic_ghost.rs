@@ -107,7 +107,7 @@ macro_rules! declare_atomic_type {
         }
 
         }
-    }
+    };
 }
 
 declare_atomic_type!(AtomicU64, PAtomicU64, PermissionU64, u64, AtomicPredU64);

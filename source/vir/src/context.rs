@@ -592,8 +592,13 @@ impl Ctx {
         let mut commands: Vec<Command> = Vec::new();
         let mut names: Vec<Fun> = Vec::new();
         for function in &self.functions {
-            match (function.x.mode, function.x.body.as_ref(), function.x.attrs.broadcast_forall) {
-                (Mode::Spec, Some(_), false) | (Mode::Proof, _, true) => {
+            match (
+                function.x.mode,
+                function.x.body.as_ref(),
+                function.x.attrs.external_body,
+                function.x.attrs.broadcast_forall,
+            ) {
+                (Mode::Spec, Some(_), _, false) | (Mode::Proof, _, false, true) => {
                     names.push(function.x.name.clone());
                 }
                 _ => {}

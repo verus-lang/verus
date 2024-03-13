@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] trait_poly verus_code! {
-        use vstd::{prelude::*, vec::*};
+        use vstd::{prelude::*};
         proof fn p<A: View>(x: A) -> (r: (A::V, A::V))
             ensures r.1 == x.view(),
         {
@@ -27,12 +27,12 @@ test_verify_one_file! {
                 assert(y.1[0]);
             }
         }
-    } => Ok(_err) => { /* TODO: fix warning */ }
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] trait_poly_fail verus_code! {
-        use vstd::{prelude::*, vec::*};
+        use vstd::{prelude::*};
         proof fn p<A: View>(x: A) -> (r: (A::V, A::V))
             ensures r.1 == x.view(),
         {
@@ -380,6 +380,34 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         fn foo<A: IntoIterator>(a: &A) {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetime_generate_alias_infer verus_code! {
+        // test lifetime_generate TyKind::Alias case that was normalizing to TyKind::Infer
+        #[verifier::external]
+        struct S<T>(T);
+
+        #[verifier(external_type_specification)]
+        #[verifier(external_body)]
+        #[verifier::accept_recursive_types(T)]
+        struct ExS<T>(S<T>);
+
+        pub trait DeepView {
+            type V;
+        }
+
+        struct W<T>(T);
+        impl<T: DeepView> DeepView for S<T> {
+            type V = W<T::V>;
+        }
+
+        #[allow(unconditional_recursion)]
+        #[verifier(external_body)]
+        fn new_s<T>() -> S<T> {
+            new_s()
         }
     } => Ok(())
 }

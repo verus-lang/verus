@@ -607,6 +607,10 @@ fn simplify_stmt_rec(ctxt: &mut Context, state: &mut State, stmt: &Stmt) -> Stmt
         }
         StmtX::Snapshot(_) => stmt.clone(),
         StmtX::DeadEnd(stmt) => Arc::new(StmtX::DeadEnd(simplify_stmt_rec(ctxt, state, stmt))),
+        StmtX::Breakable(x, stmt) => {
+            Arc::new(StmtX::Breakable(x.clone(), simplify_stmt_rec(ctxt, state, stmt)))
+        }
+        StmtX::Break(_) => stmt.clone(),
         StmtX::Block(stmts) => Arc::new(StmtX::Block(simplify_stmts(ctxt, state, stmts))),
         StmtX::Switch(stmts) => Arc::new(StmtX::Switch(simplify_stmts(ctxt, state, stmts))),
     }
