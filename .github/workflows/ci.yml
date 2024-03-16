@@ -19,7 +19,10 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      - name: check cargo fmt
+      - name: setup verusfmt
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
+      - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
           . ../tools/activate
@@ -28,27 +31,6 @@ jobs:
         working-directory: ./tools/vargo
         run: |
           cargo fmt -- --check
-      - name: check cargo fmt for prettyplease
-        working-directory: ./dependencies/syn
-        run: |
-          cargo fmt -- --check
-      - name: check cargo fmt for syn
-        working-directory: ./dependencies/prettyplease
-        run: |
-          cargo fmt -- --check
-
-  verusfmt:
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: setup verusfmt
-        run: |
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
-      - name: verusfmt check
-        run: |
-          verusfmt --version
-          find source/vstd -name \*.rs -print0 | xargs -0 -n1 verusfmt --check
 
   test:
     runs-on: ubuntu-latest
