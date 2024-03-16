@@ -25,6 +25,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
+use std::any::Any;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
@@ -240,7 +241,10 @@ fn verus_item_to_vir<'tcx, 'a>(
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     f: DefId,
     outer_modifier: ExprModifier,
-) -> Result<vir::ast::Expr, VirErr> {
+) -> Result<vir::ast::Expr, VirErr>
+where
+    'tcx: 'a,
+{
     // DO NOT use f_name to find items (i.e. do not use f_name == "core::cmp::Eq"),
     // use `crate::verus_item::get_rust_item` instead
     let f_name = tcx.def_path_str(f);
@@ -608,17 +612,26 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_resolve_call(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected resolve", &args);
                 let ExprKind::Path(qpath) = &args[0].kind else {
-                    unsupported_err!(expr.span, "resolve with this argument", &args[0]);
+                    // REVIEW(&mut)
+                    return err_span(
+                        args[0].span,
+                        "invalid argument for resolve, expected a variable",
+                    );
                 };
                 let res = bctx.types.qpath_res(&qpath, expr.hir_id);
-                if let Res::Local(id) = res {
-                    let Node::Pat(pat) = tcx.hir().get(id) else {
-                        unsupported_err!(expr.span, format!("Path {:?}", args[0]));
-                    };
-                    mk_expr(ExprX::Resolve(pat_to_var(pat)?))
-                } else {
-                    err_span(args[0].span, "expected local variable for resolve")
-                }
+                let Res::Local(id) = res else {
+                    return err_span(args[0].span, "expected local variable for resolve");
+                };
+                let node = tcx.hir().get(id);
+                let Node::Pat(pat) = node else {
+                    return err_span(args[0].span, "expected local variable for resolve");
+                };
+                let typ_ = bctx.types.node_type(pat.hir_id);
+                let rustc_type_ir::TyKind::Ref(_, _, rustc_ast::Mutability::Mut) = typ_.kind()
+                else {
+                    return err_span(args[0].span, "can only resolve a mutable reference");
+                };
+                mk_expr(ExprX::Resolve(pat_to_var(pat)?))
             }
         },
         VerusItem::Expr(expr_item) => match expr_item {

@@ -50,3 +50,25 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "a mutable borrow that lives more than a single statement was not explicitly resolved")
 }
+
+test_verify_one_file! {
+    #[test] test_resolve_3 verus_code! {
+        fn user_function() {
+            let mut x = 5;
+            let mut x_ref = &mut x;
+            *x_ref = 20;
+            resolve(&mut x_ref);
+            assert(x == 20);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invalid argument for resolve, expected a variable") // REVIEW(&mut)
+}
+
+test_verify_one_file! {
+    #[test] test_resolve_4 verus_code! {
+        fn user_function() {
+            let mut x = 5;
+            resolve(x);
+            assert(x == 5);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invalid argument for resolve, expected a mutable reference") // REVIEW(&mut)
+}
