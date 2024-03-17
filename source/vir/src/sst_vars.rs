@@ -25,6 +25,7 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
         ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), x) => get_loc_var(x),
         ExpX::VarLoc(x) => x.clone(),
+        ExpX::DerefLoc(x) => get_loc_var(x), // TODO(&mut)
         _ => panic!("lhs {:?} unsupported", exp),
     }
 }

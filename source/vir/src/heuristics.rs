@@ -114,6 +114,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
         | ExpX::VarLoc(_)
         | ExpX::VarAt(..)
         | ExpX::Loc(_)
+        | ExpX::DerefLoc(_)
         | ExpX::Old(..)
         | ExpX::Call(..)
         | ExpX::CallLambda(..)

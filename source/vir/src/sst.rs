@@ -48,6 +48,8 @@ pub enum InternalFun {
     CheckDecreaseInt,
     CheckDecreaseHeight,
     HasType,
+    ProphecyValue,
+    ProphecyFuture,
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -68,6 +70,7 @@ pub enum ExpX {
     VarLoc(UniqueIdent),
     VarAt(UniqueIdent, VarAt),
     Loc(Exp),
+    DerefLoc(Exp),
     // used only during sst_to_air to generate AIR Old
     Old(Ident, UniqueIdent),
     // call to spec function

@@ -11,16 +11,7 @@ use crate::ast_util::{
 use crate::bitvector_to_air::{bv_exp_to_expr, BvExprCtxt};
 use crate::context::Ctx;
 use crate::def::{
-    fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
-    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_lambda_type, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
-    unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
-    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE, CHAR_TO_UNICODE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
-    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_lambda_type, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_unbox, prophecy_accessor_name, prophecy_sort_name, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProphecyAccessor, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE, CHAR_TO_UNICODE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, PROPHECY_BOOL_SUFFIX, PROPHECY_CHAR_SUFFIX, PROPHECY_FNDEF_SUFFIX, PROPHECY_FUTURE_PREFIX, PROPHECY_INT_SUFFIX, PROPHECY_POLY_SUFFIX, PROPHECY_STRSLICE_SUFFIX, PROPHECY_VALUE_PREFIX, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
@@ -132,7 +123,29 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
-        TypX::Decorate(_, t) => typ_to_air(ctx, t),
+        TypX::Decorate(d, t) => match d {
+            // TODO(&mut)
+            TypDecoration::MutRef => str_typ(&prophecy_sort_name(match &**t {
+                TypX::Bool => PROPHECY_BOOL_SUFFIX,
+                TypX::Int(_) => PROPHECY_INT_SUFFIX,
+                TypX::Tuple(_) => todo!(),
+                TypX::Lambda(_, _) => todo!(),
+                TypX::AnonymousClosure(_, _, _) => todo!(),
+                TypX::FnDef(_, _, _) => PROPHECY_FNDEF_SUFFIX,
+                TypX::Datatype(_, _, _) => todo!(),
+                TypX::Decorate(_, _) => todo!(),
+                TypX::Boxed(_) => PROPHECY_POLY_SUFFIX,
+                TypX::TypParam(_) => todo!(),
+                TypX::Projection { trait_typ_args, trait_path, name } => todo!(),
+                TypX::TypeId => todo!(),
+                TypX::ConstInt(_) => todo!(),
+                TypX::Air(_) => todo!(),
+                TypX::StrSlice => PROPHECY_STRSLICE_SUFFIX,
+                TypX::Char => PROPHECY_CHAR_SUFFIX,
+                TypX::Primitive(_, _) => todo!(),
+            })),
+            _ => typ_to_air(ctx, t),
+        }
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
@@ -707,6 +720,35 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     Some(Arc::new(qid))
 }
 
+// pub(crate) fn borrow_mut_exp_to_expr(
+//     ctx: &Ctx,
+//     exp: &Exp,
+//     expr_ctxt: &ExprCtxt,
+// ) -> Result<Expr, VirErr> {
+//     match &exp.x {
+//         ExpX::Const(_) => panic!("unexpected mutable borrow of Const"),
+//         ExpX::Var(_) => panic!("unexpected mutable borrow of Var"),
+//         ExpX::StaticVar(_) => panic!("unexpected mutable borrow of StaticVar"),
+//         ExpX::VarLoc(_) => todo!(),
+//         ExpX::VarAt(_, _) => todo!("handle VarAt"),
+//         ExpX::Loc(_) => todo!("handle &mut &mut"),
+//         ExpX::Old(_, _) => todo!("hanlde &mut old(x)"),
+//         ExpX::Call(_, _, _) => todo!("handle &mut Call"),
+//         ExpX::CallLambda(_, _, _) => todo!("handle &mut CallLambda"),
+//         ExpX::Ctor(_, _, _) => todo!("handle &mut Ctor"),
+//         ExpX::NullaryOpr(_) => todo!("handle &mut NullaryOp"),
+//         ExpX::Unary(_, _) => todo!("handle &mut Unary"),
+//         ExpX::UnaryOpr(_, _) => todo!(),
+//         ExpX::Binary(_, _, _) => todo!(),
+//         ExpX::BinaryOpr(_, _, _) => todo!(),
+//         ExpX::If(_, _, _) => todo!(),
+//         ExpX::WithTriggers(_, _) => todo!(),
+//         ExpX::Bind(_, _) => todo!(),
+//         ExpX::ExecFnByName(_) => todo!(),
+//         ExpX::Interp(_) => todo!(),
+//     }
+// }
+
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let result = match &exp.x {
         ExpX::Const(c) => {
@@ -723,7 +765,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             ExprMode::BodyPre => string_var(&suffix_local_unique_id(x)),
         },
         ExpX::StaticVar(f) => string_var(&static_name(f)),
-        ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
+        ExpX::Loc(e0) => {
+            todo!("&mut Loc {:?}", &e0);
+            // borrow_mut_exp_to_expr(ctx, e0, expr_ctxt)?
+            exp_to_expr(ctx, e0, expr_ctxt)?
+        }
+        ExpX::DerefLoc(e0) => {
+            todo!("&mut DerefLoc {:?}", &e0);
+        }
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
             let x_name = match f {
@@ -742,6 +791,40 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             assert!(typs.len() == 1);
             assert!(args.len() == 1);
             expr_has_type(&exp_to_expr(ctx, &args[0], expr_ctxt)?, &typ_to_ids(&typs[0])[1])
+        }
+        ExpX::Call(CallFun::InternalFun(fv @ (InternalFun::ProphecyFuture | InternalFun::ProphecyValue)), typs, args) => {
+            assert!(typs.len() == 1);
+            assert!(args.len() == 1);
+            // TODO(&mut)
+            let apply_name_suffix = match &*typs[0] {
+                TypX::Bool => PROPHECY_BOOL_SUFFIX, 
+                TypX::Int(_) => PROPHECY_INT_SUFFIX,
+                TypX::Tuple(_) => todo!("&mut"),
+                TypX::Lambda(_, _) => todo!("&mut"),
+                TypX::AnonymousClosure(_, _, _) => todo!("&mut"),
+                TypX::FnDef(_, _, _) => PROPHECY_FNDEF_SUFFIX,
+                TypX::Datatype(_, _, _) => todo!("&mut"),
+                TypX::Decorate(_, _) => todo!("&mut"),
+                TypX::Boxed(_) => PROPHECY_POLY_SUFFIX,
+                TypX::TypParam(_) => todo!("&mut"),
+                TypX::Projection { trait_typ_args, trait_path, name } => todo!(),
+                TypX::TypeId => todo!("&mut"),
+                TypX::ConstInt(_) => todo!("&mut"),
+                TypX::Air(_) => todo!("&mut"),
+                TypX::StrSlice => PROPHECY_STRSLICE_SUFFIX,
+                TypX::Char => PROPHECY_CHAR_SUFFIX,
+                TypX::Primitive(_, _) => todo!("&mut"),
+            };
+
+            let arg = exp_to_expr(ctx, &args[0], expr_ctxt)?;
+
+            let accessor = match fv {
+                InternalFun::ProphecyValue => ProphecyAccessor::Value,
+                InternalFun::ProphecyFuture => ProphecyAccessor::Future,
+                _ => unreachable!(),
+            };
+
+            str_apply(&prophecy_accessor_name(accessor, apply_name_suffix), &vec![arg])
         }
         ExpX::Call(CallFun::InternalFun(func), typs, args) => {
             // These functions are special-cased to not take a decoration argument for
@@ -767,6 +850,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
                     InternalFun::HasType => unreachable!(),
+                    InternalFun::ProphecyFuture | InternalFun::ProphecyValue => unreachable!(),
                 },
                 Arc::new(exprs),
             ))
@@ -1302,6 +1386,7 @@ fn loc_to_field_path(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldOpr>>) {
     loop {
         match &e.x {
             ExpX::Loc(ee) => e = ee,
+            ExpX::DerefLoc(ee) => e = ee, // TODO (&mut)
             ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), ee) => e = ee,
             ExpX::VarLoc(x) => {
                 fields.reverse();
@@ -2304,7 +2389,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![stmt]
         }
         StmX::Resolve(id) => {
-            todo!("TODO(&mut)")
+            // todo!("TODO(&mut)")
+            dbg!(&"TODO(&mut)");
+            vec![]
         }
         StmX::Block(stms) => {
             if ctx.debug {
@@ -2539,10 +2626,9 @@ pub(crate) fn body_stm_to_air(
         stm,
     );
 
-    // TODO dbg!(&unresolved);
-
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
 
+    // TODO(&mut)
     if has_mut_params {
         stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
     }

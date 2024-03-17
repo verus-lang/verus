@@ -1084,9 +1084,39 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Loc(expr1) => {
+            let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, expr1)?;
+            // TODO(&mut) let lhs_exp = unwrap_or_return_never!(e0, stms);
+            let lhs_exp = lhs_exp.expect_value();
+            
+            // TODO(&mut) dbg!(&expr.typ);
+            let (_temp_ident, temp_var) = state.declare_temp_var_stm(&lhs_exp.span, &expr.typ);
+            {
+                let exp = SpannedTyped::new(&expr.span, &expr.typ, ExpX::Call(
+                    CallFun::InternalFun(InternalFun::ProphecyValue), 
+                    Arc::new(vec![lhs_exp.typ.clone()]),
+                    Arc::new(vec![temp_var.clone()]),
+                ));
+                let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), exp.clone(), lhs_exp.clone());
+                let eq = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), eqx);
+                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(eq)));
+            }
+            
+            {
+                let rhs = SpannedTyped::new(&expr.span, &expr.typ, ExpX::Call(
+                    CallFun::InternalFun(InternalFun::ProphecyFuture), 
+                    Arc::new(vec![lhs_exp.typ.clone()]),
+                    Arc::new(vec![temp_var.clone()]),
+                ));
+                let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs };
+                stms.push(Spanned::new(expr.span.clone(), assign));
+            }
+
+            Ok((stms, ReturnValue::Some(temp_var)))
+        }
+        ExprX::DerefLoc(expr1) => {
             let (stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
             let e0 = unwrap_or_return_never!(e0, stms);
-            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
+            Ok((stms, ReturnValue::Some(mk_exp(ExpX::DerefLoc(e0)))))
         }
         ExprX::Resolve(x) => {
             let unique_id = state.get_var_unique_id(&x);

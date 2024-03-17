@@ -1636,6 +1636,11 @@ impl Verifier {
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
             vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
+        if self.args.log_all || self.args.log_args.log_vir_pruned {
+            let mut file =
+                self.create_log_file(Some(&bucket_id), crate::config::VIR_PRUNED_FILE_SUFFIX)?;
+            vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
+        }
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,

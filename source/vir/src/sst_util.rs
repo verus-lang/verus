@@ -117,6 +117,7 @@ fn subst_exp_rec(
     match &exp.x {
         ExpX::Const(..)
         | ExpX::Loc(..)
+        | ExpX::DerefLoc(..)
         | ExpX::StaticVar(..)
         | ExpX::Old(..)
         | ExpX::Call(..)
@@ -305,9 +306,8 @@ impl ExpX {
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(id)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
             StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
-            Loc(exp) => {
-                return exp.x.to_string_prec(global, precedence);
-            }
+            Loc(exp) => (format!("&mut {}", exp.x.to_string_prec(global, precedence)), 90),
+            DerefLoc(exp) => (format!("* {}", exp.x.to_string_prec(global, precedence)), 90),
             Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
                 let (zero_args, is_method) = match global.fun_attrs.get(fun) {
                     Some(attrs) => (attrs.print_zero_args, attrs.print_as_method),

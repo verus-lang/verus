@@ -167,6 +167,16 @@ pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";
 
+pub const PROPHECY_INT_SUFFIX: &str = "I";
+pub const PROPHECY_BOOL_SUFFIX: &str = "B";
+pub const PROPHECY_STRSLICE_SUFFIX: &str = "S";
+pub const PROPHECY_CHAR_SUFFIX: &str = "C";
+pub const PROPHECY_FNDEF_SUFFIX: &str = "F";
+pub const PROPHECY_POLY_SUFFIX: &str = "Poly";
+pub const PROPHECY_SORT_PREFIX: &str = "Proph%";
+pub const PROPHECY_VALUE_PREFIX: &str = "Proph%value%";
+pub const PROPHECY_FUTURE_PREFIX: &str = "Proph%future%";
+
 pub const UINT_XOR: &str = "uintxor";
 pub const UINT_AND: &str = "uintand";
 pub const UINT_OR: &str = "uintor";
@@ -824,4 +834,20 @@ pub(crate) fn dummy_param_name() -> VarIdent {
 
 pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
     v.0.to_string() == DUMMY_PARAM
+}
+
+pub(crate) fn prophecy_sort_name(prophecy_type_name: &str) -> String {
+    format!("{}{}", PROPHECY_SORT_PREFIX, prophecy_type_name)
+}
+
+pub(crate) enum ProphecyAccessor {
+    Value,
+    Future,
+}
+
+pub(crate) fn prophecy_accessor_name(accessor: ProphecyAccessor, prophecy_type_name: &str) -> String {
+    format!("{}{}", match accessor {
+        ProphecyAccessor::Value => PROPHECY_VALUE_PREFIX,
+        ProphecyAccessor::Future => PROPHECY_FUTURE_PREFIX,
+    }, prophecy_type_name)
 }

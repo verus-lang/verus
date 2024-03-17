@@ -76,10 +76,7 @@ because x is used both for f and for +.
 */
 
 use crate::ast::{
-    AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
-    Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
-    ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarBinder, VarIdent, Variant,
+    AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr, Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param, ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarBinder, VarIdent, Variant
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -246,7 +243,20 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     }
 }
 
+// TODO(&mut) pub fn undecorate_typ_keep_mut_ref(typ: &Typ) -> Typ {
+// TODO(&mut)     if let TypX::Decorate(d, t) = &**typ {
+// TODO(&mut)         if let TypDecoration::MutRef = d {
+// TODO(&mut)             Arc::new(TypX::Decorate(TypDecoration::MutRef, undecorate_typ_keep_mut_ref(t)))
+// TODO(&mut)         } else {
+// TODO(&mut)             undecorate_typ_keep_mut_ref(t)
+// TODO(&mut)         }
+// TODO(&mut)     } else {
+// TODO(&mut)         typ.clone()
+// TODO(&mut)     }
+// TODO(&mut) }
+
 pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
+    // TODO (&mut)
     match &*crate::ast_util::undecorate_typ(&expr.typ) {
         TypX::Bool
         | TypX::Int(_)
@@ -471,9 +481,16 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             }
         }
         ExprX::Loc(e) => {
-            let expr = poly_expr(ctx, state, e);
-            let typ = expr.typ.clone();
-            mk_expr_typ(&typ, ExprX::Loc(expr))
+            assert!(matches!(&*expr.typ, TypX::Decorate(TypDecoration::MutRef, _)));
+            let expr1 = poly_expr(ctx, state, e);
+            let typ = expr1.typ.clone();
+            mk_expr_typ(&Arc::new(TypX::Decorate(TypDecoration::MutRef, typ)), ExprX::Loc(expr1))
+        }
+        ExprX::DerefLoc(e) => {
+            // TODO(&mut)
+            let expr1 = poly_expr(ctx, state, e);
+            let typ = expr1.typ.clone();
+            mk_expr_typ(&typ, ExprX::DerefLoc(expr1))
         }
         ExprX::Resolve(x) => {
             SpannedTyped::new(&expr.span, &state.types[x], ExprX::Resolve(x.clone()))

@@ -21,6 +21,7 @@ pub const LOG_DIR: &str = ".verus-log";
 pub const SOLVER_LOG_DIR: &str = ".verus-solver-log";
 pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
+pub const VIR_PRUNED_FILE_SUFFIX: &str = "-pruned.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
 pub const LIFETIME_FILE_SUFFIX: &str = "-lifetime.rs";
 pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
@@ -40,6 +41,7 @@ pub struct LogArgs {
     pub log_vir: bool,
     pub log_vir_simple: bool,
     pub log_vir_poly: bool,
+    pub log_vir_pruned: bool,
     pub vir_log_option: VirLogOption,
     pub log_lifetime: bool,
     pub log_interpreter: bool,
@@ -202,6 +204,7 @@ pub fn parse_args_with_imports(
     const LOG_VIR: &str = "vir";
     const LOG_VIR_SIMPLE: &str = "vir-simple";
     const LOG_VIR_POLY: &str = "vir-poly";
+    const LOG_VIR_PRUNED: &str = "vir-pruned";
     const LOG_VIR_OPTION: &str = "vir-option";
     const LOG_LIFETIME: &str = "lifetime";
     const LOG_INTERPRETER: &str = "interpreter";
@@ -498,6 +501,7 @@ pub fn parse_args_with_imports(
             log_vir: log.get(LOG_VIR).is_some(),
             log_vir_simple: log.get(LOG_VIR_SIMPLE).is_some(),
             log_vir_poly: log.get(LOG_VIR_POLY).is_some(),
+            log_vir_pruned: log.get(LOG_VIR_PRUNED).is_some(),
             vir_log_option: {
                 if let Some(oo) = log.get(LOG_VIR_OPTION) {
                     let Some(oo) = oo else {

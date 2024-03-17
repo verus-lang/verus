@@ -247,6 +247,7 @@ pub enum TypX {
     Char,
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
+    
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -704,6 +705,8 @@ pub enum ExprX {
     StaticVar(Fun),
     /// Mutable reference (location)
     Loc(Expr),
+    /// De-reference a mutable reference (location)
+    DerefLoc(Expr),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor

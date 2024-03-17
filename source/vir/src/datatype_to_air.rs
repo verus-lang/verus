@@ -123,6 +123,8 @@ fn datatype_or_fun_to_air_commands(
     }
 
     if declare_box {
+        dbg!(&dtyp);
+
         // box
         let decl_box = Arc::new(DeclX::Fun(
             prefix_box(&dpath),

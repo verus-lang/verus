@@ -555,6 +555,14 @@ fn simplify_one_expr(
                 _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),
             }
         }
+        // TODO(&mut) peel multiple layers
+        ExprX::DerefLoc(expr0) => {
+            if let ExprX::Loc(expr1) = &expr0.x {
+                Ok(expr1.clone())
+            } else {
+                Ok(expr.clone())
+            }
+        }
         _ => Ok(expr.clone()),
     }
 }

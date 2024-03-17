@@ -637,6 +637,7 @@ pub fn prune_krate_for_module(
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
-    let State { reached_bound_traits, .. } = state;
+    let State { reached_bound_traits, reached_types, .. } = state;
+    dbg!(&mono_abstract_datatypes, &reached_types);
     (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits, fndef_types)
 }

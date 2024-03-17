@@ -3,7 +3,6 @@ use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, is_smt_arith, is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node,
-    typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
@@ -653,7 +652,8 @@ where
                 )) = &args[0].kind
                 {
                     if let Node::Pat(pat) = tcx.hir().get(*id) {
-                        let typ = typ_of_node_expect_mut_ref(bctx, args[0].span, &expr.hir_id)?;
+                        // TODO(&mut) let typ = typ_of_node_expect_mut_ref(bctx, args[0].span, &expr.hir_id)?;
+                        let typ = typ_of_node(bctx, args[0].span, &expr.hir_id, true)?;
                         return Ok(bctx.spanned_typed_new(
                             expr.span,
                             &typ,
@@ -1284,7 +1284,8 @@ where
             record_spec_fn_no_proof_args(bctx, expr);
 
             assert!(args.len() == 1);
-            let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
+            let adjusted_is_ref_mut = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]));
+            let modif = ExprModifier { deref_mut: adjusted_is_ref_mut || outer_modifier.deref_mut, ..outer_modifier };
             let vir_arg = expr_to_vir(bctx, &args[0], modif)?;
 
             let op = UnaryOp::CoerceMode {
@@ -1300,7 +1301,8 @@ where
             record_compilable_operator(bctx, expr, CompilableOperator::TrackedBorrowMut);
 
             assert!(args.len() == 1);
-            let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
+            let adjusted_is_ref_mut = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]));
+            let modif = ExprModifier { deref_mut: adjusted_is_ref_mut || outer_modifier.deref_mut, ..outer_modifier };
             let vir_arg = expr_to_vir(bctx, &args[0], modif)?;
 
             let op = UnaryOp::CoerceMode {
@@ -1875,14 +1877,17 @@ fn mk_vir_args<'tcx>(
             // } else {
 
             // TODO(&mut) need different modifier for argument?
+            
+            let adjusted_expr_typ_is_mut_ref = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg));
+
             expr_to_vir(
                 bctx,
                 arg,
-                is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
+                ExprModifier { deref_mut: adjusted_expr_typ_is_mut_ref, ..ExprModifier::REGULAR },
             )
             // }
         })
-        .collect::<Result<Vec<_>, _>>()
+        .collect::<Result<Vec<_>, VirErr>>()
 }
 
 fn mk_one_vir_arg<'tcx>(

@@ -290,6 +290,9 @@ where
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
+                ExprX::DerefLoc(e) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                }
                 ExprX::Call(target, es) => {
                     match target {
                         CallTarget::Fun(_, _, _, _, _) => (),
@@ -661,6 +664,7 @@ where
         ExprX::ConstVar(x, a) => ExprX::ConstVar(x.clone(), *a),
         ExprX::StaticVar(x) => ExprX::StaticVar(x.clone()),
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+        ExprX::DerefLoc(e) => ExprX::DerefLoc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Resolve(x) => ExprX::Resolve(x.clone()),
         ExprX::Call(target, es) => {
             let target = match target {
