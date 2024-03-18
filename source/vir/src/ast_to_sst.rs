@@ -300,9 +300,10 @@ impl<'a> State<'a> {
     }
 
     // Erase unused unique ids from Vars and process inline functions
-    pub(crate) fn finalize_exp(
+    pub(crate) fn finalize_exp<D: Diagnostics + ?Sized>(
         &self,
         ctx: &Ctx,
+        diagnostics: &D,
         fun_ssts: &SstMap,
         exp: &Exp,
     ) -> Result<Exp, VirErr> {
@@ -378,6 +379,15 @@ impl<'a> State<'a> {
                     let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
                     let trigs =
                         crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true)?;
+                    if trigs.len() > 0 {
+                        let msg = "#[trigger] on a spec_fn closure is deprecated - \
+                            generally spec_fn closures don't need triggers because spec_fn \
+                            closures are triggered automatically by calls to to closures. \
+                            If you think you need additional triggers, see the discussion in \
+                            https://github.com/verus-lang/verus/pull/331 \
+                            for alternatives.";
+                        diagnostics.report(&warning(&exp.span, msg).to_any());
+                    }
                     let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
                     Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
                 }
@@ -402,7 +412,8 @@ impl<'a> State<'a> {
         ens_pars: &Pars,
         dest: Option<UniqueIdent>,
     ) -> Result<Stm, VirErr> {
-        let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))?;
+        let stm =
+            map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, diagnostics, fun_ssts, exp))?;
         if ctx.expand_flag {
             crate::split_expression::all_split_exp(
                 ctx,
@@ -751,7 +762,7 @@ pub(crate) fn expr_to_decls_exp_skip_checks(
     state.view_as_spec = view_as_spec;
     state.declare_params(params);
     let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, expr)?;
-    let exp = state.finalize_exp(ctx, fun_ssts, &exp)?;
+    let exp = state.finalize_exp(ctx, diagnostics, fun_ssts, &exp)?;
     state.finalize();
     Ok((state.local_decls, exp))
 }
@@ -766,7 +777,7 @@ pub(crate) fn expr_to_bind_decls_exp_skip_checks(
     let mut state = State::new(diagnostics);
     state.declare_params(params);
     let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, expr)?;
-    let exp = state.finalize_exp(ctx, &fun_ssts, &exp)?;
+    let exp = state.finalize_exp(ctx, diagnostics, &fun_ssts, &exp)?;
     state.finalize();
     Ok(exp)
 }
@@ -1927,7 +1938,7 @@ pub(crate) fn expr_to_stm_opt(
             // of any ensures, triggers, etc., that it might provide
             let interp_exp = eval_expr(
                 &ctx.global,
-                &state.finalize_exp(ctx, &state.fun_ssts, &expr)?,
+                &state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?,
                 state.diagnostics,
                 &mut state.fun_ssts,
                 ctx.global.rlimit,

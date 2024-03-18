@@ -181,6 +181,8 @@ fn simplify_lambda(
 ) -> (Typ, Expr, Option<Term>) {
     let closure_state =
         ClosureState { typing_depth: ctxt.typing.decls.num_scopes(), holes: Vec::new() };
+    let mut terms: Vec<Term> = Vec::new();
+    let mut new_triggers: Vec<Trigger> = Vec::new();
     ctxt.typing.decls.push_scope(true);
     for binder in binders.iter() {
         let var = DeclaredX::Var { typ: binder.a.clone(), mutable: false };
@@ -188,14 +190,28 @@ fn simplify_lambda(
     }
     state.closure_states.push(closure_state);
     let (typ1, e1, t1) = simplify_expr(ctxt, state, e1);
-    let mut closure_state = state.closure_states.pop().unwrap();
+    let (e1, t1) =
+        enclose_force_hole(state.closure_states.last_mut().unwrap(), typ1.clone(), e1, t1);
+    terms.push(t1);
+    for trigger in triggers.iter() {
+        let mut new_trigger: Vec<Expr> = Vec::new();
+        let mut trigger_terms: Vec<Term> = Vec::new();
+        for e in trigger.iter() {
+            let (typ, e, t) = simplify_expr(ctxt, state, e);
+            let (e, t) = enclose_force_hole(state.closure_states.last_mut().unwrap(), typ, e, t);
+            trigger_terms.push(t);
+            new_trigger.push(e);
+        }
+        terms.push(Arc::new(TermX::App(App::Trigger, Arc::new(trigger_terms))));
+        new_triggers.push(Arc::new(new_trigger));
+    }
+    let closure_state = state.closure_states.pop().unwrap();
     ctxt.typing.decls.pop_scope();
-    let (e1, t1) = enclose_force_hole(&mut closure_state, typ1.clone(), e1, t1);
+
     let param_typs = Arc::new(vec_map(&**binders, |b| b.a.clone()));
     let typ = Arc::new(TypX::Lambda);
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
-    let closure =
-        ClosureTermX { terms: vec![t1], params: param_typs.clone(), holes: holes.clone() };
+    let closure = ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone() };
     let closure = Arc::new(closure);
     let closure_fun = match ctxt.lambda_map.get(&closure) {
         None => {
@@ -228,7 +244,7 @@ fn simplify_lambda(
             let trig = Arc::new(vec![apply]);
             let trigs = Arc::new({
                 let mut trigs = vec![trig];
-                trigs.extend(triggers.iter().cloned());
+                trigs.extend(new_triggers.into_iter());
                 trigs
             });
             let forall = mk_forall(&bs, &trigs, qid.clone(), &eq);
