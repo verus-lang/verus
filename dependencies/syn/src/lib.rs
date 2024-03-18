@@ -826,6 +826,7 @@ mod print;
 // https://github.com/rust-lang/rust/issues/62830
 #[cfg(feature = "parsing")]
 mod rustdoc_workaround {
+    #![allow(unused_imports)]
     pub use crate::parse::{self as parse_module};
 }
 

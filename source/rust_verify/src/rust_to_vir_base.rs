@@ -916,8 +916,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
-        TyKind::Generator(..) => unsupported_err!(span, "generator types"),
-        TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
+        TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
+        TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),

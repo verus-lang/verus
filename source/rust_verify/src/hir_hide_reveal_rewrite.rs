@@ -156,7 +156,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                 let body = tcx.hir_arena.alloc(rustc_hir::Body {
                                     params: old_body.params,
                                     value: expr,
-                                    generator_kind: old_body.generator_kind,
+                                    coroutine_kind: old_body.coroutine_kind,
                                 });
                                 bodies[&body_id.hir_id.local_id] = body;
 
