@@ -551,11 +551,11 @@ pub(crate) fn check_item_fn<'tcx>(
         match body_id {
             CheckItemFnEither::BodyId(body_id) => {
                 let body = find_body(ctxt, body_id);
-                let Body { params, value: _, generator_kind } = body;
-                match generator_kind {
+                let Body { params, value: _, coroutine_kind } = body;
+                match coroutine_kind {
                     None => {}
                     _ => {
-                        unsupported_err!(sig.span, "generator_kind", generator_kind);
+                        unsupported_err!(sig.span, "coroutine_kind", coroutine_kind);
                     }
                 }
                 let mut ps = Vec::new();
