@@ -918,7 +918,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
         TyKind::Generator(..) => unsupported_err!(span, "generator types"),
         TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
-        TyKind::GeneratorWitnessMIR(_, _) => unsupported_err!(span, "generator witness mir types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
@@ -961,11 +960,17 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     use rustc_middle::ty::ConstKind;
     use rustc_middle::ty::ValTree;
 
-    let cnst = match cnst.kind() {
-        ConstKind::Unevaluated(unevaluated) => cnst.eval(tcx, tcx.param_env(unevaluated.def)),
-        _ => *cnst,
+    let cnst_kind = match cnst.kind() {
+        ConstKind::Unevaluated(unevaluated) => {
+            let valtree = cnst.eval(tcx, tcx.param_env(unevaluated.def), span);
+            if valtree.is_err() {
+                unsupported_err!(span.expect("span"), format!("error evaluating const"));
+            }
+            ConstKind::Value(valtree.unwrap())
+        }
+        kind => kind,
     };
-    match cnst.kind() {
+    match cnst_kind {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
         ConstKind::Value(ValTree::Leaf(i)) => {
             let c = num_bigint::BigInt::from(i.assert_bits(i.size()));

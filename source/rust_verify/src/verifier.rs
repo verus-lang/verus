@@ -2482,7 +2482,7 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        config.override_queries = Some(|_session, providers, _extern_providers| {
+        config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
         });
     }
