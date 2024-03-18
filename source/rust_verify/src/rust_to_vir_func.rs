@@ -404,7 +404,7 @@ pub fn equalize_substs<'tcx>(
         let region = Region::new_late_bound(
             tcx,
             rustc_middle::ty::INNERMOST,
-            BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::BrAnon(None) },
+            BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::BrAnon },
         );
         l1.push(region);
         l2.push(region);

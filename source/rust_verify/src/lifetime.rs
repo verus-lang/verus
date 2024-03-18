@@ -117,6 +117,7 @@ use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verus_items::VerusItems;
+use rustc_data_structures::sync::Lrc;
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
@@ -283,7 +284,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
-    fn after_parsing<'tcx>(
+    fn after_crate_root_parsing<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
@@ -311,9 +312,9 @@ impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
         Ok(self.rust_code.clone())
     }
 
-    fn read_binary_file(&self, path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
+    fn read_binary_file(&self, path: &std::path::Path) -> Result<Lrc<[u8]>, std::io::Error> {
         assert!(path.display().to_string() == Self::FILENAME.to_string());
-        Ok(self.rust_code.clone().into_bytes())
+        Ok(self.rust_code.as_bytes().into())
     }
 }
 

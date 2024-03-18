@@ -23,6 +23,7 @@ fi
 
 . ../tools/activate
 vargo build -p verusdoc
+vargo build --vstd-no-verify
 
 echo "Running rustdoc..."
 RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \

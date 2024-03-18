@@ -343,9 +343,7 @@ fn get_adt_res<'tcx>(
             let variant_def = adt_def.non_enum_variant();
             Ok((struct_did, variant_def, false, false))
         }
-        Res::Def(DefKind::TyAlias { lazy }, alias_did) => {
-            unsupported_err_unless!(!lazy, span, "lazy type alias");
-
+        Res::Def(DefKind::TyAlias, alias_did) => {
             let alias_ty = tcx.type_of(alias_did).skip_binder();
 
             let struct_did = match alias_ty.kind() {
@@ -1749,7 +1747,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(Let { hir_id: _, pat, init: expr, ty: _, span: _ }) => {
+                ExprKind::Let(Let {
+                    hir_id: _,
+                    pat,
+                    init: expr,
+                    ty: _,
+                    span: _,
+                    is_recovered: None,
+                }) => {
                     // if let
                     let vir_expr = expr_to_vir(bctx, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
