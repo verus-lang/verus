@@ -1377,6 +1377,7 @@ fn assume_other_fields_unchanged_inner(
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
             let datatype_fields = &get_variant(&ctx.global.datatypes[datatype].1, variant).fields;
+            let mut box_unbox_eq: Vec<Expr> = Vec::new();
             let dt =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
                     let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
@@ -1387,7 +1388,20 @@ fn assume_other_fields_unchanged_inner(
                         } else {
                             let op = UnaryOpr::Unbox(base_typ.clone());
                             let exprx = ExpX::UnaryOpr(op, base.clone());
-                            SpannedTyped::new(&base.span, base_typ, exprx)
+                            let unbox = SpannedTyped::new(&base.span, base_typ, exprx);
+                            if box_unbox_eq.len() == 0 {
+                                // trigger Box(Unbox(base)) so that has_type succeeds on base
+                                let box_op = UnaryOpr::Box(base_typ.clone());
+                                let exprx = ExpX::UnaryOpr(box_op, unbox.clone());
+                                let box_unbox = SpannedTyped::new(&base.span, &base.typ, exprx);
+                                let eq = ExprX::Binary(
+                                    air::ast::BinaryOp::Eq,
+                                    exp_to_expr(ctx, &box_unbox, expr_ctxt)?,
+                                    exp_to_expr(ctx, &base, expr_ctxt)?,
+                                );
+                                box_unbox_eq.push(Arc::new(eq));
+                            }
+                            unbox
                         }
                     } else {
                         base.clone()
@@ -1425,7 +1439,7 @@ fn assume_other_fields_unchanged_inner(
                         Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
                     }
                 })?;
-            Ok(dt.into_iter().flatten().collect())
+            Ok(dt.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
         }
     }
 }

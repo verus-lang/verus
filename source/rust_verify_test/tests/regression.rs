@@ -436,6 +436,27 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] poly_has_type_regression_577 verus_code! {
+        #[verifier::ext_equal]
+        struct S {
+            n: nat,
+            i: int,
+        }
+
+        trait T {
+            proof fn f(x: &mut S);
+        }
+
+        impl T for S {
+            proof fn f(x: &mut S) {
+                x.n = 3; // breaks has_type unless we add Box(Unbox(x)) == x
+                assert(*x =~= S { n: x.n, i: x.i });
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-builtin"] => code! {
         use vstd::{prelude::*, seq::*};
