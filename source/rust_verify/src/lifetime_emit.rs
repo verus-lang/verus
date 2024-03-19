@@ -122,7 +122,7 @@ impl EmitState {
                 if lines[line - offset].positions.len() > 0 {
                     break line - offset;
                 }
-            } else if line + offset <= lines.len() {
+            } else if line + offset < lines.len() {
                 if lines[line + offset].positions.len() > 0 {
                     break line + offset;
                 }
