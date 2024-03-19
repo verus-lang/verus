@@ -1397,7 +1397,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");
     }
-    if vattrs.external {
+    if vattrs.is_external(&ctxt.cmd_line_args) {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(());

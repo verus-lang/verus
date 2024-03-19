@@ -552,7 +552,7 @@ fn check_item<'tcx>(
             handle_const_or_static(body_id)?;
         }
         ItemKind::Static(_ty, Mutability::Mut, _body_id) => {
-            if vattrs.external {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
                 return Ok(());
             }
             unsupported_err!(item.span, "static mut");
@@ -730,6 +730,9 @@ fn check_item<'tcx>(
             return Ok(());
         }
         _ => {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
+                return Ok(());
+            }
             unsupported_err!(item.span, "unsupported item", item);
         }
     }
@@ -884,17 +887,17 @@ fn check_foreign_item<'tcx>(
                 generics,
             )?;
         }
-        ForeignItemKind::Static(..)
+        _ => {
             if get_verifier_attrs(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 Some(&mut *ctxt.diagnostics.borrow_mut()),
             )?
-            .is_external(&ctxt.cmd_line_args) =>
-        {
-            return Ok(());
-        }
-        _ => {
-            unsupported_err!(item.span, "unsupported foreign item", item);
+            .is_external(&ctxt.cmd_line_args)
+            {
+                return Ok(());
+            } else {
+                unsupported_err!(item.span, "unsupported foreign item", item);
+            }
         }
     }
     Ok(())
@@ -1027,7 +1030,12 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         // checked by the type system
                     }
                     _ => {
-                        unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                        let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                        let vattrs =
+                            get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                        if !vattrs.is_external(&ctxt.cmd_line_args) {
+                            unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                        }
                     }
                 },
                 OwnerNode::Crate(_mod_) => (),

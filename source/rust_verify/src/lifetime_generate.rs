@@ -2473,6 +2473,11 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         _bounds,
                         _trait_items,
                     ) => {
+                        let attrs = tcx.hir().attrs(item.hir_id());
+                        let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                        if vattrs.is_external(&ctxt.cmd_line_args) {
+                            continue;
+                        }
                         // We only need traits with associated type declarations.
                         // Process traits early so we can see which traits we need.
                         let id = item.owner_id.to_def_id();
@@ -2600,6 +2605,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             continue;
                         }
                         _ => {
+                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                                continue;
+                            }
                             dbg!(item);
                             panic!("unexpected item");
                         }
