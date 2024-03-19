@@ -97,6 +97,14 @@ fn check_item<'tcx>(
             return Ok(());
         }
 
+        if vattrs.is_external(&ctxt.cmd_line_args) {
+            let mut erasure_info = ctxt.erasure_info.borrow_mut();
+            let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, item.owner_id.to_def_id());
+            let name = Arc::new(FunX { path: path.clone() });
+            erasure_info.external_functions.push(name);
+            return Ok(());
+        }
+
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
         let vir_ty = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
 
