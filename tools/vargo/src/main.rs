@@ -897,7 +897,7 @@ fn run() -> Result<(), String> {
                     }
                 })
         }
-        (Task::Build, Some("air"), false) => {
+        (Task::Build, Some("air" | "verusdoc"), false) => {
             let mut cargo = std::process::Command::new("cargo");
             let cargo = cargo
                 .env("RUST_MIN_STACK", test_rust_min_stack())
