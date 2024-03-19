@@ -2,8 +2,8 @@ use crate::attributes::{get_ghost_block_opt, get_verifier_attrs, GhostBlockAttr}
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, is_smt_arith, is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    def_id_to_vir_path, is_smt_arith, is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, remove_host_arg,
+    typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
@@ -189,7 +189,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         let inst = rustc_middle::ty::Instance::resolve(tcx, param_env, f, normalized_substs);
         if let Ok(Some(inst)) = inst {
             if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let typs = mk_typ_args(bctx, &inst.args, expr.span)?;
+                let typs = mk_typ_args(bctx, &inst.args, did, expr.span)?;
                 let mut f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
                 record_name = f.clone();
@@ -224,7 +224,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
 
-    let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
+    let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None);
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
@@ -623,7 +623,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     rustc_hir::Path { res: Res::Local(id), .. },
                 )) = &args[0].kind
                 {
-                    if let Node::Pat(pat) = tcx.hir().get(*id) {
+                    if let Node::Pat(pat) = tcx.hir_node(*id) {
                         let typ = typ_of_node_expect_mut_ref(bctx, args[0].span, &expr.hir_id)?;
                         return Ok(bctx.spanned_typed_new(
                             expr.span,
@@ -1444,7 +1444,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 .map(|arg| expr_to_vir(bctx, &arg, ExprModifier::REGULAR))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let typ_args = mk_typ_args(bctx, node_substs, expr.span)?;
+            let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
             let mut typ_args = (*typ_args).clone();
             // Put the args in the order [function type, args type]
             typ_args.swap(0, 1);
@@ -1788,10 +1788,12 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
 
 fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    f: DefId,
     span: Span,
 ) -> Result<vir::ast::Typs, VirErr> {
     let tcx = bctx.ctxt.tcx;
+    let substs = remove_host_arg(tcx, f, substs, span)?;
     let mut typ_args: Vec<Typ> = Vec::new();
     for typ_arg in substs {
         match typ_arg.unpack() {

@@ -255,13 +255,9 @@ pub(crate) fn handle_external_fn<'tcx>(
     let ty1 = ctxt.tcx.type_of(id).skip_binder();
     let ty2 = ctxt.tcx.type_of(external_id).skip_binder();
 
-    use rustc_middle::ty::FnDef;
-    let (substs1_early, substs2_early) = match (ty1.kind(), ty2.kind()) {
-        (FnDef(_, substs1), FnDef(_, substs2)) => (substs1, substs2),
-        _ => {
-            return err_span(sig.span, "Verus internal error: expected FnDef");
-        }
-    };
+    let substs1_early = get_substs_early(ctxt.tcx, ty1, ctxt.tcx.generics_of(id), sig.span)?;
+    let substs2_early =
+        get_substs_early(ctxt.tcx, ty2, ctxt.tcx.generics_of(external_id), sig.span)?;
 
     let poly_sig1 = ctxt.tcx.fn_sig(id);
     let poly_sig2 = ctxt.tcx.fn_sig(external_id);
@@ -283,11 +279,11 @@ pub(crate) fn handle_external_fn<'tcx>(
 
     let poly_sig1 = poly_sig1.instantiate(ctxt.tcx, substs1_early);
     let poly_sig1 =
-        ctxt.tcx.replace_late_bound_regions(poly_sig1, |br| substs1_late[usize::from(br.var)]).0;
+        ctxt.tcx.instantiate_bound_regions(poly_sig1, |br| substs1_late[usize::from(br.var)]).0;
 
     let poly_sig2 = poly_sig2.instantiate(ctxt.tcx, substs2_early);
     let poly_sig2 =
-        ctxt.tcx.replace_late_bound_regions(poly_sig2, |br| substs2_late[usize::from(br.var)]).0;
+        ctxt.tcx.instantiate_bound_regions(poly_sig2, |br| substs2_late[usize::from(br.var)]).0;
 
     // Ignore abi for the sake of comparison
     // Useful for rust-intrinsics
@@ -306,8 +302,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     // trait bounds aren't part of the type signature - we have to check those separately
     let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1_early);
     let mut external_preds = all_predicates(ctxt.tcx, external_id, substs2_early);
-    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
-    remove_destruct_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
+    remove_ignored_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
+    remove_ignored_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
     if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
         let err = err_span_bare(
             sig.span,
@@ -336,7 +332,28 @@ pub(crate) fn handle_external_fn<'tcx>(
     Ok((external_path, external_item_visibility, kind, has_self_parameter))
 }
 
-pub fn equalize_substs<'tcx>(
+fn get_substs_early<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+    generics: &'tcx rustc_middle::ty::Generics,
+    span: Span,
+) -> Result<GenericArgsRef<'tcx>, VirErr> {
+    let substs = match ty.kind() {
+        rustc_middle::ty::FnDef(_, substs) => substs,
+        _ => {
+            return err_span(span, "Verus internal error: expected FnDef");
+        }
+    };
+    if let Some(host_effect_index) = generics.host_effect_index {
+        let mut s: Vec<_> = substs.iter().collect();
+        s.remove(host_effect_index);
+        Ok(tcx.mk_args(&s))
+    } else {
+        Ok(substs)
+    }
+}
+
+fn equalize_substs<'tcx>(
     tcx: TyCtxt<'tcx>,
     substs1_early: GenericArgsRef<'tcx>,
     substs2_early: GenericArgsRef<'tcx>,
@@ -401,7 +418,7 @@ pub fn equalize_substs<'tcx>(
 
     while l1.len() < num_late1 {
         let idx = l1.len();
-        let region = Region::new_late_bound(
+        let region = Region::new_bound(
             tcx,
             rustc_middle::ty::INNERMOST,
             BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::BrAnon },
@@ -1117,14 +1134,22 @@ fn is_mut_ty<'tcx>(
     }
 }
 
-fn remove_destruct_trait_bounds_from_predicates<'tcx>(
+fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
     preds: &mut Vec<Clause<'tcx>>,
 ) {
+    use rustc_middle::ty;
+    use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
             let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
             rust_item != Some(crate::verus_items::RustItem::Destruct)
+        }
+        rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, ty) => {
+            match (cnst.kind(), ty.kind()) {
+                (ConstKind::Value(ValTree::Leaf(ScalarInt::TRUE)), ty::TyKind::Bool) => false,
+                _ => true,
+            }
         }
         _ => true,
     });
@@ -1170,6 +1195,14 @@ fn all_predicates<'tcx>(
     id: rustc_span::def_id::DefId,
     substs: GenericArgsRef<'tcx>,
 ) -> Vec<Clause<'tcx>> {
+    let substs = if let Some(index) = tcx.generics_of(id).host_effect_index {
+        let b = rustc_middle::ty::Const::from_bool(tcx, true);
+        let mut s: Vec<_> = substs.iter().collect();
+        s.insert(index, b.into());
+        tcx.mk_args(&s)
+    } else {
+        substs
+    };
     let preds = tcx.predicates_of(id);
     let preds = preds.instantiate(tcx, substs);
     preds.predicates

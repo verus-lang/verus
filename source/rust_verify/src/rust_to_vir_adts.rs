@@ -41,7 +41,7 @@ where
 {
     let empty = [];
     let hir_fields_opt = match variant_data_opt {
-        Some(VariantData::Struct(fields, recovered)) => {
+        Some(VariantData::Struct { fields, recovered }) => {
             // 'recovered' means that it was recovered from a syntactic error.
             // So we shouldn't get to this point if 'recovered' is true.
             unsupported_err_unless!(!recovered, span, "recovered_struct", variant_data_opt);
@@ -325,7 +325,7 @@ pub fn check_item_union<'tcx>(
     if mode != Mode::Exec {
         return err_span(span, "a 'union' can only be exec-mode");
     }
-    let VariantData::Struct(hir_fields, _) = variant_data else {
+    let VariantData::Struct { fields: hir_fields, recovered: _ } = variant_data else {
         return err_span(span, "check_item_union: wrong VariantData");
     };
     for hir_field_def in hir_fields.iter() {
