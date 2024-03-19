@@ -55,7 +55,7 @@ trait Diagnostics: air::messages::Diagnostics {
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
-    compiler_diagnostics: &'tcx rustc_errors::Handler,
+    compiler_diagnostics: &'tcx rustc_errors::DiagCtxt,
     source_map: &'tcx rustc_span::source_map::SourceMap,
 }
 
@@ -63,8 +63,8 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: compiler.session().diagnostic(),
-            source_map: compiler.session().source_map(),
+            compiler_diagnostics: compiler.sess.dcx(),
+            source_map: compiler.sess.source_map(),
         }
     }
 }
@@ -112,7 +112,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note_without_error(msg.note.clone()),
+                self.compiler_diagnostics.struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
@@ -1820,7 +1820,7 @@ impl Verifier {
         self.time_verify_crate_sequential =
             time_verify_sequential_end - time_verify_sequential_start;
 
-        let source_map = compiler.session().source_map();
+        let source_map = compiler.sess.source_map();
 
         self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
         if self.args.num_threads != 1 && self.num_threads >= 1 {
@@ -2553,11 +2553,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
-        if !compiler.session().compile_status().is_ok() {
+        if !compiler.sess.compile_status().is_ok() {
             return rustc_driver::Compilation::Stop;
         }
 
-        self.verifier.error_format = Some(compiler.session().opts.error_format);
+        self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
@@ -2567,7 +2567,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Err(err) => {
                     assert!(err.spans.len() == 0);
                     assert!(err.level == MessageLevel::Error);
-                    compiler.session().diagnostic().err(err.note.clone());
+                    compiler.sess.dcx().err(err.note.clone());
                     self.verifier.encountered_vir_error = true;
                     return;
                 }
@@ -2577,7 +2577,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             let spans = SpanContextX::new(
                 tcx,
                 tcx.stable_crate_id(LOCAL_CRATE),
-                compiler.session().source_map(),
+                compiler.sess.source_map(),
                 imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             );
             {
@@ -2609,7 +2609,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     }
                     return;
                 }
-                if !compiler.session().compile_status().is_ok() {
+                if !compiler.sess.compile_status().is_ok() {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -2677,7 +2677,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
 
-            if !compiler.session().compile_status().is_ok() {
+            if !compiler.sess.compile_status().is_ok() {
                 return;
             }
 
