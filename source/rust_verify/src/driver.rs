@@ -263,10 +263,8 @@ where
         + Send
         + Sync,
 {
-    if !rustc_args.contains(&"--edition".to_string()) {
-        rustc_args.push(format!("--edition"));
-        rustc_args.push(format!("2021"));
-    }
+    rustc_args.push(format!("--edition"));
+    rustc_args.push(format!("2018"));
     if !build_test_mode {
         if let Some(VerusRoot { path: verusroot, in_vargo }) = verus_root {
             let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
