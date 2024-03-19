@@ -273,7 +273,6 @@ pub(crate) fn handle_external_fn<'tcx>(
         poly_sig1.skip_binder().bound_vars().len(),
         poly_sig2.skip_binder().bound_vars().len(),
     ) else {
-        println!("hi");
         return err_span(
             sig.span,
             format!(
@@ -296,7 +295,6 @@ pub(crate) fn handle_external_fn<'tcx>(
     poly_sig1.abi = poly_sig2.abi;
 
     if poly_sig1 != poly_sig2 {
-        println!("hi2");
         return err_span(
             sig.span,
             format!(
