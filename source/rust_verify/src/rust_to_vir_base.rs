@@ -24,8 +24,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    GenericBoundX, Idents, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VarIdent,
-    VirErr, VirErrAs,
+    GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive, Typ,
+    TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -559,6 +559,21 @@ pub(crate) fn get_range(typ: &Typ) -> IntRange {
     match &*undecorate_typ(typ) {
         TypX::Int(range) => *range,
         _ => panic!("get_range {:?}", typ),
+    }
+}
+
+pub(crate) fn bitwidth_and_signedness_of_integer_type<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> (Option<IntegerTypeBitwidth>, bool) {
+    match mk_range(verus_items, &ty) {
+        IntRange::U(w) => (Some(IntegerTypeBitwidth::Width(w)), false),
+        IntRange::I(w) => (Some(IntegerTypeBitwidth::Width(w)), true),
+        IntRange::USize => (Some(IntegerTypeBitwidth::ArchWordSize), false),
+        IntRange::ISize => (Some(IntegerTypeBitwidth::ArchWordSize), true),
+        IntRange::Nat => (None, false),
+        IntRange::Int => (None, true),
+        IntRange::Char => panic!("bitwidth_and_signedness_of_integer_type did not expect char"),
     }
 }
 

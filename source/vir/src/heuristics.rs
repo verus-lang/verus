@@ -44,7 +44,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
     // with an empty by().)
     match &exp.x {
         ExpX::Unary(op, e) => match op {
-            UnaryOp::Not | UnaryOp::BitNot | UnaryOp::Clip { .. } => exp.clone(),
+            UnaryOp::Not | UnaryOp::BitNot(_) | UnaryOp::Clip { .. } => exp.clone(),
             UnaryOp::StrLen | UnaryOp::StrIsAscii => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)

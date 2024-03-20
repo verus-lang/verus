@@ -171,10 +171,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test6_fails2 verus_code! {
         proof fn test6(b: u32) {
-            assert(b << 2 == b * 4) by(bit_vector);
-            assert(b << 2 == b * 4);  // FAILS
+            assert(b << 2 == b * 4) by(bit_vector); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators")
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -188,11 +187,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test8_fails verus_code! {
+    #[test] test8_ok verus_code! {
         proof fn test8(b: i32) {
-            assert(b <= b) by(bit_vector); // VIR Error: signed int
+            assert(b <= b) by(bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "signed integer is not supported for bit-vector reasoning")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -200,29 +199,25 @@ test_verify_one_file! {
     #[test] test10_fails verus_code! {
         #[verifier(bit_vector)]
         proof fn f2() { // FAILS
-            ensures(forall |i: u64| (1 << i) > 0); // Although this line should be reported instead of the above line, since Z3 does not return model which we utilize for error reporting, just use the above line
+            ensures(forall |i: u64| (1u64 << i) > 0); // Although this line should be reported instead of the above line, since Z3 does not return model which we utilize for error reporting, just use the above line
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
-    #[test] not_supported_usize_in_by_bit_vector verus_code! {
+    #[test] usize_in_by_bit_vector verus_code! {
         proof fn test_usize(x: usize) {
-            // Ideally this would work, but by(bit_vector) currently doesn't
-            // support arch-dependent sizes.
             assert(x & x == x) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "architecture-dependent")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] not_supported_const_usize_in_by_bit_vector verus_code! {
+    #[test] const_usize_in_by_bit_vector verus_code! {
         proof fn test_usize() {
-            // Ideally this would work, but by(bit_vector) currently doesn't
-            // support arch-dependent sizes.
             assert(1usize == 1usize) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "architecture-dependent")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -243,21 +238,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] not_supported_const_int_in_by_bit_vector verus_code! {
+    #[test] const_int_in_by_bit_vector verus_code! {
         proof fn test_int() {
             assert(0int == 0int) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected finite-width integer")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] not_supported_usize_cast_in_by_bit_vector verus_code! {
+    #[test] usize_cast_in_by_bit_vector verus_code! {
         proof fn test_usize(x: u64) {
-            // Ideally this would work, but by(bit_vector) currently doesn't
-            // support arch-dependent sizes.
             assert((x as usize) == (x as usize)) by (bit_vector);
         }
-    } => Err(err) => assert_vir_error_msg(err, "architecture-dependent")
+    } => Ok(())
 }
 
 test_verify_one_file! {

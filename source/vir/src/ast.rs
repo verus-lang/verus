@@ -304,7 +304,9 @@ pub enum UnaryOp {
     /// boolean not
     Not,
     /// bitwise not
-    BitNot,
+    /// - for unsigned, we need a bitwidth
+    /// - None = signed bit-not; the operation is independent of bitwidth
+    BitNot(Option<IntegerTypeBitwidth>),
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
@@ -405,14 +407,27 @@ pub enum ArithOp {
     EuclideanMod,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IntegerTypeBitwidth {
+    Width(u32),
+    ArchWordSize,
+}
+
 /// Bitwise operation
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    Shr,
-    Shl,
+    // Shift right. The bitwidth argument is only needed to do a bounds-check;
+    // the actual result, when computed on unbounded integers, is independent
+    // of the bitwidth.
+    Shr(IntegerTypeBitwidth),
+    // Shift left up to w bits, ignoring everything to the left of w.
+    // To interpret the result as an unbounded int,
+    // either zero-extend or sign-extend, depending on the bool argument.
+    // (True = sign-extend, False = zero-extend)
+    Shl(IntegerTypeBitwidth, bool),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
