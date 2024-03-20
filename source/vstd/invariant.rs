@@ -249,14 +249,16 @@ pub struct InvariantBlockGuard;
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 pub struct OpenInvariantCredit;
 
+verus! {
+
 #[cfg(verus_keep_ghost)]
 #[verifier::external_body]
 #[inline(always)]
-pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit> {
+pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
+    opens_invariants none
+{
     Tracked::<OpenInvariantCredit>::assume_new()
 }
-
-verus! {
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
