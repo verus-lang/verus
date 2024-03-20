@@ -359,7 +359,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
-        let credit: Tracked<OpenInvariantCredit> = create_open_invariant_credit();
+        let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
         )
@@ -387,7 +387,8 @@ macro_rules! open_atomic_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            spend_open_invariant_credit($credit_expr);
+            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
                 $crate::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
@@ -498,7 +499,7 @@ pub use open_atomic_invariant_internal;
 #[macro_export]
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
-        let credit: Tracked<OpenInvariantCredit> = create_open_invariant_credit();
+        let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
     };
@@ -524,7 +525,8 @@ macro_rules! open_local_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            spend_open_invariant_credit($credit_expr);
+            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
