@@ -233,7 +233,7 @@ test_verify_one_file! {
                 exec_fn();
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)")
 }
 
 test_both! {

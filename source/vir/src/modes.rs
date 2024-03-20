@@ -327,7 +327,7 @@ impl AtomicInstCollector {
             .secondary_span(&self.loops[0]));
         } else if self.non_atomics.len() > 0 {
             let mut e =
-                error(inv_block_span, format!("{context:} cannot contain non-atomic operations"));
+                error(inv_block_span, format!("{context:} must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)"));
             for i in 0..min(self.non_atomics.len(), 3) {
                 e = e.secondary_label(&self.non_atomics[i], "non-atomic here");
             }

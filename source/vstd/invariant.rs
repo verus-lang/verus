@@ -233,6 +233,39 @@ declare_invariant_impl!(LocalInvariant);
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 pub struct InvariantBlockGuard;
 
+// In the "Logical Paradoxes" section of the Iris 4.1 Reference
+// (`https://plv.mpi-sws.org/iris/appendix-4.1.pdf`), they show that
+// opening invariants carries the risk of unsoundness. One solution to
+// this, described in the paper "Later Credits: Resourceful Reasoning
+// for the Later Modality" by Spies et al. (available at
+// `https://plv.mpi-sws.org/later-credits/paper-later-credits.pdf`) is
+// to use "later credits". That is, require the expenditure of a later
+// credit, only obtainable in exec mode, when opening an invariant. So
+// we require the relinquishment of a tracked
+// `OpenInvariantCredit` to open an invariant, and we provide an
+// exec-mode function `get_invariant_execution_credit` to obtain one.
+
+#[doc(hidden)]
+#[cfg_attr(verus_keep_ghost, verifier::proof)]
+pub struct OpenInvariantCredit;
+
+#[cfg(verus_keep_ghost)]
+#[verifier::external_body]
+#[inline(always)]
+pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit> {
+    Tracked::<OpenInvariantCredit>::assume_new()
+}
+
+verus! {
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
+#[doc(hidden)]
+#[inline(always)]
+pub proof fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>) {}
+
+}
+
 // NOTE: These 3 methods are removed in the conversion to VIR; they are only used
 // for encoding and borrow-checking.
 // In the VIR these are all replaced by the OpenInvariant block.
@@ -326,7 +359,19 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_exec_inv_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
+        let credit: Tracked<OpenInvariantCredit> = create_open_invariant_credit();
+        ::builtin_macros::verus_exec_inv_macro_exprs!(
+            $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! open_nested_atomic_invariant {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_exec_inv_macro_exprs!(
+            $crate::invariant::open_atomic_invariant_internal!($($tail)*)
+        )
     };
 }
 
@@ -339,10 +384,12 @@ macro_rules! open_atomic_invariant_in_proof {
 
 #[macro_export]
 macro_rules! open_atomic_invariant_internal {
-    ($eexpr:expr => $iident:ident => $bblock:block) => {
+    ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_atomic_invariant_begin($eexpr);
+            spend_open_invariant_credit($credit_expr);
+            #[allow(unused_mut)] let (guard, mut $iident) =
+                $crate::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::invariant::open_invariant_end(guard, $iident);
@@ -351,6 +398,7 @@ macro_rules! open_atomic_invariant_internal {
 }
 
 pub use open_atomic_invariant;
+pub use open_nested_atomic_invariant;
 pub use open_atomic_invariant_in_proof;
 #[doc(hidden)]
 pub use open_atomic_invariant_internal;
@@ -450,6 +498,15 @@ pub use open_atomic_invariant_internal;
 #[macro_export]
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
+        let credit: Tracked<OpenInvariantCredit> = create_open_invariant_credit();
+        ::builtin_macros::verus_exec_inv_macro_exprs!(
+            $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
+    };
+}
+
+#[macro_export]
+macro_rules! open_nested_local_invariant {
+    [$($tail:tt)*] => {
         ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_local_invariant_internal!($($tail)*))
     };
@@ -464,9 +521,10 @@ macro_rules! open_local_invariant_in_proof {
 
 #[macro_export]
 macro_rules! open_local_invariant_internal {
-    ($eexpr:expr => $iident:ident => $bblock:block) => {
+    ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
+            spend_open_invariant_credit($credit_expr);
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
@@ -476,6 +534,7 @@ macro_rules! open_local_invariant_internal {
 }
 
 pub use open_local_invariant;
+pub use open_nested_local_invariant;
 pub use open_local_invariant_in_proof;
 #[doc(hidden)]
 pub use open_local_invariant_internal;

@@ -1033,9 +1033,14 @@ fn erase_inv_block<'tcx>(
     span: Span,
     body: &Block<'tcx>,
 ) -> Exp {
-    assert!(body.stmts.len() == 3);
-    let open_stmt = &body.stmts[0];
-    let mid_stmt = &body.stmts[1];
+    assert!(body.stmts.len() == 4);
+    let spend_stmt = &body.stmts[0];
+    let open_stmt = &body.stmts[1];
+    let mid_stmt = &body.stmts[2];
+    if !crate::rust_to_vir_expr::is_spend_open_invariant_credit_call(&ctxt.verus_items, spend_stmt)
+    {
+        panic!("missing spend_open_invariant_credit call for erase_inv_block");
+    }
     let (_guard_hir, _inner_hir, inner_pat, arg, atomicity) =
         crate::rust_to_vir_expr::invariant_block_open(&ctxt.verus_items, open_stmt)
             .expect("invariant_block_open");
