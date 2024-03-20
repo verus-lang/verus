@@ -15,7 +15,8 @@ macro_rules! test_both {
         test_verify_one_file! {
             #[test] $name2 ($test
                 .replace("AtomicInvariant", "LocalInvariant")
-                .replace("open_atomic_invariant", "open_local_invariant")) => $p
+                .replace("open_atomic_invariant", "open_local_invariant")
+                .replace("open_nested_atomic_invariant", "open_nested_local_invariant")) => $p
         }
     };
     ($name:ident $name2:ident $test:expr => $p:pat => $e:expr) => {
@@ -26,7 +27,8 @@ macro_rules! test_both {
         test_verify_one_file! {
             #[test] $name2 ($test
                 .replace("AtomicInvariant", "LocalInvariant")
-                .replace("open_atomic_invariant", "open_local_invariant")) => $p => $e
+                .replace("open_atomic_invariant", "open_local_invariant")
+                .replace("open_nested_atomic_invariant", "open_nested_local_invariant")) => $p => $e
         }
     };
 }
@@ -82,8 +84,9 @@ test_both! {
             requires
                 i.inv(0),
         {
+            let credit = create_open_invariant_credit();
             open_atomic_invariant!(&i => inner => { // FAILS
-                open_atomic_invariant!(&i => inner2 => {
+                open_nested_atomic_invariant!(credit => &i => inner2 => {
                     proof { inner2 = 0u8; }
                 });
                 proof { inner = 0u8; }
@@ -102,9 +105,10 @@ test_both! {
                 i.namespace() == 0,
                 j.namespace() == 1,
         {
+            let credit = create_open_invariant_credit();
             open_atomic_invariant!(&i => inner => {
                 proof { inner = 0u8; }
-                open_atomic_invariant!(&j => inner => {
+                open_nested_atomic_invariant!(credit => &j => inner => {
                     proof { inner = 1u8; }
                 });
             });
@@ -155,7 +159,8 @@ test_both! {
           open_atomic_invariant!(&i => inner => { // FAILS
           });
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) =>
+        assert_any_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
 }
 
 // mode stuff
@@ -164,8 +169,8 @@ test_both! {
     open_inv_in_spec open_inv_in_spec_local verus_code! {
         use vstd::invariant::*;
 
-        pub closed spec fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
-          open_atomic_invariant!(&i => inner => {
+        pub closed spec fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, i: AtomicInvariant<A, u8, B>) {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
     } => Err(err) => assert_vir_error_msg(err, "Cannot open invariant in Spec mode")
@@ -186,10 +191,10 @@ test_both! {
     open_inv_in_proof open_inv_in_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>)
+        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>)
           opens_invariants any
         {
-          open_atomic_invariant!(&i => inner => {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
     } => Ok(())
@@ -271,8 +276,9 @@ test_both! {
         use vstd::invariant::*;
 
         pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>, Tracked(j): Tracked<AtomicInvariant<A, u8, B>>) {
+          let credit = create_open_invariant_credit();
           open_atomic_invariant!(&i => inner => {
-            open_atomic_invariant!(&j => inner => {
+            open_nested_atomic_invariant!(credit => &j => inner => {
               return;
             });
           });
@@ -314,8 +320,8 @@ test_both! {
     return_early_proof return_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
-          open_atomic_invariant!(&i => inner => {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
             return;
           });
         }
@@ -326,10 +332,10 @@ test_both! {
     break_early_proof break_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
-            open_atomic_invariant!(&i => inner => {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {
               break;
             });
           }
@@ -342,10 +348,10 @@ test_both! {
     continue_early_proof continue_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
-            open_atomic_invariant!(&i => inner => {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {
               break;
             });
           }
@@ -354,7 +360,7 @@ test_both! {
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
-// Check that we can't open a AtomicInvariant with open_local_invariant and vice-versa
+// Check that we can't open an AtomicInvariant with open_local_invariant and vice-versa
 
 test_verify_one_file! {
     #[test] mixup1 verus_code! {
@@ -383,10 +389,11 @@ test_verify_one_file! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>) {
+            let credit = create_open_invariant_credit();
             open_local_invariant!(&i => inner => { // FAILS
                 let mut idx: u64 = 0;
                 while idx < 5 {
-                    open_local_invariant!(&j => jnner => {
+                    open_nested_local_invariant!(credit => &j => jnner => {
                     });
                     idx = idx + 1;
                 }
