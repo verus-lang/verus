@@ -264,10 +264,10 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 #[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
 #[doc(hidden)]
 #[inline(always)]
-pub proof fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>) {}
-
+pub proof fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>) {
 }
 
+} // verus!
 // NOTE: These 3 methods are removed in the conversion to VIR; they are only used
 // for encoding and borrow-checking.
 // In the VIR these are all replaced by the OpenInvariant block.
@@ -285,7 +285,6 @@ pub proof fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>) {
 //
 //  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
 //  last the entire block.
-
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
@@ -401,10 +400,10 @@ macro_rules! open_atomic_invariant_internal {
 }
 
 pub use open_atomic_invariant;
-pub use open_nested_atomic_invariant;
 pub use open_atomic_invariant_in_proof;
 #[doc(hidden)]
 pub use open_atomic_invariant_internal;
+pub use open_nested_atomic_invariant;
 
 /// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
 /// value within.
@@ -538,7 +537,7 @@ macro_rules! open_local_invariant_internal {
 }
 
 pub use open_local_invariant;
-pub use open_nested_local_invariant;
 pub use open_local_invariant_in_proof;
 #[doc(hidden)]
 pub use open_local_invariant_internal;
+pub use open_nested_local_invariant;
