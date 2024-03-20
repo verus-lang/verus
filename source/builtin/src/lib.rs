@@ -1238,12 +1238,12 @@ impl_binary_op_rhs!(SpecBitXor, spec_bitxor, Self, Self, [
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op_rhs!(SpecShl, spec_shl, Self, Self, [
+impl_binary_op!(SpecShl, spec_shl, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op_rhs!(SpecShr, spec_shr, Self, Self, [
+impl_binary_op!(SpecShr, spec_shr, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);

@@ -136,17 +136,18 @@ fn check_bv_unary_exprs(
     expr: &Expr,
 ) -> Result<Typ, TypeError> {
     match op {
-        UnaryOp::BitExtract(high, _) => {
+        UnaryOp::BitExtract(high, lo) => {
             let t0 = check_expr(typing, expr)?;
             let w_old = get_bv_width(&t0)?;
-            let w_new = high + 1;
-            if w_old < w_new {
+            if w_old < high + 1 {
                 Err(format!(
                     "Interner Error: bit-vec extract to a longer size. {} to {} ",
-                    w_old, w_new
+                    w_old, high
                 ))
+            } else if lo > high {
+                Err(format!("Interner Error: bit-vec extract has lo > high. {} to {} ", lo, high))
             } else {
-                Ok(Arc::new(TypX::BitVec(w_new)))
+                Ok(Arc::new(TypX::BitVec(high + 1 - lo)))
             }
         }
         UnaryOp::BitNot => {
@@ -154,6 +155,13 @@ fn check_bv_unary_exprs(
             match get_bv_width(&t0) {
                 Ok(_) => Ok(t0.clone()),
                 Err(..) => Err("Interner Error: not a bv type inside a bvnot".to_string()),
+            }
+        }
+        UnaryOp::BitZeroExtend(n) | UnaryOp::BitSignExtend(n) => {
+            let t0 = check_expr(typing, expr)?;
+            match get_bv_width(&t0) {
+                Ok(m) => Ok(Arc::new(TypX::BitVec(n + m))),
+                Err(..) => Err(format!("Interner Error: not a bv type inside a {}", f_name)),
             }
         }
         _ => Err(format!("Interner Error: not a bv unary op, got {}", f_name)),
@@ -185,6 +193,7 @@ fn check_bv_exprs(
     // return bool type if it is comparision op
     match bop {
         BinaryOp::BitUGe | BinaryOp::BitULe | BinaryOp::BitUGt | BinaryOp::BitULt => Ok(bt()),
+        BinaryOp::BitSGe | BinaryOp::BitSLe | BinaryOp::BitSGt | BinaryOp::BitSLt => Ok(bt()),
         _ => Ok(t0.clone()),
     }
 }
@@ -225,6 +234,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         }
         ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::BitZeroExtend(n), e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitZeroExtend(*n), "zero_extend", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::BitSignExtend(n), e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitSignExtend(*n), "sign_extend", &e1.clone())
         }
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
@@ -276,6 +291,18 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::BitUGe, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitUGe, "bvge", &[e1.clone(), e2.clone()])
         }
+        ExprX::Binary(BinaryOp::BitSLt, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSLt, "bvslt", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSGt, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSGt, "bvsgt", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSLe, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSLe, "bvsle", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSGe, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSGe, "bvsge", &[e1.clone(), e2.clone()])
+        }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitXor, "^", &[e1.clone(), e2.clone()])
         }
@@ -301,7 +328,10 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_bv_exprs(typing, BinaryOp::BitUDiv, "bvdiv", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::LShr, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::LShr, ">>", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::LShr, ">> (lshr)", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::AShr, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::AShr, ">> (ashr)", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::Shl, "<<", &[e1.clone(), e2.clone()])

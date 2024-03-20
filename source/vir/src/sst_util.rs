@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp,
-    IntRange, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    VarBinder, VarBinderX, VarBinders,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX,
+    Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::get_variant;
 use crate::context::GlobalCtx;
@@ -282,7 +282,7 @@ impl BinaryOp {
                 BitXor => (22, 22, 23),
                 BitAnd => (24, 24, 25),
                 BitOr => (20, 20, 21),
-                Shr | Shl => (26, 26, 27),
+                Shr(..) | Shl(..) => (26, 26, 27),
             },
             StrGetChar => (90, 90, 90),
         }
@@ -362,7 +362,7 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
-                UnaryOp::Not | UnaryOp::BitNot => {
+                UnaryOp::Not | UnaryOp::BitNot(_) => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
                 }
                 UnaryOp::Clip { .. } => (format!("clip({})", exp.x.to_user_string(global)), 99),
@@ -446,8 +446,8 @@ impl ExpX {
                         BitXor => "^",
                         BitAnd => "&",
                         BitOr => "|",
-                        Shr => ">>",
-                        Shl => "<<",
+                        Shr(..) => ">>",
+                        Shl(..) => "<<",
                     },
                     StrGetChar => "ignored", // This is our only non-inline BinaryOp, so it needs special handling below
                 };
@@ -608,10 +608,8 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
 ///   - If the input type is `u8`, then it returns a constant `8`
 ///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
 
-pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &crate::ast::ArchWordBits) -> Exp {
-    let bitwidth = crate::ast_util::bitwidth_from_type(t)
-        .expect("bitwidth_sst_from_typ expects bounded integer type");
-    match bitwidth.to_exact(arch) {
+pub fn sst_bitwidth(span: &Span, w: &IntegerTypeBitwidth, arch: &crate::ast::ArchWordBits) -> Exp {
+    match w.to_exact(arch) {
         Some(w) => sst_int_literal(span, w as i128),
         None => sst_arch_word_bits(span),
     }
