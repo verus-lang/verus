@@ -113,8 +113,10 @@ pub const I_HI: &str = "iHi";
 pub const U_CLIP: &str = "uClip";
 pub const I_CLIP: &str = "iClip";
 pub const NAT_CLIP: &str = "nClip";
+pub const CHAR_CLIP: &str = "charClip";
 pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
+pub const CHAR_INV: &str = "charInv";
 pub const ARCH_SIZE: &str = "SZ";
 pub const ADD: &str = "Add";
 pub const SUB: &str = "Sub";
@@ -129,12 +131,10 @@ pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
 pub const BOX_STRSLICE: &str = "S";
-pub const BOX_CHAR: &str = "C";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
 pub const UNBOX_STRSLICE: &str = "%S";
-pub const UNBOX_CHAR: &str = "%C";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
@@ -203,10 +203,6 @@ pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
 pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
-
-pub const CHAR: &str = "Char";
-pub const CHAR_FROM_UNICODE: &str = "char%from_unicode";
-pub const CHAR_TO_UNICODE: &str = "char%to_unicode";
 
 pub const VERUSLIB: &str = "vstd";
 pub const VERUSLIB_PREFIX: &str = "vstd::";

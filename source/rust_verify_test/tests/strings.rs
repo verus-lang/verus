@@ -502,16 +502,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_invalid_cast_to_char verus_code! {
-        use vstd::string::*;
-        fn test() {
-            let v: u8 = 42;
-            let z = v as char;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast: `u8` to `char`")
-}
-
-test_verify_one_file! {
     #[test] test_strslice_get verus_code! {
         use vstd::string::*;
         fn test_strslice_get_passes<'a>(x: StrSlice<'a>) -> (ret: u8)
@@ -558,19 +548,6 @@ test_verify_one_file! {
         }
 
     } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] test_int_as_char_spec verus_code! {
-        use vstd::view::*;
-        use vstd::string::*;
-        use vstd::prelude::*;
-
-        spec fn test(a: int) -> char {
-            a as char
-        }
-
-    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
 }
 
 test_verify_one_file! {
@@ -667,4 +644,142 @@ test_verify_one_file! {
         }
 
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] char_clipping_and_ranges verus_code! {
+        fn test_char_to_u32(c: char) {
+            let i = c as u32;
+            assert((0 <= i && i <= 0xD7FF) || (0xE000 <= i && i <= 0x10FFFF));
+        }
+        fn test_char_to_u32_fail(c: char) {
+            let i = c as u32;
+            assert(i != 0); // FAILS
+        }
+        fn test_char_to_u32_fail2(c: char) {
+            let i = c as u32;
+            assert(i != 0xD7FF); // FAILS
+        }
+        fn test_char_to_u32_fail3(c: char) {
+            let i = c as u32;
+            assert(i != 0xE000); // FAILS
+        }
+        fn test_char_to_u32_fail4(c: char) {
+            let i = c as u32;
+            assert(i != 0x10FFFF); // FAILS
+        }
+
+        proof fn test_char_to_int(c: char) {
+            let i = c as int;
+            assert((0 <= i && i <= 0xD7ff) || (0xE000 <= i && i <= 0x10FFFF));
+        }
+        proof fn test_char_to_int_fail(c: char) {
+            let i = c as int;
+            assert(i != 0); // FAILS
+        }
+        proof fn test_char_to_int_fail2(c: char) {
+            let i = c as int;
+            assert(i != 0xD7FF); // FAILS
+        }
+        proof fn test_char_to_int_fail3(c: char) {
+            let i = c as int;
+            assert(i != 0xE000); // FAILS
+        }
+        proof fn test_char_to_int_fail4(c: char) {
+            let i = c as int;
+            assert(i != 0x10FFFF); // FAILS
+        }
+
+        fn test_ineq(a: char, b: char) {
+            let bool1 = a <= b;
+            let bool2 = (a as u32) <= (b as u32);
+            assert(bool1 == bool2);
+        }
+
+        proof fn test_ineq_pf(a: char, b: char) {
+            let bool1 = a <= b;
+            let bool2 = (a as u32) <= (b as u32);
+            assert(bool1 == bool2);
+        }
+
+        fn test_cast_u8_to_char(x: u8) {
+            let c = x as char;
+            assert('\0' <= c && c <= (255 as char));
+            assert(0 <= c && c <= 255);
+        }
+        fn test_cast_u8_to_char_fail(x: u8) {
+            let c = x as char;
+            assert(c != 255); // FAILS
+        }
+
+        // Casting any int type to char is not supported in normal Rust (which only allows u8 -> char)
+        // But it's ok in spec code
+        proof fn test_cast_u32_to_char(x: u32) {
+            let c = x as char;
+            assert((0 <= c && c <= 0xD7FF) || (0xE000 <= c && c <= 0x10FFFF));
+        }
+        proof fn test_cast_u32_to_char_fails(x: u32) {
+            let c = x as char;
+            assert(c == x); // FAILS
+        }
+
+        proof fn test_cast_i32_to_char(x: i32) {
+            let c = x as char;
+            assert((0 <= c && c <= 0xD7FF) || (0xE000 <= c && c <= 0x10FFFF));
+        }
+        proof fn test_cast_i32_to_char_fails(x: i32) {
+            let c = x as char;
+            assert(c == x); // FAILS
+        }
+
+        proof fn test_cast_int_to_char(x: int) {
+            let c = x as char;
+            assert((0 <= c && c <= 0xD7FF) || (0xE000 <= c && c <= 0x10FFFF));
+            assert(((0 <= x && x <= 0xD7FF) || (0xE000 <= x && x <= 0x10FFFF)) ==> c == x);
+        }
+        proof fn test_cast_int_to_char_fails(x: int) {
+            let c = x as char;
+            assert(c == x); // FAILS
+        }
+        proof fn test_cast_int_to_char_fails2(x: int) {
+            let c = x as char;
+            assert(c != 0); // FAILS
+        }
+        proof fn test_cast_int_to_char_fails3(x: int) {
+            let c = x as char;
+            assert(c != 0xD7FF); // FAILS
+        }
+        proof fn test_cast_int_to_char_fails4(x: int) {
+            let c = x as char;
+            assert(c != 0xE000); // FAILS
+        }
+        proof fn test_cast_int_to_char_fails5(x: int) {
+            let c = x as char;
+            assert(c != 0x10FFFF); // FAILS
+        }
+        proof fn test_cast_int_to_char_fails6(x: int) {
+            let c = x as char;
+            assert(x == 0xD800 ==> c == x); // FAILS
+        }
+        proof fn test_cast_int_to_char_fails7(x: int) {
+            let c = x as char;
+            assert(x == 0xDFFF ==> c == x); // FAILS
+        }
+        proof fn test_cast_int_to_char_fails8(x: int) {
+            let c = x as char;
+            assert(x == 0x110000 ==> c == x); // FAILS
+        }
+
+        spec fn char_range_match(c: char) -> bool {
+            match c {
+                '\0' ..= '\u{D7FF}' => false,
+                '\u{E000}' ..= '\u{10FFFF}' => true,
+            }
+        }
+
+        proof fn test_char_range_match(c: char) {
+            let x = char_range_match(c);
+            assert(x ==> c >= 0xDEEE);
+        }
+    } => Err(err) => assert_fails(err, 19)
 }

@@ -30,7 +30,6 @@ enum ReachedType {
     Lambda(usize),
     Datatype(Path),
     StrSlice,
-    Char,
     Primitive,
 }
 
@@ -108,7 +107,6 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::StrSlice => ReachedType::StrSlice,
-        TypX::Char => ReachedType::Char,
         TypX::Primitive(_, _) => ReachedType::Primitive,
     }
 }
@@ -212,7 +210,6 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Lambda(..)
         | TypX::Datatype(..)
         | TypX::StrSlice
-        | TypX::Char
         | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }

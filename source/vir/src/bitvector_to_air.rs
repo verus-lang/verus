@@ -52,7 +52,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
         ExpX::Var(x) => {
             if is_integer_type(&exp.typ) {
                 // error if either:
-                //  - it's an infinite width type
+                //  - it's an infinite width type / char
                 //  - it's usize or isize and the arch-size is not specified
                 // (TODO allow the second one)
                 let width = bitwidth_from_type(&exp.typ);
@@ -126,7 +126,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 UnaryOp::MustBeFinalized => {
                     panic!("internal error: Exp not finalized: {:?}", arg)
                 }
-                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::CharToInt => panic!(
+                UnaryOp::StrLen | UnaryOp::StrIsAscii => panic!(
                     "internal error: matching for bit vector ops on this match should be impossible"
                 ),
                 UnaryOp::InferSpecForLoopIter { .. } => {

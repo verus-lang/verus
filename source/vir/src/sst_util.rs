@@ -372,7 +372,6 @@ impl ExpX {
                 UnaryOp::StrIsAscii => {
                     (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
                 }
-                UnaryOp::CharToInt => (format!("{} as char", exp.x.to_string_prec(global, 99)), 90),
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     return exp.x.to_string_prec(global, precedence);
                 }

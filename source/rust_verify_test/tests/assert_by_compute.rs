@@ -529,3 +529,29 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] char_casting verus_code! {
+        proof fn assert_compute_test_int_to_char(c: char) {
+            assert(0int as char == 0) by(compute_only);
+            assert(0xD7FFint as char == 0xD7FF) by(compute_only);
+            assert(0xE000int as char == 0xE000) by(compute_only);
+            assert(0x10FFFFint as char == 0x10FFFF) by(compute_only);
+        }
+        proof fn assert_compute_test_int_to_char_fail1(c: char) {
+            assert((-1int) as char == -1) by(compute); // FAILS
+        }
+        proof fn assert_compute_test_int_to_char_fail2(c: char) {
+            assert((0xD800int) as char == 0xD800) by(compute); // FAILS
+        }
+        proof fn assert_compute_test_int_to_char_fail3(c: char) {
+            assert((0xDFFFint) as char == 0xDFFF) by(compute); // FAILS
+        }
+        proof fn assert_compute_test_int_to_char_fail4(c: char) {
+            assert((0x110000int) as char == 0x110000) by(compute); // FAILS
+        }
+        proof fn assert_compute_test_char_to_u8(c: char) {
+            assert(('\u{3b1}' as u8) == '\u{3b1}') by(compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}

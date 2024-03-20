@@ -20,7 +20,6 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::ConstInt(_) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::StrSlice => false,
-        TypX::Char => false,
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
@@ -46,7 +45,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
     match &exp.x {
         ExpX::Unary(op, e) => match op {
             UnaryOp::Not | UnaryOp::BitNot | UnaryOp::Clip { .. } => exp.clone(),
-            UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::CharToInt => exp.clone(),
+            UnaryOp::StrLen | UnaryOp::StrIsAscii => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
