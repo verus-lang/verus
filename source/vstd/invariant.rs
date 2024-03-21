@@ -247,6 +247,7 @@ pub struct InvariantBlockGuard;
 
 #[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
+#[verifier::external_body]
 pub struct OpenInvariantCredit;
 
 verus! {
