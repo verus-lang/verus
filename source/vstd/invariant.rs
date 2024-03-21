@@ -245,12 +245,12 @@ pub struct InvariantBlockGuard;
 // `OpenInvariantCredit` to open an invariant, and we provide an
 // exec-mode function `get_invariant_execution_credit` to obtain one.
 
+verus! {
+
 #[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 #[verifier::external_body]
-pub struct OpenInvariantCredit;
-
-verus! {
+pub struct OpenInvariantCredit {}
 
 #[cfg(verus_keep_ghost)]
 #[verifier::external_body]
