@@ -6,7 +6,6 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
-use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{
@@ -59,7 +58,7 @@ fn check_item<'tcx>(
     };
 
     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
     if vattrs.internal_reveal_fn {
         return Ok(());
     }
@@ -263,10 +262,12 @@ fn check_item<'tcx>(
                 /* sealed, `unsafe` */
                 {
                     let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
-                    let trait_vattrs =
-                        get_verifier_attrs(trait_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    let sealed = crate::attributes::is_sealed(
+                        trait_attrs,
+                        Some(&mut *ctxt.diagnostics.borrow_mut()),
+                    )?;
 
-                    if trait_vattrs.sealed {
+                    if sealed {
                         return err_span(item.span, "cannot implement `sealed` trait");
                     } else if impll.unsafety != Unsafety::Normal {
                         return err_span(item.span, "the verifier does not support `unsafe` here");
@@ -370,8 +371,7 @@ fn check_item<'tcx>(
                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                 let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
                 if trait_path_typ_args.is_some() {
-                    let vattrs =
-                        get_verifier_attrs(fn_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    let vattrs = ctxt.get_verifier_attrs(fn_attrs)?;
                     if vattrs.external {
                         return err_span(
                             item.span,
@@ -532,11 +532,9 @@ fn check_item<'tcx>(
             }
         }
         ItemKind::Static(..)
-            if get_verifier_attrs(
-                ctxt.tcx.hir().attrs(item.hir_id()),
-                Some(&mut *ctxt.diagnostics.borrow_mut()),
-            )?
-            .is_external(&ctxt.cmd_line_args) =>
+            if ctxt
+                .get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?
+                .is_external(&ctxt.cmd_line_args) =>
         {
             return Ok(());
         }
@@ -628,7 +626,7 @@ fn check_item<'tcx>(
                 )?;
 
                 let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
-                let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                let vattrs = ctxt.get_verifier_attrs(attrs)?;
                 if vattrs.external {
                     return err_span(
                         *span,
@@ -888,11 +886,9 @@ fn check_foreign_item<'tcx>(
             )?;
         }
         _ => {
-            if get_verifier_attrs(
-                ctxt.tcx.hir().attrs(item.hir_id()),
-                Some(&mut *ctxt.diagnostics.borrow_mut()),
-            )?
-            .is_external(&ctxt.cmd_line_args)
+            if ctxt
+                .get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?
+                .is_external(&ctxt.cmd_line_args)
             {
                 return Ok(());
             } else {
@@ -929,8 +925,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
             match owner.node() {
                 OwnerNode::Item(item @ Item { kind: ItemKind::Mod(mod_), owner_id, .. }) => {
                     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-                    let vattrs =
-                        get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    let vattrs = ctxt.get_verifier_attrs(attrs)?;
                     if vattrs.external {
                         // Recursively mark every item in the module external,
                         // even in nested modules
@@ -1031,8 +1026,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                     }
                     _ => {
                         let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-                        let vattrs =
-                            get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                        let vattrs = ctxt.get_verifier_attrs(attrs)?;
                         if !vattrs.is_external(&ctxt.cmd_line_args) {
                             unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
                         }

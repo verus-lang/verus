@@ -2167,7 +2167,8 @@ fn erase_impl<'tcx>(
                 let ImplItem { ident, owner_id, kind, .. } = impl_item;
                 let id = owner_id.to_def_id();
                 let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                    .expect("get_verifier_attrs");
                 if vattrs.is_external(&ctxt.cmd_line_args) {
                     continue;
                 }
@@ -2301,7 +2302,8 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     } else {
         ctxt.tcx.item_attrs(id)
     };
-    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+    let vattrs =
+        get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args)).expect("get_verifier_attrs");
     if vattrs.external_type_specification {
         return;
     }
@@ -2474,7 +2476,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         _trait_items,
                     ) => {
                         let attrs = tcx.hir().attrs(item.hir_id());
-                        let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                        let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                            .expect("get_verifier_attrs");
                         if vattrs.is_external(&ctxt.cmd_line_args) {
                             continue;
                         }
@@ -2495,7 +2498,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             match owner.node() {
                 OwnerNode::Item(item) => {
                     let attrs = tcx.hir().attrs(item.hir_id());
-                    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                    let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                        .expect("get_verifier_attrs");
                     if vattrs.external || vattrs.internal_reveal_fn {
                         continue;
                     }
