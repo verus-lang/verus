@@ -351,6 +351,20 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 /// **Note:** Rather than using `open_atomic_invariant!` directly, we generally recommend
 /// using the [`atomic_ghost` APIs](crate::atomic_ghost).
 ///
+/// It's not legal to use `open_atomic_invariant!` in proof mode. In proof mode, you need
+/// to use `open_atomic_invariant_in_proof!` instead. This takes one extra parameter,
+/// an open-invariant credit, which you can get by calling
+/// `create_open_invariant_credit()` before you enter proof mode.
+///
+/// It's not legal to use `open_atomic_invariant!` in atomic contexts, i.e., within an
+/// atomic function or when another atomic invariant is open. This is because
+/// `open_atomic_invariant!` calls the `exec`-mode function
+/// `create_open_invariant_credit`, and you can't call non-atomic `exec`-mode functions in
+/// atomic contexts. So, in those contexts, you need to use
+/// `open_nested_atomic_invariant!` instead. This takes one extra parameter, an
+/// open-invariant credit, which you can get by calling `create_open_invariant_credit()`
+/// before entering the atomic context.
+
 /// ### Example
 ///
 /// TODO fill this in
@@ -489,6 +503,20 @@ pub use open_nested_atomic_invariant;
 /// `opens_invariants none` or `opens_invariants any` in the function signature.
 /// The default for an `exec`-mode function is to open any, while the default
 /// for a `proof`-mode function is to open none.
+///
+/// It's not legal to use `open_local_invariant!` in proof mode. In proof mode, you need
+/// to use `open_local_invariant_in_proof!` instead. This takes one extra parameter,
+/// an open-invariant credit, which you can get by calling
+/// `create_open_invariant_credit()` before you enter proof mode.
+///
+/// It's not legal to use `open_local_invariant!` in atomic contexts, i.e., within an
+/// atomic function or when another atomic invariant is open. This is because
+/// `open_local_invariant!` calls the `exec`-mode function
+/// `create_open_invariant_credit`, and you can't call non-atomic `exec`-mode functions in
+/// atomic contexts. So, in those contexts, you need to use
+/// `open_nested_local_invariant!` instead. This takes one extra parameter, an
+/// open-invariant credit, which you can get by calling `create_open_invariant_credit()`
+/// before entering the atomic context.
 ///
 /// ### Example
 ///
