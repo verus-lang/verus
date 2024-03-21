@@ -252,6 +252,8 @@ verus! {
 #[verifier::external_body]
 pub struct OpenInvariantCredit {}
 
+// It's intentional that `create_open_invariant_credit` uses `exec` mode. This prevents
+// creation of an infinite number of credits to open invariants infinitely often.
 #[cfg(verus_keep_ghost)]
 #[verifier::external_body]
 #[inline(always)]
