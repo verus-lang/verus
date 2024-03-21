@@ -326,12 +326,8 @@ impl AtomicInstCollector {
             )
             .secondary_span(&self.loops[0]));
         } else if self.non_atomics.len() > 0 {
-            let mut e = error(
-                inv_block_span,
-                format!(
-                    "{context:} cannot contain non-atomic operations"
-                ),
-            );
+            let mut e =
+                error(inv_block_span, format!("{context:} cannot contain non-atomic operations"));
             for i in 0..min(self.non_atomics.len(), 3) {
                 e = e.secondary_label(&self.non_atomics[i], "non-atomic here");
             }
@@ -708,7 +704,9 @@ fn check_expr_handle_mut_arg(
                             // to be able to do so, so that we can nest an opening of
                             // an invariant inside an opening of another invariant. So
                             // we special-case this call to not treat it as non-atomic.
-                            if function.x.name != crate::fun!("vstd" => "invariant", "create_open_invariant_credit") {
+                            if function.x.name
+                                != crate::fun!("vstd" => "invariant", "create_open_invariant_credit")
+                            {
                                 ai.add_non_atomic(&expr.span);
                             }
                         }

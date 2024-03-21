@@ -384,7 +384,6 @@ test_verify_one_file! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>) {
-            let credit = create_open_invariant_credit();
             open_local_invariant!(&i => inner => { // FAILS
                 let mut idx: u64 = 0;
                 while idx < 5 {
