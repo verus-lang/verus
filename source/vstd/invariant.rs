@@ -267,7 +267,7 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 #[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
 #[doc(hidden)]
 #[inline(always)]
-pub proof fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>) {
+pub proof fn spend_open_invariant_credit(tracked credit: Tracked<OpenInvariantCredit>) {
 }
 
 } // verus!

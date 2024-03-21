@@ -187,7 +187,7 @@ test_both! {
     open_inv_in_proof open_inv_in_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>)
+        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(tracked credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>)
           opens_invariants any
         {
           open_atomic_invariant_in_proof!(credit => &i => inner => {
@@ -315,7 +315,7 @@ test_both! {
     return_early_proof return_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
           open_atomic_invariant_in_proof!(credit => &i => inner => {
             return;
           });
@@ -327,7 +327,7 @@ test_both! {
     break_early_proof break_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
             open_atomic_invariant_in_proof!(credit => &i => inner => {
@@ -343,7 +343,7 @@ test_both! {
     continue_early_proof continue_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: Tracked<OpenInvariantCredit>, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
             open_atomic_invariant_in_proof!(credit => &i => inner => {
