@@ -1,6 +1,6 @@
 use crate::attributes::{
-    get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs,
-    parse_attrs, parse_attrs_opt, Attr, GhostBlockAttr,
+    get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, parse_attrs,
+    parse_attrs_opt, Attr, GhostBlockAttr,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -1169,8 +1169,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-    let expr_vattrs =
-        get_verifier_attrs(expr_attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
+    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
     if expr_vattrs.truncate {
         if !match &expr.kind {
             ExprKind::Cast(_, _) => true,
@@ -2357,7 +2356,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
         }
         StmtKind::Item(item_id) => {
             let attrs = bctx.ctxt.tcx.hir().attrs(item_id.hir_id());
-            let vattrs = get_verifier_attrs(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
+            let vattrs = bctx.ctxt.get_verifier_attrs(attrs)?;
             if vattrs.internal_reveal_fn {
                 dbg!(&item_id.hir_id());
                 unreachable!();
