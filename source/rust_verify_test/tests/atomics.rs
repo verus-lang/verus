@@ -346,7 +346,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_atomic_invariant_in_proof
     COMMON.to_string() + verus_code_str! {
-        pub proof fn do_nothing<A, B: InvariantPredicate<A, u8>>(tracked credit: Tracked<OpenInvariantCredit>, tracked i: &AtomicInvariant<A, u8, B>)
+        pub proof fn do_nothing<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: &AtomicInvariant<A, u8, B>)
             opens_invariants any
         {
             open_atomic_invariant_in_proof!(credit => i => inner => {
@@ -355,7 +355,7 @@ test_verify_one_file! {
             });
         }
         pub fn call_do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<&AtomicInvariant<A, u8, B>>) {
-            let credit = create_open_invariant_credit();
+            let Tracked(credit) = create_open_invariant_credit();
             proof { do_nothing(credit, i.get()); }
         }
     } => Ok(())
@@ -364,7 +364,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_local_invariant_in_proof
     COMMON.to_string() + verus_code_str! {
-        pub proof fn do_nothing<A, B: InvariantPredicate<A, u8>>(tracked credit: Tracked<OpenInvariantCredit>, tracked i: &LocalInvariant<A, u8, B>)
+        pub proof fn do_nothing<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: &LocalInvariant<A, u8, B>)
             opens_invariants any
         {
             open_local_invariant_in_proof!(credit => i => inner => {
@@ -373,7 +373,7 @@ test_verify_one_file! {
             });
         }
         pub fn call_do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<&LocalInvariant<A, u8, B>>) {
-            let credit = create_open_invariant_credit();
+            let Tracked(credit) = create_open_invariant_credit();
             proof { do_nothing(credit, i.get()); }
         }
     } => Ok(())

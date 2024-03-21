@@ -636,16 +636,7 @@ pub(crate) fn is_spend_open_invariant_credit_call(
                             )),
                         ..
                     },
-                    [
-                        Expr {
-                            kind:
-                                ExprKind::Path(QPath::Resolved(
-                                    None,
-                                    rustc_hir::Path { res: Res::Local(_), .. },
-                                )),
-                            ..
-                        },
-                    ],
+                    [Expr { .. }],
                 ),
             ..
         }) => {

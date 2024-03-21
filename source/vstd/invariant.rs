@@ -267,7 +267,7 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 #[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
 #[doc(hidden)]
 #[inline(always)]
-pub proof fn spend_open_invariant_credit(tracked credit: Tracked<OpenInvariantCredit>) {
+pub proof fn spend_open_invariant_credit(tracked credit: OpenInvariantCredit) {
 }
 
 } // verus!
@@ -371,7 +371,7 @@ macro_rules! open_atomic_invariant {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
+            $crate::invariant::open_atomic_invariant_internal!(credit.get() => $($tail)*)
         )
     };
 }
@@ -507,7 +507,7 @@ macro_rules! open_local_invariant {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
+            $crate::invariant::open_local_invariant_internal!(credit.get() => $($tail)*))
     };
 }
 
