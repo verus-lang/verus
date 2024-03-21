@@ -531,7 +531,7 @@ pub enum Constant {
     Char(char),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
@@ -687,7 +687,7 @@ pub enum AutospecUsage {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[to_node_impl(name = ">")]
 pub enum ExprX {
     /// Constant
