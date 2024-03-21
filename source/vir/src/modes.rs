@@ -329,7 +329,7 @@ impl AtomicInstCollector {
             let mut e = error(
                 inv_block_span,
                 format!(
-                    "{context:} must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)"
+                    "{context:} cannot contain non-atomic operations"
                 ),
             );
             for i in 0..min(self.non_atomics.len(), 3) {
@@ -703,7 +703,14 @@ fn check_expr_handle_mut_arg(
                         if function.x.attrs.atomic {
                             ai.add_atomic(&expr.span);
                         } else {
-                            ai.add_non_atomic(&expr.span);
+                            // A call to `create_open_invariant_credit` is a no-op, so
+                            // it's fine to include in an atomic block. And it's useful
+                            // to be able to do so, so that we can nest an opening of
+                            // an invariant inside an opening of another invariant. So
+                            // we special-case this call to not treat it as non-atomic.
+                            if function.x.name != crate::fun!("vstd" => "invariant", "create_open_invariant_credit") {
+                                ai.add_non_atomic(&expr.span);
+                            }
                         }
                     }
                 }

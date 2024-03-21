@@ -28,9 +28,8 @@ pub fn main() {
   let tracked j: AtomicInvariant<int, u32, ModPredicate> = AtomicInvariant::new(
       1, 7u32, 1);
 
-  let credit = create_open_invariant_credit();
   open_atomic_invariant!(&i => inner_i => {
-      open_nested_atomic_invariant!(credit => &j => inner_j => {
+      open_atomic_invariant!(&j => inner_j => {
           proof {
               let tracked tmp = inner_i;
               inner_i = inner_j;

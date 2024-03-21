@@ -15,8 +15,7 @@ macro_rules! test_both {
         test_verify_one_file! {
             #[test] $name2 ($test
                 .replace("AtomicInvariant", "LocalInvariant")
-                .replace("open_atomic_invariant", "open_local_invariant")
-                .replace("open_nested_atomic_invariant", "open_nested_local_invariant")) => $p
+                .replace("open_atomic_invariant", "open_local_invariant")) => $p
         }
     };
     ($name:ident $name2:ident $test:expr => $p:pat => $e:expr) => {
@@ -27,8 +26,7 @@ macro_rules! test_both {
         test_verify_one_file! {
             #[test] $name2 ($test
                 .replace("AtomicInvariant", "LocalInvariant")
-                .replace("open_atomic_invariant", "open_local_invariant")
-                .replace("open_nested_atomic_invariant", "open_nested_local_invariant")) => $p => $e
+                .replace("open_atomic_invariant", "open_local_invariant")) => $p => $e
         }
     };
 }
@@ -84,9 +82,8 @@ test_both! {
             requires
                 i.inv(0),
         {
-            let credit = create_open_invariant_credit();
             open_atomic_invariant!(&i => inner => { // FAILS
-                open_nested_atomic_invariant!(credit => &i => inner2 => {
+                open_atomic_invariant!(&i => inner2 => {
                     proof { inner2 = 0u8; }
                 });
                 proof { inner = 0u8; }
@@ -105,10 +102,9 @@ test_both! {
                 i.namespace() == 0,
                 j.namespace() == 1,
         {
-            let credit = create_open_invariant_credit();
             open_atomic_invariant!(&i => inner => {
                 proof { inner = 0u8; }
-                open_nested_atomic_invariant!(credit => &j => inner => {
+                open_atomic_invariant!(&j => inner => {
                     proof { inner = 1u8; }
                 });
             });
@@ -238,7 +234,7 @@ test_verify_one_file! {
                 exec_fn();
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
 }
 
 test_both! {
@@ -276,9 +272,8 @@ test_both! {
         use vstd::invariant::*;
 
         pub fn blah<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>, Tracked(j): Tracked<AtomicInvariant<A, u8, B>>) {
-          let credit = create_open_invariant_credit();
           open_atomic_invariant!(&i => inner => {
-            open_nested_atomic_invariant!(credit => &j => inner => {
+            open_atomic_invariant!(&j => inner => {
               return;
             });
           });
@@ -393,7 +388,7 @@ test_verify_one_file! {
             open_local_invariant!(&i => inner => { // FAILS
                 let mut idx: u64 = 0;
                 while idx < 5 {
-                    open_nested_local_invariant!(credit => &j => jnner => {
+                    open_local_invariant!(&j => jnner => {
                     });
                     idx = idx + 1;
                 }

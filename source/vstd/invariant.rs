@@ -356,15 +356,6 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 /// to use `open_atomic_invariant_in_proof!` instead. This takes one extra parameter,
 /// an open-invariant credit, which you can get by calling
 /// `create_open_invariant_credit()` before you enter proof mode.
-///
-/// It's not legal to use `open_atomic_invariant!` in atomic contexts, i.e., within an
-/// atomic function or when another atomic invariant is open. This is because
-/// `open_atomic_invariant!` calls the `exec`-mode function
-/// `create_open_invariant_credit`, and you can't call non-atomic `exec`-mode functions in
-/// atomic contexts. So, in those contexts, you need to use
-/// `open_nested_atomic_invariant!` instead. This takes one extra parameter, an
-/// open-invariant credit, which you can get by calling `create_open_invariant_credit()`
-/// before entering the atomic context.
 
 /// ### Example
 ///
@@ -379,15 +370,6 @@ macro_rules! open_atomic_invariant {
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! open_nested_atomic_invariant {
-    [$($tail:tt)*] => {
-        ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_atomic_invariant_internal!($($tail)*)
         )
     };
 }
@@ -419,7 +401,6 @@ pub use open_atomic_invariant;
 pub use open_atomic_invariant_in_proof;
 #[doc(hidden)]
 pub use open_atomic_invariant_internal;
-pub use open_nested_atomic_invariant;
 
 /// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
 /// value within.
@@ -510,15 +491,6 @@ pub use open_nested_atomic_invariant;
 /// an open-invariant credit, which you can get by calling
 /// `create_open_invariant_credit()` before you enter proof mode.
 ///
-/// It's not legal to use `open_local_invariant!` in atomic contexts, i.e., within an
-/// atomic function or when another atomic invariant is open. This is because
-/// `open_local_invariant!` calls the `exec`-mode function
-/// `create_open_invariant_credit`, and you can't call non-atomic `exec`-mode functions in
-/// atomic contexts. So, in those contexts, you need to use
-/// `open_nested_local_invariant!` instead. This takes one extra parameter, an
-/// open-invariant credit, which you can get by calling `create_open_invariant_credit()`
-/// before entering the atomic context.
-///
 /// ### Example
 ///
 /// TODO fill this in
@@ -534,14 +506,6 @@ macro_rules! open_local_invariant {
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
-    };
-}
-
-#[macro_export]
-macro_rules! open_nested_local_invariant {
-    [$($tail:tt)*] => {
-        ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_local_invariant_internal!($($tail)*))
     };
 }
 
@@ -571,4 +535,3 @@ pub use open_local_invariant;
 pub use open_local_invariant_in_proof;
 #[doc(hidden)]
 pub use open_local_invariant_internal;
-pub use open_nested_local_invariant;

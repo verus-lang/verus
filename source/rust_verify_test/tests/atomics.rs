@@ -58,7 +58,7 @@ test_verify_one_file! {
                 non_atomic_op();
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
 }
 
 test_verify_one_file! {
@@ -139,7 +139,7 @@ test_verify_one_file! {
             non_atomic_op();
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "atomic function must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)")
+    } => Err(err) => assert_vir_error_msg(err, "atomic function cannot contain non-atomic operations")
 }
 
 test_verify_one_file! {
@@ -178,9 +178,8 @@ test_verify_one_file! {
     #[test] two_atomic_fail_nest1
     COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
-            let credit = create_open_invariant_credit();
             open_local_invariant!(&j => inner => {
-                open_nested_atomic_invariant!(credit => &i => inner => {
+                open_atomic_invariant!(&i => inner => {
                     atomic_op();
                     atomic_op();
                 });
@@ -193,9 +192,8 @@ test_verify_one_file! {
     #[test] two_atomic_fail_nest2
     COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: AtomicInvariant<A, u8, B>, #[verifier::proof] j: LocalInvariant<A, u8, B>) {
-            let credit = create_open_invariant_credit();
             open_atomic_invariant!(&i => inner => {
-                open_nested_local_invariant!(credit => &j => inner => {
+                open_local_invariant!(&j => inner => {
                     atomic_op();
                     atomic_op();
                 });
@@ -216,7 +214,7 @@ test_verify_one_file! {
                 t();
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
 }
 
 test_verify_one_file! {
@@ -226,7 +224,7 @@ test_verify_one_file! {
         pub fn test_clos<F: Fn(u64) -> u64>(f: F) {
             f(5);
         }
-    } => Err(err) => assert_vir_error_msg(err, "atomic function must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)")
+    } => Err(err) => assert_vir_error_msg(err, "atomic function cannot contain non-atomic operations")
 }
 
 test_verify_one_file! {
@@ -295,7 +293,7 @@ test_verify_one_file! {
                 t();
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant must be atomic and thus cannot contain non-atomic operations or invocations of open_atomic_invariant! or open_local_invariant! (but open_nested_atomic_invariant! and open_nested_local_invariant! are ok)")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
 }
 
 test_verify_one_file! {
