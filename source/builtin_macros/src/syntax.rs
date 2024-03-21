@@ -24,11 +24,11 @@ use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
     Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
     ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemMethod,
-    Invariant, InvariantEnsures, InvariantNameSet, InvariantNameSetList, Item, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, ModeSpec,
-    ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends, Requires,
-    ReturnType, Signature, SignatureDecreases, SignatureInvariants, Stmt, Token, TraitItem,
-    TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet, InvariantNameSetList,
+    Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait,
+    ItemUnion, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment,
+    Publish, Recommends, Requires, ReturnType, Signature, SignatureDecreases, SignatureInvariants,
+    Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -1279,6 +1279,7 @@ impl Visitor {
     fn add_loop_specs(
         &mut self,
         stmts: &mut Vec<Stmt>,
+        invariant_except_breaks: Option<InvariantExceptBreak>,
         invariants: Option<Invariant>,
         invariant_ensures: Option<InvariantEnsures>,
         ensures: Option<Ensures>,
@@ -1286,14 +1287,39 @@ impl Visitor {
     ) {
         // TODO: wrap specs inside ghost blocks
         self.inside_ghost += 1;
-        if let Some(Invariant { token, exprs }) = invariants {
+        let old_style = if invariant_ensures.is_some() {
+            #[cfg(verus_keep_ghost)]
+            proc_macro::Diagnostic::spanned(
+                invariant_ensures.span().unwrap(),
+                proc_macro::Level::Warning,
+                "invariant_ensures is deprecated - \
+                    instead of 'invariant/invariant_ensures/ensures', \
+                    use 'invariant_except_break/invariant/ensures'",
+            )
+            .emit();
+            true
+        } else {
+            false
+        };
+        if let Some(InvariantExceptBreak { token, exprs }) = invariant_except_breaks {
             if exprs.exprs.len() > 0 {
+                stmts.push(stmt_with_semi!(token.span =>
+                    ::builtin::invariant_except_break([#exprs])
+                ));
+            }
+        }
+        if let Some(Invariant { token, exprs }) = invariants {
+            if exprs.exprs.len() > 0 && old_style {
+                stmts.push(stmt_with_semi!(token.span =>
+                    ::builtin::invariant_except_break([#exprs])
+                ));
+            } else if exprs.exprs.len() > 0 {
                 stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
             }
         }
         if let Some(InvariantEnsures { token, exprs }) = invariant_ensures {
             if exprs.exprs.len() > 0 {
-                stmts.push(stmt_with_semi!(token.span => ::builtin::invariant_ensures([#exprs])));
+                stmts.push(stmt_with_semi!(token.span => ::builtin::invariant([#exprs])));
             }
         }
         if let Some(Ensures { token, exprs, attrs }) = ensures {
@@ -1338,7 +1364,7 @@ impl Visitor {
         //              let ghost mut y = ::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
         //                  &VERUS_exec_iter);
         //              'label: loop
-        //                  invariant_ensures
+        //                  invariant
         //                      ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y,
         //                          &VERUS_exec_iter),
         //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
@@ -1464,7 +1490,7 @@ impl Visitor {
                     #print_hint,
                 ))
         ));
-        let invariant_ensure = if let Some(mut invariant) = invariant {
+        let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned!(inv.span() => {
                     let #pat =
@@ -1479,14 +1505,11 @@ impl Visitor {
                     invariant.exprs.exprs.insert(1, ghost_inv);
                 }
             }
-            Some(InvariantEnsures {
-                token: Token![invariant_ensures](span),
-                exprs: invariant.exprs,
-            })
+            Some(Invariant { token: Token![invariant](span), exprs: invariant.exprs })
         } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_none() {
-            Some(parse_quote_spanned!(span => invariant_ensures #exec_inv, #ghost_inv,))
+            Some(parse_quote_spanned!(span => invariant #exec_inv, #ghost_inv,))
         } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_some() {
-            Some(parse_quote_spanned!(span => invariant_ensures #exec_inv,))
+            Some(parse_quote_spanned!(span => invariant #exec_inv,))
         } else {
             None
         };
@@ -1499,7 +1522,7 @@ impl Visitor {
         } else {
             None
         };
-        self.add_loop_specs(&mut stmts, None, invariant_ensure, ensure, decreases);
+        self.add_loop_specs(&mut stmts, None, invariant_for, None, ensure, decreases);
         let body_exec = Expr::Verbatim(quote_spanned!(span => {
             #[allow(non_snake_case)]
             let mut VERUS_loop_next;
@@ -2568,23 +2591,39 @@ impl VisitMut for Visitor {
 
     fn visit_expr_while_mut(&mut self, expr_while: &mut ExprWhile) {
         visit_expr_while_mut(self, expr_while);
+        let invariant_except_breaks = self.take_ghost(&mut expr_while.invariant_except_break);
         let invariants = self.take_ghost(&mut expr_while.invariant);
         let invariant_ensures = self.take_ghost(&mut expr_while.invariant_ensures);
         let ensures = self.take_ghost(&mut expr_while.ensures);
         let decreases = self.take_ghost(&mut expr_while.decreases);
         let mut stmts: Vec<Stmt> = Vec::new();
-        self.add_loop_specs(&mut stmts, invariants, invariant_ensures, ensures, decreases);
+        self.add_loop_specs(
+            &mut stmts,
+            invariant_except_breaks,
+            invariants,
+            invariant_ensures,
+            ensures,
+            decreases,
+        );
         expr_while.body.stmts.splice(0..0, stmts);
     }
 
     fn visit_expr_loop_mut(&mut self, expr_loop: &mut ExprLoop) {
         visit_expr_loop_mut(self, expr_loop);
+        let invariant_except_breaks = self.take_ghost(&mut expr_loop.invariant_except_break);
         let invariants = self.take_ghost(&mut expr_loop.invariant);
         let invariant_ensures = self.take_ghost(&mut expr_loop.invariant_ensures);
         let ensures = self.take_ghost(&mut expr_loop.ensures);
         let decreases = self.take_ghost(&mut expr_loop.decreases);
         let mut stmts: Vec<Stmt> = Vec::new();
-        self.add_loop_specs(&mut stmts, invariants, invariant_ensures, ensures, decreases);
+        self.add_loop_specs(
+            &mut stmts,
+            invariant_except_breaks,
+            invariants,
+            invariant_ensures,
+            ensures,
+            decreases,
+        );
         expr_loop.body.stmts.splice(0..0, stmts);
     }
 

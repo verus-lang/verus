@@ -232,6 +232,8 @@ impl<A> Tracked<A> {
 struct Ghost<A> { a: PhantomData<A> }
 impl<A> Clone for Ghost<A> { fn clone(&self) -> Self { panic!() } }
 impl<A> Copy for Ghost<A> { }
+impl<A: Copy> Clone for Tracked<A> { fn clone(&self) -> Self { panic!() } }
+impl<A: Copy> Copy for Tracked<A> { }
 #[derive(Clone, Copy)] struct int;
 #[derive(Clone, Copy)] struct nat;
 struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }

@@ -1200,13 +1200,13 @@ struct PostConditionInfo {
 
 #[derive(Debug)]
 struct LoopInfo {
-    spinoff_loop: bool,
+    loop_isolation: bool,
     is_for_loop: bool,
     label: Option<String>,
     air_break_label: Ident,
     some_cond: bool,
-    invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>)>>,
-    invs_exit: Arc<Vec<(Span, Expr, Option<Arc<String>>)>>,
+    invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
+    invs_exit: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
 }
 
 struct State {
@@ -1377,6 +1377,7 @@ fn assume_other_fields_unchanged_inner(
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
             let datatype_fields = &get_variant(&ctx.global.datatypes[datatype].1, variant).fields;
+            let mut box_unbox_eq: Vec<Expr> = Vec::new();
             let dt =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
                     let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
@@ -1387,7 +1388,20 @@ fn assume_other_fields_unchanged_inner(
                         } else {
                             let op = UnaryOpr::Unbox(base_typ.clone());
                             let exprx = ExpX::UnaryOpr(op, base.clone());
-                            SpannedTyped::new(&base.span, base_typ, exprx)
+                            let unbox = SpannedTyped::new(&base.span, base_typ, exprx);
+                            if box_unbox_eq.len() == 0 {
+                                // trigger Box(Unbox(base)) so that has_type succeeds on base
+                                let box_op = UnaryOpr::Box(base_typ.clone());
+                                let exprx = ExpX::UnaryOpr(box_op, unbox.clone());
+                                let box_unbox = SpannedTyped::new(&base.span, &base.typ, exprx);
+                                let eq = ExprX::Binary(
+                                    air::ast::BinaryOp::Eq,
+                                    exp_to_expr(ctx, &box_unbox, expr_ctxt)?,
+                                    exp_to_expr(ctx, &base, expr_ctxt)?,
+                                );
+                                box_unbox_eq.push(Arc::new(eq));
+                            }
+                            unbox
                         }
                     } else {
                         base.clone()
@@ -1425,7 +1439,7 @@ fn assume_other_fields_unchanged_inner(
                         Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
                     }
                 })?;
-            Ok(dt.into_iter().flatten().collect())
+            Ok(dt.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
         }
     }
 }
@@ -1832,7 +1846,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             } else {
                 state.loop_infos.last().expect("inside loop")
             };
-            let is_air_break = *is_break && !loop_info.spinoff_loop;
+            let is_air_break = *is_break && !loop_info.loop_isolation;
             let mut stmts: Vec<Stmt> = Vec::new();
             if !ctx.checking_spec_preconditions() && !is_air_break {
                 assert!(!loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
@@ -1851,10 +1865,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     error_with_label(&stm.span, "loop invariant not satisfied", "at this continue")
                 };
-                for (span, inv, msg) in invs.iter() {
+                for (span, inv, msg, both) in invs.iter() {
                     let mut error = base_error.secondary_label(span, "failed this invariant");
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
+                    }
+                    if *is_break && *both {
+                        let msg = "(hint: if this is not supposed to be true at the break, \
+                            use 'invariant_except_break' for it instead of 'invariant', \
+                            and use 'ensures' for what is true at the break)";
+                        error = error.secondary_label(span, msg);
                     }
                     stmts.push(Arc::new(StmtX::Assert(error, None, inv.clone())));
                 }
@@ -1911,7 +1931,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::Loop {
-            spinoff_loop,
+            loop_isolation,
             is_for_loop,
             label,
             cond,
@@ -1920,7 +1940,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             typ_inv_vars,
             modified_vars,
         } => {
-            let spinoff_loop = *spinoff_loop;
+            let loop_isolation = *loop_isolation;
             let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
                 let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
                 let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -1930,8 +1950,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             } else {
                 (None, None, None)
             };
-            let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
-            let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
+            let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
+            let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
             let mut hint_message = None;
             for inv in invs.iter() {
                 let inv_exp =
@@ -1942,11 +1962,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     assert!(inv.at_entry);
                     assert!(inv.at_exit);
                 }
+                let both = inv.at_entry && inv.at_exit;
                 if inv.at_entry {
-                    invs_entry.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone()));
+                    invs_entry.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone(), both));
                 }
                 if inv.at_exit {
-                    invs_exit.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone()));
+                    invs_exit.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone(), both));
                 }
             }
             let invs_entry = Arc::new(invs_entry);
@@ -1962,7 +1983,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             };
 
             /*
-            When spinoff_loop = true:
+            When loop_isolation = true:
             Generate a separate SMT query for the loop body.
             Rationale: large functions with while loops tend to be slow to verify.
             Therefore, it's good to try to factor large functions
@@ -1983,7 +2004,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             /*
             Suppose we have:
                 loop invs { body }
-            When spinoff_loop = false, we generate this AIR:
+            When loop_isolation = false, we generate this AIR:
                 assert invs
                 breakable(break_label) {
                     havoc modified_vars
@@ -1995,7 +2016,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
                 // note that we don't assume the invs after the loop,
                 // because we may have come from a break statement where the invs don't hold
-            When spinoff_loop = true:
+            When loop_isolation = true:
                 We generate this AIR in the outer query:
                     assert invs
                     havoc modified_vars
@@ -2008,8 +2029,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     assert invs_entry
             Suppose we have:
                 while cond invs { body }
-            When spinoff_loop = false, this is represented as a "loop"; see the case above.
-            When spinoff_loop = true:
+            When loop_isolation = false, this is represented as a "loop"; see the case above.
+            When loop_isolation = true:
                 We generate this AIR in the outer query:
                     assert invs
                     havoc modified_vars
@@ -2027,7 +2048,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             */
 
             let mut air_body: Vec<Stmt> = state.static_prelude.clone();
-            if !spinoff_loop {
+            if !loop_isolation {
                 for x in modified_vars.iter() {
                     air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
                 }
@@ -2043,7 +2064,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let mut local = state.local_shared.clone();
-            if spinoff_loop {
+            if loop_isolation {
                 for (x, typ) in typ_inv_vars.iter() {
                     let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
                     if let Some(expr) = typ_inv {
@@ -2056,7 +2077,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // *x or *old(x) within the loop body or invariants.
             // Thus, we need to create a 'pre' snapshot and havoc all these variables
             // so that we can refer to either version of the variable within the body.
-            if spinoff_loop {
+            if loop_isolation {
                 air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
             }
             for (x, typ) in typ_inv_vars.iter() {
@@ -2071,23 +2092,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Assume invariants for the beginning of the loop body.
             // (These need to go after the above Havoc statements.)
-            for (_, inv, _) in invs_entry.iter() {
+            for (_, inv, _, _) in invs_entry.iter() {
                 air_body.push(Arc::new(StmtX::Assume(inv.clone())));
             }
 
             let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
             if let Some(cond_stmts) = &cond_stmts {
-                assert!(spinoff_loop);
+                assert!(loop_isolation);
                 air_body.append(&mut cond_stmts.clone());
             }
             if let Some(pos_assume) = pos_assume {
-                assert!(spinoff_loop);
+                assert!(loop_isolation);
                 air_body.push(pos_assume);
             }
             let air_break_label = crate::def::break_label(state.loop_label_counter);
             state.loop_label_counter += 1;
             let loop_info = LoopInfo {
-                spinoff_loop,
+                loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 air_break_label: air_break_label.clone(),
@@ -2100,7 +2121,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             state.loop_infos.pop();
 
             if !ctx.checking_spec_preconditions() {
-                for (span, inv, msg) in invs_entry.iter() {
+                for (span, inv, msg, _) in invs_entry.iter() {
                     let mut error = error(span, crate::def::INV_FAIL_LOOP_END);
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
@@ -2109,7 +2130,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     air_body.push(Arc::new(inv_stmt));
                 }
             }
-            if !spinoff_loop {
+            if !loop_isolation {
                 let loop_end = StmtX::Assume(air::ast_util::mk_false());
                 air_body.push(Arc::new(loop_end));
             }
@@ -2125,7 +2146,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let block_contents: Vec<Stmt> = vec![snapshot, assertion];
                 Arc::new(StmtX::Block(Arc::new(block_contents)))
             };
-            if spinoff_loop {
+            if loop_isolation {
                 let assertion = assertion.clone();
                 let query = Arc::new(QueryX { local: Arc::new(local), assertion });
                 let loop_cmd_context = CommandsWithContextX::new(
@@ -2147,7 +2168,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
             if !ctx.checking_spec_preconditions() {
-                for (span, inv, msg) in invs_entry.iter() {
+                for (span, inv, msg, _) in invs_entry.iter() {
                     let mut error = error(span, crate::def::INV_FAIL_LOOP_FRONT);
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
@@ -2156,12 +2177,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     stmts.push(Arc::new(inv_stmt));
                 }
             }
-            if !spinoff_loop {
+            if !loop_isolation {
                 let break_label = air_break_label.clone();
                 let loop_breakable = Arc::new(StmtX::Breakable(break_label, assertion));
                 stmts.push(loop_breakable);
             }
-            if spinoff_loop {
+            if loop_isolation {
                 for x in modified_vars.iter() {
                     stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
                 }
@@ -2174,18 +2195,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         }
                     }
                 }
-            }
-            for (_, inv, _) in invs_exit.iter() {
-                assert!(spinoff_loop);
-                let inv_stmt = StmtX::Assume(inv.clone());
-                stmts.push(Arc::new(inv_stmt));
+                for (_, inv, _, _) in invs_exit.iter() {
+                    let inv_stmt = StmtX::Assume(inv.clone());
+                    stmts.push(Arc::new(inv_stmt));
+                }
             }
             if let Some(cond_stmts) = &cond_stmts {
-                assert!(spinoff_loop);
+                assert!(loop_isolation);
                 stmts.append(&mut cond_stmts.clone());
             }
             if let Some(neg_assume) = neg_assume {
-                assert!(spinoff_loop);
+                assert!(loop_isolation);
                 stmts.push(neg_assume);
             }
             if ctx.debug {

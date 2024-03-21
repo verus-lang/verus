@@ -820,3 +820,112 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] at_patterns verus_code! {
+        enum Opt<V> {
+            Some(V),
+            None,
+        }
+        use Opt::Some;
+        use Opt::None;
+
+        fn test1(x: &Opt<Opt<u8>>) {
+            match x {
+                Some(None) => { }
+                Some(y @ Some(z)) => {
+                    assert(x == Some(Some(*z)));
+                    assert(y == Some(*z));
+                }
+                None => {
+                }
+            }
+        }
+
+        fn test2(x: &Opt<Opt<u8>>) {
+            match x {
+                Some(y @ Some(z)) => {
+                    assert(x == Some(Some(*z)));
+                    assert(y == Some(*z));
+                }
+                _ => {
+                    assert(x is None || x->Some_0 is None);
+                }
+            }
+        }
+
+        fn test3(x: &Opt<Opt<u8>>) {
+            match x {
+                Some(None) => { }
+                Some(y @ Some(z)) => {
+                    assert(x == Some(Some(*z)));
+                    assert(y == Some(*z));
+                    assert(false); // FAILS
+                }
+                None => {
+                }
+            }
+        }
+
+        spec fn some_fn(x: Opt<Opt<u8>>) -> (u8, Opt<u8>) {
+            match x {
+                Some(y @ Some(z)) => (z, y),
+                Some(y @ None) => (0, y),
+                None => (1, None),
+            }
+        }
+
+        fn test4() {
+            assert(some_fn(Some(Some(4))) === (4, Some(4)));
+            assert(some_fn(Some(None)) === (0, None));
+            assert(some_fn(None) === (1, None));
+        }
+
+        fn test5() {
+            assert(some_fn(Some(Some(4))) === (4, Some(4)));
+            assert(some_fn(Some(None)) === (0, None));
+            assert(some_fn(None) === (1, None));
+            assert(false); // FAILS
+        }
+
+        enum Foo {
+            Bar(u8, Opt<u8>),
+            Qux(Opt<u8>),
+            Zaz(bool),
+        }
+
+        proof fn test6(foo: Foo) {
+            match foo {
+                Foo::Bar(x, y) | Foo::Qux(y @ Some(x)) => {
+                    if foo is Bar {
+                        assert(x == foo->Bar_0);
+                        assert(y == foo->Bar_1);
+                    } else if foo is Qux {
+                        assert(foo == Foo::Qux(y));
+                        assert(foo == Foo::Qux(Some(x)));
+                    } else {
+                        assert(false);
+                    }
+                }
+                Foo::Qux(z @ _) => {
+                    assert(z is None);
+                }
+                Foo::Zaz(_) => {
+                }
+            }
+        }
+
+        proof fn test7(foo: Foo) {
+            match foo {
+                Foo::Bar(x, y) | Foo::Qux(y @ Some(x)) => {
+                    if foo is Bar {
+                        assert(y == foo->Qux_0); // FAILS
+                    } else if foo is Qux {
+                    } else {
+                    }
+                }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}

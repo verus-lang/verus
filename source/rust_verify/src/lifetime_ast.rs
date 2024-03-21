@@ -56,7 +56,7 @@ pub(crate) type Pattern = Box<(Span, PatternX)>;
 #[derive(Debug, Clone)]
 pub(crate) enum PatternX {
     Wildcard,
-    Binding(Id, Mutability),
+    Binding(Id, Mutability, Option<Pattern>),
     Box(Pattern),
     Or(Vec<Pattern>),
     Tuple(Vec<Pattern>, Option<usize>),

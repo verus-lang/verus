@@ -983,6 +983,7 @@ impl Hash for ExprLoop {
     {
         self.attrs.hash(state);
         self.label.hash(state);
+        self.invariant_except_break.hash(state);
         self.invariant.hash(state);
         self.invariant_ensures.hash(state);
         self.ensures.hash(state);
@@ -1202,6 +1203,7 @@ impl Hash for ExprWhile {
         self.attrs.hash(state);
         self.label.hash(state);
         self.cond.hash(state);
+        self.invariant_except_break.hash(state);
         self.invariant.hash(state);
         self.invariant_ensures.hash(state);
         self.ensures.hash(state);
@@ -1695,6 +1697,15 @@ impl Hash for Invariant {
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for InvariantEnsures {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for InvariantExceptBreak {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,

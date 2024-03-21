@@ -1964,22 +1964,17 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Match(..) => {
             panic!("internal error: Match should have been simplified by ast_simplify")
         }
-        ExprX::Loop { spinoff_loop, is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs } => {
             let is_for_loop = *is_for_loop;
-            let spinoff_loop = *spinoff_loop;
-            let invs = if is_for_loop && !spinoff_loop {
+            let loop_isolation = *loop_isolation;
+            let invs = if is_for_loop && !loop_isolation {
                 // The syntax macro doesn't have enough context to know whether ensures is needed,
                 // so we have to fix up the invariants here.
                 Arc::new(
                     invs.iter()
                         .filter_map(|inv| match inv.kind {
-                            LoopInvariantKind::Invariant => Some(inv.clone()),
-                            LoopInvariantKind::InvariantEnsures => {
-                                Some(crate::ast::LoopInvariant {
-                                    kind: LoopInvariantKind::Invariant,
-                                    inv: inv.inv.clone(),
-                                })
-                            }
+                            LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
+                            LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
                             LoopInvariantKind::Ensures => None,
                         })
                         .collect(),
@@ -1988,12 +1983,14 @@ pub(crate) fn expr_to_stm_opt(
                 invs.clone()
             };
             let has_break = loop_body_has_break(label, body);
-            let simple_invs = invs.iter().all(|inv| inv.kind == LoopInvariantKind::Invariant);
-            let simple_while = !has_break && simple_invs && cond.is_some() && spinoff_loop;
-            if !spinoff_loop && !simple_invs {
+            let simple_invs =
+                invs.iter().all(|inv| inv.kind == LoopInvariantKind::InvariantAndEnsures);
+            let simple_while = !has_break && simple_invs && cond.is_some() && loop_isolation;
+            if !loop_isolation && !simple_invs {
                 return Err(error(
                     &expr.span,
-                    "loop invariants with 'spinoff_loop(false)' cannot be ensures",
+                    "loop invariants with 'loop_isolation(false)' cannot be invariant_except_break \
+                        or ensures",
                 ));
             }
             let mut cnd = if let Some(cond) = cond {
@@ -2022,9 +2019,8 @@ pub(crate) fn expr_to_stm_opt(
                 let (rec, exp) = expr_to_pure_exp_check(ctx, state, &inv.inv)?;
                 check_recommends.extend(rec);
                 let (at_entry, at_exit) = match inv.kind {
-                    LoopInvariantKind::Invariant if simple_while => (true, true),
-                    LoopInvariantKind::Invariant => (true, false),
-                    LoopInvariantKind::InvariantEnsures => (true, true),
+                    LoopInvariantKind::InvariantExceptBreak => (true, false),
+                    LoopInvariantKind::InvariantAndEnsures => (true, true),
                     LoopInvariantKind::Ensures => (false, true),
                 };
                 let inv1 = crate::sst::LoopInv { inv: exp, at_entry, at_exit };
@@ -2046,14 +2042,14 @@ pub(crate) fn expr_to_stm_opt(
                     cnd = None;
                 }
             }
-            if !spinoff_loop {
-                // !spinoff_loop handling expects a "loop", not a "while"
+            if !loop_isolation {
+                // !loop_isolation handling expects a "loop", not a "while"
                 assert!(cnd.is_none());
             }
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
-                    spinoff_loop,
+                    loop_isolation,
                     is_for_loop,
                     label: label.clone(),
                     cond: cnd,

@@ -496,10 +496,10 @@ pub enum HeaderExprX {
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
+    /// Invariants (except breaks) on loops
+    InvariantExceptBreak(Exprs),
     /// Invariants on loops
     Invariant(Exprs),
-    /// Invariants + ensures on loops
-    InvariantEnsures(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
     Decreases(Exprs),
     /// Recursive function is uninterpreted when Expr is false
@@ -557,6 +557,11 @@ pub enum PatternX {
         name: VarIdent,
         mutable: bool,
     },
+    Binding {
+        name: VarIdent,
+        mutable: bool,
+        sub_pat: Pattern,
+    },
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
@@ -581,8 +586,11 @@ pub struct ArmX {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ToDebugSNode)]
 pub enum LoopInvariantKind {
-    Invariant,
-    InvariantEnsures,
+    /// holds at beginning of loop
+    InvariantExceptBreak,
+    /// holds at beginning of loop and after loop exit (including breaks)
+    InvariantAndEnsures,
+    /// holds at loop exit (including breaks)
     Ensures,
 }
 
@@ -766,7 +774,7 @@ pub enum ExprX {
     Match(Expr, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
-        spinoff_loop: bool,
+        loop_isolation: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<Expr>,

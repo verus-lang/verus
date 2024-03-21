@@ -52,18 +52,12 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, VarIdent), VirErr
     let Pat { hir_id: _, kind, span, default_binding_modes } = pat;
     unsupported_err_unless!(default_binding_modes, *span, "default_binding_modes");
     match kind {
-        PatKind::Binding(annotation, id, ident, pat) => {
+        PatKind::Binding(annotation, id, ident, _subpat) => {
             let BindingAnnotation(_, mutability) = annotation;
             let mutable = match mutability {
                 rustc_hir::Mutability::Mut => true,
                 rustc_hir::Mutability::Not => false,
             };
-            match pat {
-                None => {}
-                Some(p) => {
-                    unsupported_err!(p.span, "expected variable, found @ pattern")
-                }
-            }
             Ok((mutable, local_to_var(ident, id.local_id)))
         }
         _ => {
@@ -455,11 +449,18 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
-        PatKind::Binding(BindingAnnotation(_, Mutability::Not), canonical, x, None) => {
-            PatternX::Var { name: local_to_var(x, canonical.local_id), mutable: false }
-        }
-        PatKind::Binding(BindingAnnotation(_, Mutability::Mut), canonical, x, None) => {
-            PatternX::Var { name: local_to_var(x, canonical.local_id), mutable: true }
+        PatKind::Binding(BindingAnnotation(_, mutability), canonical, x, subpat) => {
+            let mutable = match mutability {
+                Mutability::Not => false,
+                Mutability::Mut => true,
+            };
+            let name = local_to_var(x, canonical.local_id);
+            match subpat {
+                None => PatternX::Var { name, mutable },
+                Some(subpat) => {
+                    PatternX::Binding { name, mutable, sub_pat: pattern_to_vir(bctx, subpat)? }
+                }
+            }
         }
         PatKind::Path(qpath) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
@@ -550,7 +551,6 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             }
             pat_or
         }
-        PatKind::Binding(_, _, _, Some(_)) => unsupported_err!(pat.span, "@ patterns", pat),
         PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
         PatKind::Lit(..) => unsupported_err!(pat.span, "literal patterns", pat),
         PatKind::Range(..) => unsupported_err!(pat.span, "range patterns", pat),
@@ -1128,8 +1128,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
     }
 
-    let spinoff_loop = || {
-        if let Some(flag) = expr_vattrs.spinoff_loop {
+    let loop_isolation = || {
+        if let Some(flag) = expr_vattrs.loop_isolation {
             flag
         } else if let Some(flag) =
             crate::attributes::get_spinoff_loop_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
@@ -1730,7 +1730,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let header = vir::headers::read_header(&mut body)?;
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
-                spinoff_loop: spinoff_loop(),
+                loop_isolation: loop_isolation(),
                 is_for_loop: expr_vattrs.for_loop,
                 label,
                 cond: None,
@@ -1791,7 +1791,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
-                spinoff_loop: spinoff_loop(),
+                loop_isolation: loop_isolation(),
                 is_for_loop: false,
                 label,
                 cond,

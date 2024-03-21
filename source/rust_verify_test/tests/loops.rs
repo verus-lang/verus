@@ -363,8 +363,8 @@ test_verify_one_file! {
         fn test() {
             let mut i: i8 = 0;
             loop
-                invariant i <= 9
-                invariant_ensures 0 <= i <= 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
                 ensures 1 <= i
             {
                 assert(i <= 9);
@@ -383,8 +383,8 @@ test_verify_one_file! {
         fn test() {
             let mut i: i8 = 10;
             loop
-                invariant i <= 9 // FAILS
-                invariant_ensures 0 <= i <= 10
+                invariant_except_break i <= 9 // FAILS
+                invariant 0 <= i <= 10
                 ensures 1 <= i
             {
                 assert(i <= 9);
@@ -403,8 +403,8 @@ test_verify_one_file! {
         fn test() {
             let mut i: i8 = 0;
             loop
-                invariant i <= 8 // FAILS
-                invariant_ensures 0 <= i <= 10
+                invariant_except_break i <= 8 // FAILS
+                invariant 0 <= i <= 10
                 ensures 1 <= i
             {
                 assert(i <= 9);
@@ -423,8 +423,8 @@ test_verify_one_file! {
         fn test() {
             let mut i: i8 = 0;
             loop
-                invariant i <= 9
-                invariant_ensures 0 <= i <= 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
                 ensures 1 <= i
             {
                 break; // FAILS
@@ -439,8 +439,8 @@ test_verify_one_file! {
         fn test() {
             let mut i: i8 = 0;
             loop
-                invariant i <= 9
-                invariant_ensures 0 <= i <= 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
                 ensures 1 <= i
             {
                 assert(i <= 9);
@@ -459,8 +459,8 @@ test_verify_one_file! {
         fn test() {
             let mut i: i8 = 0;
             loop
-                invariant i <= 9
-                invariant_ensures 0 <= i <= 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
                 ensures 1 <= i
             {
                 assert(i <= 9);
@@ -482,8 +482,8 @@ test_verify_one_file! {
         fn test() {
             let mut i: i8 = 0;
             loop
-                invariant i <= 9
-                invariant_ensures 0 <= i <= 10
+                invariant_except_break i <= 9
+                invariant 0 <= i <= 10
                 ensures 1 <= i
             {
                 assert(i <= 9);
@@ -673,11 +673,11 @@ test_verify_one_file! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
-                invariant_ensures i == 0
+                invariant i == 0
             {
                 i = i + 1;
                 'y: loop
-                    invariant_ensures i == 1
+                    invariant i == 1
                 {
                     break;
                 }
@@ -696,11 +696,11 @@ test_verify_one_file! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
-                invariant_ensures i == 0
+                invariant i == 0
             {
                 i = i + 1;
                 'y: loop
-                    invariant_ensures i == 1
+                    invariant i == 1
                 {
                     break 'y;
                 }
@@ -719,11 +719,11 @@ test_verify_one_file! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
-                invariant_ensures i == 0
+                invariant i == 0
             {
                 i = i + 1;
                 'y: loop
-                    invariant_ensures i == 1
+                    invariant i == 1
                 {
                     break 'x; // FAILS
                 }
@@ -742,11 +742,11 @@ test_verify_one_file! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
-                invariant_ensures i == 0
+                invariant i == 0
             {
                 i = i + 1;
                 'y: loop
-                    invariant_ensures i == 1
+                    invariant i == 1
                 {
                     break;
                 }
@@ -940,7 +940,7 @@ test_verify_one_file! {
             let mut n: u64 = 0;
             let mut iter = (0..10).into_iter();
             loop
-                invariant_ensures
+                invariant
                     iter.start <= 10,
                     iter.end == 10,
                     n == iter.start * 3,
@@ -963,7 +963,7 @@ test_verify_one_file! {
             let mut n: u64 = 0;
             let mut iter = (0..10).into_iter();
             loop
-                invariant_ensures
+                invariant
                     iter.start <= 10,
                     iter.end == 10,
                     n == iter.start * 3,

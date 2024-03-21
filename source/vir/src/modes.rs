@@ -391,6 +391,11 @@ fn add_pattern_rec(
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
+        PatternX::Binding { name: x, mutable: _, sub_pat } => {
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
+            decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
+            Ok(())
+        }
         PatternX::Tuple(patterns) => {
             for p in patterns.iter() {
                 add_pattern_rec(ctxt, record, typing, decls, mode, p, false)?;
@@ -1310,6 +1315,7 @@ fn check_expr_handle_mut_arg(
                 return Err(error(&inv.span, "Invariant must be Proof mode."));
             }
             let mut typing = typing.push_var_scope();
+
             typing.insert(&binder.name, Mode::Proof);
 
             if *atomicity == InvAtomicity::NonAtomic
