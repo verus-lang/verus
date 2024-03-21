@@ -360,6 +360,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 #[macro_export]
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
+        #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
@@ -500,6 +501,7 @@ pub use open_nested_atomic_invariant;
 #[macro_export]
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
+        #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
             $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
