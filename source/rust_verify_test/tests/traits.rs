@@ -4,14 +4,13 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_1 verus_code! {
+    #[test] supported_1 verus_code! {
         trait T1 {}
         trait T2 {
-            // need to add A: T1 to termination checking before supporting this
             fn f<A: T1>(a: &A) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, ": trait generics")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -232,9 +231,7 @@ test_verify_one_file! {
             fn VERUS_SPEC__f<A>(&self, x: A) -> bool { no_method_body() }
             fn f<B>(&self, x: B) -> bool; // error: A and B have different names
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics")
-    // when generics on trait methods are supported, this should be the error message:
-    // } => Err(err) => assert_vir_error_msg(err, "method specification has different type parameters or bounds from method")
+    } => Err(err) => assert_vir_error_msg(err, "method specification has different type parameters from method")
 }
 
 test_verify_one_file! {
@@ -428,7 +425,7 @@ test_verify_one_file! {
             let s = S {};
             s.f(&s);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
 test_verify_one_file! {
@@ -759,7 +756,7 @@ test_verify_one_file! {
             let s = S {};
             s.f(&s);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
 test_verify_one_file! {
@@ -1395,6 +1392,50 @@ test_verify_one_file! {
             f1(&s); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_generic_4 verus_code! {
+        trait U1 {}
+        trait U2 {}
+
+        trait T<A0, A1: U1> {
+            fn f<A2: U2 + Copy, A3>(a1: &A1, a2: &A2, a3: &A3) -> (r: (A2, A2))
+                requires
+                    a1 == a1,
+                    a2 == a2,
+                    a3 == a3,
+                ensures
+                    r.0 == *a2
+                ;
+        }
+
+        impl U1 for bool {}
+        impl U1 for u64 {}
+        impl U2 for u16 {}
+        impl U2 for bool {}
+
+        impl T<int, bool> for u8 {
+            fn f<A2x: U2 + Copy, A3x>(a1: &bool, a2: &A2x, a3: &A3x) -> (A2x, A2x) {
+                (*a2, *a2)
+            }
+        }
+
+        struct S<B>(B);
+        impl<B: U1> T<int, B> for S<B> {
+            fn f<A2x: U2 + Copy, A3x>(a1: &B, a2: &A2x, a3: &A3x) -> (A2x, A2x) {
+                (*a2, *a2)
+            }
+        }
+
+        fn test() {
+            let (x, y) = <u8 as T<int, bool>>::f::<u16, u32>(&true, &100u16, &200u32);
+            assert(x == 100);
+            let (x, y) = <S::<u64> as T<int, u64>>::f::<bool, u8>(&300u64, &true, &10u8);
+            assert(x);
+            assert(y); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {

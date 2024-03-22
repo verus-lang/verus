@@ -4,18 +4,6 @@ mod common;
 use common::*;
 
 // Note: this file is simply traits_modules.rs with pub replaced with pub(crate)
-test_verify_one_file! {
-    #[test] test_not_yet_supported_1 verus_code! {
-        mod M1 { pub(crate) trait T1 {} }
-        mod M2 {
-            trait T2 {
-                // need to add A: T1 to termination checking before supporting this
-                fn f<A: crate::M1::T1>(a: &A) {
-                }
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, ": trait generics")
-}
 
 test_verify_one_file! {
     #[test] test_supported_8 verus_code! {
@@ -305,7 +293,7 @@ test_verify_one_file! {
                 s.f(&s);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
 }
 
 test_verify_one_file! {
