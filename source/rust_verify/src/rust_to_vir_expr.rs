@@ -640,8 +640,7 @@ pub(crate) fn is_spend_open_invariant_credit_call(
                 ),
             ..
         }) => {
-            let verus_item = verus_items.id_to_name.get(&fun_id);
-            verus_item
+            verus_items.id_to_name.get(&fun_id)
                 == Some(&VerusItem::OpenInvariantBlock(
                     OpenInvariantBlockItem::SpendOpenInvariantCredit,
                 ))

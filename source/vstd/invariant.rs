@@ -288,7 +288,6 @@ pub proof fn spend_open_invariant_credit(tracked credit: OpenInvariantCredit) {
 //
 //  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
 //  last the entire block.
-
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
