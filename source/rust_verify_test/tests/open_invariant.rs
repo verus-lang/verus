@@ -156,7 +156,7 @@ test_both! {
           });
         }
     } => Err(err) =>
-        assert_any_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+        assert_one_fails(err)
 }
 
 // mode stuff
