@@ -558,7 +558,19 @@ pub fn func_decl_to_air(
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
             if ctx.funcs_with_ensure_predicate[method] {
                 let ens = prefix_ensures(&fun_to_air_ident(&method));
-                (true, Some((ens, trait_typ_args.clone())))
+                let mut typ_args = (**trait_typ_args).clone();
+                let num_trait_and_method_typ_params = ctx.func_map[method].x.typ_params.len();
+                let num_method_typ_params = num_trait_and_method_typ_params - trait_typ_args.len();
+                let num_our_total_typ_params = function.x.typ_params.len();
+                let skip_to_our_method_typ_params =
+                    num_our_total_typ_params - num_method_typ_params;
+                // Add the arguments for the method's type parameters, skipping over our impl params
+                for method_typ_param in
+                    function.x.typ_params.iter().skip(skip_to_our_method_typ_params)
+                {
+                    typ_args.push(Arc::new(TypX::TypParam(method_typ_param.clone())));
+                }
+                (true, Some((ens, Arc::new(typ_args))))
             } else {
                 (true, None)
             }

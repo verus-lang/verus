@@ -404,7 +404,6 @@ fn check_item<'tcx>(
                                 } else {
                                     FunctionKind::Static
                                 };
-                                let n = vir.functions.len();
                                 check_item_fn(
                                     ctxt,
                                     &mut vir.functions,
@@ -419,26 +418,6 @@ fn check_item<'tcx>(
                                     CheckItemFnEither::BodyId(body_id),
                                     external_fn_specification_trait_method_impls,
                                 )?;
-                                if trait_path_typ_args.is_some() && vir.functions.len() != n {
-                                    let (item_generics_params, _item_typ_bounds) =
-                                        check_generics_bounds_with_polarity(
-                                            ctxt.tcx,
-                                            &ctxt.verus_items,
-                                            impl_item.generics.span,
-                                            Some(impl_item.generics),
-                                            false,
-                                            impl_item.owner_id.to_def_id(),
-                                            None,
-                                            Some(&mut *ctxt.diagnostics.borrow_mut()),
-                                        )?;
-                                    // TODO: support inherit_fn_ens
-                                    unsupported_err_unless!(
-                                        item_generics_params.len() == 0
-                                            || vir.functions.last().unwrap().x.ensure.len() == 0,
-                                        impl_item.generics.span,
-                                        "trait generics"
-                                    );
-                                }
                             }
                             _ => unsupported_err!(
                                 item.span,
