@@ -151,7 +151,7 @@ fn func_body_to_air(
     // Use expr_to_pure_exp_skip_checks here
     // because spec precondition checking is performed as a separate query
     let body_exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
-    let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
+    let body_exp = state.finalize_exp(ctx, diagnostics, &state.fun_ssts, &body_exp)?;
     let inline =
         SstInline { typ_params: function.x.typ_params.clone(), do_inline: function.x.attrs.inline };
     let info = SstInfo {
@@ -219,7 +219,7 @@ fn func_body_to_air(
 
         // Skip checks because we check decrease_when below
         let exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut check_state, req)?;
-        let exp = check_state.finalize_exp(ctx, &check_state.fun_ssts, &exp)?;
+        let exp = check_state.finalize_exp(ctx, diagnostics, &check_state.fun_ssts, &exp)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         // conditions on value arguments:
         def_reqs.push(expr);
@@ -696,7 +696,7 @@ pub fn func_decl_to_air(
             let mut state = crate::ast_to_sst::State::new(diagnostics);
             let exp =
                 crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
-            let exp = state.finalize_exp(ctx, &fun_ssts, &exp)?;
+            let exp = state.finalize_exp(ctx, diagnostics, &fun_ssts, &exp)?;
             state.finalize();
 
             // Add forall-binders for each type param
@@ -1032,7 +1032,7 @@ pub fn func_def_to_air(
 
         let is_singular = function.x.attrs.integer_ring;
         let expr_ctxt = ExprCtxt::new_mode_singular(ExprMode::Body, is_singular);
-        let exp = state.finalize_exp(ctx, &state.fun_ssts, &exp)?;
+        let exp = state.finalize_exp(ctx, diagnostics, &state.fun_ssts, &exp)?;
         let air_expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
         inv_spec_air_exprs
             .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
