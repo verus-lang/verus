@@ -155,8 +155,7 @@ test_both! {
           open_atomic_invariant!(&i => inner => { // FAILS
           });
         }
-    } => Err(err) =>
-        assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 // mode stuff
