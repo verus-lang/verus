@@ -35,6 +35,14 @@ impl<T, A: Allocator> View for Vec<T, A> {
     spec fn view(&self) -> Seq<T>;
 }
 
+impl<T: DeepView, A: Allocator> DeepView for Vec<T, A> {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        Seq::new(self.view().len(), |i: int| self[i].deep_view())
+    }
+}
+
 impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     #[verifier(inline)]
     open spec fn spec_len(&self) -> nat {
@@ -207,6 +215,10 @@ pub fn ex_vec_split_off<T, A: Allocator + core::clone::Clone>(
     vec.split_off(at)
 }
 
+pub open spec fn vec_clone_trigger<T, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>) -> bool {
+    true
+}
+
 #[verifier::external_fn_specification]
 pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Vec<T, A>)
     ensures
@@ -214,9 +226,25 @@ pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Ve
         forall|i|
             #![all_triggers]
             0 <= i < vec.len() ==> call_ensures(T::clone, (&vec[i],), res[i]),
+        vec_clone_trigger(*vec, res),
+        vec@ =~= res@ ==> vec@ == res@,
 {
     vec.clone()
 }
+
+/*
+//TODO: improve pruning so that this is pruned away unless vec_clone_trigger is used
+#[verifier::external_body]
+#[verifier::broadcast_forall]
+pub proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>)
+    requires
+        #[trigger] vec_clone_trigger(v1, v2),
+        v1.deep_view() =~= v2.deep_view(),
+    ensures
+        v1.deep_view() == v2.deep_view(),
+{
+}
+*/
 
 #[verifier::external_fn_specification]
 pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)

@@ -557,9 +557,23 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
         PatKind::Binding(ann, hir_id, x, None) => {
-            let id = state.local(&x.to_string(), hir_id.local_id.index());
-            let BindingAnnotation(_, mutability) = ann;
-            mk_pat(PatternX::Binding(id, mutability.to_owned()))
+            if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
+                mk_pat(PatternX::Wildcard)
+            } else {
+                let id = state.local(&x.to_string(), hir_id.local_id.index());
+                let BindingAnnotation(_, mutability) = ann;
+                mk_pat(PatternX::Binding(id, mutability.to_owned(), None))
+            }
+        }
+        PatKind::Binding(ann, hir_id, x, Some(subpat)) => {
+            if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
+                erase_pat(ctxt, state, subpat)
+            } else {
+                let id = state.local(&x.to_string(), hir_id.local_id.index());
+                let BindingAnnotation(_, mutability) = ann;
+                let subpat = erase_pat(ctxt, state, subpat);
+                mk_pat(PatternX::Binding(id, mutability.to_owned(), Some(subpat)))
+            }
         }
         PatKind::Path(qpath) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
@@ -1026,7 +1040,16 @@ fn erase_inv_block<'tcx>(
         crate::rust_to_vir_expr::invariant_block_open(&ctxt.verus_items, open_stmt)
             .expect("invariant_block_open");
     let pat_typ = erase_ty(ctxt, state, &ctxt.types().node_type(inner_pat.hir_id));
-    let inner_pat = erase_pat(ctxt, state, inner_pat);
+    let inner_pat = match &inner_pat.kind {
+        PatKind::Binding(ann, hir_id, x, None) => {
+            let id = state.local(&x.to_string(), hir_id.local_id.index());
+            let BindingAnnotation(_, mutability) = ann;
+            Box::new((inner_pat.span, PatternX::Binding(id, mutability.to_owned(), None)))
+        }
+        _ => {
+            panic!("unexpected pattern kind for erase_inv_block");
+        }
+    };
     let arg = erase_expr(ctxt, state, false, arg).expect("erase_inv_block arg");
     let mid_body = erase_stmt(ctxt, state, mid_stmt);
     Box::new((span, ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, mid_body)))
@@ -2450,6 +2473,11 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         _bounds,
                         _trait_items,
                     ) => {
+                        let attrs = tcx.hir().attrs(item.hir_id());
+                        let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                        if vattrs.is_external(&ctxt.cmd_line_args) {
+                            continue;
+                        }
                         // We only need traits with associated type declarations.
                         // Process traits early so we can see which traits we need.
                         let id = item.owner_id.to_def_id();
@@ -2577,6 +2605,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             continue;
                         }
                         _ => {
+                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                                continue;
+                            }
                             dbg!(item);
                             panic!("unexpected item");
                         }

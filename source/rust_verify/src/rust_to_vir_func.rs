@@ -273,7 +273,6 @@ pub(crate) fn handle_external_fn<'tcx>(
         poly_sig1.skip_binder().bound_vars().len(),
         poly_sig2.skip_binder().bound_vars().len(),
     ) else {
-        println!("hi");
         return err_span(
             sig.span,
             format!(
@@ -296,7 +295,6 @@ pub(crate) fn handle_external_fn<'tcx>(
     poly_sig1.abi = poly_sig2.abi;
 
     if poly_sig1 != poly_sig2 {
-        println!("hi2");
         return err_span(
             sig.span,
             format!(
@@ -1322,11 +1320,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let fuel = get_fuel(&vattrs);
-    if vattrs.is_external(&ctxt.cmd_line_args) {
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.external_functions.push(name);
-        return Ok(());
-    }
     let body = find_body(ctxt, body_id);
     let mut vir_body = body_to_vir(ctxt, id, body_id, body, body_mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
@@ -1404,7 +1397,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");
     }
-    if vattrs.external {
+    if vattrs.is_external(&ctxt.cmd_line_args) {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(());

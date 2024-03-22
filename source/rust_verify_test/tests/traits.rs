@@ -3302,3 +3302,75 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] trait_encoding_soundness_experiments_1 verus_code! {
+        mod m1 {
+            use super::*;
+
+            pub struct S { v: int }
+
+            pub trait P: Sized {
+                spec fn k(self) -> int;
+            }
+
+            impl P for S {
+                closed spec fn k(self) -> int {
+                    200
+                }
+            }
+
+            impl P for &S {
+                closed spec fn k(self) -> int {
+                    300
+                }
+            }
+
+            pub trait Q<TP: P> {
+                open spec fn e(tp: TP) -> int {
+                    tp.k()
+                }
+            }
+
+            pub struct QQ { }
+
+            impl Q<S> for QQ { }
+
+            impl Q<&S> for QQ { }
+
+            proof fn p_prop_0<TQ: Q<S>>(s: S)
+                ensures #[trigger] TQ::e(s) == 200 {
+                assert(s.k() == 200);
+                assert(TQ::e(s) == 200); // FAILS
+            }
+
+            #[verifier::broadcast_forall]
+            pub proof fn p_prop_1(s: S)
+                ensures #[trigger] QQ::e(s) == 200 {}
+
+            #[verifier::broadcast_forall]
+            pub proof fn p_prop_2(s: S)
+                ensures #[trigger] QQ::e(&s) == 300 {}
+        }
+
+        mod m2 {
+            use super::*;
+            use super::m1::*;
+
+            proof fn test1(s: S)
+            {
+                reveal(p_prop_1);
+                reveal(p_prop_2);
+                assert(QQ::e(s) == 200);
+                assert(QQ::e(&s) == 300);
+            }
+
+            proof fn test2(s: S)
+            {
+                reveal(p_prop_1);
+                reveal(p_prop_2);
+                assert(QQ::e(s) == 300); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

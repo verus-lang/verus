@@ -122,7 +122,7 @@ impl EmitState {
                 if lines[line - offset].positions.len() > 0 {
                     break line - offset;
                 }
-            } else if line + offset <= lines.len() {
+            } else if line + offset < lines.len() {
                 if lines[line + offset].positions.len() > 0 {
                     break line + offset;
                 }
@@ -239,7 +239,7 @@ fn un_mut_pattern(pat: &Pattern) -> Pattern {
     let (span, patx) = &**pat;
     let patx = match patx {
         PatternX::Wildcard => PatternX::Wildcard,
-        PatternX::Binding(x, _) => PatternX::Binding(x.clone(), Mutability::Not),
+        PatternX::Binding(x, _, s) => PatternX::Binding(x.clone(), Mutability::Not, s.clone()),
         PatternX::Box(p) => PatternX::Box(un_mut_pattern(p)),
         PatternX::Or(ps) => PatternX::Or(ps.iter().map(un_mut_pattern).collect()),
         PatternX::Tuple(ps, dotdot) => {
@@ -266,11 +266,16 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
         PatternX::Wildcard => {
             state.write("_");
         }
-        PatternX::Binding(x, m) => {
+        PatternX::Binding(x, m, subpat) => {
             if *m == Mutability::Mut {
                 state.write("mut ");
             }
             state.write(x.to_string());
+            if let Some(subpat) = subpat {
+                state.write(" @ (");
+                emit_pattern(state, subpat);
+                state.write(")");
+            }
         }
         PatternX::Box(p) => {
             state.write("box ");
