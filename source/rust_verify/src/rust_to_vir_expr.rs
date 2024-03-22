@@ -972,12 +972,20 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     adjustment_idx - 1,
                 )
             } else {
-                unsupported_err!(
-                    expr.span,
-                    format!(
-                        "&mut dereference in this position (note: &mut dereference is implicit here)"
-                    )
+                // TODO(&mut)
+                expr_to_vir_with_adjustments(
+                    bctx,
+                    expr,
+                    current_modifier,
+                    adjustments,
+                    adjustment_idx - 1,
                 )
+                // TODO(&mut) unsupported_err!(
+                // TODO(&mut)    expr.span,
+                // TODO(&mut)    format!(
+                // TODO(&mut)        "&mut dereference in this position (note: &mut dereference is implicit here)"
+                // TODO(&mut)    )
+                // TODO(&mut) )
             }
         }
         Adjust::Borrow(AutoBorrow::RawPtr(_)) => {
@@ -1423,11 +1431,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if current_modifier.deref_mut {
                 // * &mut cancels out
-                let mut new_modifier = current_modifier;
-                new_modifier.deref_mut = false;
-                expr_to_vir_inner(bctx, e, new_modifier)
+                expr_to_vir_inner(bctx, e, ExprModifier { deref_mut: false, ..current_modifier })
             } else {
-                unsupported_err!(expr.span, format!("&mut dereference in this position"))
+                let expr =
+                    expr_to_vir_inner(bctx, e, ExprModifier { addr_of: true, ..current_modifier })?;
+                Ok(bctx.spanned_typed_new(e.span, &expr.typ.clone(), ExprX::Loc(expr)))
             }
         }
         ExprKind::AddrOf(BorrowKind::Raw, _, _) => {

@@ -604,6 +604,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                     )
                 }
             }
+            DirectiveItem::Resolve => {
+                record_resolve_call(bctx, expr);
+                unsupported_err_unless!(args_len == 1, expr.span, "expected resolve", &args);
+                let ExprKind::Path(qpath) = &args[0].kind else {
+                    unsupported_err!(expr.span, "resolve with this argument", &args[0]);
+                };
+                let res = bctx.types.qpath_res(&qpath, expr.hir_id);
+                if let Res::Local(id) = res {
+                    let Node::Pat(pat) = tcx.hir().get(id) else {
+                        unsupported_err!(expr.span, format!("Path {:?}", args[0]));
+                    };
+                    mk_expr(ExprX::Resolve(pat_to_var(pat)?))
+                } else {
+                    err_span(args[0].span, "expected local variable for resolve")
+                }
+            }
         },
         VerusItem::Expr(expr_item) => match expr_item {
             ExprItem::Choose => {
@@ -1830,21 +1846,24 @@ fn mk_vir_args<'tcx>(
     assert!(raw_inputs.len() == args.len());
     args.iter()
         .zip(raw_inputs)
-        .map(|(arg, raw_param)| {
-            let is_mut_ref_param = match raw_param.kind() {
-                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                _ => false,
-            };
-            if is_mut_ref_param {
-                let expr = expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of: true })?;
-                Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
-            } else {
-                expr_to_vir(
-                    bctx,
-                    arg,
-                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
-                )
-            }
+        // TODO(&mut) remove?
+        .map(|(arg, _raw_param)| {
+            // let is_mut_ref_param = match raw_param.kind() {
+            //     TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
+            //     _ => false,
+            // };
+            // if is_mut_ref_param {
+            // let expr = expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of: false })?;
+            // Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
+            // } else {
+
+            // TODO(&mut) need different modifier for argument?
+            expr_to_vir(
+                bctx,
+                arg,
+                is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
+            )
+            // }
         })
         .collect::<Result<Vec<_>, _>>()
 }
@@ -2028,6 +2047,12 @@ fn record_compilable_operator<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, op: Comp
 
 fn record_spec_fn_allow_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
     let resolved_call = ResolvedCall::SpecAllowProofArgs;
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+}
+
+fn record_resolve_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
+    let resolved_call = ResolvedCall::Resolve;
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
 }

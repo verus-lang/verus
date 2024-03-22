@@ -119,7 +119,7 @@ use crate::util::error;
 use crate::verus_items::VerusItems;
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::VirErr;
@@ -128,7 +128,7 @@ use vir::messages::{message_bare, Message, MessageLevel};
 const LDBG_PREFIX: &str = "!!!ldbg!!! ";
 
 #[allow(unused)]
-fn ldbg_prefix_all_lines(s: String) -> String {
+pub(crate) fn ldbg_prefix_all_lines(s: String) -> String {
     let mut s2 = s.lines().map(|l| LDBG_PREFIX.to_string() + l).fold(
         String::with_capacity(s.len()),
         |mut acc, l| {
@@ -142,7 +142,7 @@ fn ldbg_prefix_all_lines(s: String) -> String {
 }
 
 // Derived from rust's std::dbg!
-#[macro_export]
+#[allow(unused_macros)]
 macro_rules! ldbg {
     // NOTE: We cannot use `concat!` to make a static string as a format argument
     // of `eprintln!` because `file!` could contain a `{` or
@@ -167,6 +167,26 @@ macro_rules! ldbg {
     };
 }
 
+#[allow(unused_imports)]
+pub(crate) use ldbg;
+
+#[allow(unused_macros)]
+macro_rules! leprintln {
+    ($val:expr) => {
+        match $val {
+            tmp => {
+                let __string =
+                    ::std::format!("[lifetime {}:{}] = {}", ::std::file!(), ::std::line!(), &tmp);
+                ::std::eprintln!("{}", $crate::lifetime::ldbg_prefix_all_lines(__string));
+                tmp
+            }
+        }
+    };
+}
+
+#[allow(unused_imports)]
+pub(crate) use leprintln;
+
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
 pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
@@ -177,13 +197,13 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
                 match owner.node() {
                     OwnerNode::Item(item) => match &item.kind {
                         rustc_hir::ItemKind::Fn(..) => {
-                            tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                            tcx.ensure().mir_borrowck(item.owner_id.def_id);
                         }
                         ItemKind::Impl(impll) => {
                             for item in impll.items {
                                 match item.kind {
                                     AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
+                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id);
                                     }
                                     _ => {}
                                 }
@@ -200,6 +220,7 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 
 const PRELUDE: &str = "\
 #![feature(box_patterns)]
+#![feature(rustc_attrs)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -212,10 +233,13 @@ const PRELUDE: &str = "\
 #![allow(unconditional_recursion)]
 #![allow(unused_mut)]
 #![allow(unused_labels)]
+#![allow(internal_features)]
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 fn op<A, B>(a: A) -> B { panic!() }
+#[rustc_diagnostic_item = \"verus::lifetime::resolve\"]
+fn resolve<A>(a: A) { panic!() }
 fn static_ref<T>(t: T) -> &'static T { panic!() }
 fn tracked_new<T>(t: T) -> Tracked<T> { panic!() }
 fn tracked_exec_borrow<'a, T>(t: &'a T) -> &'a Tracked<T> { panic!() }
@@ -281,6 +305,17 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
+    fn config(&mut self, config: &mut rustc_interface::Config) {
+        config.override_queries = Some(|_session, providers, _| {
+            providers.mir_borrowck = |tcx, def_id| {
+                let borrow_check_result =
+                    (rustc_interface::DEFAULT_QUERY_PROVIDERS.mir_borrowck)(tcx, def_id);
+                crate::lifetime_resolve::check_resolves(tcx, def_id, &borrow_check_result);
+                borrow_check_result
+            };
+        });
+    }
+
     fn after_parsing<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
@@ -315,19 +350,19 @@ impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct DiagnosticSpan {
-    line_start: usize,
-    line_end: usize,
-    column_start: usize,
-    column_end: usize,
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct DiagnosticSpan {
+    pub(crate) line_start: usize,
+    pub(crate) line_end: usize,
+    pub(crate) column_start: usize,
+    pub(crate) column_end: usize,
 }
 
-#[derive(Debug, Deserialize)]
-struct Diagnostic {
-    message: String,
-    level: String,
-    spans: Vec<DiagnosticSpan>,
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Diagnostic {
+    pub(crate) message: String,
+    pub(crate) level: String,
+    pub(crate) spans: Vec<DiagnosticSpan>,
 }
 
 pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
@@ -374,6 +409,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         .args(&rustc_args[..])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        // TODO(&mut)
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("could not execute lifetime rustc process");

@@ -1522,6 +1522,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
+        // TODO(&mut) ???
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
         ExecFnByName(_) => ok,
     };

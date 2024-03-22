@@ -2303,6 +2303,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let stmt = Arc::new(StmtX::Assume(exprx));
             vec![stmt]
         }
+        StmX::Resolve(id) => {
+            todo!("TODO(&mut)")
+        }
         StmX::Block(stms) => {
             if ctx.debug {
                 state.push_scope();
@@ -2535,6 +2538,8 @@ pub(crate) fn body_stm_to_air(
         &mut _modified,
         stm,
     );
+
+    // TODO dbg!(&unresolved);
 
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
 

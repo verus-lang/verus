@@ -797,6 +797,8 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
     AirStmt(Arc<String>),
+    /// Resolve a &mut in a variable
+    Resolve(VarIdent),
 }
 
 /// Statement, similar to rustc_hir::Stmt

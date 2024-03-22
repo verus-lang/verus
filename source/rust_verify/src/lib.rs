@@ -9,23 +9,28 @@ extern crate rustc_driver;
 
 extern crate rustc_arena;
 extern crate rustc_ast;
+extern crate rustc_borrowck;
 extern crate rustc_data_structures;
 extern crate rustc_error_messages;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_hir_analysis;
 extern crate rustc_hir_pretty;
+extern crate rustc_index;
 extern crate rustc_infer;
 extern crate rustc_interface;
 extern crate rustc_lint;
 extern crate rustc_macros;
 extern crate rustc_middle;
 extern crate rustc_mir_build;
+extern crate rustc_mir_dataflow;
 extern crate rustc_query_system;
 extern crate rustc_resolve;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
+extern crate rustc_type_ir;
+
 extern crate smallvec;
 
 mod attributes;
@@ -49,6 +54,7 @@ pub mod lifetime;
 mod lifetime_ast;
 mod lifetime_emit;
 mod lifetime_generate;
+mod lifetime_resolve;
 pub mod profiler;
 mod rust_intrinsics_to_vir;
 pub mod rust_to_vir;
