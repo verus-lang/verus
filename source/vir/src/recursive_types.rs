@@ -733,7 +733,8 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
     //   }
     // This adds an edge:
-    //   - T --> U
+    //   - f --> U
+    // which, together with T --> f, creates a path T --> U
     // This also ensures that whenever A is used in f,
     // the dictionary a: Dictionary_U<A> is available.
 
