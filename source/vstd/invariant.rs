@@ -243,7 +243,7 @@ pub struct InvariantBlockGuard;
 // credit, only obtainable in exec mode, when opening an invariant. So
 // we require the relinquishment of a tracked
 // `OpenInvariantCredit` to open an invariant, and we provide an
-// exec-mode function `get_invariant_execution_credit` to obtain one.
+// exec-mode function `create_open_invariant_credit` to obtain one.
 
 verus! {
 
