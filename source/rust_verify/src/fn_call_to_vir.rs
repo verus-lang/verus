@@ -1,4 +1,4 @@
-use crate::attributes::{get_ghost_block_opt, get_verifier_attrs, GhostBlockAttr};
+use crate::attributes::{get_ghost_block_opt, GhostBlockAttr};
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_to_vir_base::{
@@ -143,8 +143,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     }
 
     let f_attrs = bctx.ctxt.tcx.get_attrs_unchecked(f);
-    let f_vattrs = get_verifier_attrs(f_attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
-    if f_vattrs.internal_get_field_many_variants {
+    if crate::attributes::is_get_field_many_variants(
+        f_attrs,
+        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
+    )? {
         return Err(vir::messages::error(
             &crate::spans::err_air_span(expr.span),
             format!("this field is present in multiple variants, cannot use -> syntax"),
@@ -972,10 +974,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let proof = vir_expr;
 
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(
-                        expr_attrs,
-                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
-                    )?;
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     if expr_vattrs.spinoff_prover {
                         return err_span(
                             expr.span,
@@ -1070,18 +1069,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 ((TypX::Int(_), _), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(
-                        expr_attrs,
-                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
-                    )?;
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
                 ((TypX::Char, _), TypX::Int(_)) => {
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(
-                        expr_attrs,
-                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
-                    )?;
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     let source_unicode =
                         mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()))?;
                     Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
@@ -1093,10 +1086,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let cast_to_integer =
                         mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))?;
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = get_verifier_attrs(
-                        expr_attrs,
-                        Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
-                    )?;
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
                 _ => err_span(
