@@ -33,7 +33,12 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
             let lhs = stmt_to_expr(label_n, locals, stmt, exp_label.clone());
             let neg_label = Arc::new(ExprX::Unary(UnaryOp::Not, exp_label));
             let and = mk_and(&vec![neg_label, pred]);
-            mk_or(&vec![lhs, and])
+            // mk_or(&vec![lhs, and])
+            // Z3 is sometimes reporting spurious "true" for assertion labels in stmt.
+            // We can try variations, such as putting lhs second,
+            // so that stmt's assertion labels are sorted second when smt_verify scans the labels.
+            // We could also try (P == label) rather than (P ==> label), or try let label = P.
+            mk_or(&vec![and, lhs])
         }
         StmtX::Break(label) => {
             // wp((break label), P) = label
