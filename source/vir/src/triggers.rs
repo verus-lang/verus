@@ -248,6 +248,9 @@ fn check_trigger_expr(
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
                 Err(error(&exp.span, "triggers cannot contain trait bounds"))
             }
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => {
+                Err(error(&exp.span, "triggers cannot contain trait bounds"))
+            }
             ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
                 Err(error(&exp.span, "triggers cannot contain loop spec inference"))
             }

@@ -796,6 +796,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 air::ast_util::mk_true()
             }
         }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p, ts, x, t)) => {
+            crate::traits::typ_equality_bound_to_air(ctx, p, ts, x, t)
+        }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
             panic!("internal error: NoInferSpecForLoopIter")
         }

@@ -161,6 +161,11 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
         (GenericBoundX::Trait(x1, ts1), GenericBoundX::Trait(x2, ts2)) => {
             x1 == x2 && n_types_equal(ts1, ts2)
         }
+        (
+            GenericBoundX::TypEquality(x1, ts1, a1, t1),
+            GenericBoundX::TypEquality(x2, ts2, a2, t2),
+        ) => x1 == x2 && n_types_equal(ts1, ts2) && a1 == a2 && types_equal(t1, t2),
+        (GenericBoundX::Trait(..) | GenericBoundX::TypEquality(..), _) => false,
     }
 }
 

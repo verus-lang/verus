@@ -597,6 +597,7 @@ fn check_item<'tcx>(
                                 return false;
                             }
                         }
+                        vir::ast::GenericBoundX::TypEquality(..) => {}
                     }
                     true
                 });

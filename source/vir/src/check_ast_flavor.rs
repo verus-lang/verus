@@ -76,6 +76,14 @@ pub fn check_krate_simplified(krate: &Krate) {
                         .expect("function param bound uses node that should have been simplified");
                     }
                 }
+                GenericBoundX::TypEquality(_, ts, _, t) => {
+                    for t in ts.iter().chain(vec![t].into_iter()) {
+                        typ_visitor_check(t, &mut |t| {
+                            check_typ_simplified(t, &function.x.typ_params)
+                        })
+                        .expect("function param bound uses node that should have been simplified");
+                    }
+                }
             }
         }
 

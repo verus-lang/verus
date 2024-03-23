@@ -281,6 +281,8 @@ pub enum NullaryOpr {
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
     TraitBound(Path, Typs),
+    /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
+    TypEqualityBound(Path, Typs, Ident, Typ),
     /// A failed InferSpecForLoopIter subexpression
     NoInferSpecForLoopIter,
 }
@@ -836,6 +838,9 @@ pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
     Trait(Path, Typs),
+    /// An equality bound for associated type X of trait T(t1, ..., tn),
+    /// written in Rust as T<t1, ..., tn, X = typ>
+    TypEquality(Path, Typs, Ident, Typ),
 }
 
 /// When instantiating type S<A> with A = T in a recursive type definition,

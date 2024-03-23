@@ -464,7 +464,10 @@ pub(crate) fn expand_call_graph(
                 continue;
             }
         }
-        let GenericBoundX::Trait(tr, _) = &**bound;
+        let tr = match &**bound {
+            GenericBoundX::Trait(tr, _) => tr,
+            GenericBoundX::TypEquality(tr, _, _, _) => tr,
+        };
         call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
     }
 
