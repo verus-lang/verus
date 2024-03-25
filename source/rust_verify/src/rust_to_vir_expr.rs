@@ -464,10 +464,30 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
         }
         PatKind::Path(qpath) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, _is_enum) = get_adt_res_struct_enum(tcx, res, pat.span)?;
-            let variant_name = str_ident(&variant_def.ident(tcx).as_str());
-            let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
-            PatternX::Constructor(vir_path, variant_name, Arc::new(vec![]))
+            match res {
+                Res::Def(DefKind::Const, id) => {
+                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let fun = FunX { path };
+                    let autospec_usage =
+                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                    let x = ExprX::ConstVar(Arc::new(fun), autospec_usage);
+
+                    let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x);
+
+                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                    erasure_info.hir_vir_ids.push((pat.hir_id, expr.span.id));
+
+                    PatternX::Expr(expr)
+                }
+                _ => {
+                    let (adt_def_id, variant_def, _is_enum) =
+                        get_adt_res_struct_enum(tcx, res, pat.span)?;
+                    let variant_name = str_ident(&variant_def.ident(tcx).as_str());
+                    let vir_path =
+                        def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
+                    PatternX::Constructor(vir_path, variant_name, Arc::new(vec![]))
+                }
+            }
         }
         PatKind::Tuple(pats, dot_dot_pos) => {
             let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
@@ -551,8 +571,11 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             }
             pat_or
         }
+        PatKind::Lit(expr) => {
+            let e = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            PatternX::Expr(e)
+        }
         PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
-        PatKind::Lit(..) => unsupported_err!(pat.span, "literal patterns", pat),
         PatKind::Range(..) => unsupported_err!(pat.span, "range patterns", pat),
         PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
     };

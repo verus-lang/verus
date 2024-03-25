@@ -408,6 +408,14 @@ pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
     )
 }
 
+pub fn mk_eq(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Eq(Mode::Spec), e1.clone(), e2.clone()),
+    )
+}
+
 pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
     let mut expr = init.clone();
     for e in exprs.iter() {
