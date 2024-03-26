@@ -71,6 +71,7 @@ pub enum VarIdentDisambiguate {
     // Capture-avoiding substitution creates new names:
     VirSubst(u64),
     VirTemp(u64),
+    ExpandErrorsDecl(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -531,7 +532,7 @@ pub enum Constant {
     Char(char),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
@@ -687,7 +688,7 @@ pub enum AutospecUsage {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[to_node_impl(name = ">")]
 pub enum ExprX {
     /// Constant
@@ -904,6 +905,7 @@ pub struct FunctionAttrsX {
     pub print_zero_args: bool,
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
+    pub prophecy_dependent: bool,
 }
 
 /// Function specification of its invariant mask

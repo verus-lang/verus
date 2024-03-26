@@ -14,13 +14,13 @@ test_verify_one_file_with_options! {
         proof fn test_expansion_easy()
         {
             let x = 5;
-            assert(is_good_integer(x));     // EXPAND-ERRORS
+            assert(is_good_integer(x));     // FAILS
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
-    #[ignore] #[test] test2_expand_error ["--expand-errors"] => verus_code! {
+    #[test] test2_expand_error ["--expand-errors"] => verus_code! {
         #[derive(PartialEq, Eq)]
         pub enum Message {
             Quit(bool),
@@ -30,8 +30,9 @@ test_verify_one_file_with_options! {
 
         spec fn is_good_integer_2(x: int) -> bool
         {
-            x >= 0 && x != 5
+            x >= 0  // EXPAND-ERRORS
         //  ^^^^^^^
+                && x != 5
         }
 
         spec fn is_good_message_2(msg:Message) -> bool {
@@ -44,16 +45,16 @@ test_verify_one_file_with_options! {
         }
 
         spec fn is_good(msg: Message) -> bool {
-            is_good_message_2(msg)            // EXPAND-ERRORS
+            is_good_message_2(msg)
             //^^^^^^^^^^^^^^^^^^^^
         }
 
         proof fn test_expansion_multiple_call() {
             let x = Message::Move{x: 5, y:6};
-            assert(is_good(x));             // EXPAND-ERRORS
+            assert(is_good(x));             // FAILS
             //^^^^^^ ^^^^^^^^^^
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -67,14 +68,15 @@ test_verify_one_file_with_options! {
 
         spec fn is_good_integer_3(x: int) -> bool
         {
-            x >= 0 && x != 5
+            x >= 0 // EXPAND-ERRORS
         //  ^^^^^^
+                && x != 5
         }
         spec fn is_good_message_3(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
             //  ^^^^^^^^^^^^^^^^ (TODO bad span due to match span)
-                Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),    // EXPAND-ERRORS
+                Message::Move{x, y} => is_good_integer_3( (x as int)  - (y as int)),
             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 Message::Write(b) => b,
             }
@@ -83,7 +85,7 @@ test_verify_one_file_with_options! {
         proof fn test_require_failure(m:Message, b: bool) -> (good_int: int)
             requires
                 b,
-                is_good_message_3(m),               // EXPAND-ERRORS
+                is_good_message_3(m),    // EXPAND-ERRORS
             //  ^^^^^^^^^^^^^^^^^^^^
             ensures
                 is_good_integer_3(good_int),
@@ -93,11 +95,10 @@ test_verify_one_file_with_options! {
 
         proof fn test_3(x:int) {
             let x = Message::Move{x: 0, y: 5};
-            test_require_failure(x, true);          // EXPAND-ERRORS
+            test_require_failure(x, true);          // FAILS
             //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            assert(false);
         }
-    } => Err(e) => assert_expand_fails(e, 3)
+    } => Err(e) => assert_expand_fails(e, 2)
 }
 
 test_verify_one_file_with_options! {
@@ -111,14 +112,15 @@ test_verify_one_file_with_options! {
 
         spec fn is_good_integer_4(x: int) -> bool
         {
-            x >= 0 && x != 5
-        //            ^^^^^^
+            x >= 0
+                && x != 5  // EXPAND-ERRORS
+        //         ^^^^^^
         }
 
         spec fn is_good_message_4(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
-                Message::Move{x, y} => is_good_integer_4( (x as int)  - (y as int)),      // EXPAND-ERRORS
+                Message::Move{x, y} => is_good_integer_4( (x as int)  - (y as int)),
             //                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 Message::Write(b) => b,
             }
@@ -126,14 +128,14 @@ test_verify_one_file_with_options! {
 
         proof fn test_ensures_failure(b: bool) -> (good_msg: Message)
             ensures
-                is_good_message_4(good_msg),            // EXPAND-ERRORS
+                is_good_message_4(good_msg),            // FAILS
               //^^^^^^^^^^^^^^^^^^^^^^^^^^^
         {
             let mut ret =  Message::Write(true);
             if !b {ret = Message::Move{x: 10, y: 5};}
             ret
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -163,13 +165,13 @@ test_verify_one_file_with_options! {
         }
         spec fn is_prime(candidate: nat) -> bool {
             &&& 1 < candidate
-            &&& forall|factor: nat| 1 < factor && factor < candidate ==>    // EXPAND-ERRORS
-                !divides(factor, candidate)
+            &&& forall|factor: nat| 1 < factor && factor < candidate ==>
+                !divides(factor, candidate) // EXPAND-ERRORS
         }
         proof fn test_trigger() {
-            assert(is_prime(6));                // EXPAND-ERRORS
+            assert(is_prime(6));                // FAILS
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -189,7 +191,7 @@ test_verify_one_file_with_options! {
         }
 
         #[verifier(opaque)]
-        spec fn is_good_message_10(msg:Message) -> bool {   // EXPAND-ERRORS
+        spec fn is_good_message_10(msg:Message) -> bool {
             match msg {
                 Message::Quit(b) => b,
                 Message::Move{x, y} => is_good_integer( (x as int)  - (y as int)),
@@ -203,10 +205,10 @@ test_verify_one_file_with_options! {
                 reveal(is_good_message_10);
             } else {
                 assert_by(true, {reveal(is_good_message_10);});
-                assert(is_good_message_10(good_msg));           // EXPAND-ERRORS
+                assert(is_good_message_10(good_msg));           // FAILS
             }
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 0)
 }
 
 test_verify_one_file_with_options! {
@@ -236,13 +238,13 @@ test_verify_one_file_with_options! {
 
         proof fn test_reveal_at_ensures(b: bool) -> (good_msg: Message)
             ensures
-                is_good_message_13(good_msg),        // EXPAND-ERRORS
+                is_good_message_13(good_msg),        // FAILS
         {
             let good_msg = Message::Move{x: 0, y: 0};
             reveal(is_good_message_13);
             good_msg
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -261,9 +263,9 @@ test_verify_one_file_with_options! {
 
         proof fn test(a: int) {
             assume(p1(a));
-            assert(p(a)); // EXPAND-ERRORS
+            assert(p(a)); // FAILS
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -300,9 +302,9 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test11_traits_ensures ["--expand-errors"] => verus_code! {
         trait T {
-            spec fn f() -> bool; // EXPAND-ERRORS
+            spec fn f() -> bool;
             proof fn test()
-                ensures Self::f(); // EXPAND-ERRORS
+                ensures Self::f(); // FAILS
         }
         impl T for u64 {
             spec fn f() -> bool { false }
@@ -310,7 +312,7 @@ test_verify_one_file_with_options! {
             proof fn test() {
             }
         }
-    } => Err(e) => assert_expand_fails(e, 2)
+    } => Err(e) => assert_expand_fails(e, 0)
 }
 
 test_verify_one_file_with_options! {
@@ -340,4 +342,97 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] unboxing_and_negation_issue788 ["--expand-errors"] => verus_code! {
+        trait Tr {
+            spec fn stuff(&self) -> bool;
+            spec fn stuff2(&self) -> bool;
+        }
+
+        spec fn hi<T: Tr>(t: T) -> bool {
+            t.stuff() // EXPAND-ERRORS
+            && !t.stuff2() // EXPAND-ERRORS
+        }
+
+        proof fn test<T: Tr>(t: T) {
+            assert(hi(t)); // FAILS
+        }
+    } => Err(e) => assert_expand_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
+        use vstd::set::*;
+
+        spec fn maybe() -> bool;
+
+        // spec fn yes() -> bool { true }
+        // spec fn both(s: Set<nat>) -> bool {
+        //     &&& maybe()
+        //     &&& s.contains(0) // EXPAND-ERRORS
+        // }
+
+        proof fn test(s: Set<nat>) {
+            assert(maybe()); // FAILS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("function is uninterpreted"));
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_2 ["--expand-errors"] => verus_code! {
+        struct Z { _temp: (), }
+
+        mod X {
+            pub trait T {
+                spec fn foo(&self) -> bool;
+            }
+
+            impl T for super::Z {
+                open spec fn foo(&self) -> bool {
+                    false
+                }
+            }
+        }
+
+        use X::T;
+
+        fn f() {
+            let z = Z { _temp: () };
+            assert(z.foo()); // FAILS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("|   false"));
+        assert_expand_fails(err, 0);
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_requires_resolved_trait_fn ["--expand-errors"] => verus_code! {
+        struct Z { _temp: (), }
+
+        mod X {
+            pub trait T {
+                fn foo(&self)
+                    requires false;
+            }
+
+            impl T for super::Z {
+                fn foo(&self) { }
+            }
+        }
+
+        use X::T;
+
+        fn f() {
+            let z = Z { _temp: () };
+            z.foo(); // FAILS
+        }
+    } => Err(err) => {
+        assert!(err.expand_errors_notes[0].rendered.contains("false"));
+        assert_expand_fails(err, 0);
+    }
 }

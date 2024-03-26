@@ -170,11 +170,7 @@ pub fn verify_files_vstd_all_diags(
             let diag: Result<Diagnostic, _> = serde_json::from_str(ss);
             if let Ok(diag) = diag {
                 eprintln!("{}", diag.rendered);
-                if diag.level == "note"
-                    && (diag.message == "split assertion failure"
-                        || diag.message == "split precondition failure"
-                        || diag.message == "split postcondition failure")
-                {
+                if diag.level == "note" && diag.message.starts_with("diagnostics via expansion") {
                     // TODO(main_new) define in defs
                     expand_errors_notes.push(diag);
                     continue;
@@ -470,6 +466,8 @@ pub fn assert_one_fails(err: TestErr) {
 /// assert that all spans are properly reported (All spans are respoinsible to the verification failure)
 #[allow(dead_code)]
 pub fn assert_expand_fails(err: TestErr, span_count: usize) {
+    assert_fails(err.clone(), 1);
+
     assert_eq!(err.expand_errors_notes.len(), 1);
     let expand_errors_diag = &err.expand_errors_notes.last().unwrap();
     assert_eq!(expand_errors_diag.spans.len(), span_count);

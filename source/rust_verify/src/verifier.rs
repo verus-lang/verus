@@ -6,6 +6,7 @@ use crate::spans::{from_raw_span, SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
+use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
@@ -13,6 +14,7 @@ use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+use rustc_session::config::ErrorOutputType;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -32,6 +34,7 @@ use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
+use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
@@ -278,7 +281,8 @@ pub struct Verifier {
 
     // proof debugging purposes
     expand_flag: bool,
-    pub expand_targets: Vec<Message>,
+
+    error_format: Option<ErrorOutputType>,
 }
 
 fn report_chosen_triggers(
@@ -382,7 +386,7 @@ impl Verifier {
             buckets: HashMap::new(),
 
             expand_flag: false,
-            expand_targets: vec![],
+            error_format: None,
         }
     }
 
@@ -411,7 +415,7 @@ impl Verifier {
             current_crate_modules: self.current_crate_modules.clone(),
             buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
-            expand_targets: self.expand_targets.clone(),
+            error_format: self.error_format,
         }
     }
 
@@ -611,6 +615,7 @@ impl Verifier {
         context: &CommandContext,
         hint_upon_failure: &std::cell::RefCell<Option<Message>>,
         is_singular: bool,
+        failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -717,6 +722,9 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
+                    if self.expand_flag {
+                        invalidity = true;
+                    }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
@@ -729,7 +737,10 @@ impl Verifier {
                     timed_out = true;
                     break;
                 }
-                ValidityResult::Invalid(air_model, error) => {
+                ValidityResult::Invalid(air_model, error, assert_id_opt) => {
+                    if let Some(assert_id) = assert_id_opt {
+                        failed_assert_ids.push(assert_id.clone());
+                    }
                     if let Some(level) = level {
                         if air_model.is_none() {
                             // singular_invalid case
@@ -747,9 +758,12 @@ impl Verifier {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
                         }
                     }
+                    if self.expand_flag {
+                        invalidity = true;
+                    }
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
-                        if !self.expand_flag || vir::split_expression::is_split_error(&error) {
+                        if !self.expand_flag {
                             if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
                                 collected.as_mut().push((error.clone(), level));
                             } else {
@@ -761,7 +775,6 @@ impl Verifier {
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
-                            self.expand_targets.push(error.clone());
                         }
 
                         if self.args.debugger {
@@ -872,6 +885,7 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
+        failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
@@ -913,6 +927,7 @@ impl Verifier {
                     &context,
                     hint_upon_failure,
                     *prover_choice == vir::def::ProverChoice::Singular,
+                    failed_assert_ids,
                 );
         }
 
@@ -1248,7 +1263,24 @@ impl Verifier {
             > = std::cell::RefCell::new(Some(PanicOnDropVec::new(Vec::new())));
             let mut flush_diagnostics_to_report = false;
             loop {
-                let next_op = function_opgen.next();
+                let mut next_op = None;
+                let mut expand_errors_diagnostic = None;
+                if let Some(r) = function_opgen.expand_errors_next(self.error_format) {
+                    match r {
+                        Ok(op) => {
+                            next_op = Some(op);
+                        }
+                        Err(diagnostic) => {
+                            expand_errors_diagnostic = Some(diagnostic);
+                            flush_diagnostics_to_report = true;
+                        }
+                    }
+                }
+
+                if next_op.is_none() {
+                    next_op = function_opgen.next();
+                }
+
                 if next_op.is_none() {
                     flush_diagnostics_to_report = true;
                 }
@@ -1261,6 +1293,9 @@ impl Verifier {
                         for (message, level) in in_line_order {
                             reporter.report_as(&message.clone().to_any(), level);
                         }
+                    }
+                    if let Some(diag) = expand_errors_diagnostic {
+                        reporter.report(&diag);
                     }
                 }
                 let Some(op) = next_op else {
@@ -1282,6 +1317,7 @@ impl Verifier {
                         commands_with_context_list,
                         snap_map,
                         profile_rerun,
+                        function_sst,
                     } => {
                         let level = match query_op {
                             QueryOp::SpecTermination => MessageLevel::Error,
@@ -1297,7 +1333,8 @@ impl Verifier {
                         let mut spinoff_context_counter = 1;
 
                         let mut any_invalid = false;
-                        self.expand_targets = vec![];
+                        let mut any_timed_out = false;
+                        let mut failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
@@ -1386,6 +1423,7 @@ impl Verifier {
                                 &function.x.name,
                                 &op.to_air_comment(),
                                 None,
+                                &mut failed_assert_ids,
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
@@ -1399,6 +1437,7 @@ impl Verifier {
                             }
 
                             any_invalid |= command_invalidity;
+                            any_timed_out |= command_timed_out;
 
                             if let Some(profile_file_name) = profile_file_name {
                                 if command_not_skipped && query_air_context.check_valid_used() {
@@ -1488,6 +1527,7 @@ impl Verifier {
                                         commands_with_context_list.clone(),
                                         snap_map.clone(),
                                         function,
+                                        function_sst.clone(),
                                     );
                                     flush_diagnostics_to_report = true;
                                 }
@@ -1509,11 +1549,25 @@ impl Verifier {
                                 function_opgen.retry_with_recommends(&op, any_invalid)?;
                             }
 
-                            if any_invalid && self.args.expand_errors {
-                                let expand_targets = self.expand_targets.drain(..).collect();
-                                function_opgen.retry_with_expand_errors(&op, expand_targets)?;
+                            if any_invalid && self.args.expand_errors && failed_assert_ids.len() > 0
+                            {
+                                function_opgen.start_expand_errors_if_possible(
+                                    &op,
+                                    failed_assert_ids[0].clone(),
+                                );
                                 flush_diagnostics_to_report = true;
                             }
+                        }
+
+                        if matches!(query_op, QueryOp::Body(Style::Expanded)) {
+                            let res = if any_timed_out {
+                                ExpandErrorsResult::Timeout
+                            } else if any_invalid {
+                                ExpandErrorsResult::Fail
+                            } else {
+                                ExpandErrorsResult::Pass
+                            };
+                            function_opgen.report_expand_error_result(res);
                         }
 
                         if matches!(query_op, QueryOp::SpecTermination) {
@@ -2497,6 +2551,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         if !compiler.session().compile_status().is_ok() {
             return rustc_driver::Compilation::Stop;
         }
+
+        self.verifier.error_format = Some(compiler.session().opts.error_format);
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
