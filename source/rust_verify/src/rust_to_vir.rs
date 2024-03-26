@@ -616,7 +616,7 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let (generics_params, generics_bnds) = check_generics_bounds_with_polarity(
+                let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
                     ctxt.tcx,
                     &ctxt.verus_items,
                     item_generics.span,
@@ -636,8 +636,6 @@ fn check_item<'tcx>(
                     );
                 }
 
-                unsupported_err_unless!(generics_params.len() == 0, *span, "trait generics");
-                unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
                         let body_id = match fun {
@@ -666,6 +664,16 @@ fn check_item<'tcx>(
                         }
                     }
                     TraitItemKind::Type([], None) => {
+                        unsupported_err_unless!(
+                            item_generics_params.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
+                        unsupported_err_unless!(
+                            item_typ_bounds.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
                         assoc_typs.push(Arc::new(ident.to_string()));
                     }
                     TraitItemKind::Type(_, Some(_)) => {
@@ -675,6 +683,16 @@ fn check_item<'tcx>(
                         );
                     }
                     TraitItemKind::Type(_generic_bounds, None) => {
+                        unsupported_err_unless!(
+                            item_generics_params.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
+                        unsupported_err_unless!(
+                            item_typ_bounds.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
                         assoc_typs.push(Arc::new(ident.to_string()));
 
                         let bounds = ctxt

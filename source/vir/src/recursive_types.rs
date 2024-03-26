@@ -571,7 +571,7 @@ pub(crate) fn suppress_bound_in_trait_decl(
     // T's own members).
     let GenericBoundX::Trait(bound_path, args) = &**bound;
     if trait_path == bound_path {
-        assert!(args.len() == typ_params.len());
+        assert!(args.len() <= typ_params.len());
         for (typ_param, arg) in typ_params.iter().zip(args.iter()) {
             if let TypX::TypParam(bound_param) = &**arg {
                 if typ_param == bound_param {
@@ -720,6 +720,22 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // This adds an edge:
     //   - T --> U
     // This also ensures that whenever A is used in f and g,
+    // the dictionary a: Dictionary_U<A> is available.
+
+    // To handle bounds on trait methods like this:
+    //   trait T {
+    //     fn f<A: U>(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // We take a Dictionary_U as a parameter:
+    //   struct Dictionary_T<Self, A> {
+    //     f: Fn<A>(a: Dictionary_U<A>, x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge:
+    //   - f --> U
+    // which, together with T --> f, creates a path T --> U
+    // This also ensures that whenever A is used in f,
     // the dictionary a: Dictionary_U<A> is available.
 
     // In Rust, declaring a subtrait "trait T: U" is equivalent to declaring
