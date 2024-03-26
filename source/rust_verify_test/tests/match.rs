@@ -929,3 +929,128 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] const_and_literals verus_code! {
+        spec fn m_bool_lit(x: bool) -> u64 {
+            match x {
+                true => 0,
+                t => 20,
+            }
+        }
+
+        proof fn test() {
+            assert(m_bool_lit(true) == 0);
+            assert(m_bool_lit(false) == 20);
+        }
+
+        const I: u64 = 20;
+
+        spec fn m_int_const(x: u64) -> u64 {
+            match x {
+                I => 0,
+                t => t,
+            }
+        }
+
+        proof fn test2() {
+            assert(m_int_const(20) == 0);
+            assert(m_int_const(19) == 19);
+        }
+
+        fn test3(x: i64) {
+            let z = match x {
+                7 => 0,
+                -16 => 1,
+                t => t,
+            };
+
+            assert(x == 7 ==> z == 0);
+            assert(x == -16 ==> z == 1);
+            assert(x != 7 && x != -16 ==> z == x);
+        }
+
+        fn test4(x: u64) {
+            let z = match x {
+                I => 0,
+                t => t,
+            };
+
+            assert(x == I ==> z == 0);
+            assert(x == 20 ==> z == 0);
+            assert(x != 20 ==> z == x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_wrong_mode verus_code! {
+        spec const I: u64 = 20u64;
+
+        fn test(j: u64) {
+            match j {
+                I => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] matching_literal_arms_get_checked verus_code! {
+        tracked struct X { }
+        proof fn use_x(tracked x: X) { }
+
+        proof fn test(j: u64) {
+            let tracked x = X { };
+            use_x(x);
+
+            match j {
+                20u64 => { }
+                30u64 => {
+                    use_x(x);
+                }
+                _ => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] matching_const_arms_get_checked verus_code! {
+        const X: u64 = 30;
+        const Y: u64 = 32;
+
+        tracked struct X { }
+        proof fn use_x(tracked x: X) { }
+
+        proof fn test(j: u64) {
+            let tracked x = X { };
+            use_x(x);
+
+            match j {
+                X => { }
+                Y => {
+                    use_x(x);
+                }
+                _ => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] const_pattern_gets_wf_checked verus_code! {
+        #[verifier::external]
+        const X: u64 = 30;
+
+        fn test(x: u64) {
+            match x {
+                X => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+}

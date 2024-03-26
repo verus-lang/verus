@@ -570,6 +570,10 @@ pub enum PatternX {
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Path, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
+    /// Matches something equal to the value of this expr
+    /// This only supports literals and consts, so we don't need to worry
+    /// about side-effects, binding order, etc.
+    Expr(Expr),
 }
 
 /// Arms of match expressions
