@@ -606,7 +606,6 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     allow_mut_ref: bool,
 ) -> rustc_middle::ty::Ty<'tcx> {
     match ty.kind() {
-        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, verus_items, t, allow_mut_ref),
         TyKind::Ref(_, t, Mutability::Mut) if allow_mut_ref => {
             mid_ty_simplify(tcx, verus_items, t, allow_mut_ref)
         }

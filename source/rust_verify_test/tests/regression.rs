@@ -585,52 +585,6 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open` or `closed`")
 }
 
-test_verify_one_file_with_options! {
-    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
-        use vstd::set::*;
-
-        spec fn maybe() -> bool;
-
-        // spec fn yes() -> bool { true }
-        // spec fn both(s: Set<nat>) -> bool {
-        //     &&& maybe()
-        //     &&& s.contains(0) // EXPAND-ERRORS
-        // }
-
-        proof fn test(s: Set<nat>) {
-            assert(maybe()); // EXPAND-ERRORS
-        }
-    } => Err(err) => {
-        assert!(err.expand_errors_notes[0].rendered.contains("this function is uninterpreted"));
-    }
-}
-
-test_verify_one_file_with_options! {
-    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_2 ["--expand-errors"] => verus_code! {
-        struct Z { _temp: (), }
-
-        mod X {
-            pub trait T {
-                spec fn foo(&self) -> bool; // EXPAND-ERRORS
-            }
-
-            impl T for super::Z {
-                open spec fn foo(&self) -> bool { false }
-            }
-        }
-
-        use X::T;
-
-        fn f() {
-            let z = Z { _temp: () };
-            assert(z.foo()); // EXPAND-ERRORS
-        }
-    } => Err(err) => {
-        assert!(err.expand_errors_notes[0].rendered.contains("trait function declaration"));
-        assert_expand_fails(err, 2);
-    }
-}
-
 test_verify_one_file! {
     #[test] test_unwrapped_tracked_wrong_span_387_discussioncomment_6733203_1 verus_code! {
         fn test_bug1(Tracked(s): Tracked<&mut i32>)

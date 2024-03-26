@@ -5,6 +5,7 @@ pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub(crate) trait Scoper {
     fn push_scope(&mut self) {}
@@ -182,6 +183,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             ExpX::VarLoc(..) => R::ret(|| exp.clone()),
             ExpX::StaticVar(..) => R::ret(|| exp.clone()),
             ExpX::ExecFnByName(_) => R::ret(|| exp.clone()),
+            ExpX::FuelConst(_) => R::ret(|| exp.clone()),
             ExpX::Loc(e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Loc(R::get(e1))))
@@ -342,7 +344,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_stm_rec(&mut self, stm: &Stm) -> Result<R::Ret<Stm>, Err> {
         let stm_new = |s: StmX| Spanned::new(stm.span.clone(), s);
         match &stm.x {
-            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest } => {
+            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest, assert_id } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
                     R::ret(|| Some((f.clone(), R::get_vec_a(ts))))
@@ -361,12 +363,13 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         args: R::get_vec_a(args),
                         split: split.clone(),
                         dest: R::get_opt(dest),
+                        assert_id: assert_id.clone(),
                     })
                 })
             }
-            StmX::Assert(span2, exp) => {
+            StmX::Assert(assert_id, span2, exp) => {
                 let exp = self.visit_exp(exp)?;
-                R::ret(|| stm_new(StmX::Assert(span2.clone(), R::get(exp))))
+                R::ret(|| stm_new(StmX::Assert(assert_id.clone(), span2.clone(), R::get(exp))))
             }
             StmX::AssertBitVector { requires, ensures } => {
                 let requires = self.visit_exps(requires)?;
@@ -393,13 +396,14 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let s = self.visit_stm(&stm)?;
                 R::ret(|| stm_new(StmX::DeadEnd(R::get(s))))
             }
-            StmX::Return { base_error, ret_exp, inside_body } => {
+            StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
                 let ret_exp = R::map_opt(ret_exp, &mut |e| self.visit_exp(e))?;
                 R::ret(|| {
                     stm_new(StmX::Return {
                         base_error: base_error.clone(),
                         ret_exp: R::get_opt(ret_exp),
                         inside_body: *inside_body,
+                        assert_id: assert_id.clone(),
                     })
                 })
             }
@@ -737,6 +741,7 @@ where
 }
 
 // non-recursive visitor
+#[allow(unused)]
 pub(crate) fn map_shallow_stm<F>(stm: &Stm, fs: &mut F) -> Result<Stm, VirErr>
 where
     F: FnMut(&Stm) -> Result<Stm, VirErr>,
@@ -792,5 +797,47 @@ where
     F: Fn(&Exp) -> Result<Exp, VirErr>,
 {
     let mut visitor = MapStmExpVisitor { fe };
+    visitor.visit_stm(stm)
+}
+
+struct MapStmPrevVisitor<'a, F> {
+    fs: &'a mut F,
+}
+
+impl<'a, F> MapStmPrevVisitor<'a, F>
+where
+    F: FnMut(&Stm, Option<&Stm>) -> Result<Stm, VirErr>,
+{
+    fn visit_stm_prev(&mut self, stm: &Stm, prev: Option<&Stm>) -> Result<Stm, VirErr> {
+        let stm = if let StmX::Block(ss) = &stm.x {
+            let mut stms: Vec<Stm> = Vec::new();
+            for (i, s) in ss.iter().enumerate() {
+                let prev = if i == 0 { None } else { Some(&ss[i - 1]) };
+                stms.push(self.visit_stm_prev(s, prev)?);
+            }
+            Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)))
+        } else {
+            self.visit_stm_rec(stm)?
+        };
+        (self.fs)(&stm, prev)
+    }
+}
+
+impl<'a, F> Visitor<Rewrite, VirErr, NoScoper> for MapStmPrevVisitor<'a, F>
+where
+    F: FnMut(&Stm, Option<&Stm>) -> Result<Stm, VirErr>,
+{
+    fn visit_stm(&mut self, stm: &Stm) -> Result<Stm, VirErr> {
+        self.visit_stm_prev(stm, None)
+    }
+}
+
+/// F: FnMut(stm: &Stm, previous_stm: Option<&Stm>) -> Result<Stm, VirErr>
+/// The second argument, previous_stm, is the directly previous Stm in the block, if it exists
+pub(crate) fn map_stm_prev_visitor<F>(stm: &Stm, fs: &mut F) -> Result<Stm, VirErr>
+where
+    F: FnMut(&Stm, Option<&Stm>) -> Result<Stm, VirErr>,
+{
+    let mut visitor = MapStmPrevVisitor { fs };
     visitor.visit_stm(stm)
 }

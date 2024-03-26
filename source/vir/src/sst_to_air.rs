@@ -26,9 +26,9 @@ use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
-    BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX,
-    UniqueIdent,
+    BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
 };
+use crate::sst::{FunctionSst, PostConditionInfo, PostConditionKind};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -1163,42 +1163,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 choose_expr
             }
         },
+        ExpX::FuelConst(i) => {
+            let mut e = str_var(crate::def::ZERO);
+            for _j in 0..*i {
+                e = str_apply(SUCC, &vec![e]);
+            }
+            e
+        }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
     };
     Ok(result)
-}
-
-#[derive(Clone, Copy)]
-pub enum PostConditionKind {
-    Ensures,
-    DecreasesImplicitLemma,
-    DecreasesBy,
-}
-
-pub struct PostConditionSst {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<UniqueIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exps: Vec<Exp>,
-    /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    pub kind: PostConditionKind,
-}
-
-struct PostConditionInfo {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    dest: Option<UniqueIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    ens_exprs: Vec<(Span, Expr)>,
-    /// Recommends checks (only used in recommends-checking mode)
-    ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    kind: PostConditionKind,
 }
 
 #[derive(Debug)]
@@ -1454,7 +1430,7 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest } => {
+        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
@@ -1481,7 +1457,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     };
                 let error = error(&stm.span, description);
                 let filter = Some(fun_to_air_ident(&func.x.name));
-                stmts.push(Arc::new(StmtX::Assert(error, filter, e_req)));
+                stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
             }
 
             let callee_mask_set =
@@ -1620,7 +1596,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
-        StmX::Assert(error, expr) => {
+        StmX::Assert(assert_id, error, expr) => {
             let air_expr = exp_to_expr(ctx, &expr, expr_ctxt)?;
             let error = match error {
                 Some(error) => error.clone(),
@@ -1633,9 +1609,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
-            vec![Arc::new(StmtX::Assert(error, None, air_expr))]
+            vec![Arc::new(StmtX::Assert(assert_id.clone(), error, None, air_expr))]
         }
-        StmX::Return { base_error, ret_exp, inside_body } => {
+        StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
             let skip = if ctx.checking_spec_preconditions() {
                 state.post_condition_info.ens_spec_precondition_stms.len() == 0
             } else {
@@ -1685,7 +1661,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             }
                         };
 
-                        let ens_stmt = StmtX::Assert(error, None, ens.clone());
+                        let ens_stmt = StmtX::Assert(assert_id.clone(), error, None, ens.clone());
                         stmts.push(Arc::new(ens_stmt));
                     }
                 }
@@ -1764,7 +1740,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut air_body: Vec<Stmt> = Vec::new();
             for (span, ens) in ensures_air.iter() {
                 let error = error(span, "bitvector ensures not satisfied");
-                let ens_stmt = StmtX::Assert(error, None, ens.clone());
+                let ens_stmt = StmtX::Assert(None, error, None, ens.clone());
                 air_body.push(Arc::new(ens_stmt));
             }
             let assertion = one_stmt(air_body);
@@ -1879,7 +1855,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             and use 'ensures' for what is true at the break)";
                         error = error.secondary_label(span, msg);
                     }
-                    stmts.push(Arc::new(StmtX::Assert(error, None, inv.clone())));
+                    stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
                 }
             }
             if is_air_break {
@@ -2129,7 +2105,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
                     }
-                    let inv_stmt = StmtX::Assert(error, None, inv.clone());
+                    let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
                     air_body.push(Arc::new(inv_stmt));
                 }
             }
@@ -2176,7 +2152,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
                     }
-                    let inv_stmt = StmtX::Assert(error, None, inv.clone());
+                    let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
                     stmts.push(Arc::new(inv_stmt));
                 }
             }
@@ -2262,7 +2238,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // so this may evaluate differently in the SMT.
             if !ctx.checking_spec_preconditions() {
                 let error = error(&body_stm.span, "Cannot show invariant holds at end of block");
-                stmts.push(Arc::new(StmtX::Assert(error, None, main_inv)));
+                stmts.push(Arc::new(StmtX::Assert(None, error, None, main_inv)));
             }
 
             stmts
@@ -2428,17 +2404,15 @@ pub(crate) fn body_stm_to_air(
     func_span: &Span,
     typ_params: &Idents,
     params: &Params,
-    local_decls: &Vec<LocalDecl>,
+    function_sst: &FunctionSst,
     hidden: &Vec<Fun>,
-    reqs: &Vec<Exp>,
-    post_condition: &PostConditionSst,
-    mask_set: &MaskSet,
-    stm: &Stm,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
-    statics: &Vec<Fun>,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
+    let FunctionSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
+        function_sst;
+
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
@@ -2572,7 +2546,7 @@ pub(crate) fn body_stm_to_air(
         }
     }
 
-    for req in reqs {
+    for req in reqs.iter() {
         let e = if is_bit_vector_mode {
             let bv_expr_ctxt = &BvExprCtxt::new();
             bv_exp_to_expr(ctx, &req, bv_expr_ctxt)?
@@ -2595,14 +2569,14 @@ pub(crate) fn body_stm_to_air(
                 .push(Arc::new(DeclX::Var(param.x.name.lower(), typ_to_air(ctx, &param.x.typ))));
         }
         let mut singular_stmts: Vec<Stmt> = vec![];
-        for req in reqs {
+        for req in reqs.iter() {
             let error = error_with_label(
                 &req.span,
                 "Failed to translate this expression into a singular query".to_string(),
                 "at the require clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(error, None, air_expr));
+            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
             singular_stmts.push(assert_stm);
         }
         for ens in post_condition.ens_exps.iter() {
@@ -2612,7 +2586,7 @@ pub(crate) fn body_stm_to_air(
                 "at the ensure clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(error, None, air_expr));
+            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
             singular_stmts.push(assert_stm);
         }
 

@@ -404,7 +404,11 @@ fn check_one_expr(
                 }
             }
 
-            let typs = match &*expr.typ {
+            let u_expr_typ = match &*expr.typ {
+                TypX::Decorate(crate::ast::TypDecoration::Ref, typ) => &typ,
+                _ => &expr.typ,
+            };
+            let typs = match &**u_expr_typ {
                 TypX::FnDef(_fun, typs, _resolved_fun) => typs,
                 _ => {
                     return Err(error(
@@ -885,6 +889,7 @@ fn check_function(
         };
         check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
     }
+
     Ok(())
 }
 

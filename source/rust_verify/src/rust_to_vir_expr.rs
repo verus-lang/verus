@@ -831,16 +831,15 @@ pub(crate) struct ExprModifier {
     /// dereferencing a mutable reference
     pub(crate) deref_mut: bool,
     /// taking a mutable reference
-    pub(crate) addr_of: bool,
+    pub(crate) addr_of_mut: bool,
 }
 
 impl ExprModifier {
-    pub(crate) const REGULAR: Self = Self { deref_mut: false, addr_of: false };
+    pub(crate) const REGULAR: Self = Self { deref_mut: false, addr_of_mut: false };
 
-    #[allow(dead_code)]
-    pub(crate) const DEREF_MUT: Self = Self { deref_mut: true, addr_of: false };
+    pub(crate) const DEREF_MUT: Self = Self { deref_mut: true, addr_of_mut: false };
 
-    pub(crate) const ADDR_OF: Self = Self { deref_mut: false, addr_of: true };
+    pub(crate) const ADDR_OF_MUT: Self = Self { deref_mut: false, addr_of_mut: true };
 }
 
 pub(crate) fn is_expr_typ_mut_ref<'tcx>(
@@ -848,7 +847,6 @@ pub(crate) fn is_expr_typ_mut_ref<'tcx>(
     modifier: ExprModifier,
 ) -> Result<ExprModifier, VirErr> {
     match ty.kind() {
-        TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => Ok(modifier),
         TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => {
             Ok(ExprModifier { deref_mut: true, ..modifier })
         }
@@ -923,7 +921,26 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Deref(None) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
-            expr_to_vir_with_adjustments(bctx, expr, new_modifier, adjustments, adjustment_idx - 1)
+            let mut new_expr = expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                new_modifier,
+                adjustments,
+                adjustment_idx - 1,
+            )?;
+            let typ = &mut Arc::make_mut(&mut new_expr).typ;
+            if let TypX::Decorate(
+                vir::ast::TypDecoration::MutRef
+                | vir::ast::TypDecoration::Ref
+                | vir::ast::TypDecoration::Box
+                | vir::ast::TypDecoration::Rc
+                | vir::ast::TypDecoration::Arc,
+                inner_typ,
+            ) = &**typ
+            {
+                *typ = inner_typ.clone();
+            }
+            Ok(new_expr)
         }
         Adjust::Deref(Some(_)) => {
             // note: deref has signature (&self) -> &Self::Target
@@ -951,13 +968,16 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         }
         Adjust::Borrow(AutoBorrow::Ref(_region, AutoBorrowMutability::Not)) => {
             // Similar to ExprKind::AddrOf
-            expr_to_vir_with_adjustments(
+            let mut new_expr: Arc<SpannedTyped<vir::ast::ExprX>> = expr_to_vir_with_adjustments(
                 bctx,
                 expr,
                 ExprModifier::REGULAR,
                 adjustments,
                 adjustment_idx - 1,
-            )
+            )?;
+            let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, new_expr.typ.clone()));
+            Arc::make_mut(&mut new_expr).typ = typ;
+            Ok(new_expr)
         }
         Adjust::Borrow(AutoBorrow::Ref(_region, AutoBorrowMutability::Mut { .. })) => {
             if current_modifier.deref_mut {
@@ -991,7 +1011,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             let ty1 = get_inner_ty();
             let ty2 = adjustment.target;
 
-            if current_modifier != ExprModifier::REGULAR {
+            if current_modifier.deref_mut != false || current_modifier.addr_of_mut != false {
                 unsupported_err!(
                     expr.span,
                     format!("unsizing operation from `{ty1:}` to `{ty2:}`")
@@ -1418,7 +1438,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
-            expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)
+            let mut new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?;
+            let typ = &mut Arc::make_mut(&mut new_expr).typ;
+            *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, typ.clone()));
+            Ok(new_expr)
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if current_modifier.deref_mut {
@@ -1463,12 +1486,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ))
             }
             UnOp::Deref => {
-                let inner = expr_to_vir_inner(
-                    bctx,
-                    arg,
-                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), modifier)?,
-                )?;
-                Ok(inner)
+                let modifier = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), modifier)?;
+                let mut new_expr = expr_to_vir_inner(bctx, arg, modifier)?;
+                let typ = &mut Arc::make_mut(&mut new_expr).typ;
+                if let TypX::Decorate(
+                    vir::ast::TypDecoration::MutRef
+                    | vir::ast::TypDecoration::Ref
+                    | vir::ast::TypDecoration::Box
+                    | vir::ast::TypDecoration::Rc
+                    | vir::ast::TypDecoration::Arc,
+                    inner_typ,
+                ) = &**typ
+                {
+                    *typ = inner_typ.clone();
+                }
+                Ok(new_expr)
             }
         },
         ExprKind::Binary(op, lhs, rhs) => {
@@ -1520,7 +1552,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
             match res {
                 Res::Local(id) => match tcx.hir().get(id) {
-                    Node::Pat(pat) => mk_expr(if modifier.addr_of {
+                    Node::Pat(pat) => mk_expr(if modifier.addr_of_mut {
                         ExprX::VarLoc(pat_to_var(pat)?)
                     } else {
                         ExprX::Var(pat_to_var(pat)?)
@@ -2100,7 +2132,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,
-        lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
+        lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF_MUT)?,
         rhs: expr_to_vir(bctx, rhs, modifier)?,
         op: op,
     })
