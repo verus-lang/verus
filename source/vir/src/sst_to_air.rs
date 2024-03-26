@@ -22,13 +22,13 @@ use crate::def::{
     STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
     SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
-use crate::func_to_air::FunctionSst;
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
 };
+use crate::sst::{FunctionSst, PostConditionInfo, PostConditionKind};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -1172,38 +1172,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
     };
     Ok(result)
-}
-
-#[derive(Clone, Copy)]
-pub enum PostConditionKind {
-    Ensures,
-    DecreasesImplicitLemma,
-    DecreasesBy,
-}
-
-#[derive(Clone)]
-pub struct PostConditionSst {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<UniqueIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exps: Vec<Exp>,
-    /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    pub kind: PostConditionKind,
-}
-
-struct PostConditionInfo {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    dest: Option<UniqueIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    ens_exprs: Vec<(Span, Expr)>,
-    /// Recommends checks (only used in recommends-checking mode)
-    ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    kind: PostConditionKind,
 }
 
 #[derive(Debug)]

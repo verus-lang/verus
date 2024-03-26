@@ -13,8 +13,8 @@ use crate::def::{
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
-use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, Par, ParPurpose, ParX, Pars, Stm, StmX};
-use crate::sst_to_air::PostConditionSst;
+use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{FunctionSst, PostConditionKind, PostConditionSst};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
@@ -37,7 +37,6 @@ pub struct SstInline {
     pub(crate) typ_params: Idents,
     pub do_inline: bool,
 }
-use crate::sst_to_air::PostConditionKind;
 
 pub struct SstInfo {
     pub(crate) inline: SstInline,
@@ -1149,16 +1148,6 @@ pub fn func_sst_to_air(
     )?;
 
     Ok((Arc::new(commands), snap_map))
-}
-
-#[derive(Clone)]
-pub struct FunctionSst {
-    pub reqs: Exps,
-    pub post_condition: PostConditionSst,
-    pub mask_set: MaskSet, // Actually AIR
-    pub body: Stm,
-    pub local_decls: Vec<LocalDecl>,
-    pub statics: Vec<Fun>,
 }
 
 fn map_expr_rename_vars(

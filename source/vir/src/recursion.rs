@@ -10,16 +10,16 @@ use crate::def::{
     decrease_at_entry, rename_rec_param, unique_bound, unique_local, CommandsWithContext, Spanned,
     FUEL_PARAM, FUEL_TYPE,
 };
-use crate::func_to_air::{params_to_pars, FunctionSst, SstMap};
+use crate::func_to_air::{params_to_pars, SstMap};
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
+use crate::sst::PostConditionKind;
+use crate::sst::PostConditionSst;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
-    UniqueIdent,
+    BndX, CallFun, Dest, Exp, ExpX, Exps, FunctionSst, InternalFun, LocalDecl, LocalDeclX, Stm,
+    StmX, UniqueIdent,
 };
-use crate::sst_to_air::PostConditionKind;
-use crate::sst_to_air::PostConditionSst;
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast_util::str_typ;

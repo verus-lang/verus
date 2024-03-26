@@ -14,9 +14,9 @@ use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
 use vir::def::{CommandsWithContext, SnapPos};
-use vir::func_to_air::FunctionSst;
 use vir::func_to_air::SstMap;
 use vir::recursion::Node;
+use vir::sst::FunctionSst;
 use vir::update_cell::UpdateCell;
 
 #[derive(Clone, Copy, Debug)]

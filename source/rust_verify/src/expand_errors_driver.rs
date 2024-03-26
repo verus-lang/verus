@@ -6,8 +6,8 @@ use vir::context::Ctx;
 use vir::expand_errors::{
     cons_id, CanExpandFurther, ExpansionContext, ExpansionTree, Introduction,
 };
-use vir::func_to_air::FunctionSst;
 use vir::func_to_air::SstMap;
+use vir::sst::FunctionSst;
 use vir::sst::{AssertId, Exp};
 
 const MAX_FAILURES: u64 = 4;

@@ -203,3 +203,45 @@ pub struct LocalDeclX {
     pub typ: Typ,
     pub mutable: bool,
 }
+
+#[derive(Clone)]
+pub struct FunctionSst {
+    pub reqs: Exps,
+    pub post_condition: PostConditionSst,
+    pub mask_set: crate::inv_masks::MaskSet, // Actually AIR
+    pub body: Stm,
+    pub local_decls: Vec<LocalDecl>,
+    pub statics: Vec<Fun>,
+}
+
+#[derive(Clone, Copy)]
+pub enum PostConditionKind {
+    Ensures,
+    DecreasesImplicitLemma,
+    DecreasesBy,
+}
+
+#[derive(Clone)]
+pub struct PostConditionSst {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
+    pub dest: Option<VarIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    pub ens_exps: Vec<Exp>,
+    /// Recommends checks (only used in recommends-checking mode)
+    pub ens_spec_precondition_stms: Vec<Stm>,
+    /// Extra info about PostCondition for error reporting
+    pub kind: PostConditionKind,
+}
+
+pub struct PostConditionInfo {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
+    pub dest: Option<VarIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    pub ens_exprs: Vec<(Span, air::ast::Expr)>,
+    /// Recommends checks (only used in recommends-checking mode)
+    pub ens_spec_precondition_stms: Vec<Stm>,
+    /// Extra info about PostCondition for error reporting
+    pub kind: PostConditionKind,
+}
