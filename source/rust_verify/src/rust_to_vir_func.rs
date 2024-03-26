@@ -24,8 +24,8 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, MaskSpec,
-    Mode, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
+    ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
 use vir::ast_util::air_unique_var;
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -1125,7 +1125,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
         unsupported_err_unless!(broadcast_forall.is_none(), span, "broadcast_forall");
-        unsupported_err_unless!(matches!(mask_spec, MaskSpec::NoSpec), span, "opens_invariants");
+        unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
 
         Ok(FunctionX {
@@ -1471,7 +1471,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         decrease_by: None,
         broadcast_forall: None,
         fndef_axioms: None,
-        mask_spec: MaskSpec::NoSpec,
+        mask_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         publish: get_publish(&vattrs).0,
         attrs: Arc::new(fattrs),
@@ -1579,7 +1579,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         broadcast_forall: None,
         fndef_axioms: None,
-        mask_spec: MaskSpec::NoSpec,
+        mask_spec: None,
         item_kind: ItemKind::Function,
         publish: None,
         attrs: Default::default(),

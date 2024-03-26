@@ -440,6 +440,10 @@ macro_rules! test_verify_one_file {
 pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     if let Some(e) = err.iter().find(|e| e.label == Some("at this exit".to_string())) {
         return e;
+    } else if let Some(e) =
+        err.iter().find(|e| e.label == Some("might not be allowed at this call-site".to_string()))
+    {
+        return e;
     } else if let Some(e) = err.iter().find(|e| {
         e.label == Some(vir::def::THIS_POST_FAILED.to_string()) && !e.text[0].text.contains("TRAIT")
     }) {

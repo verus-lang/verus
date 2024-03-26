@@ -663,8 +663,8 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     match mask_spec {
-        MaskSpec::NoSpec => {}
-        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+        None => {}
+        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
             for e in es.iter() {
                 expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
@@ -1258,16 +1258,16 @@ where
     let decrease_by = decrease_by.clone();
 
     let mask_spec = match mask_spec {
-        MaskSpec::NoSpec => MaskSpec::NoSpec,
-        MaskSpec::InvariantOpens(es) => {
-            MaskSpec::InvariantOpens(Arc::new(vec_map_result(es, |e| {
+        None => None,
+        Some(MaskSpec::InvariantOpens(es)) => {
+            Some(MaskSpec::InvariantOpens(Arc::new(vec_map_result(es, |e| {
                 map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?))
+            })?)))
         }
-        MaskSpec::InvariantOpensExcept(es) => {
-            MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
+        Some(MaskSpec::InvariantOpensExcept(es)) => {
+            Some(MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
                 map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?))
+            })?)))
         }
     };
     let attrs = attrs.clone();
