@@ -575,8 +575,34 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let e = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             PatternX::Expr(e)
         }
+        PatKind::Range(expr1_opt, expr2_opt, range_end) => {
+            let e1 = match expr1_opt {
+                None => None,
+                Some(expr1) => {
+                    let e1 = expr_to_vir(bctx, expr1, ExprModifier::REGULAR)?;
+                    if !matches!(&*e1.typ, TypX::Int(_)) {
+                        unsupported_err!(expr1.span, "range pattern with non-int type");
+                    }
+                    Some(e1)
+                }
+            };
+            let e2 = match expr2_opt {
+                None => None,
+                Some(expr2) => {
+                    let e2 = expr_to_vir(bctx, expr2, ExprModifier::REGULAR)?;
+                    if !matches!(&*e2.typ, TypX::Int(_)) {
+                        unsupported_err!(expr2.span, "range pattern with non-int type");
+                    }
+                    let ineq = match range_end {
+                        rustc_hir::RangeEnd::Included => InequalityOp::Le,
+                        rustc_hir::RangeEnd::Excluded => InequalityOp::Lt,
+                    };
+                    Some((e2, ineq))
+                }
+            };
+            PatternX::Range(e1, e2)
+        }
         PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
-        PatKind::Range(..) => unsupported_err!(pat.span, "range patterns", pat),
         PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
     };
     let pattern = bctx.spanned_typed_new(pat.span, &pat_typ, pattern);

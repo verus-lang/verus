@@ -1054,3 +1054,102 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
 }
+
+test_verify_one_file! {
+    #[test] pattern_ranges verus_code! {
+        spec fn m_range(x: u64) -> bool {
+            match x {
+                5u64 .. => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range2(x: u64) -> bool {
+            match x {
+                ..=5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range3(x: u64) -> bool {
+            match x {
+                ..5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range4(x: u64) -> bool {
+            match x {
+                3u64..5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range5(x: u64) -> bool {
+            match x {
+                3u64..=5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range6(x: u64) -> bool {
+            match x {
+                3u64..=3u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range7(x: i64) -> bool {
+            match x {
+                -4i64..=3i64 => true,
+                _ => false,
+            }
+        }
+
+        const A: u64 = 3;
+        const B: u64 = 17;
+
+        spec fn m_range8(x: u64) -> bool {
+            match x {
+                A..=B => true,
+                _ => false,
+            }
+        }
+
+        proof fn test(x: u64, y: i64) {
+            assert(m_range(x) <==> 5 <= x);
+            assert(m_range2(x) <==> x <= 5);
+            assert(m_range3(x) <==> x < 5);
+            assert(m_range4(x) <==> 3 <= x < 5);
+            assert(m_range5(x) <==> 3 <= x <= 5);
+            assert(m_range6(x) <==> x == 3);
+            assert(m_range7(y) <==> -4 <= y <= 3);
+            assert(m_range8(x) <==> 3 <= x <= 17);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pattern_ranges_bad_range verus_code! {
+        spec fn m_range6(x: u64) -> bool {
+            match x {
+                5u64..=3u64 => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+}
+
+test_verify_one_file! {
+    #[test] pattern_ranges_const_mode_error verus_code! {
+        spec const A: u64 = 3u64;
+        spec const B: u64 = 17u64;
+
+        fn test(x: u64) {
+            match x {
+                A..=B => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}

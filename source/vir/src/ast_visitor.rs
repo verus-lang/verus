@@ -219,6 +219,20 @@ where
             let e = map_expr_visitor_env(expr, map, env, fe, fs, ft)?;
             PatternX::Expr(e)
         }
+        PatternX::Range(expr1, expr2) => {
+            let e1 = match expr1 {
+                Some(expr1) => Some(map_expr_visitor_env(expr1, map, env, fe, fs, ft)?),
+                None => None,
+            };
+            let e2 = match expr2 {
+                Some((expr2, op)) => {
+                    let e2 = map_expr_visitor_env(expr2, map, env, fe, fs, ft)?;
+                    Some((e2, *op))
+                }
+                None => None,
+            };
+            PatternX::Range(e1, e2)
+        }
     };
     Ok(SpannedTyped::new(&pattern.span, &map_typ_visitor_env(&pattern.typ, env, ft)?, patternx))
 }
@@ -248,6 +262,7 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
             // pat2 should bind an identical set of variables
         }
         PatternX::Expr(_) => {}
+        PatternX::Range(_, _) => {}
     }
 }
 
@@ -574,6 +589,14 @@ where
         }
         PatternX::Expr(expr) => {
             expr_visitor_control_flow!(expr_visitor_dfs(expr, map, mf));
+        }
+        PatternX::Range(expr1, expr2) => {
+            if let Some(expr1) = expr1 {
+                expr_visitor_control_flow!(expr_visitor_dfs(expr1, map, mf));
+            }
+            if let Some((expr2, _ineq_op)) = expr2 {
+                expr_visitor_control_flow!(expr_visitor_dfs(expr2, map, mf));
+            }
         }
     };
     VisitorControlFlow::Recurse

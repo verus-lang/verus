@@ -1,9 +1,9 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
-    FunX, FunctionX, GenericBound, GenericBoundX, Ident, IntRange, ItemKind, MaskSpec, Mode, Param,
-    ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX,
-    Typs, UnaryOp, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, VirErr,
-    Visibility,
+    FunX, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange, ItemKind,
+    MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
+    Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
+    Variants, VirErr, Visibility,
 };
 use crate::messages::{error, Span};
 use crate::sst::{Par, Pars};
@@ -426,6 +426,14 @@ pub fn mk_eq(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
         span,
         &Arc::new(TypX::Bool),
         ExprX::Binary(BinaryOp::Eq(Mode::Spec), e1.clone(), e2.clone()),
+    )
+}
+
+pub fn mk_ineq(span: &Span, e1: &Expr, e2: &Expr, op: InequalityOp) -> Expr {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Inequality(op), e1.clone(), e2.clone()),
     )
 }
 

@@ -372,6 +372,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 
     #![allow(unused_imports)]
     #![allow(unused_macros)]
+    #![feature(exclusive_range_pattern)]
 
     use builtin::*;
     use builtin_macros::*;

@@ -476,6 +476,17 @@ fn add_pattern_rec(
             check_expr_has_mode(ctxt, record, typing, mode, expr, mode)?;
             Ok(())
         }
+        PatternX::Range(expr1, expr2) => {
+            if let Some(expr1) = expr1 {
+                check_expr_in_pattern(expr1)?;
+                check_expr_has_mode(ctxt, record, typing, mode, expr1, mode)?;
+            }
+            if let Some((expr2, _ineq_op)) = expr2 {
+                check_expr_in_pattern(expr2)?;
+                check_expr_has_mode(ctxt, record, typing, mode, expr2, mode)?;
+            }
+            Ok(())
+        }
     }
 }
 

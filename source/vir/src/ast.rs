@@ -576,6 +576,11 @@ pub enum PatternX {
     /// This only supports literals and consts, so we don't need to worry
     /// about side-effects, binding order, etc.
     Expr(Expr),
+    /// `e1 <= x <= e2` or `e1 <= x < e2`
+    /// The start of the range is always inclusive (<=)
+    /// The end of the range may be inclusive (<=) or exclusive (<),
+    /// as given by the InequalityOp argument.
+    Range(Option<Expr>, Option<(Expr, InequalityOp)>),
 }
 
 /// Arms of match expressions
