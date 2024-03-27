@@ -2376,6 +2376,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     verus_items: Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
 ) -> State {
     let mut ctxt = Context {
         cmd_line_args,
@@ -2466,31 +2467,38 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     for owner in krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
-                OwnerNode::Item(item) => match &item.kind {
-                    ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
-                        if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
-                            add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
-                        }
+                OwnerNode::Item(item) => {
+                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                        // item is external
+                        continue;
                     }
-                    ItemKind::Trait(
-                        IsAuto::No,
-                        Unsafety::Normal,
-                        _trait_generics,
-                        _bounds,
-                        _trait_items,
-                    ) => {
-                        let attrs = tcx.hir().attrs(item.hir_id());
-                        let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
-                        if vattrs.is_external(&ctxt.cmd_line_args) {
-                            continue;
+                    match &item.kind {
+                        ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
+                            if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
+                                add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
+                            }
                         }
-                        // We only need traits with associated type declarations.
-                        // Process traits early so we can see which traits we need.
-                        let id = item.owner_id.to_def_id();
-                        erase_trait(&ctxt, &mut state, id);
+                        ItemKind::Trait(
+                            IsAuto::No,
+                            Unsafety::Normal,
+                            _trait_generics,
+                            _bounds,
+                            _trait_items,
+                        ) => {
+                            let attrs = tcx.hir().attrs(item.hir_id());
+                            let vattrs =
+                                get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                                continue;
+                            }
+                            // We only need traits with associated type declarations.
+                            // Process traits early so we can see which traits we need.
+                            let id = item.owner_id.to_def_id();
+                            erase_trait(&ctxt, &mut state, id);
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                },
+                }
                 _ => {}
             }
         }
@@ -2500,6 +2508,10 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
+                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                        // item is external
+                        continue;
+                    }
                     let attrs = tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
                     if vattrs.external || vattrs.internal_reveal_fn {

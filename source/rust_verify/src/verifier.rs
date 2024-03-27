@@ -277,6 +277,7 @@ pub struct Verifier {
     crate_names: Option<Vec<String>>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
+    item_to_module_map: Option<Arc<crate::rust_to_vir::ItemToModuleMap>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
@@ -383,6 +384,7 @@ impl Verifier {
             crate_names: None,
             air_no_span: None,
             current_crate_modules: None,
+            item_to_module_map: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
@@ -413,6 +415,7 @@ impl Verifier {
             crate_names: self.crate_names.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
+            item_to_module_map: self.item_to_module_map.clone(),
             buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
             error_format: self.error_format,
@@ -2383,11 +2386,13 @@ impl Verifier {
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
+        let (vir_crate, item_to_module_map) =
+            crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
+        self.item_to_module_map = Some(Arc::new(item_to_module_map));
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
@@ -2634,6 +2639,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         verus_items,
                         &spans,
                         self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
+                        self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
                         lifetime_log_file,
                     )
                 };
