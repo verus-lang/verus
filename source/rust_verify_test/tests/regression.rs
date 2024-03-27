@@ -1248,3 +1248,17 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 2)
 }
+
+test_verify_one_file! {
+    #[test] external_module_issue618 verus_code! {
+        #[verifier::external]
+        mod M {
+            pub fn stuff() {
+                panic!("qewrty");
+            }
+        }
+
+        fn rawr() {
+        }
+    } => Ok(())
+}
