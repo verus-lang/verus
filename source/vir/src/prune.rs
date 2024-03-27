@@ -261,9 +261,16 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
                 reach_function(ctxt, state, method);
             }
-            if function.x.mode == crate::ast::Mode::Spec || function.x.attrs.broadcast_forall {
-                for bound in function.x.typ_bounds.iter() {
-                    let crate::ast::GenericBoundX::Trait(path, _) = &**bound;
+            for bound in function.x.typ_bounds.iter() {
+                // note: the types in the bounds are handled below by map_function_visitor_env
+                let path = match &**bound {
+                    crate::ast::GenericBoundX::Trait(path, _) => path,
+                    crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
+                        reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
+                        path
+                    }
+                };
+                if function.x.mode == crate::ast::Mode::Spec || function.x.attrs.broadcast_forall {
                     reach_bound_trait(ctxt, state, path);
                 }
             }
@@ -542,10 +549,20 @@ pub fn prune_krate_for_module(
         let mut bound_traits: Vec<TraitName> = Vec::new();
         let mut bound_types: Vec<ReachedType> = Vec::new();
         for bound in imp.x.typ_bounds.iter() {
-            let crate::ast::GenericBoundX::Trait(path, typ_args) = &**bound;
-            bound_traits.push(path.clone());
-            for t in typ_args.iter() {
-                bound_types.push(typ_to_reached_type(t));
+            match &**bound {
+                crate::ast::GenericBoundX::Trait(path, typ_args) => {
+                    bound_traits.push(path.clone());
+                    for t in typ_args.iter() {
+                        bound_types.push(typ_to_reached_type(t));
+                    }
+                }
+                crate::ast::GenericBoundX::TypEquality(path, typ_args, _name, typ) => {
+                    bound_traits.push(path.clone());
+                    for t in typ_args.iter() {
+                        bound_types.push(typ_to_reached_type(t));
+                    }
+                    bound_types.push(typ_to_reached_type(typ));
+                }
             }
         }
         let trait_impl = TraitImpl {

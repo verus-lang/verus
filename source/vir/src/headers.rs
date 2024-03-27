@@ -1,7 +1,6 @@
 use crate::ast::{
-    Expr, ExprX, Exprs, Fun, Function, FunctionX, GenericBoundX, HeaderExprX, LoopInvariant,
-    LoopInvariantKind, LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent,
-    VirErr,
+    Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
+    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent, VirErr,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -321,15 +320,11 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         }
     }
     for (b1, b2) in methodx.typ_bounds.iter().zip(typ_bounds.iter()) {
-        match (&**b1, &**b2) {
-            (GenericBoundX::Trait(x1, ps1), GenericBoundX::Trait(x2, ps2)) => {
-                if x1 != x2 || !crate::ast_util::n_types_equal(ps1, ps2) {
-                    return Err(error(
-                        &spec_method.span,
-                        "method specification has different type parameters or bounds from method",
-                    ));
-                }
-            }
+        if !crate::ast_util::generic_bounds_equal(b1, b2) {
+            return Err(error(
+                &spec_method.span,
+                "method specification has different type parameters or bounds from method",
+            ));
         }
     }
     if methodx.params.len() != params.len() {

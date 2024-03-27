@@ -224,6 +224,18 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exp_new(ExpX::NullaryOpr(NullaryOpr::TraitBound(p.clone(), R::get_vec_a(ts))))
                 })
             }
+            ExpX::NullaryOpr(NullaryOpr::TypEqualityBound(p, ts, x, t)) => {
+                let ts = self.visit_typs(ts)?;
+                let t = self.visit_typ(t)?;
+                R::ret(|| {
+                    exp_new(ExpX::NullaryOpr(NullaryOpr::TypEqualityBound(
+                        p.clone(),
+                        R::get_vec_a(ts),
+                        x.clone(),
+                        R::get(t),
+                    )))
+                })
+            }
             ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => R::ret(|| exp.clone()),
             ExpX::Unary(op, e1) => {
                 let e1 = self.visit_exp(e1)?;

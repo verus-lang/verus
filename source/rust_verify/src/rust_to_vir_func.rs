@@ -1005,6 +1005,16 @@ fn fix_external_fn_specification_trait_method_decl_typs(
                             let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
                             GenericBoundX::Trait(path.clone(), Arc::new(typs))
                         }
+                        GenericBoundX::TypEquality(path, typs, name, typ) => {
+                            let typs = typs.iter().map(|typ| subst_typ(&typ_substs, typ)).collect();
+                            let typ = subst_typ(&typ_substs, typ);
+                            GenericBoundX::TypEquality(
+                                path.clone(),
+                                Arc::new(typs),
+                                name.clone(),
+                                typ,
+                            )
+                        }
                     };
                     Arc::new(gbx)
                 })
