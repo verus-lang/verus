@@ -8,7 +8,7 @@
 #[path = "../../common/consts.rs"]
 mod consts;
 
-const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 2, 7];
+const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 2, 10];
 
 mod util;
 
