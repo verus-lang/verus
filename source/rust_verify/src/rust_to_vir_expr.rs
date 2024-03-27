@@ -343,9 +343,7 @@ fn get_adt_res<'tcx>(
             let variant_def = adt_def.non_enum_variant();
             Ok((struct_did, variant_def, false, false))
         }
-        Res::Def(DefKind::TyAlias { lazy }, alias_did) => {
-            unsupported_err_unless!(!lazy, span, "lazy type alias");
-
+        Res::Def(DefKind::TyAlias, alias_did) => {
             let alias_ty = tcx.type_of(alias_did).skip_binder();
 
             let struct_did = match alias_ty.kind() {
@@ -604,6 +602,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
         }
         PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
         PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
+        PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
     };
     let pattern = bctx.spanned_typed_new(pat.span, &pat_typ, pattern);
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -1600,7 +1599,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
             match res {
-                Res::Local(id) => match tcx.hir().get(id) {
+                Res::Local(id) => match tcx.hir_node(id) {
                     Node::Pat(pat) => mk_expr(if modifier.addr_of_mut {
                         ExprX::VarLoc(pat_to_var(pat)?)
                     } else {
@@ -1645,8 +1644,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let gparam = if let Some(local_id) = id.as_local() {
-                        let hir_id = tcx.hir().local_def_id_to_hir_id(local_id);
-                        match tcx.hir().get(hir_id) {
+                        let hir_id = tcx.local_def_id_to_hir_id(local_id);
+                        match tcx.hir_node(hir_id) {
                             Node::GenericParam(rustc_hir::GenericParam {
                                 name,
                                 kind: rustc_hir::GenericParamKind::Const { .. },
@@ -1749,7 +1748,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(Let { hir_id: _, pat, init: expr, ty: _, span: _ }) => {
+                ExprKind::Let(Let {
+                    hir_id: _,
+                    pat,
+                    init: expr,
+                    ty: _,
+                    span: _,
+                    is_recovered: None,
+                }) => {
                     // if let
                     let vir_expr = expr_to_vir(bctx, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
@@ -2140,7 +2146,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
             ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
-                let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir().get(*id) {
+                let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir_node(*id) {
                     let (mutable, _) = pat_to_mut_var(pat)?;
                     let ty = bctx.types.node_type(*id);
                     !(mutable || ty.ref_mutability() == Some(Mutability::Mut))

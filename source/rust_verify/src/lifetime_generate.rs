@@ -1,6 +1,6 @@
 use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
 use crate::erase::{ErasureHints, ResolvedCall};
-use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir};
+use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{RustItem, VerusItem, VerusItems, VstdItem};
 use crate::{lifetime_ast::*, verus_items};
@@ -327,8 +327,8 @@ fn add_copy_type(ctxt: &mut Context, state: &mut State, id: DefId) {
 
 fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKind) -> Option<Id> {
     match r {
-        RegionKind::ReEarlyBound(bound) => Some(state.lifetime((bound.name.to_string(), None))),
-        RegionKind::ReLateBound(_, bound) => match bound.kind {
+        RegionKind::ReEarlyParam(bound) => Some(state.lifetime((bound.name.to_string(), None))),
+        RegionKind::ReBound(_, bound) => match bound.kind {
             BoundRegionKind::BrNamed(a, _) => Some(state.lifetime(lifetime_key(ctxt, a))),
             _ => None,
         },
@@ -886,6 +886,7 @@ fn erase_call<'tcx>(
 
             state.reach_fun(fn_def_id);
 
+            let node_substs = remove_host_arg(ctxt.tcx, fn_def_id, node_substs, expr.span).unwrap();
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
@@ -1077,7 +1078,7 @@ fn erase_expr<'tcx>(
             let res = ctxt.types().qpath_res(qpath, expr.hir_id);
 
             match res {
-                Res::Local(id) => match ctxt.tcx.hir().get(id) {
+                Res::Local(id) => match ctxt.tcx.hir_node(id) {
                     Node::Pat(Pat { kind: PatKind::Binding(_ann, id, ident, _pat), .. }) => {
                         if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                             None
@@ -1154,8 +1155,8 @@ fn erase_expr<'tcx>(
                 }
                 Res::Def(DefKind::ConstParam, id) => {
                     let local_id = id.as_local().expect("ConstParam local");
-                    let hir_id = ctxt.tcx.hir().local_def_id_to_hir_id(local_id);
-                    match ctxt.tcx.hir().get(hir_id) {
+                    let hir_id = ctxt.tcx.local_def_id_to_hir_id(local_id);
+                    match ctxt.tcx.hir_node(hir_id) {
                         Node::GenericParam(gp) => {
                             let name = state.typ_param(gp.name.ident().to_string(), None);
                             mk_exp(ExpX::Var(name))
@@ -1665,11 +1666,12 @@ fn erase_mir_generics<'tcx>(
                 let name = state.typ_param(gparam.name.to_string(), Some(gparam.index));
                 typ_params.push(GenericParam { name, const_typ: None });
             }
-            GenericParamDefKind::Const { .. } => {
+            GenericParamDefKind::Const { has_default: _, is_host_effect: false } => {
                 let name = state.typ_param(gparam.name.to_string(), None);
                 let t = erase_ty(ctxt, state, &ctxt.tcx.type_of(gparam.def_id).skip_binder());
                 typ_params.push(GenericParam { name, const_typ: Some(t) });
             }
+            GenericParamDefKind::Const { is_host_effect: true, .. } => {}
         }
     }
     erase_mir_predicates(
@@ -2379,6 +2381,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     verus_items: Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
 ) -> State {
     let mut ctxt = Context {
         cmd_line_args,
@@ -2469,31 +2472,38 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     for owner in krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
-                OwnerNode::Item(item) => match &item.kind {
-                    ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
-                        if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
-                            add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
-                        }
+                OwnerNode::Item(item) => {
+                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                        // item is external
+                        continue;
                     }
-                    ItemKind::Trait(
-                        IsAuto::No,
-                        Unsafety::Normal,
-                        _trait_generics,
-                        _bounds,
-                        _trait_items,
-                    ) => {
-                        let attrs = tcx.hir().attrs(item.hir_id());
-                        let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
-                        if vattrs.is_external(&ctxt.cmd_line_args) {
-                            continue;
+                    match &item.kind {
+                        ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
+                            if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
+                                add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
+                            }
                         }
-                        // We only need traits with associated type declarations.
-                        // Process traits early so we can see which traits we need.
-                        let id = item.owner_id.to_def_id();
-                        erase_trait(&ctxt, &mut state, id);
+                        ItemKind::Trait(
+                            IsAuto::No,
+                            Unsafety::Normal,
+                            _trait_generics,
+                            _bounds,
+                            _trait_items,
+                        ) => {
+                            let attrs = tcx.hir().attrs(item.hir_id());
+                            let vattrs =
+                                get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                                continue;
+                            }
+                            // We only need traits with associated type declarations.
+                            // Process traits early so we can see which traits we need.
+                            let id = item.owner_id.to_def_id();
+                            erase_trait(&ctxt, &mut state, id);
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                },
+                }
                 _ => {}
             }
         }
@@ -2503,6 +2513,10 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
+                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                        // item is external
+                        continue;
+                    }
                     let attrs = tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
                     if vattrs.external || vattrs.internal_reveal_fn {

@@ -87,14 +87,14 @@ impl SpanContextX {
                     let pos = FileStartEndPos {
                         filename,
                         start_pos: source_file.start_pos.0,
-                        end_pos: source_file.end_pos.0,
+                        end_pos: source_file.start_pos.0 + source_file.source_len.0,
                     };
                     local_files.insert(source_file.src_hash.hash_bytes().to_vec(), pos);
                 }
                 ExternalSource::Foreign { .. } => {
                     let imported_crate = tcx.stable_crate_id(source_file.cnum).as_u64();
                     let start_pos = source_file.start_pos;
-                    let end_pos = source_file.end_pos;
+                    let end_pos = BytePos(source_file.start_pos.0 + source_file.source_len.0);
                     let hash = source_file.src_hash.hash_bytes().to_vec();
                     if let Some(original) =
                         original_crate_files.get(&imported_crate).and_then(|x| x.get(&hash))
@@ -185,7 +185,7 @@ impl SpanContextX {
                 if let Ok(source_file) = source_map.load_file(&filename) {
                     if hash == source_file.src_hash.hash_bytes().to_vec() {
                         let start_pos = source_file.start_pos;
-                        let end_pos = source_file.end_pos;
+                        let end_pos = BytePos(source_file.start_pos.0 + source_file.source_len.0);
                         *info = ExternSourceInfo::Loaded { start_pos, end_pos };
                     }
                 }

@@ -36,7 +36,7 @@ pub(crate) fn token_stream_to_trees(
             TokenTree::Token(token, _spacing) => {
                 if let Some(name) = token_to_string(token)? {
                     let fargs = if i + 1 < token_trees.len() {
-                        if let TokenTree::Delimited(_, _, token_stream) = &token_trees[i + 1] {
+                        if let TokenTree::Delimited(_, _, _, token_stream) = &token_trees[i + 1] {
                             i += 1;
                             Some(token_stream_to_trees(span, token_stream)?)
                         } else {
@@ -645,7 +645,7 @@ pub(crate) fn parse_attrs_walk_parents<'tcx>(
     let mut vattrs: Vec<Attr> = Vec::new();
     loop {
         if let Some(did) = def_id.as_local() {
-            let hir_id = tcx.hir().local_def_id_to_hir_id(did);
+            let hir_id = tcx.local_def_id_to_hir_id(did);
             let attrs = tcx.hir().attrs(hir_id);
             vattrs.extend(parse_attrs_opt(attrs, None));
         }

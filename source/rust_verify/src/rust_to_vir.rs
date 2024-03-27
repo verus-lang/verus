@@ -1016,6 +1016,11 @@ struct VisitMod<'tcx> {
 
 impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     type Map = rustc_middle::hir::map::Map<'tcx>;
+    type NestedFilter = rustc_middle::hir::nested_filter::All;
+
+    fn nested_visit_map(&mut self) -> Self::Map {
+        self._tcx.hir()
+    }
 
     fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
         self.ids.push(item.item_id());
@@ -1023,7 +1028,9 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 }
 
-pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
+pub type ItemToModuleMap = HashMap<ItemId, Option<Path>>;
+
+pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModuleMap), VirErr> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -1068,6 +1075,23 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         item_to_module
                             .extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
                     };
+                }
+                OwnerNode::Item(item @ Item { kind: _, owner_id: _, .. }) => {
+                    // If we have something like:
+                    //    #[verifier::external_body]
+                    //    fn test() {
+                    //        fn nested_item() { ... }
+                    //    }
+                    // Then we need to make sure nested_item() gets marked external.
+                    let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+                    let vattrs =
+                        get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    if vattrs.external || vattrs.external_body {
+                        use crate::rustc_hir::intravisit::Visitor;
+                        let mut visitor = VisitMod { _tcx: ctxt.tcx, ids: Vec::new() };
+                        visitor.visit_item(item);
+                        item_to_module.extend(visitor.ids.iter().skip(1).map(move |ii| (*ii, None)))
+                    }
                 }
                 OwnerNode::Crate(mod_) => {
                     let path =
@@ -1174,5 +1198,5 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
     }
     collect_external_trait_impls(ctxt, &mut vir, &external_fn_specification_trait_method_impls)?;
 
-    Ok(Arc::new(vir))
+    Ok((Arc::new(vir), item_to_module))
 }

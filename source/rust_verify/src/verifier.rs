@@ -55,7 +55,7 @@ trait Diagnostics: air::messages::Diagnostics {
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
-    compiler_diagnostics: &'tcx rustc_errors::Handler,
+    compiler_diagnostics: &'tcx rustc_errors::DiagCtxt,
     source_map: &'tcx rustc_span::source_map::SourceMap,
 }
 
@@ -63,8 +63,8 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: compiler.session().diagnostic(),
-            source_map: compiler.session().source_map(),
+            compiler_diagnostics: compiler.sess.dcx(),
+            source_map: compiler.sess.source_map(),
         }
     }
 }
@@ -112,7 +112,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note_without_error(msg.note.clone()),
+                self.compiler_diagnostics.struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
@@ -278,6 +278,7 @@ pub struct Verifier {
     crate_names: Option<Vec<String>>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
+    item_to_module_map: Option<Arc<crate::rust_to_vir::ItemToModuleMap>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
@@ -385,6 +386,7 @@ impl Verifier {
             crate_names: None,
             air_no_span: None,
             current_crate_modules: None,
+            item_to_module_map: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
@@ -416,6 +418,7 @@ impl Verifier {
             crate_names: self.crate_names.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
+            item_to_module_map: self.item_to_module_map.clone(),
             buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
             error_format: self.error_format,
@@ -1832,7 +1835,7 @@ impl Verifier {
         self.time_verify_crate_sequential =
             time_verify_sequential_end - time_verify_sequential_start;
 
-        let source_map = compiler.session().source_map();
+        let source_map = compiler.sess.source_map();
 
         self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
         if self.args.num_threads != 1 && self.num_threads >= 1 {
@@ -2399,11 +2402,13 @@ impl Verifier {
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
+        let (vir_crate, item_to_module_map) =
+            crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
+        self.item_to_module_map = Some(Arc::new(item_to_module_map));
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
@@ -2555,7 +2560,7 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        config.override_queries = Some(|_session, providers, _extern_providers| {
+        config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
         });
     }
@@ -2567,11 +2572,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
-        if !compiler.session().compile_status().is_ok() {
+        if !compiler.sess.compile_status().is_ok() {
             return rustc_driver::Compilation::Stop;
         }
 
-        self.verifier.error_format = Some(compiler.session().opts.error_format);
+        self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
@@ -2581,7 +2586,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Err(err) => {
                     assert!(err.spans.len() == 0);
                     assert!(err.level == MessageLevel::Error);
-                    compiler.session().diagnostic().err(err.note.clone());
+                    compiler.sess.dcx().err(err.note.clone());
                     self.verifier.encountered_vir_error = true;
                     return;
                 }
@@ -2591,7 +2596,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             let spans = SpanContextX::new(
                 tcx,
                 tcx.stable_crate_id(LOCAL_CRATE),
-                compiler.session().source_map(),
+                compiler.sess.source_map(),
                 imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             );
             {
@@ -2623,7 +2628,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     }
                     return;
                 }
-                if !compiler.session().compile_status().is_ok() {
+                if !compiler.sess.compile_status().is_ok() {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -2653,6 +2658,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         verus_items,
                         &spans,
                         self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
+                        self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
                         lifetime_log_file,
                     )
                 };
@@ -2690,7 +2696,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
 
-            if !compiler.session().compile_status().is_ok() {
+            if !compiler.sess.compile_status().is_ok() {
                 return;
             }
 

@@ -3,6 +3,7 @@
 use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
 extern crate rustc_driver;
+extern crate rustc_log;
 extern crate rustc_session;
 
 #[cfg(target_family = "windows")]
@@ -50,8 +51,8 @@ pub fn main() {
 
     let _ = os_setup();
     let logger_handler =
-        rustc_session::EarlyErrorHandler::new(rustc_session::config::ErrorOutputType::default());
-    rustc_driver::init_env_logger(&logger_handler, "RUSTVERIFY_LOG");
+        rustc_session::EarlyDiagCtxt::new(rustc_session::config::ErrorOutputType::default());
+    rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
