@@ -255,7 +255,11 @@ impl<A> Seq<A> {
     }
 
     #[verifier(external_body)]
-    pub broadcast proof fn filter_distributes_over_add_broacast(a: Self, b: Self, pred: spec_fn(A) -> bool)
+    pub broadcast proof fn filter_distributes_over_add_broacast(
+        a: Self,
+        b: Self,
+        pred: spec_fn(A) -> bool,
+    )
         ensures
             #[trigger] (a + b).filter(pred) == a.filter(pred) + b.filter(pred),
     {
