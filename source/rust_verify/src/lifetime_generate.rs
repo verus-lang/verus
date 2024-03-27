@@ -552,10 +552,11 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
     }
 }
 
-fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Pattern {
+fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> Pattern {
     let mk_pat = |p: PatternX| Box::new((pat.span, p));
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
+        PatKind::Lit(_expr) => mk_pat(PatternX::Wildcard),
         PatKind::Binding(ann, hir_id, x, None) => {
             if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
                 mk_pat(PatternX::Wildcard)
@@ -577,15 +578,20 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat) -> Patter
         }
         PatKind::Path(qpath) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) =
-                get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
-            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+            match res {
+                Res::Def(DefKind::Const, _id) => mk_pat(PatternX::Wildcard),
+                _ => {
+                    let (adt_def_id, variant_def, is_enum) =
+                        get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
+                    let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
+                    let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
-            let name = state.datatype_name(&vir_path);
-            let variant =
-                if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
+                    let name = state.datatype_name(&vir_path);
+                    let variant =
+                        if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
+                    mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
+                }
+            }
         }
         PatKind::Box(p) => mk_pat(PatternX::Box(erase_pat(ctxt, state, p))),
         PatKind::Or(pats) => {

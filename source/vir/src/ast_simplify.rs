@@ -15,7 +15,9 @@ use crate::ast::{
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
-use crate::ast_util::{conjoin, disjoin, if_then_else, typ_args_for_datatype_typ, wrap_in_trigger};
+use crate::ast_util::{
+    conjoin, disjoin, if_then_else, mk_eq, typ_args_for_datatype_typ, wrap_in_trigger,
+};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
@@ -240,6 +242,7 @@ fn pattern_to_exprs_rec(
 
             Ok(matches)
         }
+        PatternX::Expr(e) => Ok(mk_eq(&pattern.span, expr, e)),
     }
 }
 

@@ -398,6 +398,7 @@ fn add_pattern_rec(
     // Testing this condition prevents us from adding duplicate spans into var_modes
     if !(in_or && matches!(&pattern.x, PatternX::Or(..)))
         && !matches!(&pattern.x, PatternX::Wildcard(true))
+        && !matches!(&pattern.x, PatternX::Expr(_))
     {
         record.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     }
@@ -470,6 +471,23 @@ fn add_pattern_rec(
 
             Ok(())
         }
+        PatternX::Expr(expr) => {
+            check_expr_in_pattern(expr)?;
+            check_expr_has_mode(ctxt, record, typing, mode, expr, mode)?;
+            Ok(())
+        }
+    }
+}
+
+fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
+    match &expr.x {
+        ExprX::ConstVar(_, _) => Ok(()),
+        ExprX::Const(_) => Ok(()),
+        ExprX::Binary(BinaryOp::Arith(crate::ast::ArithOp::Sub, _), expr1, expr2) => {
+            check_expr_in_pattern(expr1)?;
+            check_expr_in_pattern(expr2)
+        }
+        _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
     }
 }
 
