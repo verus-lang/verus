@@ -251,6 +251,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
 ) -> State {
     let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
         cmd_line_args,
@@ -258,6 +259,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
         verus_items,
         krate,
         erasure_hints,
+        item_to_module_map,
     );
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
@@ -348,6 +350,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
@@ -359,6 +362,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         krate,
         &mut emit_state,
         erasure_hints,
+        item_to_module_map,
     );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
