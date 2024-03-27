@@ -104,6 +104,7 @@ struct State {
     pub(crate) block_ghostness: Ghost,
     pub(crate) ret_mode: Option<Mode>,
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
+    pub(crate) allow_prophecy_dependence: bool,
 }
 
 mod typing {
@@ -200,6 +201,22 @@ mod typing {
                 internal_state: self.internal_state,
                 internal_undo: Some(Box::new(move |state| {
                     state.atomic_insts = atomic_insts;
+                })),
+            }
+        }
+
+        pub(super) fn push_allow_prophecy_dependence<'a>(
+            &'a mut self,
+            mut allow_prophecy_dependence: bool,
+        ) -> Typing<'a> {
+            swap(
+                &mut allow_prophecy_dependence,
+                &mut self.internal_state.allow_prophecy_dependence,
+            );
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.allow_prophecy_dependence = allow_prophecy_dependence;
                 })),
             }
         }
@@ -381,6 +398,7 @@ fn add_pattern_rec(
     // Testing this condition prevents us from adding duplicate spans into var_modes
     if !(in_or && matches!(&pattern.x, PatternX::Or(..)))
         && !matches!(&pattern.x, PatternX::Wildcard(true))
+        && !matches!(&pattern.x, PatternX::Expr(_))
     {
         record.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     }
@@ -388,6 +406,11 @@ fn add_pattern_rec(
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
         PatternX::Var { name: x, mutable: _ } => {
+            decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
+            Ok(())
+        }
+        PatternX::Binding { name: x, mutable: _, sub_pat } => {
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
@@ -448,6 +471,34 @@ fn add_pattern_rec(
 
             Ok(())
         }
+        PatternX::Expr(expr) => {
+            check_expr_in_pattern(expr)?;
+            check_expr_has_mode(ctxt, record, typing, mode, expr, mode)?;
+            Ok(())
+        }
+        PatternX::Range(expr1, expr2) => {
+            if let Some(expr1) = expr1 {
+                check_expr_in_pattern(expr1)?;
+                check_expr_has_mode(ctxt, record, typing, mode, expr1, mode)?;
+            }
+            if let Some((expr2, _ineq_op)) = expr2 {
+                check_expr_in_pattern(expr2)?;
+                check_expr_has_mode(ctxt, record, typing, mode, expr2, mode)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
+    match &expr.x {
+        ExprX::ConstVar(_, _) => Ok(()),
+        ExprX::Const(_) => Ok(()),
+        ExprX::Binary(BinaryOp::Arith(crate::ast::ArithOp::Sub, _), expr1, expr2) => {
+            check_expr_in_pattern(expr1)?;
+            check_expr_in_pattern(expr2)
+        }
+        _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
     }
 }
 
@@ -687,6 +738,13 @@ fn check_expr_handle_mut_arg(
                 Some(f) => f.clone(),
             };
 
+            if !typing.allow_prophecy_dependence && function.x.attrs.prophecy_dependent {
+                return Err(error(
+                    &expr.span,
+                    "cannot call prophecy-dependent function in prophecy-independent context",
+                ));
+            }
+
             if function.x.mode == Mode::Exec {
                 match typing.update_atomic_insts() {
                     None => {}
@@ -803,6 +861,7 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(Mode::Exec),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => Ok(Mode::Spec),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => Ok(Mode::Spec),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => Ok(Mode::Spec),
         ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind }, e1) => {
             // same as a call to an op_mode function with parameter from_mode and return to_mode
@@ -962,18 +1021,33 @@ fn check_expr_handle_mut_arg(
             let mut typing = typing.push_atomic_insts(None);
             let mut typing = typing.push_ret_mode(Some(Mode::Exec));
 
-            let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
-            for req in requires.iter() {
-                check_expr_has_mode(ctxt, record, &mut ghost_typing, Mode::Spec, req, Mode::Spec)?;
-            }
+            {
+                let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut ghost_typing = ghost_typing.push_allow_prophecy_dependence(true);
+                for req in requires.iter() {
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut ghost_typing,
+                        Mode::Spec,
+                        req,
+                        Mode::Spec,
+                    )?;
+                }
 
-            let mut ens_typing = ghost_typing.push_var_scope();
-            ens_typing.insert(&ret.name, Mode::Exec);
-            for ens in ensures.iter() {
-                check_expr_has_mode(ctxt, record, &mut ens_typing, Mode::Spec, ens, Mode::Spec)?;
+                let mut ens_typing = ghost_typing.push_var_scope();
+                ens_typing.insert(&ret.name, Mode::Exec);
+                for ens in ensures.iter() {
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut ens_typing,
+                        Mode::Spec,
+                        ens,
+                        Mode::Spec,
+                    )?;
+                }
             }
-            drop(ens_typing);
-            drop(ghost_typing);
 
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Exec, body, Mode::Exec)?;
 
@@ -1060,7 +1134,8 @@ fn check_expr_handle_mut_arg(
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert or assume in exec mode"));
             }
-            check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec)?;
+            let mut typing = typing.push_allow_prophecy_dependence(true);
+            check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
@@ -1075,8 +1150,11 @@ fn check_expr_handle_mut_arg(
             for var in vars.iter() {
                 typing.insert(&var.name, Mode::Spec);
             }
-            check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, require, Mode::Spec)?;
-            check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, ensure, Mode::Spec)?;
+            {
+                let mut typing = typing.push_allow_prophecy_dependence(true);
+                check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, require, Mode::Spec)?;
+                check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, ensure, Mode::Spec)?;
+            }
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Proof, proof, Mode::Proof)?;
             Ok(Mode::Proof)
         }
@@ -1175,6 +1253,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, body, Mode::Exec)?;
             for inv in invs.iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_allow_prophecy_dependence(true);
                 check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, &inv.inv, Mode::Spec)?;
             }
             Ok(Mode::Exec)
@@ -1310,6 +1389,7 @@ fn check_expr_handle_mut_arg(
                 return Err(error(&inv.span, "Invariant must be Proof mode."));
             }
             let mut typing = typing.push_var_scope();
+
             typing.insert(&binder.name, Mode::Proof);
 
             if *atomicity == InvAtomicity::NonAtomic
@@ -1397,7 +1477,24 @@ fn check_function(
     typing: &mut Typing,
     function: &mut Function,
 ) -> Result<(), VirErr> {
-    let mut fun_typing = typing.push_var_scope();
+    let mut fun_typing0 = typing.push_var_scope();
+
+    if function.x.attrs.prophecy_dependent {
+        if function.x.mode != Mode::Spec {
+            return Err(error(
+                &function.span,
+                "prophetic attribute can only be applied to 'spec' functions",
+            ));
+        }
+        if !matches!(function.x.kind, FunctionKind::Static) {
+            return Err(error(
+                &function.span,
+                "prophetic attribute not supported on trait functions",
+            ));
+        }
+    }
+    let mut fun_typing =
+        fun_typing0.push_allow_prophecy_dependence(function.x.attrs.prophecy_dependent);
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
         let our_trait = ctxt.traits.contains(trait_path);
@@ -1446,6 +1543,7 @@ fn check_function(
 
     for expr in function.x.require.iter() {
         let mut req_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut req_typing = req_typing.push_allow_prophecy_dependence(true);
         check_expr_has_mode(ctxt, record, &mut req_typing, Mode::Spec, expr, Mode::Spec)?;
     }
 
@@ -1455,12 +1553,14 @@ fn check_function(
     }
     for expr in function.x.ensure.iter() {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
+        let mut ens_typing = ens_typing.push_allow_prophecy_dependence(true);
         check_expr_has_mode(ctxt, record, &mut ens_typing, Mode::Spec, expr, Mode::Spec)?;
     }
     drop(ens_typing);
 
     for expr in function.x.decrease.iter() {
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut dec_typing = dec_typing.push_allow_prophecy_dependence(true);
         check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
     }
     for expr in function.x.mask_spec.exprs().iter() {
@@ -1540,6 +1640,7 @@ fn check_function(
         record.infer_spec_for_loop_iter_modes = None;
     }
     drop(fun_typing);
+    drop(fun_typing0);
     typing.assert_zero_scopes();
     Ok(())
 }
@@ -1568,6 +1669,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         block_ghostness: Ghost::Exec,
         ret_mode: None,
         atomic_insts: None,
+        allow_prophecy_dependence: false,
     };
     let mut typing = Typing::new(&mut state);
     let mut kratex = (**krate).clone();

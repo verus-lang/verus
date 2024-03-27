@@ -1,7 +1,7 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder,
-    VarBinderX, VarBinders,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp,
+    IntRange, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::get_variant;
 use crate::context::GlobalCtx;
@@ -129,6 +129,7 @@ fn subst_exp_rec(
         | ExpX::BinaryOpr(..)
         | ExpX::If(..)
         | ExpX::ExecFnByName(..)
+        | ExpX::FuelConst(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
             &mut (substs, free_vars),
@@ -288,6 +289,10 @@ impl BinaryOp {
     }
 }
 
+fn prec_of_in() -> (u32, u32, u32) {
+    (30, 30, 31)
+}
+
 impl ExpX {
     pub fn to_user_string(&self, global: &GlobalCtx) -> String {
         self.to_string_prec(global, 5)
@@ -308,10 +313,16 @@ impl ExpX {
             Loc(exp) => {
                 return exp.x.to_string_prec(global, precedence);
             }
-            Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
+            Call(cf @ (CallFun::Fun(fun, _) | CallFun::Recursive(fun)), _, exps) => {
                 let (zero_args, is_method) = match global.fun_attrs.get(fun) {
                     Some(attrs) => (attrs.print_zero_args, attrs.print_as_method),
                     None => (false, false),
+                };
+
+                let exps = if matches!(cf, CallFun::Recursive(..)) {
+                    &exps[0..exps.len() - 1]
+                } else {
+                    &exps
                 };
 
                 let fun_name = fun.path.segments.last().unwrap();
@@ -346,7 +357,8 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
                 ("const_generic".to_string(), 99)
             }
-            NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("trait_bound".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => {
@@ -384,7 +396,11 @@ impl ExpX {
                         (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
                     }
                     IsVariant { datatype: _, variant } => {
-                        (format!("{}.is_type({})", exp.x.to_user_string(global), variant), 99)
+                        let (prec_exp, prec_left, _prec_right) = prec_of_in();
+                        (
+                            format!("{} is {}", exp.x.to_string_prec(global, prec_left), variant),
+                            prec_exp,
+                        )
                     }
                     TupleField { tuple_arity: _, field } => {
                         (format!("{}.{}", exp.x.to_user_string(global), field), 99)
@@ -443,10 +459,14 @@ impl ExpX {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
             }
-            BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => (
-                format!("ext_eq({}, {})", e1.x.to_user_string(global), e2.x.to_user_string(global)),
-                99,
-            ),
+            BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, _), e1, e2) => {
+                let (prec_exp, prec_left, prec_right) =
+                    BinaryOp::Eq(Mode::Spec).prec_of_binary_op();
+                let left = e1.x.to_string_prec(global, prec_left);
+                let right = e2.x.to_string_prec(global, prec_right);
+                let op_str = if *deep { "=~~=" } else { "=~=" };
+                (format!("{} {} {}", left, op_str, right), prec_exp)
+            }
             If(e1, e2, e3) => (
                 format!(
                     "if {} {{ {} }} else {{ {} }}",
@@ -562,6 +582,7 @@ impl ExpX {
                     Closure(e, _ctx) => (format!("{}", e.x.to_user_string(global)), 99),
                 }
             }
+            FuelConst(i) => (format!("fuel({i:})"), 99),
             Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
         };
         if precedence <= inner_precedence { s } else { format!("({})", s) }
@@ -596,9 +617,12 @@ pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &crate::ast::ArchWordBi
     }
 }
 
-fn chain_binary(span: &Span, op: BinaryOp, init: &Exp, exps: &Vec<Exp>) -> Exp {
-    let mut exp = init.clone();
-    for e in exps.iter() {
+fn chain_binary(span: &Span, op: BinaryOp, init: &Exp, exps: &[Exp]) -> Exp {
+    if exps.len() == 0 {
+        return init.clone();
+    }
+    let mut exp = exps[0].clone();
+    for e in exps.iter().skip(1) {
         exp = SpannedTyped::new(span, &init.typ, ExpX::Binary(op, exp, e.clone()));
     }
     exp
@@ -610,6 +634,11 @@ pub fn sst_bool(span: &Span, b: bool) -> Exp {
 
 pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
+}
+
+pub fn sst_implies(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::Implies;
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
 pub fn sst_lt(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
@@ -625,6 +654,30 @@ pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
 pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Eq(Mode::Spec);
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
+pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp {
+    match ext {
+        None => sst_equal(span, e1, e2),
+        Some(deep) => {
+            let op = BinaryOpr::ExtEq(deep, crate::ast_util::undecorate_typ(&e1.typ));
+            SpannedTyped::new(
+                span,
+                &Arc::new(TypX::Bool),
+                ExpX::BinaryOpr(op, e1.clone(), e2.clone()),
+            )
+        }
+    }
+}
+
+pub fn sst_not(span: &Span, e: &Exp) -> Exp {
+    match &e.x {
+        ExpX::Unary(UnaryOp::Not, e1) => e1.clone(),
+        _ => {
+            let op = UnaryOp::Not;
+            SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Unary(op, e.clone()))
+        }
+    }
 }
 
 pub fn sst_int_literal(span: &Span, i: i128) -> Exp {

@@ -606,7 +606,6 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     allow_mut_ref: bool,
 ) -> rustc_middle::ty::Ty<'tcx> {
     match ty.kind() {
-        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, verus_items, t, allow_mut_ref),
         TyKind::Ref(_, t, Mutability::Mut) if allow_mut_ref => {
             mid_ty_simplify(tcx, verus_items, t, allow_mut_ref)
         }
@@ -1224,28 +1223,58 @@ where
             }
             ClauseKind::Projection(pred) => {
                 let item_def_id = pred.projection_ty.def_id;
-                // The trait bound `F: Fn(A) -> B`
-                // is really more like a trait bound `F: Fn<A, Output=B>`
-                // The trait bounds that use = are called projections.
-                // When Rust sees a trait bound like this, it actually creates *two*
-                // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
-                //
-                // We don't handle projections in general right now, but we skip
-                // over them to support Fns
-                // (What Verus actually cares about is the builtin 'FnWithSpecification'
-                // trait which Fn/FnMut/FnOnce all get automatically.)
 
                 if Some(item_def_id) == tcx.lang_items().fn_once_output() {
+                    // The trait bound `F: Fn(A) -> B`
+                    // is really more like a trait bound `F: Fn<A, Output=B>`
+                    // The trait bounds that use = are called projections.
+                    // When Rust sees a trait bound like this, it actually creates *two*
+                    // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
+                    //
                     // Do nothing
+                    // (What Verus actually cares about is the builtin 'FnWithSpecification'
+                    // trait which Fn/FnMut/FnOnce all get automatically.)
+                    continue;
+                }
+                let typ = if let Some(ty) = pred.term.ty() {
+                    mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?
                 } else {
-                    return err_span(*span, "Verus does yet not support this type of bound");
+                    return err_span(*span, "Verus does not yet support this type of bound");
+                };
+                let substs = pred.projection_ty.args;
+                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
+                let trait_def_id = pred.projection_ty.trait_def_id(tcx);
+                let assoc_item = tcx.associated_item(item_def_id);
+                let name = Arc::new(assoc_item.name.to_string());
+                let generic_bound = check_generic_bound(
+                    tcx,
+                    verus_items,
+                    param_env_src,
+                    *span,
+                    trait_def_id,
+                    &trait_params,
+                )?;
+                if let Some(generic_bound) = generic_bound {
+                    if let GenericBoundX::Trait(path, typs) = &*generic_bound {
+                        let bound = GenericBoundX::TypEquality(
+                            path.clone(),
+                            typs.clone(),
+                            name.clone(),
+                            typ.clone(),
+                        );
+                        bounds.push(Arc::new(bound));
+                    } else {
+                        return err_span(*span, "Verus does not yet support this type of bound");
+                    }
+                } else {
+                    panic!("internal error: generic_bound should return GenericBoundX::Trait")
                 }
             }
             ClauseKind::ConstArgHasType(..) => {
                 // Do nothing
             }
             _ => {
-                return err_span(*span, "Verus does yet not support this type of bound");
+                return err_span(*span, "Verus does not yet support this type of bound");
             }
         }
     }

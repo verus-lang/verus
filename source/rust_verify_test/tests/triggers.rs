@@ -286,6 +286,41 @@ test_verify_one_file! {
             assert(prop_2(s));
           }
         }
+    } => Ok(_err) => { /* ignore deprecation warning */ }
+}
+
+test_verify_one_file! {
+    #[test] test_trigger_on_lambda_3 verus_code! {
+        spec fn id<A>(a: A) -> A { a }
+
+        struct S<A>(A);
+        impl<A> S<A> {
+            spec fn f() -> (spec_fn(A) -> bool) {
+                // From https://github.com/verus-lang/verus/issues/1033
+                // Note that Z3 generates WARNING ... pattern does not contain all quantified variables.
+                // This is why we're deprecating triggers in spec_fn closures.
+                |a: A| #[trigger] id(a) == a
+            }
+        }
+
+        proof fn test() {
+            assert(S::f()(true));
+        }
+    } => Err(_) => { /* ignore deprecation warning, Z3 warning, etc. */ }
+}
+
+test_verify_one_file! {
+    #[test] test_no_trigger_on_lambda TRIGGER_ON_LAMBDA_COMMON.to_string() + verus_code_str! {
+        #[verifier(external_body)]
+        proof fn something(fn1: spec_fn(S)->bool, fn2: spec_fn(S)->bool)
+        ensures forall|s: S| #[trigger] fn1(s) ==> fn2(s) { }
+
+        proof fn foo(s: S) {
+          something(|s1| prop_1(s1), |s1| prop_2(s1));
+          assert forall|s: S| prop_1(s) implies prop_2(s) by {
+            assert((|s1| prop_1(s1))(s));
+          }
+        }
     } => Ok(())
 }
 

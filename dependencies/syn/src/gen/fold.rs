@@ -425,6 +425,12 @@ pub trait Fold {
     fn fold_invariant_ensures(&mut self, i: InvariantEnsures) -> InvariantEnsures {
         fold_invariant_ensures(self, i)
     }
+    fn fold_invariant_except_break(
+        &mut self,
+        i: InvariantExceptBreak,
+    ) -> InvariantExceptBreak {
+        fold_invariant_except_break(self, i)
+    }
     fn fold_invariant_name_set(&mut self, i: InvariantNameSet) -> InvariantNameSet {
         fold_invariant_name_set(self, i)
     }
@@ -1762,6 +1768,8 @@ where
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         label: (node.label).map(|it| f.fold_label(it)),
         loop_token: Token![loop](tokens_helper(f, &node.loop_token.span)),
+        invariant_except_break: (node.invariant_except_break)
+            .map(|it| f.fold_invariant_except_break(it)),
         invariant: (node.invariant).map(|it| f.fold_invariant(it)),
         invariant_ensures: (node.invariant_ensures)
             .map(|it| f.fold_invariant_ensures(it)),
@@ -1982,6 +1990,8 @@ where
         label: (node.label).map(|it| f.fold_label(it)),
         while_token: Token![while](tokens_helper(f, &node.while_token.span)),
         cond: Box::new(f.fold_expr(*node.cond)),
+        invariant_except_break: (node.invariant_except_break)
+            .map(|it| f.fold_invariant_except_break(it)),
         invariant: (node.invariant).map(|it| f.fold_invariant(it)),
         invariant_ensures: (node.invariant_ensures)
             .map(|it| f.fold_invariant_ensures(it)),
@@ -2444,6 +2454,18 @@ where
 {
     InvariantEnsures {
         token: Token![invariant_ensures](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
+pub fn fold_invariant_except_break<F>(
+    f: &mut F,
+    node: InvariantExceptBreak,
+) -> InvariantExceptBreak
+where
+    F: Fold + ?Sized,
+{
+    InvariantExceptBreak {
+        token: Token![invariant_except_break](tokens_helper(f, &node.token.span)),
         exprs: f.fold_specification(node.exprs),
     }
 }

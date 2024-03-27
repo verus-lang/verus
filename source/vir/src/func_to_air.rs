@@ -14,7 +14,7 @@ use crate::def::{
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message, MessageLabel, Span};
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
-use crate::sst_to_air::PostConditionSst;
+use crate::sst::{FunctionSst, PostConditionKind, PostConditionSst};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
@@ -37,7 +37,6 @@ pub struct SstInline {
     pub(crate) typ_params: Idents,
     pub do_inline: bool,
 }
-use crate::sst_to_air::PostConditionKind;
 
 pub struct SstInfo {
     pub(crate) inline: SstInline,
@@ -204,7 +203,7 @@ fn func_body_to_air(
     // Use expr_to_pure_exp_skip_checks here
     // because spec precondition checking is performed as a separate query
     let body_exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
-    let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
+    let body_exp = state.finalize_exp(ctx, diagnostics, &state.fun_ssts, &body_exp)?;
     let inline =
         SstInline { typ_params: function.x.typ_params.clone(), do_inline: function.x.attrs.inline };
     let info = SstInfo {
@@ -219,7 +218,9 @@ fn func_body_to_air(
 
     // Rewrite recursive calls to use fuel
     let (is_recursive, body_exp, scc_rep) =
-        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(ctx, function, &body_exp)?;
+        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+            ctx, function, &body_exp, None,
+        )?;
 
     // Check termination and/or recommends
     let mut check_state = crate::ast_to_sst::State::new(diagnostics);
@@ -231,16 +232,8 @@ fn func_body_to_air(
     check_state.check_spec_decreases = Some((function.x.name.clone(), scc_rep));
     let check_body_stm =
         crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
-    let check_body_stm = check_state.finalize_stm(
-        ctx,
-        diagnostics,
-        &check_state.fun_ssts,
-        &check_body_stm,
-        // TODO: when ensures are supported, they should be added here for splitting:
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        None,
-    )?;
+    let check_body_stm =
+        check_state.finalize_stm(ctx, diagnostics, &check_state.fun_ssts, &check_body_stm)?;
 
     let mut proof_body: Vec<crate::ast::Expr> = Vec::new();
     let mut def_reqs: Vec<Expr> = Vec::new();
@@ -272,7 +265,7 @@ fn func_body_to_air(
 
         // Skip checks because we check decrease_when below
         let exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut check_state, req)?;
-        let exp = check_state.finalize_exp(ctx, &check_state.fun_ssts, &exp)?;
+        let exp = check_state.finalize_exp(ctx, diagnostics, &check_state.fun_ssts, &exp)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         // conditions on value arguments:
         def_reqs.push(expr);
@@ -303,15 +296,8 @@ fn func_body_to_air(
         proof_body_stms.append(&mut stms);
     }
     let proof_body_stm = crate::ast_to_sst::stms_to_one_stm(&body.span, proof_body_stms);
-    let proof_body_stm = check_state.finalize_stm(
-        ctx,
-        diagnostics,
-        &check_state.fun_ssts,
-        &proof_body_stm,
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        None,
-    )?;
+    let proof_body_stm =
+        check_state.finalize_stm(ctx, diagnostics, &check_state.fun_ssts, &proof_body_stm)?;
     check_state.finalize();
 
     let termination_commands = crate::recursion::check_termination_commands(
@@ -611,7 +597,19 @@ pub fn func_decl_to_air(
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
             if ctx.funcs_with_ensure_predicate[method] {
                 let ens = prefix_ensures(&fun_to_air_ident(&method));
-                (true, Some((ens, trait_typ_args.clone())))
+                let mut typ_args = (**trait_typ_args).clone();
+                let num_trait_and_method_typ_params = ctx.func_map[method].x.typ_params.len();
+                let num_method_typ_params = num_trait_and_method_typ_params - trait_typ_args.len();
+                let num_our_total_typ_params = function.x.typ_params.len();
+                let skip_to_our_method_typ_params =
+                    num_our_total_typ_params - num_method_typ_params;
+                // Add the arguments for the method's type parameters, skipping over our impl params
+                for method_typ_param in
+                    function.x.typ_params.iter().skip(skip_to_our_method_typ_params)
+                {
+                    typ_args.push(Arc::new(TypX::TypParam(method_typ_param.clone())));
+                }
+                (true, Some((ens, Arc::new(typ_args))))
             } else {
                 (true, None)
             }
@@ -749,7 +747,7 @@ pub fn func_decl_to_air(
             let mut state = crate::ast_to_sst::State::new(diagnostics);
             let exp =
                 crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
-            let exp = state.finalize_exp(ctx, &fun_ssts, &exp)?;
+            let exp = state.finalize_exp(ctx, diagnostics, &fun_ssts, &exp)?;
             state.finalize();
 
             // Add forall-binders for each type param
@@ -964,22 +962,16 @@ pub fn func_axioms_to_air(
     Ok((Arc::new(decl_commands), check_commands, new_fun_ssts))
 }
 
-pub fn func_def_to_air(
+pub fn func_def_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
-) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
-    if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind {
-        // We are inheriting a trait default method.
-        // It's already verified in the trait, so we don't need to reverify it here.
-        return Ok((Arc::new(vec![]), vec![], fun_ssts));
-    }
-
+) -> Result<(SstMap, FunctionSst), VirErr> {
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
-            return Ok((Arc::new(vec![]), vec![], fun_ssts));
+            panic!("func_def_to_air should only be called for function with a body");
         }
     };
 
@@ -1085,7 +1077,7 @@ pub fn func_def_to_air(
 
         let is_singular = function.x.attrs.integer_ring;
         let expr_ctxt = ExprCtxt::new_mode_singular(ExprMode::Body, is_singular);
-        let exp = state.finalize_exp(ctx, &state.fun_ssts, &exp)?;
+        let exp = state.finalize_exp(ctx, diagnostics, &state.fun_ssts, &exp)?;
         let air_expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
         inv_spec_air_exprs
             .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
@@ -1161,28 +1153,10 @@ pub fn func_def_to_air(
         stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
     }
 
-    let stm = state.finalize_stm(
-        &ctx,
-        diagnostics,
-        &state.fun_ssts,
-        &stm,
-        &enss,
-        &ens_pars,
-        dest.clone(),
-    )?;
+    let stm = state.finalize_stm(&ctx, diagnostics, &state.fun_ssts, &stm)?;
     let ens_spec_precondition_stms: Result<Vec<_>, _> = ens_spec_precondition_stms
         .iter()
-        .map(|s| {
-            state.finalize_stm(
-                &ctx,
-                diagnostics,
-                &state.fun_ssts,
-                &s,
-                &enss,
-                &ens_pars,
-                dest.clone(),
-            )
-        })
+        .map(|s| state.finalize_stm(&ctx, diagnostics, &state.fun_ssts, &s))
         .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
 
@@ -1200,30 +1174,45 @@ pub fn func_def_to_air(
         state.local_decls.push(decl.clone());
     }
 
+    state.finalize();
+    let crate::ast_to_sst::State { local_decls, statics, fun_ssts, .. } = state;
+
+    Ok((
+        fun_ssts,
+        FunctionSst {
+            reqs: Arc::new(reqs),
+            post_condition: PostConditionSst {
+                dest,
+                ens_exps: enss,
+                ens_spec_precondition_stms,
+                kind: PostConditionKind::Ensures,
+            },
+            mask_set,
+            body: stm,
+            local_decls: local_decls,
+            statics: statics.into_iter().collect(),
+        },
+    ))
+}
+
+pub fn func_sst_to_air(
+    ctx: &Ctx,
+    function: &Function,
+    function_sst: &FunctionSst,
+) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
         &function.x.typ_params,
         &function.x.params,
-        &state.local_decls,
+        function_sst,
         &function.x.attrs.hidden,
-        &reqs,
-        &PostConditionSst {
-            dest,
-            ens_exps: enss,
-            ens_spec_precondition_stms,
-            kind: PostConditionKind::Ensures,
-        },
-        &mask_set,
-        &stm,
         function.x.attrs.integer_ring,
         function.x.attrs.bit_vector,
         function.x.attrs.nonlinear,
-        &state.statics.iter().cloned().collect(),
     )?;
 
-    state.finalize();
-    Ok((Arc::new(commands), snap_map, state.fun_ssts))
+    Ok((Arc::new(commands), snap_map))
 }
 
 fn map_expr_rename_vars(

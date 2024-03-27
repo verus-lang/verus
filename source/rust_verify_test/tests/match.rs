@@ -820,3 +820,336 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] at_patterns verus_code! {
+        enum Opt<V> {
+            Some(V),
+            None,
+        }
+        use Opt::Some;
+        use Opt::None;
+
+        fn test1(x: &Opt<Opt<u8>>) {
+            match x {
+                Some(None) => { }
+                Some(y @ Some(z)) => {
+                    assert(x == Some(Some(*z)));
+                    assert(y == Some(*z));
+                }
+                None => {
+                }
+            }
+        }
+
+        fn test2(x: &Opt<Opt<u8>>) {
+            match x {
+                Some(y @ Some(z)) => {
+                    assert(x == Some(Some(*z)));
+                    assert(y == Some(*z));
+                }
+                _ => {
+                    assert(x is None || x->Some_0 is None);
+                }
+            }
+        }
+
+        fn test3(x: &Opt<Opt<u8>>) {
+            match x {
+                Some(None) => { }
+                Some(y @ Some(z)) => {
+                    assert(x == Some(Some(*z)));
+                    assert(y == Some(*z));
+                    assert(false); // FAILS
+                }
+                None => {
+                }
+            }
+        }
+
+        spec fn some_fn(x: Opt<Opt<u8>>) -> (u8, Opt<u8>) {
+            match x {
+                Some(y @ Some(z)) => (z, y),
+                Some(y @ None) => (0, y),
+                None => (1, None),
+            }
+        }
+
+        fn test4() {
+            assert(some_fn(Some(Some(4))) === (4, Some(4)));
+            assert(some_fn(Some(None)) === (0, None));
+            assert(some_fn(None) === (1, None));
+        }
+
+        fn test5() {
+            assert(some_fn(Some(Some(4))) === (4, Some(4)));
+            assert(some_fn(Some(None)) === (0, None));
+            assert(some_fn(None) === (1, None));
+            assert(false); // FAILS
+        }
+
+        enum Foo {
+            Bar(u8, Opt<u8>),
+            Qux(Opt<u8>),
+            Zaz(bool),
+        }
+
+        proof fn test6(foo: Foo) {
+            match foo {
+                Foo::Bar(x, y) | Foo::Qux(y @ Some(x)) => {
+                    if foo is Bar {
+                        assert(x == foo->Bar_0);
+                        assert(y == foo->Bar_1);
+                    } else if foo is Qux {
+                        assert(foo == Foo::Qux(y));
+                        assert(foo == Foo::Qux(Some(x)));
+                    } else {
+                        assert(false);
+                    }
+                }
+                Foo::Qux(z @ _) => {
+                    assert(z is None);
+                }
+                Foo::Zaz(_) => {
+                }
+            }
+        }
+
+        proof fn test7(foo: Foo) {
+            match foo {
+                Foo::Bar(x, y) | Foo::Qux(y @ Some(x)) => {
+                    if foo is Bar {
+                        assert(y == foo->Qux_0); // FAILS
+                    } else if foo is Qux {
+                    } else {
+                    }
+                }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] const_and_literals verus_code! {
+        spec fn m_bool_lit(x: bool) -> u64 {
+            match x {
+                true => 0,
+                t => 20,
+            }
+        }
+
+        proof fn test() {
+            assert(m_bool_lit(true) == 0);
+            assert(m_bool_lit(false) == 20);
+        }
+
+        const I: u64 = 20;
+
+        spec fn m_int_const(x: u64) -> u64 {
+            match x {
+                I => 0,
+                t => t,
+            }
+        }
+
+        proof fn test2() {
+            assert(m_int_const(20) == 0);
+            assert(m_int_const(19) == 19);
+        }
+
+        fn test3(x: i64) {
+            let z = match x {
+                7 => 0,
+                -16 => 1,
+                t => t,
+            };
+
+            assert(x == 7 ==> z == 0);
+            assert(x == -16 ==> z == 1);
+            assert(x != 7 && x != -16 ==> z == x);
+        }
+
+        fn test4(x: u64) {
+            let z = match x {
+                I => 0,
+                t => t,
+            };
+
+            assert(x == I ==> z == 0);
+            assert(x == 20 ==> z == 0);
+            assert(x != 20 ==> z == x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_wrong_mode verus_code! {
+        spec const I: u64 = 20u64;
+
+        fn test(j: u64) {
+            match j {
+                I => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] matching_literal_arms_get_checked verus_code! {
+        tracked struct X { }
+        proof fn use_x(tracked x: X) { }
+
+        proof fn test(j: u64) {
+            let tracked x = X { };
+            use_x(x);
+
+            match j {
+                20u64 => { }
+                30u64 => {
+                    use_x(x);
+                }
+                _ => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] matching_const_arms_get_checked verus_code! {
+        const X: u64 = 30;
+        const Y: u64 = 32;
+
+        tracked struct X { }
+        proof fn use_x(tracked x: X) { }
+
+        proof fn test(j: u64) {
+            let tracked x = X { };
+            use_x(x);
+
+            match j {
+                X => { }
+                Y => {
+                    use_x(x);
+                }
+                _ => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] const_pattern_gets_wf_checked verus_code! {
+        #[verifier::external]
+        const X: u64 = 30;
+
+        fn test(x: u64) {
+            match x {
+                X => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+}
+
+test_verify_one_file! {
+    #[test] pattern_ranges verus_code! {
+        spec fn m_range(x: u64) -> bool {
+            match x {
+                5u64 .. => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range2(x: u64) -> bool {
+            match x {
+                ..=5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range3(x: u64) -> bool {
+            match x {
+                ..5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range4(x: u64) -> bool {
+            match x {
+                3u64..5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range5(x: u64) -> bool {
+            match x {
+                3u64..=5u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range6(x: u64) -> bool {
+            match x {
+                3u64..=3u64 => true,
+                _ => false,
+            }
+        }
+
+        spec fn m_range7(x: i64) -> bool {
+            match x {
+                -4i64..=3i64 => true,
+                _ => false,
+            }
+        }
+
+        const A: u64 = 3;
+        const B: u64 = 17;
+
+        spec fn m_range8(x: u64) -> bool {
+            match x {
+                A..=B => true,
+                _ => false,
+            }
+        }
+
+        proof fn test(x: u64, y: i64) {
+            assert(m_range(x) <==> 5 <= x);
+            assert(m_range2(x) <==> x <= 5);
+            assert(m_range3(x) <==> x < 5);
+            assert(m_range4(x) <==> 3 <= x < 5);
+            assert(m_range5(x) <==> 3 <= x <= 5);
+            assert(m_range6(x) <==> x == 3);
+            assert(m_range7(y) <==> -4 <= y <= 3);
+            assert(m_range8(x) <==> 3 <= x <= 17);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pattern_ranges_bad_range verus_code! {
+        spec fn m_range6(x: u64) -> bool {
+            match x {
+                5u64..=3u64 => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+}
+
+test_verify_one_file! {
+    #[test] pattern_ranges_const_mode_error verus_code! {
+        spec const A: u64 = 3u64;
+        spec const B: u64 = 17u64;
+
+        fn test(x: u64) {
+            match x {
+                A..=B => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}

@@ -8,6 +8,8 @@
 #[path = "../../common/consts.rs"]
 mod consts;
 
+const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 2, 7];
+
 mod util;
 
 use filetime::FileTime as FFileTime;
@@ -736,6 +738,85 @@ fn run() -> Result<(), String> {
                                 syn_fmt_status.code()
                             ));
                         }
+
+                        if exclude.contains(&"vstd".to_owned()) {
+                            return Ok(());
+                        }
+
+                        match std::process::Command::new("verusfmt")
+                            .arg("--version")
+                            .output()
+                        {
+                            Ok(output) => {
+                                if !output.status.success() {
+                                    return Err(format!(
+                                        "`verusfmt` returned status code {:?}",
+                                        status.code()
+                                    ));
+                                }
+                                let verusfmt_version_stdout = String::from_utf8(output.stdout)
+                                    .map_err(|_| format!("invalid output from verusfmt"))?;
+                                let verusfmt_version_re =
+                                    Regex::new(r"^verusfmt ([0-9]+)\.([0-9]+)\.([0-9]+)\n$")
+                                        .unwrap();
+                                let verusfmt_version = verusfmt_version_re
+                                    .captures(&verusfmt_version_stdout)
+                                    .ok_or(format!("invalid output from verusfmt"))?
+                                    .extract::<3>()
+                                    .1
+                                    .iter()
+                                    .map(|v| v.parse::<u64>().unwrap())
+                                    .collect::<Vec<u64>>();
+                                for (cv, ev) in
+                                    verusfmt_version.iter().zip(MINIMUM_VERUSFMT_VERSION.iter())
+                                {
+                                    if ev > cv {
+                                        return Err(format!("expected `verusfmt` version to be at least {}.{}.{}, found {}.{}.{}; refer to https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt for installation instructions",
+                                            MINIMUM_VERUSFMT_VERSION[0], MINIMUM_VERUSFMT_VERSION[1], MINIMUM_VERUSFMT_VERSION[2],
+                                            verusfmt_version[0], verusfmt_version[1], verusfmt_version[2]));
+                                    } else if cv > ev {
+                                        break;
+                                    }
+                                }
+                            }
+                            Err(err) => match err.kind() {
+                                std::io::ErrorKind::NotFound => {
+                                    warn(format!("cannot execute verusfmt, refer to https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt for installation instructions\nvstd will not be formatted").as_str());
+                                    return Ok(());
+                                }
+                                _ => return Err(format!("cannot execute verusfmt: {}", err)),
+                            },
+                        };
+
+                        info(format!("formatting vstd").as_str());
+
+                        let vstd_path = std::path::Path::new("vstd");
+                        let all_vstd_files = walkdir::WalkDir::new(vstd_path)
+                            .follow_links(true)
+                            .into_iter()
+                            .filter_map(|e| e.ok())
+                            .filter(|x| x.path().extension() == Some(std::ffi::OsStr::new("rs")))
+                            .map(|x| x.path().to_owned())
+                            .collect::<Vec<_>>();
+
+                        let mut verusfmt = std::process::Command::new("verusfmt");
+                        if fmt_check {
+                            verusfmt.arg("--check");
+                        }
+                        verusfmt.args(all_vstd_files);
+                        let verusfmt_status = verusfmt.status().expect("failed to run vstd");
+
+                        if !verusfmt_status.success() {
+                            warn(
+                                format!(
+                                    "verusfmt returned error code {:?}",
+                                    verusfmt_status.code(),
+                                )
+                                .as_str(),
+                            );
+                            std::process::exit(verusfmt_status.code().unwrap_or(1))
+                        }
+
                         Ok(())
                     }
                     _ => std::process::exit(status.code().unwrap_or(1)),
@@ -816,7 +897,7 @@ fn run() -> Result<(), String> {
                     }
                 })
         }
-        (Task::Build, Some("air"), false) => {
+        (Task::Build, Some("air" | "verusdoc"), false) => {
             let mut cargo = std::process::Command::new("cargo");
             let cargo = cargo
                 .env("RUST_MIN_STACK", test_rust_min_stack())

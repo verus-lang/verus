@@ -716,6 +716,7 @@ define_keywords! {
     "ensures"     pub struct Ensures      /// `ensures`
     "decreases"   pub struct Decreases    /// `decreases`
     "opens_invariants"   pub struct OpensInvariants    /// `opens_invariants`
+    "invariant_except_break"   pub struct InvariantExceptBreak    /// `invariant_except_break`
     "invariant"   pub struct Invariant    /// `invariant`
     "invariant_ensures"   pub struct InvariantEnsures    /// `invariant_ensures`
     "assert"      pub struct Assert       /// `assert`
@@ -938,6 +939,7 @@ macro_rules! export_token_macro {
             [ensures]     => { $crate::token::Ensures };
             [decreases]   => { $crate::token::Decreases };
             [opens_invariants]   => { $crate::token::OpensInvariants };
+            [invariant_except_break]   => { $crate::token::InvariantExceptBreak };
             [invariant]   => { $crate::token::Invariant };
             [invariant_ensures]   => { $crate::token::InvariantEnsures };
             [assert]      => { $crate::token::Assert };

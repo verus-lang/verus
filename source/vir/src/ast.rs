@@ -71,6 +71,7 @@ pub enum VarIdentDisambiguate {
     // Capture-avoiding substitution creates new names:
     VirSubst(u64),
     VirTemp(u64),
+    ExpandErrorsDecl(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -281,6 +282,8 @@ pub enum NullaryOpr {
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
     TraitBound(Path, Typs),
+    /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
+    TypEqualityBound(Path, Typs, Ident, Typ),
     /// A failed InferSpecForLoopIter subexpression
     NoInferSpecForLoopIter,
 }
@@ -496,10 +499,10 @@ pub enum HeaderExprX {
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
+    /// Invariants (except breaks) on loops
+    InvariantExceptBreak(Exprs),
     /// Invariants on loops
     Invariant(Exprs),
-    /// Invariants + ensures on loops
-    InvariantEnsures(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
     Decreases(Exprs),
     /// Recursive function is uninterpreted when Expr is false
@@ -531,7 +534,7 @@ pub enum Constant {
     Char(char),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
@@ -557,6 +560,11 @@ pub enum PatternX {
         name: VarIdent,
         mutable: bool,
     },
+    Binding {
+        name: VarIdent,
+        mutable: bool,
+        sub_pat: Pattern,
+    },
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
@@ -564,6 +572,15 @@ pub enum PatternX {
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Path, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
+    /// Matches something equal to the value of this expr
+    /// This only supports literals and consts, so we don't need to worry
+    /// about side-effects, binding order, etc.
+    Expr(Expr),
+    /// `e1 <= x <= e2` or `e1 <= x < e2`
+    /// The start of the range is always inclusive (<=)
+    /// The end of the range may be inclusive (<=) or exclusive (<),
+    /// as given by the InequalityOp argument.
+    Range(Option<Expr>, Option<(Expr, InequalityOp)>),
 }
 
 /// Arms of match expressions
@@ -581,8 +598,11 @@ pub struct ArmX {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ToDebugSNode)]
 pub enum LoopInvariantKind {
-    Invariant,
-    InvariantEnsures,
+    /// holds at beginning of loop
+    InvariantExceptBreak,
+    /// holds at beginning of loop and after loop exit (including breaks)
+    InvariantAndEnsures,
+    /// holds at loop exit (including breaks)
     Ensures,
 }
 
@@ -679,7 +699,7 @@ pub enum AutospecUsage {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[to_node_impl(name = ">")]
 pub enum ExprX {
     /// Constant
@@ -766,7 +786,7 @@ pub enum ExprX {
     Match(Expr, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
-        spinoff_loop: bool,
+        loop_isolation: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<Expr>,
@@ -828,6 +848,9 @@ pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
     Trait(Path, Typs),
+    /// An equality bound for associated type X of trait T(t1, ..., tn),
+    /// written in Rust as T<t1, ..., tn, X = typ>
+    TypEquality(Path, Typs, Ident, Typ),
 }
 
 /// When instantiating type S<A> with A = T in a recursive type definition,
@@ -896,6 +919,7 @@ pub struct FunctionAttrsX {
     pub print_zero_args: bool,
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
+    pub prophecy_dependent: bool,
 }
 
 /// Function specification of its invariant mask
@@ -958,6 +982,7 @@ pub struct FunctionX {
     /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
     pub fuel: u32,
     /// Type parameters to generic functions
+    /// (for trait methods, the trait parameters come first, then the method parameters)
     pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,

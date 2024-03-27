@@ -424,6 +424,9 @@ pub trait Visit<'ast> {
     fn visit_invariant_ensures(&mut self, i: &'ast InvariantEnsures) {
         visit_invariant_ensures(self, i);
     }
+    fn visit_invariant_except_break(&mut self, i: &'ast InvariantExceptBreak) {
+        visit_invariant_except_break(self, i);
+    }
     fn visit_invariant_name_set(&mut self, i: &'ast InvariantNameSet) {
         visit_invariant_name_set(self, i);
     }
@@ -1903,6 +1906,9 @@ where
         v.visit_label(it);
     }
     tokens_helper(v, &node.loop_token.span);
+    if let Some(it) = &node.invariant_except_break {
+        v.visit_invariant_except_break(it);
+    }
     if let Some(it) = &node.invariant {
         v.visit_invariant(it);
     }
@@ -2169,6 +2175,9 @@ where
     }
     tokens_helper(v, &node.while_token.span);
     v.visit_expr(&*node.cond);
+    if let Some(it) = &node.invariant_except_break {
+        v.visit_invariant_except_break(it);
+    }
     if let Some(it) = &node.invariant {
         v.visit_invariant(it);
     }
@@ -2674,6 +2683,13 @@ where
     v.visit_specification(&node.exprs);
 }
 pub fn visit_invariant_ensures<'ast, V>(v: &mut V, node: &'ast InvariantEnsures)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
+pub fn visit_invariant_except_break<'ast, V>(v: &mut V, node: &'ast InvariantExceptBreak)
 where
     V: Visit<'ast> + ?Sized,
 {

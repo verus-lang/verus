@@ -3,3 +3,6 @@ c5965bbf6f4a0493bb26b4b0df0ebb62af609f81
 # Format vstd with `verusfmt` version 0.2.7
 #   With CI checks enabled, hopefully this is last of the ignored verusfmt
 548664657ef279cbc2f7c0dc08d136c4475653ac
+# Format vstd with `verusfmt` version 0.2.7
+#   now using source/rustfmt.toml settings
+c86127ac23fa8e7ad82bf9df44e77df3b886ff72

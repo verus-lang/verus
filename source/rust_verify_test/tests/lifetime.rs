@@ -733,3 +733,26 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "the method `clone` exists for struct `Tracked<T>`, but its trait bounds were not satisfied")
 }
+
+test_verify_one_file! {
+    #[test] moved_value_via_at_patterns verus_code! {
+        enum Opt<V> {
+            Some(V),
+            None
+        }
+
+        tracked struct X { }
+
+        tracked enum Foo {
+            Bar(Opt<X>),
+            Zaz(Opt<X>, X),
+        }
+
+        proof fn test(tracked foo: Foo) {
+            match foo {
+                Foo::Bar(a @ Opt::Some(b)) => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+}

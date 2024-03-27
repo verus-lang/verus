@@ -165,20 +165,8 @@ num_specs!(u8, i8, u8_specs, i8_specs, 0x100);
 num_specs!(u16, i16, u16_specs, i16_specs, 0x1_0000);
 num_specs!(u32, i32, u32_specs, i32_specs, 0x1_0000_0000);
 num_specs!(u64, i64, u64_specs, i64_specs, 0x1_0000_0000_0000_0000);
-num_specs!(
-    u128,
-    i128,
-    u128_specs,
-    i128_specs,
-    0x1_0000_0000_0000_0000_0000_0000_0000_0000
-);
-num_specs!(
-    usize,
-    isize,
-    usize_specs,
-    isize_specs,
-    (usize::MAX - usize::MIN + 1)
-);
+num_specs!(u128, i128, u128_specs, i128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000);
+num_specs!(usize, isize, usize_specs, isize_specs, (usize::MAX - usize::MIN + 1));
 
 verus! {
 

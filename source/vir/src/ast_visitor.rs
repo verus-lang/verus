@@ -180,31 +180,58 @@ where
     map_typ_visitor_env(typ, &mut (), &|_: &mut (), t: &Typ| ft(t))
 }
 
-pub(crate) fn map_pattern_visitor_env<E, FT>(
+pub(crate) fn map_pattern_visitor_env<E, FE, FS, FT>(
     pattern: &Pattern,
+    map: &mut VisitorScopeMap,
     env: &mut E,
+    fe: &FE,
+    fs: &FS,
     ft: &FT,
 ) -> Result<Pattern, VirErr>
 where
+    FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
+    FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let patternx = match &pattern.x {
         PatternX::Wildcard(dd) => PatternX::Wildcard(*dd),
         PatternX::Var { name, mutable } => PatternX::Var { name: name.clone(), mutable: *mutable },
+        PatternX::Binding { name, mutable, sub_pat } => {
+            let p = map_pattern_visitor_env(sub_pat, map, env, fe, fs, ft)?;
+            PatternX::Binding { name: name.clone(), mutable: *mutable, sub_pat: p }
+        }
         PatternX::Tuple(ps) => {
-            let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, env, ft))?;
+            let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, map, env, fe, fs, ft))?;
             PatternX::Tuple(Arc::new(ps))
         }
         PatternX::Constructor(path, variant, binders) => {
             let binders = vec_map_result(&**binders, |b| {
-                b.map_result(|p| map_pattern_visitor_env(p, env, ft))
+                b.map_result(|p| map_pattern_visitor_env(p, map, env, fe, fs, ft))
             })?;
             PatternX::Constructor(path.clone(), variant.clone(), Arc::new(binders))
         }
         PatternX::Or(pat1, pat2) => {
-            let p1 = map_pattern_visitor_env(pat1, env, ft)?;
-            let p2 = map_pattern_visitor_env(pat2, env, ft)?;
+            let p1 = map_pattern_visitor_env(pat1, map, env, fe, fs, ft)?;
+            let p2 = map_pattern_visitor_env(pat2, map, env, fe, fs, ft)?;
             PatternX::Or(p1, p2)
+        }
+        PatternX::Expr(expr) => {
+            let e = map_expr_visitor_env(expr, map, env, fe, fs, ft)?;
+            PatternX::Expr(e)
+        }
+        PatternX::Range(expr1, expr2) => {
+            let e1 = match expr1 {
+                Some(expr1) => Some(map_expr_visitor_env(expr1, map, env, fe, fs, ft)?),
+                None => None,
+            };
+            let e2 = match expr2 {
+                Some((expr2, op)) => {
+                    let e2 = map_expr_visitor_env(expr2, map, env, fe, fs, ft)?;
+                    Some((e2, *op))
+                }
+                None => None,
+            };
+            PatternX::Range(e1, e2)
         }
     };
     Ok(SpannedTyped::new(&pattern.span, &map_typ_visitor_env(&pattern.typ, env, ft)?, patternx))
@@ -214,6 +241,10 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
     match &pattern.x {
         PatternX::Wildcard(_) => {}
         PatternX::Var { name, mutable } => {
+            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+        }
+        PatternX::Binding { name, mutable, sub_pat } => {
+            insert_pattern_vars(map, sub_pat, init);
             let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
         }
         PatternX::Tuple(ps) => {
@@ -230,6 +261,8 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
             insert_pattern_vars(map, pat1, init);
             // pat2 should bind an identical set of variables
         }
+        PatternX::Expr(_) => {}
+        PatternX::Range(_, _) => {}
     }
 }
 
@@ -443,12 +476,13 @@ where
                     for arm in arms.iter() {
                         map.push_scope(true);
                         insert_pattern_vars(map, &arm.x.pattern, true);
+                        expr_visitor_control_flow!(pat_visitor_dfs(&arm.x.pattern, map, mf));
                         expr_visitor_control_flow!(expr_visitor_dfs(&arm.x.guard, map, mf));
                         expr_visitor_control_flow!(expr_visitor_dfs(&arm.x.body, map, mf));
                         map.pop_scope();
                     }
                 }
-                ExprX::Loop { spinoff_loop: _, is_for_loop: _, label: _, cond, body, invs } => {
+                ExprX::Loop { loop_isolation: _, is_for_loop: _, label: _, cond, body, invs } => {
                     if let Some(cond) = cond {
                         expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
                     }
@@ -519,8 +553,52 @@ where
                 expr_visitor_control_flow!(expr_visitor_dfs(init, map, mf));
             }
             insert_pattern_vars(map, &pattern, init.is_some());
+            expr_visitor_control_flow!(pat_visitor_dfs(&pattern, map, mf));
         }
     }
+    VisitorControlFlow::Recurse
+}
+
+pub(crate) fn pat_visitor_dfs<T, MF>(
+    pat: &Pattern,
+    map: &mut VisitorScopeMap,
+    mf: &mut MF,
+) -> VisitorControlFlow<T>
+where
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+{
+    match &pat.x {
+        PatternX::Wildcard(_dd) => {}
+        PatternX::Var { name: _, mutable: _ } => {}
+        PatternX::Binding { name: _, mutable: _, sub_pat } => {
+            expr_visitor_control_flow!(pat_visitor_dfs(sub_pat, map, mf));
+        }
+        PatternX::Tuple(ps) => {
+            for p in ps.iter() {
+                expr_visitor_control_flow!(pat_visitor_dfs(p, map, mf));
+            }
+        }
+        PatternX::Constructor(_path, _variant, binders) => {
+            for binder in binders.iter() {
+                expr_visitor_control_flow!(pat_visitor_dfs(&binder.a, map, mf));
+            }
+        }
+        PatternX::Or(pat1, pat2) => {
+            expr_visitor_control_flow!(pat_visitor_dfs(pat1, map, mf));
+            expr_visitor_control_flow!(pat_visitor_dfs(pat2, map, mf));
+        }
+        PatternX::Expr(expr) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(expr, map, mf));
+        }
+        PatternX::Range(expr1, expr2) => {
+            if let Some(expr1) = expr1 {
+                expr_visitor_control_flow!(expr_visitor_dfs(expr1, map, mf));
+            }
+            if let Some((expr2, _ineq_op)) = expr2 {
+                expr_visitor_control_flow!(expr_visitor_dfs(expr2, map, mf));
+            }
+        }
+    };
     VisitorControlFlow::Recurse
 }
 
@@ -720,6 +798,11 @@ where
             let ts = map_typs_visitor_env(ts, env, ft)?;
             ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p.clone(), ts))
         }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p, ts, x, t)) => {
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            let t = map_typ_visitor_env(t, env, ft)?;
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p.clone(), ts, x.clone(), t))
+        }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
             ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter)
         }
@@ -899,7 +982,7 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let arms: Result<Vec<Arm>, VirErr> = vec_map_result(arms, |arm| {
                 map.push_scope(true);
-                let pattern = map_pattern_visitor_env(&arm.x.pattern, env, ft)?;
+                let pattern = map_pattern_visitor_env(&arm.x.pattern, map, env, fe, fs, ft)?;
                 insert_pattern_vars(map, &pattern, true);
                 let guard = map_expr_visitor_env(&arm.x.guard, map, env, fe, fs, ft)?;
                 let body = map_expr_visitor_env(&arm.x.body, map, env, fe, fs, ft)?;
@@ -908,7 +991,7 @@ where
             });
             ExprX::Match(expr1, Arc::new(arms?))
         }
-        ExprX::Loop { spinoff_loop, is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs } => {
             let cond =
                 cond.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
@@ -918,7 +1001,7 @@ where
                 invs1.push(crate::ast::LoopInvariant { inv: e1, ..inv.clone() });
             }
             ExprX::Loop {
-                spinoff_loop: *spinoff_loop,
+                loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 cond,
@@ -1009,7 +1092,7 @@ where
             fs(env, map, &Spanned::new(stmt.span.clone(), StmtX::Expr(expr)))
         }
         StmtX::Decl { pattern, mode, init } => {
-            let pattern = map_pattern_visitor_env(pattern, env, ft)?;
+            let pattern = map_pattern_visitor_env(pattern, map, env, fe, fs, ft)?;
             let init =
                 init.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             insert_pattern_vars(map, &pattern, init.is_some());
@@ -1057,6 +1140,11 @@ where
         GenericBoundX::Trait(trait_path, ts) => {
             let ts = map_typs_visitor_env(ts, env, ft)?;
             Ok(Arc::new(GenericBoundX::Trait(trait_path.clone(), ts)))
+        }
+        GenericBoundX::TypEquality(trait_path, ts, name, t) => {
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            let t = map_typ_visitor_env(t, env, ft)?;
+            Ok(Arc::new(GenericBoundX::TypEquality(trait_path.clone(), ts, name.clone(), t)))
         }
     }
 }

@@ -53,7 +53,7 @@ fn reverse(v: &mut Vec<u64>)
     }
 }
 
-#[verifier::spinoff_loop(false)]
+#[verifier::loop_isolation(false)]
 fn binary_search_no_spinoff(v: &Vec<u64>, k: u64) -> (r: usize)
     requires
         forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
@@ -83,7 +83,7 @@ fn binary_search_no_spinoff(v: &Vec<u64>, k: u64) -> (r: usize)
     i1
 }
 
-#[verifier::spinoff_loop(false)]
+#[verifier::loop_isolation(false)]
 fn reverse_no_spinoff(v: &mut Vec<u64>)
     ensures
         v.len() == old(v).len(),

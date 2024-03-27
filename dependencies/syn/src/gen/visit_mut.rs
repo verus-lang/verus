@@ -425,6 +425,9 @@ pub trait VisitMut {
     fn visit_invariant_ensures_mut(&mut self, i: &mut InvariantEnsures) {
         visit_invariant_ensures_mut(self, i);
     }
+    fn visit_invariant_except_break_mut(&mut self, i: &mut InvariantExceptBreak) {
+        visit_invariant_except_break_mut(self, i);
+    }
     fn visit_invariant_name_set_mut(&mut self, i: &mut InvariantNameSet) {
         visit_invariant_name_set_mut(self, i);
     }
@@ -1904,6 +1907,9 @@ where
         v.visit_label_mut(it);
     }
     tokens_helper(v, &mut node.loop_token.span);
+    if let Some(it) = &mut node.invariant_except_break {
+        v.visit_invariant_except_break_mut(it);
+    }
     if let Some(it) = &mut node.invariant {
         v.visit_invariant_mut(it);
     }
@@ -2170,6 +2176,9 @@ where
     }
     tokens_helper(v, &mut node.while_token.span);
     v.visit_expr_mut(&mut *node.cond);
+    if let Some(it) = &mut node.invariant_except_break {
+        v.visit_invariant_except_break_mut(it);
+    }
     if let Some(it) = &mut node.invariant {
         v.visit_invariant_mut(it);
     }
@@ -2674,6 +2683,13 @@ where
     v.visit_specification_mut(&mut node.exprs);
 }
 pub fn visit_invariant_ensures_mut<V>(v: &mut V, node: &mut InvariantEnsures)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_invariant_except_break_mut<V>(v: &mut V, node: &mut InvariantExceptBreak)
 where
     V: VisitMut + ?Sized,
 {

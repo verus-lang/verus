@@ -9,13 +9,15 @@ use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
-    FieldOpr, Fun, Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp,
-    Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr,
-    Variant, VariantCheck, VirErr, Visibility,
+    FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate, KrateX,
+    Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX,
+    UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
-use crate::ast_util::{conjoin, disjoin, if_then_else, typ_args_for_datatype_typ, wrap_in_trigger};
+use crate::ast_util::{
+    conjoin, disjoin, if_then_else, mk_eq, mk_ineq, typ_args_for_datatype_typ, wrap_in_trigger,
+};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
@@ -168,6 +170,11 @@ fn pattern_to_exprs_rec(
             decls.push(PatternBoundDecl { name: x.clone(), mutable: *mutable, expr: expr.clone() });
             Ok(SpannedTyped::new(&expr.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
+        PatternX::Binding { name: x, mutable, sub_pat } => {
+            let pattern_test = pattern_to_exprs_rec(ctx, state, expr, sub_pat, decls)?;
+            decls.push(PatternBoundDecl { name: x.clone(), mutable: *mutable, expr: expr.clone() });
+            Ok(pattern_test)
+        }
         PatternX::Tuple(patterns) => {
             let arity = patterns.len();
             let path = state.tuple_type_name(arity);
@@ -234,6 +241,17 @@ fn pattern_to_exprs_rec(
             }
 
             Ok(matches)
+        }
+        PatternX::Expr(e) => Ok(mk_eq(&pattern.span, expr, e)),
+        PatternX::Range(lower, upper) => {
+            let mut v = vec![];
+            if let Some(lower) = lower {
+                v.push(mk_ineq(&pattern.span, lower, expr, InequalityOp::Le));
+            }
+            if let Some((upper, upper_ineq)) = upper {
+                v.push(mk_ineq(&pattern.span, expr, upper, *upper_ineq));
+            }
+            Ok(conjoin(&pattern.span, &v))
         }
     }
 }

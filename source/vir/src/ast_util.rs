@@ -1,8 +1,9 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
-    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
-    Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
-    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
+    FunX, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange, ItemKind,
+    MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
+    Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
+    Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -161,6 +162,11 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
         (GenericBoundX::Trait(x1, ts1), GenericBoundX::Trait(x2, ts2)) => {
             x1 == x2 && n_types_equal(ts1, ts2)
         }
+        (
+            GenericBoundX::TypEquality(x1, ts1, a1, t1),
+            GenericBoundX::TypEquality(x2, ts2, a2, t2),
+        ) => x1 == x2 && n_types_equal(ts1, ts2) && a1 == a2 && types_equal(t1, t2),
+        (GenericBoundX::Trait(..) | GenericBoundX::TypEquality(..), _) => false,
     }
 }
 
@@ -351,6 +357,13 @@ pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bo
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
 }
 
+pub fn is_transparent_to(transparency: &DatatypeTransparency, source_module: &Path) -> bool {
+    match transparency {
+        DatatypeTransparency::Never => false,
+        DatatypeTransparency::WhenVisible(m) => is_visible_to(m, source_module),
+    }
+}
+
 /// Is the target visible to the module?
 /// (If source_module is None, then the target needs to be visible everywhere)
 pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<Path>) -> bool {
@@ -408,9 +421,29 @@ pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
     )
 }
 
+pub fn mk_eq(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Eq(Mode::Spec), e1.clone(), e2.clone()),
+    )
+}
+
+pub fn mk_ineq(span: &Span, e1: &Expr, e2: &Expr, op: InequalityOp) -> Expr {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Inequality(op), e1.clone(), e2.clone()),
+    )
+}
+
 pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
-    let mut expr = init.clone();
-    for e in exprs.iter() {
+    if exprs.len() == 0 {
+        return init.clone();
+    }
+
+    let mut expr = exprs[0].clone();
+    for e in exprs.iter().skip(1) {
         expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
     }
     expr

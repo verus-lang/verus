@@ -471,13 +471,7 @@ macro_rules! atomic_bool_methods {
     };
 }
 
-make_bool_atomic!(
-    PAtomicBool,
-    PermissionBool,
-    PermissionDataBool,
-    AtomicBool,
-    bool
-);
+make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
 
 make_unsigned_integer_atomic!(
     PAtomicU8,

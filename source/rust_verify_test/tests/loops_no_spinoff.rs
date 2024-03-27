@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] spinoff_attribute verus_code! {
         mod m {
-            #![verifier::spinoff_loop(false)]
+            #![verifier::loop_isolation(false)]
             mod n {
                 fn test_loop() {
                     let x = 10;
@@ -22,9 +22,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] spinoff_attribute_fail verus_code! {
         mod m {
-            #![verifier::spinoff_loop(false)]
+            #![verifier::loop_isolation(false)]
             mod n {
-                #[verifier::spinoff_loop(true)]
+                #[verifier::loop_isolation(true)]
                 fn test_loop() {
                     let x = 10;
                     loop {
@@ -40,7 +40,7 @@ test_verify_one_file! {
     #[test] basic_while verus_code! {
         fn test1() {
             let mut i = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 10
                 invariant i <= 10
             {
@@ -55,7 +55,7 @@ test_verify_one_file! {
     #[test] basic_while_fail1 verus_code! {
         fn test1() {
             let mut i = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 10 {
                 i = i + 1;
             }
@@ -69,10 +69,10 @@ test_verify_one_file! {
         fn test1() {
             let mut i = 0;
             let mut j = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 10 {
                 i = i + 1;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 while j < 5 {
                     j = j + 1;
                 }
@@ -87,7 +87,7 @@ test_verify_one_file! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while {x = x + 1; i < 10}
                 invariant
                     i <= 10,
@@ -106,7 +106,7 @@ test_verify_one_file! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while {x = x + 1; i < 10}
                 invariant
                     i <= 10,
@@ -130,7 +130,7 @@ test_verify_one_file! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while {
                 x = x + 1;
                 proof { check(x); }
@@ -158,7 +158,7 @@ test_verify_one_file! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while {
                 x = x + 1;
                 proof { check(x); } // FAILS
@@ -182,7 +182,7 @@ test_verify_one_file! {
             requires a < 10
         {
             let mut i = a;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 20 {
                 i = i + 1;
             }
@@ -199,7 +199,7 @@ test_verify_one_file! {
             let mut i = a;
             let mut j = a;
             j = j + 2;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 20 {
                 assert(a < 10);
                 i = i + 1;
@@ -217,7 +217,7 @@ test_verify_one_file! {
         {
             let mut i = a;
             let mut k = 12;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 20 {
                 let mut k = i;
                 i = i + 1;
@@ -236,11 +236,11 @@ test_verify_one_file! {
             requires a < 10
         {
             let mut i = a;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 20 {
                 i = i + 1;
                 let mut j = a;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 while j < 10 {
                     j = j + 1;
                 }
@@ -258,11 +258,11 @@ test_verify_one_file! {
             let mut i = a;
             let mut j = a;
             j = j + 2;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 20 {
                 i = i + 1;
                 let mut j = a;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 while j < 20 {
                     j = j + 1;
                 }
@@ -280,11 +280,11 @@ test_verify_one_file! {
         {
             let mut i = a;
             let mut k = 12;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 20 {
                 let mut k = i;
                 i = i + 1;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 while k < 20 {
                     k = k + 1;
                 }
@@ -300,7 +300,7 @@ test_verify_one_file! {
         use vstd::modes::*;
         fn test() {
             let ghost mut a: int = 5;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant a > 0
             {
@@ -316,7 +316,7 @@ test_verify_one_file! {
     #[test] basic_loop_fail verus_code! {
         fn test() {
             let mut a: u32 = 5;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant a > 0 // FAILS
             {
@@ -330,7 +330,7 @@ test_verify_one_file! {
     #[test] basic_loop_new_vars verus_code! {
         fn test() {
             let mut a: u32 = 5;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while a < 100
                 invariant
                     ({let b: int = 0; a > b}),
@@ -356,7 +356,7 @@ test_verify_one_file! {
             assert(*x == true);
 
             let mut i = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 5 {
                 i = i + 1;
 
@@ -374,7 +374,7 @@ test_verify_one_file! {
             let mut x = true;
 
             let mut i = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 5 {
                 i = i + 1;
 
@@ -390,7 +390,7 @@ test_verify_one_file! {
     #[test] loop_termination_unsupported verus_code! {
         fn test() {
             let mut a: u64 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while a < 100
                 invariant a <= 100
                 decreases 100 - a
@@ -405,7 +405,7 @@ test_verify_one_file! {
     #[test] example_loop_break verus_code! {
         fn test() {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant 0 <= i <= 9
             {
@@ -424,28 +424,9 @@ test_verify_one_file! {
     #[test] example_loop_break_fail1 verus_code! {
         fn test() {
             let mut i: i8 = 10;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant 0 <= i <= 9 // FAILS
-            {
-                assert(i <= 9);
-                i = i + 1;
-                if i == 10 {
-                    break;
-                }
-            }
-            assert(1 <= i <= 10);
-        }
-    } => Err(e) => assert_one_fails(e)
-}
-
-test_verify_one_file! {
-    #[test] example_loop_break_fail2 verus_code! {
-        fn test() {
-            let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
-            loop
-                invariant_ensures 0 <= i <= 9 // FAILS
             {
                 assert(i <= 9);
                 i = i + 1;
@@ -462,7 +443,7 @@ test_verify_one_file! {
     #[test] example_loop_break_fail3 verus_code! {
         fn test() {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant 0 <= i <= 9
             {
@@ -477,7 +458,7 @@ test_verify_one_file! {
     #[test] example_loop_break_fail4 verus_code! {
         fn test() {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant 0 <= i <= 9
             {
@@ -496,7 +477,7 @@ test_verify_one_file! {
     #[test] example_loop_continue verus_code! {
         fn test() {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant 0 <= i <= 9
             {
@@ -518,7 +499,7 @@ test_verify_one_file! {
     #[test] example_loop_continue_fail verus_code! {
         fn test() {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant 0 <= i <= 9
             {
@@ -539,7 +520,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] infinite_loop verus_code! {
         fn test() {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop {
             }
             assert(false);
@@ -550,7 +531,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] loop_break_false verus_code! {
         fn test() {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop {
                 break;
             }
@@ -562,7 +543,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] loop_break_false_y verus_code! {
         fn test() {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'y: loop {
                 break;
             }
@@ -574,7 +555,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] while_b verus_code! {
         fn test(b: bool) {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while b {
             }
             assert(!b);
@@ -585,7 +566,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] while_b_fail verus_code! {
         fn test(b: bool) {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while b {
                 break;
             }
@@ -597,9 +578,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] while_b2 verus_code! {
         fn test(b: bool) {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while b {
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 while b {
                     break;
                 }
@@ -612,9 +593,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] while_b2_x verus_code! {
         fn test(b: bool) {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: while b {
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: while b {
                     break 'x;
                 }
@@ -627,9 +608,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] while_b2_y verus_code! {
         fn test(b: bool) {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: while b {
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: while b {
                     break 'y;
                 }
@@ -642,7 +623,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] while_to_loop_break verus_code! {
         fn test(b: bool) {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while b {
                 break;
             }
@@ -654,9 +635,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] loop_infinite2 verus_code! {
         fn test() {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: loop {
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: loop {
                     break;
                 }
@@ -669,9 +650,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] loop_infinite2y verus_code! {
         fn test() {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: loop {
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: loop {
                     break 'y;
                 }
@@ -684,9 +665,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] loop_infinite2x verus_code! {
         fn test() {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: loop {
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: loop {
                     break 'x;
                 }
@@ -700,12 +681,12 @@ test_verify_one_file! {
     #[test] loop2_ok verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: loop
                 invariant i == 0
             {
                 i = i + 1;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: loop
                     invariant i == 1
                 {
@@ -725,12 +706,12 @@ test_verify_one_file! {
     #[test] loop2_ok_y verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: loop
                 invariant i == 0
             {
                 i = i + 1;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: loop
                     invariant i == 1
                 {
@@ -750,12 +731,12 @@ test_verify_one_file! {
     #[test] loop2_fail1 verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: loop
                 invariant i == 0
             {
                 i = i + 1;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: loop
                     invariant i == 1
                 {
@@ -775,12 +756,12 @@ test_verify_one_file! {
     #[test] loop2_fail2 verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             'x: loop
                 invariant i == 0
             {
                 i = i + 1;
-                #[verifier::spinoff_loop(false)]
+                #[verifier::loop_isolation(false)]
                 'y: loop
                     invariant i == 1
                 {
@@ -802,7 +783,7 @@ test_verify_one_file! {
             requires *old(a) === 17
         {
             *a = 19;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant
                     *old(a) === 17,
@@ -813,7 +794,7 @@ test_verify_one_file! {
         }
 
         fn foo2(a: &mut u64) {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant *old(a) === *a,
             {
@@ -824,7 +805,7 @@ test_verify_one_file! {
         fn foo3(a: &mut u64)
             requires *old(a) === 1234,
         {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant *old(a) === 1234,
             {
@@ -834,7 +815,7 @@ test_verify_one_file! {
         fn foo4(a: &mut u64)
             requires *old(a) === 1234,
         {
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant *old(a) === 1234,
             {
@@ -846,7 +827,7 @@ test_verify_one_file! {
             requires *old(a) === 1234,
         {
             *a = 12;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant *a === 12,
             {
@@ -859,7 +840,7 @@ test_verify_one_file! {
             ensures *a as int === *old(a) + 25,
         {
             let mut i: u64 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant
                     0 <= i < 25,
@@ -878,7 +859,7 @@ test_verify_one_file! {
             ensures *a as int === *old(a) + 26,
         {
             let mut i: u64 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant *old(a) < 2000,
                     0 <= i < 25,
@@ -926,7 +907,7 @@ test_verify_one_file! {
 
             let mut i = 0;
 
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 5 {
                 x.some_mutator();
                 i = i + 1;
@@ -941,7 +922,7 @@ test_verify_one_file! {
 
             let mut i = 0;
 
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 5 {
                 Mod::some_mutator(&mut x);
                 i = i + 1;
@@ -954,7 +935,7 @@ test_verify_one_file! {
             let mut v = Vec::<u64>::new();
 
             let mut i = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             while i < 5
                 invariant
                     v.view().len() == i as int
@@ -974,7 +955,7 @@ test_verify_one_file! {
         fn test_loop() {
             let mut n: u64 = 0;
             let mut iter = (0..10).into_iter();
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant
                     iter.start <= 10,
@@ -996,7 +977,7 @@ test_verify_one_file! {
         fn test_loop_fail() {
             let mut n: u64 = 0;
             let mut iter = (0..10).into_iter();
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             loop
                 invariant
                     iter.start <= 10,
@@ -1022,7 +1003,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for x in iter: 0..10
                 invariant n == iter.cur * 3,
             {
@@ -1035,7 +1016,7 @@ test_verify_one_file! {
 
         fn test_loop_peek() {
             let mut n: u64 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for x in 0..10
                 invariant n == x * 3,
             {
@@ -1047,7 +1028,7 @@ test_verify_one_file! {
 
         fn test_loop_fail() {
             let mut n: u64 = 0;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for x in iter: 0..10
                 invariant n == iter.cur * 3,
             {
@@ -1066,7 +1047,7 @@ test_verify_one_file! {
         fn test_loop() {
             let mut n: u64 = 0;
             let mut end = 10;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for x in iter: 0..end
                 invariant
                     n == iter.cur * 3,
@@ -1082,7 +1063,7 @@ test_verify_one_file! {
         fn test_loop_fail() {
             let mut n: u64 = 0;
             let mut end = 10;
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for x in iter: 0..end
                 invariant
                     n == iter.cur * 3,
@@ -1101,7 +1082,7 @@ test_verify_one_file! {
             let mut n: u64 = 0;
             let mut end = 10;
             // test Typing::snapshot_transient_state
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for x in iter: 0..({let z = end; non_spec(); z})
                 invariant
                     n == iter.cur * 3,
@@ -1123,7 +1104,7 @@ test_verify_one_file! {
                 forall|i: int| 0 <= i < n ==> v[i] == i,
         {
             let mut v: Vec<u32> = Vec::new();
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for i in iter: 0..n
                 invariant
                     v@ =~= iter@,
@@ -1139,7 +1120,7 @@ test_verify_one_file! {
                 forall|i: int| 0 <= i < n ==> v[i] == i,
         {
             let mut v: Vec<u32> = Vec::new();
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for i in iter: 0..n
                 invariant
                     v@ =~= iter@, // FAILS
@@ -1268,7 +1249,7 @@ test_verify_one_file! {
         {
             let mut b: bool = true;
 
-            #[verifier::spinoff_loop(false)]
+            #[verifier::loop_isolation(false)]
             for x in iter: vec_iter_copy(v)
                 invariant
                     b <==> (forall|i: int| 0 <= i < iter.cur ==> v[i] > 0),

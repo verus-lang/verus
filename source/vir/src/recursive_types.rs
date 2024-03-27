@@ -352,6 +352,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         for bound in tr.x.typ_bounds.iter() {
             match &**bound {
                 GenericBoundX::Trait(..) => {}
+                GenericBoundX::TypEquality(..) => {}
             }
         }
     }
@@ -361,16 +362,24 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         for (name, accept_rec) in datatype.x.typ_params.iter() {
             tparams.insert(name.clone(), *accept_rec);
         }
-        for bound in datatype.x.typ_bounds.iter() {
-            match &**bound {
-                GenericBoundX::Trait(..) => {}
-            }
-        }
         let local = CheckPositiveLocal {
             span: datatype.span.clone(),
             my_datatype: datatype.x.path.clone(),
             tparams,
         };
+        for bound in datatype.x.typ_bounds.iter() {
+            match &**bound {
+                GenericBoundX::Trait(..) => {}
+                GenericBoundX::TypEquality(_, _, _, typ) => {
+                    // This bound introduces a name (an abbreviation) for typ,
+                    // so assume that we're going to use the typ in any position.
+                    // (Actually, Rust's type system probably already stops a datatype
+                    // from mentioning itself in its own type equality bound, but there's
+                    // no harm in checking again.)
+                    check_positive_uses(datatype, &global, &local, None, typ)?;
+                }
+            }
+        }
         for variant in datatype.x.variants.iter() {
             for field in variant.fields.iter() {
                 // Check that field type only uses SCC siblings in positive positions
@@ -574,9 +583,14 @@ pub(crate) fn suppress_bound_in_trait_decl(
     // always cause a cycle and would cause the trait declaration to be rejected.
     // See the check_traits comments below (particularly the part about not passing T's dictionary into
     // T's own members).
-    let GenericBoundX::Trait(bound_path, args) = &**bound;
+    let (bound_path, args) = match &**bound {
+        GenericBoundX::Trait(bound_path, args) => (bound_path, args),
+        GenericBoundX::TypEquality(..) => {
+            return false;
+        }
+    };
     if trait_path == bound_path {
-        assert!(args.len() == typ_params.len());
+        assert!(args.len() <= typ_params.len());
         for (typ_param, arg) in typ_params.iter().zip(args.iter()) {
             if let TypX::TypParam(bound_param) = &**arg {
                 if typ_param == bound_param {
@@ -598,7 +612,10 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     let t_path = &trt.x.name;
     let t_node = Node::Trait(t_path.clone());
     for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
-        let GenericBoundX::Trait(u_path, _) = &**bound;
+        let u_path = match &**bound {
+            GenericBoundX::Trait(u_path, _) => u_path,
+            GenericBoundX::TypEquality(u_path, _, _, _) => u_path,
+        };
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);
     }
@@ -727,6 +744,22 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // This also ensures that whenever A is used in f and g,
     // the dictionary a: Dictionary_U<A> is available.
 
+    // To handle bounds on trait methods like this:
+    //   trait T {
+    //     fn f<A: U>(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // We take a Dictionary_U as a parameter:
+    //   struct Dictionary_T<Self, A> {
+    //     f: Fn<A>(a: Dictionary_U<A>, x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge:
+    //   - f --> U
+    // which, together with T --> f, creates a path T --> U
+    // This also ensures that whenever A is used in f,
+    // the dictionary a: Dictionary_U<A> is available.
+
     // In Rust, declaring a subtrait "trait T: U" is equivalent to declaring
     // a trait with a Self bound: "trait T where Self: U".
     // We handle the bound "Self: U" the same as we handle a bound "A: U"
@@ -749,6 +782,20 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   - T --> U
     // This also ensures that whenever Self is used in f and g,
     // the dictionary a: Dictionary_U<Self> is available.
+
+    // To handle associated types, we pass each associated type in a trait as a separate parameter:
+    //   trait T {
+    //     type X;
+    //     type Y;
+    //     fn f(...);
+    //   }
+    //   fn g<A: T>(x: &A::X, y: &A::Y) { ... }
+    // The bound g<A: T> is interpreted as g<A, A_X, A_Y>(x: &A_X, y: &A_Y).
+    // (Note: passing each associated type separately is just for the hypothetical Coq/F* encoding;
+    // in the SMT encoding, we use a single parameter rather than separate parameters.)
+    // This separation makes it easier to encode type equality constraints such as:
+    //   fn g<A: T<X = u8>>
+    // which becomes g<A, A_Y>(x: &u8, y: &A_Y).
 
     // To handle bounds on associated types:
     //   trait T {

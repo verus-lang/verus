@@ -85,6 +85,7 @@ pub enum ExpX {
     ExecFnByName(Fun),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
+    FuelConst(usize),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -114,13 +115,15 @@ pub struct Dest {
 pub type LoopInvs = Arc<Vec<LoopInv>>;
 #[derive(Debug, Clone)]
 pub struct LoopInv {
-    // "invariant": at_entry = true, at_exit = false
-    // "invariant_ensures": at_entry = true, at_exit = true
+    // "invariant_except_break": at_entry = true, at_exit = false
+    // "invariant": at_entry = true, at_exit = true
     // "ensures": at_entry = false, at_exit = true
     pub at_entry: bool,
     pub at_exit: bool,
     pub inv: Exp,
 }
+
+pub type AssertId = air::ast::AssertId;
 
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
@@ -136,9 +139,10 @@ pub enum StmX {
         // if split is Some, this is a dummy call to be replaced with assertions for error splitting
         split: Option<Message>,
         dest: Option<Dest>,
+        assert_id: Option<AssertId>,
     },
     // note: failed assertion reports Stm's span, plus an optional additional span
-    Assert(Option<Message>, Exp),
+    Assert(Option<AssertId>, Option<Message>, Exp),
     AssertBitVector {
         requires: Exps,
         ensures: Exps,
@@ -153,6 +157,7 @@ pub enum StmX {
     DeadEnd(Stm),
     // Assert that the postcondition holds with the given return value
     Return {
+        assert_id: Option<AssertId>,
         base_error: Message,
         ret_exp: Option<Exp>,
         // If inside_body = true, we will add an assume false after the statement
@@ -168,7 +173,7 @@ pub enum StmX {
         // 1. cond = Some(...), all invs are true on entry and exit, no break statements
         // 2. cond = None, invs may have false at_entry/at_exit, may have break statements
         // Any while loop not satisfying (1) is converted to (2).
-        spinoff_loop: bool,
+        loop_isolation: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<(Stm, Exp)>,
@@ -197,4 +202,46 @@ pub struct LocalDeclX {
     pub ident: UniqueIdent,
     pub typ: Typ,
     pub mutable: bool,
+}
+
+#[derive(Clone)]
+pub struct FunctionSst {
+    pub reqs: Exps,
+    pub post_condition: PostConditionSst,
+    pub mask_set: crate::inv_masks::MaskSet, // Actually AIR
+    pub body: Stm,
+    pub local_decls: Vec<LocalDecl>,
+    pub statics: Vec<Fun>,
+}
+
+#[derive(Clone, Copy)]
+pub enum PostConditionKind {
+    Ensures,
+    DecreasesImplicitLemma,
+    DecreasesBy,
+}
+
+#[derive(Clone)]
+pub struct PostConditionSst {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
+    pub dest: Option<VarIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    pub ens_exps: Vec<Exp>,
+    /// Recommends checks (only used in recommends-checking mode)
+    pub ens_spec_precondition_stms: Vec<Stm>,
+    /// Extra info about PostCondition for error reporting
+    pub kind: PostConditionKind,
+}
+
+pub struct PostConditionInfo {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
+    pub dest: Option<VarIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    pub ens_exprs: Vec<(Span, air::ast::Expr)>,
+    /// Recommends checks (only used in recommends-checking mode)
+    pub ens_spec_precondition_stms: Vec<Stm>,
+    /// Extra info about PostCondition for error reporting
+    pub kind: PostConditionKind,
 }

@@ -397,6 +397,13 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 LineContent::ProofDirective,
             );
         }
+        if let Some(invariant_except_break) = &i.invariant_except_break {
+            self.mark(
+                &invariant_except_break,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
         if let Some(invariant) = &i.invariant {
             self.mark(
                 &invariant,
@@ -421,6 +428,13 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        if let Some(invariant_except_break) = &i.invariant_except_break {
+            self.mark(
+                &invariant_except_break,
                 self.mode_or_trusted(CodeKind::Proof),
                 LineContent::ProofDirective,
             );

@@ -1093,6 +1093,22 @@ impl Debug for Lite<syn::Expr> {
                     }
                     formatter.field("label", Print::ref_cast(val));
                 }
+                if let Some(val) = &_val.invariant_except_break {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::InvariantExceptBreak);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("invariant_except_break", Print::ref_cast(val));
+                }
                 if let Some(val) = &_val.invariant {
                     #[derive(RefCast)]
                     #[repr(transparent)]
@@ -1451,6 +1467,22 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("label", Print::ref_cast(val));
                 }
                 formatter.field("cond", Lite(&_val.cond));
+                if let Some(val) = &_val.invariant_except_break {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::InvariantExceptBreak);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            let _val = &self.0;
+                            formatter.write_str("(")?;
+                            Debug::fmt(Lite(_val), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("invariant_except_break", Print::ref_cast(val));
+                }
                 if let Some(val) = &_val.invariant {
                     #[derive(RefCast)]
                     #[repr(transparent)]
@@ -2171,6 +2203,22 @@ impl Debug for Lite<syn::ExprLoop> {
             }
             formatter.field("label", Print::ref_cast(val));
         }
+        if let Some(val) = &_val.invariant_except_break {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::InvariantExceptBreak);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariant_except_break", Print::ref_cast(val));
+        }
         if let Some(val) = &_val.invariant {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -2601,6 +2649,22 @@ impl Debug for Lite<syn::ExprWhile> {
             formatter.field("label", Print::ref_cast(val));
         }
         formatter.field("cond", Lite(&_val.cond));
+        if let Some(val) = &_val.invariant_except_break {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::InvariantExceptBreak);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariant_except_break", Print::ref_cast(val));
+        }
         if let Some(val) = &_val.invariant {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -3546,6 +3610,14 @@ impl Debug for Lite<syn::InvariantEnsures> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("InvariantEnsures");
+        formatter.field("exprs", Lite(&_val.exprs));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::InvariantExceptBreak> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("InvariantExceptBreak");
         formatter.field("exprs", Lite(&_val.exprs));
         formatter.finish()
     }

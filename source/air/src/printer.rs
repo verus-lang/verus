@@ -291,7 +291,7 @@ impl Printer {
                     nodes!(axiom_location {Node::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
                 }
             }
-            ExprX::LabeledAssertion(error, filter, expr) => {
+            ExprX::LabeledAssertion(_, error, filter, expr) => {
                 let spans = vec_map(&self.message_interface.all_msgs(error), |s| {
                     Node::Atom(format!("\"{}\"", s))
                 });
@@ -380,7 +380,7 @@ impl Printer {
     pub fn stmt_to_node(&self, stmt: &Stmt) -> Node {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
-            StmtX::Assert(labels, filter, expr) => {
+            StmtX::Assert(_, labels, filter, expr) => {
                 let spans = vec_map(&self.message_interface.all_msgs(labels), |s| {
                     Node::Atom(format!("\"{}\"", s))
                 });

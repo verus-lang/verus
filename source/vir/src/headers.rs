@@ -1,7 +1,6 @@
 use crate::ast::{
-    Expr, ExprX, Exprs, Fun, Function, FunctionX, GenericBoundX, HeaderExprX, LoopInvariant,
-    LoopInvariantKind, LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent,
-    VirErr,
+    Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
+    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent, VirErr,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -18,8 +17,8 @@ pub struct Header {
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
+    pub invariant_except_break: Exprs,
     pub invariant: Exprs,
-    pub invariant_ensure: Exprs,
     pub decrease: Exprs,
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
@@ -34,8 +33,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
     let mut recommend: Option<Exprs> = None;
+    let mut invariant_except_break: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
-    let mut invariant_ensure: Option<Exprs> = None;
     let mut decrease: Option<Exprs> = None;
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
@@ -87,6 +86,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
                     }
+                    HeaderExprX::InvariantExceptBreak(es) => {
+                        if invariant_except_break.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to invariant_except_break allowed (use invariant_except_break([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        invariant_except_break = Some(es.clone());
+                    }
                     HeaderExprX::Invariant(es) => {
                         if invariant.is_some() {
                             return Err(error(
@@ -95,15 +103,6 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         invariant = Some(es.clone());
-                    }
-                    HeaderExprX::InvariantEnsures(es) => {
-                        if invariant_ensure.is_some() {
-                            return Err(error(
-                                &stmt.span,
-                                "only one call to invariant_ensures allowed (use invariant_ensures([e1, ..., en]) for multiple expressions",
-                            ));
-                        }
-                        invariant_ensure = Some(es.clone());
                     }
                     HeaderExprX::Decreases(es) => {
                         if decrease.is_some() {
@@ -179,8 +178,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
     };
+    let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
-    let invariant_ensure = invariant_ensure.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
     Ok(Header {
         unwrap_parameters,
@@ -190,8 +189,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         recommend,
         ensure_id_typ,
         ensure,
+        invariant_except_break,
         invariant,
-        invariant_ensure,
         decrease,
         decrease_when,
         decrease_by,
@@ -238,12 +237,12 @@ impl Header {
 
     pub fn loop_invariants(&self) -> LoopInvariants {
         let mut invs: Vec<LoopInvariant> = Vec::new();
-        Self::add_invariants(&mut invs, &self.invariant, LoopInvariantKind::Invariant);
         Self::add_invariants(
             &mut invs,
-            &self.invariant_ensure,
-            LoopInvariantKind::InvariantEnsures,
+            &self.invariant_except_break,
+            LoopInvariantKind::InvariantExceptBreak,
         );
+        Self::add_invariants(&mut invs, &self.invariant, LoopInvariantKind::InvariantAndEnsures);
         Self::add_invariants(&mut invs, &self.ensure, LoopInvariantKind::Ensures);
         Arc::new(invs)
     }
@@ -321,15 +320,11 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         }
     }
     for (b1, b2) in methodx.typ_bounds.iter().zip(typ_bounds.iter()) {
-        match (&**b1, &**b2) {
-            (GenericBoundX::Trait(x1, ps1), GenericBoundX::Trait(x2, ps2)) => {
-                if x1 != x2 || !crate::ast_util::n_types_equal(ps1, ps2) {
-                    return Err(error(
-                        &spec_method.span,
-                        "method specification has different type parameters or bounds from method",
-                    ));
-                }
-            }
+        if !crate::ast_util::generic_bounds_equal(b1, b2) {
+            return Err(error(
+                &spec_method.span,
+                "method specification has different type parameters or bounds from method",
+            ));
         }
     }
     if methodx.params.len() != params.len() {

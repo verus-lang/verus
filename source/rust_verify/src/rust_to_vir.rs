@@ -181,6 +181,14 @@ fn check_item<'tcx>(
             return Ok(());
         }
 
+        if vattrs.is_external(&ctxt.cmd_line_args) {
+            let mut erasure_info = ctxt.erasure_info.borrow_mut();
+            let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, item.owner_id.to_def_id());
+            let name = Arc::new(FunX { path: path.clone() });
+            erasure_info.external_functions.push(name);
+            return Ok(());
+        }
+
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
         let vir_ty = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
 
@@ -630,7 +638,7 @@ fn check_item<'tcx>(
             handle_const_or_static(body_id)?;
         }
         ItemKind::Static(_ty, Mutability::Mut, _body_id) => {
-            if vattrs.external {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
                 return Ok(());
             }
             unsupported_err!(item.span, "static mut");
@@ -675,6 +683,7 @@ fn check_item<'tcx>(
                                 return false;
                             }
                         }
+                        vir::ast::GenericBoundX::TypEquality(..) => {}
                     }
                     true
                 });
@@ -694,7 +703,7 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let (generics_params, generics_bnds) = check_generics_bounds_with_polarity(
+                let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
                     ctxt.tcx,
                     &ctxt.verus_items,
                     item_generics.span,
@@ -714,8 +723,6 @@ fn check_item<'tcx>(
                     );
                 }
 
-                unsupported_err_unless!(generics_params.len() == 0, *span, "trait generics");
-                unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
                         let body_id = match fun {
@@ -745,6 +752,16 @@ fn check_item<'tcx>(
                         }
                     }
                     TraitItemKind::Type([], None) => {
+                        unsupported_err_unless!(
+                            item_generics_params.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
+                        unsupported_err_unless!(
+                            item_typ_bounds.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
                         assoc_typs.push(Arc::new(ident.to_string()));
                     }
                     TraitItemKind::Type(_, Some(_)) => {
@@ -754,6 +771,16 @@ fn check_item<'tcx>(
                         );
                     }
                     TraitItemKind::Type(_generic_bounds, None) => {
+                        unsupported_err_unless!(
+                            item_generics_params.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
+                        unsupported_err_unless!(
+                            item_typ_bounds.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
                         assoc_typs.push(Arc::new(ident.to_string()));
 
                         let bounds = ctxt
@@ -809,6 +836,9 @@ fn check_item<'tcx>(
             return Ok(());
         }
         _ => {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
+                return Ok(());
+            }
             unsupported_err!(item.span, "unsupported item", item);
         }
     }
@@ -963,17 +993,17 @@ fn check_foreign_item<'tcx>(
                 generics,
             )?;
         }
-        ForeignItemKind::Static(..)
+        _ => {
             if get_verifier_attrs(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 Some(&mut *ctxt.diagnostics.borrow_mut()),
             )?
-            .is_external(&ctxt.cmd_line_args) =>
-        {
-            return Ok(());
-        }
-        _ => {
-            unsupported_err!(item.span, "unsupported foreign item", item);
+            .is_external(&ctxt.cmd_line_args)
+            {
+                return Ok(());
+            } else {
+                unsupported_err!(item.span, "unsupported foreign item", item);
+            }
         }
     }
     Ok(())
@@ -1119,7 +1149,12 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         // checked by the type system
                     }
                     _ => {
-                        unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                        let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                        let vattrs =
+                            get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                        if !vattrs.is_external(&ctxt.cmd_line_args) {
+                            unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                        }
                     }
                 },
                 OwnerNode::Crate(_mod_) => (),

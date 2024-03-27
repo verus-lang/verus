@@ -10,7 +10,7 @@ use builtin_macros::*;
 verus! {
 
 /// `Seq<A>` is a sequence type for specifications.
-/// To use a "sequence" in compiled code, use an `exec` type like [`vec::Vec`](crate::vec::Vec)
+/// To use a "sequence" in compiled code, use an `exec` type like `vec::Vec`
 /// that has `Seq<A>` as its specification type.
 ///
 /// An object `seq: Seq<A>` has a length, given by [`seq.len()`](Seq::len),
