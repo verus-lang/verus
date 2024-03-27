@@ -8,6 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
+use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
@@ -26,7 +27,7 @@ use rustc_hir::{
     ItemKind, MaybeOwner, Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn,
     TraitItem, TraitItemKind, TraitRef, Unsafety,
 };
-use vir::def::trait_self_type_param;
+use vir::def::{trait_self_type_param, Spanned};
 
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
@@ -88,6 +89,89 @@ fn check_item<'tcx>(
         if vattrs.size_of_global {
             return Ok(()); // handled earlier
         }
+        if vattrs.item_broadcast_use {
+            let err = crate::util::err_span(item.span, "invalid module-level broadcast use");
+            let ItemKind::Const(_ty, generics, body_id) = item.kind else {
+                return err;
+            };
+            unsupported_err_unless!(
+                generics.params.len() == 0 && generics.predicates.len() == 0,
+                item.span,
+                "const generics with broadcast"
+            );
+            let _def_id = body_id.hir_id.owner.to_def_id();
+
+            let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);
+
+            let rustc_hir::ExprKind::Block(block, _) = body.value.kind else {
+                return err;
+            };
+
+            let funs = block
+                .stmts
+                .iter()
+                .map(|stmt| {
+                    let err =
+                        crate::util::err_span(item.span, "invalid module-level broadcast use");
+
+                    let rustc_hir::StmtKind::Semi(expr) = stmt.kind else {
+                        return err;
+                    };
+
+                    let rustc_hir::ExprKind::Call(fun_target, args) = expr.kind else {
+                        return err;
+                    };
+
+                    let rustc_hir::ExprKind::Path(rustc_hir::QPath::Resolved(None, fun_path)) =
+                        &fun_target.kind
+                    else {
+                        return err;
+                    };
+
+                    let Some(VerusItem::Directive(verus_items::DirectiveItem::RevealHide)) =
+                        ctxt.get_verus_item(fun_path.res.def_id())
+                    else {
+                        return err;
+                    };
+
+                    let args: Vec<_> = args.iter().collect();
+
+                    let crate::reveal_hide::RevealHideResult::RevealItem(fun) = handle_reveal_hide(
+                        ctxt,
+                        expr,
+                        args.len(),
+                        &args,
+                        ctxt.tcx,
+                        None::<fn(vir::ast::ExprX) -> Result<vir::ast::Expr, VirErr>>,
+                    )?
+                    else {
+                        panic!("handle_reveal_hide must return a RevealItem");
+                    };
+
+                    Ok(fun)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let Some(Some(mpath)) = mpath else {
+                unsupported_err!(item.span, "unsupported broadcast use here", item);
+            };
+            let module = vir
+                .modules
+                .iter_mut()
+                .find(|m| &m.x.path == mpath)
+                .expect("cannot find current module");
+            let reveals = &mut Arc::make_mut(module).x.reveals;
+            if reveals.is_some() {
+                return err_span(
+                    item.span,
+                    "only one module-level `broadcast use` allowed for each module",
+                );
+            }
+            let span = crate::spans::err_air_span(item.span);
+            *reveals = Some(Spanned::new(span, funs));
+
+            return Ok(());
+        }
         if path.segments.iter().find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_")).is_some()
         {
             ctxt.erasure_info
@@ -127,6 +211,7 @@ fn check_item<'tcx>(
             check_item_fn(
                 ctxt,
                 &mut vir.functions,
+                Some(&mut vir.reveal_groups),
                 item.owner_id.to_def_id(),
                 FunctionKind::Static,
                 visibility(),
@@ -407,6 +492,7 @@ fn check_item<'tcx>(
                                 check_item_fn(
                                     ctxt,
                                     &mut vir.functions,
+                                    Some(&mut vir.reveal_groups),
                                     impl_item.owner_id.to_def_id(),
                                     kind,
                                     impl_item_visibility,
@@ -649,6 +735,7 @@ fn check_item<'tcx>(
                         let fun = check_item_fn(
                             ctxt,
                             &mut methods,
+                            None,
                             owner_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility(),
@@ -944,7 +1031,19 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
 pub type ItemToModuleMap = HashMap<ItemId, Option<Path>>;
 
 pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModuleMap), VirErr> {
-    let mut vir: KrateX = Default::default();
+    let mut vir: KrateX = KrateX {
+        functions: Vec::new(),
+        reveal_groups: Vec::new(),
+        datatypes: Vec::new(),
+        traits: Vec::new(),
+        trait_impls: Vec::new(),
+        assoc_type_impls: Vec::new(),
+        modules: Vec::new(),
+        external_fns: Vec::new(),
+        external_types: Vec::new(),
+        path_as_rust_names: Vec::new(),
+        arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
+    };
 
     let mut external_fn_specification_trait_method_impls = vec![];
 
@@ -968,9 +1067,10 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModu
                         // Shallowly visit just the top-level items (don't visit nested modules)
                         let path =
                             def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
-                        vir.modules.push(
-                            ctxt.spanned_new(item.span, vir::ast::ModuleX { path: path.clone() }),
-                        );
+                        vir.modules.push(ctxt.spanned_new(
+                            item.span,
+                            vir::ast::ModuleX { path: path.clone(), reveals: None },
+                        ));
                         let path = Some(path);
                         item_to_module
                             .extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
@@ -998,7 +1098,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModu
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
                     vir.modules.push(ctxt.spanned_new(
                         mod_.spans.inner_span,
-                        vir::ast::ModuleX { path: path.clone() },
+                        vir::ast::ModuleX { path: path.clone(), reveals: None },
                     ));
                     item_to_module
                         .extend(mod_.item_ids.iter().map(move |ii| (*ii, Some(path.clone()))))

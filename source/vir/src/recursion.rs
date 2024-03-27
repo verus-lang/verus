@@ -24,7 +24,7 @@ use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast_util::str_typ;
 use air::messages::Diagnostics;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -33,6 +33,7 @@ pub enum Node {
     Datatype(Path),
     Trait(Path),
     TraitImpl(ImplPath),
+    ModuleReveal(Path),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },
@@ -51,6 +52,9 @@ pub(crate) fn get_callee(
     target: &Fun,
     resolved_method: &Option<(Fun, Typs)>,
 ) -> Option<Fun> {
+    if ctx.reveal_group_set.contains(target) {
+        return Some(target.clone());
+    }
     let fun = &ctx.func_map[target];
     if let FunctionKind::TraitMethodDecl { .. } = &fun.x.kind {
         resolved_method.clone().map(|(x, _)| x)
@@ -404,12 +408,13 @@ fn check_termination<'a>(
             Ok(stm_block)
         }
         StmX::Fuel(callee, fuel) if *fuel >= 1 => {
-            let f2 = &ctx.func_map[callee];
-            if f2.x.attrs.broadcast_forall && is_recursive_call(&ctxt, callee, &None) {
+            let broadcast_forall = ctx.reveal_group_set.contains(callee)
+                || ctx.func_map[callee].x.attrs.broadcast_forall;
+            if broadcast_forall && is_recursive_call(&ctxt, callee, &None) {
                 // This isn't needed for soundness, since the broadcast_forall axiom isn't
                 // declared until after this SCC, but we might as well signal an error,
                 // since this reveal will have no effect.
-                return Err(error(&s.span, "cannot recursively reveal broadcast_forall"));
+                return Err(error(&s.span, "cannot recursively use a broadcast proof fn"));
             }
             Ok(s.clone())
         }
@@ -441,6 +446,7 @@ pub(crate) fn check_termination_stm(
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
+    reveal_group_set: &HashSet<Fun>,
     call_graph: &mut Graph<Node>,
     span_infos: &mut Vec<Span>,
     function: &Function,
@@ -553,9 +559,10 @@ pub(crate) fn expand_call_graph(
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
             }
-            ExprX::Fuel(callee, fuel) if *fuel >= 1 => {
-                let f2 = &func_map[callee];
-                if f2.x.attrs.broadcast_forall {
+            ExprX::Fuel(callee, fuel, _is_broadcast_use) if *fuel >= 1 => {
+                let broadcast_forall =
+                    reveal_group_set.contains(callee) || func_map[callee].x.attrs.broadcast_forall;
+                if broadcast_forall {
                     // f --> f2
                     call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
                 }

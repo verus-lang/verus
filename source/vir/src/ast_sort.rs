@@ -19,6 +19,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
 
     let KrateX {
         functions,
+        reveal_groups,
         datatypes,
         traits,
         trait_impls,
@@ -57,6 +58,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
 
     Arc::new(KrateX {
         functions,
+        reveal_groups: reveal_groups.clone(),
         datatypes,
         traits,
         trait_impls: trait_impls.clone(),

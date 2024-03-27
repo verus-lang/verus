@@ -274,6 +274,7 @@ pub struct Verifier {
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
+    crate_name: Option<String>,
     crate_names: Option<Vec<String>>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
@@ -381,6 +382,7 @@ impl Verifier {
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
+            crate_name: None,
             crate_names: None,
             air_no_span: None,
             current_crate_modules: None,
@@ -412,6 +414,7 @@ impl Verifier {
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
+            crate_name: self.crate_name.clone(),
             crate_names: self.crate_names.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
@@ -1181,7 +1184,7 @@ impl Verifier {
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
 
-        let module = &ctx.module();
+        let module = &ctx.module_path();
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -1692,11 +1695,22 @@ impl Verifier {
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
-            vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
+            vir::prune::prune_krate_for_module(
+                &krate,
+                &Arc::new(self.crate_name.clone().expect("crate_name")),
+                bucket_id.module(),
+                bucket_id.function(),
+            );
+        let module = pruned_krate
+            .modules
+            .iter()
+            .find(|m| &m.x.path == bucket_id.module())
+            .expect("module in krate")
+            .clone();
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
-            bucket_id.module().clone(),
+            module,
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
@@ -1761,6 +1775,7 @@ impl Verifier {
 
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
+            Arc::new(self.crate_name.clone().expect("crate_name")),
             air_no_span.clone(),
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
@@ -2346,7 +2361,7 @@ impl Verifier {
 
         let time0 = Instant::now();
 
-        let mut crate_names: Vec<String> = vec![crate_name];
+        let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
         let mut vir_crates: Vec<Krate> = other_vir_crates;
         // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
@@ -2373,6 +2388,7 @@ impl Verifier {
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
             no_vstd: self.args.no_vstd,
             arch_word_bits: None,
+            crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
             no_span: self.air_no_span.clone().unwrap(),
         });
@@ -2417,7 +2433,7 @@ impl Verifier {
 
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
-        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate)
+        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate.clone())
             .map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_args.log_vir {
@@ -2432,6 +2448,7 @@ impl Verifier {
             .map_err(map_err_diagnostics)?;
         let vir_crate = vir::traits::inherit_default_bodies(&vir_crate);
 
+        let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
             &mut ctxt.diagnostics.borrow_mut(),
@@ -2447,12 +2464,14 @@ impl Verifier {
                 }
             }
         }
+        check_crate_result1.map_err(|e| (e, Vec::new()))?;
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
         let (vir_crate, erasure_modes) =
             vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
+        self.crate_name = Some(crate_name);
         self.crate_names = Some(crate_names);
 
         let erasure_info = ctxt.erasure_info.borrow();

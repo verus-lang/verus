@@ -613,6 +613,40 @@
       }
     },
     {
+      "ident": "BroadcastUse",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "broadcast_use_tokens": {
+          "tuple": [
+            {
+              "token": "Broadcast"
+            },
+            {
+              "token": "Use"
+            }
+          ]
+        },
+        "paths": {
+          "punctuated": {
+            "element": {
+              "syn": "ExprPath"
+            },
+            "punct": "Comma"
+          }
+        },
+        "semi": {
+          "token": "Semi"
+        }
+      }
+    },
+    {
       "ident": "Closed",
       "features": {
         "any": []
@@ -3076,6 +3110,11 @@
           {
             "proc_macro2": "TokenStream"
           }
+        ],
+        "BroadcastGroup": [
+          {
+            "syn": "ItemBroadcastGroup"
+          }
         ]
       },
       "exhaustive": false
@@ -3448,9 +3487,59 @@
           {
             "syn": "Global"
           }
+        ],
+        "BroadcastUse": [
+          {
+            "syn": "BroadcastUse"
+          }
+        ],
+        "BroadcastGroup": [
+          {
+            "syn": "ItemBroadcastGroup"
+          }
         ]
       },
       "exhaustive": false
+    },
+    {
+      "ident": "ItemBroadcastGroup",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "vis": {
+          "syn": "Visibility"
+        },
+        "broadcast_group_tokens": {
+          "tuple": [
+            {
+              "token": "Broadcast"
+            },
+            {
+              "token": "BroadcastGroup"
+            }
+          ]
+        },
+        "ident": {
+          "proc_macro2": "Ident"
+        },
+        "brace_token": {
+          "group": "Brace"
+        },
+        "paths": {
+          "punctuated": {
+            "element": {
+              "syn": "ExprPath"
+            },
+            "punct": "Comma"
+          }
+        }
+      }
     },
     {
       "ident": "ItemConst",
@@ -5603,6 +5692,11 @@
             "syn": "Abi"
           }
         },
+        "broadcast": {
+          "option": {
+            "token": "Broadcast"
+          }
+        },
         "mode": {
           "syn": "FnMode"
         },
@@ -6902,6 +6996,8 @@
     "BigOr": "|||",
     "Box": "box",
     "Break": "break",
+    "Broadcast": "broadcast",
+    "BroadcastGroup": "group",
     "By": "by",
     "Caret": "^",
     "CaretEq": "^=",

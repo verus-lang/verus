@@ -707,7 +707,7 @@ pub(crate) fn build_triggers(
     });
     let module = match &ctx.fun {
         Some(FunctionCtx { module_for_chosen_triggers: Some(m), .. }) => m.clone(),
-        _ => ctx.module.clone(),
+        _ => ctx.module.x.path.clone(),
     };
     let chosen_triggers = ChosenTriggers {
         module,

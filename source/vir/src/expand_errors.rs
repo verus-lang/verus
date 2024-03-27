@@ -652,7 +652,7 @@ pub fn try_split_datatype_eq(
     let Some(datatype) = ctx.datatype_map.get(dt_name) else {
         return Err(None);
     };
-    if !is_transparent_to(&datatype.x.transparency, &ctx.module) {
+    if !is_transparent_to(&datatype.x.transparency, &ctx.module.x.path) {
         return Err(Some("datatype is opaque here".to_string()));
     }
 
@@ -946,7 +946,10 @@ fn can_inline_function(
                 return uninterp_err;
             }
         };
-        if !crate::ast_util::is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module) {
+        if !crate::ast_util::is_visible_to_of_owner(
+            &fun_to_inline.x.owning_module,
+            &ctx.module.x.path,
+        ) {
             // if the target inline function is outside this module, track `open` `closed` at module boundaries
             match fun_to_inline.x.publish {
                 Some(b) => {

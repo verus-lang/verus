@@ -765,7 +765,7 @@ pub enum ExprX {
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
-    Fuel(Fun, u32),
+    Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.
@@ -1051,6 +1051,28 @@ pub enum ItemKind {
     Static,
 }
 
+pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct RevealGroupX {
+    /// Name of the function that is used internally to represent the group.
+    /// This is used, for example, to create a Node::Fun(name) for the group.
+    /// Note that there is no FunctionX for the group, though.
+    pub name: Fun,
+    /// Access control (public/private)
+    pub visibility: Visibility,
+    /// Owning module
+    pub owning_module: Option<Path>,
+    /// If true, then prune away group unless either the module that contains the group is used.
+    /// (Without this, importing vstd would recursively reach and encode all the
+    /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
+    pub prune_unless_this_module_is_used: bool,
+    /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
+    /// No more than one such group is allowed in each crate.
+    pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,
+    /// All the subgroups or functions included in this group
+    pub members: Arc<Vec<Fun>>,
+}
+
 /// Single field in a variant
 pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// List of fields in a variant
@@ -1153,11 +1175,14 @@ pub enum WellKnownItem {
     DropTrait,
 }
 
+pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;
+
 pub type Module = Arc<Spanned<ModuleX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct ModuleX {
     pub path: Path,
     // add attrs here
+    pub reveals: Option<ModuleReveals>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
@@ -1181,23 +1206,19 @@ impl ArchWordBits {
     }
 }
 
-impl Default for ArchWordBits {
-    fn default() -> Self {
-        ArchWordBits::Either32Or64
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Arch {
     pub word_bits: ArchWordBits,
 }
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
+    /// All reveal_groups in the crate
+    pub reveal_groups: Vec<RevealGroup>,
     /// All datatypes in the crate
     pub datatypes: Vec<Datatype>,
     /// All traits in the crate

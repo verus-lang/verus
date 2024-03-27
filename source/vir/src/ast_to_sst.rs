@@ -1622,12 +1622,12 @@ pub(crate) fn expr_to_stm_opt(
             let (check_stms, body_exp) = expr_to_pure_exp_check(ctx, state, body)?;
             Ok((check_stms, ReturnValue::Some(mk_exp(ExpX::WithTriggers(trigs, body_exp)))))
         }
-        ExprX::Fuel(x, fuel) => {
+        ExprX::Fuel(x, fuel, _) => {
             // It's possible that the function may have pruned out of the crate
             // because there are no transitive dependencies.
             // If so, just skip the fuel/reveal statement entirely
             // (it can't possibly have any effect)
-            let skip = !ctx.func_map.contains_key(x);
+            let skip = !ctx.reveal_group_set.contains(x) && !ctx.func_map.contains_key(x);
 
             if skip {
                 state.diagnostics.report(&warning(

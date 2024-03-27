@@ -110,6 +110,8 @@ Special cases:
 
 # Other considerations
 
+**NOTE: this is now outdated.**
+
 ### `broadcast_forall`
 
 Currently trait bounds on `broadcast_forall` are disallowed except for `Sized`

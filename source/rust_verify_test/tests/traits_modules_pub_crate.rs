@@ -265,7 +265,7 @@ test_verify_one_file! {
                 s.f();
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -293,7 +293,7 @@ test_verify_one_file! {
                 s.f(&s);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {

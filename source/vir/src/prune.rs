@@ -6,7 +6,8 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function,
-    FunctionKind, Ident, Krate, KrateX, Mode, Path, Stmt, Trait, TraitX, Typ, TypX,
+    FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt, Trait,
+    TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::ast_visitor::VisitorScopeMap;
@@ -53,6 +54,7 @@ struct TraitImpl {
 struct Ctxt {
     module: Path,
     function_map: HashMap<Fun, Function>,
+    reveal_group_map: HashMap<Fun, RevealGroup>,
     datatype_map: HashMap<Path, Datatype>,
     // For an impl "bounds ==> trait T(...t...)", point T to impl:
     trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>>,
@@ -63,6 +65,7 @@ struct Ctxt {
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
+    all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>>,
     vstd_crate_name: Ident,
 }
 
@@ -76,6 +79,7 @@ struct State {
     reached_assoc_type_impls: HashSet<AssocTypeGroup>,
     reached_modules: HashSet<Path>,
     worklist_functions: Vec<Fun>,
+    worklist_reveal_groups: Vec<Fun>,
     worklist_types: Vec<ReachedType>,
     worklist_bound_traits: Vec<TraitName>,
     worklist_trait_impls: Vec<ImplName>,
@@ -135,6 +139,26 @@ fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
 fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     if ctxt.function_map.contains_key(name) {
         reach(&mut state.reached_functions, &mut state.worklist_functions, name);
+    }
+    if ctxt.reveal_group_map.contains_key(name) {
+        reach(&mut state.reached_functions, &mut state.worklist_reveal_groups, name);
+    }
+}
+
+fn reach_reveal_group(ctxt: &Ctxt, state: &mut State, name: &Fun) {
+    let group = &ctxt.reveal_group_map[name];
+    if let Some(module_path) = &group.x.owning_module {
+        if group.x.prune_unless_this_module_is_used {
+            // We only reach into a prune_unless_this_module_is_used group when its module is reached
+            if !state.reached_modules.contains(module_path) {
+                return;
+            }
+        } else {
+            reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
+        }
+    }
+    for member in group.x.members.iter() {
+        reach_function(ctxt, state, member);
     }
 }
 
@@ -318,6 +342,10 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             reach_methods(ctxt, state, methods);
             continue;
         }
+        if let Some(f) = state.worklist_reveal_groups.pop() {
+            reach_reveal_group(ctxt, state, &f);
+            continue;
+        }
         if let Some(t) = state.worklist_types.pop() {
             match &t {
                 ReachedType::Datatype(path) => {
@@ -391,7 +419,16 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     if function.x.attrs.broadcast_forall && function.x.body.is_none() {
                         // If we reach m, we reach all broadcast_forall functions in m
                         // TODO: remove this and rely on explicit reaching of broadcast_forall
+                        // (also remove all_functions_in_each_module)
                         reach_function(ctxt, state, f);
+                    }
+                }
+            }
+            if let Some(fs) = ctxt.all_reveal_groups_in_each_module.get(&m) {
+                for f in fs {
+                    if state.reached_functions.contains(f) {
+                        // revisit group to handle prune_unless_this_module_is_used
+                        reach_reveal_group(ctxt, state, f);
                     }
                 }
             }
@@ -414,8 +451,40 @@ impl AssocTypeImplX {
     }
 }
 
+fn overapproximate_revealed_functions(
+    revealed_functions: &mut HashSet<Fun>,
+    reveal_groups: &Vec<RevealGroup>,
+) {
+    // REVIEW: this is an unnecessary overapproximation;
+    // we could be more precise in handling whether reveal_groups recursively reach and reveal
+    // opaque functions (depending on prune_unless_this_module_is_used),
+    // but it would require refactoring the way we decide to keep or erase opaque function bodies,
+    // which doesn't seem worth it now to optimize a feature that isn't really used yet.
+    // So we just make an overapproximation that ignores prune_unless_this_module_is_used.
+    // (As a result, we might unnecessarily include the body of an opaque function even if
+    // we only need the opaque function's signature.)
+    let mut reveal_group_map: HashMap<Fun, RevealGroup> = HashMap::new();
+    for f in reveal_groups {
+        reveal_group_map.insert(f.x.name.clone(), f.clone());
+    }
+    let mut worklist: Vec<Fun> =
+        revealed_functions.iter().filter(|f| reveal_group_map.contains_key(*f)).cloned().collect();
+    while let Some(f) = worklist.pop() {
+        let group = &reveal_group_map[&f];
+        for member in group.x.members.iter() {
+            if !revealed_functions.contains(member) {
+                revealed_functions.insert(member.clone());
+                if reveal_group_map.contains_key(member) {
+                    worklist.push(member.clone());
+                }
+            }
+        }
+    }
+}
+
 pub fn prune_krate_for_module(
     krate: &Krate,
+    crate_name: &Ident,
     module: &Path,
     fun: Option<&Fun>,
 ) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>, Vec<Fun>) {
@@ -432,6 +501,12 @@ pub fn prune_krate_for_module(
     state.worklist_modules.push(module.clone());
 
     // Collect all functions that our module reveals:
+    let this_module_reveals = krate
+        .modules
+        .iter()
+        .find(|m| &m.x.path == module)
+        .map(|m| m.x.reveals.clone())
+        .expect("module declaration for current module");
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     for f in &krate.functions {
         if is_root(f) {
@@ -440,7 +515,7 @@ pub fn prune_krate_for_module(
                     body,
                     &mut |_scope_map, e: &Expr| {
                         match &e.x {
-                            ExprX::Fuel(path, fuel) if *fuel > 0 => {
+                            ExprX::Fuel(path, fuel, _is_broadcast_use) if *fuel > 0 => {
                                 revealed_functions.insert(path.clone());
                             }
                             _ => {}
@@ -452,12 +527,34 @@ pub fn prune_krate_for_module(
             }
         }
     }
+    for f in this_module_reveals.iter().flat_map(|o| o.x.iter()) {
+        revealed_functions.insert(f.clone());
+    }
+    for group in &krate.reveal_groups {
+        if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {
+            let is_imported = crate_name != group_crate;
+            if is_imported {
+                revealed_functions.insert(group.x.name.clone());
+            }
+        }
+    }
 
     // Collect functions and datatypes,
     // pruning all bodies and variants that are not visible to our module
     let mut functions: Vec<Function> = Vec::new();
+    let mut reveal_groups: Vec<RevealGroup> = Vec::new();
     let mut datatypes: Vec<Datatype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
+    for f in &krate.reveal_groups {
+        if is_visible_to(&f.x.visibility, module) {
+            reveal_groups.push(f.clone());
+            if revealed_functions.contains(&f.x.name) {
+                state.reached_functions.insert(f.x.name.clone());
+                state.worklist_reveal_groups.push(f.x.name.clone());
+            }
+        }
+    }
+    overapproximate_revealed_functions(&mut revealed_functions, &reveal_groups);
     for f in &krate.functions {
         if is_root(f) {
             // our function
@@ -518,6 +615,7 @@ pub fn prune_krate_for_module(
     }
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
+    let mut reveal_group_map: HashMap<Fun, RevealGroup> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
     let mut assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>> = HashMap::new();
     let mut trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>> = HashMap::new();
@@ -525,6 +623,7 @@ pub fn prune_krate_for_module(
     let mut trait_impl_map: HashMap<ImplName, TraitImpl> = HashMap::new();
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
+    let mut all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &f.x.kind {
@@ -540,6 +639,14 @@ pub fn prune_krate_for_module(
             all_functions_in_each_module.insert(module.clone(), Vec::new());
         }
         all_functions_in_each_module.get_mut(&module).unwrap().push(f.x.name.clone());
+    }
+    for f in &reveal_groups {
+        reveal_group_map.insert(f.x.name.clone(), f.clone());
+        let module = f.x.owning_module.clone().expect("owning_module");
+        all_reveal_groups_in_each_module
+            .entry(module)
+            .or_insert_with(|| Vec::new())
+            .push(f.x.name.clone());
     }
     for d in &datatypes {
         datatype_map.insert(d.x.path.clone(), d.clone());
@@ -596,6 +703,7 @@ pub fn prune_krate_for_module(
     let ctxt = Ctxt {
         module: module.clone(),
         function_map,
+        reveal_group_map,
         datatype_map,
         trait_to_trait_impls,
         typ_to_trait_impls,
@@ -603,6 +711,7 @@ pub fn prune_krate_for_module(
         assoc_type_impl_map,
         method_map,
         all_functions_in_each_module,
+        all_reveal_groups_in_each_module,
         vstd_crate_name,
     };
     traverse_reachable(&ctxt, &mut state);
@@ -619,8 +728,25 @@ pub fn prune_krate_for_module(
         traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
     }
 
+    let modules: Vec<Module> = krate
+        .modules
+        .iter()
+        .map(|mm| {
+            mm.map_x(|m| ModuleX {
+                path: m.path.clone(),
+                reveals: if &m.path == module { m.reveals.clone() } else { None },
+            })
+        })
+        .collect();
+
+    debug_assert!(modules.iter().filter(|m| m.x.reveals.is_some()).count() <= 1);
+
     let kratex = KrateX {
         functions: functions
+            .into_iter()
+            .filter(|f| state.reached_functions.contains(&f.x.name))
+            .collect(),
+        reveal_groups: reveal_groups
             .into_iter()
             .filter(|f| state.reached_functions.contains(&f.x.name))
             .collect(),
@@ -641,7 +767,7 @@ pub fn prune_krate_for_module(
             .filter(|i| state.reached_trait_impls.contains(&i.x.impl_path))
             .cloned()
             .collect(),
-        modules: krate.modules.clone(),
+        modules,
         external_fns: krate.external_fns.clone(),
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),

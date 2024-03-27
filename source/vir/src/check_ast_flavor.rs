@@ -33,6 +33,7 @@ pub fn check_krate_simplified(krate: &Krate) {
 
     let KrateX {
         functions,
+        reveal_groups: _,
         datatypes,
         traits: _,
         trait_impls: _,
@@ -143,6 +144,7 @@ fn expr_no_loc_in_spec(
 pub fn check_krate(krate: &Krate) {
     let KrateX {
         functions,
+        reveal_groups: _,
         datatypes: _,
         traits: _,
         trait_impls: _,

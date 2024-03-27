@@ -436,7 +436,7 @@ where
                 ExprX::AssertCompute(e, _) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
-                ExprX::Fuel(_, _) => (),
+                ExprX::Fuel(_, _, _) => (),
                 ExprX::RevealString(_) => (),
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
@@ -933,7 +933,9 @@ where
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
             ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2, op: *op }
         }
-        ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
+        ExprX::Fuel(path, fuel, is_broadcast_use) => {
+            ExprX::Fuel(path.clone(), *fuel, *is_broadcast_use)
+        }
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
         ExprX::Header(_) => {
             return Err(error(&expr.span, "header expression not allowed here"));

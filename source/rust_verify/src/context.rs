@@ -31,6 +31,7 @@ pub struct ContextX<'tcx> {
     pub(crate) diagnostics: std::rc::Rc<std::cell::RefCell<Vec<vir::ast::VirErrAs>>>,
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
+    pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
     pub(crate) no_span: vir::messages::Span,
 }

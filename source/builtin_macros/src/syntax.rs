@@ -4,8 +4,10 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 use quote::format_ident;
+use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use syn_verus::parse::{Parse, ParseStream};
+use syn_verus::parse_quote_spanned;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
@@ -17,18 +19,18 @@ use syn_verus::visit_mut::{
     visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
     visit_specification_mut, visit_trait_item_method_mut, VisitMut,
 };
-use syn_verus::ExprMatches;
-use syn_verus::MatchesOpExpr;
-use syn_verus::MatchesOpToken;
+use syn_verus::BroadcastUse;
+use syn_verus::ExprBlock;
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
-    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprTuple,
-    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemMethod,
-    Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet, InvariantNameSetList,
-    Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait,
-    ItemUnion, Lit, Local, ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment,
-    Publish, Recommends, Requires, ReturnType, Signature, SignatureDecreases, SignatureInvariants,
-    Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
+    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident,
+    ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
+    InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
+    ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
+    ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
+    Requires, ReturnType, Signature, SignatureDecreases, SignatureInvariants, Stmt, Token,
+    TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -277,6 +279,20 @@ impl Visitor {
             ));
         }
 
+        if sig.broadcast.is_some() && !matches!(sig.mode, FnMode::Proof(_)) {
+            let broadcast_span = sig.broadcast.span();
+            stmts.push(stmt_with_semi!(
+                broadcast_span =>
+                compile_error!("only `proof` functions can be marked `broadcast`")
+            ));
+        }
+
+        let broadcast_attrs = if let Some(b) = sig.broadcast {
+            vec![mk_verus_attr(b.span, quote! { broadcast_forall })]
+        } else {
+            vec![]
+        };
+
         let publish_attrs = match &sig.publish {
             Publish::Default => vec![],
             Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
@@ -491,6 +507,7 @@ impl Visitor {
 
         sig.publish = Publish::Default;
         sig.mode = FnMode::Default;
+        attrs.extend(broadcast_attrs);
         attrs.extend(publish_attrs);
         attrs.extend(mode_attrs);
         attrs.extend(prover_attr.into_iter());
@@ -606,7 +623,6 @@ impl VisitMut for ExecGhostPatVisitor {
         //   pat[tmp_x, tmp_y, tmp_z]
         //   x_decls: let tracked x; let ghost mut y; let [mode] mut z;
         //   x_assigns: x = tmp_x.get(); y = tmp_y.view(); z = tmp_z;
-        use syn_verus::parse_quote_spanned;
         let pat_span = pat.span();
         let mk_ident_tmp = |x: &Ident| {
             Ident::new(
@@ -773,7 +789,6 @@ impl Visitor {
             stmts.push(Stmt::Semi(mk_proof_block(block), Semi { spans: [span] }));
             (false, stmts)
         } else {
-            use syn_verus::parse_quote_spanned;
             let tmp = Ident::new("verus_tmp", Span::mixed_site().located_at(local.span()));
             let tmp_decl = if local.tracked.is_some() {
                 parse_quote_spanned!(span => #[verus::internal(proof)] #[verus::internal(unwrapped_binding)] let #tmp;)
@@ -800,14 +815,34 @@ impl Visitor {
     }
 
     fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
+        let span = stmt.span();
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
+            Stmt::Item(Item::BroadcastUse(broadcast_use)) => {
+                let BroadcastUse { attrs, broadcast_use_tokens: _, paths, semi: _ } = broadcast_use;
+                if self.erase_ghost.erase() {
+                    (true, vec![])
+                } else {
+                    let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
+                        quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
+                    ))).collect();
+                    let mut attrs = attrs.clone();
+                    if self.inside_ghost == 0 {
+                        attrs.push(mk_verus_attr(span, quote! { proof_block }));
+                    }
+                    let block = Stmt::Expr(Expr::Block(ExprBlock {
+                        attrs: attrs,
+                        label: None,
+                        block: Block { brace_token: token::Brace(span), stmts },
+                    }));
+                    (true, vec![block])
+                }
+            }
             _ => (false, vec![]),
         }
     }
 
     fn visit_stream_expr(&mut self, stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-        use quote::ToTokens;
         let mut expr: Expr = parse_macro_input!(stream as Expr);
         let mut new_stream = TokenStream::new();
         self.visit_expr_mut(&mut expr);
@@ -901,79 +936,137 @@ impl Visitor {
             }
         }
         for item in items.iter_mut() {
-            if let Item::Global(global) = &item {
-                use quote::ToTokens;
-                let Global { attrs: _, global_token: _, inner, semi: _ } = global;
-                let (type_, size_lit, align_lit) = match inner {
-                    syn_verus::GlobalInner::SizeOf(size_of) => {
-                        (&size_of.type_, &size_of.expr_lit, None)
-                    }
-                    syn_verus::GlobalInner::Layout(layout) => {
-                        (&layout.type_, &layout.size.2, layout.align.as_ref().map(|a| &a.3))
-                    }
-                };
-                let span = item.span();
-                let static_assert_size = quote! {
-                    if ::core::mem::size_of::<#type_>() != #size_lit {
-                        panic!("does not have the expected size");
-                    }
-                };
-                let static_assert_align = if let Some(align_lit) = align_lit {
-                    quote! {
-                        if ::core::mem::align_of::<#type_>() != #align_lit {
-                            panic!("does not have the expected alignment");
+            match &item {
+                Item::Global(global) => {
+                    let Global { attrs: _, global_token: _, inner, semi: _ } = global;
+                    let (type_, size_lit, align_lit) = match inner {
+                        syn_verus::GlobalInner::SizeOf(size_of) => {
+                            (&size_of.type_, &size_of.expr_lit, None)
                         }
-                    }
-                } else {
-                    quote! {}
-                };
-                if self.erase_ghost.erase() {
-                    *item = Item::Verbatim(quote_spanned! { span => const _: () = {
-                        #static_assert_size
-                        #static_assert_align
-                    }; });
-                } else {
-                    let type_name_escaped = format!("{}", type_.into_token_stream())
-                        .replace(" ", "")
-                        .replace("<", "_LL_")
-                        .replace(">", "_RR_");
-                    if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        let err =
-                            "this type name is not supported (it must only include A-Za-z0-9<>)";
-                        *item = Item::Verbatim(
-                            quote_spanned!(span => const _: () = { compile_error!(#err) };),
-                        );
+                        syn_verus::GlobalInner::Layout(layout) => {
+                            (&layout.type_, &layout.size.2, layout.align.as_ref().map(|a| &a.3))
+                        }
+                    };
+                    let span = item.span();
+                    let static_assert_size = quote! {
+                        if ::core::mem::size_of::<#type_>() != #size_lit {
+                            panic!("does not have the expected size");
+                        }
+                    };
+                    let static_assert_align = if let Some(align_lit) = align_lit {
+                        quote! {
+                            if ::core::mem::align_of::<#type_>() != #align_lit {
+                                panic!("does not have the expected alignment");
+                            }
+                        }
                     } else {
-                        let lemma_ident = format_ident!("VERUS_layout_of_{}", type_name_escaped);
-
-                        let ensures_align = if let Some(align_lit) = align_lit {
-                            quote! { ::vstd::layout::align_of::<#type_>() == #align_lit, }
-                        } else {
-                            quote! {}
-                        };
-
-                        *item = Item::Verbatim(quote_spanned! { span =>
-                        #[verus::internal(size_of)] const _: () = {
-                            ::builtin::global_size_of::<#type_>(#size_lit);
-
+                        quote! {}
+                    };
+                    if self.erase_ghost.erase() {
+                        *item = Item::Verbatim(quote_spanned! { span => const _: () = {
                             #static_assert_size
                             #static_assert_align
-                        };
+                        }; });
+                    } else {
+                        let type_name_escaped = format!("{}", type_.into_token_stream())
+                            .replace(" ", "")
+                            .replace("<", "_LL_")
+                            .replace(">", "_RR_");
+                        if !type_name_escaped.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            let err = "this type name is not supported (it must only include A-Za-z0-9<>)";
+                            *item = Item::Verbatim(
+                                quote_spanned!(span => const _: () = { compile_error!(#err) };),
+                            );
+                        } else {
+                            let lemma_ident =
+                                format_ident!("VERUS_layout_of_{}", type_name_escaped);
 
-                        ::builtin_macros::verus! {
-                            #[verifier::external_body]
-                            #[verifier::broadcast_forall]
-                            #[allow(non_snake_case)]
-                            proof fn #lemma_ident()
-                                ensures
-                                    ::vstd::layout::size_of::<#type_>() == #size_lit,
-                                    #ensures_align
-                            {}
+                            let ensures_align = if let Some(align_lit) = align_lit {
+                                quote! { ::vstd::layout::align_of::<#type_>() == #align_lit, }
+                            } else {
+                                quote! {}
+                            };
+
+                            *item = Item::Verbatim(quote_spanned! { span =>
+                            #[verus::internal(size_of)] const _: () = {
+                                ::builtin::global_size_of::<#type_>(#size_lit);
+
+                                #static_assert_size
+                                #static_assert_align
+                            };
+
+                            ::builtin_macros::verus! {
+                                #[verifier::external_body]
+                                #[verus::internal(broadcast_forall)]
+                                #[allow(non_snake_case)]
+                                proof fn #lemma_ident()
+                                    ensures
+                                        ::vstd::layout::size_of::<#type_>() == #size_lit,
+                                        #ensures_align
+                                {}
+                            }
+                            });
                         }
+                    }
+                }
+                Item::BroadcastUse(item_broadcast_use) => {
+                    let span = item.span();
+                    let paths = &item_broadcast_use.paths;
+                    if self.erase_ghost.erase() {
+                        *item = Item::Verbatim(quote! { const _: () = (); });
+                    } else {
+                        let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
+                            quote_spanned!(span => ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
+                        ))).collect();
+                        let block = Block { brace_token: token::Brace { span }, stmts };
+                        *item = Item::Verbatim(quote_spanned! { span =>
+                            #[verus::internal(item_broadcast_use)] const _: () = #block;
                         });
                     }
                 }
+                Item::BroadcastGroup(item_broadcast_group) => {
+                    *item = Item::Verbatim(
+                        self.handle_broadcast_group(item_broadcast_group, item.span()),
+                    );
+                }
+                _ => (),
             }
+        }
+    }
+
+    fn handle_broadcast_group(
+        &mut self,
+        item_broadcast_group: &ItemBroadcastGroup,
+        span: Span,
+    ) -> TokenStream {
+        let ItemBroadcastGroup {
+            attrs,
+            vis,
+            broadcast_group_tokens: _,
+            ident,
+            brace_token: _,
+            paths,
+        } = item_broadcast_group;
+        if self.erase_ghost.erase() {
+            if matches!(vis, Visibility::Public(_)) {
+                quote_spanned! { span =>
+                    #vis fn #ident() { panic!() }
+                }
+            } else {
+                TokenStream::new()
+            }
+        } else {
+            let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(quote!(
+                ::builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { ::builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); ))))
+                .collect();
+            let block = Block { brace_token: token::Brace { span }, stmts };
+            let mut item_fn: ItemFn = parse_quote_spanned! { span =>
+                #[verus::internal(reveal_group)]
+                #[verus::internal(proof)]
+                #vis fn #ident() #block
+            };
+            item_fn.attrs.extend(attrs.into_iter().cloned());
+            item_fn.to_token_stream()
         }
     }
 
@@ -1044,6 +1137,10 @@ impl Visitor {
                     }
                     _ => {}
                 },
+                ImplItem::BroadcastGroup(item_broadcast_group) => {
+                    *item =
+                        ImplItem::Verbatim(self.handle_broadcast_group(item_broadcast_group, span));
+                }
                 _ => {}
             }
         }
@@ -1345,7 +1442,6 @@ impl Visitor {
     }
 
     fn desugar_for_loop(&mut self, for_loop: syn_verus::ExprForLoop) -> Expr {
-        use syn_verus::parse_quote_spanned;
         // The regular Rust for-loop doesn't give us direct access to the iterator,
         // which we need for writing invariants.
         // Therefore, rather than letting Rust desugar a for-loop into a loop with a break,
@@ -2920,6 +3016,14 @@ impl VisitMut for Visitor {
         self.filter_attrs(&mut tr.attrs);
         syn_verus::visit_mut::visit_item_trait_mut(self, tr);
     }
+
+    fn visit_reveal_hide_mut(&mut self, _i: &mut syn_verus::RevealHide) {
+        // we have already transformed this, do not recurse into it
+    }
+
+    fn visit_item_broadcast_group_mut(&mut self, _i: &mut ItemBroadcastGroup) {
+        // we have already transformed this, do not recurse into it
+    }
 }
 
 struct Items {
@@ -3086,7 +3190,7 @@ impl Parse for MacroInvokeExplicitExpr {
     }
 }
 
-impl quote::ToTokens for MacroElement {
+impl ToTokens for MacroElement {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             MacroElement::Comma(e) => e.to_tokens(tokens),
@@ -3097,7 +3201,7 @@ impl quote::ToTokens for MacroElement {
     }
 }
 
-impl quote::ToTokens for MacroElementExplicitExpr {
+impl ToTokens for MacroElementExplicitExpr {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             MacroElementExplicitExpr::Comma(e) => e.to_tokens(tokens),
@@ -3178,7 +3282,6 @@ pub(crate) fn rewrite_items(
     erase_ghost: EraseGhost,
     use_spec_traits: bool,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut items: Items = parse_macro_input!(stream as Items);
     let mut new_stream = TokenStream::new();
@@ -3211,7 +3314,6 @@ pub(crate) fn rewrite_expr(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut expr: Expr = parse_macro_input!(stream as Expr);
     let mut new_stream = TokenStream::new();
@@ -3342,7 +3444,6 @@ pub(crate) fn proof_macro_exprs(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
     let mut new_stream = TokenStream::new();
@@ -3372,7 +3473,6 @@ pub(crate) fn inv_macro_exprs(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
     let mut new_stream = TokenStream::new();
@@ -3404,7 +3504,6 @@ pub(crate) fn proof_macro_explicit_exprs(
     inside_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     let stream = rejoin_tokens(stream);
     let mut invoke: MacroInvokeExplicitExpr = parse_macro_input!(stream as MacroInvokeExplicitExpr);
     let mut new_stream = TokenStream::new();

@@ -194,6 +194,14 @@ impl PartialEq for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for BroadcastUse {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for BroadcastUse {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.paths == other.paths
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for Closed {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Closed {
@@ -1176,6 +1184,9 @@ impl PartialEq for ImplItem {
             (ImplItem::Verbatim(self0), ImplItem::Verbatim(other0)) => {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
+            (ImplItem::BroadcastGroup(self0), ImplItem::BroadcastGroup(other0)) => {
+                self0 == other0
+            }
             _ => false,
         }
     }
@@ -1323,8 +1334,21 @@ impl PartialEq for Item {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
             (Item::Global(self0), Item::Global(other0)) => self0 == other0,
+            (Item::BroadcastUse(self0), Item::BroadcastUse(other0)) => self0 == other0,
+            (Item::BroadcastGroup(self0), Item::BroadcastGroup(other0)) => {
+                self0 == other0
+            }
             _ => false,
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ItemBroadcastGroup {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ItemBroadcastGroup {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
+            && self.paths == other.paths
     }
 }
 #[cfg(feature = "full")]
@@ -2147,13 +2171,13 @@ impl PartialEq for Signature {
     fn eq(&self, other: &Self) -> bool {
         self.publish == other.publish && self.constness == other.constness
             && self.asyncness == other.asyncness && self.unsafety == other.unsafety
-            && self.abi == other.abi && self.mode == other.mode
-            && self.ident == other.ident && self.generics == other.generics
-            && self.inputs == other.inputs && self.variadic == other.variadic
-            && self.output == other.output && self.prover == other.prover
-            && self.requires == other.requires && self.recommends == other.recommends
-            && self.ensures == other.ensures && self.decreases == other.decreases
-            && self.invariants == other.invariants
+            && self.abi == other.abi && self.broadcast == other.broadcast
+            && self.mode == other.mode && self.ident == other.ident
+            && self.generics == other.generics && self.inputs == other.inputs
+            && self.variadic == other.variadic && self.output == other.output
+            && self.prover == other.prover && self.requires == other.requires
+            && self.recommends == other.recommends && self.ensures == other.ensures
+            && self.decreases == other.decreases && self.invariants == other.invariants
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

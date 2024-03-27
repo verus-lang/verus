@@ -438,9 +438,57 @@ pub enum CheckItemFnEither<A, B> {
     ParamNames(B),
 }
 
+fn create_reveal_group<'tcx>(
+    ctxt: &Context<'tcx>,
+    reveal_groups: Option<&mut Vec<vir::ast::RevealGroup>>,
+    name: &Fun,
+    visibility: vir::ast::Visibility,
+    module_path: &vir::ast::Path,
+    vattrs: &VerifierAttrs,
+    vir_body: &Option<vir::ast::Expr>,
+    span: Span,
+) -> Result<(), VirErr> {
+    if let Some(body) = vir_body {
+        if let vir::ast::ExprX::Block(stmts, None) = &body.x {
+            let mut members: Vec<Fun> = Vec::new();
+            for stmt in stmts.iter() {
+                if let vir::ast::StmtX::Expr(expr) = &stmt.x {
+                    if let vir::ast::ExprX::Fuel(f, 1, _is_broadcast_use) = &expr.x {
+                        members.push(f.clone());
+                        continue;
+                    }
+                }
+                return err_span(span, "reveal_group must consist of reveal statements");
+            }
+            let broadcast_use_by_default_when_this_crate_is_imported =
+                if vattrs.broadcast_use_by_default_when_this_crate_is_imported {
+                    Some(ctxt.crate_name.clone())
+                } else {
+                    None
+                };
+            let groupx = vir::ast::RevealGroupX {
+                name: name.clone(),
+                visibility,
+                owning_module: Some(module_path.clone()),
+                prune_unless_this_module_is_used: vattrs.prune_unless_this_module_is_used,
+                broadcast_use_by_default_when_this_crate_is_imported,
+                members: Arc::new(members),
+            };
+            if let Some(groups) = reveal_groups {
+                groups.push(ctxt.spanned_new(span, groupx));
+            } else {
+                return err_span(span, "reveal_group not allowed here");
+            }
+            return Ok(());
+        }
+    }
+    err_span(span, "reveal_group must have body")
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     functions: &mut Vec<vir::ast::Function>,
+    reveal_groups: Option<&mut Vec<vir::ast::RevealGroup>>,
     id: DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
@@ -594,6 +642,19 @@ pub(crate) fn check_item_fn<'tcx>(
                 (None, header, params)
             }
         };
+    if vattrs.reveal_group {
+        create_reveal_group(
+            ctxt,
+            reveal_groups,
+            &name,
+            visibility,
+            module_path,
+            &vattrs,
+            &vir_body,
+            sig.span,
+        )?;
+        return Ok(None);
+    }
 
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();

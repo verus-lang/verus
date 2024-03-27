@@ -226,6 +226,12 @@ pub(crate) enum Attr {
     AcceptRecursiveTypes(Option<String>),
     // export function's require/ensure as global forall
     BroadcastForall,
+    // group together other BroadcastForall or RevealGroup
+    RevealGroup,
+    // prune away a reveal_group if the reveal_group's module itself is unused
+    HiddenUnlessThisModuleIsUsed,
+    // this reveal_group is revealed by default when the group's crate is imported
+    RevealedByDefaultWhenThisCrateIsImported,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
     AutoTrigger,
     // accept all possible triggers chosen by triggers_auto without printing any diagnostics
@@ -278,6 +284,10 @@ pub(crate) enum Attr {
     Trusted,
     // global size_of
     SizeOfGlobal,
+    // reveal item
+    ItemBroadcastUse,
+    // reveal item in a broadcast use
+    BroadcastUseReveal,
     // Marks generated -> functions that are unsupported because a field appears in multiple variants
     InternalGetFieldManyVariants,
     // Marks a trait as "sealed", i.e. not implementable in Verus code
@@ -308,11 +318,12 @@ pub(crate) fn parse_attrs(
     let diagnostics = &mut diagnostics;
     let mut v: Vec<Attr> = Vec::new();
     for (prefix, span, attr) in attrs_to_trees(attrs)? {
-        let mut report_deprecated = |attr_name: &str| {
+        let mut report_deprecated = |attr_name: &str, msg: &str| {
             if let Some(diagnostics) = diagnostics {
-                diagnostics.push(VirErrAs::Warning(
-                    crate::util::err_span_bare(span, format!("#[verifier({attr_name})] is deprecated, use `open spec fn` and `closed spec fn` instead"))
-                ));
+                diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+                    span,
+                    format!("#[verifier({attr_name})] is deprecated, {msg}"),
+                )));
             }
         };
 
@@ -349,7 +360,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
                 AttrTree::Fun(_, arg, None) if arg == "publish" => {
-                    report_deprecated("publish");
+                    report_deprecated("publish", "use `open spec fn` and `closed spec fn` instead");
                     v.push(Attr::Publish(true))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
@@ -404,7 +415,16 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::AcceptRecursiveTypes(Some(ident.clone())))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
+                    report_deprecated("broadcast_forall", "use `broadcast proof fn` instead");
                     v.push(Attr::BroadcastForall)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "prune_unless_this_module_is_used" => {
+                    v.push(Attr::HiddenUnlessThisModuleIsUsed)
+                }
+                AttrTree::Fun(_, arg, None)
+                    if arg == "broadcast_use_by_default_when_this_crate_is_imported" =>
+                {
+                    v.push(Attr::RevealedByDefaultWhenThisCrateIsImported)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
@@ -532,6 +552,9 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::AllTriggers)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "verus_macro" => v.push(Attr::VerusMacro),
+                    AttrTree::Fun(_, arg, None) if arg == "proof_block" => {
+                        v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
                     }
@@ -552,11 +575,20 @@ pub(crate) fn parse_attrs(
                     {
                         v.push(Attr::ReturnMode(Mode::Exec))
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "reveal_group" => {
+                        v.push(Attr::RevealGroup)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "header_unwrap_parameter" => {
                         v.push(Attr::UnwrapParameter)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "reveal_fn" => {
                         v.push(Attr::InternalRevealFn)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "broadcast_use_reveal" => {
+                        v.push(Attr::BroadcastUseReveal)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "broadcast_forall" => {
+                        v.push(Attr::BroadcastForall)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "for_loop" => v.push(Attr::ForLoop),
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
@@ -574,6 +606,9 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::UnwrappedBinding)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "size_of" => v.push(Attr::SizeOfGlobal),
+                    AttrTree::Fun(_, arg, None) if arg == "item_broadcast_use" => {
+                        v.push(Attr::ItemBroadcastUse)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "get_field_many_variants" => {
                         v.push(Attr::InternalGetFieldManyVariants)
                     }
@@ -733,6 +768,9 @@ pub(crate) struct VerifierAttrs {
     pub(crate) accept_recursive_types: bool,
     pub(crate) accept_recursive_type_list: Vec<(String, AcceptRecursiveType)>,
     pub(crate) broadcast_forall: bool,
+    pub(crate) reveal_group: bool,
+    pub(crate) prune_unless_this_module_is_used: bool,
+    pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
     pub(crate) custom_req_err: Option<String>,
@@ -753,11 +791,13 @@ pub(crate) struct VerifierAttrs {
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
+    pub(crate) broadcast_use_reveal: bool,
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
     pub(crate) sealed: bool,
     pub(crate) prophecy_dependent: bool,
+    pub(crate) item_broadcast_use: bool,
 }
 
 impl VerifierAttrs {
@@ -792,6 +832,9 @@ pub(crate) fn get_verifier_attrs(
         accept_recursive_types: false,
         accept_recursive_type_list: vec![],
         broadcast_forall: false,
+        reveal_group: false,
+        prune_unless_this_module_is_used: false,
+        broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
         autospec: None,
         custom_req_err: None,
@@ -812,11 +855,13 @@ pub(crate) fn get_verifier_attrs(
         unwrapped_binding: false,
         sets_mode: false,
         internal_reveal_fn: false,
+        broadcast_use_reveal: false,
         trusted: false,
         size_of_global: false,
         internal_get_field_many_variants: false,
         sealed: false,
         prophecy_dependent: false,
+        item_broadcast_use: false,
     };
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
@@ -846,6 +891,11 @@ pub(crate) fn get_verifier_attrs(
                 vs.accept_recursive_type_list.push((s, AcceptRecursiveType::Accept))
             }
             Attr::BroadcastForall => vs.broadcast_forall = true,
+            Attr::RevealGroup => vs.reveal_group = true,
+            Attr::HiddenUnlessThisModuleIsUsed => vs.prune_unless_this_module_is_used = true,
+            Attr::RevealedByDefaultWhenThisCrateIsImported => {
+                vs.broadcast_use_by_default_when_this_crate_is_imported = true
+            }
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
@@ -864,8 +914,10 @@ pub(crate) fn get_verifier_attrs(
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
+            Attr::BroadcastUseReveal => vs.broadcast_use_reveal = true,
             Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,
+            Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
             Attr::Sealed => vs.sealed = true,
             Attr::ProphecyDependent => vs.prophecy_dependent = true,

@@ -40,7 +40,7 @@
     - [exists and choose](exists.md)
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
-    - [broadcast_forall]() <!--- Chris --->
+    - [Ambient (`broadcast`) lemmas](broadcast_proof.md)
 - [Higher-order executable functions]()
     - [Passing functions as values](./exec_funs_as_values.md)
     - [Closures]()
@@ -71,7 +71,6 @@
     - [inline]()
     - [opaque]()
     - [decreases_by]()
-    - [broadcast_forall]()
     - [when_used_as_spec]()
 - [Strings]() <!--- Andrea --->
     - [String library]() <!--- Andrea --->

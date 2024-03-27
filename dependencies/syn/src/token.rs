@@ -741,6 +741,8 @@ define_keywords! {
     "size_of"     pub struct SizeOf       /// `size_of`
     "layout"      pub struct Layout       /// `layout`
     "matches"     pub struct Matches      /// `matches`
+    "broadcast"   pub struct Broadcast    /// `broadcast`
+    "group"       pub struct BroadcastGroup    /// `group`
 }
 
 define_punctuation! {
@@ -960,6 +962,8 @@ macro_rules! export_token_macro {
             [size_of]     => { $crate::token::SizeOf };
             [layout]      => { $crate::token::Layout };
             [matches]     => { $crate::token::Matches };
+            [broadcast]   => { $crate::token::Broadcast };
+            [group]       => { $crate::token::BroadcastGroup };
             [FnSpec]      => { $crate::token::FnSpec };
             [SpecFn]      => { $crate::token::SpecFn };
             [&&&]         => { $crate::token::BigAnd };

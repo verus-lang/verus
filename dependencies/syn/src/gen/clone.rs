@@ -174,6 +174,17 @@ impl Clone for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for BroadcastUse {
+    fn clone(&self) -> Self {
+        BroadcastUse {
+            attrs: self.attrs.clone(),
+            broadcast_use_tokens: self.broadcast_use_tokens.clone(),
+            paths: self.paths.clone(),
+            semi: self.semi.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for Closed {
     fn clone(&self) -> Self {
         Closed {
@@ -1204,6 +1215,7 @@ impl Clone for ImplItem {
             ImplItem::Type(v0) => ImplItem::Type(v0.clone()),
             ImplItem::Macro(v0) => ImplItem::Macro(v0.clone()),
             ImplItem::Verbatim(v0) => ImplItem::Verbatim(v0.clone()),
+            ImplItem::BroadcastGroup(v0) => ImplItem::BroadcastGroup(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1366,8 +1378,23 @@ impl Clone for Item {
             Item::Use(v0) => Item::Use(v0.clone()),
             Item::Verbatim(v0) => Item::Verbatim(v0.clone()),
             Item::Global(v0) => Item::Global(v0.clone()),
+            Item::BroadcastUse(v0) => Item::BroadcastUse(v0.clone()),
+            Item::BroadcastGroup(v0) => Item::BroadcastGroup(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ItemBroadcastGroup {
+    fn clone(&self) -> Self {
+        ItemBroadcastGroup {
+            attrs: self.attrs.clone(),
+            vis: self.vis.clone(),
+            broadcast_group_tokens: self.broadcast_group_tokens.clone(),
+            ident: self.ident.clone(),
+            brace_token: self.brace_token.clone(),
+            paths: self.paths.clone(),
         }
     }
 }
@@ -2240,6 +2267,7 @@ impl Clone for Signature {
             asyncness: self.asyncness.clone(),
             unsafety: self.unsafety.clone(),
             abi: self.abi.clone(),
+            broadcast: self.broadcast.clone(),
             mode: self.mode.clone(),
             fn_token: self.fn_token.clone(),
             ident: self.ident.clone(),

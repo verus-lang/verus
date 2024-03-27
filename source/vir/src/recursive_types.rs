@@ -437,9 +437,8 @@ fn type_scc_error(
     head: &TypNode,
     nodes: &Vec<TypNode>,
 ) -> VirErr {
-    let msg =
-        "found a cyclic self-reference in a trait definition, which may result in nontermination"
-            .to_string();
+    let msg = "found a cyclic self-reference in a definition, which may result in nontermination"
+        .to_string();
     let mut err = crate::messages::error_bare(msg);
     for (i, node) in nodes.iter().enumerate() {
         let mut push = |node: &TypNode, span: Span, text: &str| {
@@ -502,7 +501,7 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
     let msg = if do_req_ens_error {
         "cyclic dependency in the requires/ensures of function"
     } else {
-        "found a cyclic self-reference in a trait definition, which may result in nontermination"
+        "found a cyclic self-reference in a definition, which may result in nontermination"
     };
     let msg = msg.to_string();
     let mut err = crate::messages::error_bare(msg);
@@ -554,6 +553,12 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                 {
                     let span = t.span.clone();
                     push(span, ": implementation of trait for a type");
+                }
+            }
+            Node::ModuleReveal(path) => {
+                if let Some(t) = krate.modules.iter().find(|m| &m.x.path == path) {
+                    let span = t.span.clone();
+                    push(span, ": module-level reveal");
                 }
             }
             Node::SpanInfo { span_infos_index, text } => {

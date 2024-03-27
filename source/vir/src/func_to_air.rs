@@ -128,6 +128,59 @@ fn func_def_quant(
     Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
+pub(crate) fn module_reveal_axioms(
+    _ctx: &Ctx,
+    decl_commands: &mut Vec<Command>,
+    module_reveals: &Option<crate::ast::ModuleReveals>,
+) {
+    if let Some(module_reveals) = module_reveals {
+        let revealed_fuels = mk_and(
+            &module_reveals
+                .x
+                .iter()
+                .map(|member: &Fun| {
+                    let fuel_id = prefix_fuel_id(&fun_to_air_ident(member));
+                    str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&fuel_id)])
+                })
+                .collect::<Vec<Expr>>(),
+        );
+
+        let axiom = Arc::new(DeclX::Axiom(revealed_fuels));
+        decl_commands.push(Arc::new(CommandX::Global(axiom)));
+    }
+}
+
+pub(crate) fn broadcast_forall_group_axioms(
+    ctx: &Ctx,
+    decl_commands: &mut Vec<Command>,
+    group: &crate::ast::RevealGroup,
+    crate_name: &Ident,
+) {
+    let id_group = prefix_fuel_id(&fun_to_air_ident(&group.x.name));
+    let fuel_group = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_group)]);
+    if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {
+        let is_imported = crate_name != group_crate;
+        if is_imported {
+            // (axiom (fuel_bool_default fuel%group))
+            let group_axiom = Arc::new(DeclX::Axiom(fuel_group.clone()));
+            decl_commands.push(Arc::new(CommandX::Global(group_axiom)));
+        }
+    }
+    let mut member_fuels: Vec<Expr> = Vec::new();
+    for member in group.x.members.iter() {
+        if ctx.reveal_group_set.contains(member) || ctx.func_map.contains_key(member) {
+            let id_member = prefix_fuel_id(&fun_to_air_ident(member));
+            member_fuels.push(str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_member)]));
+        }
+    }
+    if member_fuels.len() > 0 {
+        // (axiom (=> (fuel_bool_default fuel%group) (and ... (fuel_bool_default fuel%member) ...)))
+        let imply = mk_implies(&fuel_group, &mk_and(&member_fuels));
+        let axiom = Arc::new(DeclX::Axiom(imply));
+        decl_commands.push(Arc::new(CommandX::Global(axiom)));
+    }
+}
+
 fn func_body_to_air(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,

@@ -2179,6 +2179,9 @@ fn erase_impl<'tcx>(
                 if vattrs.is_external(&ctxt.cmd_line_args) {
                     continue;
                 }
+                if vattrs.reveal_group {
+                    continue;
+                }
                 match &kind {
                     ImplItemKind::Fn(sig, body_id) => {
                         erase_fn(
@@ -2547,7 +2550,10 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Const(_ty, _, body_id) | ItemKind::Static(_ty, _, body_id) => {
-                            if vattrs.size_of_global || vattrs.is_external(&ctxt.cmd_line_args) {
+                            if vattrs.size_of_global
+                                || vattrs.item_broadcast_use
+                                || vattrs.is_external(&ctxt.cmd_line_args)
+                            {
                                 continue;
                             }
                             erase_const_or_static(
@@ -2563,6 +2569,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         }
                         ItemKind::Fn(sig, _generics, body_id) => {
                             if vattrs.is_external(&ctxt.cmd_line_args) {
+                                continue;
+                            }
+                            if vattrs.reveal_group {
                                 continue;
                             }
                             if !vattrs.external_fn_specification {

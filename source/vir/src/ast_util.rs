@@ -3,14 +3,14 @@ use crate::ast::{
     FunX, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange, ItemKind,
     MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
     Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
-    Variants, VirErr, Visibility,
+    Variants, Visibility,
 };
-use crate::messages::{error, Span};
+use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
-use num_bigint::{BigInt, Sign};
+use num_bigint::BigInt;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
@@ -447,17 +447,6 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
         expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
     }
     expr
-}
-
-pub fn fuel_const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
-    let (sign, digits) = i.to_u32_digits();
-    if sign == Sign::NoSign && digits.len() == 0 {
-        return Ok(0);
-    } else if sign != Sign::Plus || digits.len() != 1 {
-        return Err(error(span, "Fuel must be a u32 value"));
-    }
-    let n = digits[0];
-    Ok(n)
 }
 
 pub fn const_int_from_u128(u: u128) -> Constant {

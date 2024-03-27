@@ -95,7 +95,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         bucket: Bucket,
     ) -> Self {
         let mut func_map: HashMap<Fun, (Function, Visibility)> = HashMap::new();
-        let module = ctx.module();
+        let module = ctx.module_path();
         for function in &krate.functions {
             assert!(!func_map.contains_key(&function.x.name));
 
@@ -215,7 +215,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 _ => {}
             }
         }
-        let module = self.ctx.module();
+        let module = self.ctx.module_path();
 
         let mut pre_ops = vec![];
         let mut query_ops = vec![];
