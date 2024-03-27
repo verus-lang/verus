@@ -515,20 +515,8 @@ fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity
     ident_apply(&inv_fn_ident, &args)
 }
 
-pub fn default_mask_set_for_mode(mode: Mode) -> MaskSet {
-    // By default, we assume an #[verifier::exec] fn can open any invariant, and that
-    // a #[verifier::proof] fn can open no invariants.
-    if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
-}
-
-pub fn mask_set_from_spec(
-    spec: &MaskSpec,
-    mode: Mode,
-    function_name: &Fun,
-    args: &Vec<Expr>,
-) -> MaskSet {
+pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>) -> MaskSet {
     match spec {
-        MaskSpec::NoSpec => default_mask_set_for_mode(mode),
         MaskSpec::InvariantOpens(exprs) => {
             let mut l = vec![];
             for (i, e) in exprs.iter().enumerate() {
@@ -1461,7 +1449,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let callee_mask_set =
-                mask_set_from_spec(&func.x.mask_spec, func.x.mode, &func.x.name, &req_args);
+                mask_set_from_spec(&func.x.mask_spec_or_default(), &func.x.name, &req_args);
             if !ctx.checking_spec_preconditions() {
                 callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }

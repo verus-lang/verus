@@ -22,7 +22,7 @@ pub struct Header {
     pub decrease: Exprs,
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
-    pub invariant_mask: MaskSpec,
+    pub invariant_mask: Option<MaskSpec>,
     pub extra_dependencies: Vec<Fun>,
 }
 
@@ -38,7 +38,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut decrease: Option<Exprs> = None;
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
-    let mut invariant_mask = MaskSpec::NoSpec;
+    let mut invariant_mask: Option<MaskSpec> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
@@ -139,7 +139,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     }
                     HeaderExprX::InvariantOpens(es) => {
                         match invariant_mask {
-                            MaskSpec::NoSpec => {}
+                            None => {}
                             _ => {
                                 return Err(error(
                                     &stmt.span,
@@ -147,11 +147,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 ));
                             }
                         }
-                        invariant_mask = MaskSpec::InvariantOpens(es.clone());
+                        invariant_mask = Some(MaskSpec::InvariantOpens(es.clone()));
                     }
                     HeaderExprX::InvariantOpensExcept(es) => {
                         match invariant_mask {
-                            MaskSpec::NoSpec => {}
+                            None => {}
                             _ => {
                                 return Err(error(
                                     &stmt.span,
@@ -159,7 +159,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 ));
                             }
                         }
-                        invariant_mask = MaskSpec::InvariantOpensExcept(es.clone());
+                        invariant_mask = Some(MaskSpec::InvariantOpensExcept(es.clone()));
                     }
                 },
                 _ => break,

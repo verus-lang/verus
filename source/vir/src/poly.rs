@@ -903,11 +903,13 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease_when.as_ref().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, e)));
 
     let mask_spec = match mask_spec {
-        MaskSpec::InvariantOpens(es) => MaskSpec::InvariantOpens(native_exprs(&mut state, es)),
-        MaskSpec::InvariantOpensExcept(es) => {
-            MaskSpec::InvariantOpensExcept(native_exprs(&mut state, es))
+        Some(MaskSpec::InvariantOpens(es)) => {
+            Some(MaskSpec::InvariantOpens(native_exprs(&mut state, es)))
         }
-        MaskSpec::NoSpec => MaskSpec::NoSpec,
+        Some(MaskSpec::InvariantOpensExcept(es)) => {
+            Some(MaskSpec::InvariantOpensExcept(native_exprs(&mut state, es)))
+        }
+        None => None,
     };
 
     let body = if let Some(body) = body {
