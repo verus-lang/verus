@@ -265,21 +265,21 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_proof"]
+#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_in_proof"]
 #[doc(hidden)]
 #[inline(always)]
-pub proof fn spend_open_invariant_credit_proof(tracked credit: OpenInvariantCredit) {
+pub proof fn spend_open_invariant_credit_in_proof(tracked credit: OpenInvariantCredit) {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_exec"]
+#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
 #[doc(hidden)]
 #[inline(always)]
-pub fn spend_open_invariant_credit_exec(credit: Tracked<OpenInvariantCredit>)
+pub fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>)
     opens_invariants none
 {
     proof {
-        spend_open_invariant_credit_proof(credit.get());
+        spend_open_invariant_credit_in_proof(credit.get());
     }
 }
 
@@ -384,7 +384,7 @@ macro_rules! open_atomic_invariant {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_atomic_invariant_exec_internal!(credit => $($tail)*)
+            $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
         )
     };
 }
@@ -392,16 +392,16 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_atomic_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_atomic_invariant_proof_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
     };
 }
 
 #[macro_export]
-macro_rules! open_atomic_invariant_exec_internal {
+macro_rules! open_atomic_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_exec($credit_expr);
+            $crate::invariant::spend_open_invariant_credit($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
                 $crate::invariant::open_atomic_invariant_begin($eexpr);
@@ -413,11 +413,11 @@ macro_rules! open_atomic_invariant_exec_internal {
 }
 
 #[macro_export]
-macro_rules! open_atomic_invariant_proof_internal {
+macro_rules! open_atomic_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_proof($credit_expr);
+            $crate::invariant::spend_open_invariant_credit_in_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
                 $crate::invariant::open_atomic_invariant_begin($eexpr);
@@ -429,11 +429,11 @@ macro_rules! open_atomic_invariant_proof_internal {
 }
 
 pub use open_atomic_invariant;
-#[doc(hidden)]
-pub use open_atomic_invariant_exec_internal;
 pub use open_atomic_invariant_in_proof;
 #[doc(hidden)]
-pub use open_atomic_invariant_proof_internal;
+pub use open_atomic_invariant_in_proof_internal;
+#[doc(hidden)]
+pub use open_atomic_invariant_internal;
 
 /// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
 /// value within.
@@ -538,23 +538,23 @@ macro_rules! open_local_invariant {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_local_invariant_exec_internal!(credit => $($tail)*))
+            $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
     };
 }
 
 #[macro_export]
 macro_rules! open_local_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_local_invariant_proof_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_local_invariant_in_proof_internal!($($tail)*))
     };
 }
 
 #[macro_export]
-macro_rules! open_local_invariant_exec_internal {
+macro_rules! open_local_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_exec($credit_expr);
+            $crate::invariant::spend_open_invariant_credit($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
@@ -565,11 +565,11 @@ macro_rules! open_local_invariant_exec_internal {
 }
 
 #[macro_export]
-macro_rules! open_local_invariant_proof_internal {
+macro_rules! open_local_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_proof($credit_expr);
+            $crate::invariant::spend_open_invariant_credit_in_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
@@ -580,8 +580,8 @@ macro_rules! open_local_invariant_proof_internal {
 }
 
 pub use open_local_invariant;
-#[doc(hidden)]
-pub use open_local_invariant_exec_internal;
 pub use open_local_invariant_in_proof;
 #[doc(hidden)]
-pub use open_local_invariant_proof_internal;
+pub use open_local_invariant_in_proof_internal;
+#[doc(hidden)]
+pub use open_local_invariant_internal;

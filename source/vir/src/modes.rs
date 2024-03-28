@@ -700,7 +700,7 @@ fn check_expr_handle_mut_arg(
                         if function.x.attrs.atomic {
                             ai.add_atomic(&expr.span);
                         } else {
-                            // A call to `create_open_invariant_credit` or `spend_open_invariant_credit_exec`
+                            // A call to `create_open_invariant_credit` or `spend_open_invariant_credit`
                             // is a no-op, so it's fine to include in an atomic block. And it's useful
                             // to be able to do so, so that we can nest an opening of an invariant
                             // inside an opening of another invariant. So we special-case these calls
@@ -713,7 +713,7 @@ fn check_expr_handle_mut_arg(
                                 )
                                 && path_as_vstd_name(&x.path)
                                     != path_as_vstd_name(
-                                        &crate::def::spend_open_invariant_credit_exec_path(&Some(
+                                        &crate::def::spend_open_invariant_credit_path(&Some(
                                             ctxt.vstd_crate_name.clone(),
                                         )),
                                     )

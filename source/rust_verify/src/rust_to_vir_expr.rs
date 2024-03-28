@@ -642,11 +642,11 @@ pub(crate) fn is_spend_open_invariant_credit_call(
             ..
         }) => match verus_items.id_to_name.get(&fun_id) {
             Some(&VerusItem::Vstd(
-                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditExec),
+                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit),
                 _,
             )) => true,
             Some(&VerusItem::Vstd(
-                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditProof),
+                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof),
                 _,
             )) => true,
             _ => false,

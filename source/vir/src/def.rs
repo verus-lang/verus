@@ -701,22 +701,12 @@ pub fn create_open_invariant_credit_path(vstd_crate_name: &Option<Ident>) -> Pat
     })
 }
 
-pub fn spend_open_invariant_credit_exec_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn spend_open_invariant_credit_path(vstd_crate_name: &Option<Ident>) -> Path {
     Arc::new(PathX {
         krate: vstd_crate_name.clone(),
         segments: Arc::new(vec![
             Arc::new("invariant".to_string()),
-            Arc::new("spend_open_invariant_credit_exec".to_string()),
-        ]),
-    })
-}
-
-pub fn spend_open_invariant_credit_proof_path(vstd_crate_name: &Option<Ident>) -> Path {
-    Arc::new(PathX {
-        krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![
-            Arc::new("invariant".to_string()),
-            Arc::new("spend_open_invariant_credit_proof".to_string()),
+            Arc::new("spend_open_invariant_credit".to_string()),
         ]),
     })
 }
