@@ -68,8 +68,7 @@ pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
 pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
+pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 {
