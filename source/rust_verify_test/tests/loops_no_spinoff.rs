@@ -398,7 +398,7 @@ test_verify_one_file! {
                 a = a + 1;
             }
         }
-    } => Err(e) => assert_vir_error_msg(e, "termination checking of loops is not supported")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -773,6 +773,108 @@ test_verify_one_file! {
                 i = i - 1;
             }
             assert(i == 0); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] loop_decreases1 verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1() {
+            let mut i: u8 = 100;
+            loop
+                decreases i
+            {
+                if i == 0 {
+                    break;
+                }
+                if i == 20 {
+                    continue; // FAILS
+                }
+                i = i - 1;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test2() {
+            let mut i: u8 = 100;
+            loop  // FAILS
+                decreases i
+            {
+                if i == 0 {
+                    break;
+                }
+                if i == 20 {
+                    i = i - 1;
+                    continue;
+                }
+            }
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] loop_decreases2 verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1() {
+            let mut i: u8 = 100;
+            let mut j: u8 = 100;
+            while i > 0
+                decreases i
+            {
+                while j > 0
+                    decreases j
+                {
+                    j = j - 1;
+                }
+                i = i - 1;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test2() {
+            let mut i: u8 = 100;
+            let mut j: u8 = 100;
+            while i > 0
+                decreases i
+            {
+                while j > 0 // FAILS
+                    decreases j
+                {
+                }
+                i = i - 1;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        fn test3() {
+            let mut i: u8 = 100;
+            let mut j: u8 = 100;
+            while i > 0 // FAILS
+                decreases i
+            {
+                while j > 0
+                    decreases j
+                {
+                    j = j - 1;
+                }
+            }
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] loop_decreases3 verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test_c() {
+            'a: loop
+                decreases 3u8
+            {
+                loop
+                {
+                    continue 'a; // FAILS
+                }
+            }
         }
     } => Err(e) => assert_one_fails(e)
 }

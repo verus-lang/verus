@@ -80,11 +80,11 @@ pub fn height_is_int(typ: &Typ) -> bool {
     }
 }
 
-fn height_typ(ctxt: &Ctxt, exp: &Exp) -> Typ {
+fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
     if height_is_int(&exp.typ) {
         Arc::new(TypX::Int(IntRange::Int))
     } else {
-        if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
+        if crate::poly::typ_is_poly(ctx, &exp.typ) {
             exp.typ.clone()
         } else {
             Arc::new(TypX::Boxed(exp.typ.clone()))
@@ -92,10 +92,10 @@ fn height_typ(ctxt: &Ctxt, exp: &Exp) -> Typ {
     }
 }
 
-fn exp_for_decrease(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
+fn exp_for_decrease(ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
-        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
+        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctx, &exp.typ) {
             exp.clone()
         } else {
             let op = UnaryOpr::Box(exp.typ.clone());
@@ -113,21 +113,27 @@ fn exp_for_decrease(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     }
 }
 
-fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Result<Exp, VirErr> {
+pub(crate) fn check_decrease(
+    ctx: &Ctx,
+    span: &Span,
+    loop_id: Option<u64>,
+    exps: &Vec<Exp>,
+    num_decreases: usize,
+) -> Result<Exp, VirErr> {
     // When calling a function with more decreases clauses,
     // it's good enough to be equal on the shared decreases clauses
     // and to ignore the extra decreases clauses.
     let tbool = Arc::new(TypX::Bool);
-    let when_equalx = ExpX::Const(Constant::Bool(ctxt.num_decreases < exps.len()));
+    let when_equalx = ExpX::Const(Constant::Bool(num_decreases < exps.len()));
     let when_equal = SpannedTyped::new(span, &tbool, when_equalx);
 
     let mut dec_exp: Exp = when_equal;
-    for (i, exp) in (0..ctxt.num_decreases).zip(exps.iter()).rev() {
-        let decreases_at_entryx = ExpX::Var(unique_local(&decrease_at_entry(i)));
+    for (i, exp) in (0..num_decreases).zip(exps.iter()).rev() {
+        let decreases_at_entryx = ExpX::Var(unique_local(&decrease_at_entry(loop_id, i)));
         let decreases_at_entry =
-            SpannedTyped::new(&exp.span, &height_typ(ctxt, exp), decreases_at_entryx);
+            SpannedTyped::new(&exp.span, &height_typ(ctx, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
-        let args = vec![exp_for_decrease(ctxt, exp)?, decreases_at_entry, dec_exp];
+        let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
         let call = ExpX::Call(
             if height_is_int(&exp.typ) {
                 CallFun::InternalFun(InternalFun::CheckDecreaseInt)
@@ -196,7 +202,7 @@ fn check_decrease_call(
         );
         decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
     }
-    check_decrease(ctxt, span, &decreases_exps)
+    check_decrease(ctxt.ctx, span, None, &decreases_exps, ctxt.num_decreases)
 }
 
 pub(crate) fn fun_is_recursive(ctx: &Ctx, function: &Function) -> bool {
@@ -205,21 +211,22 @@ pub(crate) fn fun_is_recursive(ctx: &Ctx, function: &Function) -> bool {
     ctx.global.func_call_graph.node_is_in_cycle(&node)
 }
 
-fn mk_decreases_at_entry(
-    ctxt: &Ctxt,
+pub(crate) fn mk_decreases_at_entry(
+    ctx: &Ctx,
     span: &Span,
+    loop_id: Option<u64>,
     exps: &Vec<Exp>,
 ) -> Result<(Vec<LocalDecl>, Vec<Stm>), VirErr> {
     let mut decls: Vec<LocalDecl> = Vec::new();
     let mut stm_assigns: Vec<Stm> = Vec::new();
     for (i, exp) in exps.iter().enumerate() {
-        let typ = height_typ(ctxt, exp);
+        let typ = height_typ(ctx, exp);
         let decl = Arc::new(LocalDeclX {
-            ident: unique_local(&decrease_at_entry(i)),
+            ident: unique_local(&decrease_at_entry(loop_id, i)),
             typ: typ.clone(),
             mutable: false,
         });
-        let uniq_ident = unique_local(&decrease_at_entry(i));
+        let uniq_ident = unique_local(&decrease_at_entry(loop_id, i));
         let stm_assign = Spanned::new(
             span.clone(),
             StmX::Assign {
@@ -227,7 +234,7 @@ fn mk_decreases_at_entry(
                     dest: crate::ast_to_sst::var_loc_exp(&span, &typ, uniq_ident),
                     is_init: true,
                 },
-                rhs: exp_for_decrease(ctxt, exp)?,
+                rhs: exp_for_decrease(ctx, exp)?,
             },
         );
         decls.push(decl);
@@ -299,7 +306,8 @@ pub(crate) fn check_termination_commands(
     let (ctxt, decreases_exps, stm) =
         check_termination(ctx, diagnostics, fun_ssts, function, body)?;
 
-    let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps)?;
+    let (mut decls, mut stm_assigns) =
+        mk_decreases_at_entry(&ctxt.ctx, &body.span, None, &decreases_exps)?;
     stm_assigns.push(proof_body);
     stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
@@ -437,7 +445,8 @@ pub(crate) fn check_termination_stm(
     let (ctxt, decreases_exps, stm) =
         check_termination(ctx, diagnostics, fun_ssts, function, body)?;
 
-    let (decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exps)?;
+    let (decls, mut stm_assigns) =
+        mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
     stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
     Ok((decls, stm_block))

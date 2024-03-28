@@ -219,6 +219,8 @@ pub const THIS_POST_FAILED: &str = "failed this postcondition";
 pub const THIS_PRE_FAILED: &str = "failed precondition";
 pub const INV_FAIL_LOOP_END: &str = "invariant not satisfied at end of loop body";
 pub const INV_FAIL_LOOP_FRONT: &str = "invariant not satisfied before loop";
+pub const DEC_FAIL_LOOP_END: &str = "decreases not satisfied at end of loop";
+pub const DEC_FAIL_LOOP_CONTINUE: &str = "decreases not satisfied at continue";
 pub const SPLIT_ASSERT_FAILURE: &str = "split assertion failure";
 pub const SPLIT_PRE_FAILURE: &str = "split precondition failure";
 pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
@@ -235,8 +237,9 @@ pub fn fun_to_string(fun: &Fun) -> String {
     path_to_string(path)
 }
 
-pub fn decrease_at_entry(n: usize) -> VarIdent {
-    air_unique_var(&format!("{}{}", DECREASE_AT_ENTRY, n))
+pub fn decrease_at_entry(loop_id: Option<u64>, n: usize) -> VarIdent {
+    let loop_id = loop_id.map_or("".to_string(), |s| format!("{s}%"));
+    air_unique_var(&format!("{}{}{}", DECREASE_AT_ENTRY, loop_id, n))
 }
 
 pub fn trait_self_type_param() -> Ident {
