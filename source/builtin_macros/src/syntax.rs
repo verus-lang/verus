@@ -3369,7 +3369,7 @@ pub(crate) fn proof_macro_exprs(
 
 pub(crate) fn inv_macro_exprs(
     erase_ghost: EraseGhost,
-    inside_ghost: bool,
+    treat_elements_as_ghost: bool,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use quote::ToTokens;
@@ -3379,7 +3379,7 @@ pub(crate) fn inv_macro_exprs(
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
-        inside_ghost: if inside_ghost { 1u32 } else { 0u32 },
+        inside_ghost: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_arith: InsideArith::None,
@@ -3390,15 +3390,11 @@ pub(crate) fn inv_macro_exprs(
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
         match element {
             MacroElement::Expr(expr) => {
-                // Always process the third element ($eexpr) as ghost.
-                let treat_as_ghost = !inside_ghost && idx == 2;
-                if treat_as_ghost {
-                    visitor.inside_ghost = 1;
-                }
+                // Always treat the third element ($eexpr) as ghost even if
+                // `treat_elements_as_ghost` is false.
+                visitor.inside_ghost =
+                    if treat_elements_as_ghost || idx == 2 { 1u32 } else { 0u32 };
                 visitor.visit_expr_mut(expr);
-                if treat_as_ghost {
-                    visitor.inside_ghost = 0;
-                }
             }
             _ => {}
         };
