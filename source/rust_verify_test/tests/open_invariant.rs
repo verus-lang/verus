@@ -226,12 +226,24 @@ test_both! {
         use vstd::invariant::*;
 
         pub proof fn spend_credit_twice<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
-          opens_invariants any
+            opens_invariants any
         {
             open_atomic_invariant_in_proof!(credit => &i => inner => {});
             open_atomic_invariant_in_proof!(credit => &i => inner => {});
         }
     } => Err(err) => assert_vir_error_msg(err, "use of moved value: `credit`")
+}
+
+test_both! {
+    create_credit_in_proof create_credit_in_proof_local verus_code! {
+        use vstd::invariant::*;
+
+        pub proof fn create_credit_in_proof<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
+            opens_invariants any
+        {
+            open_atomic_invariant_in_proof!(vstd::pervasive::proof_from_false() => &i => inner => {}); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 // This test doesn't apply to LocalInvariant
