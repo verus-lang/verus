@@ -482,13 +482,24 @@ where
                         map.pop_scope();
                     }
                 }
-                ExprX::Loop { loop_isolation: _, is_for_loop: _, label: _, cond, body, invs } => {
+                ExprX::Loop {
+                    loop_isolation: _,
+                    is_for_loop: _,
+                    label: _,
+                    cond,
+                    body,
+                    invs,
+                    decrease,
+                } => {
                     if let Some(cond) = cond {
                         expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
                     }
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     for inv in invs.iter() {
                         expr_visitor_control_flow!(expr_visitor_dfs(&inv.inv, map, mf));
+                    }
+                    for dec in decrease.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(dec, map, mf));
                     }
                 }
                 ExprX::OpenInvariant(inv, binder, body, _atomicity) => {
@@ -991,7 +1002,7 @@ where
             });
             ExprX::Match(expr1, Arc::new(arms?))
         }
-        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => {
             let cond =
                 cond.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
@@ -1000,6 +1011,9 @@ where
                 let e1 = map_expr_visitor_env(&inv.inv, map, env, fe, fs, ft)?;
                 invs1.push(crate::ast::LoopInvariant { inv: e1, ..inv.clone() });
             }
+            let decrease = Arc::new(vec_map_result(decrease, |e| {
+                map_expr_visitor_env(e, map, env, fe, fs, ft)
+            })?);
             ExprX::Loop {
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
@@ -1007,6 +1021,7 @@ where
                 cond,
                 body,
                 invs: Arc::new(invs1),
+                decrease,
             }
         }
         ExprX::Return(e1) => {

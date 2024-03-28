@@ -417,10 +417,12 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             StmX::Loop {
                 loop_isolation,
                 is_for_loop,
+                id,
                 label,
                 cond,
                 body,
                 invs,
+                decrease,
                 typ_inv_vars,
                 modified_vars,
             } => {
@@ -431,15 +433,18 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 })?;
                 let body = self.visit_stm(body)?;
                 let invs = R::map_vec(invs, &mut |inv| self.visit_loop_inv(inv))?;
+                let decrease = self.visit_exps(decrease)?;
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
                 R::ret(|| {
                     stm_new(StmX::Loop {
                         loop_isolation: *loop_isolation,
                         is_for_loop: *is_for_loop,
+                        id: *id,
                         label: label.clone(),
                         cond: R::get_opt(cond),
                         body: R::get(body),
                         invs: R::get_vec_a(invs),
+                        decrease: R::get_vec_a(decrease),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
                         modified_vars: modified_vars.clone(),
                     })

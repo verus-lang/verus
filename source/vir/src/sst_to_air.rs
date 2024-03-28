@@ -1182,10 +1182,12 @@ struct LoopInfo {
     loop_isolation: bool,
     is_for_loop: bool,
     label: Option<String>,
+    loop_id: u64,
     air_break_label: Ident,
     some_cond: bool,
     invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
     invs_exit: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
+    decrease: crate::sst::Exps,
 }
 
 struct State {
@@ -1200,7 +1202,6 @@ struct State {
     mask: MaskSet,         // set of invariants that are allowed to be opened
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
-    loop_label_counter: u64,
     static_prelude: Vec<Stmt>,
 }
 
@@ -1857,6 +1858,30 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                     stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
                 }
+                let decrease = &loop_info.decrease;
+                if !is_break && decrease.len() > 0 {
+                    for info in state.loop_infos.iter().rev() {
+                        if info.label == *label {
+                            break;
+                        }
+                        if info.loop_isolation {
+                            let s = "decrease checking for labeled continue not supported unless \
+                                loop is marked #[verifier::loop_isolation(false)]";
+                            return Err(error(&stm.span, s));
+                        }
+                    }
+                    let dec_exp = crate::recursion::check_decrease(
+                        ctx,
+                        &stm.span,
+                        Some(loop_info.loop_id),
+                        decrease,
+                        decrease.len(),
+                    )?;
+                    let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
+                    let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_CONTINUE);
+                    let dec_stmt = StmtX::Assert(None, error, None, expr);
+                    stmts.push(Arc::new(dec_stmt));
+                }
             }
             if is_air_break {
                 stmts.push(Arc::new(StmtX::Break(loop_info.air_break_label.clone())));
@@ -1912,10 +1937,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         StmX::Loop {
             loop_isolation,
             is_for_loop,
+            id,
             label,
             cond,
             body,
             invs,
+            decrease,
             typ_inv_vars,
             modified_vars,
         } => {
@@ -1951,6 +1978,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             let invs_entry = Arc::new(invs_entry);
             let invs_exit = Arc::new(invs_exit);
+
+            let (_, decrease_init) =
+                crate::recursion::mk_decreases_at_entry(ctx, &stm.span, Some(*id), &decrease)?;
 
             let entry_snap_id = if ctx.debug {
                 // Add a snapshot to capture the start of the while loop
@@ -2074,6 +2104,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             for (_, inv, _, _) in invs_entry.iter() {
                 air_body.push(Arc::new(StmtX::Assume(inv.clone())));
             }
+            for dec in decrease_init.iter() {
+                air_body.append(&mut stm_to_stmts(ctx, state, dec)?);
+            }
 
             let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
             if let Some(cond_stmts) = &cond_stmts {
@@ -2084,16 +2117,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 assert!(loop_isolation);
                 air_body.push(pos_assume);
             }
-            let air_break_label = crate::def::break_label(state.loop_label_counter);
-            state.loop_label_counter += 1;
+            let air_break_label = crate::def::break_label(*id);
             let loop_info = LoopInfo {
                 loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
+                loop_id: *id,
                 air_break_label: air_break_label.clone(),
                 some_cond: cond.is_some(),
                 invs_entry: invs_entry.clone(),
                 invs_exit: invs_exit.clone(),
+                decrease: decrease.clone(),
             };
             state.loop_infos.push(loop_info);
             air_body.append(&mut stm_to_stmts(ctx, state, body)?);
@@ -2107,6 +2141,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                     let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
                     air_body.push(Arc::new(inv_stmt));
+                }
+                if decrease.len() > 0 {
+                    let dec_exp = crate::recursion::check_decrease(
+                        ctx,
+                        &stm.span,
+                        Some(*id),
+                        decrease,
+                        decrease.len(),
+                    )?;
+                    let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
+                    let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
+                    let dec_stmt = StmtX::Assert(None, error, None, expr);
+                    air_body.push(Arc::new(dec_stmt));
                 }
             }
             if !loop_isolation {
@@ -2499,7 +2546,6 @@ pub(crate) fn body_stm_to_air(
             kind: post_condition.kind,
         },
         loop_infos: Vec::new(),
-        loop_label_counter: 0,
         static_prelude: mk_static_prelude(ctx, statics),
     };
 

@@ -120,10 +120,12 @@ pub(crate) fn stm_assign(
         StmX::Loop {
             loop_isolation,
             is_for_loop,
+            id,
             label,
             cond,
             body,
             invs,
+            decrease,
             typ_inv_vars,
             modified_vars,
         } => {
@@ -158,10 +160,12 @@ pub(crate) fn stm_assign(
             let loop_x = StmX::Loop {
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
+                id: *id,
                 label: label.clone(),
                 cond,
                 body,
                 invs: invs.clone(),
+                decrease: decrease.clone(),
                 typ_inv_vars: Arc::new(typ_inv_vars),
                 modified_vars: Arc::new(modified_vars),
             };

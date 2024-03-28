@@ -792,6 +792,7 @@ pub enum ExprX {
         cond: Option<Expr>,
         body: Expr,
         invs: LoopInvariants,
+        decrease: Exprs,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
