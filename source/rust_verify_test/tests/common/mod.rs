@@ -453,7 +453,7 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
         .expect("span")
 }
 
-/// Assert that one verification failure happened on source lines containin the string "FAILS".
+/// Assert that one verification failure happened on source lines containing the string "FAILS".
 #[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);

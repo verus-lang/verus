@@ -264,10 +264,22 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
+#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_proof"]
 #[doc(hidden)]
 #[inline(always)]
-pub proof fn spend_open_invariant_credit(tracked credit: OpenInvariantCredit) {
+pub proof fn spend_open_invariant_credit_proof(tracked credit: OpenInvariantCredit) {
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_exec"]
+#[doc(hidden)]
+#[inline(always)]
+pub fn spend_open_invariant_credit_exec(credit: Tracked<OpenInvariantCredit>)
+    opens_invariants none
+{
+    proof {
+        spend_open_invariant_credit_proof(credit.get());
+    }
 }
 
 } // verus!
@@ -363,7 +375,7 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 ///
 /// TODO fill this in
 
-// TODO the first argument here should be macro'ed in ghost context, not exec
+// TODO the `$eexpr` argument here should be macro'ed in ghost context, not exec
 
 #[macro_export]
 macro_rules! open_atomic_invariant {
@@ -371,7 +383,7 @@ macro_rules! open_atomic_invariant {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_atomic_invariant_internal!(credit.get() => $($tail)*)
+            $crate::invariant::open_atomic_invariant_exec_internal!(credit => $($tail)*)
         )
     };
 }
@@ -379,16 +391,32 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_atomic_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_atomic_invariant_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_atomic_invariant_proof_internal!($($tail)*))
     };
 }
 
 #[macro_export]
-macro_rules! open_atomic_invariant_internal {
+macro_rules! open_atomic_invariant_exec_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            $crate::invariant::spend_open_invariant_credit_exec($credit_expr);
+            #[cfg(verus_keep_ghost_body)]
+            #[allow(unused_mut)] let (guard, mut $iident) =
+                $crate::invariant::open_atomic_invariant_begin($eexpr);
+            $bblock
+            #[cfg(verus_keep_ghost_body)]
+            $crate::invariant::open_invariant_end(guard, $iident);
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! open_atomic_invariant_proof_internal {
+    ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
+        #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
+            #[cfg(verus_keep_ghost_body)]
+            $crate::invariant::spend_open_invariant_credit_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
                 $crate::invariant::open_atomic_invariant_begin($eexpr);
@@ -402,7 +430,9 @@ macro_rules! open_atomic_invariant_internal {
 pub use open_atomic_invariant;
 pub use open_atomic_invariant_in_proof;
 #[doc(hidden)]
-pub use open_atomic_invariant_internal;
+pub use open_atomic_invariant_exec_internal;
+#[doc(hidden)]
+pub use open_atomic_invariant_proof_internal;
 
 /// Macro used to temporarily "open" a [`LocalInvariant`] object, obtaining the stored
 /// value within.
@@ -507,23 +537,38 @@ macro_rules! open_local_invariant {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_local_invariant_internal!(credit.get() => $($tail)*))
+            $crate::invariant::open_local_invariant_exec_internal!(credit => $($tail)*))
     };
 }
 
 #[macro_export]
 macro_rules! open_local_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_local_invariant_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_local_invariant_proof_internal!($($tail)*))
     };
 }
 
 #[macro_export]
-macro_rules! open_local_invariant_internal {
+macro_rules! open_local_invariant_exec_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            $crate::invariant::spend_open_invariant_credit_exec($credit_expr);
+            #[cfg(verus_keep_ghost_body)]
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
+            $bblock
+            #[cfg(verus_keep_ghost_body)]
+            $crate::invariant::open_invariant_end(guard, $iident);
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! open_local_invariant_proof_internal {
+    ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
+        #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
+            #[cfg(verus_keep_ghost_body)]
+            $crate::invariant::spend_open_invariant_credit_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
             $bblock
@@ -536,4 +581,6 @@ macro_rules! open_local_invariant_internal {
 pub use open_local_invariant;
 pub use open_local_invariant_in_proof;
 #[doc(hidden)]
-pub use open_local_invariant_internal;
+pub use open_local_invariant_exec_internal;
+#[doc(hidden)]
+pub use open_local_invariant_proof_internal;

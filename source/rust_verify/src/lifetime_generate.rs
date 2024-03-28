@@ -1057,7 +1057,12 @@ fn erase_inv_block<'tcx>(
     };
     let arg = erase_expr(ctxt, state, false, arg).expect("erase_inv_block arg");
     let mid_body = erase_stmt(ctxt, state, mid_stmt);
-    Box::new((span, ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, mid_body)))
+    let mid_exp = Box::new((
+        mid_stmt.span,
+        ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, mid_body),
+    ));
+    let spend_body = erase_stmt(ctxt, state, spend_stmt);
+    Box::new((span, ExpX::Block(spend_body, Some(mid_exp))))
 }
 
 fn erase_expr<'tcx>(

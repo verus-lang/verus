@@ -3379,7 +3379,7 @@ pub(crate) fn inv_macro_exprs(
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits: true,
-        inside_ghost: 1,
+        inside_ghost: if inside_ghost { 1u32 } else { 0u32 },
         inside_type: 0,
         inside_external_code: 0,
         inside_arith: InsideArith::None,
@@ -3387,13 +3387,21 @@ pub(crate) fn inv_macro_exprs(
         rustdoc: env_rustdoc(),
         inside_bitvector: false,
     };
-    for element in &mut invoke.elements.elements {
+    for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
         match element {
-            MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
+            MacroElement::Expr(expr) => {
+                // Always process the third element ($eexpr) as ghost.
+                let treat_as_ghost = !inside_ghost && idx == 2;
+                if treat_as_ghost {
+                    visitor.inside_ghost = 1;
+                }
+                visitor.visit_expr_mut(expr);
+                if treat_as_ghost {
+                    visitor.inside_ghost = 0;
+                }
+            }
             _ => {}
-        }
-        // After the first element, parse as 'exec' or `proof` expression based on the current context.
-        visitor.inside_ghost = if inside_ghost { 1u32 } else { 0u32 };
+        };
     }
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)

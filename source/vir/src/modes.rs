@@ -699,13 +699,15 @@ fn check_expr_handle_mut_arg(
                         if function.x.attrs.atomic {
                             ai.add_atomic(&expr.span);
                         } else {
-                            // A call to `create_open_invariant_credit` is a no-op, so
-                            // it's fine to include in an atomic block. And it's useful
-                            // to be able to do so, so that we can nest an opening of
-                            // an invariant inside an opening of another invariant. So
-                            // we special-case this call to not treat it as non-atomic.
+                            // A call to `create_open_invariant_credit` or `spend_open_invariant_credit_exec`
+                            // is a no-op, so it's fine to include in an atomic block. And it's useful
+                            // to be able to do so, so that we can nest an opening of an invariant
+                            // inside an opening of another invariant. So we special-case these calls
+                            // to not treat them as non-atomic.
                             if function.x.name
                                 != crate::fun!("vstd" => "invariant", "create_open_invariant_credit")
+                                && function.x.name
+                                    != crate::fun!("vstd" => "invariant", "spend_open_invariant_credit_exec")
                             {
                                 ai.add_non_atomic(&expr.span);
                             }

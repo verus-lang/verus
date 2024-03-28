@@ -12,8 +12,9 @@ use crate::rust_to_vir_expr::{
 use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
     self, ArithItem, AssertItem, BinaryOpItem, BuiltinFunctionItem, ChainedItem, CompilableOprItem,
-    DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
-    SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem, VerusItem,
+    DirectiveItem, EqualityItem, ExprItem, OpenInvariantBlockItem, QuantItem, RustItem,
+    SpecArithItem, SpecGhostTrackedItem, SpecItem, SpecLiteralItem, SpecOrdItem, UnaryOpItem,
+    VerusItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
@@ -125,7 +126,13 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     if let Some(verus_item) = verus_item {
         match verus_item {
-            VerusItem::Vstd(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_) => (),
+            VerusItem::Vstd(_, _)
+            | VerusItem::Marker(_)
+            | VerusItem::BuiltinType(_)
+            | VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::SpendOpenInvariantCreditExec)
+            | VerusItem::OpenInvariantBlock(
+                OpenInvariantBlockItem::SpendOpenInvariantCreditProof,
+            ) => {}
             _ => {
                 return verus_item_to_vir(
                     bctx,

@@ -639,12 +639,15 @@ pub(crate) fn is_spend_open_invariant_credit_call(
                     [Expr { .. }],
                 ),
             ..
-        }) => {
-            verus_items.id_to_name.get(&fun_id)
-                == Some(&VerusItem::OpenInvariantBlock(
-                    OpenInvariantBlockItem::SpendOpenInvariantCredit,
-                ))
-        }
+        }) => match verus_items.id_to_name.get(&fun_id) {
+            Some(&VerusItem::OpenInvariantBlock(
+                OpenInvariantBlockItem::SpendOpenInvariantCreditExec,
+            )) => true,
+            Some(&VerusItem::OpenInvariantBlock(
+                OpenInvariantBlockItem::SpendOpenInvariantCreditProof,
+            )) => true,
+            _ => false,
+        },
         _ => false,
     }
 }
@@ -857,8 +860,18 @@ fn invariant_block_to_vir<'tcx>(
     let inner_ty = typ_of_node(bctx, inner_pat.span, &inner_hir, false)?;
     let vir_binder = Arc::new(VarBinderX { name, a: inner_ty });
 
-    let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity);
-    Ok(bctx.spanned_typed_new(expr.span, &typ_of_node(bctx, expr.span, &expr.hir_id, false)?, e))
+    let mid_exp = bctx.spanned_typed_new(
+        mid_stmt.span,
+        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity),
+    );
+    let spend_stmt_vir = stmt_to_vir(&bctx, spend_stmt)
+        .expect("could not convert spend_open_invariant_credit call to vir");
+    Ok(bctx.spanned_typed_new(
+        expr.span,
+        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        ExprX::Block(Arc::new(spend_stmt_vir), Some(mid_exp)),
+    ))
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
