@@ -239,7 +239,10 @@ test_verify_one_file! {
     #[test] exec_code_in_inv_block verus_code! {
         use vstd::invariant::*;
 
-        pub fn exec_fn() { }
+        pub fn exec_fn()
+            opens_invariants none
+        {
+        }
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {

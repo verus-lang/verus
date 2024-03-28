@@ -74,6 +74,7 @@ struct Ctxt {
     pub(crate) traits: HashSet<Path>,
     pub(crate) check_ghost_blocks: bool,
     pub(crate) fun_mode: Mode,
+    pub(crate) vstd_crate_name: crate::ast::Ident,
 }
 
 // Accumulated data recorded during mode checking
@@ -704,10 +705,18 @@ fn check_expr_handle_mut_arg(
                             // to be able to do so, so that we can nest an opening of an invariant
                             // inside an opening of another invariant. So we special-case these calls
                             // to not treat them as non-atomic.
-                            if function.x.name
-                                != crate::fun!("vstd" => "invariant", "create_open_invariant_credit")
-                                && function.x.name
-                                    != crate::fun!("vstd" => "invariant", "spend_open_invariant_credit_exec")
+                            if path_as_vstd_name(&x.path)
+                                != path_as_vstd_name(
+                                    &crate::def::create_open_invariant_credit_path(&Some(
+                                        ctxt.vstd_crate_name.clone(),
+                                    )),
+                                )
+                                && path_as_vstd_name(&x.path)
+                                    != path_as_vstd_name(
+                                        &crate::def::spend_open_invariant_credit_exec_path(&Some(
+                                            ctxt.vstd_crate_name.clone(),
+                                        )),
+                                    )
                             {
                                 ai.add_non_atomic(&expr.span);
                             }
@@ -1571,12 +1580,14 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
     let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
+    let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
     let mut ctxt = Ctxt {
         funs,
         datatypes,
         traits: krate.traits.iter().map(|t| t.x.name.clone()).collect(),
         check_ghost_blocks: false,
         fun_mode: Mode::Exec,
+        vstd_crate_name,
     };
     let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None };
     let mut state = State {

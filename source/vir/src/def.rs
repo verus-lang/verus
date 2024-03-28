@@ -691,6 +691,36 @@ pub fn fn_inv_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fun {
     })
 }
 
+pub fn create_open_invariant_credit_path(vstd_crate_name: &Option<Ident>) -> Path {
+    Arc::new(PathX {
+        krate: vstd_crate_name.clone(),
+        segments: Arc::new(vec![
+            Arc::new("invariant".to_string()),
+            Arc::new("create_open_invariant_credit".to_string()),
+        ]),
+    })
+}
+
+pub fn spend_open_invariant_credit_exec_path(vstd_crate_name: &Option<Ident>) -> Path {
+    Arc::new(PathX {
+        krate: vstd_crate_name.clone(),
+        segments: Arc::new(vec![
+            Arc::new("invariant".to_string()),
+            Arc::new("spend_open_invariant_credit_exec".to_string()),
+        ]),
+    })
+}
+
+pub fn spend_open_invariant_credit_proof_path(vstd_crate_name: &Option<Ident>) -> Path {
+    Arc::new(PathX {
+        krate: vstd_crate_name.clone(),
+        segments: Arc::new(vec![
+            Arc::new("invariant".to_string()),
+            Arc::new("spend_open_invariant_credit_proof".to_string()),
+        ]),
+    })
+}
+
 pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {

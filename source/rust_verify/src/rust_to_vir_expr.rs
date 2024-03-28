@@ -15,7 +15,8 @@ use crate::util::{
     err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
 };
 use crate::verus_items::{
-    self, CompilableOprItem, OpenInvariantBlockItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
+    self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, SpecGhostTrackedItem,
+    UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -640,11 +641,13 @@ pub(crate) fn is_spend_open_invariant_credit_call(
                 ),
             ..
         }) => match verus_items.id_to_name.get(&fun_id) {
-            Some(&VerusItem::OpenInvariantBlock(
-                OpenInvariantBlockItem::SpendOpenInvariantCreditExec,
+            Some(&VerusItem::Vstd(
+                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditExec),
+                _,
             )) => true,
-            Some(&VerusItem::OpenInvariantBlock(
-                OpenInvariantBlockItem::SpendOpenInvariantCreditProof,
+            Some(&VerusItem::Vstd(
+                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditProof),
+                _,
             )) => true,
             _ => false,
         },
