@@ -258,6 +258,8 @@ pub(crate) enum UnaryOpItem {
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum OpenInvariantBlockItem {
+    SpendOpenInvariantCreditExec,
+    SpendOpenInvariantCreditProof,
     OpenLocalInvariantBegin,
     OpenAtomicInvariantBegin,
     OpenInvariantEnd,
@@ -449,6 +451,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
         ("verus::vstd::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
+        ("verus::vstd::invariant::spend_open_invariant_credit_exec", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::SpendOpenInvariantCreditExec)),
+        ("verus::vstd::invariant::spend_open_invariant_credit_proof", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::SpendOpenInvariantCreditProof)),
 
         ("verus::vstd::string::StrSlice",      VerusItem::Vstd(VstdItem::StrSlice, None)),
         ("verus::vstd::seq::Seq::empty",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
