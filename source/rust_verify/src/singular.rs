@@ -337,7 +337,7 @@ pub fn check_singular_valid(
 
     let arc_ens: &air::ast::Stmt = stmts.last().unwrap();
     let ens = match &**arc_ens {
-        air::ast::StmtX::Assert(error, _, exp) => (exp.clone(), error.clone()),
+        air::ast::StmtX::Assert(_, error, _, exp) => (exp.clone(), error.clone()),
         _ => {
             panic!("internal error");
         }
@@ -355,7 +355,7 @@ pub fn check_singular_valid(
         // last element is ensures clause
         let stm = &stmts[idx];
         match &**stm {
-            air::ast::StmtX::Assert(error, _, exp) => {
+            air::ast::StmtX::Assert(_, error, _, exp) => {
                 reqs.push((exp.clone(), error.clone()));
             }
             _ => {
@@ -386,7 +386,7 @@ pub fn check_singular_valid(
 
     let query = match singular_printer(&vars, &reqs, &ens) {
         Ok(query_string) => query_string,
-        Err(err) => return ValidityResult::Invalid(None, err),
+        Err(err) => return ValidityResult::Invalid(None, err, None),
     };
 
     air::singular_manager::log_singular(context, &query, &func_span.as_string);
@@ -416,6 +416,7 @@ pub fn check_singular_valid(
                     query
                 ),
             ),
+            None,
         )
     }
 }

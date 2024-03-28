@@ -71,6 +71,7 @@ pub enum VarIdentDisambiguate {
     // Capture-avoiding substitution creates new names:
     VirSubst(u64),
     VirTemp(u64),
+    ExpandErrorsDecl(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -281,6 +282,8 @@ pub enum NullaryOpr {
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
     TraitBound(Path, Typs),
+    /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
+    TypEqualityBound(Path, Typs, Ident, Typ),
     /// A failed InferSpecForLoopIter subexpression
     NoInferSpecForLoopIter,
 }
@@ -531,7 +534,7 @@ pub enum Constant {
     Char(char),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
@@ -569,6 +572,15 @@ pub enum PatternX {
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Path, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
+    /// Matches something equal to the value of this expr
+    /// This only supports literals and consts, so we don't need to worry
+    /// about side-effects, binding order, etc.
+    Expr(Expr),
+    /// `e1 <= x <= e2` or `e1 <= x < e2`
+    /// The start of the range is always inclusive (<=)
+    /// The end of the range may be inclusive (<=) or exclusive (<),
+    /// as given by the InequalityOp argument.
+    Range(Option<Expr>, Option<(Expr, InequalityOp)>),
 }
 
 /// Arms of match expressions
@@ -687,7 +699,7 @@ pub enum AutospecUsage {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[to_node_impl(name = ">")]
 pub enum ExprX {
     /// Constant
@@ -753,7 +765,7 @@ pub enum ExprX {
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
-    Fuel(Fun, u32),
+    Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.
@@ -836,6 +848,9 @@ pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
     Trait(Path, Typs),
+    /// An equality bound for associated type X of trait T(t1, ..., tn),
+    /// written in Rust as T<t1, ..., tn, X = typ>
+    TypEquality(Path, Typs, Ident, Typ),
 }
 
 /// When instantiating type S<A> with A = T in a recursive type definition,
@@ -904,6 +919,7 @@ pub struct FunctionAttrsX {
     pub print_zero_args: bool,
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
+    pub prophecy_dependent: bool,
 }
 
 /// Function specification of its invariant mask
@@ -966,6 +982,7 @@ pub struct FunctionX {
     /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
     pub fuel: u32,
     /// Type parameters to generic functions
+    /// (for trait methods, the trait parameters come first, then the method parameters)
     pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,
@@ -1032,6 +1049,28 @@ pub enum ItemKind {
     /// so they can only be deterministic, right? But for something like cell, the 'id'
     /// (the nondeterministic part) is purely ghost.
     Static,
+}
+
+pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct RevealGroupX {
+    /// Name of the function that is used internally to represent the group.
+    /// This is used, for example, to create a Node::Fun(name) for the group.
+    /// Note that there is no FunctionX for the group, though.
+    pub name: Fun,
+    /// Access control (public/private)
+    pub visibility: Visibility,
+    /// Owning module
+    pub owning_module: Option<Path>,
+    /// If true, then prune away group unless either the module that contains the group is used.
+    /// (Without this, importing vstd would recursively reach and encode all the
+    /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
+    pub prune_unless_this_module_is_used: bool,
+    /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
+    /// No more than one such group is allowed in each crate.
+    pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,
+    /// All the subgroups or functions included in this group
+    pub members: Arc<Vec<Fun>>,
 }
 
 /// Single field in a variant
@@ -1136,11 +1175,14 @@ pub enum WellKnownItem {
     DropTrait,
 }
 
+pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;
+
 pub type Module = Arc<Spanned<ModuleX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct ModuleX {
     pub path: Path,
     // add attrs here
+    pub reveals: Option<ModuleReveals>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
@@ -1164,23 +1206,19 @@ impl ArchWordBits {
     }
 }
 
-impl Default for ArchWordBits {
-    fn default() -> Self {
-        ArchWordBits::Either32Or64
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Arch {
     pub word_bits: ArchWordBits,
 }
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
+    /// All reveal_groups in the crate
+    pub reveal_groups: Vec<RevealGroup>,
     /// All datatypes in the crate
     pub datatypes: Vec<Datatype>,
     /// All traits in the crate

@@ -169,7 +169,7 @@ impl Parser {
                             self.message_interface.from_labels(&self.nodes_to_labels(nodes)?);
                         let filter = self.nodes_to_filter(filter)?;
                         let expr = self.node_to_expr(e)?;
-                        return Ok(Arc::new(ExprX::LabeledAssertion(error, filter, expr)));
+                        return Ok(Arc::new(ExprX::LabeledAssertion(None, error, filter, expr)));
                     }
                     [Node::Atom(s), Node::List(nodes), Node::List(filter), e]
                         if s.to_string() == "axiom_location" && filter.len() <= 1 =>
@@ -483,7 +483,7 @@ impl Parser {
                 }
                 [Node::Atom(s), e] if s.to_string() == "assert" => {
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(self.message_interface.empty(), None, expr)))
+                    Ok(Arc::new(StmtX::Assert(None, self.message_interface.empty(), None, expr)))
                 }
                 [Node::Atom(s), Node::Atom(x)] if s.to_string() == "havoc" && is_symbol(x) => {
                     Ok(Arc::new(StmtX::Havoc(Arc::new(x.clone()))))
@@ -504,7 +504,7 @@ impl Parser {
                     let error = self.message_interface.from_labels(&labels);
                     let filter = self.nodes_to_filter(filter)?;
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(error, filter, expr)))
+                    Ok(Arc::new(StmtX::Assert(None, error, filter, expr)))
                 }
                 [Node::Atom(s), e] if s.to_string() == "deadend" => {
                     let stmt = self.node_to_stmt(&e)?;

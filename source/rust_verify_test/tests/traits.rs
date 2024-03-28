@@ -4,14 +4,13 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_1 verus_code! {
+    #[test] supported_1 verus_code! {
         trait T1 {}
         trait T2 {
-            // need to add A: T1 to termination checking before supporting this
             fn f<A: T1>(a: &A) {
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, ": trait generics")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -26,7 +25,7 @@ test_verify_one_file! {
     #[test] test_unsupported_2 verus_code! {
         trait T1<A: T2<Self> + ?Sized> {}
         trait T2<A: T1<Self> + ?Sized> {}
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -232,9 +231,7 @@ test_verify_one_file! {
             fn VERUS_SPEC__f<A>(&self, x: A) -> bool { no_method_body() }
             fn f<B>(&self, x: B) -> bool; // error: A and B have different names
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics")
-    // when generics on trait methods are supported, this should be the error message:
-    // } => Err(err) => assert_vir_error_msg(err, "method specification has different type parameters or bounds from method")
+    } => Err(err) => assert_vir_error_msg(err, "method specification has different type parameters from method")
 }
 
 test_verify_one_file! {
@@ -377,7 +374,7 @@ test_verify_one_file! {
             let s = S {};
             s.f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -407,7 +404,7 @@ test_verify_one_file! {
             assert(h() == g::<bool, S<bool>>() + 1);
             assert(h() == h() + 3);
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -428,7 +425,7 @@ test_verify_one_file! {
             let s = S {};
             s.f(&s);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -580,7 +577,7 @@ test_verify_one_file! {
         struct R;
         impl T for R { type X = S; }
         struct S(spec_fn(Q<R>) -> int);
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -590,7 +587,7 @@ test_verify_one_file! {
         struct R;
         impl T for R { type X = spec_fn(S) -> int; }
         struct S(Q<R>);
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -600,7 +597,7 @@ test_verify_one_file! {
         struct R;
         impl T for R { type X = S; }
         struct S(Q<R>);
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -610,7 +607,7 @@ test_verify_one_file! {
         struct R;
         impl T for R { type X = S; }
         struct S(Q<R>);
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -619,7 +616,7 @@ test_verify_one_file! {
         struct Q<A: T>(spec_fn(A::X) -> int);
         struct S(Q<S>);
         impl T for S { type X = int; }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -639,7 +636,7 @@ test_verify_one_file! {
                 arbitrary()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -652,20 +649,20 @@ test_verify_one_file! {
         struct UU { }
         impl T for TT { type X = Q<UU>; }
         impl U for UU { type Y = P<TT>; }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
     #[test] test_termination_5_fail_8 verus_code! {
         trait T { type A: T; }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
     #[test] test_termination_5_fail_9 verus_code! {
         trait T1 { type A: T2; }
         trait T2 { type A: T1; }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -696,7 +693,7 @@ test_verify_one_file! {
             let s = S {};
             s.f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -732,7 +729,7 @@ test_verify_one_file! {
             assert(h() == g::<bool, S<bool>>() + 1);
             assert(h() == h() + 3);
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -759,7 +756,7 @@ test_verify_one_file! {
             let s = S {};
             s.f(&s);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics") // note: the error message will change when this feature is supported
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -785,7 +782,7 @@ test_verify_one_file! {
                 self.f()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {
@@ -819,7 +816,7 @@ test_verify_one_file! {
         }
     } => Err(err) => {
         // TODO: we could make the recursion rules more precise to allow decreases checking in this example
-        assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+        assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
     }
 }
 
@@ -906,7 +903,7 @@ test_verify_one_file! {
         impl T for R { type X = S; }
         struct S(spec_fn(Q<R>) -> int);
         impl Z for S { }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -920,7 +917,7 @@ test_verify_one_file! {
         impl Z for S {
             type Y = S;
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -987,7 +984,7 @@ test_verify_one_file! {
                 arbitrary()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -1398,6 +1395,50 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_generic_4 verus_code! {
+        trait U1 {}
+        trait U2 {}
+
+        trait T<A0, A1: U1> {
+            fn f<A2: U2 + Copy, A3>(a1: &A1, a2: &A2, a3: &A3) -> (r: (A2, A2))
+                requires
+                    a1 == a1,
+                    a2 == a2,
+                    a3 == a3,
+                ensures
+                    r.0 == *a2
+                ;
+        }
+
+        impl U1 for bool {}
+        impl U1 for u64 {}
+        impl U2 for u16 {}
+        impl U2 for bool {}
+
+        impl T<int, bool> for u8 {
+            fn f<A2x: U2 + Copy, A3x>(a1: &bool, a2: &A2x, a3: &A3x) -> (A2x, A2x) {
+                (*a2, *a2)
+            }
+        }
+
+        struct S<B>(B);
+        impl<B: U1> T<int, B> for S<B> {
+            fn f<A2x: U2 + Copy, A3x>(a1: &B, a2: &A2x, a3: &A3x) -> (A2x, A2x) {
+                (*a2, *a2)
+            }
+        }
+
+        fn test() {
+            let (x, y) = <u8 as T<int, bool>>::f::<u16, u32>(&true, &100u16, &200u32);
+            assert(x == 100);
+            let (x, y) = <S::<u64> as T<int, u64>>::f::<bool, u8>(&300u64, &true, &10u8);
+            assert(x);
+            assert(y); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_self_ok verus_code! {
         trait T {
             spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self;
@@ -1521,8 +1562,7 @@ test_verify_one_file! {
         spec fn t<A>() -> bool { true }
 
         #[verifier::external_body] /* vattr */
-        #[verifier::broadcast_forall] /* vattr */
-        proof fn f_not_g<A: T>()
+        broadcast proof fn f_not_g<A: T>()
             ensures
                 #[trigger] t::<A>(),
                 g::<A>(),
@@ -1583,8 +1623,7 @@ test_verify_one_file! {
         spec fn f<A>(i: int) -> bool;
 
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        proof fn p<A: T2<S<int>, u16>>(i: int)
+        broadcast proof fn p<A: T2<S<int>, u16>>(i: int)
             ensures f::<A>(i)
         {
         }
@@ -1613,9 +1652,8 @@ test_verify_one_file! {
             }
 
             // note the external_body isn't necessary here
-            #[verifier::broadcast_forall]
             #[verifier::external_body]
-            pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+            pub broadcast proof fn proves_false_requiring_trait_bound<T: Tr>()
                 ensures #[trigger] T::f() == !T::f(),
             {
                 T::bad();
@@ -1663,9 +1701,8 @@ test_verify_one_file! {
             proof fn bad() ensures false; // FAILS
         }
 
-        #[verifier::broadcast_forall]
         #[verifier::external_body]
-        pub proof fn proves_false_requiring_trait_bound<T: Tr>()
+        pub broadcast proof fn proves_false_requiring_trait_bound<T: Tr>()
             ensures
                 #[trigger] T::f() == !T::f(),
         { }
@@ -1901,7 +1938,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {
@@ -1924,7 +1961,7 @@ test_verify_one_file! {
         {
             assert(S::<bool>::f() == S::<bool>::f() + 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {
@@ -1951,7 +1988,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {
@@ -1968,7 +2005,7 @@ test_verify_one_file! {
             fn m() requires f();
         }
         trait T<A: U> {}
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition, which may result in nontermination")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
 }
 
 test_verify_one_file! {
@@ -2676,7 +2713,7 @@ test_verify_one_file! {
             assert(alpaca() == !alpaca());
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -2753,7 +2790,7 @@ test_verify_one_file! {
             assert(alpaca() == !alpaca());
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -2764,8 +2801,7 @@ test_verify_one_file! {
         spec fn t<A>() -> bool { true }
 
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        proof fn axiom_f<A: T>()
+        broadcast proof fn axiom_f<A: T>()
             ensures
                 #[trigger] t::<A>(),
         {
@@ -2790,8 +2826,7 @@ test_verify_one_file! {
         spec fn f<A>(i: int) -> bool { false }
 
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        proof fn p<A: T>(i: int)
+        broadcast proof fn p<A: T>(i: int)
             ensures f::<A>(i)
         {
         }
@@ -2919,6 +2954,119 @@ test_verify_one_file! {
             assert(t.b());
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality1 verus_code! {
+        trait T {
+            type X;
+            type Y: Copy;
+            spec fn f(x: &Self::X, y: &Self::Y) -> Self::X {
+                *x
+            }
+            fn g(x: &Self::X, y: &Self::Y) -> Self::Y {
+                *y
+            }
+        }
+
+        impl T for bool {
+            type X = u8;
+            type Y = u16;
+            spec fn f(x: &Self::X, y: &Self::Y) -> Self::X {
+                (*x + *y) as u8
+            }
+            fn g(x: &Self::X, y: &Self::Y) -> (r: Self::Y)
+                ensures r == *x as u16 + *y / 2
+            {
+                *x as u16 + *y / 2
+            }
+        }
+
+        spec fn s1<A: T<X = u8>>(y: A::Y) -> u8 {
+            A::f(&3u8, &y)
+        }
+
+        spec fn s2<A: T<X = u8>>(y: A::Y) -> u8 {
+            A::f(&3u8, &y) / 2
+        }
+
+        proof fn test1<A: T<X = u8>>(y: A::Y) {
+            assert(s1::<A>(y) == A::f(&3u8, &y));
+        }
+
+        fn test2() {
+            assert(s1::<bool>(7u16) == <bool as T>::f(&3u8, &7u16));
+            assert(s1::<bool>(7u16) == 10u8);
+            assert(s2::<bool>(7u16) == 5u8);
+            let r = <bool as T>::g(&3u8, &7u16);
+            assert(r == 6u8);
+            assert(r == 7u8); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality_struct verus_code! {
+        trait T {
+            type X;
+            type Y;
+        }
+
+        struct S<A: T<X = u8>> {
+            x: A::X,
+        }
+        impl T for bool {
+            type X = u8;
+            type Y = u16;
+        }
+        proof fn test() {
+            let s: S<bool> = S { x: 10u8 };
+            assert(s.x == 10);
+            assert(s.x == 11); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality_broadcast verus_code! {
+        trait T {
+            type X;
+            type Y;
+        }
+
+        spec fn p<A>(a: A) -> bool;
+        spec fn q<A, B>(a: A, b: B) -> bool { true }
+
+        #[verifier::external_body]
+        proof fn p_u8(u: u8)
+            ensures p(u)
+        {
+        }
+
+        broadcast proof fn b<A: T<X = u8>>(x: A::X, a: A)
+            ensures #[trigger] q(a, x) && p(x)
+        {
+            p_u8(x);
+        }
+
+        impl T for u16 {
+            type X = u8;
+            type Y = i8;
+        }
+
+        impl T for u32 {
+            type X = u64;
+            type Y = i64;
+        }
+
+        proof fn test() {
+            broadcast use b;
+            assert(q(5u16, 10u8));
+            assert(p(10u8));
+            assert(q(5u32, 11u8));
+            assert(p(11u8)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -3139,7 +3287,7 @@ test_verify_one_file! {
         {
             <bool as T2>::g();
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -3184,7 +3332,7 @@ test_verify_one_file! {
         {
             A::g();
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -3204,7 +3352,7 @@ test_verify_one_file! {
         }
         impl T2 for bool {
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -3224,7 +3372,7 @@ test_verify_one_file! {
         }
         impl T2<bool> for bool {
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -3344,12 +3492,10 @@ test_verify_one_file! {
                 assert(TQ::e(s) == 200); // FAILS
             }
 
-            #[verifier::broadcast_forall]
-            pub proof fn p_prop_1(s: S)
+            pub broadcast proof fn p_prop_1(s: S)
                 ensures #[trigger] QQ::e(s) == 200 {}
 
-            #[verifier::broadcast_forall]
-            pub proof fn p_prop_2(s: S)
+            pub broadcast proof fn p_prop_2(s: S)
                 ensures #[trigger] QQ::e(&s) == 300 {}
         }
 
@@ -3359,16 +3505,14 @@ test_verify_one_file! {
 
             proof fn test1(s: S)
             {
-                reveal(p_prop_1);
-                reveal(p_prop_2);
+                broadcast use p_prop_1, p_prop_2;
                 assert(QQ::e(s) == 200);
                 assert(QQ::e(&s) == 300);
             }
 
             proof fn test2(s: S)
             {
-                reveal(p_prop_1);
-                reveal(p_prop_2);
+                broadcast use p_prop_1, p_prop_2;
                 assert(QQ::e(s) == 300); // FAILS
             }
         }

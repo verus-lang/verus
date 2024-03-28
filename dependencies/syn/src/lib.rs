@@ -457,13 +457,13 @@ mod whitespace;
 
 mod verus;
 pub use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, Closed, DataMode, Decreases, Ensures,
-    ExprGetField, ExprHas, ExprIs, ExprMatches, FnMode, Global, GlobalInner, GlobalLayout,
+    Assert, AssertForall, Assume, BigAnd, BigOr, BroadcastUse, Closed, DataMode, Decreases,
+    Ensures, ExprGetField, ExprHas, ExprIs, ExprMatches, FnMode, Global, GlobalInner, GlobalLayout,
     GlobalSizeOf, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetAny, InvariantNameSetList, InvariantNameSetNone, MatchesOpExpr, MatchesOpToken,
-    Mode, ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open,
-    OpenRestricted, Publish, Recommends, Requires, RevealHide, SignatureDecreases,
-    SignatureInvariants, Specification, TypeFnSpec, View,
+    InvariantNameSetAny, InvariantNameSetList, InvariantNameSetNone, ItemBroadcastGroup,
+    MatchesOpExpr, MatchesOpToken, Mode, ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked,
+    ModeTracked, Open, OpenRestricted, Publish, Recommends, Requires, RevealHide,
+    SignatureDecreases, SignatureInvariants, Specification, TypeFnSpec, View,
 };
 
 mod gen {
@@ -826,6 +826,7 @@ mod print;
 // https://github.com/rust-lang/rust/issues/62830
 #[cfg(feature = "parsing")]
 mod rustdoc_workaround {
+    #![allow(unused_imports)]
     pub use crate::parse::{self as parse_module};
 }
 

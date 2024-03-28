@@ -195,8 +195,7 @@ impl<A> Seq<A> {
     }
 
     #[verifier(external_body)]
-    #[verifier(broadcast_forall)]
-    pub proof fn filter_lemma_broadcast(self, pred: spec_fn(A) -> bool)
+    pub broadcast proof fn filter_lemma_broadcast(self, pred: spec_fn(A) -> bool)
         ensures
             forall|i: int|
                 0 <= i < self.filter(pred).len() ==> pred(#[trigger] self.filter(pred)[i])
@@ -230,8 +229,7 @@ impl<A> Seq<A> {
         }
     }
 
-    #[verifier(broadcast_forall)]
-    pub proof fn add_empty_left(a: Self, b: Self)
+    pub broadcast proof fn add_empty_left(a: Self, b: Self)
         requires
             a.len() == 0,
         ensures
@@ -240,8 +238,7 @@ impl<A> Seq<A> {
         assert(a + b =~= b);
     }
 
-    #[verifier(broadcast_forall)]
-    pub proof fn add_empty_right(a: Self, b: Self)
+    pub broadcast proof fn add_empty_right(a: Self, b: Self)
         requires
             b.len() == 0,
         ensures
@@ -250,8 +247,7 @@ impl<A> Seq<A> {
         assert(a + b =~= a);
     }
 
-    #[verifier(broadcast_forall)]
-    pub proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
+    pub broadcast proof fn push_distributes_over_add(a: Self, b: Self, elt: A)
         ensures
             (a + b).push(elt) == a + b.push(elt),
     {
@@ -259,8 +255,11 @@ impl<A> Seq<A> {
     }
 
     #[verifier(external_body)]
-    #[verifier(broadcast_forall)]
-    pub proof fn filter_distributes_over_add_broacast(a: Self, b: Self, pred: spec_fn(A) -> bool)
+    pub broadcast proof fn filter_distributes_over_add_broacast(
+        a: Self,
+        b: Self,
+        pred: spec_fn(A) -> bool,
+    )
         ensures
             #[trigger] (a + b).filter(pred) == a.filter(pred) + b.filter(pred),
     {
@@ -971,7 +970,7 @@ impl<A> Seq<Seq<A>> {
         ensures
             self.len() == 1 ==> self.flatten() == self.first(),
     {
-        reveal(Seq::add_empty_right);
+        broadcast use Seq::add_empty_right;
         if self.len() == 1 {
             assert(self.flatten() =~= self.first().add(self.drop_first().flatten()));
         }
@@ -1022,8 +1021,7 @@ impl<A> Seq<Seq<A>> {
             self.flatten() == self.flatten_alt(),
         decreases self.len(),
     {
-        reveal(Seq::add_empty_right);
-        reveal(Seq::push_distributes_over_add);
+        broadcast use Seq::add_empty_right, Seq::push_distributes_over_add;
         if self.len() != 0 {
             self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
             seq![self.last()].lemma_flatten_one_element();
@@ -1472,8 +1470,7 @@ pub proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn seq_to_set_is_finite_broadcast<A>(seq: Seq<A>)
+pub broadcast proof fn seq_to_set_is_finite_broadcast<A>(seq: Seq<A>)
     ensures
         #[trigger] seq.to_set().finite(),
 {

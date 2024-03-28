@@ -289,8 +289,7 @@ test_verify_one_file! {
             }
 
             #[verifier::external_body]
-            #[verifier::broadcast_forall]
-            pub proof fn ab(a: A)
+            pub broadcast proof fn ab(a: A)
                 ensures #![trigger a.f1()] (a.f1() ==> a.f2()) && a.f3()
             {
             }

@@ -117,6 +117,7 @@ use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verus_items::VerusItems;
+use rustc_data_structures::sync::Lrc;
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
@@ -251,6 +252,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
 ) -> State {
     let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
         cmd_line_args,
@@ -258,6 +260,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
         verus_items,
         krate,
         erasure_hints,
+        item_to_module_map,
     );
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
@@ -281,7 +284,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
-    fn after_parsing<'tcx>(
+    fn after_crate_root_parsing<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
@@ -309,9 +312,9 @@ impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
         Ok(self.rust_code.clone())
     }
 
-    fn read_binary_file(&self, path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
+    fn read_binary_file(&self, path: &std::path::Path) -> Result<Lrc<[u8]>, std::io::Error> {
         assert!(path.display().to_string() == Self::FILENAME.to_string());
-        Ok(self.rust_code.clone().into_bytes())
+        Ok(self.rust_code.as_bytes().into())
     }
 }
 
@@ -348,6 +351,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
@@ -359,6 +363,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         krate,
         &mut emit_state,
         erasure_hints,
+        item_to_module_map,
     );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {

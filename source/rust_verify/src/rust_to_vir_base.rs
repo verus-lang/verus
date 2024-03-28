@@ -11,8 +11,10 @@ use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
+use rustc_middle::ty::{
+    GenericArgKind, GenericArgsRef, TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt,
+};
 use rustc_middle::ty::{ImplPolarity, TraitPredicate};
-use rustc_middle::ty::{TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
@@ -70,11 +72,11 @@ pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast:
 // or for the command-line --verify-function arguments.
 fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: &Path) {
     let hir_id = if let Some(local_id) = def_id.as_local() {
-        tcx.hir().local_def_id_to_hir_id(local_id)
+        tcx.local_def_id_to_hir_id(local_id)
     } else {
         return;
     };
-    let node = tcx.hir().get(hir_id);
+    let node = tcx.hir_node(hir_id);
     let is_impl_item_fn = matches!(
         node,
         rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
@@ -184,7 +186,7 @@ pub(crate) fn qpath_to_ident<'tcx>(
         if let Node::Pat(Pat {
             kind: PatKind::Binding(BindingAnnotation(ByRef::No, Mutability::Not), hir_id, x, None),
             ..
-        }) = tcx.hir().get(*id)
+        }) = tcx.hir_node(*id)
         {
             Some(local_to_var(x, hir_id.local_id))
         } else {
@@ -203,7 +205,7 @@ fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<
     let mut regions = HashMap::new();
     let delegate = rustc_middle::ty::fold::FnMutDelegate {
         regions: &mut |br| {
-            *regions.entry(br).or_insert(rustc_middle::ty::Region::new_free(
+            *regions.entry(br).or_insert(rustc_middle::ty::Region::new_late_param(
                 tcx,
                 param_env_src,
                 br.kind,
@@ -290,11 +292,11 @@ where
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         match *r {
             // NOTE(verus): This is the one change, we replace == with >=
-            rustc_middle::ty::ReLateBound(debruijn, br) if debruijn >= self.current_index => {
+            rustc_middle::ty::ReBound(debruijn, br) if debruijn >= self.current_index => {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReLateBound(debruijn1, br) = *region {
+                if let rustc_middle::ty::ReBound(debruijn1, br) = *region {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
-                    rustc_middle::ty::Region::new_late_bound(self.tcx, debruijn, br)
+                    rustc_middle::ty::Region::new_bound(self.tcx, debruijn, br)
                 } else {
                     region
                 }
@@ -606,7 +608,6 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     allow_mut_ref: bool,
 ) -> rustc_middle::ty::Ty<'tcx> {
     match ty.kind() {
-        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, verus_items, t, allow_mut_ref),
         TyKind::Ref(_, t, Mutability::Mut) if allow_mut_ref => {
             mid_ty_simplify(tcx, verus_items, t, allow_mut_ref)
         }
@@ -916,9 +917,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
         TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
-        TyKind::Generator(..) => unsupported_err!(span, "generator types"),
-        TyKind::GeneratorWitness(..) => unsupported_err!(span, "generator witness types"),
-        TyKind::GeneratorWitnessMIR(_, _) => unsupported_err!(span, "generator witness mir types"),
+        TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
+        TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
@@ -961,11 +961,17 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     use rustc_middle::ty::ConstKind;
     use rustc_middle::ty::ValTree;
 
-    let cnst = match cnst.kind() {
-        ConstKind::Unevaluated(unevaluated) => cnst.eval(tcx, tcx.param_env(unevaluated.def)),
-        _ => *cnst,
+    let cnst_kind = match cnst.kind() {
+        ConstKind::Unevaluated(unevaluated) => {
+            let valtree = cnst.eval(tcx, tcx.param_env(unevaluated.def), span);
+            if valtree.is_err() {
+                unsupported_err!(span.expect("span"), format!("error evaluating const"));
+            }
+            ConstKind::Value(valtree.unwrap())
+        }
+        kind => kind,
     };
-    match cnst.kind() {
+    match cnst_kind {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
         ConstKind::Value(ValTree::Leaf(i)) => {
             let c = num_bigint::BigInt::from(i.assert_bits(i.size()));
@@ -1224,28 +1230,58 @@ where
             }
             ClauseKind::Projection(pred) => {
                 let item_def_id = pred.projection_ty.def_id;
-                // The trait bound `F: Fn(A) -> B`
-                // is really more like a trait bound `F: Fn<A, Output=B>`
-                // The trait bounds that use = are called projections.
-                // When Rust sees a trait bound like this, it actually creates *two*
-                // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
-                //
-                // We don't handle projections in general right now, but we skip
-                // over them to support Fns
-                // (What Verus actually cares about is the builtin 'FnWithSpecification'
-                // trait which Fn/FnMut/FnOnce all get automatically.)
 
                 if Some(item_def_id) == tcx.lang_items().fn_once_output() {
+                    // The trait bound `F: Fn(A) -> B`
+                    // is really more like a trait bound `F: Fn<A, Output=B>`
+                    // The trait bounds that use = are called projections.
+                    // When Rust sees a trait bound like this, it actually creates *two*
+                    // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
+                    //
                     // Do nothing
+                    // (What Verus actually cares about is the builtin 'FnWithSpecification'
+                    // trait which Fn/FnMut/FnOnce all get automatically.)
+                    continue;
+                }
+                let typ = if let Some(ty) = pred.term.ty() {
+                    mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?
                 } else {
-                    return err_span(*span, "Verus does yet not support this type of bound");
+                    return err_span(*span, "Verus does not yet support this type of bound");
+                };
+                let substs = pred.projection_ty.args;
+                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
+                let trait_def_id = pred.projection_ty.trait_def_id(tcx);
+                let assoc_item = tcx.associated_item(item_def_id);
+                let name = Arc::new(assoc_item.name.to_string());
+                let generic_bound = check_generic_bound(
+                    tcx,
+                    verus_items,
+                    param_env_src,
+                    *span,
+                    trait_def_id,
+                    &trait_params,
+                )?;
+                if let Some(generic_bound) = generic_bound {
+                    if let GenericBoundX::Trait(path, typs) = &*generic_bound {
+                        let bound = GenericBoundX::TypEquality(
+                            path.clone(),
+                            typs.clone(),
+                            name.clone(),
+                            typ.clone(),
+                        );
+                        bounds.push(Arc::new(bound));
+                    } else {
+                        return err_span(*span, "Verus does not yet support this type of bound");
+                    }
+                } else {
+                    panic!("internal error: generic_bound should return GenericBoundX::Trait")
                 }
             }
             ClauseKind::ConstArgHasType(..) => {
                 // Do nothing
             }
             _ => {
-                return err_span(*span, "Verus does yet not support this type of bound");
+                return err_span(*span, "Verus does not yet support this type of bound");
             }
         }
     }
@@ -1326,9 +1362,11 @@ fn check_generics_bounds_main<'tcx>(
     for param in generics.params.iter() {
         match &param.kind {
             GenericParamDefKind::Lifetime { .. } => {} // ignore
-            GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {
+            GenericParamDefKind::Type { .. }
+            | GenericParamDefKind::Const { has_default: _, is_host_effect: false } => {
                 mid_params.push(param);
             }
+            GenericParamDefKind::Const { is_host_effect: true, .. } => {}
         }
     }
 
@@ -1357,7 +1395,8 @@ fn check_generics_bounds_main<'tcx>(
         unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "may_dangle attribute");
 
         match mid_param.kind {
-            GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {}
+            GenericParamDefKind::Type { .. }
+            | GenericParamDefKind::Const { is_host_effect: false, .. } => {}
             _ => {
                 continue;
             }
@@ -1482,5 +1521,32 @@ pub(crate) fn auto_deref_supported_for_ty<'tcx>(
             return matches!(rust_item, Some(RustItem::Box | RustItem::Rc | RustItem::Arc));
         }
         _ => false,
+    }
+}
+
+pub(crate) fn remove_host_arg<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    f_id: DefId,
+    substs: GenericArgsRef<'tcx>,
+    span: Span,
+) -> Result<GenericArgsRef<'tcx>, VirErr> {
+    let generics = tcx.generics_of(f_id);
+
+    if generics.count() != substs.len() {
+        return err_span(
+            span,
+            format!("Verus Internal Error: incorrect application of remove_host_arg"),
+        );
+    }
+
+    if let Some(index) = generics.host_effect_index {
+        let mut s: Vec<_> = substs.iter().collect();
+        if !matches!(s[index].unpack(), GenericArgKind::Const(_)) {
+            return err_span(span, format!("Verus Internal Error: remove_host_arg expected Const"));
+        }
+        s.remove(index);
+        Ok(tcx.mk_args(&s))
+    } else {
+        Ok(substs)
     }
 }

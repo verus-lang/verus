@@ -649,7 +649,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
 
     for datatype in datatypes.iter() {
         let dpath = &datatype.x.path;
-        let is_transparent = is_datatype_transparent(source_module, datatype);
+        let is_transparent = is_datatype_transparent(&source_module.x.path, datatype);
 
         if is_transparent {
             // Encode transparent types as AIR datatypes

@@ -363,6 +363,17 @@ impl Debug for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for BroadcastUse {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("BroadcastUse");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("broadcast_use_tokens", &self.broadcast_use_tokens);
+        formatter.field("paths", &self.paths);
+        formatter.field("semi", &self.semi);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for Closed {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Closed");
@@ -1741,6 +1752,11 @@ impl Debug for ImplItem {
                 formatter.field(v0);
                 formatter.finish()
             }
+            ImplItem::BroadcastGroup(v0) => {
+                let mut formatter = formatter.debug_tuple("BroadcastGroup");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1987,9 +2003,32 @@ impl Debug for Item {
                 formatter.field(v0);
                 formatter.finish()
             }
+            Item::BroadcastUse(v0) => {
+                let mut formatter = formatter.debug_tuple("BroadcastUse");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Item::BroadcastGroup(v0) => {
+                let mut formatter = formatter.debug_tuple("BroadcastGroup");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ItemBroadcastGroup {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ItemBroadcastGroup");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("vis", &self.vis);
+        formatter.field("broadcast_group_tokens", &self.broadcast_group_tokens);
+        formatter.field("ident", &self.ident);
+        formatter.field("brace_token", &self.brace_token);
+        formatter.field("paths", &self.paths);
+        formatter.finish()
     }
 }
 #[cfg(feature = "full")]
@@ -3050,6 +3089,7 @@ impl Debug for Signature {
         formatter.field("asyncness", &self.asyncness);
         formatter.field("unsafety", &self.unsafety);
         formatter.field("abi", &self.abi);
+        formatter.field("broadcast", &self.broadcast);
         formatter.field("mode", &self.mode);
         formatter.field("fn_token", &self.fn_token);
         formatter.field("ident", &self.ident);

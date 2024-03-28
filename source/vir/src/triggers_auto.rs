@@ -429,6 +429,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
+        ExpX::FuelConst(_) => {
+            panic!("Found a FuelConst expression in trigger selection")
+        }
     };
     if let TermX::Var(..) = *term {
         return (is_pure, term);
@@ -704,7 +707,7 @@ pub(crate) fn build_triggers(
     });
     let module = match &ctx.fun {
         Some(FunctionCtx { module_for_chosen_triggers: Some(m), .. }) => m.clone(),
-        _ => ctx.module.clone(),
+        _ => ctx.module.x.path.clone(),
     };
     let chosen_triggers = ChosenTriggers {
         module,

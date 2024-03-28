@@ -9,13 +9,15 @@ use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
-    FieldOpr, Fun, Function, FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp,
-    Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr,
-    Variant, VariantCheck, VirErr, Visibility,
+    FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate, KrateX,
+    Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX,
+    UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
-use crate::ast_util::{conjoin, disjoin, if_then_else, typ_args_for_datatype_typ, wrap_in_trigger};
+use crate::ast_util::{
+    conjoin, disjoin, if_then_else, mk_eq, mk_ineq, typ_args_for_datatype_typ, wrap_in_trigger,
+};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
@@ -239,6 +241,17 @@ fn pattern_to_exprs_rec(
             }
 
             Ok(matches)
+        }
+        PatternX::Expr(e) => Ok(mk_eq(&pattern.span, expr, e)),
+        PatternX::Range(lower, upper) => {
+            let mut v = vec![];
+            if let Some(lower) = lower {
+                v.push(mk_ineq(&pattern.span, lower, expr, InequalityOp::Le));
+            }
+            if let Some((upper, upper_ineq)) = upper {
+                v.push(mk_ineq(&pattern.span, expr, upper, *upper_ineq));
+            }
+            Ok(conjoin(&pattern.span, &v))
         }
     }
 }
@@ -1072,6 +1085,7 @@ fn mk_fun_decl(
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
         functions,
+        reveal_groups,
         datatypes,
         traits,
         trait_impls,
@@ -1201,6 +1215,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let external_types = external_types.clone();
     let krate = Arc::new(KrateX {
         functions,
+        reveal_groups: reveal_groups.clone(),
         datatypes,
         traits,
         trait_impls,
@@ -1213,6 +1228,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
+        ctx.crate_name.clone(),
         ctx.no_span.clone(),
         ctx.rlimit,
         ctx.interpreter_log.clone(),
@@ -1226,17 +1242,31 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
     let mut krates = krates.into_iter();
     let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
     for k in krates {
-        kratex.functions.extend(k.functions.clone());
-        kratex.datatypes.extend(k.datatypes.clone());
-        kratex.traits.extend(k.traits.clone());
-        kratex.trait_impls.extend(k.trait_impls.clone());
-        kratex.assoc_type_impls.extend(k.assoc_type_impls.clone());
-        kratex.modules.extend(k.modules.clone());
-        kratex.external_fns.extend(k.external_fns.clone());
-        kratex.external_types.extend(k.external_types.clone());
-        kratex.path_as_rust_names.extend(k.path_as_rust_names.clone());
+        let KrateX {
+            functions,
+            reveal_groups,
+            datatypes,
+            traits,
+            trait_impls,
+            assoc_type_impls,
+            modules,
+            external_fns,
+            external_types,
+            path_as_rust_names,
+            arch,
+        } = &*k;
+        kratex.functions.extend(functions.clone());
+        kratex.reveal_groups.extend(reveal_groups.clone());
+        kratex.datatypes.extend(datatypes.clone());
+        kratex.traits.extend(traits.clone());
+        kratex.trait_impls.extend(trait_impls.clone());
+        kratex.assoc_type_impls.extend(assoc_type_impls.clone());
+        kratex.modules.extend(modules.clone());
+        kratex.external_fns.extend(external_fns.clone());
+        kratex.external_types.extend(external_types.clone());
+        kratex.path_as_rust_names.extend(path_as_rust_names.clone());
         kratex.arch.word_bits = {
-            let word_bits = match (k.arch.word_bits, kratex.arch.word_bits) {
+            let word_bits = match (arch.word_bits, kratex.arch.word_bits) {
                 (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
                     if l != r {
                         return Err(crate::messages::error_bare(

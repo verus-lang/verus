@@ -189,8 +189,7 @@ impl<K, V> Map<K, V> {
 // Trusted axioms
 /* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
+pub broadcast proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
@@ -200,8 +199,7 @@ pub proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
 */
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
+pub broadcast proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().finite(),
         m.dom().contains(key),
@@ -213,8 +211,7 @@ pub proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
 // REVIEW: this is currently a special case that is hard-wired into the verifier
 // It implements a version of https://github.com/FStarLang/FStar/pull/2954 .
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
+pub broadcast proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
@@ -224,8 +221,7 @@ pub proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
 
 /// The domain of the empty map is the empty set
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_empty<K, V>()
+pub broadcast proof fn axiom_map_empty<K, V>()
     ensures
         #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),
 {
@@ -234,8 +230,7 @@ pub proof fn axiom_map_empty<K, V>()
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
 /// the original map's domain set.
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
+pub broadcast proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
@@ -243,8 +238,7 @@ pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
+pub broadcast proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value)[key] == value,
 {
@@ -252,8 +246,7 @@ pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
 
 /// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
+pub broadcast proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
         m.dom().contains(key1),
         key1 != key2,
@@ -265,8 +258,7 @@ pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, va
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
+pub broadcast proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
@@ -275,8 +267,7 @@ pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 /// Removing a key-value pair from a map does not change the value mapped to by
 /// any other keys in the map.
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
+pub broadcast proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
         m.dom().contains(key1),
         key1 != key2,
@@ -287,8 +278,7 @@ pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+pub broadcast proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] (m1 =~= m2) <==> {
             &&& m1.dom() =~= m2.dom()
@@ -298,8 +288,7 @@ pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] (m1 =~~= m2) <==> {
             &&& m1.dom() =~~= m2.dom()

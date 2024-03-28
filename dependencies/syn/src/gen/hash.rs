@@ -290,6 +290,16 @@ impl Hash for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for BroadcastUse {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.paths.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for Closed {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -1622,6 +1632,10 @@ impl Hash for ImplItem {
                 state.write_u8(4u8);
                 TokenStreamHelper(v0).hash(state);
             }
+            ImplItem::BroadcastGroup(v0) => {
+                state.write_u8(5u8);
+                v0.hash(state);
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1838,9 +1852,29 @@ impl Hash for Item {
                 state.write_u8(17u8);
                 v0.hash(state);
             }
+            Item::BroadcastUse(v0) => {
+                state.write_u8(18u8);
+                v0.hash(state);
+            }
+            Item::BroadcastGroup(v0) => {
+                state.write_u8(19u8);
+                v0.hash(state);
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ItemBroadcastGroup {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.vis.hash(state);
+        self.ident.hash(state);
+        self.paths.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -2864,6 +2898,7 @@ impl Hash for Signature {
         self.asyncness.hash(state);
         self.unsafety.hash(state);
         self.abi.hash(state);
+        self.broadcast.hash(state);
         self.mode.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);

@@ -33,6 +33,7 @@ pub fn check_krate_simplified(krate: &Krate) {
 
     let KrateX {
         functions,
+        reveal_groups: _,
         datatypes,
         traits: _,
         trait_impls: _,
@@ -70,6 +71,14 @@ pub fn check_krate_simplified(krate: &Krate) {
             match &**bound {
                 GenericBoundX::Trait(_, ts) => {
                     for t in ts.iter() {
+                        typ_visitor_check(t, &mut |t| {
+                            check_typ_simplified(t, &function.x.typ_params)
+                        })
+                        .expect("function param bound uses node that should have been simplified");
+                    }
+                }
+                GenericBoundX::TypEquality(_, ts, _, t) => {
+                    for t in ts.iter().chain(vec![t].into_iter()) {
                         typ_visitor_check(t, &mut |t| {
                             check_typ_simplified(t, &function.x.typ_params)
                         })
@@ -135,6 +144,7 @@ fn expr_no_loc_in_spec(
 pub fn check_krate(krate: &Krate) {
     let KrateX {
         functions,
+        reveal_groups: _,
         datatypes: _,
         traits: _,
         trait_impls: _,

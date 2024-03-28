@@ -6,6 +6,7 @@ use crate::spans::{from_raw_span, SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
+use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
@@ -13,6 +14,7 @@ use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+use rustc_session::config::ErrorOutputType;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -32,6 +34,7 @@ use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
+use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
@@ -52,7 +55,7 @@ trait Diagnostics: air::messages::Diagnostics {
 
 pub(crate) struct Reporter<'tcx> {
     spans: SpanContext,
-    compiler_diagnostics: &'tcx rustc_errors::Handler,
+    compiler_diagnostics: &'tcx rustc_errors::DiagCtxt,
     source_map: &'tcx rustc_span::source_map::SourceMap,
 }
 
@@ -60,8 +63,8 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: compiler.session().diagnostic(),
-            source_map: compiler.session().source_map(),
+            compiler_diagnostics: compiler.sess.dcx(),
+            source_map: compiler.sess.source_map(),
         }
     }
 }
@@ -109,7 +112,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note_without_error(msg.note.clone()),
+                self.compiler_diagnostics.struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
@@ -271,14 +274,17 @@ pub struct Verifier {
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
+    crate_name: Option<String>,
     crate_names: Option<Vec<String>>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
+    item_to_module_map: Option<Arc<crate::rust_to_vir::ItemToModuleMap>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
     expand_flag: bool,
-    pub expand_targets: Vec<Message>,
+
+    error_format: Option<ErrorOutputType>,
 }
 
 fn report_chosen_triggers(
@@ -376,13 +382,15 @@ impl Verifier {
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
+            crate_name: None,
             crate_names: None,
             air_no_span: None,
             current_crate_modules: None,
+            item_to_module_map: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
-            expand_targets: vec![],
+            error_format: None,
         }
     }
 
@@ -406,12 +414,14 @@ impl Verifier {
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
+            crate_name: self.crate_name.clone(),
             crate_names: self.crate_names.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
+            item_to_module_map: self.item_to_module_map.clone(),
             buckets: self.buckets.clone(),
             expand_flag: self.expand_flag,
-            expand_targets: self.expand_targets.clone(),
+            error_format: self.error_format,
         }
     }
 
@@ -611,6 +621,7 @@ impl Verifier {
         context: &CommandContext,
         hint_upon_failure: &std::cell::RefCell<Option<Message>>,
         is_singular: bool,
+        failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -717,6 +728,9 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
+                    if self.expand_flag {
+                        invalidity = true;
+                    }
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.desc);
                     if !self.args.profile && !self.args.profile_all && !self.args.capture_profiles {
                         msg.push_str("; consider rerunning with --profile for more details");
@@ -729,7 +743,10 @@ impl Verifier {
                     timed_out = true;
                     break;
                 }
-                ValidityResult::Invalid(air_model, error) => {
+                ValidityResult::Invalid(air_model, error, assert_id_opt) => {
+                    if let Some(assert_id) = assert_id_opt {
+                        failed_assert_ids.push(assert_id.clone());
+                    }
                     if let Some(level) = level {
                         if air_model.is_none() {
                             // singular_invalid case
@@ -747,9 +764,12 @@ impl Verifier {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
                         }
                     }
+                    if self.expand_flag {
+                        invalidity = true;
+                    }
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
-                        if !self.expand_flag || vir::split_expression::is_split_error(&error) {
+                        if !self.expand_flag {
                             if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
                                 collected.as_mut().push((error.clone(), level));
                             } else {
@@ -761,7 +781,6 @@ impl Verifier {
                     if level == Some(MessageLevel::Error) {
                         if self.args.expand_errors {
                             assert!(!self.expand_flag);
-                            self.expand_targets.push(error.clone());
                         }
 
                         if self.args.debugger {
@@ -872,6 +891,7 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
+        failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
@@ -913,6 +933,7 @@ impl Verifier {
                     &context,
                     hint_upon_failure,
                     *prover_choice == vir::def::ProverChoice::Singular,
+                    failed_assert_ids,
                 );
         }
 
@@ -1163,7 +1184,7 @@ impl Verifier {
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
 
-        let module = &ctx.module();
+        let module = &ctx.module_path();
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -1248,7 +1269,24 @@ impl Verifier {
             > = std::cell::RefCell::new(Some(PanicOnDropVec::new(Vec::new())));
             let mut flush_diagnostics_to_report = false;
             loop {
-                let next_op = function_opgen.next();
+                let mut next_op = None;
+                let mut expand_errors_diagnostic = None;
+                if let Some(r) = function_opgen.expand_errors_next(self.error_format) {
+                    match r {
+                        Ok(op) => {
+                            next_op = Some(op);
+                        }
+                        Err(diagnostic) => {
+                            expand_errors_diagnostic = Some(diagnostic);
+                            flush_diagnostics_to_report = true;
+                        }
+                    }
+                }
+
+                if next_op.is_none() {
+                    next_op = function_opgen.next();
+                }
+
                 if next_op.is_none() {
                     flush_diagnostics_to_report = true;
                 }
@@ -1261,6 +1299,9 @@ impl Verifier {
                         for (message, level) in in_line_order {
                             reporter.report_as(&message.clone().to_any(), level);
                         }
+                    }
+                    if let Some(diag) = expand_errors_diagnostic {
+                        reporter.report(&diag);
                     }
                 }
                 let Some(op) = next_op else {
@@ -1282,6 +1323,7 @@ impl Verifier {
                         commands_with_context_list,
                         snap_map,
                         profile_rerun,
+                        function_sst,
                     } => {
                         let level = match query_op {
                             QueryOp::SpecTermination => MessageLevel::Error,
@@ -1297,7 +1339,8 @@ impl Verifier {
                         let mut spinoff_context_counter = 1;
 
                         let mut any_invalid = false;
-                        self.expand_targets = vec![];
+                        let mut any_timed_out = false;
+                        let mut failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
@@ -1386,6 +1429,7 @@ impl Verifier {
                                 &function.x.name,
                                 &op.to_air_comment(),
                                 None,
+                                &mut failed_assert_ids,
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
@@ -1399,6 +1443,7 @@ impl Verifier {
                             }
 
                             any_invalid |= command_invalidity;
+                            any_timed_out |= command_timed_out;
 
                             if let Some(profile_file_name) = profile_file_name {
                                 if command_not_skipped && query_air_context.check_valid_used() {
@@ -1488,6 +1533,7 @@ impl Verifier {
                                         commands_with_context_list.clone(),
                                         snap_map.clone(),
                                         function,
+                                        function_sst.clone(),
                                     );
                                     flush_diagnostics_to_report = true;
                                 }
@@ -1509,11 +1555,25 @@ impl Verifier {
                                 function_opgen.retry_with_recommends(&op, any_invalid)?;
                             }
 
-                            if any_invalid && self.args.expand_errors {
-                                let expand_targets = self.expand_targets.drain(..).collect();
-                                function_opgen.retry_with_expand_errors(&op, expand_targets)?;
+                            if any_invalid && self.args.expand_errors && failed_assert_ids.len() > 0
+                            {
+                                function_opgen.start_expand_errors_if_possible(
+                                    &op,
+                                    failed_assert_ids[0].clone(),
+                                );
                                 flush_diagnostics_to_report = true;
                             }
+                        }
+
+                        if matches!(query_op, QueryOp::Body(Style::Expanded)) {
+                            let res = if any_timed_out {
+                                ExpandErrorsResult::Timeout
+                            } else if any_invalid {
+                                ExpandErrorsResult::Fail
+                            } else {
+                                ExpandErrorsResult::Pass
+                            };
+                            function_opgen.report_expand_error_result(res);
                         }
 
                         if matches!(query_op, QueryOp::SpecTermination) {
@@ -1635,11 +1695,22 @@ impl Verifier {
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
-            vir::prune::prune_krate_for_module(&krate, bucket_id.module(), bucket_id.function());
+            vir::prune::prune_krate_for_module(
+                &krate,
+                &Arc::new(self.crate_name.clone().expect("crate_name")),
+                bucket_id.module(),
+                bucket_id.function(),
+            );
+        let module = pruned_krate
+            .modules
+            .iter()
+            .find(|m| &m.x.path == bucket_id.module())
+            .expect("module in krate")
+            .clone();
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
-            bucket_id.module().clone(),
+            module,
             mono_abstract_datatypes,
             lambda_types,
             bound_traits,
@@ -1704,6 +1775,7 @@ impl Verifier {
 
         let mut global_ctx = vir::context::GlobalCtx::new(
             &krate,
+            Arc::new(self.crate_name.clone().expect("crate_name")),
             air_no_span.clone(),
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
@@ -1763,7 +1835,7 @@ impl Verifier {
         self.time_verify_crate_sequential =
             time_verify_sequential_end - time_verify_sequential_start;
 
-        let source_map = compiler.session().source_map();
+        let source_map = compiler.sess.source_map();
 
         self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
         if self.args.num_threads != 1 && self.num_threads >= 1 {
@@ -2289,7 +2361,7 @@ impl Verifier {
 
         let time0 = Instant::now();
 
-        let mut crate_names: Vec<String> = vec![crate_name];
+        let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
         let mut vir_crates: Vec<Krate> = other_vir_crates;
         // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
@@ -2316,6 +2388,7 @@ impl Verifier {
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
             no_vstd: self.args.no_vstd,
             arch_word_bits: None,
+            crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
             no_span: self.air_no_span.clone().unwrap(),
         });
@@ -2329,11 +2402,13 @@ impl Verifier {
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
+        let (vir_crate, item_to_module_map) =
+            crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
+        self.item_to_module_map = Some(Arc::new(item_to_module_map));
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
@@ -2358,7 +2433,7 @@ impl Verifier {
 
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
-        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate)
+        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate.clone())
             .map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_args.log_vir {
@@ -2373,6 +2448,7 @@ impl Verifier {
             .map_err(map_err_diagnostics)?;
         let vir_crate = vir::traits::inherit_default_bodies(&vir_crate);
 
+        let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
             &mut ctxt.diagnostics.borrow_mut(),
@@ -2388,12 +2464,14 @@ impl Verifier {
                 }
             }
         }
+        check_crate_result1.map_err(|e| (e, Vec::new()))?;
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
         let (vir_crate, erasure_modes) =
             vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
+        self.crate_name = Some(crate_name);
         self.crate_names = Some(crate_names);
 
         let erasure_info = ctxt.erasure_info.borrow();
@@ -2482,7 +2560,7 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        config.override_queries = Some(|_session, providers, _extern_providers| {
+        config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
         });
     }
@@ -2494,9 +2572,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
-        if !compiler.session().compile_status().is_ok() {
+        if !compiler.sess.compile_status().is_ok() {
             return rustc_driver::Compilation::Stop;
         }
+
+        self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
@@ -2506,7 +2586,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 Err(err) => {
                     assert!(err.spans.len() == 0);
                     assert!(err.level == MessageLevel::Error);
-                    compiler.session().diagnostic().err(err.note.clone());
+                    compiler.sess.dcx().err(err.note.clone());
                     self.verifier.encountered_vir_error = true;
                     return;
                 }
@@ -2516,7 +2596,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             let spans = SpanContextX::new(
                 tcx,
                 tcx.stable_crate_id(LOCAL_CRATE),
-                compiler.session().source_map(),
+                compiler.sess.source_map(),
                 imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             );
             {
@@ -2548,7 +2628,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     }
                     return;
                 }
-                if !compiler.session().compile_status().is_ok() {
+                if !compiler.sess.compile_status().is_ok() {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -2578,6 +2658,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         verus_items,
                         &spans,
                         self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
+                        self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
                         lifetime_log_file,
                     )
                 };
@@ -2615,7 +2696,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
 
-            if !compiler.session().compile_status().is_ok() {
+            if !compiler.sess.compile_status().is_ok() {
                 return;
             }
 

@@ -448,9 +448,6 @@ fn write_css(dir_path: &Path) {
     let css_dir = dir_path.join("static.files");
 
     let mut rustdoc_css_path = None;
-    let mut light_css_path = None;
-    let mut dark_css_path = None;
-    let mut ayu_css_path = None;
 
     for dir_entry in std::fs::read_dir(css_dir).unwrap() {
         let path = dir_entry.unwrap().path();
@@ -458,21 +455,12 @@ fn write_css(dir_path: &Path) {
             if let Some(filename) = filename_os.to_str() {
                 if filename.starts_with("rustdoc-") {
                     rustdoc_css_path = Some(path);
-                } else if filename.starts_with("light-") {
-                    light_css_path = Some(path);
-                } else if filename.starts_with("dark-") {
-                    dark_css_path = Some(path);
-                } else if filename.starts_with("ayu-") {
-                    ayu_css_path = Some(path);
                 }
             }
         }
     }
 
     let rustdoc_css_path = rustdoc_css_path.unwrap();
-    let light_css_path = light_css_path.unwrap();
-    let dark_css_path = dark_css_path.unwrap();
-    let ayu_css_path = ayu_css_path.unwrap();
 
     let mut rustdoc_css =
         std::fs::OpenOptions::new().write(true).append(true).open(rustdoc_css_path).unwrap();
@@ -515,24 +503,23 @@ pre.verus-body-code {
     padding-bottom: 18px;
     margin-left: 16px;
 }
+
+:root[data-theme="dark"] .verus-body-code { background-color: #353535 !important; }
+:root[data-theme="dark"] .verus-spec-code { background-color: #353535 !important; }
+:root[data-theme="dark"] .verus-body-code code { background-color: #353535 !important; }
+:root[data-theme="dark"] .verus-spec-code code { background-color: #353535 !important; }
+
+:root[data-theme="ayu"] .verus-body-code { background-color: #0f1419 !important; }
+:root[data-theme="ayu"] .verus-spec-code { background-color: #0f1419 !important; }
+:root[data-theme="ayu"] .verus-body-code code { background-color: #0f1419 !important; }
+:root[data-theme="ayu"] .verus-spec-code code { background-color: #0f1419 !important; }
+
+:root[data-theme="light"] .verus-body-code { background-color: #ffffff !important; }
+:root[data-theme="light"] .verus-spec-code { background-color: #ffffff !important; }
+:root[data-theme="light"] .verus-body-code code { background-color: #ffffff !important; }
+:root[data-theme="light"] .verus-spec-code code { background-color: #ffffff !important; }
 "#
             .as_bytes(),
         )
         .expect("write css file");
-
-    let bg_colors =
-        [(light_css_path, "ffffff"), (dark_css_path, "353535"), (ayu_css_path, "0f1419")];
-
-    for (theme_css, bg_color) in &bg_colors {
-        let mut css = std::fs::OpenOptions::new().write(true).append(true).open(theme_css).unwrap();
-        writeln!(css).unwrap();
-        for selector in [
-            ".verus-body-code",
-            ".verus-spec-code",
-            ".verus-spec-code code",
-            ".verus-body-code code",
-        ] {
-            writeln!(css, "{selector} {{ background-color: #{bg_color} !important; }}").unwrap();
-        }
-    }
 }

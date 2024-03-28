@@ -146,7 +146,30 @@ test_verify_one_file! {
             let r = X::stuff(15);
             assert(r == 15);
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: trait generics")
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_basic_generic2 verus_code! {
+        trait Tr<Y, Z> {
+            fn stuff<T>(x: T, y: &Y, z: &Z) -> T;
+        }
+
+        struct X<A, B, C, D, E, F>(A, B, C, D, E, F);
+
+        impl<A, B, C, D, E, F> Tr<A, bool> for X<A, B, C, D, E, F> {
+            fn stuff<Q>(x: Q, y: &A, z: &bool) -> (res: Q)
+                ensures res == x
+            {
+                return x;
+            }
+        }
+
+        fn test() {
+            let r = <X::<u8, u16, u32, u64, u128, int> as Tr<u8, bool>>::stuff(15, &12, &true);
+            assert(r == 15);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

@@ -847,8 +847,7 @@ pub proof fn lemma_set_properties<A>()
 }
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_is_empty<A>(s: Set<A>)
+pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
     requires
         s.finite(),
         !(#[trigger] s.is_empty()),

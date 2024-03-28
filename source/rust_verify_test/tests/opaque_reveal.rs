@@ -389,3 +389,34 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] no_broadcast_use_as_reveal_1 verus_code! {
+        #[verifier::opaque]
+        spec fn f() -> bool { true }
+
+        proof fn foo() {
+            broadcast use f;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`broadcast use` statements require a broadcast proof fn")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] no_broadcast_use_as_reveal_2 verus_code! {
+        mod m1 {
+            #[verifier::opaque]
+            pub open spec fn f() -> bool { true }
+        }
+
+        mod m2 {
+            use vstd::prelude::*;
+            use crate::m1::*;
+
+            broadcast use f;
+
+            proof fn foo() {
+                assert(f());
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "test_crate::m1::f is not a broadcast proof fn")
+}

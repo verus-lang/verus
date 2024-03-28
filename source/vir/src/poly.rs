@@ -187,7 +187,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     }
 }
 
-fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
+pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool
         | TypX::Int(_)
@@ -273,6 +273,39 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
             }
         }
         TypX::TypParam(_) | TypX::Projection { .. } => expr.clone(),
+        TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::Air(_) => panic!("internal error: Air type created too soon"),
+    }
+}
+
+pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &crate::sst::Exp) -> crate::sst::Exp {
+    match &*crate::ast_util::undecorate_typ(&exp.typ) {
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::Lambda(..)
+        | TypX::Datatype(..)
+        | TypX::Primitive(_, _)
+        | TypX::StrSlice
+        | TypX::Char
+        | TypX::FnDef(..) => exp.clone(),
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
+        }
+        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
+        TypX::Decorate(..) => {
+            panic!("internal error: Decorate should be removed by undecorate_typ")
+        }
+        TypX::Boxed(typ) => {
+            if typ_is_poly(ctx, typ) {
+                exp.clone()
+            } else {
+                let op = UnaryOpr::Unbox(typ.clone());
+                let expx = crate::sst::ExpX::UnaryOpr(op, exp.clone());
+                SpannedTyped::new(&exp.span, typ, expx)
+            }
+        }
+        TypX::TypParam(_) | TypX::Projection { .. } => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
@@ -400,6 +433,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => expr.clone(),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => expr.clone(),
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
@@ -1001,6 +1035,7 @@ fn poly_assoc_type_impl(ctx: &Ctx, assoc: &AssocTypeImpl) -> AssocTypeImpl {
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
     let KrateX {
         functions,
+        reveal_groups,
         datatypes,
         traits,
         trait_impls,
@@ -1013,6 +1048,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
     } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
+        reveal_groups: reveal_groups.clone(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
         traits: traits.clone(),
         trait_impls: trait_impls.clone(),

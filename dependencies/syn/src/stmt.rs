@@ -196,6 +196,7 @@ pub mod parsing {
                 && (input.peek2(Token![unsafe]) || input.peek2(Token![impl]))
             || input.peek(Token![impl])
             || input.peek(Token![macro])
+            || input.peek(Token![broadcast]) && input.peek2(Token![use])
         {
             let mut item: Item = input.parse()?;
             attrs.extend(item.replace_attrs(Vec::new()));

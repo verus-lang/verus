@@ -22,7 +22,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                 let mut bodies = inner_owner.nodes.bodies.clone();
                                 let old_body = bodies[&body_id.hir_id.local_id];
                                 let emit_invalid_error = || {
-                                    tcx.sess.diagnostic()
+                                    tcx.sess.dcx()
                                         .struct_span_err(item.span, "invalid reveal/hide: this is likely a bug, please report it")
                                         .emit()
                                 };
@@ -116,7 +116,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                                     })
                                                 })
                                             {
-                                                tcx.sess.diagnostic()
+                                                tcx.sess.dcx()
                                                     .struct_span_warn(invalid_ty_arg_span, "in hide/reveal, type arguments are ignored, replace them with `_`")
                                                     .emit();
                                             }
@@ -156,7 +156,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                 let body = tcx.hir_arena.alloc(rustc_hir::Body {
                                     params: old_body.params,
                                     value: expr,
-                                    generator_kind: old_body.generator_kind,
+                                    coroutine_kind: old_body.coroutine_kind,
                                 });
                                 bodies[&body_id.hir_id.local_id] = body;
 
@@ -178,7 +178,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                     attrs,
                                     trait_map: inner_owner
                                         .trait_map
-                                        .iter()
+                                        .items()
                                         .map(|(&id, traits)| {
                                             (
                                                 id,

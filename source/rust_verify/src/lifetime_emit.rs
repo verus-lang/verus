@@ -551,7 +551,7 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             if let Some(rustc_ast::Movability::Static) = movability {
                 state.write("static ");
             }
-            if let rustc_ast::CaptureBy::Value = capture_by {
+            if let rustc_ast::CaptureBy::Value { move_kw: _ } = capture_by {
                 state.write("move ");
             }
             state.write("|");

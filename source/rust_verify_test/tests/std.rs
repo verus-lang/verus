@@ -320,5 +320,22 @@ test_verify_one_file! {
             let w = v.clone();
             assert(v[0] == w[0]); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+
+        fn test_vec_deep_view() {
+            let mut v1: Vec<u8> = Vec::new();
+            v1.push(3);
+            v1.push(4);
+            let c1 = v1.clone();
+            let ghost g1 = c1@ == v1@;
+            assert(g1);
+            let mut v2: Vec<Vec<u8>> = Vec::new();
+            v2.push(v1.clone());
+            v2.push(v1.clone());
+            let c2 = v2.clone();
+            let ghost g2 = c2.deep_view() == v2.deep_view();
+            assert(c2.deep_view() =~= v2.deep_view()); // TODO: get rid of this
+            assert(g2);
+            assert(c2@ == v2@); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

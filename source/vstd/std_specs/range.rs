@@ -149,8 +149,7 @@ macro_rules! step_specs {
         // TODO: we might be able to make this generic over A: StepSpec
         // once we settle on a way to connect std traits like Step with spec traits like StepSpec.
         #[verifier::external_body]
-        #[verifier::broadcast_forall]
-        pub proof fn $axiom(range: Range<$t>)
+        pub broadcast proof fn $axiom(range: Range<$t>)
             ensures
                 range.start.spec_is_lt(range.end) ==>
                     // TODO (not important): use new "matches ==>" syntax here
