@@ -68,13 +68,58 @@ impl Ghost {
     }
 }
 
+struct SpecialPaths {
+    pub(crate) create_open_invariant_credit_name: String,
+    pub(crate) spend_open_invariant_credit_name: String,
+    pub(crate) exec_nonstatic_call_name: String,
+}
+
+impl SpecialPaths {
+    pub fn new(vstd_crate_name: Arc<String>) -> Self {
+        let create_open_invariant_credit_name = path_as_vstd_name(
+            &crate::def::create_open_invariant_credit_path(&Some(vstd_crate_name.clone())),
+        )
+        .expect("could not find path to create_open_invariant_credit");
+        let spend_open_invariant_credit_name = path_as_vstd_name(
+            &crate::def::spend_open_invariant_credit_path(&Some(vstd_crate_name.clone())),
+        )
+        .expect("could not find path to spend_open_invariant_credit");
+        let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::exec_nonstatic_call_path(
+            &Some(vstd_crate_name.clone()),
+        ))
+        .expect("could not find path to exec_nonstatic_call");
+        Self {
+            create_open_invariant_credit_name,
+            spend_open_invariant_credit_name,
+            exec_nonstatic_call_name,
+        }
+    }
+
+    pub fn is_create_or_spend_open_invariant_credit_path(&self, path: &Path) -> bool {
+        match path_as_vstd_name(path) {
+            None => false,
+            Some(s) => {
+                s == *self.create_open_invariant_credit_name
+                    || s == *self.spend_open_invariant_credit_name
+            }
+        }
+    }
+
+    pub fn is_exec_nonstatic_call_path(&self, path: &Path) -> bool {
+        match path_as_vstd_name(path) {
+            None => false,
+            Some(s) => s == *self.exec_nonstatic_call_name,
+        }
+    }
+}
+
 struct Ctxt {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) datatypes: HashMap<Path, Datatype>,
     pub(crate) traits: HashSet<Path>,
     pub(crate) check_ghost_blocks: bool,
     pub(crate) fun_mode: Mode,
-    pub(crate) vstd_crate_name: crate::ast::Ident,
+    pub(crate) special_paths: SpecialPaths,
 }
 
 // Accumulated data recorded during mode checking
@@ -705,18 +750,9 @@ fn check_expr_handle_mut_arg(
                             // to be able to do so, so that we can nest an opening of an invariant
                             // inside an opening of another invariant. So we special-case these calls
                             // to not treat them as non-atomic.
-                            if path_as_vstd_name(&x.path)
-                                != path_as_vstd_name(
-                                    &crate::def::create_open_invariant_credit_path(&Some(
-                                        ctxt.vstd_crate_name.clone(),
-                                    )),
-                                )
-                                && path_as_vstd_name(&x.path)
-                                    != path_as_vstd_name(
-                                        &crate::def::spend_open_invariant_credit_path(&Some(
-                                            ctxt.vstd_crate_name.clone(),
-                                        )),
-                                    )
+                            if !ctxt
+                                .special_paths
+                                .is_create_or_spend_open_invariant_credit_path(&x.path)
                             {
                                 ai.add_non_atomic(&expr.span);
                             }
@@ -725,9 +761,7 @@ fn check_expr_handle_mut_arg(
                 }
             }
             let mode_error_msg = || {
-                if path_as_vstd_name(&x.path)
-                    == path_as_vstd_name(&crate::def::exec_nonstatic_call_path(&None))
-                {
+                if ctxt.special_paths.is_exec_nonstatic_call_path(&x.path) {
                     format!("to call a non-static function in ghost code, it must be a spec_fn")
                 } else {
                     format!("cannot call function with mode {}", function.x.mode)
@@ -1581,13 +1615,14 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     }
     let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
     let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
+    let special_paths = SpecialPaths::new(vstd_crate_name);
     let mut ctxt = Ctxt {
         funs,
         datatypes,
         traits: krate.traits.iter().map(|t| t.x.name.clone()).collect(),
         check_ghost_blocks: false,
         fun_mode: Mode::Exec,
-        vstd_crate_name,
+        special_paths,
     };
     let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None };
     let mut state = State {
