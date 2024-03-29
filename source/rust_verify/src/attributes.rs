@@ -831,6 +831,9 @@ impl VerifierAttrs {
     }
 }
 
+// Check for the `get_field_many_variants` attribute
+// Skips additional checks that are meant to be applied only during the 'main' processing
+// of an item.
 pub(crate) fn is_get_field_many_variants(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
@@ -846,6 +849,9 @@ pub(crate) fn is_get_field_many_variants(
     Ok(false)
 }
 
+// Check for the `sealed` attribute
+// Skips additional checks that are meant to be applied only during the 'main' processing
+// of an item.
 pub(crate) fn is_sealed(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
