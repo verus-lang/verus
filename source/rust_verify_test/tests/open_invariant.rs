@@ -164,11 +164,11 @@ test_both! {
     open_inv_in_spec open_inv_in_spec_local verus_code! {
         use vstd::invariant::*;
 
-        pub closed spec fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
-          open_atomic_invariant!(&i => inner => {
+        pub closed spec fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(credit: OpenInvariantCredit, i: AtomicInvariant<A, u8, B>) {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot open invariant in Spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode proof")
 }
 
 test_both! {
@@ -186,10 +186,10 @@ test_both! {
     open_inv_in_proof open_inv_in_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>)
+        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
           opens_invariants any
         {
-          open_atomic_invariant!(&i => inner => {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
     } => Ok(())
@@ -221,12 +221,40 @@ test_both! {
     } => Err(err) => assert_vir_error_msg(err, "Invariant must be Proof mode")
 }
 
+test_both! {
+    spend_credit_twice spend_credit_twice_local verus_code! {
+        use vstd::invariant::*;
+
+        pub proof fn spend_credit_twice<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
+            opens_invariants any
+        {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {});
+            open_atomic_invariant_in_proof!(credit => &i => inner => {});
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `credit`")
+}
+
+test_both! {
+    create_credit_in_proof create_credit_in_proof_local verus_code! {
+        use vstd::invariant::*;
+
+        pub proof fn create_credit_in_proof<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
+            opens_invariants any
+        {
+            open_atomic_invariant_in_proof!(vstd::pervasive::proof_from_false() => &i => inner => {}); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 // This test doesn't apply to LocalInvariant
 test_verify_one_file! {
     #[test] exec_code_in_inv_block verus_code! {
         use vstd::invariant::*;
 
-        pub fn exec_fn() { }
+        pub fn exec_fn()
+            opens_invariants none
+        {
+        }
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {
@@ -314,8 +342,8 @@ test_both! {
     return_early_proof return_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
-          open_atomic_invariant!(&i => inner => {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>) {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
             return;
           });
         }
@@ -326,10 +354,10 @@ test_both! {
     break_early_proof break_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
-            open_atomic_invariant!(&i => inner => {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {
               break;
             });
           }
@@ -342,10 +370,10 @@ test_both! {
     continue_early_proof continue_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
-            open_atomic_invariant!(&i => inner => {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {
               break;
             });
           }
@@ -354,7 +382,7 @@ test_both! {
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
-// Check that we can't open a AtomicInvariant with open_local_invariant and vice-versa
+// Check that we can't open an AtomicInvariant with open_local_invariant and vice-versa
 
 test_verify_one_file! {
     #[test] mixup1 verus_code! {

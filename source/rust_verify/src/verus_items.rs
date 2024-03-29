@@ -269,6 +269,9 @@ pub(crate) enum InvariantItem {
     AtomicInvariantInv,
     LocalInvariantNamespace,
     LocalInvariantInv,
+    CreateOpenInvariantCredit,
+    SpendOpenInvariantCredit,
+    SpendOpenInvariantCreditInProof,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -461,10 +464,13 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::seq::Seq::index",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Index   ), Some(Arc::new("seq::Seq::index"      .to_owned())))),
         ("verus::vstd::seq::Seq::ext_equal",   VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
         ("verus::vstd::seq::Seq::last",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
-        ("verus::vstd::invariant::AtomicInvariant::namespace", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace  ), Some(Arc::new("invariant::AtomicInvariant::namespace" .to_owned())))),
-        ("verus::vstd::invariant::AtomicInvariant::inv",       VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv        ), Some(Arc::new("invariant::AtomicInvariant::inv"       .to_owned())))),
-        ("verus::vstd::invariant::LocalInvariant::namespace",  VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantNamespace   ), Some(Arc::new("invariant::LocalInvariant::namespace" .to_owned())))),
-        ("verus::vstd::invariant::LocalInvariant::inv",        VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantInv         ), Some(Arc::new("invariant::LocalInvariant::inv"       .to_owned())))),
+        ("verus::vstd::invariant::AtomicInvariant::namespace",           VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace       ), Some(Arc::new("invariant::AtomicInvariant::namespace"          .to_owned())))),
+        ("verus::vstd::invariant::AtomicInvariant::inv",                 VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv             ), Some(Arc::new("invariant::AtomicInvariant::inv"                .to_owned())))),
+        ("verus::vstd::invariant::LocalInvariant::namespace",            VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantNamespace        ), Some(Arc::new("invariant::LocalInvariant::namespace"           .to_owned())))),
+        ("verus::vstd::invariant::LocalInvariant::inv",                  VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantInv              ), Some(Arc::new("invariant::LocalInvariant::inv"                 .to_owned())))),
+        ("verus::vstd::invariant::create_open_invariant_credit",         VerusItem::Vstd(VstdItem::Invariant(InvariantItem::CreateOpenInvariantCredit      ), Some(Arc::new("invariant::create_open_invariant_credit"        .to_owned())))),
+        ("verus::vstd::invariant::spend_open_invariant_credit",          VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit       ), Some(Arc::new("invariant::spend_open_invariant_credit"         .to_owned())))),
+        ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
