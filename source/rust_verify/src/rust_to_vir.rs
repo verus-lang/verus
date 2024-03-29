@@ -1079,8 +1079,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModu
                     //    }
                     // Then we need to make sure nested_item() gets marked external.
                     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-                    let vattrs =
-                        get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    let vattrs = ctxt.get_verifier_attrs(attrs)?;
                     if vattrs.external || vattrs.external_body {
                         use crate::rustc_hir::intravisit::Visitor;
                         let mut visitor = VisitMod { _tcx: ctxt.tcx, ids: Vec::new() };
