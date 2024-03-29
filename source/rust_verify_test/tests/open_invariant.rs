@@ -602,12 +602,12 @@ test_verify_one_file! {
         }
 
         trait Tr {
-            proof fn stuff(tracked i: LocalInvariant<(), u8, B>);
+            proof fn stuff(tracked credit: OpenInvariantCredit, tracked i: LocalInvariant<(), u8, B>);
         }
         struct X {}
         impl Tr for X {
-            proof fn stuff(tracked i: LocalInvariant<(), u8, B>) {
-                open_local_invariant!(&i => inner => {
+            proof fn stuff(tracked credit: OpenInvariantCredit, tracked i: LocalInvariant<(), u8, B>) {
+                open_local_invariant_in_proof!(credit => &i => inner => {
                 });
             }
         }
