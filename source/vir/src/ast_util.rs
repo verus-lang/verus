@@ -1,9 +1,9 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
-    FunX, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange, ItemKind,
-    MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
-    Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
-    Variants, Visibility,
+    FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange,
+    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
+    TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders,
+    VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -521,6 +521,26 @@ impl FunctionX {
     pub fn is_main(&self) -> bool {
         **self.name.path.segments.last().expect("last segment") == "main"
     }
+
+    pub fn mask_spec_or_default(&self) -> MaskSpec {
+        if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
+            // Always get the mask spec from the trait method decl
+            panic!("mask_spec_or_default should not be called for TraitMethodImpl");
+        }
+
+        match &self.mask_spec {
+            None => {
+                if self.mode == Mode::Exec {
+                    // default to 'all'
+                    MaskSpec::InvariantOpensExcept(Arc::new(vec![]))
+                } else {
+                    // default to 'none'
+                    MaskSpec::InvariantOpens(Arc::new(vec![]))
+                }
+            }
+            Some(mask_spec) => mask_spec.clone(),
+        }
+    }
 }
 
 pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
@@ -771,7 +791,6 @@ impl MaskSpec {
         match self {
             MaskSpec::InvariantOpens(exprs) => exprs.clone(),
             MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
-            MaskSpec::NoSpec => Arc::new(vec![]),
         }
     }
 }

@@ -654,8 +654,8 @@ pub fn func_decl_to_air(
 
     // Inv mask
     match &function.x.mask_spec {
-        MaskSpec::NoSpec => {}
-        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+        None => {}
+        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
             for (i, e) in es.iter().enumerate() {
                 let req_params = params_to_pre_post_pars(&function.x.params, true);
                 let _ = req_ens_to_air(
@@ -1053,8 +1053,8 @@ pub fn func_def_to_sst(
         }
     }
 
-    let inv_spec_exprs = match &req_ens_function.x.mask_spec {
-        MaskSpec::NoSpec => Arc::new(vec![]),
+    let mask_spec = req_ens_function.x.mask_spec_or_default();
+    let inv_spec_exprs = match &mask_spec {
         MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
     };
     let mut inv_spec_air_exprs = vec![];
@@ -1082,8 +1082,7 @@ pub fn func_def_to_sst(
         inv_spec_air_exprs
             .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
     }
-    let mask_set = match &req_ens_function.x.mask_spec {
-        MaskSpec::NoSpec => crate::sst_to_air::default_mask_set_for_mode(req_ens_function.x.mode),
+    let mask_set = match mask_spec {
         MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(inv_spec_air_exprs),
         MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(inv_spec_air_exprs),
     };

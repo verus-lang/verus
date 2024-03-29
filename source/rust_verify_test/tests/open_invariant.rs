@@ -415,11 +415,11 @@ test_verify_one_file! {
         fn stuff()
           opens_invariants [ 0int ]
         {
-            stuff2();
+            stuff2(); // FAILS
         }
 
         fn stuff2()
-          opens_invariants [ 0int, 1int ] // FAILS
+          opens_invariants [ 0int, 1int ]
         {
         }
 
@@ -446,14 +446,14 @@ test_verify_one_file! {
         }
 
         fn symbolic(x: u8)
-          opens_invariants [ x ] // FAILS
+          opens_invariants [ x ]
         {
         }
 
         fn symbolic_caller(x: u8, y: u8)
           opens_invariants [ y ]
         {
-          symbolic(x);
+          symbolic(x); // FAILS
         }
 
         fn symbolic2(x: u8)
@@ -525,4 +525,169 @@ test_verify_one_file! {
         {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl verus_code! {
+        trait Tr {
+            fn stuff()
+                opens_invariants none;
+        }
+        struct X {}
+        impl Tr for X {
+            fn stuff()
+                opens_invariants any;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an opens_invariants spec")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl2 verus_code! {
+        use vstd::invariant::*;
+
+        struct B { }
+        impl InvariantPredicate<(), u8> for B {
+            open spec fn inv(k: (), v: u8) -> bool { true }
+        }
+
+        trait Tr {
+            fn stuff(Tracked(i): Tracked<LocalInvariant<(), u8, B>>)
+                opens_invariants none;
+        }
+        struct X {}
+        impl Tr for X {
+            fn stuff(Tracked(i): Tracked<LocalInvariant<(), u8, B>>) {
+                open_local_invariant!(&i => inner => {
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl3 verus_code! {
+        use vstd::invariant::*;
+
+        struct B { }
+        impl InvariantPredicate<(), u8> for B {
+            open spec fn inv(k: (), v: u8) -> bool { true }
+        }
+
+        trait Tr {
+            proof fn stuff(tracked i: LocalInvariant<(), u8, B>);
+        }
+        struct X {}
+        impl Tr for X {
+            proof fn stuff(tracked i: LocalInvariant<(), u8, B>) {
+                open_local_invariant!(&i => inner => {
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl4 verus_code! {
+        use vstd::invariant::*;
+
+        struct B { }
+        impl InvariantPredicate<(), u8> for B {
+            open spec fn inv(k: (), v: u8) -> bool { true }
+        }
+
+        trait Tr {
+            fn stuff_open_none()
+                opens_invariants none;
+
+            fn stuff_open_any()
+                opens_invariants any;
+
+            proof fn stuff_open_mid(x: int, y: int)
+                opens_invariants [y];
+        }
+
+        struct X {}
+        impl Tr for X {
+            fn stuff_open_none() { }
+            fn stuff_open_any() { }
+            proof fn stuff_open_mid(j: int, r: int) { }
+        }
+
+        fn test_generic1<T: Tr>()
+            opens_invariants none
+        {
+            T::stuff_open_none(); // ok
+        }
+
+        fn test_generic2<T: Tr>()
+            opens_invariants none
+        {
+            T::stuff_open_any(); // FAILS
+        }
+
+        proof fn test_generic3<T: Tr>(x: int, y: int)
+            opens_invariants [x]
+        {
+            T::stuff_open_mid(x, y); // FAILS
+        }
+
+        fn test_specific1()
+            opens_invariants none
+        {
+            X::stuff_open_none(); // ok
+        }
+
+        fn test_specific2()
+            opens_invariants none
+        {
+            X::stuff_open_any(); // FAILS
+        }
+
+        proof fn test_specific3(x: int, y: int)
+            opens_invariants [x]
+        {
+            X::stuff_open_mid(x, y); // FAILS
+        }
+
+        proof fn test_specific4(x: int, y: int)
+            opens_invariants [x, y]
+        {
+            X::stuff_open_mid(x, y); // ok
+        }
+
+        proof fn test_specific5(x: int, y: int)
+            opens_invariants [y]
+        {
+            X::stuff_open_mid(y, x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl5 verus_code! {
+        proof fn open_me(x: int)
+            opens_invariants [x]
+        { }
+
+        trait Tr {
+            proof fn stuff_open_none(a: int, b: int)
+                opens_invariants [a];
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            proof fn stuff_open_none(b: int, a: int) {
+                open_me(b);
+            }
+        }
+
+        struct Y { }
+
+        impl Tr for Y {
+            proof fn stuff_open_none(b: int, a: int) {
+                open_me(a); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

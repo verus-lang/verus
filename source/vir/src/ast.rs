@@ -927,7 +927,6 @@ pub struct FunctionAttrsX {
 pub enum MaskSpec {
     InvariantOpens(Exprs),
     InvariantOpensExcept(Exprs),
-    NoSpec,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1013,7 +1012,7 @@ pub struct FunctionX {
     /// in during ast_simplify.
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
-    pub mask_spec: MaskSpec,
+    pub mask_spec: Option<MaskSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private
