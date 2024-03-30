@@ -37,6 +37,11 @@ To automatically apply these suggestions to the source code, type:
 vargo fmt
 ```
 
+If you want to edit the source code of Verus in VS Code, copy
+`.vscode/settings.json.template` to `.vscode/settings.json` and then edit that
+file to customize it for your local setup. For instance, delete `[.exe]` if
+you're not using Windows and change it to `.exe` if you are.
+
 ### Running verusfmt manually
 
 Make sure you are in `source` or one of its subdirectories
@@ -119,11 +124,8 @@ You may find that every time you run a test it takes minutes to start because
 all of Verus is getting rebuilt. This shouldn't happen. If it does, it's
 likely because you're running an IDE that uses `rust-analyzer` in the
 background, and it's invalidating the build cache. To prevent this, you need
-to configure your IDE for Verus development. For instance, if your IDE is VS
-Code, you can configure it by copying `.vscode/settings.json.template` to
-`.vscode/settings.json` and then editing that file to customize it for your
-local setup. For instance, delete `[.exe]` if you're not using Windows and
-change it to `.exe` if you are.
+to configure your IDE for Verus development. See above for how to do
+this for VS Code.
 
 ## Contributing to the standard library (`vstd`)
 
