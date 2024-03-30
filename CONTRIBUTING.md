@@ -113,7 +113,18 @@ VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --noc
 ```
 
 This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
-a time when using this flag, so that the logs are not overwritten by other tests.
+a time when using this flag, so that the logs are not overwritten by other
+tests.
+
+You may find that every time you run a test it takes minutes to start because
+all of Verus is getting rebuilt. This shouldn't happen. If it does, it's
+likely because you're running an IDE that uses `rust-analyzer` in the
+background, and it's invalidating the build cache. To prevent this, you need
+to configure your IDE for Verus development. For instance, if your IDE is VS
+Code, you can configure it by copying `.vscode/settings.json.template` to
+`.vscode/settings.json` and then editing that file to customize it for your
+local setup. For instance, delete `[.exe]` if you're not using Windows and
+change it to `.exe` if you are.
 
 ## Contributing to the standard library (`vstd`)
 
