@@ -113,8 +113,7 @@ VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --noc
 ```
 
 This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
-a time when using this flag, so that the logs are not overwritten by other
-tests.
+a time when using this flag, so that the logs are not overwritten by other tests.
 
 You may find that every time you run a test it takes minutes to start because
 all of Verus is getting rebuilt. This shouldn't happen. If it does, it's
