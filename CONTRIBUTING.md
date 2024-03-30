@@ -37,10 +37,11 @@ To automatically apply these suggestions to the source code, type:
 vargo fmt
 ```
 
-If you want to edit the source code of Verus in VS Code, copy
-`.vscode/settings.json.template` to `.vscode/settings.json` and then edit that
-file to customize it for your local setup. For instance, delete `[.exe]` if
-you're not using Windows and change it to `.exe` if you are.
+If you want to use VS Code to edit the source code of Verus, copy
+`.vscode/settings.json.template` to `.vscode/settings.json` and then
+edit that file to customize it for your local setup. For instance,
+delete `[.exe]` if you're not using Windows and change it to `.exe` if
+you are.
 
 ### Running verusfmt manually
 
