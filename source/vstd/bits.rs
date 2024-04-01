@@ -12,7 +12,8 @@ use crate::arithmetic::div_mod::lemma_div_denominator;
 #[cfg(verus_keep_ghost)]
 use crate::calc_macro::*;
 
-/// Proof that shift right by n is equivalent to division by 2^n.
+/// Proof that shifting x right by n is equivalent to division of x by 2^n, for
+/// given x and n.
 proof fn lemma_u64_shr_is_div(x: u64, shift: u64)
     requires 0 <= shift < 64,
     ensures x >> shift == x as nat / pow2(shift as nat),
@@ -44,6 +45,17 @@ proof fn lemma_u64_shr_is_div(x: u64, shift: u64)
                 {}
             x as nat / pow2(shift as nat);
         }
+    }
+}
+
+/// Proof that for all x and n, shifting x right by n is equivalent to division
+/// of x by 2^n.
+proof fn lemma_u64_shr_is_div_auto()
+    ensures
+        forall|x: u64, shift: u64| 0 <= shift < 64 ==> #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
+{
+    assert forall|x: u64, shift: u64| 0 <= shift < 64 implies #[trigger] (x >> shift) == x as nat / pow2(shift as nat) by {
+        lemma_u64_shr_is_div(x, shift);
     }
 }
 
