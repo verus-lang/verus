@@ -18,7 +18,7 @@ use builtin_macros::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto};
+use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto, lemma_pow_adds};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
 #[cfg(verus_keep_ghost)]
@@ -82,6 +82,16 @@ pub proof fn lemma_pow2_auto()
     assert forall|e: nat| #[trigger] pow2(e) == pow(2, e) by {
         lemma_pow2(e);
     }
+}
+
+pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
+    ensures
+        pow2(e1 + e2) == pow2(e1) * pow2(e2),
+{
+    lemma_pow2(e1);
+    lemma_pow2(e2);
+    lemma_pow2(e1+e2);
+    lemma_pow_adds(2, e1, e2);
 }
 
 /// Proof that, for the given positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
