@@ -62,7 +62,7 @@ proof fn ext_equal_nested() {
 // ANCHOR: ext_eq_fnspec
 #[verifier(ext_equal)] // necessary for invoking =~= on the struct
 struct Bar {
-    a: FnSpec(int) -> int,
+    a: spec_fn(int) -> int,
 }
 
 proof fn ext_equal_fnspec(n: int) {
@@ -82,8 +82,8 @@ proof fn ext_equal_fnspec(n: int) {
     let i1 = (|i: int| i + 2);
     let i2 = (|i: int| 2 + i);
 
-    let n1: Seq<FnSpec(int) -> int> = seq![i1];
-    let n2: Seq<FnSpec(int) -> int> = seq![i2];
+    let n1: Seq<spec_fn(int) -> int> = seq![i1];
+    let n2: Seq<spec_fn(int) -> int> = seq![i2];
     // assert(n1 =~= n2); // FAILS
     assert(n1 =~~= n2);   // succeeds
 }

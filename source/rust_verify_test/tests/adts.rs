@@ -298,7 +298,7 @@ test_verify_one_file! {
                 Maybe::None => assert(m.is_None()),
             };
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -368,7 +368,7 @@ test_verify_one_file! {
         pub fn test1(m: Maybe<u64>) {
             requires(m.is_Some() && m.get_Some_0() > 10);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -400,7 +400,7 @@ test_verify_one_file! {
                 vstd::pervasive::unreached::<()>();
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -454,7 +454,7 @@ test_verify_one_file! {
             let r = test2(&Res::Ok { t: false });
             assert(!r);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -488,7 +488,7 @@ test_verify_one_file! {
                 self.is_One() && self.get_One_0() <= v
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -774,7 +774,7 @@ test_verify_one_file! {
                 };
             }
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -809,7 +809,7 @@ test_verify_one_file! {
         {
             assert(h.get_A_Couple_More_0() == 10);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -871,7 +871,7 @@ test_verify_one_file! {
         enum X<T> {
             ZZ(T),
         }
-    } => Ok(())
+    } => Ok(_err) => { /* ignore deprecation warning */ }
 }
 
 test_verify_one_file! {
@@ -1041,7 +1041,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-const IS_SYNTAX_COMMON: &'static str = verus_code_str! {
+const IS_GET_SYNTAX_COMMON: &'static str = verus_code_str! {
     enum ThisOrThat {
         This(nat),
         That { v: int },
@@ -1049,7 +1049,7 @@ const IS_SYNTAX_COMMON: &'static str = verus_code_str! {
 };
 
 test_verify_one_file! {
-    #[test] is_syntax_pass IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_pass IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat) {
             match t {
                 ThisOrThat::This(..) => assert(t is This),
@@ -1060,7 +1060,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_valid_fail IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_valid_fail IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat) {
             match t {
                 ThisOrThat::This(..) => assert(t is That), // FAILS
@@ -1071,7 +1071,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_invalid IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_invalid IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat) {
             assert(t is Unknown);
         }
@@ -1079,7 +1079,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_precedence IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_precedence IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat)
             requires t is This,
         {
@@ -1089,7 +1089,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] is_syntax_implies IS_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[test] is_syntax_implies IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn uses_is(t: ThisOrThat)
             requires t is This,
         {
@@ -1175,4 +1175,490 @@ test_verify_one_file! {
             assert(sfn(Foo::Bar(20, 30)).0 == 30); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_1 IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: ThisOrThat)
+            requires t is That && t->v == 3
+        {
+            match t {
+                ThisOrThat::This(_) => (),
+                ThisOrThat::That { v } => { assert(v == 3); }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_2_pass verus_code! {
+        tracked enum S<T> {
+            This(T),
+            That { v: int },
+            Other { t: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires ({
+                &&& t is That ==> t->v == 3
+                &&& t is This ==> t->0 == 2
+            })
+        {
+            match t {
+                S::This(a) => {
+                    assert(a == 2);
+                }
+                S::That { v } => {
+                    assert(v == 3);
+                }
+                _ => (),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_2_fail verus_code! {
+        tracked enum S<T> {
+            This(T),
+            That { v: int },
+            Other { t: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires ({
+                &&& t is That ==> t->v == 3
+                &&& t is This ==> t->0 == 2
+            })
+        {
+            match t {
+                S::This(a) => {
+                    assert(a == 3); // FAILS
+                }
+                _ => (),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_1 verus_code! {
+        tracked enum S {
+            This { v: int },
+            That { v: int },
+        }
+
+        proof fn test1(t: S)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => assert_vir_error_msg(err, "this field is present in multiple variants")
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_2 verus_code! {
+        tracked enum S {
+            This(int),
+            That(int),
+        }
+
+        proof fn test1(t: S)
+            requires t is That ==> t->0 == 3 { }
+    } => Err(err) => assert_vir_error_msg(err, "this field is present in multiple variants")
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_3 verus_code! {
+        tracked enum S<T> {
+            This { v: T },
+            That { v: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => assert_vir_error_msg(err, "this field is present in multiple variants")
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_4 verus_code! {
+        tracked enum S<T> {
+            This { v: nat },
+            That { v: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "no method named `arrow_v`");
+        assert!(err.warnings.iter().find(|w| w.message.contains("field `v` has inconsistent type or visibility in different variants")).is_some())
+    }
+}
+
+test_verify_one_file! {
+    #[test] get_syntax_3_fail_5 verus_code! {
+        #[allow(inconsistent_fields)]
+        tracked enum S<T> {
+            This { v: nat },
+            That { v: T },
+        }
+
+        proof fn test1(t: S<nat>)
+            requires t is That ==> t->v == 3 { }
+    } => Err(err) => {
+        assert_rust_error_msg(err.clone(), "no method named `arrow_v`");
+        assert_eq!(err.warnings.len(), 0);
+    }
+}
+
+const MATCHES_SYNTAX_COMMON: &str = verus_code_str! {
+    tracked enum S {
+        This(nat),
+        That { v: int },
+        Other { v: int },
+    }
+};
+
+test_verify_one_file! {
+    #[test] matches_syntax_1_pass MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: a } ==> a == 3
+                &&& t matches S::This(v) ==> v == 4
+            })
+        {
+            match t {
+                S::This(v) => assert(v == 4),
+                S::That { v: a } => assert(a == 3),
+                _ => (),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_1_fails MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: a } ==> a == 3
+                &&& t matches S::This(v) ==> v == 4
+            })
+        {
+            match t {
+                S::This(v) => assert(v == 3), // FAILS
+                _ => (),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_2 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: _ }
+            })
+        {
+            assert(t is That);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_3 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                && t matches S::That { v: a }
+                && a == 3
+            })
+        {
+            assert(t is That);
+            assert(match t {
+                S::That { v } => v == 3,
+                _ => false,
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_4 MATCHES_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn test1(t: S)
+            requires ({
+                &&& t matches S::That { v: a }
+                &&& a > 3
+                &&& a < 5
+            })
+        {
+            assert(t is That);
+            assert(match t {
+                S::That { v } => v == 4,
+                _ => false,
+            });
+        }
+    } => Ok(())
+}
+
+const MATCHES_PRECEDENCE_COMMON: &str = verus_code_str! {
+    tracked enum A {
+        A1 { v: nat },
+        A2 { v: nat },
+    }
+
+    enum B {
+        B1(A),
+        B2 { a: A },
+    }
+
+};
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_1 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test(b: B)
+            requires b matches B::B1(a) ==> a matches A::A1 { v } ==> v == 3,
+        {
+            match b {
+                B::B1(A::A1 { v }) => assert(v == 3),
+                _ => (),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_2 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test(b: B)
+            requires
+                b matches B::B1(a) ==> a matches A::A1 { v } ==> v == 3,
+                b matches B::B2 { a: x } ==> x matches A::A1 { v } ==> v == 3,
+        {
+            match b {
+                B::B1(A::A1 { v }) => assert(v == 3),
+                B::B2 { a: A::A1 { v } } => assert(v == 3),
+                _ => (),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_3 verus_code! {
+        enum E { A, B }
+        proof fn test1() {
+            assert((E::A matches E::B ==> true) <==> false); // FAILS
+        }
+        proof fn test2() {
+            assert(E::A matches E::B ==> true <==> false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_assoc_1 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test1() {
+            let a = A::A1 { v: 3 };
+            assert(a matches A::A1 { v } && v == 3);
+            assert(a matches A::A1 { v } && v == 3 && v == 3);
+            assert(a matches A::A1 { v } && v == 3 && (v == 3 || v == 4));
+            assert(a matches A::A1 { v } && (v == 3 || v == 4));
+            assert(!(a matches A::A1 { v } && (v == 2 || v == 4)));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_assoc_fail_1 MATCHES_PRECEDENCE_COMMON.to_string() + verus_code_str! {
+        proof fn test1() {
+            let a = A::A1 { v: 3 };
+            assert(a matches A::A1 { v } && v == 3 || v == 4);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot find value `v` in this scope")
+}
+
+fn matches_syntax_context(expr: &str) -> String {
+    r#"
+    builtin_macros::verus! {
+        enum E { A, B }
+        proof fn test1() {
+            assert("#
+        .to_string()
+        + expr
+        + r#");
+        }
+    }
+    "#
+}
+
+macro_rules! test_matches_syntax_err {
+    ($(#[$attrs:meta])* $name:ident with $code:tt $msg:expr) => {
+        test_verify_one_file! {
+            $(#[$attrs])* $name matches_syntax_context(code_str! { $code })
+            => Err(err) => assert_vir_error_msg(err, $msg)
+        }
+    }
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_4a with (false && E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_4b with (false || E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_5 with (false == E::A matches E::A && true)
+    "matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_6 with (false <==> E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_nonsensical_1 with (3 < E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_matches_syntax_err! {
+    #[test] matches_syntax_precedence_nonsensical_2 with (3 >> E::A matches E::A ==> true)
+    "matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)"
+}
+
+test_verify_one_file! {
+    #[test] matches_syntax_precedence_10 verus_code! {
+        enum E { A, B }
+        proof fn test1() {
+            assert(false && false ==> false);
+            assert(E::A matches E::B && false ==> false);
+
+            assert(!(false && false == false));
+            assert(!(E::A matches E::B && false == false));
+
+            assert(false && true ==> true);
+            assert(E::A matches E::B && true ==> true);
+
+            assert(!(true && true ==> false));
+            assert(!(E::A matches E::A && true ==> false));
+
+            assert(true && true || false);
+            assert(E::A matches E::A && true || false);
+
+            assert(!(false && true || false));
+            assert(!(E::A matches E::B && true || false));
+
+            assert(!(true || true ==> false));
+            assert(!(E::A matches E::A || true ==> false));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] parsing_fail_1 verus_code! {
+        enum E { A, B }
+        proof fn a() {
+            assert({
+                E::A matches E::A
+                &&& true
+            })
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in &&&, a matches expression needs to be prefixed with &&&")
+}
+
+test_verify_one_file! {
+    #[test] field_of_unencoded_struct_in_impl_regression_881_1008 verus_code! {
+        mod m1 {
+            pub trait A {
+                spec fn foo(&self) -> u64;
+            }
+
+            pub struct S {
+                pub f1: u64,
+                f2: u64,
+            }
+
+            impl A for S {
+                open spec fn foo(&self) -> u64 {
+                    self.f1
+                }
+            }
+        }
+
+        mod m2 {
+            use crate::m1::*;
+
+            fn bar(a: S) {
+                let ghost f1 = a.foo();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot access any field of a datatype where one or more fields are private")
+}
+
+test_verify_one_file! {
+    #[test] field_of_unencoded_struct_in_impl_regression_578 verus_code! {
+        use vstd::prelude::*;
+
+        mod log {
+            use vstd::prelude::*;
+            pub struct Device{
+                pub dev: Vec<u8>,
+                size: usize,
+                head: usize,
+                pub tail: usize,
+            }
+
+            impl Device {
+                pub fn new(size: usize) -> Self
+                {
+                    Self {
+                        dev: Vec::with_capacity(size),
+                        size,
+                        head: 0,
+                        tail: 0,
+                    }
+                }
+
+                pub fn write_byte(&mut self, dst: usize, byte: u8)
+                    requires
+                        dst < old(self).dev.len()
+                {
+                    self.dev.set(dst, byte);
+                }
+            }
+        }
+
+        use crate::log::*;
+        fn main() {
+            let mut dev = Device::new(4096);
+            dev.write_byte(0, 0);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot access any field of a datatype where one or more fields are private")
+}
+
+test_verify_one_file! {
+    #[test] test_arrow_with_variant verus_code! {
+        #[is_variant]
+        pub enum E<T> {
+            One { t: T },
+            Two { t: T },
+            Three(T),
+        }
+
+        pub fn test1(e: E<u64>) -> (res: bool)
+            ensures
+                e is One ==> res == (e->One_t == 3),
+                e is Two ==> !res,
+                e is Three ==> res == (e->Three_0 == 4),
+        {
+            match e {
+                E::One { t } => t == 3,
+                E::Two { t: _ } => false,
+                E::Three(t) => t == 4,
+            }
+        }
+    } => Ok(err) => {
+        dbg!(&err);
+        assert!(err.errors.len() == 0);
+        assert!(err.warnings.iter().find(|w| w.message == "`#[is_variant]` is deprecated - use `->` or `matches` instead").is_some());
+    }
 }

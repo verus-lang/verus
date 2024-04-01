@@ -191,7 +191,17 @@ fn run() -> Result<std::process::ExitStatus, String> {
         ensure_arg(&mut args, "--output-json".into());
         ensure_arg(&mut args, "--time".into());
         ensure_arg(&mut args, "--time-expanded".into());
-        ensure_arg(&mut args, "--emit=dep-info".into());
+        if args.iter().find(|x| x.starts_with("--emit")).is_some() {
+            return Err(format!(
+                "an explicit --emit argument is not allowed when recording a report or when history recording is enabled",
+            ));
+        } else {
+            if args.contains(&"--compile".to_owned()) {
+                ensure_arg(&mut args, "--emit=dep-info,link".into());
+            } else {
+                ensure_arg(&mut args, "--emit=dep-info".into());
+            }
+        }
     }
 
     #[cfg(feature = "record-history")]

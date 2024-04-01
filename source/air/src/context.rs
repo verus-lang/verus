@@ -1,4 +1,6 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
+use crate::ast::{
+    AssertId, AxiomInfoFilter, Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs,
+};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::messages::{ArcDynMessage, Diagnostics};
@@ -18,8 +20,10 @@ use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
+    pub(crate) assert_id: Option<crate::ast::AssertId>,
     pub(crate) error: ArcDynMessage,
     pub(crate) label: Ident,
+    pub(crate) filter: AxiomInfoFilter,
     pub(crate) decl: Decl,
     pub(crate) disabled: bool,
 }
@@ -28,13 +32,14 @@ pub(crate) struct AssertionInfo {
 pub(crate) struct AxiomInfo {
     pub(crate) labels: Vec<Arc<dyn Any + Send + Sync>>,
     pub(crate) label: Ident,
+    pub(crate) filter: AxiomInfoFilter,
     pub(crate) decl: Decl,
 }
 
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Option<Model>, ArcDynMessage),
+    Invalid(Option<Model>, ArcDynMessage, Option<AssertId>),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
@@ -105,6 +110,8 @@ impl Context {
                 message_interface: message_interface.clone(),
                 decls: crate::scope_map::ScopeMap::new(),
                 snapshots: HashSet::new(),
+                break_labels_local: HashSet::new(),
+                break_labels_in_scope: crate::scope_map::ScopeMap::new(),
             },
             debug: false,
             ignore_unexpected_smt: false,
@@ -126,6 +133,7 @@ impl Context {
         context.choose_map.push_scope(false);
         context.apply_map.push_scope(false);
         context.typing.decls.push_scope(false);
+        context.typing.break_labels_in_scope.push_scope(false);
         context
     }
 
@@ -224,6 +232,7 @@ impl Context {
             self.set_z3_param_bool("smt.delay_units", true, true);
             self.set_z3_param_u32("smt.arith.solver", 2, true);
             self.set_z3_param_bool("smt.arith.nl", false, true);
+            self.set_z3_param_bool("pi.enabled", false, true);
         } else if option == "disable_incremental_solving" && value {
             self.disable_incremental_solving = true;
             if write_to_logs {

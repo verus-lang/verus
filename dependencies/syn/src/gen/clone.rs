@@ -174,6 +174,17 @@ impl Clone for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for BroadcastUse {
+    fn clone(&self) -> Self {
+        BroadcastUse {
+            attrs: self.attrs.clone(),
+            broadcast_use_tokens: self.broadcast_use_tokens.clone(),
+            paths: self.paths.clone(),
+            semi: self.semi.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for Closed {
     fn clone(&self) -> Self {
         Closed {
@@ -387,6 +398,10 @@ impl Clone for Expr {
             Expr::Is(v0) => Expr::Is(v0.clone()),
             #[cfg(feature = "full")]
             Expr::Has(v0) => Expr::Has(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Matches(v0) => Expr::Matches(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => Expr::GetField(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -582,6 +597,17 @@ impl Clone for ExprForLoop {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprGetField {
+    fn clone(&self) -> Self {
+        ExprGetField {
+            attrs: self.attrs.clone(),
+            base: self.base.clone(),
+            arrow_token: self.arrow_token.clone(),
+            member: self.member.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ExprGroup {
@@ -671,6 +697,7 @@ impl Clone for ExprLoop {
             attrs: self.attrs.clone(),
             label: self.label.clone(),
             loop_token: self.loop_token.clone(),
+            invariant_except_break: self.invariant_except_break.clone(),
             invariant: self.invariant.clone(),
             invariant_ensures: self.invariant_ensures.clone(),
             ensures: self.ensures.clone(),
@@ -699,6 +726,18 @@ impl Clone for ExprMatch {
             expr: self.expr.clone(),
             brace_token: self.brace_token.clone(),
             arms: self.arms.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ExprMatches {
+    fn clone(&self) -> Self {
+        ExprMatches {
+            attrs: self.attrs.clone(),
+            lhs: self.lhs.clone(),
+            matches_token: self.matches_token.clone(),
+            pat: self.pat.clone(),
+            op_expr: self.op_expr.clone(),
         }
     }
 }
@@ -878,6 +917,7 @@ impl Clone for ExprWhile {
             label: self.label.clone(),
             while_token: self.while_token.clone(),
             cond: self.cond.clone(),
+            invariant_except_break: self.invariant_except_break.clone(),
             invariant: self.invariant.clone(),
             invariant_ensures: self.invariant_ensures.clone(),
             ensures: self.ensures.clone(),
@@ -1175,6 +1215,7 @@ impl Clone for ImplItem {
             ImplItem::Type(v0) => ImplItem::Type(v0.clone()),
             ImplItem::Macro(v0) => ImplItem::Macro(v0.clone()),
             ImplItem::Verbatim(v0) => ImplItem::Verbatim(v0.clone()),
+            ImplItem::BroadcastGroup(v0) => ImplItem::BroadcastGroup(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1271,6 +1312,15 @@ impl Clone for InvariantEnsures {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for InvariantExceptBreak {
+    fn clone(&self) -> Self {
+        InvariantExceptBreak {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for InvariantNameSet {
     fn clone(&self) -> Self {
         match self {
@@ -1328,8 +1378,23 @@ impl Clone for Item {
             Item::Use(v0) => Item::Use(v0.clone()),
             Item::Verbatim(v0) => Item::Verbatim(v0.clone()),
             Item::Global(v0) => Item::Global(v0.clone()),
+            Item::BroadcastUse(v0) => Item::BroadcastUse(v0.clone()),
+            Item::BroadcastGroup(v0) => Item::BroadcastGroup(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ItemBroadcastGroup {
+    fn clone(&self) -> Self {
+        ItemBroadcastGroup {
+            attrs: self.attrs.clone(),
+            vis: self.vis.clone(),
+            broadcast_group_tokens: self.broadcast_group_tokens.clone(),
+            ident: self.ident.clone(),
+            brace_token: self.brace_token.clone(),
+            paths: self.paths.clone(),
         }
     }
 }
@@ -1664,6 +1729,25 @@ impl Clone for MacroDelimiter {
             MacroDelimiter::Paren(v0) => MacroDelimiter::Paren(v0.clone()),
             MacroDelimiter::Brace(v0) => MacroDelimiter::Brace(v0.clone()),
             MacroDelimiter::Bracket(v0) => MacroDelimiter::Bracket(v0.clone()),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for MatchesOpExpr {
+    fn clone(&self) -> Self {
+        MatchesOpExpr {
+            op_token: self.op_token.clone(),
+            rhs: self.rhs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for MatchesOpToken {
+    fn clone(&self) -> Self {
+        match self {
+            MatchesOpToken::Implies(v0) => MatchesOpToken::Implies(v0.clone()),
+            MatchesOpToken::AndAnd(v0) => MatchesOpToken::AndAnd(v0.clone()),
+            MatchesOpToken::BigAnd => MatchesOpToken::BigAnd,
         }
     }
 }
@@ -2183,6 +2267,7 @@ impl Clone for Signature {
             asyncness: self.asyncness.clone(),
             unsafety: self.unsafety.clone(),
             abi: self.abi.clone(),
+            broadcast: self.broadcast.clone(),
             mode: self.mode.clone(),
             fn_token: self.fn_token.clone(),
             ident: self.ident.clone(),
@@ -2391,6 +2476,7 @@ impl Clone for TypeFnSpec {
     fn clone(&self) -> Self {
         TypeFnSpec {
             fn_spec_token: self.fn_spec_token.clone(),
+            spec_fn_token: self.spec_fn_token.clone(),
             paren_token: self.paren_token.clone(),
             inputs: self.inputs.clone(),
             output: self.output.clone(),

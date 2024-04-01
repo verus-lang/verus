@@ -782,7 +782,10 @@ fn yes_forall2() {
         (check-valid
             (assert
                 (=>
-                    (forall ((i Int) (j Int)) (f i j))
+                    (forall ((i Int) (j Int)) (!
+                        (f i j)
+                        :pattern ((f i j))
+                    ))
                     (f 10 20)
                 )
             )
@@ -1100,6 +1103,326 @@ fn no_deadend2() {
 }
 
 #[test]
+fn typed_break1() {
+    yes!(
+        (check-valid
+            (breakable L (break L))
+        )
+    )
+}
+
+#[test]
+fn typed_break2() {
+    yes!(
+        (check-valid
+            (breakable L (break L))
+        )
+        (check-valid
+            (breakable L (break L))
+        )
+    )
+}
+
+#[test]
+fn untyped_break1() {
+    untyped!(
+        (check-valid
+            (breakable L (assert false))
+        )
+        (check-valid
+            (break L)
+        )
+    )
+}
+
+#[test]
+fn untyped_break2() {
+    untyped!(
+        (check-valid
+            (breakable L1 (break L2))
+        )
+    )
+}
+
+#[test]
+fn untyped_break3() {
+    untyped!(
+        (check-valid
+            (block
+                (break L)
+                (breakable L (block))
+            )
+        )
+    )
+}
+
+#[test]
+fn untyped_break4() {
+    untyped!(
+        (check-valid
+            (block
+                (breakable L (block))
+                (break L)
+            )
+        )
+    )
+}
+
+#[test]
+fn untyped_break5() {
+    untyped!(
+        (check-valid
+            (switch
+                (breakable L (block))
+                (break L)
+            )
+        )
+    )
+}
+
+#[test]
+fn untyped_break6() {
+    untyped!(
+        (check-valid
+            (switch
+                (breakable L (block))
+                (breakable L (block))
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_break1() {
+    yes!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L (switch
+                    (block
+                        (assign x 20)
+                        (break L)
+                        (assign x 200)
+                    )
+                    (block
+                        (assign x 30)
+                        (break L)
+                        (assign x 300)
+                    )
+                    (block
+                        (assign x 9)
+                        (assign x 10)
+                    )
+                ))
+                (assert (or (= x 10) (= x 20) (= x 30)))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_break1() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L (switch
+                    (block
+                        (assign x 20)
+                        (break L)
+                        (assign x 200)
+                    )
+                    (block
+                        (assign x 30)
+                        (break L)
+                        (assign x 300)
+                    )
+                    (assign x 9)
+                    (assign x 10)
+                ))
+                (assert (or (= x 10) (= x 20) (= x 30)))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_break1b() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L (switch
+                    (block
+                        (assign x 20)
+                        (break L)
+                        (assign x 200)
+                    )
+                    (block
+                        (break L)
+                        (assign x 300)
+                    )
+                    (assign x 10)
+                ))
+                (assert (or (= x 10) (= x 20) (= x 30)))
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_break2() {
+    yes!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L (switch
+                    (block
+                        (assign x 19)
+                        (assign x 20)
+                        (break L)
+                        (assign x 200)
+                    )
+                    (block
+                        (assign x 30)
+                        (break L)
+                        (assign x 300)
+                    )
+                    (assign x 10)
+                ))
+                (assert (or (= x 10) (= x 20) (= x 30)))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_break2() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L (switch
+                    (block
+                        (assign x 19)
+                        (assign x 20)
+                        (break L)
+                        (assign x 200)
+                    )
+                    (block
+                        (assign x 30)
+                        (break L)
+                        (assign x 300)
+                    )
+                    (assign x 10)
+                ))
+                (assert (or (= x 20) (= x 30)))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_break2b() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L (switch
+                    (block
+                        (assign x 19)
+                        (assign x 20)
+                        (break L)
+                        (assign x 200)
+                    )
+                    (block
+                        (assign x 30)
+                        (break L)
+                        (assign x 300)
+                    )
+                    (assign x 10)
+                ))
+                (assert (or (= x 10) (= x 20)))
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_break3() {
+    yes!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L1 (switch
+                    (block
+                        (assign x 20)
+                        (break L1)
+                        (assign x 200)
+                    )
+                    (block
+                        (assign x 30)
+                        (breakable L2 (switch
+                            (assign x 40)
+                            (block
+                                (assign x (+ x 1))
+                                (break L2)
+                            )
+                            (block
+                                (assign x (+ x 2))
+                                (break L1)
+                            )
+                        ))
+                        (assign x (+ x 5))
+                        (break L1)
+                        (assign x 300)
+                    )
+                    (assign x 10)
+                ))
+                (assert (or (= x 10) (= x 20) (= x 32) (= x 36) (= x 45)))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_break3() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (breakable L1 (switch
+                    (block
+                        (assign x 20)
+                        (break L1)
+                        (assign x 200)
+                    )
+                    (block
+                        (assign x 30)
+                        (breakable L2 (switch
+                            (assign x 40)
+                            (block
+                                (assign x (+ x 1))
+                                (break L1)
+                            )
+                            (block
+                                (assign x (+ x 2))
+                                (break L2)
+                            )
+                        ))
+                        (assign x (+ x 5))
+                        (break L1)
+                        (assign x 300)
+                    )
+                    (assign x 10)
+                ))
+                (assert (or (= x 10) (= x 20) (= x 32) (= x 36) (= x 45)))
+            )
+        )
+    )
+}
+
+#[test]
 fn yes_lambda1() {
     yes!(
         (check-valid
@@ -1410,8 +1733,12 @@ fn yes_choose1() {
         (axiom (f 3 3))
         (check-valid
             (assert
-                (let (( a (choose ((x Int)) (f x x) x) ))
-                    (f a a)
+                (let (( a (choose ((x Int)) (!
+                    (f x x)
+                    :pattern ((f x x))
+                ) x)
+                ))
+                (f a a)
                 )
             )
         )
@@ -1425,7 +1752,11 @@ fn yes_choose1_2() {
         (axiom (f 3 3))
         (check-valid
             (assert
-                (let (( a (choose ((x Int) (y Int)) (and (f x y) (= x y)) (+ x y)) ))
+                (let (( a (choose ((x Int) (y Int)) (!
+                        (and (f x y) (= x y))
+                        :pattern ((f x y))
+                    ) (+ x y))
+                    ))
                     (f (div a 2) (div a 2))
                 )
             )
@@ -1440,7 +1771,10 @@ fn no_choose1() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose ((x Int)) (f x x) x) ))
+                (let (( a (choose ((x Int)) (!
+                        (f x x)
+                        :pattern ((f x x))
+                    ) x) ))
                     (f a a)
                 )
             )
@@ -1455,7 +1789,10 @@ fn no_choose1_2() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose ((x Int) (y Int)) (and (f x y) (= x y)) (+ x y)) ))
+                (let (( a (choose ((x Int) (y Int)) (!
+                        (and (f x y) (= x y))
+                        :pattern ((f x y))
+                    ) (+ x y)) ))
                     (f (div a 2) (div a 2))
                 )
             )
@@ -1516,8 +1853,12 @@ fn yes_choose3() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose ((x Int)) (f x 4) x) ))
-                    (f a 4)
+                (let (( a (choose ((x Int)) (!
+                        (f x 4)
+                        :pattern ((f x 4))
+                    ) x)
+                ))
+                (f a 4)
                 )
             )
         )

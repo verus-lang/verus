@@ -408,7 +408,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file! {
     #[test] poly_invalid_air_regression_577 verus_code! {
-        use vstd::{prelude::*, vec::*};
+        use vstd::{prelude::*};
 
         pub trait Foo {
             fn do_something(&mut self, val: u8);
@@ -433,7 +433,28 @@ test_verify_one_file! {
                 self.field0 = val;
             }
         }
-    } => Ok(_err) => { /* allow deprecated warning */ }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] poly_has_type_regression_577 verus_code! {
+        #[verifier::ext_equal]
+        struct S {
+            n: nat,
+            i: int,
+        }
+
+        trait T {
+            proof fn f(x: &mut S);
+        }
+
+        impl T for S {
+            proof fn f(x: &mut S) {
+                x.n = 3; // breaks has_type unless we add Box(Unbox(x)) == x
+                assert(*x =~= S { n: x.n, i: x.i });
+            }
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -480,7 +501,7 @@ test_verify_one_file! {
             spec fn foo(&self) -> bool;
         }
 
-        pub type MyType<T> = FnSpec(T) -> bool;
+        pub type MyType<T> = spec_fn(T) -> bool;
 
         impl<T> Foo for MyType<T> {
             open spec fn foo(&self) -> bool {
@@ -562,52 +583,6 @@ test_verify_one_file! {
             1int > 0int
         }
     } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open` or `closed`")
-}
-
-test_verify_one_file_with_options! {
-    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_1 ["--expand-errors"] => verus_code! {
-        use vstd::set::*;
-
-        spec fn maybe() -> bool;
-
-        // spec fn yes() -> bool { true }
-        // spec fn both(s: Set<nat>) -> bool {
-        //     &&& maybe()
-        //     &&& s.contains(0) // EXPAND-ERRORS
-        // }
-
-        proof fn test(s: Set<nat>) {
-            assert(maybe()); // EXPAND-ERRORS
-        }
-    } => Err(err) => {
-        assert!(err.expand_errors_notes[0].rendered.contains("this function is uninterpreted"));
-    }
-}
-
-test_verify_one_file_with_options! {
-    #[test] test_open_spec_is_already_open_387_discussioncomment_5679297_2 ["--expand-errors"] => verus_code! {
-        struct Z { _temp: (), }
-
-        mod X {
-            pub trait T {
-                spec fn foo(&self) -> bool; // EXPAND-ERRORS
-            }
-
-            impl T for super::Z {
-                open spec fn foo(&self) -> bool { false }
-            }
-        }
-
-        use X::T;
-
-        fn f() {
-            let z = Z { _temp: () };
-            assert(z.foo()); // EXPAND-ERRORS
-        }
-    } => Err(err) => {
-        assert!(err.expand_errors_notes[0].rendered.contains("trait function declaration"));
-        assert_expand_fails(err, 2);
-    }
 }
 
 test_verify_one_file! {
@@ -1172,7 +1147,7 @@ test_verify_one_file! {
             Seq::new(1, |i: int| l[i as nat].x)
         }
 
-        spec fn f2<DT: T>(l: L<DT>) -> FnSpec(L<DT>)->DT::X {
+        spec fn f2<DT: T>(l: L<DT>) -> spec_fn(L<DT>)->DT::X {
             |ll: L<DT>| ll.x
         }
     } => Ok(())
@@ -1197,6 +1172,29 @@ test_verify_one_file! {
         fn pat_ret_colons3() -> (std::primitive::bool)
         {
             true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] syntax_named_return_type_issue603 verus_code! {
+        // Make sure a type gets translated when it gets copied into
+        // the macro-generated 'ensures' call.
+        pub proof fn test(x: nat) -> (t: spec_fn(nat) -> nat)
+            ensures true,
+        {
+            |i| i
+        }
+
+        pub fn test2(x: nat)
+            ensures true,
+        {
+            let clos = || -> (t: Ghost<spec_fn(nat) -> nat>)
+                ensures true
+            {
+                let ghost s = |i| i;
+                Ghost(s)
+            };
         }
     } => Ok(())
 }
@@ -1232,6 +1230,35 @@ test_verify_one_file! {
 
         proof fn stuff(x: X<bool>) {
             let y = X { a: x.a + 1, .. x };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] seq_add_axiom_issue990 verus_code! {
+        use vstd::{prelude::*, seq::*};
+        proof fn seq_bad()
+            ensures false
+        {
+            let s1: Seq<int> = seq![1];
+            let s1_2: Seq<int> = seq![1, 2];
+            let s2: Seq<int> = seq![];
+            assert(s1.add(s2)[0] == s2[-1]); // FAILS
+            assert(s1_2.add(s2)[1] == s2[-1]); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] external_module_issue618 verus_code! {
+        #[verifier::external]
+        mod M {
+            pub fn stuff() {
+                panic!("qewrty");
+            }
+        }
+
+        fn rawr() {
         }
     } => Ok(())
 }

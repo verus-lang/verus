@@ -46,11 +46,12 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
         ExpX::Unary(op, e) => match op {
             UnaryOp::Not | UnaryOp::BitNot | UnaryOp::Clip { .. } => exp.clone(),
             UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::CharToInt => exp.clone(),
-            UnaryOp::InferSpecForLoopIter => exp.clone(),
+            UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
             | UnaryOp::MustBeFinalized
-            | UnaryOp::HeightTrigger => {
+            | UnaryOp::HeightTrigger
+            | UnaryOp::CastToInteger => {
                 exp.new_x(ExpX::Unary(*op, insert_ext_eq_in_assert(ctx, e)))
             }
         },
@@ -119,6 +120,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
         | ExpX::Ctor(..)
         | ExpX::NullaryOpr(_)
         | ExpX::ExecFnByName(_)
+        | ExpX::FuelConst(_)
         | ExpX::Interp(_) => exp.clone(),
     }
 }

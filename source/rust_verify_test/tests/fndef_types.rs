@@ -505,7 +505,7 @@ test_verify_one_file! {
         fn test<T: Tr>(x: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -535,7 +535,7 @@ test_verify_one_file! {
         fn test<T: Tr>(x: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -597,7 +597,7 @@ test_verify_one_file! {
         fn test<T: Tr>(x: u8)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -626,7 +626,7 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a trait definition")
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
 test_verify_one_file! {
@@ -939,4 +939,451 @@ test_verify_one_file! {
             call_ensures(stuff, (), ())
         }
     } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot refer to private function")
+}
+
+test_verify_one_file! {
+    #[test] trait_method_use_emits_req_ens_axioms_for_impls verus_code! {
+        trait VPartialEq {
+            fn eq(&self, other: &Self) -> bool;
+            fn ne(&self, other: &Self) -> bool;
+        }
+
+        trait VEq : VPartialEq {
+            spec fn rel(&self, other: &Self) -> bool;
+
+            proof fn reflexive(a: &Self)
+                ensures a.rel(a);
+
+            proof fn symmetric(a: &Self, b: &Self)
+                ensures a.rel(b) ==> b.rel(a);
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+                requires a.rel(b), b.rel(c)
+                ensures a.rel(c);
+
+            proof fn fns_correct(a: &Self, b: &Self)
+                ensures
+                    // call_ensures is a verus builtin that means
+                    // "this is a valid input-output pair for the function Self::eq"
+                    call_ensures(Self::eq, (a, b), true) ==> a.rel(b),
+                    call_ensures(Self::eq, (a, b), false) ==> !a.rel(b),
+
+                    call_ensures(Self::ne, (a, b), true) ==> !a.rel(b),
+                    call_ensures(Self::ne, (a, b), false) ==> a.rel(b);
+        }
+
+        // Example usage
+
+        struct Mod2 { u: u64 }
+
+        impl Mod2 {
+            spec fn view(&self) -> int {
+                (self.u % 2) as int
+            }
+        }
+
+        impl VPartialEq for Mod2 {
+            fn eq(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ == other@),
+            {
+                self.u % 2 == other.u % 2
+            }
+
+            fn ne(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ != other@),
+            {
+                self.u % 2 != other.u % 2
+            }
+        }
+
+        impl VEq for Mod2 {
+            spec fn rel(&self, other: &Self) -> bool {
+                self@ == other@
+            }
+
+            // Proof that rel is an equivalence relation
+
+            proof fn reflexive(a: &Self)
+            { }
+
+            proof fn symmetric(a: &Self, b: &Self)
+            { }
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+            { }
+
+            // Proof that `eq` and `ne` return the value of `rel`:
+
+            proof fn fns_correct(a: &Self, b: &Self)
+            {
+                // Note that this requires the axioms for req and ens
+                // for the Mod2::eq and Mod2::ne method impls.
+                // However, we never directly reference call_ensures(Mod2::eq, ...)
+                // anywhere. Instead, we only have the more general
+                // call_ensures invocations from the ensures clause of fns_correct
+                // in the trait declaration.
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_method_use_emits_req_ens_axioms_for_impls_fail verus_code! {
+        trait VPartialEq {
+            fn eq(&self, other: &Self) -> bool;
+            fn ne(&self, other: &Self) -> bool;
+        }
+
+        trait VEq : VPartialEq {
+            spec fn rel(&self, other: &Self) -> bool;
+
+            proof fn reflexive(a: &Self)
+                ensures a.rel(a);
+
+            proof fn symmetric(a: &Self, b: &Self)
+                ensures a.rel(b) ==> b.rel(a);
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+                requires a.rel(b), b.rel(c)
+                ensures a.rel(c);
+
+            proof fn fns_correct(a: &Self, b: &Self)
+                ensures
+                    call_ensures(Self::ne, (a, b), true) ==> !a.rel(b); // FAILS
+        }
+
+        // Example usage
+
+        struct Mod2 { u: u64 }
+
+        impl Mod2 {
+            spec fn view(&self) -> int {
+                (self.u % 2) as int
+            }
+        }
+
+        impl VPartialEq for Mod2 {
+            fn eq(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ == other@),
+            {
+                self.u % 2 == other.u % 2
+            }
+
+            fn ne(&self, other: &Self) -> (b: bool)
+                ensures b == (self@ == other@),
+            {
+                self.u % 2 == other.u % 2
+            }
+        }
+
+        impl VEq for Mod2 {
+            spec fn rel(&self, other: &Self) -> bool {
+                self@ == other@
+            }
+
+            // Proof that rel is an equivalence relation
+
+            proof fn reflexive(a: &Self)
+            { }
+
+            proof fn symmetric(a: &Self, b: &Self)
+            { }
+
+            proof fn transitive(a: &Self, b: &Self, c: &Self)
+            { }
+
+            // Proof that `eq` and `ne` return the value of `rel`:
+
+            proof fn fns_correct(a: &Self, b: &Self)
+            {
+                // Note that this requires the axioms for req and ens
+                // for the Mod2::eq and Mod2::ne method impls.
+                // However, we never directly reference call_ensures(Mod2::eq, ...)
+                // anywhere. Instead, we only have the more general
+                // call_ensures invocations from the ensures clause of fns_correct
+                // in the trait declaration.
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] trait_default_method_call_ensures verus_code! {
+        trait Tr {
+            fn hello(i: u64, j: u64)
+                ensures i == j,
+            {
+                assume(false);
+            }
+        }
+
+        struct X<A> { a: A }
+
+        impl<A> Tr for X<A> {
+        }
+
+        struct Y<A> { a: A }
+
+        impl<A> Tr for Y<A> {
+            fn hello(i: u64, j: u64)
+                ensures i >= 5,
+            {
+                assume(false);
+            }
+        }
+
+        fn test<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> i == j);
+        }
+
+        fn test2(i: u64, j: u64) {
+            assert(call_ensures(X::<bool>::hello, (i, j), ()) ==> i == j);
+        }
+
+        fn test3(i: u64, j: u64) {
+            assert(call_ensures(Y::<bool>::hello, (i, j), ()) ==> i == j && i >= 5);
+        }
+
+        fn test4<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> i == j);
+            assert(call_ensures(X::<bool>::hello, (i, j), ()) ==> i == j);
+            assert(call_ensures(Y::<bool>::hello, (i, j), ()) ==> i == j && i >= 5);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] trait_default_method_call_ensures_with_default_spec_fn verus_code! {
+        trait Tr {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j }
+
+            fn hello(i: u64, j: u64)
+                ensures Self::stuff(i, j)
+            {
+                assume(false);
+            }
+        }
+
+        struct X<A> { a: A }
+        impl<A> Tr for X<A> {
+        }
+
+        struct Y<A> { a: A }
+        impl<A> Tr for Y<A> {
+            fn hello(i: u64, j: u64)
+                ensures i >= 5, // and implied stuff()
+            {
+                assume(false);
+            }
+        }
+
+        struct Z<A> { a: A }
+        impl<A> Tr for Z<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+        }
+
+        struct W<A> { a: A }
+        impl<A> Tr for W<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+
+            fn hello(i: u64, j: u64)
+                ensures i >= 5, // and implied stuff()
+            {
+                assume(false);
+            }
+        }
+
+        struct U<A> { a: A }
+        trait FromInt : Sized {
+            spec fn from_int(i: u64) -> Self;
+        }
+        impl FromInt for bool {
+            spec fn from_int(i: u64) -> Self { i == 4 }
+        }
+        impl<A: FromInt> Tr for U<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { A::from_int(i) == A::from_int(j) }
+        }
+
+
+
+        fn test<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> T::stuff(i, j));
+        }
+
+        fn test_fail<T: Tr>(i: u64, j: u64) {
+            assert(call_ensures(T::hello, (i, j), ()) ==> i == j); // FAILS
+        }
+
+        fn test2(i: u64, j: u64) {
+            assert(call_ensures(X::<bool>::hello, (i, j), ()) ==> i == j);
+        }
+
+        fn test3(i: u64, j: u64) {
+            assert(call_ensures(Y::<bool>::hello, (i, j), ()) ==> i == j && i >= 5);
+        }
+
+        fn test4(i: u64, j: u64) {
+            assert(call_ensures(Z::<bool>::hello, (i, j), ()) ==> i == j + 1);
+        }
+
+        fn test4_fail(i: u64, j: u64) {
+            assert(call_ensures(Z::<bool>::hello, (i, j), ()) ==> i == j); // FAILS
+        }
+
+        fn test5(i: u64, j: u64) {
+            assert(call_ensures(W::<bool>::hello, (i, j), ()) ==> i == j + 1 && i >= 5);
+        }
+
+        fn test5_fail(i: u64, j: u64) {
+            assert(call_ensures(W::<bool>::hello, (i, j), ()) ==> i == j); // FAILS
+        }
+
+        fn test6(i: u64, j: u64) {
+            assert(call_ensures(U::<bool>::hello, (i, j), ()) ==> (i == 4) == (j == 4));
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] trait_default_method_call_requires_with_default_spec_fn verus_code! {
+        trait Tr {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j }
+
+            fn hello(i: u64, j: u64)
+                requires Self::stuff(i, j)
+            {
+                assume(false);
+            }
+        }
+
+        struct X<A> { a: A }
+        impl<A> Tr for X<A> {
+        }
+
+        struct Y<A> { a: A }
+        impl<A> Tr for Y<A> {
+            fn hello(i: u64, j: u64)
+            {
+                assume(false);
+            }
+        }
+
+        struct Z<A> { a: A }
+        impl<A> Tr for Z<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+        }
+
+        struct W<A> { a: A }
+        impl<A> Tr for W<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { i == j + 1 }
+
+            fn hello(i: u64, j: u64)
+            {
+                assume(false);
+            }
+        }
+
+        struct U<A> { a: A }
+        trait FromInt : Sized {
+            spec fn from_int(i: u64) -> Self;
+        }
+        impl FromInt for bool {
+            spec fn from_int(i: u64) -> Self { i == 4 }
+        }
+        impl<A: FromInt> Tr for U<A> {
+            spec fn stuff(i: u64, j: u64) -> bool { A::from_int(i) == A::from_int(j) }
+        }
+
+
+
+        fn test<T: Tr>(i: u64, j: u64) {
+            assert(call_requires(T::hello, (i, j)) <== T::stuff(i, j));
+        }
+
+        fn test_fail<T: Tr>(i: u64, j: u64) {
+            assert(call_requires(T::hello, (i, j)) <== i == j); // FAILS
+        }
+
+        fn test2(i: u64, j: u64) {
+            assert(call_requires(X::<bool>::hello, (i, j)) <== i == j);
+        }
+
+        fn test3(i: u64, j: u64) {
+            assert(call_requires(Y::<bool>::hello, (i, j)) <== i == j);
+        }
+
+        fn test4(i: u64, j: u64) {
+            assert(call_requires(Z::<bool>::hello, (i, j)) <== i == j + 1);
+        }
+
+        fn test4_fail(i: u64, j: u64) {
+            assert(call_requires(Z::<bool>::hello, (i, j)) <== i == j); // FAILS
+        }
+
+        fn test5(i: u64, j: u64) {
+            assert(call_requires(W::<bool>::hello, (i, j)) <== i == j + 1);
+        }
+
+        fn test5_fail(i: u64, j: u64) {
+            assert(call_requires(W::<bool>::hello, (i, j)) <== i == j); // FAILS
+        }
+
+        fn test6(i: u64, j: u64) {
+            assert(call_requires(U::<bool>::hello, (i, j)) <== (i == 4) == (j == 4));
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] bound_vars_issue1005 verus_code! {
+        use vstd::prelude::*;
+
+        fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(&T) -> U) -> (result: Vec<U>)
+            requires
+                forall |i| 0 <= i < v.len() ==> call_requires(f, (&v[i],)),
+            ensures
+                result.len() == v.len(),
+                forall |i| 0 <= i < v.len() ==> call_ensures(f, (&v[i],), #[trigger] result[i])
+        {
+            assume(false);
+            Vec::new()
+        }
+
+        fn double(x: &u8) -> (res: u8)
+            requires 0 <= *x < 128,
+            ensures res == 2 * (*x),
+        {
+            2 * (*x)
+        }
+
+        fn test_vec_map() {
+            let mut v = Vec::new();
+            v.push(0);
+            v.push(10);
+            v.push(20);
+
+            let w = vec_map(&v, double);
+            assert(w[2] == 40);
+        }
+
+        // Similar test, but with closures:
+
+        struct X { }
+
+        fn constrain<T>(t: T) -> T
+            where T: for<'a> Fn(&'a X) -> &'a X
+        {
+            t
+        }
+
+        fn test() {
+            let f = constrain(|x: &X| -> &X {
+                &x
+            });
+
+            let x = X { };
+            let t: &X = f(&x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

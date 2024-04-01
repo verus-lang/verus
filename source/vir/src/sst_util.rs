@@ -1,6 +1,7 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, CtorPrintStyle, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp,
+    IntRange, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::get_variant;
 use crate::context::GlobalCtx;
@@ -8,7 +9,6 @@ use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
-use air::ast::{Binder, BinderX, Binders, Ident};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ fn free_vars_exp_scope(
     let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
-            ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(&x.name) => {
+            ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
             _ => (),
@@ -43,7 +43,7 @@ pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
     vars
 }
 
-fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
+pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
     crate::ast_visitor::map_typ_visitor(typ, &|t: &Typ| match &**t {
         TypX::TypParam(x) => match typ_substs.get(x) {
             Some(t) => Ok(t.clone()),
@@ -71,15 +71,16 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     span: &Span,
     substs: &mut ScopeMap<UniqueIdent, Exp>,
     free_vars: &mut ScopeMap<UniqueIdent, ()>,
-    bs: &Binders<A>,
+    bs: &VarBinders<A>,
     fa: FA,
     f_typ: FT,
-) -> Binders<A> {
+) -> VarBinders<A> {
     substs.push_scope(false);
-    free_vars.push_scope(false);
-    let mut binders: Vec<Binder<A>> = Vec::new();
+    free_vars.push_scope(true);
+    let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
+        free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
         let name = if free_vars.contains_key(&unique) {
             // capture-avoiding substitution:
             // rename bound variable to avoid capturing free variable
@@ -99,7 +100,7 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
         } else {
             b.name.clone()
         };
-        binders.push(Arc::new(BinderX { name, a: fa(&b.a) }));
+        binders.push(Arc::new(VarBinderX { name, a: fa(&b.a) }));
     }
     Arc::new(binders)
 }
@@ -128,6 +129,7 @@ fn subst_exp_rec(
         | ExpX::BinaryOpr(..)
         | ExpX::If(..)
         | ExpX::ExecFnByName(..)
+        | ExpX::FuelConst(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
             &mut (substs, free_vars),
@@ -135,10 +137,13 @@ fn subst_exp_rec(
             &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
-        ExpX::Var(x) => match substs.get(x) {
-            None => mk_exp(ExpX::Var(x.clone())),
-            Some(e) => e.clone(),
-        },
+        ExpX::Var(x) => {
+            assert!(free_vars.contains_key(x));
+            match substs.get(x) {
+                None => mk_exp(ExpX::Var(x.clone())),
+                Some(e) => e.clone(),
+            }
+        }
         ExpX::VarLoc(x) => match substs.get(x) {
             None => mk_exp(ExpX::VarLoc(x.clone())),
             Some(_) => panic!("cannot substitute for VarLoc"),
@@ -164,7 +169,7 @@ fn subst_exp_rec(
             };
             let bndx = match &bnd.x {
                 BndX::Let(bs) => {
-                    let mut binders: Vec<Binder<Exp>> = Vec::new();
+                    let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         binders.push(b.new_a(subst_exp_rec(typ_substs, substs, free_vars, &b.a)));
                     }
@@ -219,7 +224,10 @@ pub(crate) fn subst_exp(
     let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
-    free_vars.push_scope(false);
+    free_vars.push_scope(true);
+    for (y, _) in free_vars_exp(exp) {
+        let _ = free_vars.insert(y.clone(), ());
+    }
     for (x, v) in substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
@@ -281,6 +289,10 @@ impl BinaryOp {
     }
 }
 
+fn prec_of_in() -> (u32, u32, u32) {
+    (30, 30, 31)
+}
+
 impl ExpX {
     pub fn to_user_string(&self, global: &GlobalCtx) -> String {
         self.to_string_prec(global, 5)
@@ -295,16 +307,46 @@ impl ExpX {
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
             },
-            Var(id) | VarLoc(id) => (format!("{}", user_local_name(&id.name)), 99),
-            VarAt(id, _at) => (format!("old({})", user_local_name(&id.name)), 99),
+            Var(id) | VarLoc(id) => (format!("{}", user_local_name(id)), 99),
+            VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
             StaticVar(fun) => (format!("{}", fun.path.segments.last().unwrap()), 99),
             Loc(exp) => {
                 return exp.x.to_string_prec(global, precedence);
             }
-            Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), _, exps) => {
-                let args =
-                    exps.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
-                (format!("{}({})", fun.path.segments.last().unwrap(), args), 90)
+            Call(cf @ (CallFun::Fun(fun, _) | CallFun::Recursive(fun)), _, exps) => {
+                let (zero_args, is_method) = match global.fun_attrs.get(fun) {
+                    Some(attrs) => (attrs.print_zero_args, attrs.print_as_method),
+                    None => (false, false),
+                };
+
+                let exps = if matches!(cf, CallFun::Recursive(..)) {
+                    &exps[0..exps.len() - 1]
+                } else {
+                    &exps
+                };
+
+                let fun_name = fun.path.segments.last().unwrap();
+
+                if is_method && exps.len() > 0 {
+                    let receiver = exps[0].x.to_user_string(global);
+                    let args = exps
+                        .iter()
+                        .skip(1)
+                        .map(|e| e.x.to_user_string(global))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    (format!("{}.{}({})", receiver, fun_name, args), 90)
+                } else {
+                    let args = if zero_args {
+                        "".to_string()
+                    } else {
+                        exps.iter()
+                            .map(|e| e.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    (format!("{}({})", fun_name, args), 90)
+                }
             }
             Call(CallFun::InternalFun(func), _, exps) => {
                 let args =
@@ -315,7 +357,9 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
                 ("const_generic".to_string(), 99)
             }
-            NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("trait_bound".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
@@ -332,7 +376,12 @@ impl ExpX {
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     return exp.x.to_string_prec(global, precedence);
                 }
-                UnaryOp::InferSpecForLoopIter => ("InferSpecForLoopIter".to_string(), 0),
+                UnaryOp::InferSpecForLoopIter { .. } => {
+                    (format!("InferSpecForLoopIter({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::CastToInteger => {
+                    (format!("{} as int", exp.x.to_user_string(global)), precedence)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
@@ -347,7 +396,11 @@ impl ExpX {
                         (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
                     }
                     IsVariant { datatype: _, variant } => {
-                        (format!("{}.is_type({})", exp.x.to_user_string(global), variant), 99)
+                        let (prec_exp, prec_left, _prec_right) = prec_of_in();
+                        (
+                            format!("{} is {}", exp.x.to_string_prec(global, prec_left), variant),
+                            prec_exp,
+                        )
                     }
                     TupleField { tuple_arity: _, field } => {
                         (format!("{}.{}", exp.x.to_user_string(global), field), 99)
@@ -406,10 +459,14 @@ impl ExpX {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
             }
-            BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => (
-                format!("ext_eq({}, {})", e1.x.to_user_string(global), e2.x.to_user_string(global)),
-                99,
-            ),
+            BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, _), e1, e2) => {
+                let (prec_exp, prec_left, prec_right) =
+                    BinaryOp::Eq(Mode::Spec).prec_of_binary_op();
+                let left = e1.x.to_string_prec(global, prec_left);
+                let right = e2.x.to_string_prec(global, prec_right);
+                let op_str = if *deep { "=~~=" } else { "=~=" };
+                (format!("{} {} {}", left, op_str, right), prec_exp)
+            }
             If(e1, e2, e3) => (
                 format!(
                     "if {} {{ {} }} else {{ {} }}",
@@ -513,7 +570,7 @@ impl ExpX {
             Interp(e) => {
                 use InterpExp::*;
                 match e {
-                    FreeVar(id) => (format!("{}", user_local_name(&id.name)), 99),
+                    FreeVar(id) => (format!("{}", user_local_name(id)), 99),
                     Seq(s) => {
                         let v = s
                             .iter()
@@ -525,6 +582,7 @@ impl ExpX {
                     Closure(e, _ctx) => (format!("{}", e.x.to_user_string(global)), 99),
                 }
             }
+            FuelConst(i) => (format!("fuel({i:})"), 99),
             Old(..) | WithTriggers(..) => ("".to_string(), 99), // We don't show the user these internal expressions
         };
         if precedence <= inner_precedence { s } else { format!("({})", s) }
@@ -559,9 +617,12 @@ pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &crate::ast::ArchWordBi
     }
 }
 
-fn chain_binary(span: &Span, op: BinaryOp, init: &Exp, exps: &Vec<Exp>) -> Exp {
-    let mut exp = init.clone();
-    for e in exps.iter() {
+fn chain_binary(span: &Span, op: BinaryOp, init: &Exp, exps: &[Exp]) -> Exp {
+    if exps.len() == 0 {
+        return init.clone();
+    }
+    let mut exp = exps[0].clone();
+    for e in exps.iter().skip(1) {
         exp = SpannedTyped::new(span, &init.typ, ExpX::Binary(op, exp, e.clone()));
     }
     exp
@@ -573,6 +634,11 @@ pub fn sst_bool(span: &Span, b: bool) -> Exp {
 
 pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
+}
+
+pub fn sst_implies(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::Implies;
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
 pub fn sst_lt(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
@@ -588,6 +654,30 @@ pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
 pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Eq(Mode::Spec);
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
+pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp {
+    match ext {
+        None => sst_equal(span, e1, e2),
+        Some(deep) => {
+            let op = BinaryOpr::ExtEq(deep, crate::ast_util::undecorate_typ(&e1.typ));
+            SpannedTyped::new(
+                span,
+                &Arc::new(TypX::Bool),
+                ExpX::BinaryOpr(op, e1.clone(), e2.clone()),
+            )
+        }
+    }
+}
+
+pub fn sst_not(span: &Span, e: &Exp) -> Exp {
+    match &e.x {
+        ExpX::Unary(UnaryOp::Not, e1) => e1.clone(),
+        _ => {
+            let op = UnaryOp::Not;
+            SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Unary(op, e.clone()))
+        }
+    }
 }
 
 pub fn sst_int_literal(span: &Span, i: i128) -> Exp {

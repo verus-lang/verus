@@ -40,12 +40,17 @@ fn label_asserts<'ctx>(
             )),
             _ => expr.clone(),
         },
-        ExprX::LabeledAssertion(error, expr) => {
+        ExprX::LabeledAssertion(assert_id, error, filter, expr) => {
             let label = Arc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
-
             let decl = Arc::new(DeclX::Const(label.clone(), Arc::new(TypX::Bool)));
-            let assertion_info =
-                AssertionInfo { error: error.clone(), label: label.clone(), decl, disabled: false };
+            let assertion_info = AssertionInfo {
+                assert_id: assert_id.clone(),
+                error: error.clone(),
+                label: label.clone(),
+                filter: filter.clone(),
+                decl,
+                disabled: false,
+            };
             infos.push(assertion_info);
             let lhs = Arc::new(ExprX::Var(label));
             Arc::new(ExprX::Binary(
@@ -54,13 +59,17 @@ fn label_asserts<'ctx>(
                 label_asserts(context, infos, axiom_infos, expr),
             ))
         }
-        ExprX::LabeledAxiom(labels, expr) => {
+        ExprX::LabeledAxiom(labels, filter, expr) => {
             let count = context.axiom_infos_count;
             context.axiom_infos_count += 1;
             let label = Arc::new(GLOBAL_PREFIX_LABEL.to_string() + &count.to_string());
-
             let decl = Arc::new(DeclX::Const(label.clone(), Arc::new(TypX::Bool)));
-            let axiom_info = AxiomInfo { labels: labels.clone(), label: label.clone(), decl };
+            let axiom_info = AxiomInfo {
+                labels: labels.clone(),
+                label: label.clone(),
+                filter: filter.clone(),
+                decl,
+            };
             axiom_infos.push(axiom_info);
             let lhs = Arc::new(ExprX::Var(label));
             Arc::new(ExprX::Binary(
@@ -181,6 +190,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 
     let mut discovered_error = None;
+    let mut discovered_assert_id = None;
     let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
@@ -319,7 +329,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
         for info in infos.iter_mut() {
             if let Some(def) = model_defs.get(&info.label) {
                 if *def.body == "true" {
-                    discovered_error = Some(info.error.clone());
+                    discovered_error = Some(info.clone());
+                    discovered_assert_id = Some(info.assert_id.clone());
 
                     // Disable this label in subsequent check-sat calls to get additional errors
                     info.disabled = true;
@@ -330,9 +341,15 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 }
             }
         }
-        for (_, info) in context.axiom_infos.map().iter() {
+        let discovered_error = discovered_error.expect("discovered_error");
+        let mut axiom_infos: Vec<Arc<AxiomInfo>> =
+            context.axiom_infos.map().values().cloned().collect();
+        axiom_infos.sort_by_key(|info| info.label.clone()); // stabilize order
+        for info in axiom_infos {
             if let Some(def) = model_defs.get(&info.label) {
-                if *def.body == "true" {
+                if *def.body == "true"
+                    && (info.filter.is_none() || info.filter == discovered_error.filter)
+                {
                     discovered_additional_info.append(&mut info.labels.clone());
                     break;
                 }
@@ -350,10 +367,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
         // (a label that comes from one of the axioms associated
         // to the function precondition)
 
-        let error = discovered_error.expect("discovered_error");
+        let error = discovered_error.error;
         let e = context.message_interface.append_labels(&error, &discovered_additional_info);
         context.state = ContextState::FoundInvalid(infos, air_model.clone());
-        ValidityResult::Invalid(Some(air_model), e)
+        ValidityResult::Invalid(Some(air_model), e, discovered_assert_id.unwrap())
     }
 }
 
@@ -379,7 +396,7 @@ pub(crate) fn smt_check_query<'ctx>(
 
     // after lowering, there should be just one assertion
     let assertion = match &*query.assertion {
-        StmtX::Assert(_, expr) => expr,
+        StmtX::Assert(_, _, _, expr) => expr,
         _ => panic!("internal error: query not lowered"),
     };
     let assertion = elim_zero_args_expr(assertion);

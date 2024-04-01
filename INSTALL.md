@@ -22,7 +22,7 @@ Change directory to `source`: `cd source`
 ### On Windows: Get Z3 and set the `VERUS_Z3_PATH` environment variable
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
-Make sure you get Z3 4.12.2.
+Make sure you get Z3 4.12.5.
 The Z3 `bin` folder contain the executable `z3.exe`.
 Set the `VERUS_Z3_PATH` environment variable to the path of the Z3 executable file.
 
@@ -121,8 +121,6 @@ Note that while `vargo` needs to be run from the `source` directory, the `verus`
 directory, which is useful when verifying and compiling a project elsewhere on your file-system.
 
 # IDE Support
-
-**NOTE: These IDE Support instructions are currently outdated, and need to be updated for the new build process.**
 
 Once you have built Verus, you can use it in IDE clients (such as Visual Studio
 Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).

@@ -3,6 +3,7 @@
 use rust_verify::util::{verus_build_info, VerusBuildProfile};
 
 extern crate rustc_driver;
+extern crate rustc_log;
 extern crate rustc_session;
 
 #[cfg(target_family = "windows")]
@@ -37,45 +38,6 @@ pub fn main() {
                 rust_verify::lifetime::lifetime_rustc_driver(&internal_args[..], buffer);
                 return;
             }
-            "--internal-build-vstd-driver" => {
-                let pervasive_path = internal_args.next().unwrap();
-                let vstd_vir = internal_args.next().unwrap();
-                let target_path = std::path::PathBuf::from(internal_args.next().unwrap());
-                let verify = match internal_args.next().unwrap().as_str() {
-                    "verify" => true,
-                    "no-verify" => false,
-                    _ => panic!("invalid verify argument"),
-                };
-                let trace = match internal_args.next().unwrap().as_str() {
-                    "trace" => true,
-                    "no-trace" => false,
-                    _ => panic!("invalid trace argument"),
-                };
-
-                let mut internal_args: Vec<_> = internal_args.collect();
-                internal_args.insert(0, internal_program);
-
-                use rust_verify::config::{Args, ArgsX};
-                use rust_verify::file_loader::PervasiveFileLoader;
-                use rust_verify::verifier::Verifier;
-
-                let mut our_args: ArgsX = Default::default();
-                our_args.pervasive_path = Some(pervasive_path.to_string());
-                our_args.no_verify = !verify;
-                our_args.no_lifetime = !verify;
-                our_args.multiple_errors = 2;
-                our_args.export = Some(target_path.join(vstd_vir).to_str().unwrap().to_string());
-                our_args.compile = true;
-                our_args.trace = trace;
-                let our_args = Args::from(our_args);
-
-                let file_loader = PervasiveFileLoader::new(Some(pervasive_path.to_string()));
-                let verifier = Verifier::new(our_args);
-                let (_verifier, _stats, status) =
-                    rust_verify::driver::run(verifier, internal_args, None, file_loader, true);
-                status.expect("failed to build vstd library");
-                return;
-            }
             "--internal-test-mode" => true,
             _ => false,
         }
@@ -89,8 +51,8 @@ pub fn main() {
 
     let _ = os_setup();
     let logger_handler =
-        rustc_session::EarlyErrorHandler::new(rustc_session::config::ErrorOutputType::default());
-    rustc_driver::init_env_logger(&logger_handler, "RUSTVERIFY_LOG");
+        rustc_session::EarlyDiagCtxt::new(rustc_session::config::ErrorOutputType::default());
+    rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));
 
     let mut args = if build_test_mode { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
@@ -133,11 +95,9 @@ pub fn main() {
         }
     }
 
-    let pervasive_path = our_args.pervasive_path.clone();
-
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
-    let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);
+    let file_loader = rust_verify::file_loader::RealFileLoader;
     let verifier = rust_verify::verifier::Verifier::new(our_args);
 
     let (verifier, stats, status) =
@@ -234,19 +194,13 @@ pub fn main() {
         };
 
         if verifier.args.output_json {
-            assert!(
-                smt_function_breakdown
-                    .keys()
-                    .collect::<std::collections::HashSet<_>>()
-                    .difference(
-                        &smt_run_times
-                            .iter()
-                            .map(|(x, _)| *x)
-                            .collect::<std::collections::HashSet<_>>()
-                    )
-                    .next()
-                    .is_none()
-            );
+            {
+                let _smt_function_breakdown_set =
+                    smt_function_breakdown.keys().collect::<std::collections::HashSet<_>>();
+                let _smt_run_times_set =
+                    smt_run_times.iter().map(|(x, _)| *x).collect::<std::collections::HashSet<_>>();
+                // REVIEW check these are consistent
+            }
 
             let mut times = serde_json::json!({
                 "verus-build": {

@@ -48,7 +48,7 @@ test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
         use vstd::set::*;
 
-        pub closed spec fn set_map<A>(s: Set<A>, f: FnSpec(A) -> A) -> Set<A> {
+        pub closed spec fn set_map<A>(s: Set<A>, f: spec_fn(A) -> A) -> Set<A> {
             Set::new(|a: A| exists|x: A| s.contains(x) && a === f(x))
         }
 

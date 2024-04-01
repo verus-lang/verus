@@ -2,6 +2,7 @@ pub mod ast;
 pub mod ast_util;
 pub mod context;
 pub mod emitter;
+pub mod focus;
 pub mod messages;
 pub mod model;
 pub mod parser;

@@ -1,8 +1,11 @@
 use crate::ast::{
-    CallTarget, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind,
-    Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr, VirErrAs,
+    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun,
+    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr,
+    VirErrAs,
 };
-use crate::ast_util::{is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr};
+use crate::ast_util::{
+    fun_as_friendly_rust_name, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
+};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -13,6 +16,7 @@ use std::sync::Arc;
 
 struct Ctxt {
     pub(crate) funs: HashMap<Fun, Function>,
+    pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
 }
@@ -183,8 +187,20 @@ fn check_one_expr(
         ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
-        ExprX::Call(CallTarget::Fun(_, x, _, _, _), args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args) => {
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
+            match kind {
+                CallTargetKind::Static => {}
+                CallTargetKind::Method(None) => {}
+                CallTargetKind::Method(Some((resolved_fun, _, _))) => {
+                    check_path_and_get_function(
+                        ctxt,
+                        resolved_fun,
+                        disallow_private_access,
+                        &expr.span,
+                    )?;
+                }
+            }
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
                 // it's just a container for proof code that goes in the corresponding spec function
@@ -268,7 +284,13 @@ fn check_one_expr(
             }
         }
         ExprX::UnaryOpr(
-            UnaryOpr::Field(FieldOpr { datatype: path, variant, field, get_variant: _, check: _ }),
+            UnaryOpr::Field(FieldOpr {
+                datatype: path,
+                variant,
+                field: _,
+                get_variant: _,
+                check: _,
+            }),
             _,
         ) => {
             if let Some(dt) = ctxt.dts.get(path) {
@@ -285,12 +307,14 @@ fn check_one_expr(
                 }
                 if let Some((source_module, reason)) = disallow_private_access {
                     let variant = dt.x.get_variant(variant);
-                    let (_, _, vis) = &crate::ast_util::get_field(&variant.fields, &field).a;
-                    if !is_visible_to_opt(vis, source_module) {
-                        let msg = format!(
-                            "in {reason:}, cannot access any field of a datatype where one or more fields are private"
-                        );
-                        return Err(error(&expr.span, msg));
+                    for f in variant.fields.iter() {
+                        let (_, _, vis) = &f.a;
+                        if !is_visible_to_opt(vis, source_module) {
+                            let msg = format!(
+                                "in {reason:}, cannot access any field of a datatype where one or more fields are private"
+                            );
+                            return Err(error(&expr.span, msg));
+                        }
                     }
                 }
             } else {
@@ -354,22 +378,34 @@ fn check_one_expr(
 
             crate::closures::check_closure_well_formed(expr)?;
         }
-        ExprX::Fuel(f, fuel) => {
-            let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
-            if f.x.mode != Mode::Spec && !f.x.attrs.broadcast_forall {
-                return Err(error(
-                    &expr.span,
-                    &format!(
-                        "reveal/fuel statements require a spec-mode function or broadcast_forall function, got {:}-mode function",
-                        f.x.mode
-                    ),
-                ));
+        ExprX::Fuel(f, fuel, is_broadcast_use) => {
+            if ctxt.reveal_groups.contains(f) && *fuel == 1 {
+                return Ok(());
             }
-            if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decrease.is_empty()) {
-                return Err(error(
-                    &expr.span,
-                    "reveal_with_fuel statements require a spec function with a decreases clause",
-                ));
+            let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
+            if *is_broadcast_use {
+                if !f.x.attrs.broadcast_forall {
+                    return Err(error(
+                        &expr.span,
+                        &format!("`broadcast use` statements require a broadcast proof fn",),
+                    ));
+                }
+            } else {
+                if f.x.mode != Mode::Spec {
+                    return Err(error(
+                        &expr.span,
+                        &format!(
+                            "reveal/fuel statements require a spec-mode function, got {:}-mode function",
+                            f.x.mode
+                        ),
+                    ));
+                }
+                if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decrease.is_empty()) {
+                    return Err(error(
+                        &expr.span,
+                        "reveal_with_fuel statements require a spec function with a decreases clause",
+                    ));
+                }
             }
         }
         ExprX::ExecFnByName(fun) => {
@@ -383,7 +419,11 @@ fn check_one_expr(
                 }
             }
 
-            let typs = match &*expr.typ {
+            let u_expr_typ = match &*expr.typ {
+                TypX::Decorate(crate::ast::TypDecoration::Ref, typ) => &typ,
+                _ => &expr.typ,
+            };
+            let typs = match &**u_expr_typ {
                 TypX::FnDef(_fun, typs, _resolved_fun) => typs,
                 _ => {
                     return Err(error(
@@ -425,23 +465,6 @@ fn check_function(
     diags: &mut Vec<VirErrAs>,
     _no_verify: bool,
 ) -> Result<(), VirErr> {
-    if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
-        if function.x.body.is_some() && function.x.mode != Mode::Exec {
-            // REVIEW: If we allow default method implementations, we'll need to make sure
-            // it doesn't introduce nontermination into proof/spec.
-            return Err(error(
-                &function.span,
-                "trait proof/spec method declaration cannot provide a default implementation",
-            ));
-        }
-        if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
-            return Err(error(
-                &function.span,
-                "not yet supported: trait method declarations that open invariants",
-            ));
-        }
-    }
-
     if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
         if function.x.require.len() > 0 {
             return Err(error(
@@ -449,10 +472,10 @@ fn check_function(
                 "trait method implementation cannot declare requires clauses; these can only be inherited from the trait declaration",
             ));
         }
-        if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
+        if function.x.mask_spec.is_some() {
             return Err(error(
                 &function.span,
-                "trait method implementation cannot open invariants; this can only be inherited from the trait declaration",
+                "trait method implementation cannot declare an opens_invariants spec; this can only be inherited from the trait declaration",
             ));
         }
     }
@@ -462,7 +485,7 @@ fn check_function(
             FunctionKind::Static => {}
             FunctionKind::TraitMethodDecl { .. }
             | FunctionKind::TraitMethodImpl { .. }
-            | FunctionKind::ForeignTraitMethodImpl(_) => {
+            | FunctionKind::ForeignTraitMethodImpl { .. } => {
                 return Err(error(
                     &function.span,
                     "decreases_by/recommends_by function cannot be a trait method",
@@ -510,10 +533,10 @@ fn check_function(
         }
     }
 
-    let ret_name = user_local_name(&*function.x.ret.x.name);
+    let ret_name = user_local_name(&function.x.ret.x.name);
     for p in function.x.params.iter() {
         check_typ(ctxt, &p.x.typ, &p.span)?;
-        if user_local_name(&*p.x.name) == ret_name {
+        if user_local_name(&p.x.name) == ret_name {
             return Err(error(
                 &p.span,
                 "parameter name cannot be the same as the return value name",
@@ -551,18 +574,13 @@ fn check_function(
             FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
                 return Err(error(&function.span, "'atomic' not supported for trait functions"));
             }
-            FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl(..) => {
+            FunctionKind::Static | FunctionKind::ForeignTraitMethodImpl { .. } => {
                 // ok
             }
         }
     }
-    match &function.x.mask_spec {
-        MaskSpec::NoSpec => {}
-        _ => {
-            if function.x.mode == Mode::Spec {
-                return Err(error(&function.span, "invariants cannot be opened in spec functions"));
-            }
-        }
+    if function.x.mask_spec.is_some() && function.x.mode == Mode::Spec {
+        return Err(error(&function.span, "invariants cannot be opened in spec functions"));
     }
     if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
@@ -777,8 +795,8 @@ fn check_function(
         check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
     }
     match &function.x.mask_spec {
-        MaskSpec::NoSpec => {}
-        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+        None => {}
+        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
             for expr in es.iter() {
                 let msg = "'opens_invariants' clause of public function";
                 let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
@@ -840,6 +858,7 @@ fn check_function(
         };
         check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
     }
+
     Ok(())
 }
 
@@ -961,6 +980,27 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
     err
 }
 
+// Pre-merge check.
+// TODO: We should probably be doing all the checks on the just the pre-merged crate declarations,
+// even if we need to perform lookups from the merged crate.
+pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
+    let mut reveal_group_default = None;
+    for group in krate.reveal_groups.iter() {
+        if group.x.broadcast_use_by_default_when_this_crate_is_imported.is_some() {
+            if let Some(prev) = reveal_group_default {
+                let err = error(
+                    &group.span,
+                    "only one broadcast_use_by_default_when_this_crate_is_imported is allowed",
+                );
+                let err = err.primary_span(&prev);
+                return Err(err);
+            }
+            reveal_group_default = Some(group.span.clone());
+        }
+    }
+    Ok(())
+}
+
 pub fn check_crate(
     krate: &Krate,
     diags: &mut Vec<VirErrAs>,
@@ -986,6 +1026,8 @@ pub fn check_crate(
         }
         dts.insert(datatype.x.path.clone(), datatype.clone());
     }
+    let reveal_groups: HashSet<Fun> =
+        krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
     // Check connections between decreases_by specs and proofs
     let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
@@ -1076,6 +1118,16 @@ pub fn check_crate(
         if function.x.body.is_none() && function.x.fuel == 0 {
             return Err(error(&function.span, "opaque has no effect on a function without a body"));
         }
+        if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
+            if function.x.body.is_some() {
+                if function.x.decrease.len() > 0 {
+                    return Err(error(
+                        &function.span,
+                        "trait default methods do not yet support recursion and decreases",
+                    ));
+                }
+            }
+        }
     }
     for function in krate.functions.iter() {
         if function.x.attrs.is_decrease_by
@@ -1088,7 +1140,26 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { funs, dts, krate: krate.clone() };
+    for module in krate.modules.iter() {
+        if let Some(reveals) = &module.x.reveals {
+            for reveal in reveals.x.iter() {
+                if let Some(function) = funs.get(reveal) {
+                    if !function.x.attrs.broadcast_forall {
+                        return Err(error(
+                            &reveals.span,
+                            format!(
+                                "{} is not a broadcast proof fn",
+                                fun_as_friendly_rust_name(reveal)
+                            ),
+                        ));
+                    }
+                } else {
+                    assert!(reveal_groups.contains(reveal));
+                }
+            }
+        }
+    }
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone() };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
     }

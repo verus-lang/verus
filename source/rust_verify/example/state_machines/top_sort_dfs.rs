@@ -37,7 +37,8 @@ impl<V> DirectedGraph<V> {
 }
 
 tokenized_state_machine!{
-    TopSort<#[verifier::reject_recursive_types] /* vattr */ V> {
+    #[verifier::reject_recursive_types(V)]
+    TopSort<V> {
         fields {
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,

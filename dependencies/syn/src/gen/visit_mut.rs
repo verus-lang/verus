@@ -90,6 +90,9 @@ pub trait VisitMut {
     fn visit_bound_lifetimes_mut(&mut self, i: &mut BoundLifetimes) {
         visit_bound_lifetimes_mut(self, i);
     }
+    fn visit_broadcast_use_mut(&mut self, i: &mut BroadcastUse) {
+        visit_broadcast_use_mut(self, i);
+    }
     fn visit_closed_mut(&mut self, i: &mut Closed) {
         visit_closed_mut(self, i);
     }
@@ -194,6 +197,9 @@ pub trait VisitMut {
     fn visit_expr_for_loop_mut(&mut self, i: &mut ExprForLoop) {
         visit_expr_for_loop_mut(self, i);
     }
+    fn visit_expr_get_field_mut(&mut self, i: &mut ExprGetField) {
+        visit_expr_get_field_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_group_mut(&mut self, i: &mut ExprGroup) {
         visit_expr_group_mut(self, i);
@@ -231,6 +237,9 @@ pub trait VisitMut {
     #[cfg(feature = "full")]
     fn visit_expr_match_mut(&mut self, i: &mut ExprMatch) {
         visit_expr_match_mut(self, i);
+    }
+    fn visit_expr_matches_mut(&mut self, i: &mut ExprMatches) {
+        visit_expr_matches_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_expr_method_call_mut(&mut self, i: &mut ExprMethodCall) {
@@ -416,6 +425,9 @@ pub trait VisitMut {
     fn visit_invariant_ensures_mut(&mut self, i: &mut InvariantEnsures) {
         visit_invariant_ensures_mut(self, i);
     }
+    fn visit_invariant_except_break_mut(&mut self, i: &mut InvariantExceptBreak) {
+        visit_invariant_except_break_mut(self, i);
+    }
     fn visit_invariant_name_set_mut(&mut self, i: &mut InvariantNameSet) {
         visit_invariant_name_set_mut(self, i);
     }
@@ -431,6 +443,9 @@ pub trait VisitMut {
     #[cfg(feature = "full")]
     fn visit_item_mut(&mut self, i: &mut Item) {
         visit_item_mut(self, i);
+    }
+    fn visit_item_broadcast_group_mut(&mut self, i: &mut ItemBroadcastGroup) {
+        visit_item_broadcast_group_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_item_const_mut(&mut self, i: &mut ItemConst) {
@@ -542,6 +557,12 @@ pub trait VisitMut {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_macro_delimiter_mut(&mut self, i: &mut MacroDelimiter) {
         visit_macro_delimiter_mut(self, i);
+    }
+    fn visit_matches_op_expr_mut(&mut self, i: &mut MatchesOpExpr) {
+        visit_matches_op_expr_mut(self, i);
+    }
+    fn visit_matches_op_token_mut(&mut self, i: &mut MatchesOpToken) {
+        visit_matches_op_token_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_member_mut(&mut self, i: &mut Member) {
@@ -1220,6 +1241,24 @@ where
     }
     tokens_helper(v, &mut node.gt_token.spans);
 }
+pub fn visit_broadcast_use_mut<V>(v: &mut V, node: &mut BroadcastUse)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    tokens_helper(v, &mut (node.broadcast_use_tokens).0.span);
+    tokens_helper(v, &mut (node.broadcast_use_tokens).1.span);
+    for el in Punctuated::pairs_mut(&mut node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
+    tokens_helper(v, &mut node.semi.spans);
+}
 pub fn visit_closed_mut<V>(v: &mut V, node: &mut Closed)
 where
     V: VisitMut + ?Sized,
@@ -1512,6 +1551,12 @@ where
         Expr::Has(_binding_0) => {
             v.visit_expr_has_mut(_binding_0);
         }
+        Expr::Matches(_binding_0) => {
+            v.visit_expr_matches_mut(_binding_0);
+        }
+        Expr::GetField(_binding_0) => {
+            v.visit_expr_get_field_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1755,6 +1800,17 @@ where
     }
     v.visit_block_mut(&mut node.body);
 }
+pub fn visit_expr_get_field_mut<V>(v: &mut V, node: &mut ExprGetField)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_expr_mut(&mut *node.base);
+    tokens_helper(v, &mut node.arrow_token.spans);
+    v.visit_member_mut(&mut node.member);
+}
 #[cfg(feature = "full")]
 pub fn visit_expr_group_mut<V>(v: &mut V, node: &mut ExprGroup)
 where
@@ -1851,6 +1907,9 @@ where
         v.visit_label_mut(it);
     }
     tokens_helper(v, &mut node.loop_token.span);
+    if let Some(it) = &mut node.invariant_except_break {
+        v.visit_invariant_except_break_mut(it);
+    }
     if let Some(it) = &mut node.invariant {
         v.visit_invariant_mut(it);
     }
@@ -1888,6 +1947,20 @@ where
     tokens_helper(v, &mut node.brace_token.span);
     for it in &mut node.arms {
         v.visit_arm_mut(it);
+    }
+}
+pub fn visit_expr_matches_mut<V>(v: &mut V, node: &mut ExprMatches)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_expr_mut(&mut *node.lhs);
+    tokens_helper(v, &mut node.matches_token.span);
+    full!(v.visit_pat_mut(& mut node.pat));
+    if let Some(it) = &mut node.op_expr {
+        v.visit_matches_op_expr_mut(it);
     }
 }
 #[cfg(feature = "full")]
@@ -2103,6 +2176,9 @@ where
     }
     tokens_helper(v, &mut node.while_token.span);
     v.visit_expr_mut(&mut *node.cond);
+    if let Some(it) = &mut node.invariant_except_break {
+        v.visit_invariant_except_break_mut(it);
+    }
     if let Some(it) = &mut node.invariant {
         v.visit_invariant_mut(it);
     }
@@ -2512,6 +2588,9 @@ where
         ImplItem::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }
+        ImplItem::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2604,6 +2683,13 @@ where
     v.visit_specification_mut(&mut node.exprs);
 }
 pub fn visit_invariant_ensures_mut<V>(v: &mut V, node: &mut InvariantEnsures)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_invariant_except_break_mut<V>(v: &mut V, node: &mut InvariantExceptBreak)
 where
     V: VisitMut + ?Sized,
 {
@@ -2711,8 +2797,34 @@ where
         Item::Global(_binding_0) => {
             v.visit_global_mut(_binding_0);
         }
+        Item::BroadcastUse(_binding_0) => {
+            v.visit_broadcast_use_mut(_binding_0);
+        }
+        Item::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group_mut(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
+    }
+}
+pub fn visit_item_broadcast_group_mut<V>(v: &mut V, node: &mut ItemBroadcastGroup)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_visibility_mut(&mut node.vis);
+    tokens_helper(v, &mut (node.broadcast_group_tokens).0.span);
+    tokens_helper(v, &mut (node.broadcast_group_tokens).1.span);
+    v.visit_ident_mut(&mut node.ident);
+    tokens_helper(v, &mut node.brace_token.span);
+    for el in Punctuated::pairs_mut(&mut node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -3191,6 +3303,27 @@ where
         MacroDelimiter::Bracket(_binding_0) => {
             tokens_helper(v, &mut _binding_0.span);
         }
+    }
+}
+pub fn visit_matches_op_expr_mut<V>(v: &mut V, node: &mut MatchesOpExpr)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_matches_op_token_mut(&mut node.op_token);
+    v.visit_expr_mut(&mut *node.rhs);
+}
+pub fn visit_matches_op_token_mut<V>(v: &mut V, node: &mut MatchesOpToken)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        MatchesOpToken::Implies(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        MatchesOpToken::AndAnd(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        MatchesOpToken::BigAnd => {}
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3857,6 +3990,9 @@ where
     if let Some(it) = &mut node.abi {
         v.visit_abi_mut(it);
     }
+    if let Some(it) = &mut node.broadcast {
+        tokens_helper(v, &mut it.span);
+    }
     v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.fn_token.span);
     v.visit_ident_mut(&mut node.ident);
@@ -4179,7 +4315,12 @@ pub fn visit_type_fn_spec_mut<V>(v: &mut V, node: &mut TypeFnSpec)
 where
     V: VisitMut + ?Sized,
 {
-    tokens_helper(v, &mut node.fn_spec_token.span);
+    if let Some(it) = &mut node.fn_spec_token {
+        tokens_helper(v, &mut it.span);
+    }
+    if let Some(it) = &mut node.spec_fn_token {
+        tokens_helper(v, &mut it.span);
+    }
     tokens_helper(v, &mut node.paren_token.span);
     for el in Punctuated::pairs_mut(&mut node.inputs) {
         let (it, p) = el.into_tuple();

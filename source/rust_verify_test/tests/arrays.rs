@@ -147,3 +147,34 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_array_to_slice verus_code! {
+        use vstd::prelude::*;
+
+        fn test1(ar: &[u8; 3]) {
+            let sl: &[u8] = ar;
+            assert(sl@.len() == 3);
+        }
+
+        fn test2() {
+            let ar = [4, 5, 6];
+            let sl: &[u8] = &ar;
+            assert(sl@.len() == 3);
+            assert(sl@[1] == 5);
+        }
+
+        fn test3<const N: usize>(ar: &[u8; N]) {
+            let sl: &[u8] = ar;
+            assert(sl@.len() == N);
+        }
+
+        spec fn len_of_slice(ar: &[u8]) -> int {
+            ar@.len() as int
+        }
+
+        fn test4<const N: usize>(ar: &[u8; N]) {
+            assert(len_of_slice(ar) == ar@.len());
+        }
+    } => Ok(())
+}

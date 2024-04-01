@@ -716,6 +716,7 @@ define_keywords! {
     "ensures"     pub struct Ensures      /// `ensures`
     "decreases"   pub struct Decreases    /// `decreases`
     "opens_invariants"   pub struct OpensInvariants    /// `opens_invariants`
+    "invariant_except_break"   pub struct InvariantExceptBreak    /// `invariant_except_break`
     "invariant"   pub struct Invariant    /// `invariant`
     "invariant_ensures"   pub struct InvariantEnsures    /// `invariant_ensures`
     "assert"      pub struct Assert       /// `assert`
@@ -730,6 +731,7 @@ define_keywords! {
     "choose"      pub struct Choose       /// `choose`
     "is"          pub struct Is           /// `is`
     "FnSpec"      pub struct FnSpec       /// `FnSpec`
+    "spec_fn"     pub struct SpecFn       /// `spec_fn`
     "via"         pub struct Via          /// `via`
     "when"        pub struct When         /// `when`
     "any"         pub struct InvAny       /// `any`
@@ -738,6 +740,9 @@ define_keywords! {
     "global"      pub struct Global       /// `global`
     "size_of"     pub struct SizeOf       /// `size_of`
     "layout"      pub struct Layout       /// `layout`
+    "matches"     pub struct Matches      /// `matches`
+    "broadcast"   pub struct Broadcast    /// `broadcast`
+    "group"       pub struct BroadcastGroup    /// `group`
 }
 
 define_punctuation! {
@@ -934,6 +939,7 @@ macro_rules! export_token_macro {
             [ensures]     => { $crate::token::Ensures };
             [decreases]   => { $crate::token::Decreases };
             [opens_invariants]   => { $crate::token::OpensInvariants };
+            [invariant_except_break]   => { $crate::token::InvariantExceptBreak };
             [invariant]   => { $crate::token::Invariant };
             [invariant_ensures]   => { $crate::token::InvariantEnsures };
             [assert]      => { $crate::token::Assert };
@@ -955,7 +961,11 @@ macro_rules! export_token_macro {
             [global]      => { $crate::token::Global };
             [size_of]     => { $crate::token::SizeOf };
             [layout]      => { $crate::token::Layout };
+            [matches]     => { $crate::token::Matches };
+            [broadcast]   => { $crate::token::Broadcast };
+            [group]       => { $crate::token::BroadcastGroup };
             [FnSpec]      => { $crate::token::FnSpec };
+            [SpecFn]      => { $crate::token::SpecFn };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };
             [<==>]        => { $crate::token::Equiv };

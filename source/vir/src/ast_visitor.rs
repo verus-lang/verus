@@ -1,8 +1,8 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
-    Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX,
-    Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs, UnaryOpr,
-    Variant, VirErr,
+    Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
+    Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs,
+    UnaryOpr, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::error;
@@ -16,13 +16,17 @@ pub struct ScopeEntry {
     pub typ: Typ,
     pub is_mut: bool,
     pub init: bool,
+    pub is_outer_param_or_ret: bool,
 }
 
-pub type VisitorScopeMap = ScopeMap<Ident, ScopeEntry>;
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
 
 impl ScopeEntry {
     fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
-        ScopeEntry { typ: typ.clone(), is_mut, init }
+        ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: false }
+    }
+    fn new_outer_param_ret(typ: &Typ, is_mut: bool, init: bool) -> Self {
+        ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: true }
     }
 }
 
@@ -176,31 +180,58 @@ where
     map_typ_visitor_env(typ, &mut (), &|_: &mut (), t: &Typ| ft(t))
 }
 
-pub(crate) fn map_pattern_visitor_env<E, FT>(
+pub(crate) fn map_pattern_visitor_env<E, FE, FS, FT>(
     pattern: &Pattern,
+    map: &mut VisitorScopeMap,
     env: &mut E,
+    fe: &FE,
+    fs: &FS,
     ft: &FT,
 ) -> Result<Pattern, VirErr>
 where
+    FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
+    FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let patternx = match &pattern.x {
         PatternX::Wildcard(dd) => PatternX::Wildcard(*dd),
         PatternX::Var { name, mutable } => PatternX::Var { name: name.clone(), mutable: *mutable },
+        PatternX::Binding { name, mutable, sub_pat } => {
+            let p = map_pattern_visitor_env(sub_pat, map, env, fe, fs, ft)?;
+            PatternX::Binding { name: name.clone(), mutable: *mutable, sub_pat: p }
+        }
         PatternX::Tuple(ps) => {
-            let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, env, ft))?;
+            let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, map, env, fe, fs, ft))?;
             PatternX::Tuple(Arc::new(ps))
         }
         PatternX::Constructor(path, variant, binders) => {
             let binders = vec_map_result(&**binders, |b| {
-                b.map_result(|p| map_pattern_visitor_env(p, env, ft))
+                b.map_result(|p| map_pattern_visitor_env(p, map, env, fe, fs, ft))
             })?;
             PatternX::Constructor(path.clone(), variant.clone(), Arc::new(binders))
         }
         PatternX::Or(pat1, pat2) => {
-            let p1 = map_pattern_visitor_env(pat1, env, ft)?;
-            let p2 = map_pattern_visitor_env(pat2, env, ft)?;
+            let p1 = map_pattern_visitor_env(pat1, map, env, fe, fs, ft)?;
+            let p2 = map_pattern_visitor_env(pat2, map, env, fe, fs, ft)?;
             PatternX::Or(p1, p2)
+        }
+        PatternX::Expr(expr) => {
+            let e = map_expr_visitor_env(expr, map, env, fe, fs, ft)?;
+            PatternX::Expr(e)
+        }
+        PatternX::Range(expr1, expr2) => {
+            let e1 = match expr1 {
+                Some(expr1) => Some(map_expr_visitor_env(expr1, map, env, fe, fs, ft)?),
+                None => None,
+            };
+            let e2 = match expr2 {
+                Some((expr2, op)) => {
+                    let e2 = map_expr_visitor_env(expr2, map, env, fe, fs, ft)?;
+                    Some((e2, *op))
+                }
+                None => None,
+            };
+            PatternX::Range(e1, e2)
         }
     };
     Ok(SpannedTyped::new(&pattern.span, &map_typ_visitor_env(&pattern.typ, env, ft)?, patternx))
@@ -210,6 +241,10 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
     match &pattern.x {
         PatternX::Wildcard(_) => {}
         PatternX::Var { name, mutable } => {
+            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+        }
+        PatternX::Binding { name, mutable, sub_pat } => {
+            insert_pattern_vars(map, sub_pat, init);
             let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
         }
         PatternX::Tuple(ps) => {
@@ -226,6 +261,8 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
             insert_pattern_vars(map, pat1, init);
             // pat2 should bind an identical set of variables
         }
+        PatternX::Expr(_) => {}
+        PatternX::Range(_, _) => {}
     }
 }
 
@@ -272,7 +309,8 @@ where
                 | ExprX::VarLoc(_)
                 | ExprX::VarAt(_, _)
                 | ExprX::ConstVar(..)
-                | ExprX::StaticVar(..) => (),
+                | ExprX::StaticVar(..)
+                | ExprX::AirStmt(_) => (),
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
@@ -398,7 +436,7 @@ where
                 ExprX::AssertCompute(e, _) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
-                ExprX::Fuel(_, _) => (),
+                ExprX::Fuel(_, _, _) => (),
                 ExprX::RevealString(_) => (),
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
@@ -438,12 +476,13 @@ where
                     for arm in arms.iter() {
                         map.push_scope(true);
                         insert_pattern_vars(map, &arm.x.pattern, true);
+                        expr_visitor_control_flow!(pat_visitor_dfs(&arm.x.pattern, map, mf));
                         expr_visitor_control_flow!(expr_visitor_dfs(&arm.x.guard, map, mf));
                         expr_visitor_control_flow!(expr_visitor_dfs(&arm.x.body, map, mf));
                         map.pop_scope();
                     }
                 }
-                ExprX::Loop { is_for_loop: _, label: _, cond, body, invs } => {
+                ExprX::Loop { loop_isolation: _, is_for_loop: _, label: _, cond, body, invs } => {
                     if let Some(cond) = cond {
                         expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
                     }
@@ -514,15 +553,53 @@ where
                 expr_visitor_control_flow!(expr_visitor_dfs(init, map, mf));
             }
             insert_pattern_vars(map, &pattern, init.is_some());
+            expr_visitor_control_flow!(pat_visitor_dfs(&pattern, map, mf));
         }
     }
     VisitorControlFlow::Recurse
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum FunctionPlace {
-    Signature,
-    Internal,
+pub(crate) fn pat_visitor_dfs<T, MF>(
+    pat: &Pattern,
+    map: &mut VisitorScopeMap,
+    mf: &mut MF,
+) -> VisitorControlFlow<T>
+where
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+{
+    match &pat.x {
+        PatternX::Wildcard(_dd) => {}
+        PatternX::Var { name: _, mutable: _ } => {}
+        PatternX::Binding { name: _, mutable: _, sub_pat } => {
+            expr_visitor_control_flow!(pat_visitor_dfs(sub_pat, map, mf));
+        }
+        PatternX::Tuple(ps) => {
+            for p in ps.iter() {
+                expr_visitor_control_flow!(pat_visitor_dfs(p, map, mf));
+            }
+        }
+        PatternX::Constructor(_path, _variant, binders) => {
+            for binder in binders.iter() {
+                expr_visitor_control_flow!(pat_visitor_dfs(&binder.a, map, mf));
+            }
+        }
+        PatternX::Or(pat1, pat2) => {
+            expr_visitor_control_flow!(pat_visitor_dfs(pat1, map, mf));
+            expr_visitor_control_flow!(pat_visitor_dfs(pat2, map, mf));
+        }
+        PatternX::Expr(expr) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(expr, map, mf));
+        }
+        PatternX::Range(expr1, expr2) => {
+            if let Some(expr1) = expr1 {
+                expr_visitor_control_flow!(expr_visitor_dfs(expr1, map, mf));
+            }
+            if let Some((expr2, _ineq_op)) = expr2 {
+                expr_visitor_control_flow!(expr_visitor_dfs(expr2, map, mf));
+            }
+        }
+    };
+    VisitorControlFlow::Recurse
 }
 
 pub(crate) fn function_visitor_dfs<T, MF>(
@@ -531,7 +608,7 @@ pub(crate) fn function_visitor_dfs<T, MF>(
     mf: &mut MF,
 ) -> VisitorControlFlow<T>
 where
-    MF: FnMut(FunctionPlace, &mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
 {
     let FunctionX {
         name: _,
@@ -544,7 +621,7 @@ where
         typ_params: _,
         typ_bounds: _,
         params,
-        ret: _,
+        ret,
         require,
         ensure,
         decrease,
@@ -562,55 +639,40 @@ where
 
     map.push_scope(true);
     for p in params.iter() {
-        let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
+        let _ = map
+            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
     }
     for e in require.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+
+    map.push_scope(true);
+    if function.x.has_return_name() {
+        let _ = map
+            .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     for e in ensure.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
+    map.pop_scope();
+
     for e in decrease.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     if let Some(e) = decrease_when {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Signature,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     match mask_spec {
-        MaskSpec::NoSpec => {}
-        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+        None => {}
+        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
             for e in es.iter() {
-                expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-                    FunctionPlace::Signature,
-                    e,
-                    fp
-                )));
+                expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
         }
     }
 
     if let Some(e) = body {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-            FunctionPlace::Internal,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
 
@@ -619,21 +681,13 @@ where
         for p in params.iter() {
             let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
         }
-        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, &mut |e, fp| mf(
-            FunctionPlace::Internal,
-            e,
-            fp
-        )));
+        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
         map.pop_scope();
     }
 
     if let Some(es) = fndef_axioms {
         for e in es.iter() {
-            expr_visitor_control_flow!(expr_visitor_dfs(e, map, &mut |e, fp| mf(
-                FunctionPlace::Internal,
-                e,
-                fp
-            )));
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
         }
     }
 
@@ -642,12 +696,10 @@ where
 
 pub(crate) fn function_visitor_check<E, MF>(function: &Function, mf: &mut MF) -> Result<(), E>
 where
-    MF: FnMut(FunctionPlace, &Expr) -> Result<(), E>,
+    MF: FnMut(&Expr) -> Result<(), E>,
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
-    match function_visitor_dfs(function, &mut scope_map, &mut |fp, _scope_map, expr| match mf(
-        fp, expr,
-    ) {
+    match function_visitor_dfs(function, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(e) => VisitorControlFlow::Stop(e),
     }) {
@@ -745,6 +797,14 @@ where
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
             let ts = map_typs_visitor_env(ts, env, ft)?;
             ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p.clone(), ts))
+        }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p, ts, x, t)) => {
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            let t = map_typ_visitor_env(t, env, ft)?;
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p.clone(), ts, x.clone(), t))
+        }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter)
         }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
@@ -873,7 +933,9 @@ where
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
             ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2, op: *op }
         }
-        ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
+        ExprX::Fuel(path, fuel, is_broadcast_use) => {
+            ExprX::Fuel(path.clone(), *fuel, *is_broadcast_use)
+        }
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
         ExprX::Header(_) => {
             return Err(error(&expr.span, "header expression not allowed here"));
@@ -920,7 +982,7 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let arms: Result<Vec<Arm>, VirErr> = vec_map_result(arms, |arm| {
                 map.push_scope(true);
-                let pattern = map_pattern_visitor_env(&arm.x.pattern, env, ft)?;
+                let pattern = map_pattern_visitor_env(&arm.x.pattern, map, env, fe, fs, ft)?;
                 insert_pattern_vars(map, &pattern, true);
                 let guard = map_expr_visitor_env(&arm.x.guard, map, env, fe, fs, ft)?;
                 let body = map_expr_visitor_env(&arm.x.body, map, env, fe, fs, ft)?;
@@ -929,7 +991,7 @@ where
             });
             ExprX::Match(expr1, Arc::new(arms?))
         }
-        ExprX::Loop { is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs } => {
             let cond =
                 cond.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
@@ -939,6 +1001,7 @@ where
                 invs1.push(crate::ast::LoopInvariant { inv: e1, ..inv.clone() });
             }
             ExprX::Loop {
+                loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 cond,
@@ -990,6 +1053,7 @@ where
             map.pop_scope();
             ExprX::OpenInvariant(expr1, binder, expr2, *atomicity)
         }
+        ExprX::AirStmt(s) => ExprX::AirStmt(s.clone()),
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)
@@ -1028,7 +1092,7 @@ where
             fs(env, map, &Spanned::new(stmt.span.clone(), StmtX::Expr(expr)))
         }
         StmtX::Decl { pattern, mode, init } => {
-            let pattern = map_pattern_visitor_env(pattern, env, ft)?;
+            let pattern = map_pattern_visitor_env(pattern, map, env, fe, fs, ft)?;
             let init =
                 init.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             insert_pattern_vars(map, &pattern, init.is_some());
@@ -1053,6 +1117,17 @@ where
     Ok(Spanned::new(param.span.clone(), paramx))
 }
 
+pub(crate) fn map_params_visitor<E, FT>(
+    params: &Params,
+    env: &mut E,
+    ft: &FT,
+) -> Result<Params, VirErr>
+where
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+{
+    Ok(Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?))
+}
+
 pub(crate) fn map_generic_bound_visitor<E, FT>(
     bound: &GenericBound,
     env: &mut E,
@@ -1065,6 +1140,11 @@ where
         GenericBoundX::Trait(trait_path, ts) => {
             let ts = map_typs_visitor_env(ts, env, ft)?;
             Ok(Arc::new(GenericBoundX::Trait(trait_path.clone(), ts)))
+        }
+        GenericBoundX::TypEquality(trait_path, ts, name, t) => {
+            let ts = map_typs_visitor_env(ts, env, ft)?;
+            let t = map_typ_visitor_env(t, env, ft)?;
+            Ok(Arc::new(GenericBoundX::TypEquality(trait_path.clone(), ts, name.clone(), t)))
         }
     }
 }
@@ -1122,11 +1202,22 @@ where
     let name = name.clone();
     let proxy = proxy.clone();
     let kind = match kind {
-        FunctionKind::Static
-        | FunctionKind::TraitMethodDecl { trait_path: _ }
-        | FunctionKind::ForeignTraitMethodImpl(_) => kind.clone(),
-        FunctionKind::TraitMethodImpl { method, impl_path, trait_path, trait_typ_args } => {
-            FunctionKind::TraitMethodImpl {
+        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
+        FunctionKind::TraitMethodImpl {
+            method,
+            impl_path,
+            trait_path,
+            trait_typ_args,
+            inherit_body_from,
+        } => FunctionKind::TraitMethodImpl {
+            method: method.clone(),
+            impl_path: impl_path.clone(),
+            trait_path: trait_path.clone(),
+            trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
+            inherit_body_from: inherit_body_from.clone(),
+        },
+        FunctionKind::ForeignTraitMethodImpl { method, impl_path, trait_path, trait_typ_args } => {
+            FunctionKind::ForeignTraitMethodImpl {
                 method: method.clone(),
                 impl_path: impl_path.clone(),
                 trait_path: trait_path.clone(),
@@ -1140,17 +1231,19 @@ where
     let fuel = *fuel;
     let typ_bounds = map_generic_bounds_visitor(typ_bounds, env, ft)?;
     map.push_scope(true);
-    let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
+    let params = map_params_visitor(params, env, ft)?;
     for p in params.iter() {
-        let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
+        let _ = map
+            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
     }
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
 
     map.push_scope(true);
-    if function.x.has_return() {
-        let _ = map.insert(ret.x.name.clone(), ScopeEntry::new(&ret.x.typ, false, true));
+    if function.x.has_return_name() {
+        let _ = map
+            .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
@@ -1165,16 +1258,16 @@ where
     let decrease_by = decrease_by.clone();
 
     let mask_spec = match mask_spec {
-        MaskSpec::NoSpec => MaskSpec::NoSpec,
-        MaskSpec::InvariantOpens(es) => {
-            MaskSpec::InvariantOpens(Arc::new(vec_map_result(es, |e| {
+        None => None,
+        Some(MaskSpec::InvariantOpens(es)) => {
+            Some(MaskSpec::InvariantOpens(Arc::new(vec_map_result(es, |e| {
                 map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?))
+            })?)))
         }
-        MaskSpec::InvariantOpensExcept(es) => {
-            MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
+        Some(MaskSpec::InvariantOpensExcept(es)) => {
+            Some(MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
                 map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?))
+            })?)))
         }
     };
     let attrs = attrs.clone();
@@ -1186,7 +1279,7 @@ where
 
     let broadcast_forall = if let Some((params, req_ens)) = broadcast_forall {
         map.push_scope(true);
-        let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
+        let params = map_params_visitor(params, env, ft)?;
         for p in params.iter() {
             let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
         }
@@ -1277,6 +1370,7 @@ where
         trait_path,
         trait_typ_args,
         trait_typ_arg_impls,
+        owning_module,
     } = &imp.x;
     let impx = TraitImplX {
         impl_path: impl_path.clone(),
@@ -1285,6 +1379,7 @@ where
         trait_path: trait_path.clone(),
         trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
         trait_typ_arg_impls: trait_typ_arg_impls.clone(),
+        owning_module: owning_module.clone(),
     };
     Ok(Spanned::new(imp.span.clone(), impx))
 }

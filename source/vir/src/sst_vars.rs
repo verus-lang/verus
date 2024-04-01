@@ -1,4 +1,4 @@
-use crate::ast::{Typ, UnaryOpr};
+use crate::ast::{Typ, UnaryOpr, VarIdent};
 use crate::def::Spanned;
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
@@ -6,10 +6,10 @@ use air::scope_map::ScopeMap;
 use indexmap::{IndexMap, IndexSet};
 use std::sync::Arc;
 
-fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<Arc<String>> {
+fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<VarIdent> {
     let mut output = IndexSet::new();
     for item in input {
-        output.insert(item.name.clone());
+        output.insert(item.clone());
     }
     output
 }
@@ -17,7 +17,7 @@ fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<Arc<String>> {
 // Compute:
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
-pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<Arc<String>>>;
+pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<VarIdent>>;
 
 pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
     match &exp.x {
@@ -70,7 +70,8 @@ pub(crate) fn stm_assign(
         | StmX::Assume(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
-        | StmX::Return { .. } => stm.clone(),
+        | StmX::Return { .. }
+        | StmX::Air(_) => stm.clone(),
         StmX::Assign { lhs: Dest { dest, is_init }, rhs: _ } => {
             let var = get_loc_var(dest);
             assigned.insert(var.clone());
@@ -116,7 +117,16 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs))
         }
-        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop {
+            loop_isolation,
+            is_for_loop,
+            label,
+            cond,
+            body,
+            invs,
+            typ_inv_vars,
+            modified_vars,
+        } => {
             let mut pre_modified = modified.clone();
             *modified = IndexSet::new();
             let cond = if let Some((cond_stm, cond_exp)) = cond {
@@ -146,6 +156,7 @@ pub(crate) fn stm_assign(
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
             let loop_x = StmX::Loop {
+                loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
                 cond,

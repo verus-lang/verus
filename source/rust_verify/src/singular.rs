@@ -366,13 +366,14 @@ fn encode_singular_queries(
 
     // encode requires
     for stmt in &**reqs {
-        if let air::ast::StmtX::Assert(err, expr) = &**stmt {
+        if let air::ast::StmtX::Assert(_, err, _, expr) = &**stmt {
             let err: vir::messages::Message =
                 err.clone().downcast().expect("unexpected value in Any -> Message conversion");
             if let Err(info) = encoder.encode_requires_poly(expr) {
                 return Err(ValidityResult::Invalid(
                     None,
                     err.clone().secondary_label(func_span, info),
+                    None,
                 ));
             }
         }
@@ -380,7 +381,7 @@ fn encode_singular_queries(
 
     // each ensures is a separate query string
     for stmts in &**enss {
-        if let air::ast::StmtX::Assert(err, expr) = &**stmts {
+        if let air::ast::StmtX::Assert(_, err, _, expr) = &**stmts {
             let err: vir::messages::Message =
                 err.clone().downcast().expect("unexpected value in Any -> Message conversion");
             let res = encoder.encode_ensures_poly(expr);
@@ -388,6 +389,7 @@ fn encode_singular_queries(
                 return Err(ValidityResult::Invalid(
                     None,
                     err.clone().secondary_label(func_span, info),
+                    None,
                 ));
             }
             queries.push((res.unwrap(), err.clone()));
@@ -437,7 +439,7 @@ pub fn check_singular_valid(
                     .to_string(),
             )
             .primary_label(&err.spans[0], "Singular cannot prove this");
-            return ValidityResult::Invalid(None, err);
+            return ValidityResult::Invalid(None, err, None);
         }
     }
 

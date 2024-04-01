@@ -89,6 +89,9 @@ pub trait Visit<'ast> {
     fn visit_bound_lifetimes(&mut self, i: &'ast BoundLifetimes) {
         visit_bound_lifetimes(self, i);
     }
+    fn visit_broadcast_use(&mut self, i: &'ast BroadcastUse) {
+        visit_broadcast_use(self, i);
+    }
     fn visit_closed(&mut self, i: &'ast Closed) {
         visit_closed(self, i);
     }
@@ -193,6 +196,9 @@ pub trait Visit<'ast> {
     fn visit_expr_for_loop(&mut self, i: &'ast ExprForLoop) {
         visit_expr_for_loop(self, i);
     }
+    fn visit_expr_get_field(&mut self, i: &'ast ExprGetField) {
+        visit_expr_get_field(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_expr_group(&mut self, i: &'ast ExprGroup) {
         visit_expr_group(self, i);
@@ -230,6 +236,9 @@ pub trait Visit<'ast> {
     #[cfg(feature = "full")]
     fn visit_expr_match(&mut self, i: &'ast ExprMatch) {
         visit_expr_match(self, i);
+    }
+    fn visit_expr_matches(&mut self, i: &'ast ExprMatches) {
+        visit_expr_matches(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_expr_method_call(&mut self, i: &'ast ExprMethodCall) {
@@ -415,6 +424,9 @@ pub trait Visit<'ast> {
     fn visit_invariant_ensures(&mut self, i: &'ast InvariantEnsures) {
         visit_invariant_ensures(self, i);
     }
+    fn visit_invariant_except_break(&mut self, i: &'ast InvariantExceptBreak) {
+        visit_invariant_except_break(self, i);
+    }
     fn visit_invariant_name_set(&mut self, i: &'ast InvariantNameSet) {
         visit_invariant_name_set(self, i);
     }
@@ -430,6 +442,9 @@ pub trait Visit<'ast> {
     #[cfg(feature = "full")]
     fn visit_item(&mut self, i: &'ast Item) {
         visit_item(self, i);
+    }
+    fn visit_item_broadcast_group(&mut self, i: &'ast ItemBroadcastGroup) {
+        visit_item_broadcast_group(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_item_const(&mut self, i: &'ast ItemConst) {
@@ -541,6 +556,12 @@ pub trait Visit<'ast> {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_macro_delimiter(&mut self, i: &'ast MacroDelimiter) {
         visit_macro_delimiter(self, i);
+    }
+    fn visit_matches_op_expr(&mut self, i: &'ast MatchesOpExpr) {
+        visit_matches_op_expr(self, i);
+    }
+    fn visit_matches_op_token(&mut self, i: &'ast MatchesOpToken) {
+        visit_matches_op_token(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_member(&mut self, i: &'ast Member) {
@@ -1219,6 +1240,24 @@ where
     }
     tokens_helper(v, &node.gt_token.spans);
 }
+pub fn visit_broadcast_use<'ast, V>(v: &mut V, node: &'ast BroadcastUse)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &(node.broadcast_use_tokens).0.span);
+    tokens_helper(v, &(node.broadcast_use_tokens).1.span);
+    for el in Punctuated::pairs(&node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+    tokens_helper(v, &node.semi.spans);
+}
 pub fn visit_closed<'ast, V>(v: &mut V, node: &'ast Closed)
 where
     V: Visit<'ast> + ?Sized,
@@ -1511,6 +1550,12 @@ where
         Expr::Has(_binding_0) => {
             v.visit_expr_has(_binding_0);
         }
+        Expr::Matches(_binding_0) => {
+            v.visit_expr_matches(_binding_0);
+        }
+        Expr::GetField(_binding_0) => {
+            v.visit_expr_get_field(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -1754,6 +1799,17 @@ where
     }
     v.visit_block(&node.body);
 }
+pub fn visit_expr_get_field<'ast, V>(v: &mut V, node: &'ast ExprGetField)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.base);
+    tokens_helper(v, &node.arrow_token.spans);
+    v.visit_member(&node.member);
+}
 #[cfg(feature = "full")]
 pub fn visit_expr_group<'ast, V>(v: &mut V, node: &'ast ExprGroup)
 where
@@ -1850,6 +1906,9 @@ where
         v.visit_label(it);
     }
     tokens_helper(v, &node.loop_token.span);
+    if let Some(it) = &node.invariant_except_break {
+        v.visit_invariant_except_break(it);
+    }
     if let Some(it) = &node.invariant {
         v.visit_invariant(it);
     }
@@ -1887,6 +1946,20 @@ where
     tokens_helper(v, &node.brace_token.span);
     for it in &node.arms {
         v.visit_arm(it);
+    }
+}
+pub fn visit_expr_matches<'ast, V>(v: &mut V, node: &'ast ExprMatches)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.lhs);
+    tokens_helper(v, &node.matches_token.span);
+    full!(v.visit_pat(& node.pat));
+    if let Some(it) = &node.op_expr {
+        v.visit_matches_op_expr(it);
     }
 }
 #[cfg(feature = "full")]
@@ -2102,6 +2175,9 @@ where
     }
     tokens_helper(v, &node.while_token.span);
     v.visit_expr(&*node.cond);
+    if let Some(it) = &node.invariant_except_break {
+        v.visit_invariant_except_break(it);
+    }
     if let Some(it) = &node.invariant {
         v.visit_invariant(it);
     }
@@ -2512,6 +2588,9 @@ where
         ImplItem::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }
+        ImplItem::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -2604,6 +2683,13 @@ where
     v.visit_specification(&node.exprs);
 }
 pub fn visit_invariant_ensures<'ast, V>(v: &mut V, node: &'ast InvariantEnsures)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
+pub fn visit_invariant_except_break<'ast, V>(v: &mut V, node: &'ast InvariantExceptBreak)
 where
     V: Visit<'ast> + ?Sized,
 {
@@ -2717,8 +2803,34 @@ where
         Item::Global(_binding_0) => {
             v.visit_global(_binding_0);
         }
+        Item::BroadcastUse(_binding_0) => {
+            v.visit_broadcast_use(_binding_0);
+        }
+        Item::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group(_binding_0);
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
+    }
+}
+pub fn visit_item_broadcast_group<'ast, V>(v: &mut V, node: &'ast ItemBroadcastGroup)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_visibility(&node.vis);
+    tokens_helper(v, &(node.broadcast_group_tokens).0.span);
+    tokens_helper(v, &(node.broadcast_group_tokens).1.span);
+    v.visit_ident(&node.ident);
+    tokens_helper(v, &node.brace_token.span);
+    for el in Punctuated::pairs(&node.paths) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_path(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
     }
 }
 #[cfg(feature = "full")]
@@ -3197,6 +3309,27 @@ where
         MacroDelimiter::Bracket(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
+    }
+}
+pub fn visit_matches_op_expr<'ast, V>(v: &mut V, node: &'ast MatchesOpExpr)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    v.visit_matches_op_token(&node.op_token);
+    v.visit_expr(&*node.rhs);
+}
+pub fn visit_matches_op_token<'ast, V>(v: &mut V, node: &'ast MatchesOpToken)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        MatchesOpToken::Implies(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        MatchesOpToken::AndAnd(_binding_0) => {
+            tokens_helper(v, &_binding_0.spans);
+        }
+        MatchesOpToken::BigAnd => {}
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3863,6 +3996,9 @@ where
     if let Some(it) = &node.abi {
         v.visit_abi(it);
     }
+    if let Some(it) = &node.broadcast {
+        tokens_helper(v, &it.span);
+    }
     v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.fn_token.span);
     v.visit_ident(&node.ident);
@@ -4185,7 +4321,12 @@ pub fn visit_type_fn_spec<'ast, V>(v: &mut V, node: &'ast TypeFnSpec)
 where
     V: Visit<'ast> + ?Sized,
 {
-    tokens_helper(v, &node.fn_spec_token.span);
+    if let Some(it) = &node.fn_spec_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.spec_fn_token {
+        tokens_helper(v, &it.span);
+    }
     tokens_helper(v, &node.paren_token.span);
     for el in Punctuated::pairs(&node.inputs) {
         let (it, p) = el.into_tuple();

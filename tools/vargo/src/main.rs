@@ -5,11 +5,20 @@
 // `target/debug` or `target/release` when they are the main build target, and
 // not when they're a dependency of another target.
 
+#[path = "../../common/consts.rs"]
+mod consts;
+
+const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 2, 10];
+
 mod util;
 
 use filetime::FileTime as FFileTime;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+
+fn test_rust_min_stack() -> String {
+    (20 * 1024 * 1024).to_string()
+}
 
 const VARGO_SOURCE_FILES: &[(&'static str, &'static [u8])] = &[
     ("src/main.rs", include_bytes!("main.rs")),
@@ -229,6 +238,24 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let no_solver_version_check = args
+        .iter()
+        .position(|x| x.as_str() == "--no-solver-version-check")
+        .map(|p| args.remove(p))
+        .is_some();
+
+    let vstd_log_all = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-log-all")
+        .map(|p| args.remove(p))
+        .is_some();
+
+    let vstd_no_verusfmt = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-verusfmt")
+        .map(|p| args.remove(p))
+        .is_some();
+
     if vstd_no_alloc && !vstd_no_std {
         return Err(format!("--vstd-no-alloc requires --vstd-no-std"));
     }
@@ -309,7 +336,7 @@ fn run() -> Result<(), String> {
         std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
-    let z3_file_name = if vargo_nest == 0 && std::env::var("VERUS_Z3_PATH").is_ok() {
+    let z3_file_name = if std::env::var("VERUS_Z3_PATH").is_ok() {
         std::env::var("VERUS_Z3_PATH").unwrap()
     } else {
         Z3_FILE_NAME.to_string()
@@ -361,8 +388,45 @@ fn run() -> Result<(), String> {
         _ => panic!("unexpected command"),
     };
 
+    if vargo_nest == 0 && task != Task::Fmt && !no_solver_version_check {
+        let output = std::process::Command::new(z3_path)
+            .arg("--version")
+            .output()
+            .map_err(|x| format!("could not execute z3: {}", x))?;
+        if !output.status.success() {
+            return Err(format!("z3 returned non-zero exit code"));
+        }
+        let stdout_str = std::str::from_utf8(&output.stdout)
+            .map_err(|x| format!("z3 version output is not valid utf8 ({})", x))?
+            .to_string();
+        let z3_version_re = Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
+            .expect("failed to compile z3 version regex");
+        let version = z3_version_re
+            .captures(&stdout_str)
+            .and_then(|captures| {
+                let mut captures = captures.iter();
+                let _ = captures.next()?;
+                let version = captures.next()?;
+                if captures.next() != None {
+                    return None;
+                }
+                Some(version?.as_str())
+            })
+            .ok_or(format!("undexpected z3 version output ({})", stdout_str))?;
+        if version != consts::EXPECTED_Z3_VERSION {
+            return Err(format!(
+                "Verus expects z3 version \"{}\", found version \"{}\"\n\
+            Run ./tools/get-z3.(sh|ps1) to update z3 first.\n\
+            If you need a build with a custom z3 version, re-run with --no-solver-version-check.",
+                consts::EXPECTED_Z3_VERSION,
+                version
+            ));
+        }
+    }
+
     if task == Task::Cmd {
         return std::process::Command::new("rustup")
+            .env("RUST_MIN_STACK", test_rust_min_stack())
             .arg("run")
             .arg(toolchain.expect("not in nextest"))
             .args(args_bucket)
@@ -560,8 +624,12 @@ fn run() -> Result<(), String> {
 
     match (task, package.as_ref().map(|x| x.as_str()), in_nextest) {
         (Task::Clean | Task::Fmt | Task::Run | Task::Metadata | Task::Update, package, false) => {
+            let original_args = args.clone();
+
             if let Task::Fmt = task {
                 let pos = dashdash_pos.unwrap();
+
+                info(format!("formatting source").as_str());
 
                 args.insert(pos + 1, "--config".to_string());
                 args.insert(pos + 2, "unstable_features=true,version=Two".to_string());
@@ -579,6 +647,7 @@ fn run() -> Result<(), String> {
             } else {
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
+                    .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
                     .env("RUSTFLAGS", RUST_FLAGS)
@@ -622,6 +691,144 @@ fn run() -> Result<(), String> {
                         }
                         Ok(())
                     }
+                    Task::Fmt => {
+                        if !status.success() {
+                            return Err(format!(
+                                "`cargo fmt` returned status code {:?}",
+                                status.code()
+                            ));
+                        }
+
+                        let original_args = original_args
+                            .iter()
+                            .map(|x| x.as_str())
+                            .collect::<std::collections::HashSet<&str>>();
+                        if !original_args.is_subset(&std::collections::HashSet::from([
+                            "--",
+                            "--check",
+                            "fmt",
+                            "--color=always",
+                        ])) {
+                            return Err(format!("some of the arguments to fmt are unsupported"));
+                        }
+                        let fmt_check = original_args.contains("--check");
+
+                        info(format!("formatting syn").as_str());
+
+                        let syn_path = std::path::Path::new("../dependencies/syn");
+                        let mut syn_fmt = std::process::Command::new("cargo");
+                        syn_fmt.current_dir(syn_path).arg("fmt");
+                        if fmt_check {
+                            syn_fmt.arg("--check");
+                        }
+                        let syn_fmt_status = syn_fmt.status().expect("failed to run cargo");
+                        if !syn_fmt_status.success() {
+                            return Err(format!(
+                                "cargo fmt on syn returned status code {:?}",
+                                syn_fmt_status.code()
+                            ));
+                        }
+
+                        info(format!("formatting prettyplease").as_str());
+
+                        let syn_path = std::path::Path::new("../dependencies/prettyplease");
+                        let mut syn_fmt = std::process::Command::new("cargo");
+                        syn_fmt.current_dir(syn_path).arg("fmt");
+                        if fmt_check {
+                            syn_fmt.arg("--check");
+                        }
+                        let syn_fmt_status = syn_fmt.status().expect("failed to run cargo");
+                        if !syn_fmt_status.success() {
+                            return Err(format!(
+                                "cargo fmt on prettyplease returned status code {:?}",
+                                syn_fmt_status.code()
+                            ));
+                        }
+
+                        if exclude.contains(&"vstd".to_owned()) {
+                            return Ok(());
+                        }
+
+                        if !vstd_no_verusfmt {
+                            match std::process::Command::new("verusfmt")
+                                .arg("--version")
+                                .output()
+                            {
+                                Ok(output) => {
+                                    if !output.status.success() {
+                                        return Err(format!(
+                                            "`verusfmt` returned status code {:?}",
+                                            status.code()
+                                        ));
+                                    }
+                                    let verusfmt_version_stdout = String::from_utf8(output.stdout)
+                                        .map_err(|_| format!("invalid output from verusfmt"))?;
+                                    let verusfmt_version_re =
+                                        Regex::new(r"^verusfmt ([0-9]+)\.([0-9]+)\.([0-9]+)\n$")
+                                            .unwrap();
+                                    let verusfmt_version = verusfmt_version_re
+                                        .captures(&verusfmt_version_stdout)
+                                        .ok_or(format!("invalid output from verusfmt"))?
+                                        .extract::<3>()
+                                        .1
+                                        .iter()
+                                        .map(|v| v.parse::<u64>().unwrap())
+                                        .collect::<Vec<u64>>();
+                                    for (cv, ev) in
+                                        verusfmt_version.iter().zip(MINIMUM_VERUSFMT_VERSION.iter())
+                                    {
+                                        if ev > cv {
+                                            return Err(format!("expected `verusfmt` version to be at least {}.{}.{}, found {}.{}.{}; refer to https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt for installation instructions",
+                                                MINIMUM_VERUSFMT_VERSION[0], MINIMUM_VERUSFMT_VERSION[1], MINIMUM_VERUSFMT_VERSION[2],
+                                                verusfmt_version[0], verusfmt_version[1], verusfmt_version[2]));
+                                        } else if cv > ev {
+                                            break;
+                                        }
+                                    }
+                                }
+                                Err(err) => match err.kind() {
+                                    std::io::ErrorKind::NotFound => {
+                                        warn(format!("cannot execute verusfmt, refer to https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt for installation instructions\nvstd will not be formatted").as_str());
+                                        return Ok(());
+                                    }
+                                    _ => return Err(format!("cannot execute verusfmt: {}", err)),
+                                },
+                            };
+
+                            info(format!("formatting vstd").as_str());
+
+                            let vstd_path = std::path::Path::new("vstd");
+                            let all_vstd_files = walkdir::WalkDir::new(vstd_path)
+                                .follow_links(true)
+                                .into_iter()
+                                .filter_map(|e| e.ok())
+                                .filter(|x| {
+                                    x.path().extension() == Some(std::ffi::OsStr::new("rs"))
+                                })
+                                .map(|x| x.path().to_owned())
+                                .collect::<Vec<_>>();
+
+                            let mut verusfmt = std::process::Command::new("verusfmt");
+                            if fmt_check {
+                                verusfmt.arg("--check");
+                            }
+                            verusfmt.args(all_vstd_files);
+                            let verusfmt_status = verusfmt.status().expect("failed to run vstd");
+
+                            if !verusfmt_status.success() {
+                                warn(
+                                    format!(
+                                        "verusfmt returned error code {:?}",
+                                        verusfmt_status.code(),
+                                    )
+                                    .as_str(),
+                                );
+                                std::process::exit(verusfmt_status.code().unwrap_or(1))
+                            }
+                        }
+
+                        Ok(())
+                    }
                     _ => std::process::exit(status.code().unwrap_or(1)),
                 }
             }
@@ -653,6 +860,7 @@ fn run() -> Result<(), String> {
                     std::env::current_exe().expect("no path for the current executable");
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
+                    .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
@@ -667,6 +875,7 @@ fn run() -> Result<(), String> {
             } else {
                 let mut cargo = std::process::Command::new("cargo");
                 let cargo = cargo
+                    .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
                     .env("RUSTFLAGS", RUST_FLAGS)
@@ -681,6 +890,7 @@ fn run() -> Result<(), String> {
         (Task::Metadata | Task::Test { .. }, _, true) => {
             let mut cargo = std::process::Command::new("cargo");
             let cargo = cargo
+                .env("RUST_MIN_STACK", test_rust_min_stack())
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
                 .env("RUSTFLAGS", RUST_FLAGS)
@@ -697,9 +907,10 @@ fn run() -> Result<(), String> {
                     }
                 })
         }
-        (Task::Build, Some("air"), false) => {
+        (Task::Build, Some("air" | "verusdoc"), false) => {
             let mut cargo = std::process::Command::new("cargo");
             let cargo = cargo
+                .env("RUST_MIN_STACK", test_rust_min_stack())
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
                 .env("RUSTFLAGS", RUST_FLAGS)
@@ -733,6 +944,7 @@ fn run() -> Result<(), String> {
                     info(format!("building {}", target).as_str());
                     let mut cmd = std::process::Command::new("cargo");
                     let mut cmd = cmd
+                        .env("RUST_MIN_STACK", test_rust_min_stack())
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
                         .env("RUSTFLAGS", RUST_FLAGS)
@@ -900,8 +1112,8 @@ fn run() -> Result<(), String> {
                         .expect("dependencies_mtime should be Some here")
                         .into();
 
-                    let pervasive_path = std::path::Path::new("pervasive");
-                    let vstd_mtime: FileTime = util::mtime_recursive(&pervasive_path)?.into();
+                    let vstd_path = std::path::Path::new("vstd");
+                    let vstd_mtime: FileTime = util::mtime_recursive(&vstd_path)?.into();
 
                     let current_fingerprint = Fingerprint {
                         dependencies_mtime,
@@ -939,6 +1151,9 @@ fn run() -> Result<(), String> {
                         }
                         if vstd_trace {
                             vstd_build = vstd_build.arg("--trace");
+                        }
+                        if vstd_log_all {
+                            vstd_build = vstd_build.arg("--log-all");
                         }
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");

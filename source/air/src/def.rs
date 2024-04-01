@@ -1,6 +1,10 @@
+use crate::ast::Ident;
+use std::sync::Arc;
+
 pub const QUERY: &str = "%%query%%";
 pub const PREFIX_LABEL: &str = "%%location_label%%";
 pub const GLOBAL_PREFIX_LABEL: &str = "%%global_location_label%%";
+const BREAK_LABEL: &str = "%%break_label%%";
 pub const SWITCH_LABEL: &str = "%%switch_label%%";
 pub const FUNCTION: &str = "%%Function%%";
 pub const LAMBDA: &str = "%%lambda%%";
@@ -11,4 +15,8 @@ pub const SKOLEM_ID_PREFIX: &str = "skolem";
 
 pub fn mk_skolem_id(qid: &str) -> String {
     format!("{}_{}", crate::def::SKOLEM_ID_PREFIX, qid)
+}
+
+pub(crate) fn break_label(label: &Ident) -> Ident {
+    Arc::new(format!("{}{}", BREAK_LABEL, label))
 }

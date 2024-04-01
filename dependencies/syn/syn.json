@@ -613,6 +613,40 @@
       }
     },
     {
+      "ident": "BroadcastUse",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "broadcast_use_tokens": {
+          "tuple": [
+            {
+              "token": "Broadcast"
+            },
+            {
+              "token": "Use"
+            }
+          ]
+        },
+        "paths": {
+          "punctuated": {
+            "element": {
+              "syn": "ExprPath"
+            },
+            "punct": "Comma"
+          }
+        },
+        "semi": {
+          "token": "Semi"
+        }
+      }
+    },
+    {
       "ident": "Closed",
       "features": {
         "any": []
@@ -1112,6 +1146,16 @@
           {
             "syn": "ExprHas"
           }
+        ],
+        "Matches": [
+          {
+            "syn": "ExprMatches"
+          }
+        ],
+        "GetField": [
+          {
+            "syn": "ExprGetField"
+          }
         ]
       },
       "exhaustive": false
@@ -1595,6 +1639,30 @@
       }
     },
     {
+      "ident": "ExprGetField",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "base": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "arrow_token": {
+          "token": "RArrow"
+        },
+        "member": {
+          "syn": "Member"
+        }
+      }
+    },
+    {
       "ident": "ExprGroup",
       "features": {
         "any": [
@@ -1807,6 +1875,11 @@
         "loop_token": {
           "token": "Loop"
         },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
         "invariant": {
           "option": {
             "syn": "Invariant"
@@ -1877,6 +1950,35 @@
         "arms": {
           "vec": {
             "syn": "Arm"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprMatches",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "lhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "matches_token": {
+          "token": "Matches"
+        },
+        "pat": {
+          "syn": "Pat"
+        },
+        "op_expr": {
+          "option": {
+            "syn": "MatchesOpExpr"
           }
         }
       }
@@ -2298,6 +2400,11 @@
         "cond": {
           "box": {
             "syn": "Expr"
+          }
+        },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
           }
         },
         "invariant": {
@@ -3003,6 +3110,11 @@
           {
             "proc_macro2": "TokenStream"
           }
+        ],
+        "BroadcastGroup": [
+          {
+            "syn": "ItemBroadcastGroup"
+          }
         ]
       },
       "exhaustive": false
@@ -3201,6 +3313,20 @@
       }
     },
     {
+      "ident": "InvariantExceptBreak",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "InvariantExceptBreak"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "InvariantNameSet",
       "features": {
         "any": []
@@ -3361,9 +3487,59 @@
           {
             "syn": "Global"
           }
+        ],
+        "BroadcastUse": [
+          {
+            "syn": "BroadcastUse"
+          }
+        ],
+        "BroadcastGroup": [
+          {
+            "syn": "ItemBroadcastGroup"
+          }
         ]
       },
       "exhaustive": false
+    },
+    {
+      "ident": "ItemBroadcastGroup",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "vis": {
+          "syn": "Visibility"
+        },
+        "broadcast_group_tokens": {
+          "tuple": [
+            {
+              "token": "Broadcast"
+            },
+            {
+              "token": "BroadcastGroup"
+            }
+          ]
+        },
+        "ident": {
+          "proc_macro2": "Ident"
+        },
+        "brace_token": {
+          "group": "Brace"
+        },
+        "paths": {
+          "punctuated": {
+            "element": {
+              "syn": "ExprPath"
+            },
+            "punct": "Comma"
+          }
+        }
+      }
     },
     {
       "ident": "ItemConst",
@@ -4295,6 +4471,41 @@
             "group": "Bracket"
           }
         ]
+      }
+    },
+    {
+      "ident": "MatchesOpExpr",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "op_token": {
+          "syn": "MatchesOpToken"
+        },
+        "rhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "MatchesOpToken",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Implies": [
+          {
+            "token": "Imply"
+          }
+        ],
+        "AndAnd": [
+          {
+            "token": "AndAnd"
+          }
+        ],
+        "BigAnd": []
       }
     },
     {
@@ -5481,6 +5692,11 @@
             "syn": "Abi"
           }
         },
+        "broadcast": {
+          "option": {
+            "token": "Broadcast"
+          }
+        },
         "mode": {
           "syn": "FnMode"
         },
@@ -6055,7 +6271,14 @@
       },
       "fields": {
         "fn_spec_token": {
-          "token": "FnSpec"
+          "option": {
+            "token": "FnSpec"
+          }
+        },
+        "spec_fn_token": {
+          "option": {
+            "token": "SpecFn"
+          }
         },
         "paren_token": {
           "group": "Paren"
@@ -6773,6 +6996,8 @@
     "BigOr": "|||",
     "Box": "box",
     "Break": "break",
+    "Broadcast": "broadcast",
+    "BroadcastGroup": "group",
     "By": "by",
     "Caret": "^",
     "CaretEq": "^=",
@@ -6827,6 +7052,7 @@
     "InvNone": "none",
     "Invariant": "invariant",
     "InvariantEnsures": "invariant_ensures",
+    "InvariantExceptBreak": "invariant_except_break",
     "Is": "is",
     "LArrow": "<-",
     "Layout": "layout",
@@ -6836,6 +7062,7 @@
     "Lt": "<",
     "Macro": "macro",
     "Match": "match",
+    "Matches": "matches",
     "Mod": "mod",
     "Move": "move",
     "MulEq": "*=",
@@ -6871,6 +7098,7 @@
     "ShrEq": ">>=",
     "SizeOf": "size_of",
     "Spec": "spec",
+    "SpecFn": "SpecFn",
     "Star": "*",
     "Static": "static",
     "Struct": "struct",

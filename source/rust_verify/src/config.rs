@@ -30,6 +30,10 @@ pub const SMT_FILE_SUFFIX: &str = ".smt2";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
+pub const CALL_GRAPH_FILE_SUFFIX_FULL_INITIAL: &str = "-call-graph-full-initial.dot";
+pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simplified.dot";
+pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
+pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_SIMPLIFIED: &str = "-call-graph-nostd-simplified.dot";
 
 #[derive(Debug, Default)]
 pub struct LogArgs {
@@ -43,11 +47,11 @@ pub struct LogArgs {
     pub log_air_final: bool,
     pub log_smt: bool,
     pub log_triggers: bool,
+    pub log_call_graph: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ArgsX {
-    pub pervasive_path: Option<String>,
     pub export: Option<String>,
     pub import: Vec<(String, String)>,
     pub verify_root: bool,
@@ -69,6 +73,7 @@ pub struct ArgsX {
     pub log_args: LogArgs,
     pub show_triggers: ShowTriggers,
     pub ignore_unexpected_smt: bool,
+    pub allow_inline_air: bool,
     pub debugger: bool,
     pub profile: bool,
     pub profile_all: bool,
@@ -82,6 +87,48 @@ pub struct ArgsX {
     pub num_threads: usize,
     pub trace: bool,
     pub report_long_running: bool,
+}
+
+impl ArgsX {
+    pub fn new() -> Self {
+        Self {
+            export: Default::default(),
+            import: Default::default(),
+            verify_root: Default::default(),
+            verify_module: Default::default(),
+            verify_function: Default::default(),
+            no_external_by_default: Default::default(),
+            no_verify: Default::default(),
+            no_lifetime: Default::default(),
+            no_auto_recommends_check: Default::default(),
+            time: Default::default(),
+            time_expanded: Default::default(),
+            output_json: Default::default(),
+            rlimit: f32::INFINITY, // NOTE: default rlimit is infinity
+            smt_options: Default::default(),
+            multiple_errors: Default::default(),
+            expand_errors: Default::default(),
+            log_dir: Default::default(),
+            log_all: Default::default(),
+            log_args: Default::default(),
+            show_triggers: Default::default(),
+            ignore_unexpected_smt: Default::default(),
+            allow_inline_air: Default::default(),
+            debugger: Default::default(),
+            profile: Default::default(),
+            profile_all: Default::default(),
+            capture_profiles: Default::default(),
+            spinoff_all: Default::default(),
+            use_internal_profiler: Default::default(),
+            no_vstd: Default::default(),
+            compile: Default::default(),
+            solver_version_check: Default::default(),
+            version: Default::default(),
+            num_threads: Default::default(),
+            trace: Default::default(),
+            report_long_running: Default::default(),
+        }
+    }
 }
 
 pub type Args = Arc<ArgsX>;
@@ -122,6 +169,7 @@ pub fn enable_default_features_and_verus_attr(
 
     rustc_args.push("-Zcrate-attr=register_tool(verus)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
+    rustc_args.push("-Zcrate-attr=register_tool(verusfmt)".to_string());
 }
 
 pub fn parse_args_with_imports(
@@ -161,6 +209,8 @@ pub fn parse_args_with_imports(
     const LOG_AIR_FINAL: &str = "air-final";
     const LOG_SMT: &str = "smt";
     const LOG_TRIGGERS: &str = "triggers";
+    const LOG_CALL_GRAPH: &str = "call-graph";
+
     const LOG_ITEMS: &[(&str, &str)] = &[
         (LOG_VIR, "Log VIR"),
         (LOG_VIR_SIMPLE, "Log simplified VIR"),
@@ -175,6 +225,7 @@ pub fn parse_args_with_imports(
         (LOG_AIR_FINAL, "Log AIR queries in final form"),
         (LOG_SMT, "Log SMT queries"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
+        (LOG_CALL_GRAPH, "Log the call graph"),
     ];
 
     const OPT_TRIGGERS_SILENT: &str = "triggers-silent";
@@ -197,6 +248,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
+    const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -213,6 +265,7 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_INTERNAL_PROFILER,
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
+        (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -400,7 +453,6 @@ pub fn parse_args_with_imports(
     let extended = parse_opts_or_pairs(matches.opt_strs(OPT_EXTENDED_MULTI));
 
     let args = ArgsX {
-        pervasive_path: None,
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         export: matches.opt_str(OPT_EXPORT),
         import: import,
@@ -413,10 +465,27 @@ pub fn parse_args_with_imports(
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
-        rlimit: matches
-            .opt_get::<f32>(OPT_RLIMIT)
-            .unwrap_or_else(|_| error("expected number after rlimit".to_string()))
-            .unwrap_or(DEFAULT_RLIMIT_SECS),
+        rlimit: {
+            let rlimit = matches
+                .opt_get::<f32>(OPT_RLIMIT)
+                .ok()
+                .or_else(|| {
+                    matches.opt_get::<String>(OPT_RLIMIT).ok().and_then(|v| {
+                        if v == Some("infinity".to_owned()) {
+                            Some(Some(f32::INFINITY))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .unwrap_or_else(|| error("expected number or `infinity` after rlimit".to_string()))
+                .unwrap_or(DEFAULT_RLIMIT_SECS);
+            if rlimit == 0.0 {
+                error("rlimit 0 is not allowed".to_string());
+            } else {
+                rlimit
+            }
+        },
         smt_options: matches.opt_strs(OPT_SMT_OPTION).iter().map(split_pair_eq).collect(),
         multiple_errors: matches
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
@@ -455,6 +524,7 @@ pub fn parse_args_with_imports(
             log_air_final: log.get(LOG_AIR_FINAL).is_some(),
             log_smt: log.get(LOG_SMT).is_some(),
             log_triggers: log.get(LOG_TRIGGERS).is_some(),
+            log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
         },
         show_triggers: if matches.opt_present(OPT_TRIGGERS_VERBOSE) {
             ShowTriggers::Verbose
@@ -468,6 +538,7 @@ pub fn parse_args_with_imports(
             ShowTriggers::default()
         },
         ignore_unexpected_smt: extended.get(EXTENDED_IGNORE_UNEXPECTED_SMT).is_some(),
+        allow_inline_air: extended.get(EXTENDED_ALLOW_INLINE_AIR).is_some(),
         debugger: extended.get(EXTENDED_DEBUG).is_some(),
         profile: {
             if matches.opt_present(OPT_PROFILE) {

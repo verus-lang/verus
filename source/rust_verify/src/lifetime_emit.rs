@@ -10,14 +10,14 @@ pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> S
         IdKind::TypParam => format!("A{}_{}", rename_count, raw_id),
         IdKind::Lifetime => format!("'a{}_{}", rename_count, raw_id),
         IdKind::Fun => format!("f{}_{}", rename_count, raw_id),
-        IdKind::Local => format!("x{}_{}", rename_count, vir::def::user_local_name(raw_id)),
+        IdKind::Local => format!("x{}_{}", rename_count, raw_id),
         IdKind::Builtin => raw_id.clone(),
 
         // Numeric fields need to be emitted as numeric fields.
         // Non-numeric fields need to be unique-ified to avoid conflict with method names.
         // Therefore, we only use the rename_count for non-numeric fields.
         IdKind::Field if raw_id.bytes().nth(0).unwrap().is_ascii_digit() => raw_id.clone(),
-        IdKind::Field => format!("y{}_{}", rename_count, vir::def::user_local_name(raw_id)),
+        IdKind::Field => format!("y{}_{}", rename_count, raw_id),
     }
 }
 
@@ -122,7 +122,7 @@ impl EmitState {
                 if lines[line - offset].positions.len() > 0 {
                     break line - offset;
                 }
-            } else if line + offset <= lines.len() {
+            } else if line + offset < lines.len() {
                 if lines[line + offset].positions.len() > 0 {
                     break line + offset;
                 }
@@ -239,7 +239,7 @@ fn un_mut_pattern(pat: &Pattern) -> Pattern {
     let (span, patx) = &**pat;
     let patx = match patx {
         PatternX::Wildcard => PatternX::Wildcard,
-        PatternX::Binding(x, _) => PatternX::Binding(x.clone(), Mutability::Not),
+        PatternX::Binding(x, _, s) => PatternX::Binding(x.clone(), Mutability::Not, s.clone()),
         PatternX::Box(p) => PatternX::Box(un_mut_pattern(p)),
         PatternX::Or(ps) => PatternX::Or(ps.iter().map(un_mut_pattern).collect()),
         PatternX::Tuple(ps, dotdot) => {
@@ -266,11 +266,16 @@ pub(crate) fn emit_pattern(state: &mut EmitState, pat: &Pattern) {
         PatternX::Wildcard => {
             state.write("_");
         }
-        PatternX::Binding(x, m) => {
+        PatternX::Binding(x, m, subpat) => {
             if *m == Mutability::Mut {
                 state.write("mut ");
             }
             state.write(x.to_string());
+            if let Some(subpat) = subpat {
+                state.write(" @ (");
+                emit_pattern(state, subpat);
+                state.write(")");
+            }
         }
         PatternX::Box(p) => {
             state.write("box ");
@@ -546,7 +551,7 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             if let Some(rustc_ast::Movability::Static) = movability {
                 state.write("static ");
             }
-            if let rustc_ast::CaptureBy::Value = capture_by {
+            if let rustc_ast::CaptureBy::Value { move_kw: _ } = capture_by {
                 state.write("move ");
             }
             state.write("|");
@@ -611,8 +616,20 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             state.newline_unindent();
             state.write("}");
         }
-        ExpX::Index(result_typ, e1, e2) => {
-            state.write("(*index::<_, _, ");
+        ExpX::Index(ty1, ty2, result_typ, e1, e2) => {
+            state.write("(*index::<");
+            match &**ty1 {
+                TypX::Ref(ty, _, _) => {
+                    state.write(ty.to_string());
+                }
+                _ => {
+                    // Not sure if this case is possible
+                    state.write("_");
+                }
+            }
+            state.write(", ");
+            state.write(ty2.to_string());
+            state.write(", ");
             state.write(result_typ.to_string());
             state.write(">(&(");
             emit_exp(state, e1);

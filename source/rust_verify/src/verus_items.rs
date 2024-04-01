@@ -94,8 +94,8 @@ pub(crate) enum SpecItem {
     Requires,
     Recommends,
     Ensures,
+    InvariantExceptBreak,
     Invariant,
-    InvariantEnsures,
     Decreases,
     DecreasesWhen,
     DecreasesBy,
@@ -118,6 +118,7 @@ pub(crate) enum DirectiveItem {
     RevealHide,
     RevealHideInternalPath,
     RevealStrlit,
+    InlineAirStmt,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -268,10 +269,13 @@ pub(crate) enum InvariantItem {
     AtomicInvariantInv,
     LocalInvariantNamespace,
     LocalInvariantInv,
+    CreateOpenInvariantCredit,
+    SpendOpenInvariantCredit,
+    SpendOpenInvariantCreditInProof,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
-pub(crate) enum PervasiveItem {
+pub(crate) enum VstdItem {
     StrSlice,
     SeqFn(vir::interpreter::SeqFn),
     Invariant(InvariantItem),
@@ -290,6 +294,11 @@ pub(crate) enum BuiltinTypeItem {
     FnSpec,
     Ghost,
     Tracked,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinTraitItem {
+    Integer,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -316,9 +325,10 @@ pub(crate) enum VerusItem {
     Assert(AssertItem),
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
-    Pervasive(PervasiveItem, Option<Ident>),
+    Vstd(VstdItem, Option<Ident>),
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
+    BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
 }
@@ -332,8 +342,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::requires",                VerusItem::Spec(SpecItem::Requires)),
         ("verus::builtin::recommends",              VerusItem::Spec(SpecItem::Recommends)),
         ("verus::builtin::ensures",                 VerusItem::Spec(SpecItem::Ensures)),
+        ("verus::builtin::invariant_except_break",  VerusItem::Spec(SpecItem::InvariantExceptBreak)),
         ("verus::builtin::invariant",               VerusItem::Spec(SpecItem::Invariant)),
-        ("verus::builtin::invariant_ensures",       VerusItem::Spec(SpecItem::InvariantEnsures)),
         ("verus::builtin::decreases",               VerusItem::Spec(SpecItem::Decreases)),
         ("verus::builtin::decreases_when",          VerusItem::Spec(SpecItem::DecreasesWhen)),
         ("verus::builtin::decreases_by",            VerusItem::Spec(SpecItem::DecreasesBy)),
@@ -350,6 +360,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
         ("verus::builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
         ("verus::builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
+        ("verus::builtin::inline_air_stmt",         VerusItem::Directive(DirectiveItem::InlineAirStmt)),
 
         ("verus::builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
         ("verus::builtin::choose_tuple",            VerusItem::Expr(ExprItem::ChooseTuple)),
@@ -373,7 +384,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
         // TODO: replace with builtin:
-        ("verus::pervasive::string::new_strlit",    VerusItem::CompilableOpr(CompilableOprItem::NewStrLit)),
+        ("verus::vstd::string::new_strlit",    VerusItem::CompilableOpr(CompilableOprItem::NewStrLit)),
         ("verus::builtin::ghost_exec",              VerusItem::CompilableOpr(CompilableOprItem::GhostExec)),
         ("verus::builtin::Ghost::new",              VerusItem::CompilableOpr(CompilableOprItem::GhostNew)),
         ("verus::builtin::Tracked::new",            VerusItem::CompilableOpr(CompilableOprItem::TrackedNew)),
@@ -438,26 +449,29 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
         ("verus::builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
 
-        ("verus::pervasive::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
-        ("verus::pervasive::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
-        ("verus::pervasive::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
+        ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
+        ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
+        ("verus::vstd::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
 
-        ("verus::pervasive::string::StrSlice",      VerusItem::Pervasive(PervasiveItem::StrSlice, None)),
-        ("verus::pervasive::seq::Seq::empty",       VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
-        ("verus::pervasive::seq::Seq::new",         VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::New     ), Some(Arc::new("seq::Seq::new"        .to_owned())))),
-        ("verus::pervasive::seq::Seq::push",        VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Push    ), Some(Arc::new("seq::Seq::push"       .to_owned())))),
-        ("verus::pervasive::seq::Seq::update",      VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Update  ), Some(Arc::new("seq::Seq::update"     .to_owned())))),
-        ("verus::pervasive::seq::Seq::subrange",    VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Subrange), Some(Arc::new("seq::Seq::subrange"   .to_owned())))),
-        ("verus::pervasive::seq::Seq::add",         VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Add     ), Some(Arc::new("seq::Seq::add"        .to_owned())))),
-        ("verus::pervasive::seq::Seq::len",         VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Len     ), Some(Arc::new("seq::Seq::len"        .to_owned())))),
-        ("verus::pervasive::seq::Seq::index",       VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Index   ), Some(Arc::new("seq::Seq::index"      .to_owned())))),
-        ("verus::pervasive::seq::Seq::ext_equal",   VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
-        ("verus::pervasive::seq::Seq::last",        VerusItem::Pervasive(PervasiveItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
-        ("verus::pervasive::invariant::AtomicInvariant::namespace", VerusItem::Pervasive(PervasiveItem::Invariant(InvariantItem::AtomicInvariantNamespace  ), Some(Arc::new("invariant::AtomicInvariant::namespace" .to_owned())))),
-        ("verus::pervasive::invariant::AtomicInvariant::inv",       VerusItem::Pervasive(PervasiveItem::Invariant(InvariantItem::AtomicInvariantInv        ), Some(Arc::new("invariant::AtomicInvariant::inv"       .to_owned())))),
-        ("verus::pervasive::invariant::LocalInvariant::namespace",  VerusItem::Pervasive(PervasiveItem::Invariant(InvariantItem::LocalInvariantNamespace   ), Some(Arc::new("invariant::LocalInvariant::namespace" .to_owned())))),
-        ("verus::pervasive::invariant::LocalInvariant::inv",        VerusItem::Pervasive(PervasiveItem::Invariant(InvariantItem::LocalInvariantInv         ), Some(Arc::new("invariant::LocalInvariant::inv"       .to_owned())))),
-        ("verus::pervasive::pervasive::exec_nonstatic_call", VerusItem::Pervasive(PervasiveItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
+        ("verus::vstd::string::StrSlice",      VerusItem::Vstd(VstdItem::StrSlice, None)),
+        ("verus::vstd::seq::Seq::empty",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
+        ("verus::vstd::seq::Seq::new",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::New     ), Some(Arc::new("seq::Seq::new"        .to_owned())))),
+        ("verus::vstd::seq::Seq::push",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Push    ), Some(Arc::new("seq::Seq::push"       .to_owned())))),
+        ("verus::vstd::seq::Seq::update",      VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Update  ), Some(Arc::new("seq::Seq::update"     .to_owned())))),
+        ("verus::vstd::seq::Seq::subrange",    VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Subrange), Some(Arc::new("seq::Seq::subrange"   .to_owned())))),
+        ("verus::vstd::seq::Seq::add",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Add     ), Some(Arc::new("seq::Seq::add"        .to_owned())))),
+        ("verus::vstd::seq::Seq::len",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Len     ), Some(Arc::new("seq::Seq::len"        .to_owned())))),
+        ("verus::vstd::seq::Seq::index",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Index   ), Some(Arc::new("seq::Seq::index"      .to_owned())))),
+        ("verus::vstd::seq::Seq::ext_equal",   VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
+        ("verus::vstd::seq::Seq::last",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
+        ("verus::vstd::invariant::AtomicInvariant::namespace",           VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace       ), Some(Arc::new("invariant::AtomicInvariant::namespace"          .to_owned())))),
+        ("verus::vstd::invariant::AtomicInvariant::inv",                 VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv             ), Some(Arc::new("invariant::AtomicInvariant::inv"                .to_owned())))),
+        ("verus::vstd::invariant::LocalInvariant::namespace",            VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantNamespace        ), Some(Arc::new("invariant::LocalInvariant::namespace"           .to_owned())))),
+        ("verus::vstd::invariant::LocalInvariant::inv",                  VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantInv              ), Some(Arc::new("invariant::LocalInvariant::inv"                 .to_owned())))),
+        ("verus::vstd::invariant::create_open_invariant_credit",         VerusItem::Vstd(VstdItem::Invariant(InvariantItem::CreateOpenInvariantCredit      ), Some(Arc::new("invariant::create_open_invariant_credit"        .to_owned())))),
+        ("verus::vstd::invariant::spend_open_invariant_credit",          VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit       ), Some(Arc::new("invariant::spend_open_invariant_credit"         .to_owned())))),
+        ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
+        ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
@@ -467,6 +481,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::FnSpec",                  VerusItem::BuiltinType(BuiltinTypeItem::FnSpec)),
         ("verus::builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
+
+        ("verus::builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
 
         ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
         ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
@@ -490,7 +506,7 @@ pub(crate) fn from_diagnostic_items(
     let mut name_to_id: HashMap<VerusItem, DefId> = HashMap::new();
     for (name, id) in diagnostic_name_to_id {
         let name = name.as_str();
-        if name.starts_with("verus::builtin") || name.starts_with("verus::pervasive") {
+        if name.starts_with("verus::builtin") || name.starts_with("verus::vstd") {
             if let Some(item) = verus_item_map.get(name) {
                 id_to_name.insert(id.clone(), item.clone());
                 name_to_id.insert(item.clone(), id.clone());
@@ -547,6 +563,7 @@ pub(crate) enum RustItem {
     ArcNew,
     RcNew,
     Clone,
+    CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
     TryTraitBranch,
@@ -625,13 +642,18 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if rust_path == Some("core::clone::Clone::clone") {
         return Some(RustItem::Clone);
     }
+    if rust_path == Some("core::clone::Clone::clone_from") {
+        return Some(RustItem::CloneFrom);
+    }
 
     if rust_path == Some("alloc::alloc::Global") {
         return Some(RustItem::AllocGlobal);
     }
 
     if let Some(rust_path) = rust_path {
-        let num_re = Regex::new(r"^([A-Za-z0-9_]+)::(MIN|MAX|BITS)").unwrap();
+        static NUM_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        let num_re =
+            NUM_RE.get_or_init(|| Regex::new(r"^([A-Za-z0-9_]+)::(MIN|MAX|BITS)").unwrap());
         if let Some(captures) = num_re.captures(rust_path) {
             let ty_name = captures.get(1).expect("invalid int intrinsic regex");
             let const_name = captures.get(2).expect("invalid int intrinsic regex");

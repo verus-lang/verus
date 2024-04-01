@@ -1004,27 +1004,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] foreign_trait2 verus_code! {
-        trait Tr {
-            fn f(t: u8);
-        }
-
-        #[verifier::external]
-        impl Tr for X {
-            fn f(t: u8) { }
-        }
-
-        struct X { }
-
-        #[verifier(external_fn_specification)]
-        pub fn ex_f_default(t: u8)
-        {
-            X::f(t)
-        }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification can only be used on trait functions when the trait itself is external")
-}
-
-test_verify_one_file! {
     #[test] foreign_trait3 verus_code! {
         #[verifier::external]
         trait Tr {
@@ -1044,29 +1023,6 @@ test_verify_one_file! {
             X::f(t)
         }
     } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::X::f`")
-}
-
-test_verify_one_file! {
-    #[test] foreign_trait4 verus_code! {
-        trait Tr {
-            fn f(t: u8);
-        }
-
-        impl Tr for X {
-            fn f(t: u8) { }
-        }
-
-        struct X { }
-
-        #[verifier(external_fn_specification)]
-        pub fn ex_f_default(t: u8)
-            requires t == 5,
-        {
-            X::f(t)
-        }
-
-        // note: kind of a crummy error message
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification can only be used on trait functions when the trait itself is external")
 }
 
 test_verify_one_file! {
@@ -1310,4 +1266,48 @@ test_verify_one_file! {
             let x = v.gget(1); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_method_impl_is_external_error verus_code! {
+        pub struct X { t: u8 }
+
+        trait Tr {
+            fn foo(&self);
+        }
+
+        pub fn stuff(x: X) {
+            x.foo();
+        }
+
+
+        #[verifier::external]
+        impl Tr for X {
+            fn foo(&self) { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "X::foo` is not supported") // TODO could have clearer error msg
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] external_trait_item_error verus_code! {
+        trait Tr {
+            #[verifier::external]
+            fn foo(&self);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a trait item cannot be marked 'external'")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] external_trait_impl_item_error verus_code! {
+        trait Tr {
+            fn foo(&self);
+        }
+
+        pub struct X { t: u8 }
+
+        impl Tr for X {
+            #[verifier::external]
+            fn foo(&self) { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked 'external'")
 }

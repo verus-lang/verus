@@ -1,3 +1,5 @@
+use self::verus::BroadcastUse;
+
 use super::*;
 use crate::derive::{Data, DataEnum, DataStruct, DataUnion, DeriveInput};
 use crate::punctuated::Punctuated;
@@ -74,7 +76,14 @@ ast_enum_of_structs! {
         Verbatim(TokenStream),
 
         // Verus
+        /// Global Verus directive
         Global(Global),
+
+        /// Item-level reveal
+        BroadcastUse(BroadcastUse),
+
+        /// Broadcast group definition
+        BroadcastGroup(ItemBroadcastGroup),
 
         // Not public API.
         //
@@ -391,7 +400,9 @@ impl Item {
             | Item::Impl(ItemImpl { attrs, .. })
             | Item::Macro(ItemMacro { attrs, .. })
             | Item::Macro2(ItemMacro2 { attrs, .. })
-            | Item::Global(Global { attrs, .. }) => mem::replace(attrs, new),
+            | Item::Global(Global { attrs, .. })
+            | Item::BroadcastUse(BroadcastUse { attrs, .. })
+            | Item::BroadcastGroup(ItemBroadcastGroup { attrs, .. }) => mem::replace(attrs, new),
             Item::Verbatim(_) => Vec::new(),
 
             #[cfg(syn_no_non_exhaustive)]
@@ -817,6 +828,9 @@ ast_enum_of_structs! {
         /// Tokens within an impl block not interpreted by Syn.
         Verbatim(TokenStream),
 
+        /// A broadcast group
+        BroadcastGroup(ItemBroadcastGroup),
+
         // Not public API.
         //
         // For testing exhaustiveness in downstream code, use the following idiom:
@@ -919,6 +933,7 @@ ast_struct! {
         pub asyncness: Option<Token![async]>,
         pub unsafety: Option<Token![unsafe]>,
         pub abi: Option<Abi>,
+        pub broadcast: Option<Token![broadcast]>,
         pub mode: FnMode,
         pub fn_token: Token![fn],
         pub ident: Ident,
@@ -1036,7 +1051,10 @@ pub mod parsing {
             ahead.parse::<DataMode>()?;
 
             let lookahead = ahead.lookahead1();
-            let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
+
+            let mut item = if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![group]) {
+                input.parse().map(Item::BroadcastGroup)
+            } else if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 let vis: Visibility = input.parse()?;
                 let sig: Signature = input.parse()?;
                 parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
@@ -1233,6 +1251,8 @@ pub mod parsing {
                 }
             } else if lookahead.peek(Token![global]) {
                 input.parse().map(Item::Global)
+            } else if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![use]) {
+                input.parse().map(Item::BroadcastUse)
             } else if lookahead.peek(Token![macro]) {
                 input.parse().map(Item::Macro2)
             } else if vis.is_inherited()
@@ -1665,6 +1685,7 @@ pub mod parsing {
             && fork.parse::<Option<Token![async]>>().is_ok()
             && fork.parse::<Option<Token![unsafe]>>().is_ok()
             && fork.parse::<Option<Abi>>().is_ok()
+            && fork.parse::<Option<Token![broadcast]>>().is_ok()
             && fork.parse::<FnMode>().is_ok()
             && fork.peek(Token![fn])
     }
@@ -1677,6 +1698,7 @@ pub mod parsing {
             let asyncness: Option<Token![async]> = input.parse()?;
             let unsafety: Option<Token![unsafe]> = input.parse()?;
             let abi: Option<Abi> = input.parse()?;
+            let broadcast: Option<Token![broadcast]> = input.parse()?;
             let mode: FnMode = input.parse()?;
             let fn_token: Token![fn] = input.parse()?;
             let ident: Ident = input.parse()?;
@@ -1710,6 +1732,7 @@ pub mod parsing {
                 asyncness,
                 unsafety,
                 abi,
+                broadcast,
                 mode,
                 fn_token,
                 ident,
@@ -2761,7 +2784,9 @@ pub mod parsing {
                 None
             };
 
-            let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
+            let mut item = if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![group]) {
+                input.parse().map(ImplItem::BroadcastGroup)
+            } else if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 input.parse().map(ImplItem::Method)
             } else if lookahead.peek(Token![const])
                 || lookahead.peek(Token![open])
@@ -2822,6 +2847,7 @@ pub mod parsing {
                     ImplItem::Method(item) => &mut item.attrs,
                     ImplItem::Type(item) => &mut item.attrs,
                     ImplItem::Macro(item) => &mut item.attrs,
+                    ImplItem::BroadcastGroup(item) => &mut item.attrs,
                     ImplItem::Verbatim(_) => return Ok(item),
 
                     #[cfg(syn_no_non_exhaustive)]

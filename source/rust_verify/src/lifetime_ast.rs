@@ -56,7 +56,7 @@ pub(crate) type Pattern = Box<(Span, PatternX)>;
 #[derive(Debug, Clone)]
 pub(crate) enum PatternX {
     Wildcard,
-    Binding(Id, Mutability),
+    Binding(Id, Mutability, Option<Pattern>),
     Box(Pattern),
     Or(Vec<Pattern>),
     Tuple(Vec<Pattern>, Option<usize>),
@@ -94,7 +94,7 @@ pub(crate) enum ExpX {
     OpenInvariant(vir::ast::InvAtomicity, Pattern, Exp, Typ, Vec<Stm>),
     ExtraParens(Exp),
     Block(Vec<Stm>, Option<Exp>),
-    Index(Typ, Exp, Exp),
+    Index(Typ, Typ, Typ, Exp, Exp),
 }
 
 pub(crate) type Stm = Box<(Span, StmX)>;

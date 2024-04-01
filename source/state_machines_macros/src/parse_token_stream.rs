@@ -38,6 +38,7 @@ pub struct SMBundle {
 // 'fields' which of course is not valid Rust syntax.
 
 pub struct ParseResult {
+    pub attrs: Vec<Attribute>,
     pub name: Ident,
     pub items: Vec<Item>,
     pub fields: Option<FieldsNamed>,
@@ -51,6 +52,7 @@ impl Parse for ParseResult {
         // IDENT <...> {
         //    ... a bunch of items
         // }
+        let attrs = input.call(Attribute::parse_outer)?;
         let name: Ident = input.parse()?;
 
         validate_ident(&name)?;
@@ -113,7 +115,7 @@ impl Parse for ParseResult {
             }
         }
 
-        return Ok(ParseResult { name, items, generics, fields: fields_opt });
+        return Ok(ParseResult { attrs, name, items, generics, fields: fields_opt });
     }
 }
 
@@ -221,6 +223,24 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
                 [prefix_segment, segment] if prefix_segment.ident.to_string() == "verifier" => {
                     let name = segment.ident.to_string();
                     name == "spec" || name == "proof" || name == "exec"
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+fn attr_is_polarity(attr: &Attribute) -> bool {
+    match attr.parse_meta() {
+        Ok(Meta::List(list)) => {
+            let segments = list.path.segments.iter().collect::<Vec<_>>();
+            match &segments[..] {
+                [prefix_segment, segment] if prefix_segment.ident.to_string() == "verifier" => {
+                    let name = segment.ident.to_string();
+                    name == "accept_recursive_types"
+                        || name == "reject_recursive_types"
+                        || name == "reject_recursive_types_in_ground_variants"
                 }
                 _ => false,
             }
@@ -705,7 +725,16 @@ fn item_type_check_vis(span: Span, vis: &Visibility) -> parse::Result<()> {
 }
 
 pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<SMBundle> {
-    let ParseResult { name, generics, items, fields } = pr;
+    let ParseResult { attrs, name, generics, items, fields } = pr;
+
+    for attr in attrs.iter() {
+        if !attr_is_polarity(attr) {
+            return Err(Error::new(
+                attr.span(),
+                "the only attributes allowed here are verifier::accept_recursive_types, verifier::reject_recursive_types, and verifier::reject_recursive_types_in_ground_variants",
+            ));
+        }
+    }
 
     let mut normal_fns = Vec::new();
     let mut transitions: Vec<Transition> = Vec::new();
@@ -795,6 +824,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
     let mut fields_named_ast = fields_named;
     let fields = to_fields(&mut fields_named_ast, concurrent)?;
     let mut sm = SM {
+        attrs,
         name: name.clone(),
         generics,
         fields,

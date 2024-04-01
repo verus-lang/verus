@@ -1,15 +1,16 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, Constant, DatatypeX, Expr, ExprX, Exprs, Fun, FunX, FunctionX,
-    GenericBound, GenericBoundX, Ident, IntRange, ItemKind, Mode, Param, ParamX, Params, Path,
-    PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp,
-    Variant, Variants, VirErr, Visibility,
+    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
+    FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange,
+    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
+    TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders,
+    VarIdent, Variant, Variants, Visibility,
 };
-use crate::messages::{error, Span};
+use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
-use air::ast::{Binder, BinderX, Binders};
+use air::ast::{Binder, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
-use num_bigint::{BigInt, Sign};
+use num_bigint::BigInt;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
@@ -161,6 +162,11 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
         (GenericBoundX::Trait(x1, ts1), GenericBoundX::Trait(x2, ts2)) => {
             x1 == x2 && n_types_equal(ts1, ts2)
         }
+        (
+            GenericBoundX::TypEquality(x1, ts1, a1, t1),
+            GenericBoundX::TypEquality(x2, ts2, a2, t2),
+        ) => x1 == x2 && n_types_equal(ts1, ts2) && a1 == a2 && types_equal(t1, t2),
+        (GenericBoundX::Trait(..) | GenericBoundX::TypEquality(..), _) => false,
     }
 }
 
@@ -259,7 +265,7 @@ impl IntRange {
     }
 }
 
-fn path_as_friendly_rust_name_inner(path: &Path) -> String {
+pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
         Some(krate) => krate.to_string(),
@@ -282,17 +288,17 @@ pub fn set_path_as_rust_name(path: &Path, friendly: &Path) {
         if map_opt.as_mut().unwrap().contains_key(path) {
             return;
         }
-        let name = path_as_friendly_rust_name_inner(friendly);
+        let name = path_as_friendly_rust_name_raw(friendly);
         map_opt.as_mut().unwrap().insert(path.clone(), name);
     }
 }
 
-pub fn get_path_as_rust_names_for_krate(krate: &Option<Ident>) -> Vec<(Path, String)> {
+pub fn get_path_as_rust_names_for_krate(krate: &Ident) -> Vec<(Path, String)> {
     let mut v: Vec<(Path, String)> = Vec::new();
     if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
         if let Some(map) = &*guard {
             for (path, name) in map {
-                if &path.krate == krate {
+                if &path.krate == &Some(krate.clone()) {
                     v.push((path.clone(), name.clone()));
                 }
             }
@@ -310,7 +316,7 @@ pub fn path_as_friendly_rust_name(path: &Path) -> String {
             }
         }
     }
-    path_as_friendly_rust_name_inner(path)
+    path_as_friendly_rust_name_raw(path)
 }
 
 pub fn path_as_vstd_name(path: &Path) -> Option<String> {
@@ -349,6 +355,13 @@ pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path
 // Can source_module see an item with target_visibility?
 pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bool {
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
+}
+
+pub fn is_transparent_to(transparency: &DatatypeTransparency, source_module: &Path) -> bool {
+    match transparency {
+        DatatypeTransparency::Never => false,
+        DatatypeTransparency::WhenVisible(m) => is_visible_to(m, source_module),
+    }
 }
 
 /// Is the target visible to the module?
@@ -391,7 +404,7 @@ impl<X> SpannedTyped<X> {
         Arc::new(SpannedTyped { span: span.clone(), typ: typ.clone(), x })
     }
 
-    pub fn new_x(&self, x: X) -> Arc<Self> {
+    pub fn new_x<X2>(&self, x: X2) -> Arc<SpannedTyped<X2>> {
         Arc::new(SpannedTyped { span: self.span.clone(), typ: self.typ.clone(), x })
     }
 }
@@ -408,23 +421,32 @@ pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
     )
 }
 
+pub fn mk_eq(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Eq(Mode::Spec), e1.clone(), e2.clone()),
+    )
+}
+
+pub fn mk_ineq(span: &Span, e1: &Expr, e2: &Expr, op: InequalityOp) -> Expr {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Inequality(op), e1.clone(), e2.clone()),
+    )
+}
+
 pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
-    let mut expr = init.clone();
-    for e in exprs.iter() {
+    if exprs.len() == 0 {
+        return init.clone();
+    }
+
+    let mut expr = exprs[0].clone();
+    for e in exprs.iter().skip(1) {
         expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
     }
     expr
-}
-
-pub fn fuel_const_int_to_u32(span: &Span, i: &BigInt) -> Result<u32, VirErr> {
-    let (sign, digits) = i.to_u32_digits();
-    if sign == Sign::NoSign && digits.len() == 0 {
-        return Ok(0);
-    } else if sign != Sign::Plus || digits.len() != 1 {
-        return Err(error(span, "Fuel must be a u32 value"));
-    }
-    let n = digits[0];
-    Ok(n)
 }
 
 pub fn const_int_from_u128(u: u128) -> Constant {
@@ -451,20 +473,24 @@ pub fn if_then_else(span: &Span, cond: &Expr, thn: &Expr, els: &Expr) -> Expr {
     SpannedTyped::new(span, &thn.typ, ExprX::If(cond.clone(), thn.clone(), Some(els.clone())))
 }
 
-pub fn param_to_binder(param: &Param) -> Binder<Typ> {
-    Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
+pub fn param_to_binder(param: &Param) -> VarBinder<Typ> {
+    Arc::new(VarBinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
 }
 
-pub fn par_to_binder(param: &Par) -> Binder<Typ> {
-    Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
+pub fn par_to_binder(param: &Par) -> VarBinder<Typ> {
+    Arc::new(VarBinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
 }
 
-pub fn params_to_binders(params: &Params) -> Binders<Typ> {
+pub fn params_to_binders(params: &Params) -> VarBinders<Typ> {
     Arc::new(vec_map(&**params, param_to_binder))
 }
 
-pub fn pars_to_binders(pars: &Pars) -> Binders<Typ> {
+pub fn pars_to_binders(pars: &Pars) -> VarBinders<Typ> {
     Arc::new(vec_map(&**pars, par_to_binder))
+}
+
+pub fn ident_var_binder<A: Clone>(x: &VarIdent, a: &A) -> VarBinder<A> {
+    Arc::new(VarBinderX { name: x.clone(), a: a.clone() })
 }
 
 impl crate::ast::CallTargetKind {
@@ -487,8 +513,33 @@ impl FunctionX {
         }
     }
 
+    // even if the return type is unit, it can still be named; if so, our AIR code must declare it
+    pub fn has_return_name(&self) -> bool {
+        self.has_return() || *self.ret.x.name.0 != crate::def::RETURN_VALUE
+    }
+
     pub fn is_main(&self) -> bool {
         **self.name.path.segments.last().expect("last segment") == "main"
+    }
+
+    pub fn mask_spec_or_default(&self) -> MaskSpec {
+        if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
+            // Always get the mask spec from the trait method decl
+            panic!("mask_spec_or_default should not be called for TraitMethodImpl");
+        }
+
+        match &self.mask_spec {
+            None => {
+                if self.mode == Mode::Exec {
+                    // default to 'all'
+                    MaskSpec::InvariantOpensExcept(Arc::new(vec![]))
+                } else {
+                    // default to 'none'
+                    MaskSpec::InvariantOpens(Arc::new(vec![]))
+                }
+            }
+            Some(mask_spec) => mask_spec.clone(),
+        }
     }
 }
 
@@ -517,8 +568,8 @@ impl DatatypeX {
     }
 }
 
-pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<Ident> {
-    let mut vars: HashSet<Ident> = HashSet::new();
+pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
+    let mut vars: HashSet<VarIdent> = HashSet::new();
     crate::ast_visitor::expr_visitor_dfs::<(), _>(
         exp,
         &mut crate::ast_visitor::VisitorScopeMap::new(),
@@ -563,7 +614,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
         TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
         TypX::Lambda(atyps, rtyp) => format!(
-            "FnSpec({}) -> {}",
+            "spec_fn({}) -> {}",
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
         ),
@@ -608,7 +659,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             format!("!")
         }
         TypX::Boxed(typ) => typ_to_diagnostic_str(typ),
-        TypX::TypParam(ident) => (**ident).clone(),
+        TypX::TypParam(ident) => (&**ident).into(),
         TypX::Projection { trait_typ_args, trait_path, name } => {
             let self_typ = typ_to_diagnostic_str(&trait_typ_args[0]);
             format!(
@@ -646,4 +697,123 @@ impl ItemKind {
             ItemKind::Static => "static item",
         }
     }
+}
+
+impl Into<String> for &VarIdent {
+    fn into(self) -> String {
+        let VarIdent(ident, uniq_id) = self;
+        crate::def::unique_var_name(ident.to_string(), *uniq_id)
+    }
+}
+
+impl fmt::Display for VarIdent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s: String = self.into();
+        f.write_str(&s)
+    }
+}
+
+impl<A: Clone + std::fmt::Debug> std::fmt::Debug for VarBinderX<A> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.name.fmt(fmt)?;
+        fmt.write_str(" -> ")?;
+        self.a.fmt(fmt)?;
+        Ok(())
+    }
+}
+
+impl<A: Clone> VarBinderX<A> {
+    pub fn rename(&self, name: VarIdent) -> VarBinder<A> {
+        Arc::new(VarBinderX { name, a: self.a.clone() })
+    }
+
+    pub fn new_a<B: Clone>(&self, a: B) -> VarBinder<B> {
+        Arc::new(VarBinderX { name: self.name.clone(), a })
+    }
+
+    pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> VarBinder<B> {
+        Arc::new(VarBinderX { name: self.name.clone(), a: f(&self.a) })
+    }
+
+    pub fn map_result<B: Clone, E>(
+        &self,
+        f: impl FnOnce(&A) -> Result<B, E>,
+    ) -> Result<VarBinder<B>, E> {
+        Ok(Arc::new(VarBinderX { name: self.name.clone(), a: f(&self.a)? }))
+    }
+}
+
+pub fn str_unique_var(s: &str, dis: crate::ast::VarIdentDisambiguate) -> VarIdent {
+    VarIdent(Arc::new(s.to_string()), dis)
+}
+
+pub fn air_unique_var(s: &str) -> VarIdent {
+    VarIdent(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::AirLocal)
+}
+
+pub fn typ_unique_var<S: ToString>(s: S) -> VarIdent {
+    VarIdent(Arc::new(s.to_string()), crate::ast::VarIdentDisambiguate::TypParamBare)
+}
+
+pub trait LowerUniqueVar {
+    type Target;
+
+    fn lower(&self) -> Self::Target;
+}
+
+impl LowerUniqueVar for VarIdent {
+    type Target = Ident;
+
+    fn lower(&self) -> Ident {
+        let VarIdent(ident, uniq_id) = self;
+        Arc::new(crate::def::unique_var_name(ident.to_string(), *uniq_id))
+    }
+}
+
+impl LowerUniqueVar for Vec<VarIdent> {
+    type Target = Vec<Ident>;
+
+    fn lower(&self) -> Vec<Ident> {
+        self.iter().map(|x| x.lower()).collect()
+    }
+}
+
+impl LowerUniqueVar for Arc<Vec<VarIdent>> {
+    type Target = Arc<Vec<Ident>>;
+
+    fn lower(&self) -> Arc<Vec<Ident>> {
+        Arc::new(self.iter().map(|x| x.lower()).collect())
+    }
+}
+
+impl MaskSpec {
+    pub fn exprs(&self) -> Exprs {
+        match self {
+            MaskSpec::InvariantOpens(exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! path {
+    [ $krate:literal => $( $segment:literal ),* ] => {
+        ::std::sync::Arc::new($crate::ast::PathX {
+            krate: ::std::option::Option::Some(::std::sync::Arc::new($krate.into())),
+            segments: ::std::sync::Arc::new(
+                ::std::vec![
+                    $(
+                        ::std::sync::Arc::new($segment.into())
+                    ),*
+                ],
+            ),
+        })
+    };
+}
+
+#[macro_export]
+macro_rules! fun {
+    [ $krate:literal => $( $segment:literal ),* ] => {
+        Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
+    };
 }

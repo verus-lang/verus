@@ -6,7 +6,7 @@ use crate::ast::{
 };
 use crate::ast_util::{
     bitwidth_from_type, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
-    IntegerTypeBitwidth,
+    IntegerTypeBitwidth, LowerUniqueVar,
 };
 use crate::bitvector_to_air::{bv_exp_to_expr, BvExprCtxt};
 use crate::context::Ctx;
@@ -14,21 +14,21 @@ use crate::def::{
     fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
     new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_lambda_type, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
-    suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    CHAR_FROM_UNICODE, CHAR_TO_UNICODE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
-    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
-    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
+    unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
+    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE, CHAR_TO_UNICODE,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
+    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
+    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
-    BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, LocalDecl, Stm, StmX,
-    UniqueIdent,
+    BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
 };
+use crate::sst::{FunctionSst, PostConditionInfo, PostConditionKind};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -261,7 +261,9 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         }
         TypX::Decorate(_, typ) => typ_to_ids(typ),
         TypX::Boxed(typ) => typ_to_ids(typ),
-        TypX::TypParam(x) => suffix_typ_param_ids(x).iter().map(|x| ident_var(x)).collect(),
+        TypX::TypParam(x) => {
+            suffix_typ_param_ids(x).iter().map(|x| ident_var(&x.lower())).collect()
+        }
         TypX::Projection { trait_typ_args, trait_path, name } => {
             let mut args: Vec<Expr> = Vec::new();
             for t in trait_typ_args.iter() {
@@ -513,20 +515,8 @@ fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity
     ident_apply(&inv_fn_ident, &args)
 }
 
-pub fn default_mask_set_for_mode(mode: Mode) -> MaskSet {
-    // By default, we assume an #[verifier::exec] fn can open any invariant, and that
-    // a #[verifier::proof] fn can open no invariants.
-    if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
-}
-
-pub fn mask_set_from_spec(
-    spec: &MaskSpec,
-    mode: Mode,
-    function_name: &Fun,
-    args: &Vec<Expr>,
-) -> MaskSet {
+pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>) -> MaskSet {
     match spec {
-        MaskSpec::NoSpec => default_mask_set_for_mode(mode),
         MaskSpec::InvariantOpens(exprs) => {
             let mut l = vec![];
             for (i, e) in exprs.iter().enumerate() {
@@ -794,6 +784,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 air::ast_util::mk_true()
             }
         }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p, ts, x, t)) => {
+            crate::traits::typ_equality_bound_to_air(ctx, p, ts, x, t)
+        }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
+            panic!("internal error: NoInferSpecForLoopIter")
+        }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
@@ -840,10 +836,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(str_ident(CHAR_TO_UNICODE), Arc::new(vec![expr])))
             }
-            UnaryOp::InferSpecForLoopIter => {
+            UnaryOp::InferSpecForLoopIter { .. } => {
                 // loop_inference failed to promote to Some, so demote to None
                 let exp = crate::loop_inference::make_option_exp(None, &exp.span, &exp.typ);
                 exp_to_expr(ctx, &exp, expr_ctxt)?
+            }
+            UnaryOp::CastToInteger => {
+                panic!("internal error: CastToInteger should have been removed before here")
             }
         },
         ExpX::UnaryOpr(op, exp) => match op {
@@ -1062,24 +1061,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
-                let binders =
-                    vec_map_result(&*binders, |b| match exp_to_expr(ctx, &b.a, expr_ctxt) {
-                        Ok(expr) => {
-                            Ok(Arc::new(BinderX { name: suffix_local_expr_id(&b.name), a: expr }))
-                        }
-                        Err(vir_err) => Err(vir_err.clone()),
-                    })?;
-                air::ast_util::mk_let(&binders, &expr)
+                let mut bs: Vec<Binder<Expr>> = Vec::new();
+                for b in binders.iter() {
+                    let e = exp_to_expr(ctx, &b.a, expr_ctxt)?;
+                    bs.push(Arc::new(BinderX { name: b.name.lower(), a: e }));
+                }
+                air::ast_util::mk_let(&bs, &expr)
             }
             BndX::Quant(quant, binders, trigs) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
-                    let typ_inv = typ_invariant(
-                        ctx,
-                        &binder.a,
-                        &ident_var(&suffix_local_expr_id(&binder.name)),
-                    );
+                    let typ_inv = typ_invariant(ctx, &binder.a, &ident_var(&binder.name.lower()));
                     if let Some(inv) = typ_inv {
                         invs.push(inv);
                     }
@@ -1095,10 +1088,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     let names_typs = match &*binder.a {
                         // allow quantifiers over type parameters, generated for broadcast_forall
                         TypX::TypeId => {
-                            let xts = crate::def::suffix_typ_param_ids_types(&binder.name);
-                            xts.into_iter().map(|(x, t)| (x, str_typ(&t))).collect()
+                            let xts = crate::def::suffix_typ_param_vars_types(&binder.name);
+                            xts.into_iter().map(|(x, t)| (x.lower(), str_typ(&t))).collect()
                         }
-                        _ => vec![(suffix_local_expr_id(&binder.name), typ)],
+                        _ => vec![(binder.name.lower(), typ)],
                     };
                     for (name, typ) in names_typs {
                         bs.push(Arc::new(BinderX { name, a: typ.clone() }));
@@ -1113,8 +1106,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             BndX::Lambda(binders, trigs) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let binders = vec_map(&*binders, |b| {
-                    let name = suffix_local_expr_id(&b.name);
-                    Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
+                    Arc::new(BinderX { name: b.name.lower(), a: typ_to_air(ctx, &b.a) })
                 });
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
@@ -1127,7 +1119,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
                 let mut invs: Vec<Expr> = Vec::new();
                 for b in binders.iter() {
-                    let name = suffix_local_expr_id(&b.name);
+                    let name = b.name.lower();
                     let typ_inv = typ_invariant(ctx, &b.a, &ident_var(&name));
                     if let Some(inv) = &typ_inv {
                         invs.push(inv.clone());
@@ -1159,6 +1151,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 choose_expr
             }
         },
+        ExpX::FuelConst(i) => {
+            let mut e = str_var(crate::def::ZERO);
+            for _j in 0..*i {
+                e = str_apply(SUCC, &vec![e]);
+            }
+            e
+        }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
@@ -1166,44 +1165,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
     Ok(result)
 }
 
-#[derive(Clone, Copy)]
-pub enum PostConditionKind {
-    Ensures,
-    DecreasesImplicitLemma,
-    DecreasesBy,
-}
-
-pub struct PostConditionSst {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<UniqueIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exps: Vec<Exp>,
-    /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    pub kind: PostConditionKind,
-}
-
-struct PostConditionInfo {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    dest: Option<UniqueIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    ens_exprs: Vec<(Span, Expr)>,
-    /// Recommends checks (only used in recommends-checking mode)
-    ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    kind: PostConditionKind,
-}
-
 #[derive(Debug)]
 struct LoopInfo {
+    loop_isolation: bool,
     is_for_loop: bool,
     label: Option<String>,
+    air_break_label: Ident,
     some_cond: bool,
-    invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>)>>,
-    invs_exit: Arc<Vec<(Span, Expr, Option<Arc<String>>)>>,
+    invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
+    invs_exit: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
 }
 
 struct State {
@@ -1218,6 +1188,7 @@ struct State {
     mask: MaskSet,         // set of invariants that are allowed to be opened
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
+    loop_label_counter: u64,
     static_prelude: Vec<Stmt>,
 }
 
@@ -1373,6 +1344,7 @@ fn assume_other_fields_unchanged_inner(
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
             let datatype_fields = &get_variant(&ctx.global.datatypes[datatype].1, variant).fields;
+            let mut box_unbox_eq: Vec<Expr> = Vec::new();
             let dt =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
                     let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
@@ -1383,7 +1355,20 @@ fn assume_other_fields_unchanged_inner(
                         } else {
                             let op = UnaryOpr::Unbox(base_typ.clone());
                             let exprx = ExpX::UnaryOpr(op, base.clone());
-                            SpannedTyped::new(&base.span, base_typ, exprx)
+                            let unbox = SpannedTyped::new(&base.span, base_typ, exprx);
+                            if box_unbox_eq.len() == 0 {
+                                // trigger Box(Unbox(base)) so that has_type succeeds on base
+                                let box_op = UnaryOpr::Box(base_typ.clone());
+                                let exprx = ExpX::UnaryOpr(box_op, unbox.clone());
+                                let box_unbox = SpannedTyped::new(&base.span, &base.typ, exprx);
+                                let eq = ExprX::Binary(
+                                    air::ast::BinaryOp::Eq,
+                                    exp_to_expr(ctx, &box_unbox, expr_ctxt)?,
+                                    exp_to_expr(ctx, &base, expr_ctxt)?,
+                                );
+                                box_unbox_eq.push(Arc::new(eq));
+                            }
+                            unbox
                         }
                     } else {
                         base.clone()
@@ -1421,7 +1406,7 @@ fn assume_other_fields_unchanged_inner(
                         Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
                     }
                 })?;
-            Ok(dt.into_iter().flatten().collect())
+            Ok(dt.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
         }
     }
 }
@@ -1433,7 +1418,7 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest } => {
+        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
@@ -1459,11 +1444,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         (_, Some(s)) => s.clone(),
                     };
                 let error = error(&stm.span, description);
-                stmts.push(Arc::new(StmtX::Assert(error, e_req)));
+                let filter = Some(fun_to_air_ident(&func.x.name));
+                stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
             }
 
             let callee_mask_set =
-                mask_set_from_spec(&func.x.mask_spec, func.x.mode, &func.x.name, &req_args);
+                mask_set_from_spec(&func.x.mask_spec_or_default(), &func.x.name, &req_args);
             if !ctx.checking_spec_preconditions() {
                 callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
@@ -1477,7 +1463,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
             for (param, arg) in func.x.params.iter().zip(args.iter()) {
                 let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
-                    let var: UniqueIdent = get_loc_var(dest);
+                    let var = get_loc_var(dest);
                     crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
                         ExpX::Var(x) if *x == var => {
                             call_snapshot = true;
@@ -1555,12 +1541,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let (has_ens, ens_fun, ens_typ_args) = match resolved_method {
-                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate.contains(res_fun) => {
+                Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
                     let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
                     (true, res_fun, res_typ_args)
                 }
-                _ if ctx.funcs_with_ensure_predicate.contains(&func.x.name) => {
+                _ if ctx.funcs_with_ensure_predicate[&func.x.name] => {
                     // Use ens predicate for the generic function
                     (true, &func.x.name, typ_args)
                 }
@@ -1577,7 +1563,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     let var = suffix_local_unique_id(&get_loc_var(dest));
                     ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
                     if !*is_init {
-                        let havoc = StmtX::Havoc(var.clone());
+                        let havoc = StmtX::Havoc(var);
                         stmts.push(Arc::new(havoc));
                     }
                     if ctx.debug {
@@ -1598,7 +1584,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
-        StmX::Assert(error, expr) => {
+        StmX::Assert(assert_id, error, expr) => {
             let air_expr = exp_to_expr(ctx, &expr, expr_ctxt)?;
             let error = match error {
                 Some(error) => error.clone(),
@@ -1611,9 +1597,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
-            vec![Arc::new(StmtX::Assert(error, air_expr))]
+            vec![Arc::new(StmtX::Assert(assert_id.clone(), error, None, air_expr))]
         }
-        StmX::Return { base_error, ret_exp, inside_body } => {
+        StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
             let skip = if ctx.checking_spec_preconditions() {
                 state.post_condition_info.ens_spec_precondition_stms.len() == 0
             } else {
@@ -1663,7 +1649,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             }
                         };
 
-                        let ens_stmt = StmtX::Assert(error, ens.clone());
+                        let ens_stmt = StmtX::Assert(assert_id.clone(), error, None, ens.clone());
                         stmts.push(Arc::new(ens_stmt));
                     }
                 }
@@ -1742,7 +1728,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut air_body: Vec<Stmt> = Vec::new();
             for (span, ens) in ensures_air.iter() {
                 let error = error(span, "bitvector ensures not satisfied");
-                let ens_stmt = StmtX::Assert(error, ens.clone());
+                let ens_stmt = StmtX::Assert(None, error, None, ens.clone());
                 air_body.push(Arc::new(ens_stmt));
             }
             let assertion = one_stmt(air_body);
@@ -1818,17 +1804,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s)?)))]
         }
         StmX::BreakOrContinue { label, is_break } => {
+            let loop_info = if label.is_some() {
+                state
+                    .loop_infos
+                    .iter()
+                    .rfind(|info| info.label == *label)
+                    .expect("missing loop label")
+            } else {
+                state.loop_infos.last().expect("inside loop")
+            };
+            let is_air_break = *is_break && !loop_info.loop_isolation;
             let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_spec_preconditions() {
-                let loop_info = if label.is_some() {
-                    state
-                        .loop_infos
-                        .iter()
-                        .rfind(|info| info.label == *label)
-                        .expect("missing loop label")
-                } else {
-                    state.loop_infos.last().expect("inside loop")
-                };
+            if !ctx.checking_spec_preconditions() && !is_air_break {
                 assert!(!loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
                 if loop_info.is_for_loop && !*is_break {
                     // At the very least, the syntax macro will need to advance the ghost iterator
@@ -1845,15 +1832,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     error_with_label(&stm.span, "loop invariant not satisfied", "at this continue")
                 };
-                for (span, inv, msg) in invs.iter() {
+                for (span, inv, msg, both) in invs.iter() {
                     let mut error = base_error.secondary_label(span, "failed this invariant");
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
                     }
-                    stmts.push(Arc::new(StmtX::Assert(error, inv.clone())));
+                    if *is_break && *both {
+                        let msg = "(hint: if this is not supposed to be true at the break, \
+                            use 'invariant_except_break' for it instead of 'invariant', \
+                            and use 'ensures' for what is true at the break)";
+                        error = error.secondary_label(span, msg);
+                    }
+                    stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
                 }
             }
-            stmts.push(Arc::new(StmtX::Assume(air::ast_util::mk_false())));
+            if is_air_break {
+                stmts.push(Arc::new(StmtX::Break(loop_info.air_break_label.clone())));
+            } else {
+                stmts.push(Arc::new(StmtX::Assume(air::ast_util::mk_false())));
+            }
             stmts
         }
         StmX::ClosureInner { body, typ_inv_vars } => {
@@ -1900,7 +1897,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::Loop { is_for_loop, label, cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::Loop {
+            loop_isolation,
+            is_for_loop,
+            label,
+            cond,
+            body,
+            invs,
+            typ_inv_vars,
+            modified_vars,
+        } => {
+            let loop_isolation = *loop_isolation;
             let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
                 let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
                 let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -1910,21 +1917,24 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             } else {
                 (None, None, None)
             };
-            let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
-            let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>)> = Vec::new();
+            let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
+            let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
+            let mut hint_message = None;
             for inv in invs.iter() {
-                let inv_exp = crate::loop_inference::finalize_inv(modified_vars, &inv.inv);
+                let inv_exp =
+                    crate::loop_inference::finalize_inv(modified_vars, &inv.inv, &mut hint_message);
                 let msg_opt = exp_get_custom_err(&inv_exp);
                 let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
                 if cond.is_some() {
                     assert!(inv.at_entry);
                     assert!(inv.at_exit);
                 }
+                let both = inv.at_entry && inv.at_exit;
                 if inv.at_entry {
-                    invs_entry.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone()));
+                    invs_entry.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone(), both));
                 }
                 if inv.at_exit {
-                    invs_exit.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone()));
+                    invs_exit.push((inv.inv.span.clone(), expr.clone(), msg_opt.clone(), both));
                 }
             }
             let invs_entry = Arc::new(invs_entry);
@@ -1939,9 +1949,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 None
             };
 
-            let mut air_body: Vec<Stmt> = state.static_prelude.clone();
-
             /*
+            When loop_isolation = true:
             Generate a separate SMT query for the loop body.
             Rationale: large functions with while loops tend to be slow to verify.
             Therefore, it's good to try to factor large functions
@@ -1958,11 +1967,76 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             the outer function's entire context into the verification of the loop body,
             which would slow verification of the loop body.)
             */
+
+            /*
+            Suppose we have:
+                loop invs { body }
+            When loop_isolation = false, we generate this AIR:
+                assert invs
+                breakable(break_label) {
+                    havoc modified_vars
+                    assume typ_inv(modified_vars)
+                    assume invs
+                    body // "break" inside body turns into break(break_label)
+                    assert invs
+                    assume false
+                }
+                // note that we don't assume the invs after the loop,
+                // because we may have come from a break statement where the invs don't hold
+            When loop_isolation = true:
+                We generate this AIR in the outer query:
+                    assert invs
+                    havoc modified_vars
+                    assume typ_invs(modified_vars)
+                    assume invs_exit
+                We generate this AIR in the spun-off loop query:
+                    axiom typ_invs(all_used_vars)
+                    assume invs_entry
+                    body // "break" inside body turns into assert invs_exit; assume false
+                    assert invs_entry
+            Suppose we have:
+                while cond invs { body }
+            When loop_isolation = false, this is represented as a "loop"; see the case above.
+            When loop_isolation = true:
+                We generate this AIR in the outer query:
+                    assert invs
+                    havoc modified_vars
+                    assume typ_invs(modified_vars)
+                    assume invs_exit
+                    cond_stm
+                    assume !cond_exp
+                We generate this AIR in the spun-off loop query:
+                    axiom typ_invs(all_used_vars)
+                    assume invs_entry
+                    cond_stm
+                    assume cond_exp
+                    body // "break" inside body turns into assert invs_exit; assume false
+                    assert invs_entry
+            */
+
+            let mut air_body: Vec<Stmt> = state.static_prelude.clone();
+            if !loop_isolation {
+                for x in modified_vars.iter() {
+                    air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
+                }
+                for (x, typ) in typ_inv_vars.iter() {
+                    if modified_vars.contains(x) {
+                        let typ_inv =
+                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                        if let Some(expr) = typ_inv {
+                            air_body.push(Arc::new(StmtX::Assume(expr)));
+                        }
+                    }
+                }
+            }
+
             let mut local = state.local_shared.clone();
-            for (x, typ) in typ_inv_vars.iter() {
-                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                if let Some(expr) = typ_inv {
-                    local.push(Arc::new(DeclX::Axiom(expr)));
+            if loop_isolation {
+                for (x, typ) in typ_inv_vars.iter() {
+                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                    if let Some(expr) = typ_inv {
+                        local.push(Arc::new(DeclX::Axiom(expr)));
+                    }
                 }
             }
 
@@ -1970,8 +2044,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // *x or *old(x) within the loop body or invariants.
             // Thus, we need to create a 'pre' snapshot and havoc all these variables
             // so that we can refer to either version of the variable within the body.
-
-            air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+            if loop_isolation {
+                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+            }
             for (x, typ) in typ_inv_vars.iter() {
                 if state.may_be_used_in_old.contains(x) {
                     air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
@@ -1984,20 +2059,26 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Assume invariants for the beginning of the loop body.
             // (These need to go after the above Havoc statements.)
-            for (_, inv, _) in invs_entry.iter() {
+            for (_, inv, _, _) in invs_entry.iter() {
                 air_body.push(Arc::new(StmtX::Assume(inv.clone())));
             }
 
             let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
             if let Some(cond_stmts) = &cond_stmts {
+                assert!(loop_isolation);
                 air_body.append(&mut cond_stmts.clone());
             }
             if let Some(pos_assume) = pos_assume {
+                assert!(loop_isolation);
                 air_body.push(pos_assume);
             }
+            let air_break_label = crate::def::break_label(state.loop_label_counter);
+            state.loop_label_counter += 1;
             let loop_info = LoopInfo {
+                loop_isolation,
                 is_for_loop: *is_for_loop,
                 label: label.clone(),
+                air_break_label: air_break_label.clone(),
                 some_cond: cond.is_some(),
                 invs_entry: invs_entry.clone(),
                 invs_exit: invs_exit.clone(),
@@ -2007,14 +2088,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             state.loop_infos.pop();
 
             if !ctx.checking_spec_preconditions() {
-                for (span, inv, msg) in invs_entry.iter() {
+                for (span, inv, msg, _) in invs_entry.iter() {
                     let mut error = error(span, crate::def::INV_FAIL_LOOP_END);
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
                     }
-                    let inv_stmt = StmtX::Assert(error, inv.clone());
+                    let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
                     air_body.push(Arc::new(inv_stmt));
                 }
+            }
+            if !loop_isolation {
+                let loop_end = StmtX::Assume(air::ast_util::mk_false());
+                air_body.push(Arc::new(loop_end));
             }
             let assertion = one_stmt(air_body);
 
@@ -2028,52 +2113,66 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let block_contents: Vec<Stmt> = vec![snapshot, assertion];
                 Arc::new(StmtX::Block(Arc::new(block_contents)))
             };
-
-            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(CommandsWithContextX::new(
-                ctx.fun
-                    .as_ref()
-                    .expect("asserts are expected to be in a function")
-                    .current_fun
-                    .clone(),
-                stm.span.clone(),
-                "while loop".to_string(),
-                Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
-                ProverChoice::DefaultProver,
-                false,
-            ));
+            if loop_isolation {
+                let assertion = assertion.clone();
+                let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+                let loop_cmd_context = CommandsWithContextX::new(
+                    ctx.fun
+                        .as_ref()
+                        .expect("asserts are expected to be in a function")
+                        .current_fun
+                        .clone(),
+                    stm.span.clone(),
+                    "while loop".to_string(),
+                    Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
+                    ProverChoice::DefaultProver,
+                    false,
+                );
+                loop_cmd_context.hint_upon_failure.replace(hint_message);
+                state.commands.push(loop_cmd_context);
+            }
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
             if !ctx.checking_spec_preconditions() {
-                for (span, inv, msg) in invs_entry.iter() {
+                for (span, inv, msg, _) in invs_entry.iter() {
                     let mut error = error(span, crate::def::INV_FAIL_LOOP_FRONT);
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
                     }
-                    let inv_stmt = StmtX::Assert(error, inv.clone());
+                    let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
                     stmts.push(Arc::new(inv_stmt));
                 }
             }
-            for x in modified_vars.iter() {
-                stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
+            if !loop_isolation {
+                let break_label = air_break_label.clone();
+                let loop_breakable = Arc::new(StmtX::Breakable(break_label, assertion));
+                stmts.push(loop_breakable);
             }
-            for (x, typ) in typ_inv_vars.iter() {
-                if modified_vars.contains(x) {
-                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                    if let Some(expr) = typ_inv {
-                        stmts.push(Arc::new(StmtX::Assume(expr)));
+            if loop_isolation {
+                for x in modified_vars.iter() {
+                    stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
+                }
+                for (x, typ) in typ_inv_vars.iter() {
+                    if modified_vars.contains(x) {
+                        let typ_inv =
+                            typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                        if let Some(expr) = typ_inv {
+                            stmts.push(Arc::new(StmtX::Assume(expr)));
+                        }
                     }
                 }
-            }
-            for (_, inv, _) in invs_exit.iter() {
-                let inv_stmt = StmtX::Assume(inv.clone());
-                stmts.push(Arc::new(inv_stmt));
+                for (_, inv, _, _) in invs_exit.iter() {
+                    let inv_stmt = StmtX::Assume(inv.clone());
+                    stmts.push(Arc::new(inv_stmt));
+                }
             }
             if let Some(cond_stmts) = &cond_stmts {
+                assert!(loop_isolation);
                 stmts.append(&mut cond_stmts.clone());
             }
             if let Some(neg_assume) = neg_assume {
+                assert!(loop_isolation);
                 stmts.push(neg_assume);
             }
             if ctx.debug {
@@ -2127,7 +2226,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // so this may evaluate differently in the SMT.
             if !ctx.checking_spec_preconditions() {
                 let error = error(&body_stm.span, "Cannot show invariant holds at end of block");
-                stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
+                stmts.push(Arc::new(StmtX::Assert(None, error, None, main_inv)));
             }
 
             stmts
@@ -2184,6 +2283,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.pop_scope();
             }
             stmts
+        }
+        StmX::Air(s) => {
+            let mut parser = sise::Parser::new(s.as_bytes());
+            let node = sise::read_into_tree(&mut parser).unwrap();
+
+            let stmt = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+                .node_to_stmt(&node);
+            match stmt {
+                Ok(stmt) => vec![stmt],
+                Err(err) => {
+                    return Err(error(&stm.span, format!("Invalid inline AIR statement: {}", err)));
+                }
+            }
         }
     };
     Ok(result)
@@ -2264,7 +2376,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
 fn mk_static_prelude(ctx: &Ctx, statics: &Vec<Fun>) -> Vec<Stmt> {
     statics
         .iter()
-        .filter(|f| ctx.funcs_with_ensure_predicate.contains(&**f))
+        .filter(|f| ctx.funcs_with_ensure_predicate[&**f])
         .map(|f| {
             let f_ens = prefix_ensures(&fun_to_air_ident(&f));
             let f_static = string_var(&static_name(f));
@@ -2280,17 +2392,15 @@ pub(crate) fn body_stm_to_air(
     func_span: &Span,
     typ_params: &Idents,
     params: &Params,
-    local_decls: &Vec<LocalDecl>,
+    function_sst: &FunctionSst,
     hidden: &Vec<Fun>,
-    reqs: &Vec<Exp>,
-    post_condition: &PostConditionSst,
-    mask_set: &MaskSet,
-    stm: &Stm,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
-    statics: &Vec<Fun>,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
+    let FunctionSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
+        function_sst;
+
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
@@ -2299,7 +2409,7 @@ pub(crate) fn body_stm_to_air(
 
     for x in typ_params.iter() {
         for (x, t) in crate::def::suffix_typ_param_ids_types(x) {
-            local_shared.push(Arc::new(DeclX::Const(x.clone(), str_typ(t))));
+            local_shared.push(Arc::new(DeclX::Const(x.lower(), str_typ(t))));
         }
     }
     for decl in local_decls {
@@ -2377,6 +2487,7 @@ pub(crate) fn body_stm_to_air(
             kind: post_condition.kind,
         },
         loop_infos: Vec::new(),
+        loop_label_counter: 0,
         static_prelude: mk_static_prelude(ctx, statics),
     };
 
@@ -2416,15 +2527,14 @@ pub(crate) fn body_stm_to_air(
 
     if !is_bit_vector_mode && !is_integer_ring {
         for param in params.iter() {
-            let typ_inv =
-                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
+            let typ_inv = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()));
             if let Some(expr) = typ_inv {
                 local.push(Arc::new(DeclX::Axiom(expr)));
             }
         }
     }
 
-    for req in reqs {
+    for req in reqs.iter() {
         let e = if is_bit_vector_mode {
             let bv_expr_ctxt = &BvExprCtxt::new();
             bv_exp_to_expr(ctx, &req, bv_expr_ctxt)?
@@ -2441,20 +2551,21 @@ pub(crate) fn body_stm_to_air(
         };
 
         // parameters, requires, ensures to Singular Query
-        let singular_vars: Vec<Decl> = params
-            .iter()
-            .map(|param| Arc::new(DeclX::Var(param.x.name.clone(), typ_to_air(ctx, &param.x.typ))))
-            .collect();
-
+        // in the resulting queryX::assertion, the last stmt should be ensure expression
+        let mut singular_vars: Vec<Decl> = vec![];
+        for param in params.iter() {
+            singular_vars
+                .push(Arc::new(DeclX::Var(param.x.name.lower(), typ_to_air(ctx, &param.x.typ))));
+        }
         let mut singular_req_stmts: Vec<Stmt> = vec![];
-        for req in reqs {
+        for req in reqs.iter() {
             let error = error_with_label(
                 &req.span,
                 "Unspported expression in integer_ring".to_string(),
                 "at the require clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
             singular_req_stmts.push(assert_stm);
         }
 
@@ -2466,7 +2577,7 @@ pub(crate) fn body_stm_to_air(
                 "at the ensure clause".to_string(),
             );
             let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
             singular_ens_stmts.push(assert_stm);
         }
 

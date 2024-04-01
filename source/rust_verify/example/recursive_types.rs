@@ -8,7 +8,7 @@ verus! {
 
 // If treated naively, recursive types can lead to nonterminating proofs:
 /*
-struct R { f: FnSpec(R) -> int }
+struct R { f: spec_fn(R) -> int }
 proof fn bad()
     ensures false
 {
@@ -27,21 +27,21 @@ proof fn bad()
 */
 // To prevent this, Verus prohibits recursion in "negative positions" in a recursive type.
 // Roughly, a negative position is anything on the left-hand side of a function type ->.
-// For example, the "R" in FnSpec(R) -> int is in a negative position.
-// Therefore, Verus rejects the definition "struct R { f: FnSpec(R) -> int }" with an error.
+// For example, the "R" in spec_fn(R) -> int is in a negative position.
+// Therefore, Verus rejects the definition "struct R { f: spec_fn(R) -> int }" with an error.
 
 // If generics are treated naively, they could encode recursion in negative positions.
 // For example, we could try to wrap the function type in a new type to hide the negative
 // use of R:
 /*
-struct FnWrapper<A, B> { f: FnSpec(A) -> B } // error: A not allowed in negative position
+struct FnWrapper<A, B> { f: spec_fn(A) -> B } // error: A not allowed in negative position
 struct R { f: FnWrapper<R, int> }
 */
 // To prevent this, Verus requires that type parameters used in negative positions (like A)
 // be annotated with #[verifier::reject_recursive_types]:
 /*
 #[verifier::reject_recursive_types(A)]
-struct FnWrapper<A, B> { f: FnSpec(A) -> B } // ok
+struct FnWrapper<A, B> { f: spec_fn(A) -> B } // ok
 struct R { f: FnWrapper<R, int> } // error: R not allowed in negative position
 */
 // Based on this annotation on A, Verus knows that the recursive R in FnWrapper<R, int> should
@@ -113,7 +113,7 @@ enum GroundedList<A> {
 // Typical example of reject_recursive_types:
 #[verifier::reject_recursive_types(A)]
 struct Set<A> {
-    f: FnSpec(A) -> bool,
+    f: spec_fn(A) -> bool,
 }
 
 // Typical example of reject_recursive_types_in_ground_variants (which is the default):

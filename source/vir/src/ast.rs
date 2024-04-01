@@ -34,6 +34,58 @@ pub struct PathX {
     pub segments: Idents,
 }
 
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    ToDebugSNode
+)]
+pub enum VarIdentDisambiguate {
+    // AIR names that don't derive from rustc's names:
+    AirLocal,
+    // rustc's parameter unique id comes from the function body; no body means no id:
+    NoBodyParam,
+    // TypParams are normally Idents, but sometimes we mix TypParams into lists of VarIdents:
+    TypParamBare,
+    TypParamSuffixed,
+    TypParamDecorated,
+    // Fields are normally Idents, but sometimes we mix field names into lists of VarIdents:
+    Field,
+    RustcId(usize),
+    // We track whether the variable is SST/AIR statement-bound or expression-bound,
+    // to help drop unnecessary ids from expression-bound variables
+    VirRenumbered { is_stmt: bool, does_shadow: bool, id: u64 },
+    // Some expression-bound variables don't need an id
+    VirExprNoNumber,
+    // We rename parameters to VirParam if the parameters don't conflict with each other
+    VirParam,
+    // Recursive definitions have an extra copy of the parameters
+    VirParamRecursion(usize),
+    // Capture-avoiding substitution creates new names:
+    VirSubst(u64),
+    VirTemp(u64),
+    ExpandErrorsDecl(u64),
+}
+
+/// A local variable name, possibly renamed for disambiguation
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, ToDebugSNode)]
+pub struct VarIdent(pub Ident, pub VarIdentDisambiguate);
+
+pub type VarBinder<A> = Arc<VarBinderX<A>>;
+pub type VarBinders<A> = Arc<Vec<VarBinder<A>>>;
+#[derive(Clone, Serialize, Deserialize)] // for Debug, see ast_util
+pub struct VarBinderX<A: Clone> {
+    pub name: VarIdent,
+    pub a: A,
+}
+
 /// Static function identifier
 pub type Fun = Arc<FunX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -189,7 +241,7 @@ pub enum TypX {
     ConstInt(BigInt),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-    /// StrSlice type. Currently the pervasive StrSlice struct is "seen" as this type
+    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
     /// despite the fact that it is in fact a datatype
     StrSlice,
     /// UTF-8 character type
@@ -230,6 +282,10 @@ pub enum NullaryOpr {
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
     TraitBound(Path, Typs),
+    /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
+    TypEqualityBound(Path, Typs, Ident, Typ),
+    /// A failed InferSpecForLoopIter subexpression
+    NoInferSpecForLoopIter,
 }
 
 /// Primitive unary operations
@@ -270,7 +326,9 @@ pub enum UnaryOp {
     /// For an exec/proof expression e, the spec s should be chosen so that the value v
     /// that e evaluates to is immutable and v == s, where v may contain local variables.
     /// For example, if v == (n..m), then n and m must be immutable local variables.
-    InferSpecForLoopIter,
+    InferSpecForLoopIter { print_hint: bool },
+    /// May need coercion after casting a type argument
+    CastToInteger,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -420,9 +478,9 @@ pub struct UnwrapParameter {
     // indicates Ghost or Tracked
     pub mode: Mode,
     // dummy name chosen for official Rust parameter name
-    pub outer_name: Ident,
+    pub outer_name: VarIdent,
     // rename the parameter to a different name using a "let" binding
-    pub inner_name: Ident,
+    pub inner_name: VarIdent,
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -437,14 +495,14 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(Ident, Typ)>, Exprs),
+    Ensures(Option<(VarIdent, Typ)>, Exprs),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
+    /// Invariants (except breaks) on loops
+    InvariantExceptBreak(Exprs),
     /// Invariants on loops
     Invariant(Exprs),
-    /// Invariants + ensures on loops
-    InvariantEnsures(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
     Decreases(Exprs),
     /// Recursive function is uninterpreted when Expr is false
@@ -476,7 +534,7 @@ pub enum Constant {
     Char(char),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
@@ -499,8 +557,13 @@ pub enum PatternX {
     Wildcard(bool),
     /// x or mut x
     Var {
-        name: Ident,
+        name: VarIdent,
         mutable: bool,
+    },
+    Binding {
+        name: VarIdent,
+        mutable: bool,
+        sub_pat: Pattern,
     },
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
@@ -509,6 +572,15 @@ pub enum PatternX {
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Path, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
+    /// Matches something equal to the value of this expr
+    /// This only supports literals and consts, so we don't need to worry
+    /// about side-effects, binding order, etc.
+    Expr(Expr),
+    /// `e1 <= x <= e2` or `e1 <= x < e2`
+    /// The start of the range is always inclusive (<=)
+    /// The end of the range may be inclusive (<=) or exclusive (<),
+    /// as given by the InequalityOp argument.
+    Range(Option<Expr>, Option<(Expr, InequalityOp)>),
 }
 
 /// Arms of match expressions
@@ -526,8 +598,11 @@ pub struct ArmX {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ToDebugSNode)]
 pub enum LoopInvariantKind {
-    Invariant,
-    InvariantEnsures,
+    /// holds at beginning of loop
+    InvariantExceptBreak,
+    /// holds at beginning of loop and after loop exit (including breaks)
+    InvariantAndEnsures,
+    /// holds at loop exit (including breaks)
     Ensures,
 }
 
@@ -624,17 +699,17 @@ pub enum AutospecUsage {
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[to_node_impl(name = ">")]
 pub enum ExprX {
     /// Constant
     Const(Constant),
     /// Local variable as a right-hand side
-    Var(Ident),
+    Var(VarIdent),
     /// Local variable as a left-hand side
-    VarLoc(Ident),
+    VarLoc(VarIdent),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
-    VarAt(Ident, VarAt),
+    VarAt(VarIdent, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
@@ -663,34 +738,34 @@ pub enum ExprX {
     /// Primitive multi-operand operation
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
-    Quant(Quant, Binders<Typ>, Expr),
+    Quant(Quant, VarBinders<Typ>, Expr),
     /// Specification closure
-    Closure(Binders<Typ>, Expr),
+    Closure(VarBinders<Typ>, Expr),
     /// Executable closure
     ExecClosure {
-        params: Binders<Typ>,
+        params: VarBinders<Typ>,
         body: Expr,
         requires: Exprs,
         ensures: Exprs,
-        ret: Binder<Typ>,
+        ret: VarBinder<Typ>,
         /// The 'external spec' is an Option because it gets filled in during
         /// ast_simplify. It contains the assumptions that surrounding context
         /// can assume about a closure object after it is created.
-        external_spec: Option<(Ident, Expr)>,
+        external_spec: Option<(VarIdent, Expr)>,
     },
     /// Array literal (can also be used for sequence literals in the future)
     ArrayLiteral(Exprs),
     /// Executable function (declared with 'fn' and referred to by name)
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
-    Choose { params: Binders<Typ>, cond: Expr, body: Expr },
+    Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
-    Fuel(Fun, u32),
+    Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
     /// Header, which must appear at the beginning of a function or while loop.
@@ -700,7 +775,7 @@ pub enum ExprX {
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
     /// Assert-forall or assert-by statement
-    AssertBy { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
     /// Assertion discharged via computation
@@ -711,6 +786,7 @@ pub enum ExprX {
     Match(Expr, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
+        loop_isolation: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<Expr>,
@@ -718,7 +794,7 @@ pub enum ExprX {
         invs: LoopInvariants,
     },
     /// Open invariant
-    OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
+    OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
@@ -731,6 +807,8 @@ pub enum ExprX {
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
+    /// Inline AIR statement
+    AirStmt(Arc<String>),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -743,7 +821,8 @@ pub enum StmtX {
     /// Declare a local variable, which may be mutable, and may have an initial value
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
-    Decl { pattern: Pattern, mode: Mode, init: Option<Expr> },
+    /// (The mode is only allowed to be None for one special case; see modes.rs)
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr> },
 }
 
 /// Function parameter
@@ -751,7 +830,7 @@ pub type Param = Arc<Spanned<ParamX>>;
 pub type Params = Arc<Vec<Param>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub struct ParamX {
-    pub name: Ident,
+    pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
     /// An &mut parameter
@@ -759,7 +838,7 @@ pub struct ParamX {
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
     /// We also save a copy of the original wrapped name for lifetime_generate
-    pub unwrapped_info: Option<(Mode, Ident)>,
+    pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
@@ -769,6 +848,9 @@ pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
     Trait(Path, Typs),
+    /// An equality bound for associated type X of trait T(t1, ..., tn),
+    /// written in Rust as T<t1, ..., tn, X = typ>
+    TypEquality(Path, Typs, Ident, Typ),
 }
 
 /// When instantiating type S<A> with A = T in a recursive type definition,
@@ -803,6 +885,9 @@ pub struct FunctionAttrsX {
     pub inline: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
+    /// Do not process or verify function body
+    /// TODO: needed only until https://github.com/verus-lang/verus/pull/1022 is merged
+    pub external_body: bool,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
@@ -829,6 +914,12 @@ pub struct FunctionAttrsX {
     pub memoize: bool,
     /// override default rlimit
     pub rlimit: Option<f32>,
+    /// does this function take zero args (this is useful to keep track
+    /// of because we add a dummy arg to zero functions)
+    pub print_zero_args: bool,
+    /// is this a method, i.e., written with x.f() syntax? useful for printing
+    pub print_as_method: bool,
+    pub prophecy_dependent: bool,
 }
 
 /// Function specification of its invariant mask
@@ -836,7 +927,6 @@ pub struct FunctionAttrsX {
 pub enum MaskSpec {
     InvariantOpens(Exprs),
     InvariantOpensExcept(Exprs),
-    NoSpec,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -848,15 +938,23 @@ pub enum FunctionKind {
     },
     /// Method implementation inside an impl, implementing a trait method for a trait for a type
     TraitMethodImpl {
+        /// Fun declared by trait for this method
         method: Fun,
         /// Path of the impl (e.g. "impl2") that contains the method implementation
         impl_path: Path,
         trait_path: Path,
         trait_typ_args: Typs,
+        /// If Some, inherit default method body from function in the trait:
+        inherit_body_from: Option<Fun>,
     },
     /// These should get demoted into Static functions in `demote_foreign_traits`.
     /// This really only exists so that we can check the trait really is foreign.
-    ForeignTraitMethodImpl(Path),
+    ForeignTraitMethodImpl {
+        method: Fun,
+        impl_path: Path,
+        trait_path: Path,
+        trait_typ_args: Typs,
+    },
 }
 
 /// Function, including signature and body
@@ -883,6 +981,7 @@ pub struct FunctionX {
     /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
     pub fuel: u32,
     /// Type parameters to generic functions
+    /// (for trait methods, the trait parameters come first, then the method parameters)
     pub typ_params: Idents,
     /// Type bounds of generic functions
     pub typ_bounds: GenericBounds,
@@ -913,7 +1012,7 @@ pub struct FunctionX {
     /// in during ast_simplify.
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
-    pub mask_spec: MaskSpec,
+    pub mask_spec: Option<MaskSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private
@@ -949,6 +1048,28 @@ pub enum ItemKind {
     /// so they can only be deterministic, right? But for something like cell, the 'id'
     /// (the nondeterministic part) is purely ghost.
     Static,
+}
+
+pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct RevealGroupX {
+    /// Name of the function that is used internally to represent the group.
+    /// This is used, for example, to create a Node::Fun(name) for the group.
+    /// Note that there is no FunctionX for the group, though.
+    pub name: Fun,
+    /// Access control (public/private)
+    pub visibility: Visibility,
+    /// Owning module
+    pub owning_module: Option<Path>,
+    /// If true, then prune away group unless either the module that contains the group is used.
+    /// (Without this, importing vstd would recursively reach and encode all the
+    /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
+    pub prune_unless_this_module_is_used: bool,
+    /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
+    /// No more than one such group is allowed in each crate.
+    pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,
+    /// All the subgroups or functions included in this group
+    pub members: Arc<Vec<Fun>>,
 }
 
 /// Single field in a variant
@@ -1045,6 +1166,7 @@ pub struct TraitImplX {
     pub trait_path: Path,
     pub trait_typ_args: Typs,
     pub trait_typ_arg_impls: Arc<Spanned<ImplPaths>>,
+    pub owning_module: Option<Path>,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
@@ -1052,11 +1174,14 @@ pub enum WellKnownItem {
     DropTrait,
 }
 
+pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;
+
 pub type Module = Arc<Spanned<ModuleX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct ModuleX {
     pub path: Path,
     // add attrs here
+    pub reveals: Option<ModuleReveals>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
@@ -1080,23 +1205,19 @@ impl ArchWordBits {
     }
 }
 
-impl Default for ArchWordBits {
-    fn default() -> Self {
-        ArchWordBits::Either32Or64
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Arch {
     pub word_bits: ArchWordBits,
 }
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
+    /// All reveal_groups in the crate
+    pub reveal_groups: Vec<RevealGroup>,
     /// All datatypes in the crate
     pub datatypes: Vec<Datatype>,
     /// All traits in the crate

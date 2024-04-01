@@ -4,6 +4,7 @@ extern crate rustc_span;
 
 use serde::Deserialize;
 
+#[allow(unused_imports)]
 pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -86,6 +87,21 @@ pub fn verify_files_vstd_all_diags(
 ) -> Result<TestErr, TestErr> {
     THREAD_LOCAL_TEST_NAME.with(|tn| *tn.borrow_mut() = Some(name.to_string()));
 
+    fn print_input_dir_rerun_info(
+        test_input_dir: &std::path::PathBuf,
+        options: &[&str],
+        entry_file: &String,
+    ) {
+        eprintln!("the input directory is {}", test_input_dir.to_string_lossy());
+        eprintln!("{}", yansi::Paint::blue("rerun this test with:"));
+        eprintln!(
+            "vargo run -p rust_verify -- --crate-type=lib {} {}",
+            options.join(" "),
+            test_input_dir.join(entry_file).to_string_lossy()
+        );
+        eprintln!();
+    }
+
     let files: Vec<(String, String)> = files.into_iter().collect();
 
     let deps_dir = std::env::current_exe().unwrap();
@@ -107,6 +123,14 @@ pub fn verify_files_vstd_all_diags(
     }
     std::fs::create_dir(&test_input_dir).unwrap();
 
+    let keep_test_dir = std::env::var("VERUS_KEEP_TEST_DIR")
+        .ok()
+        .and_then(|x| if x.trim() == "0" { None } else { Some(()) })
+        .is_some();
+    if keep_test_dir {
+        print_input_dir_rerun_info(&test_input_dir, options, &entry_file);
+    }
+
     for (file_name, file_contents) in files {
         use std::io::Write;
         let mut f = std::fs::File::create(test_input_dir.join(file_name))
@@ -124,18 +148,20 @@ pub fn verify_files_vstd_all_diags(
         regex::Regex::new(r"^aborting due to( [0-9]+)? previous errors?").unwrap();
 
     #[cfg(target_os = "windows")]
-    let code = run.status.code().expect("unexpected signal in Windows");
+    let is_run_success = run.status.success();
 
     #[cfg(not(target_os = "windows"))]
-    let code = match run.status.code() {
-        Some(code) => code,
-        None => {
-            use std::os::unix::process::ExitStatusExt;
-            panic!("test terminated by a signal: {:?}", run.status.signal());
-        }
-    };
+    let is_run_success = run.status.success();
 
-    let mut is_failure = code != 0;
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = run.status.signal() {
+            eprintln!("test terminated by a signal: {:?}", signal);
+        }
+    }
+
+    let mut is_failure = !is_run_success;
     let mut warnings = Vec::new();
     let mut notes = Vec::new();
 
@@ -145,11 +171,7 @@ pub fn verify_files_vstd_all_diags(
             let diag: Result<Diagnostic, _> = serde_json::from_str(ss);
             if let Ok(diag) = diag {
                 eprintln!("{}", diag.rendered);
-                if diag.level == "note"
-                    && (diag.message == "split assertion failure"
-                        || diag.message == "split precondition failure"
-                        || diag.message == "split postcondition failure")
-                {
+                if diag.level == "note" && diag.message.starts_with("diagnostics via expansion") {
                     // TODO(main_new) define in defs
                     expand_errors_notes.push(diag);
                     continue;
@@ -174,17 +196,12 @@ pub fn verify_files_vstd_all_diags(
         }
     }
 
-    if !is_failure {
-        std::fs::remove_dir_all(&test_input_dir).unwrap();
-    } else {
-        eprintln!("the input directory is {}", test_input_dir.to_string_lossy());
-        eprintln!("{}", yansi::Paint::blue("rerun this test with:"));
-        eprintln!(
-            "vargo run -p rust_verify -- --crate-type=lib {} {}",
-            options.join(" "),
-            test_input_dir.join(entry_file).to_string_lossy()
-        );
-        eprintln!();
+    if !keep_test_dir {
+        if !is_failure {
+            std::fs::remove_dir_all(&test_input_dir).unwrap();
+        } else {
+            print_input_dir_rerun_info(&test_input_dir, options, &entry_file);
+        }
     }
 
     if is_failure {
@@ -269,6 +286,9 @@ pub fn run_verus(
             verus_args.push("--no-lifetime".to_string());
         } else if *option == "vstd" {
             // ignore
+        } else if *option == "-V allow-inline-air" {
+            verus_args.push("-V".to_string());
+            verus_args.push("allow-inline-air".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -279,8 +299,6 @@ pub fn run_verus(
 
     verus_args.extend(
         vec![
-            "--edition".to_string(),
-            "2018".to_string(),
             "--crate-name".to_string(),
             "test_crate".to_string(),
             "--crate-type".to_string(),
@@ -349,12 +367,13 @@ pub fn run_verus(
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    // If we're using the pre-macro-expanded pervasive lib, then it might have
+    // If we're using the pre-macro-expanded vstd lib, then it might have
     // some macro-internal stuff in it, and rustc needs this option in order to accept it.
     #![feature(fmt_internals)]
 
     #![allow(unused_imports)]
     #![allow(unused_macros)]
+    #![feature(exclusive_range_pattern)]
 
     use builtin::*;
     use builtin_macros::*;
@@ -370,7 +389,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         (false, options)
     };
 
-    let vstd = code.contains("vstd::") || code.contains("pervasive::") || options.contains(&"vstd");
+    let vstd = code.contains("vstd::") || options.contains(&"vstd");
     let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
 
     let files = vec![("test.rs".to_string(), code)];
@@ -421,6 +440,10 @@ macro_rules! test_verify_one_file {
 pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     if let Some(e) = err.iter().find(|e| e.label == Some("at this exit".to_string())) {
         return e;
+    } else if let Some(e) =
+        err.iter().find(|e| e.label == Some("might not be allowed at this call-site".to_string()))
+    {
+        return e;
     } else if let Some(e) = err.iter().find(|e| {
         e.label == Some(vir::def::THIS_POST_FAILED.to_string()) && !e.text[0].text.contains("TRAIT")
     }) {
@@ -432,7 +455,7 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
         .expect("span")
 }
 
-/// Assert that one verification failure happened on source lines containin the string "FAILS".
+/// Assert that one verification failure happened on source lines containing the string "FAILS".
 #[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
@@ -449,6 +472,8 @@ pub fn assert_one_fails(err: TestErr) {
 /// assert that all spans are properly reported (All spans are respoinsible to the verification failure)
 #[allow(dead_code)]
 pub fn assert_expand_fails(err: TestErr, span_count: usize) {
+    assert_fails(err.clone(), 1);
+
     assert_eq!(err.expand_errors_notes.len(), 1);
     let expand_errors_diag = &err.expand_errors_notes.last().unwrap();
     assert_eq!(expand_errors_diag.spans.len(), span_count);

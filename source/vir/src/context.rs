@@ -1,7 +1,8 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Fun, Function, GenericBounds, Ident, ImplPath, IntRange, Krate, Mode,
-    Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    ArchWordBits, Datatype, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath, IntRange,
+    Krate, Mode, Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
+use crate::ast_util::path_as_friendly_rust_name_raw;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::messages::{error, Span};
@@ -36,6 +37,7 @@ pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: Arc<HashMap<Path, (TypPositives, Variants)>>,
     pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
+    pub(crate) fun_attrs: Arc<HashMap<Fun, FunctionAttrs>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
     pub func_call_graph: Arc<Graph<Node>>,
@@ -46,8 +48,10 @@ pub struct GlobalCtx {
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
     pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
-    pub(crate) vstd_crate_name: Option<Ident>, // already an arc
+    pub(crate) func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
     pub arch: crate::ast::ArchWordBits,
+    pub crate_name: Ident,
+    pub vstd_crate_name: Ident,
 }
 
 // Context for verifying one function
@@ -67,7 +71,7 @@ pub struct FunctionCtx {
 
 // Context for verifying one module
 pub struct Ctx {
-    pub(crate) module: Path,
+    pub(crate) module: Module,
     pub(crate) datatype_is_transparent: HashMap<Path, bool>,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_types: Vec<MonoTyp>,
@@ -77,9 +81,11 @@ pub struct Ctx {
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
+    pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
     pub quantifier_count: Cell<u64>,
-    pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
+    pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub fun: Option<FunctionCtx>,
@@ -91,8 +97,6 @@ pub struct Ctx {
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
     // proof debug purposes
     pub debug: bool,
-    pub expand_flag: bool,
-    pub debug_expand_targets: Vec<crate::messages::Message>,
     pub arch_word_bits: ArchWordBits,
 }
 
@@ -191,13 +195,22 @@ fn datatypes_invs(
     has_inv
 }
 
+pub struct FuncCallGraphLogFiles {
+    pub all_initial: File,
+    pub all_simplified: File,
+    pub nostd_initial: File,
+    pub nostd_simplified: File,
+}
+
 impl GlobalCtx {
     pub fn new(
         krate: &Krate,
+        crate_name: Ident,
         no_span: Span,
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
-        vstd_crate_name: Option<Ident>,
+        func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        after_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -213,7 +226,12 @@ impl GlobalCtx {
             func_map.insert(function.x.name.clone(), function.clone());
         }
         let mut fun_bounds: HashMap<Fun, GenericBounds> = HashMap::new();
+        let mut fun_attrs: HashMap<Fun, FunctionAttrs> = HashMap::new();
+        let reveal_group_set: HashSet<Fun> =
+            krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+
         let mut func_call_graph: Graph<Node> = Graph::new();
+
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
@@ -249,7 +267,7 @@ impl GlobalCtx {
             //   trait View { spec fn view(...) -> ...; }
             //   struct S;
             //   impl View for S { ... }
-            //   #[verifier::broadcast_forall] fn b<A: View>(a: A) ensures foo(a) { ... }
+            //   #[verus::internal(broadcast_forall)] fn b<A: View>(a: A) ensures foo(a) { ... }
             //   fn test(s: S) { assert(foo(s)); }
             // Here, there are no explicit dependencies in the call graph that force
             // TraitImpl for S: View to appear before "test" in the generated AIR code.
@@ -270,6 +288,16 @@ impl GlobalCtx {
             );
         }
 
+        // map (method, impl) to impl Fun
+        let mut trait_impl_map: HashMap<(Fun, Path), Fun> = HashMap::new();
+        for f in &krate.functions {
+            if let crate::ast::FunctionKind::TraitMethodImpl { method, impl_path, .. } = &f.x.kind {
+                let key = (method.clone(), impl_path.clone());
+                assert!(!trait_impl_map.contains_key(&key));
+                trait_impl_map.insert(key, f.x.name.clone());
+            }
+        }
+
         for f in &krate.functions {
             fun_bounds.insert(f.x.name.clone(), f.x.typ_bounds.clone());
             let fun_node = Node::Fun(f.x.name.clone());
@@ -277,16 +305,111 @@ impl GlobalCtx {
             func_call_graph.add_node(fun_node.clone());
             func_call_graph.add_node(fndef_impl_node.clone());
             func_call_graph.add_edge(fndef_impl_node, fun_node);
+
+            fun_attrs.insert(f.x.name.clone(), f.x.attrs.clone());
+
             crate::recursion::expand_call_graph(
                 &func_map,
+                &trait_impl_map,
+                &reveal_group_set,
                 &mut func_call_graph,
                 &mut span_infos,
                 f,
             )?;
         }
+        for group in &krate.reveal_groups {
+            let group_node = Node::Fun(group.x.name.clone());
+            func_call_graph.add_node(group_node.clone());
+            for member in group.x.members.iter() {
+                let target = Node::Fun(member.clone());
+                func_call_graph.add_node(target.clone());
+                func_call_graph.add_edge(group_node.clone(), target);
+            }
+        }
+        for module in &krate.modules {
+            if let Some(ref reveals) = module.x.reveals {
+                let module_reveal_node = Node::ModuleReveal(module.x.path.clone());
+                func_call_graph.add_node(module_reveal_node.clone());
+                for fun in reveals.x.iter() {
+                    let target = Node::Fun(fun.clone());
+                    func_call_graph.add_node(target.clone());
+                    func_call_graph.add_edge(module_reveal_node.clone(), target);
+                }
+
+                for f in krate
+                    .functions
+                    .iter()
+                    .filter(|f| f.x.owning_module.as_ref() == Some(&module.x.path))
+                {
+                    let source = Node::Fun(f.x.name.clone());
+                    func_call_graph.add_node(source.clone());
+                    func_call_graph.add_edge(source, module_reveal_node.clone());
+                }
+            }
+        }
 
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
+
+        if let Some(FuncCallGraphLogFiles {
+            all_initial,
+            all_simplified,
+            nostd_initial,
+            nostd_simplified,
+        }) = &mut *func_call_graph_log.lock().expect("cannot lock call graph log file")
+        {
+            fn node_options(n: &Node) -> String {
+                fn labelize(name: &str, s: String) -> String {
+                    let label = s.replace("\"", "\\\"");
+                    format!("margin=0.1, label=\"{}\\n{}\"", name, label)
+                }
+                #[rustfmt::skip] // v to work around attributes being experimental on expressions
+                let v = match n {
+                    Node::Fun(fun) =>                         labelize("Fun", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"cds\"",
+                    Node::Datatype(path) =>                   labelize("Datatype", path_as_friendly_rust_name_raw(path)) + ", shape=\"folder\"",
+                    Node::Trait(path) =>                      labelize("Trait", path_as_friendly_rust_name_raw(path)) + ", shape=\"tab\"",
+                    Node::TraitImpl(impl_path) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
+                    Node::ModuleReveal(path) =>               labelize("ModuleReveal", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                    Node::SpanInfo { span_infos_index: _, text: _ } => {
+                        format!("shape=\"point\"")
+                    }
+                };
+                v
+            }
+
+            fn nostd_filter(n: &Node) -> (bool, bool) {
+                fn is_not_std(path: &Path) -> bool {
+                    match path.krate.as_ref().map(|x| x.as_str()) {
+                        Some("vstd") | Some("core") | Some("alloc") => false,
+                        _ => true,
+                    }
+                }
+                let render = match n {
+                    Node::Fun(fun) => is_not_std(&fun.path),
+                    Node::Datatype(path) => is_not_std(path),
+                    Node::Trait(path) => is_not_std(path),
+                    Node::TraitImpl(ImplPath::TraitImplPath(path)) => is_not_std(path),
+                    Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => is_not_std(&fun.path),
+                    Node::ModuleReveal(path) => is_not_std(path),
+                    Node::SpanInfo { .. } => true,
+                };
+                (render, render && !matches!(n, Node::SpanInfo { .. }))
+            }
+
+            if !after_simplify {
+                func_call_graph.to_dot(all_initial, |_| (true, true), node_options);
+                func_call_graph.to_dot(nostd_initial, nostd_filter, node_options);
+            } else {
+                func_call_graph.to_dot(all_simplified, |_| (true, true), node_options);
+                func_call_graph.to_dot(nostd_simplified, nostd_filter, node_options);
+            }
+        }
+
         for f in &krate.functions {
             let f_node = Node::Fun(f.x.name.clone());
             if f.x.attrs.is_decrease_by {
@@ -312,11 +435,13 @@ impl GlobalCtx {
         let qid_map = RefCell::new(HashMap::new());
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
+        let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
 
         Ok(GlobalCtx {
             chosen_triggers,
             datatypes: Arc::new(datatypes),
             fun_bounds: Arc::new(fun_bounds),
+            fun_attrs: Arc::new(fun_attrs),
             no_span,
             func_call_graph: Arc::new(func_call_graph),
             func_call_sccs: Arc::new(func_call_sccs),
@@ -325,8 +450,10 @@ impl GlobalCtx {
             qid_map,
             rlimit,
             interpreter_log,
-            vstd_crate_name,
             arch: krate.arch.word_bits,
+            crate_name,
+            vstd_crate_name,
+            func_call_graph_log,
         })
     }
 
@@ -339,6 +466,7 @@ impl GlobalCtx {
             chosen_triggers,
             datatypes: self.datatypes.clone(),
             fun_bounds: self.fun_bounds.clone(),
+            fun_attrs: self.fun_attrs.clone(),
             no_span: self.no_span.clone(),
             func_call_graph: self.func_call_graph.clone(),
             datatype_graph: self.datatype_graph.clone(),
@@ -347,8 +475,10 @@ impl GlobalCtx {
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,
-            vstd_crate_name: self.vstd_crate_name.clone(),
             arch: self.arch,
+            crate_name: self.crate_name.clone(),
+            vstd_crate_name: self.vstd_crate_name.clone(),
+            func_call_graph_log: self.func_call_graph_log.clone(),
         }
     }
 
@@ -374,7 +504,7 @@ impl Ctx {
     pub fn new(
         krate: &Krate,
         global: GlobalCtx,
-        module: Path,
+        module: Module,
         mono_types: Vec<MonoTyp>,
         lambda_types: Vec<usize>,
         bound_traits: HashSet<Path>,
@@ -384,13 +514,13 @@ impl Ctx {
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
-                .insert(datatype.x.path.clone(), is_datatype_transparent(&module, datatype));
+                .insert(datatype.x.path.clone(), is_datatype_transparent(&module.x.path, datatype));
         }
         let datatypes_with_invariant =
-            datatypes_invs(&module, &datatype_is_transparent, &krate.datatypes);
+            datatypes_invs(&module.x.path, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
-        let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
+        let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
             functions.push(function.clone());
@@ -403,6 +533,8 @@ impl Ctx {
         for tr in krate.traits.iter() {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
+        let reveal_group_set: HashSet<Fun> =
+            krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
@@ -422,6 +554,8 @@ impl Ctx {
             fndef_type_set,
             functions,
             func_map,
+            reveal_groups: krate.reveal_groups.clone(),
+            reveal_group_set,
             quantifier_count,
             funcs_with_ensure_predicate,
             datatype_map,
@@ -430,8 +564,6 @@ impl Ctx {
             global,
             string_hashes,
             debug,
-            expand_flag: false,
-            debug_expand_targets: vec![],
             arch_word_bits: krate.arch.word_bits,
         })
     }
@@ -447,28 +579,48 @@ impl Ctx {
             .expect("internal error: malformed prelude")
     }
 
-    pub fn module(&self) -> Path {
-        self.module.clone()
+    pub fn module_path(&self) -> Path {
+        self.module.x.path.clone()
     }
 
     pub fn fuel(&self) -> Commands {
         let mut ids: Vec<air::ast::Expr> = Vec::new();
         let mut commands: Vec<Command> = Vec::new();
+        let mut names: Vec<Fun> = Vec::new();
         for function in &self.functions {
-            match (function.x.mode, function.x.body.as_ref(), function.x.attrs.broadcast_forall) {
-                (Mode::Spec, Some(_), false) | (Mode::Proof, Some(_), true) => {
-                    let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&function.x.name));
-                    ids.push(air::ast_util::ident_var(&id));
-                    let typ_fuel_id = str_typ(&FUEL_ID);
-                    let decl = Arc::new(DeclX::Const(id, typ_fuel_id));
-                    commands.push(Arc::new(CommandX::Global(decl)));
+            match (
+                function.x.mode,
+                function.x.body.as_ref(),
+                function.x.attrs.external_body,
+                function.x.attrs.broadcast_forall,
+            ) {
+                (Mode::Spec, Some(_), _, false) | (Mode::Proof, _, false, true) => {
+                    names.push(function.x.name.clone());
                 }
                 _ => {}
             }
         }
+        for group in &self.reveal_groups {
+            names.push(group.x.name.clone());
+        }
+        for name in names {
+            let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&name));
+            ids.push(air::ast_util::ident_var(&id));
+            let decl = Arc::new(DeclX::Const(id, str_typ(&FUEL_ID)));
+            commands.push(Arc::new(CommandX::Global(decl)));
+        }
         let distinct = Arc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Arc::new(ids)));
         let decl = Arc::new(DeclX::Axiom(distinct));
         commands.push(Arc::new(CommandX::Global(decl)));
+        for group in &self.reveal_groups {
+            crate::func_to_air::broadcast_forall_group_axioms(
+                self,
+                &mut commands,
+                group,
+                &self.global.crate_name,
+            );
+        }
+        crate::func_to_air::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
         Arc::new(commands)
     }
 }

@@ -252,7 +252,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_step verus_code! {
         use vstd::std_specs::range::*;
-        spec fn and_then<A, B>(o: Option<A>, f: FnSpec(A) -> Option<B>) -> Option<B> {
+        spec fn and_then<A, B>(o: Option<A>, f: spec_fn(A) -> Option<B>) -> Option<B> {
             if let Some(a) = o {
                 f(a)
             } else {
@@ -351,4 +351,116 @@ test_verify_one_file! {
             assert(a < -0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffff ==> a.spec_backward_checked(1) == None::<i128>);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_regression_979_1 verus_code! {
+        pub trait Obligations<T> {
+            spec fn reveal_(t: T) -> T
+                ;
+        }
+
+        struct S<T> {
+            t: T
+        }
+
+        impl<T> Obligations<T> for S<T> {
+            open spec fn reveal_(t: T) -> T
+            {
+                t
+            }
+        }
+
+        impl<T: builtin::Integer> S<T> {
+            spec fn t_int(t: T) -> int {
+                Self::reveal_(t) as int
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_regression_979_2 verus_code! {
+        pub trait Obligations<T> {
+            spec fn reveal_(t: T) -> T
+                ;
+        }
+
+        struct S<T> {
+            t: T
+        }
+
+        impl<T> Obligations<T> for S<T> {
+            open spec fn reveal_(t: T) -> T
+            {
+                t
+            }
+        }
+
+        impl<T: builtin::Integer> S<T> {
+            spec(checked) fn t_int(t: T) -> nat {
+                Self::reveal_(t) as nat
+            }
+        }
+    } => Ok(err) => {
+        let mut warnings = err.warnings.into_iter();
+        assert!(warnings.next().expect("one warning").message
+            .contains("recommendation not met: value may be out of range of the target type"));
+        assert!(warnings.next().is_some());
+        assert!(warnings.next().is_none());
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_1 verus_code! {
+        pub open spec fn plus_three<T: Integer>(t: T) -> int {
+            t as int + 3
+        }
+
+        proof fn p() {
+            assert(plus_three(1u64) == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_2 verus_code! {
+        pub open spec fn plus_three<T: Integer>(t: T) -> int {
+            t as int + 3
+        }
+
+        proof fn p() {
+            assert(plus_three(1u64) != 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_3 verus_code! {
+        pub open spec fn plus_three<T: Integer>(t: T) -> int {
+            t as u64 + 3
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_sealed_1 verus_code! {
+        struct S;
+        impl Integer for S {}
+    } => Err(err) => assert_rust_error_msg(err, "the trait `builtin::Integer` requires an `unsafe impl` declaration")
+}
+
+test_verify_one_file! {
+    #[test] test_integer_trait_sealed_2 verus_code! {
+        pub open spec fn plus_three<T: Integer>(t: T) -> nat {
+            t as nat + 3
+        }
+
+        struct S;
+        unsafe impl Integer for S {}
+
+        proof fn test() {
+            assert(plus_three(S) + 1 == 1 + plus_three(S));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
 }

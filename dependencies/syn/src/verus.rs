@@ -127,6 +127,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct InvariantExceptBreak {
+        pub token: Token![invariant_except_break],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct Invariant {
         pub token: Token![invariant],
         pub exprs: Specification,
@@ -240,6 +247,26 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ItemBroadcastGroup {
+        pub attrs: Vec<Attribute>,
+        pub vis: Visibility,
+        pub broadcast_group_tokens: (Token![broadcast], Token![group]),
+        pub ident: Ident,
+        pub brace_token: token::Brace,
+        pub paths: Punctuated<ExprPath, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct BroadcastUse {
+        pub attrs: Vec<Attribute>,
+        pub broadcast_use_tokens: (Token![broadcast], Token![use]),
+        pub paths: Punctuated<ExprPath, Token![,]>,
+        pub semi: Token![;],
+    }
+}
+
+ast_struct! {
     pub struct View {
         pub attrs: Vec<Attribute>,
         pub expr: Box<Expr>,
@@ -251,7 +278,8 @@ ast_struct! {
     /// A FnSpec type: `FnSpec(usize) -> bool`.
     /// Parsed similarly to TypeBareFn
     pub struct TypeFnSpec {
-        pub fn_spec_token: Token![FnSpec],
+        pub fn_spec_token: Option<Token![FnSpec]>, // deprecated TODO remove
+        pub spec_fn_token: Option<Token![SpecFn]>,
         pub paren_token: token::Paren,
         pub inputs: Punctuated<BareFnArg, Token![,]>,
         pub output: ReturnType,
@@ -290,6 +318,21 @@ ast_struct! {
     }
 }
 
+ast_enum! {
+    pub enum MatchesOpToken {
+        Implies(Token![==>]),
+        AndAnd(Token![&&]),
+        BigAnd,
+    }
+}
+
+ast_struct! {
+    pub struct MatchesOpExpr {
+        pub op_token: MatchesOpToken,
+        pub rhs: Box<Expr>,
+    }
+}
+
 ast_struct! {
     pub struct GlobalSizeOf {
         pub size_of_token: Token![size_of],
@@ -322,6 +365,25 @@ ast_struct! {
         pub global_token: Token![global],
         pub inner: GlobalInner,
         pub semi: Token![;],
+    }
+}
+
+ast_struct! {
+    pub struct ExprMatches {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub matches_token: Token![matches],
+        pub pat: Pat,
+        pub op_expr: Option<MatchesOpExpr>,
+    }
+}
+
+ast_struct! {
+    pub struct ExprGetField {
+        pub attrs: Vec<Attribute>,
+        pub base: Box<Expr>,
+        pub arrow_token: Token![->],
+        pub member: Member,
     }
 }
 
@@ -432,6 +494,7 @@ pub mod parsing {
             while !(input.is_empty()
                 || input.peek(token::Brace)
                 || input.peek(Token![;])
+                || input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
@@ -461,13 +524,13 @@ pub mod parsing {
                 if input.peek2(Token![opens_invariants]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![invariant_ensures]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                if input.peek2(Token![invariant_except_break]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_except_break' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![invariant_ensures]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                if input.peek2(Token![invariant]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![invariant_ensures]) {
+                if input.peek2(Token![decreases]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a 'decreases' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
             }
@@ -511,6 +574,16 @@ pub mod parsing {
             Ok(Ensures {
                 attrs,
                 token,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantExceptBreak {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(InvariantExceptBreak {
+                token: input.parse()?,
                 exprs: input.parse()?,
             })
         }
@@ -670,6 +743,17 @@ pub mod parsing {
     impl Parse for Option<Ensures> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<InvariantExceptBreak> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![invariant_except_break]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -906,6 +990,57 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for BroadcastUse {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let broadcast_use_tokens: (Token![broadcast], Token![use]) =
+                (input.parse()?, input.parse()?);
+            let mut paths = Punctuated::new();
+            let semi = loop {
+                let path: ExprPath = input.parse()?;
+                paths.push(path);
+                if input.peek(Token![,]) {
+                    let _: Token![,] = input.parse()?;
+                    continue;
+                } else {
+                    let semi: Token![;] = input.parse()?;
+                    break semi;
+                }
+            };
+
+            Ok(BroadcastUse {
+                attrs,
+                broadcast_use_tokens,
+                paths,
+                semi,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ItemBroadcastGroup {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = Vec::new();
+            let vis: Visibility = input.parse()?;
+            let broadcast_group_tokens: (Token![broadcast], Token![group]) =
+                (input.parse()?, input.parse()?);
+            let ident = input.parse()?;
+            let content;
+            let brace_token = braced!(content in input);
+            let paths = content.parse_terminated(ExprPath::parse)?;
+
+            Ok(ItemBroadcastGroup {
+                attrs,
+                vis,
+                ident,
+                broadcast_group_tokens,
+                brace_token,
+                paths,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Global {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
@@ -1095,6 +1230,14 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantExceptBreak {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Invariant {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -1238,6 +1381,45 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for BroadcastUse {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
+            let BroadcastUse {
+                attrs: _,
+                broadcast_use_tokens,
+                paths,
+                semi,
+            } = self;
+            broadcast_use_tokens.0.to_tokens(tokens);
+            broadcast_use_tokens.1.to_tokens(tokens);
+            paths.to_tokens(tokens);
+            semi.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ItemBroadcastGroup {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
+            let ItemBroadcastGroup {
+                attrs: _,
+                vis,
+                ident,
+                broadcast_group_tokens,
+                brace_token,
+                paths,
+            } = self;
+            vis.to_tokens(tokens);
+            broadcast_group_tokens.0.to_tokens(tokens);
+            broadcast_group_tokens.1.to_tokens(tokens);
+            ident.to_tokens(tokens);
+            brace_token.surround(tokens, |tokens| {
+                paths.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for View {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
@@ -1250,6 +1432,7 @@ mod printing {
     impl ToTokens for TypeFnSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.fn_spec_token.to_tokens(tokens);
+            self.spec_fn_token.to_tokens(tokens);
             self.paren_token.surround(tokens, |tokens| {
                 self.inputs.to_tokens(tokens);
             });
@@ -1333,6 +1516,34 @@ mod printing {
             self.semi.to_tokens(tokens);
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprMatches {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.matches_token.to_tokens(tokens);
+            self.pat.to_tokens(tokens);
+            if let Some(MatchesOpExpr { op_token, rhs }) = &self.op_expr {
+                match op_token {
+                    MatchesOpToken::Implies(t) => t.to_tokens(tokens),
+                    MatchesOpToken::AndAnd(t) => t.to_tokens(tokens),
+                    MatchesOpToken::BigAnd => (),
+                }
+                rhs.to_tokens(tokens);
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprGetField {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.base.to_tokens(tokens);
+            self.arrow_token.to_tokens(tokens);
+            self.member.to_tokens(tokens);
+        }
+    }
 }
 
 pub(crate) fn disallow_prefix_binop(input: crate::parse::ParseStream) -> crate::parse::Result<()> {
@@ -1349,21 +1560,99 @@ pub(crate) fn disallow_prefix_binop(input: crate::parse::ParseStream) -> crate::
 }
 
 #[cfg(feature = "full")]
+pub(crate) fn parse_matches(
+    input: crate::parse::ParseStream,
+    lhs: Expr,
+    allow_struct: expr::parsing::AllowStruct,
+    big_and: bool,
+) -> Result<Expr> {
+    let matches_token: Token![matches] = input.parse()?;
+    let pat = input.parse()?;
+
+    let op_expr = if input.peek(Token![&&&]) {
+        if big_and {
+            let attrs = input.call(expr::parsing::expr_attrs)?;
+            let Some(rhs) = parse_prefix_binop(input, &attrs, true)? else {
+                return Err(input.error("expected &&&"));
+            };
+            Some(MatchesOpExpr {
+                op_token: MatchesOpToken::BigAnd,
+                rhs: Box::new(rhs),
+            })
+        } else {
+            return Err(input.error("in &&&, a matches expression needs to be prefixed with &&&"));
+        }
+    } else if input.peek(Token![==>]) || input.peek(Token![&&]) {
+        let op_token = if input.peek(Token![==>]) {
+            MatchesOpToken::Implies(input.parse()?)
+        } else if input.peek(Token![&&]) {
+            MatchesOpToken::AndAnd(input.parse()?)
+        } else {
+            unreachable!()
+        };
+        let mut rhs = expr::parsing::unary_expr(input, allow_struct)?;
+        loop {
+            let next = expr::parsing::peek_precedence(input);
+            if matches!(op_token, MatchesOpToken::Implies(_))
+                && next >= expr::parsing::Precedence::Imply
+                || matches!(op_token, MatchesOpToken::AndAnd(_))
+                    && next >= expr::parsing::Precedence::And
+            {
+                rhs = expr::parsing::parse_expr(input, rhs, allow_struct, next)?;
+            } else {
+                break;
+            }
+        }
+        Some(MatchesOpExpr {
+            op_token,
+            rhs: Box::new(rhs),
+        })
+    } else {
+        None
+    };
+
+    Ok(Expr::Matches(ExprMatches {
+        attrs: Vec::new(),
+        lhs: Box::new(lhs),
+        matches_token,
+        pat,
+        op_expr,
+    }))
+}
+
+#[cfg(feature = "full")]
 pub(crate) fn parse_prefix_binop(
     input: crate::parse::ParseStream,
     attrs: &Vec<Attribute>,
+    big_and_only: bool,
 ) -> Result<Option<Expr>> {
+    use crate::expr::parsing::AllowStruct;
+
     if input.peek(Token![&&&]) {
         if attrs.len() != 0 {
             return Err(input.error("`&&&` cannot have attributes"));
         }
         let mut exprs: Vec<(Token![&&&], Box<Expr>)> = Vec::new();
         while let Ok(token) = input.parse() {
-            let expr: Expr = input.parse()?;
+            let lhs = expr::parsing::unary_expr(input, AllowStruct(true))?;
+            let expr: Expr = if input.peek(Token![matches]) {
+                let attrs = input.call(expr::parsing::expr_attrs)?;
+                let mut expr = parse_matches(input, lhs, AllowStruct(true), true)?;
+                expr.replace_attrs(attrs);
+                expr
+            } else {
+                expr::parsing::parse_expr(
+                    input,
+                    lhs,
+                    AllowStruct(true),
+                    expr::parsing::Precedence::Any,
+                )?
+            };
+
             exprs.push((token, Box::new(expr)));
         }
         Ok(Some(Expr::BigAnd(BigAnd { exprs })))
-    } else if input.peek(Token![|||]) {
+    } else if !big_and_only && input.peek(Token![|||]) {
         if attrs.len() != 0 {
             return Err(input.error("`|||` cannot have attributes"));
         }

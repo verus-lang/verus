@@ -4,16 +4,44 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Verify",
+            "name": "verify test.rs",
             "env": { "RUST_BACKTRACE": "1" },
             "program": "${workspaceFolder}/source/target-verus/debug/verus",
-            "args": ["--crate-type=lib", "test.rs"],
+            "args": ["--crate-type=lib", "--num-threads=1", "test.rs"],
             "cwd": "${workspaceFolder}/source",
             "preRunCommands": [
                 "settings set target.process.stop-on-exec false",
                 "breakpoint set -n rust_panic"
             ],
             "preLaunchTask": "build"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "verify vstd",
+            "env": { "RUST_BACKTRACE": "1" },
+            "program": "${workspaceFolder}/source/target-verus/debug/verus",
+            "args": ["--no-vstd", "--num-threads=1", "--crate-type=lib", "vstd/vstd.rs"],
+            "cwd": "${workspaceFolder}/source",
+            "preRunCommands": [
+                "settings set target.process.stop-on-exec false",
+                "breakpoint set -n rust_panic"
+            ],
+            "preLaunchTask": "build-no-vstd"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "verify",
+            "env": { "RUST_BACKTRACE": "1" },
+            "program": "${workspaceFolder}/source/target-verus/debug/verus",
+            "args": ["--crate-type=lib", "--num-threads=1", ""],
+            "cwd": "${workspaceFolder}/source",
+            "preRunCommands": [
+                "settings set target.process.stop-on-exec false",
+                "breakpoint set -n rust_panic"
+            ],
+            "preLaunchTask": "build-no-vstd"
         }
     ]
 }

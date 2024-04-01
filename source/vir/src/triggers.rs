@@ -1,11 +1,11 @@
 use crate::ast::{
-    BinaryOp, Ident, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    BinaryOp, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinders,
+    VarIdent, VirErr,
 };
 use crate::context::Ctx;
 use crate::messages::{error, Span};
-use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs};
 use crate::triggers_auto::AutoType;
-use air::ast::Binders;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -22,11 +22,11 @@ struct State {
     // use results from triggers_auto, no questions asked
     auto_trigger: AutoType,
     // variables the triggers must cover
-    trigger_vars: HashMap<Ident, TriggerBoxing>,
+    trigger_vars: HashMap<VarIdent, TriggerBoxing>,
     // user-specified triggers (for sortedness stability, use BTreeMap rather than HashMap)
     triggers: BTreeMap<Option<u64>, Vec<Exp>>,
     // trigger_vars covered by each trigger
-    coverage: HashMap<Option<u64>, HashSet<Ident>>,
+    coverage: HashMap<Option<u64>, HashSet<VarIdent>>,
 }
 
 pub(crate) fn typ_boxing(ctx: &Ctx, typ: &Typ) -> TriggerBoxing {
@@ -63,11 +63,11 @@ fn preprocess_exp(exp: &Exp) -> Exp {
 // See test test_arith_with_inline in triggers.rs for an example of a case
 // in which this prediction is incorrect.
 pub(crate) fn predict_native_quant_vars(
-    bs: &Binders<Typ>,
+    bs: &VarBinders<Typ>,
     bodies: &Vec<&crate::ast::Expr>,
-) -> HashSet<Ident> {
+) -> HashSet<VarIdent> {
     use crate::ast::ExprX;
-    let mut natives: HashSet<Ident> = HashSet::new();
+    let mut natives: HashSet<VarIdent> = HashSet::new();
     let mut scope_map = crate::ast_visitor::VisitorScopeMap::new();
     let mut fbody = |map: &mut crate::ast_visitor::VisitorScopeMap, expr: &crate::ast::Expr| {
         let mut ftrig = |map: &mut crate::ast_visitor::VisitorScopeMap, expr: &crate::ast::Expr| {
@@ -121,7 +121,7 @@ pub(crate) fn predict_native_quant_vars(
 fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Result<(), VirErr> {
     match &arg.x {
         ExpX::Var(x) => {
-            if let Some(boxing) = state.trigger_vars.get(&x.name) {
+            if let Some(boxing) = state.trigger_vars.get(x) {
                 match (expect_boxed, boxing) {
                     (false, TriggerBoxing::Native) => Ok(()),
                     (true, TriggerBoxing::Poly) => Ok(()),
@@ -132,7 +132,7 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
                             &arg.span,
                             format!(
                                 "variable `{}` in trigger cannot appear in both arithmetic and non-arithmetic positions",
-                                crate::def::user_local_name(&x.name)
+                                crate::def::user_local_name(x)
                             ),
                         ))
                     }
@@ -155,7 +155,8 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CharToInt
-            | UnaryOp::InferSpecForLoopIter => Ok(()),
+            | UnaryOp::CastToInteger
+            | UnaryOp::InferSpecForLoopIter { .. } => Ok(()),
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => {
@@ -182,8 +183,8 @@ fn check_trigger_expr_args(state: &State, expect_boxed: bool, args: &Exps) -> Re
 fn check_trigger_expr(
     state: &State,
     exp: &Exp,
-    free_vars: &mut HashSet<Ident>,
-    lets: &HashSet<Ident>,
+    free_vars: &mut HashSet<VarIdent>,
+    lets: &HashSet<VarIdent>,
 ) -> Result<(), VirErr> {
     match &exp.x {
         ExpX::Call(..)
@@ -203,7 +204,7 @@ fn check_trigger_expr(
     }
 
     let mut scope_map = ScopeMap::new();
-    let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
+    let ft = |free_vars: &mut HashSet<VarIdent>, t: &Typ| match &**t {
         TypX::TypParam(x) => {
             free_vars.insert(crate::def::suffix_typ_param_id(x));
             Ok(t.clone())
@@ -231,7 +232,7 @@ fn check_trigger_expr(
                 }
                 check_trigger_expr_args(state, true, args)
             }
-            ExpX::Var(UniqueIdent { name: x, local: None }) => {
+            ExpX::Var(x) => {
                 if lets.contains(x) {
                     return Err(error(
                         &exp.span,
@@ -241,12 +242,17 @@ fn check_trigger_expr(
                 free_vars.insert(x.clone());
                 Ok(())
             }
-            ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
             ExpX::VarAt(_, VarAt::Pre) => Ok(()),
             ExpX::Old(_, _) => panic!("internal error: Old"),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
                 Err(error(&exp.span, "triggers cannot contain trait bounds"))
+            }
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => {
+                Err(error(&exp.span, "triggers cannot contain trait bounds"))
+            }
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
+                Err(error(&exp.span, "triggers cannot contain loop spec inference"))
             }
             ExpX::Unary(op, arg) => match op {
                 UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot => {
@@ -258,8 +264,9 @@ fn check_trigger_expr(
                 UnaryOp::Trigger(_)
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
-                | UnaryOp::MustBeFinalized => Ok(()),
-                UnaryOp::InferSpecForLoopIter => {
+                | UnaryOp::MustBeFinalized
+                | UnaryOp::CastToInteger => Ok(()),
+                UnaryOp::InferSpecForLoopIter { .. } => {
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
                 }
                 UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
@@ -308,13 +315,16 @@ fn check_trigger_expr(
             ExpX::Interp(_) => {
                 panic!("Found an interpreter expression {:?} outside the interpreter", exp)
             }
+            ExpX::FuelConst(_) => {
+                panic!("Found FuelConst expression during trigger selection")
+            }
         },
     )
 }
 
 fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
-    let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
-    let mut lets: HashSet<Ident> = HashSet::new();
+    let mut map: ScopeMap<VarIdent, bool> = ScopeMap::new();
+    let mut lets: HashSet<VarIdent> = HashSet::new();
     map.push_scope(false);
     for x in state.trigger_vars.keys() {
         map.insert(x.clone(), true).expect("duplicate bound variables");
@@ -335,7 +345,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 Ok(())
             }
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
-                let mut free_vars: HashSet<Ident> = HashSet::new();
+                let mut free_vars: HashSet<VarIdent> = HashSet::new();
                 let e1 = preprocess_exp(&e1);
                 check_trigger_expr(state, &e1, &mut free_vars, &lets)?;
                 for x in &free_vars {
@@ -361,10 +371,10 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 if map.num_scopes() == 1 {
                     for (n, trigger) in triggers.iter().enumerate() {
                         let group = Some(n as u64);
-                        let mut coverage: HashSet<Ident> = HashSet::new();
+                        let mut coverage: HashSet<VarIdent> = HashSet::new();
                         let es: Vec<Exp> = trigger.iter().map(preprocess_exp).collect();
                         for e in &es {
-                            let mut free_vars: HashSet<Ident> = HashSet::new();
+                            let mut free_vars: HashSet<VarIdent> = HashSet::new();
                             check_trigger_expr(state, e, &mut free_vars, &lets)?;
                             for x in free_vars {
                                 if state.trigger_vars.contains_key(&x) {
@@ -379,7 +389,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 Ok(())
             }
             ExpX::Bind(bnd, _) => {
-                let bvars: Vec<Ident> = match &bnd.x {
+                let bvars: Vec<VarIdent> = match &bnd.x {
                     BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
                     BndX::Quant(_, binders, _)
                     | BndX::Lambda(binders, _)
@@ -408,7 +418,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
 pub(crate) fn build_triggers(
     ctx: &Ctx,
     span: &Span,
-    vars: &Vec<(Ident, TriggerBoxing)>,
+    vars: &Vec<(VarIdent, TriggerBoxing)>,
     exp: &Exp,
     allow_empty: bool,
 ) -> Result<Trigs, VirErr> {

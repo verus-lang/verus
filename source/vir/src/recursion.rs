@@ -1,30 +1,30 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, Constant, ExprX, Fun, Function, FunctionKind, GenericBoundX,
-    ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VirErr,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, ExprX, Fun, Function, FunctionKind,
+    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
+    VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
-use crate::ast_util::typ_to_diagnostic_str;
+use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, suffix_rename, unique_bound, unique_local, CommandsWithContext, Spanned,
+    decrease_at_entry, rename_rec_param, unique_bound, unique_local, CommandsWithContext, Spanned,
     FUEL_PARAM, FUEL_TYPE,
 };
 use crate::func_to_air::{params_to_pars, SstMap};
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
+use crate::sst::PostConditionKind;
+use crate::sst::PostConditionSst;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
-    UniqueIdent,
+    BndX, CallFun, Dest, Exp, ExpX, Exps, FunctionSst, InternalFun, LocalDecl, LocalDeclX, Stm,
+    StmX, UniqueIdent,
 };
-use crate::sst_to_air::PostConditionKind;
-use crate::sst_to_air::PostConditionSst;
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
-use air::ast::Binder;
-use air::ast_util::{ident_binder, str_ident, str_typ};
+use air::ast_util::str_typ;
 use air::messages::Diagnostics;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -33,6 +33,7 @@ pub enum Node {
     Datatype(Path),
     Trait(Path),
     TraitImpl(ImplPath),
+    ModuleReveal(Path),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },
@@ -51,6 +52,9 @@ pub(crate) fn get_callee(
     target: &Fun,
     resolved_method: &Option<(Fun, Typs)>,
 ) -> Option<Fun> {
+    if ctx.reveal_group_set.contains(target) {
+        return Some(target.clone());
+    }
     let fun = &ctx.func_map[target];
     if let FunctionKind::TraitMethodDecl { .. } = &fun.x.kind {
         resolved_method.clone().map(|(x, _)| x)
@@ -160,14 +164,20 @@ fn check_decrease_call(
     // check_decrease(let params = args in decreases_exp, decreases_at_entry)
     let params = &function.x.params;
     assert!(params.len() == args.len());
-    let binders: Vec<Binder<Exp>> = params
+    let binders: Vec<VarBinder<Exp>> = params
         .iter()
         .zip(args.iter())
-        .map(|(param, arg)| ident_binder(&suffix_rename(&param.x.name), &arg.clone()))
+        .enumerate()
+        .map(|(n, (param, arg))| {
+            ident_var_binder(&rename_rec_param(&param.x.name, n), &arg.clone())
+        })
         .collect();
     let renames: HashMap<UniqueIdent, UniqueIdent> = params
         .iter()
-        .map(|param| (unique_local(&param.x.name), unique_bound(&suffix_rename(&param.x.name))))
+        .enumerate()
+        .map(|(n, param)| {
+            (unique_local(&param.x.name), unique_bound(&rename_rec_param(&param.x.name, n)))
+        })
         .collect();
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
@@ -226,10 +236,14 @@ fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
+/// fuel param:
+/// `None` for normal case (the usual 'fuel' param)
+/// `Some(fuel)` means use a constant fuel
 pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &Function,
     body: &Exp,
+    fuel: Option<usize>,
 ) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
@@ -253,7 +267,10 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
             if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = ExpX::Var(unique_local(&str_ident(FUEL_PARAM)));
+            let varx = match fuel {
+                None => ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM))),
+                Some(f) => ExpX::FuelConst(f),
+            };
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));
@@ -295,25 +312,27 @@ pub(crate) fn check_termination_commands(
         &function.span,
         &function.x.typ_params,
         &function.x.params,
-        &Arc::new(local_decls),
-        &Arc::new(vec![]),
-        &Arc::new(vec![]),
-        &PostConditionSst {
-            dest: None,
-            kind: if uses_decreases_by {
-                PostConditionKind::DecreasesBy
-            } else {
-                PostConditionKind::DecreasesImplicitLemma
+        &FunctionSst {
+            post_condition: PostConditionSst {
+                dest: None,
+                kind: if uses_decreases_by {
+                    PostConditionKind::DecreasesBy
+                } else {
+                    PostConditionKind::DecreasesImplicitLemma
+                },
+                ens_exps: vec![],
+                ens_spec_precondition_stms: vec![],
             },
-            ens_exps: vec![],
-            ens_spec_precondition_stms: vec![],
+            body: stm_block,
+            local_decls,
+            statics: vec![],
+            reqs: Arc::new(vec![]),
+            mask_set: MaskSet::empty(),
         },
-        &MaskSet::empty(),
-        &stm_block,
-        false,
-        false,
-        false,
         &vec![],
+        false,
+        false,
+        false,
     )?;
 
     Ok(commands)
@@ -358,7 +377,7 @@ fn check_termination<'a>(
                 args,
             )?;
             let error = error(&s.span, "could not prove termination");
-            let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
+            let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
             let mut stms = vec![stm_assert];
             // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
@@ -389,12 +408,13 @@ fn check_termination<'a>(
             Ok(stm_block)
         }
         StmX::Fuel(callee, fuel) if *fuel >= 1 => {
-            let f2 = &ctx.func_map[callee];
-            if f2.x.attrs.broadcast_forall && is_recursive_call(&ctxt, callee, &None) {
+            let broadcast_forall = ctx.reveal_group_set.contains(callee)
+                || ctx.func_map[callee].x.attrs.broadcast_forall;
+            if broadcast_forall && is_recursive_call(&ctxt, callee, &None) {
                 // This isn't needed for soundness, since the broadcast_forall axiom isn't
                 // declared until after this SCC, but we might as well signal an error,
                 // since this reveal will have no effect.
-                return Err(error(&s.span, "cannot recursively reveal broadcast_forall"));
+                return Err(error(&s.span, "cannot recursively use a broadcast proof fn"));
             }
             Ok(s.clone())
         }
@@ -425,6 +445,8 @@ pub(crate) fn check_termination_stm(
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
+    trait_impl_map: &HashMap<(Fun, Path), Fun>,
+    reveal_group_set: &HashSet<Fun>,
     call_graph: &mut Graph<Node>,
     span_infos: &mut Vec<Span>,
     function: &Function,
@@ -457,7 +479,10 @@ pub(crate) fn expand_call_graph(
                 continue;
             }
         }
-        let GenericBoundX::Trait(tr, _) = &**bound;
+        let tr = match &**bound {
+            GenericBoundX::Trait(tr, _) => tr,
+            GenericBoundX::TypEquality(tr, _, _, _) => tr,
+        };
         call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
     }
 
@@ -468,35 +493,50 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> f2 edges where f calls f2
     // Add f --> D: T where one of f's expressions instantiates A: T with D: T
-    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |_fp, expr| {
+    //
+    // When instantiating A: T with D: T, note that D: T could, from Rust's perspective,
+    // be the Self: T bound that we remove (see the comments in recursive_types.rs) and
+    // that therefore shouldn't be available here.  Fortunately, in this case,
+    // rustc gives us the concrete D: T bound for the actual impl, so that
+    // impl_paths contains the necessary impl_path to instantiate Self: T explicitly,
+    // and we catch the nontermination resulting from Self: T.
+    // See, for example, test_termination_1 in rust_verify_test/tests/traits.rs.
+    //
+    // However, for default methods, rustc does not provide the impl_path to us,
+    // and we use a different way of catching uses of Self: T.
+    // Specifically, we make sure there is an edge in the call graph from T to the
+    // T's default methods, and any attempt by a default method to use Self: T
+    // (say, when calling a function f<A: T>) will create an edge to someone who
+    // uses T (in this example, f), which then creates a cycle that is reported as an error.
+    // (See, for example, test_default14 in rust_verify_test/tests/traits.rs.)
+    // The one exception to this is when a default method of T calls another default method of T;
+    // this is not considered a cycle through T, but instead is treated as ordinary recursion.
+    // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
+    let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, _ts, impl_paths, autospec), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
-                use crate::ast::CallTargetKind;
-                let callee = if let CallTargetKind::Method(Some((x_resolved, _, _))) = kind {
-                    x_resolved
-                } else {
-                    x
-                };
-                let f2 = &func_map[callee];
+                let (callee, ts, impl_paths) =
+                    if let CallTargetKind::Method(Some((x_resolved, ts_resolved, x_impl_paths))) =
+                        kind
+                    {
+                        (x_resolved.clone(), ts_resolved.clone(), x_impl_paths.clone())
+                    } else {
+                        (x.clone(), ts.clone(), impl_paths.clone())
+                    };
+
+                let (callee, impl_paths) = crate::traits::redirect_calls_in_default_methods(
+                    func_map,
+                    trait_impl_map,
+                    function,
+                    &expr.span,
+                    callee,
+                    ts,
+                    impl_paths,
+                )?;
 
                 for impl_path in impl_paths.iter() {
                     // f --> D: T
-                    // (However: if we can directly resolve a call from f1 inside impl to f2 inside
-                    // the same impl, then we don't try to pass a dictionary for impl from f1 to f2.
-                    // This is a useful special case where we can avoid a spurious cyclic dependency
-                    // error.)
-                    if let (
-                        FunctionKind::TraitMethodImpl { impl_path: caller_impl, .. },
-                        FunctionKind::TraitMethodImpl { impl_path: callee_impl, .. },
-                    ) = (&function.x.kind, &f2.x.kind)
-                    {
-                        if &ImplPath::TraitImplPath(caller_impl.clone()) == impl_path
-                            && &ImplPath::TraitImplPath(callee_impl.clone()) == impl_path
-                        {
-                            continue;
-                        }
-                    }
                     let expr_node = crate::recursive_types::new_span_info_node(
                         span_infos,
                         expr.span.clone(),
@@ -519,17 +559,24 @@ pub(crate) fn expand_call_graph(
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
             }
-            ExprX::Fuel(callee, fuel) if *fuel >= 1 => {
-                let f2 = &func_map[callee];
-                if f2.x.attrs.broadcast_forall {
+            ExprX::Fuel(callee, fuel, _is_broadcast_use) if *fuel >= 1 => {
+                let broadcast_forall =
+                    reveal_group_set.contains(callee) || func_map[callee].x.attrs.broadcast_forall;
+                if broadcast_forall {
                     // f --> f2
                     call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
                 }
             }
+            ExprX::StaticVar(fun) => call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone())),
             _ => {}
         }
         Ok(())
-    })?;
+    };
+    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, add_calls)?;
+    if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(f_trait), .. } = &function.x.kind
+    {
+        crate::ast_visitor::function_visitor_check::<VirErr, _>(&func_map[f_trait], add_calls)?;
+    }
 
     for fun in &function.x.extra_dependencies {
         call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone()));

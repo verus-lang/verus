@@ -1,11 +1,12 @@
 use crate::attributes::{get_mode, get_verifier_attrs, VerifierAttrs};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility, mk_visibility_from_vis,
+    check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
+    mk_visibility_from_vis,
 };
 use crate::unsupported_err_unless;
 use crate::util::err_span;
-use crate::verus_items::{PervasiveItem, VerusItem};
+use crate::verus_items::{VerusItem, VstdItem};
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
@@ -40,7 +41,7 @@ where
 {
     let empty = [];
     let hir_fields_opt = match variant_data_opt {
-        Some(VariantData::Struct(fields, recovered)) => {
+        Some(VariantData::Struct { fields, recovered }) => {
             // 'recovered' means that it was recovered from a syntactic error.
             // So we shouldn't get to this point if 'recovered' is true.
             unsupported_err_unless!(!recovered, span, "recovered_struct", variant_data_opt);
@@ -134,7 +135,7 @@ pub fn check_item_struct<'tcx>(
 
     let is_strslice_struct = matches!(
         ctxt.verus_items.id_to_name.get(&id.owner_id.to_def_id()),
-        Some(&VerusItem::Pervasive(PervasiveItem::StrSlice, _))
+        Some(&VerusItem::Vstd(VstdItem::StrSlice, _))
     );
 
     if is_strslice_struct {
@@ -161,10 +162,11 @@ pub fn check_item_struct<'tcx>(
     }
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),
@@ -246,10 +248,11 @@ pub fn check_item_enum<'tcx>(
     }
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),
@@ -322,7 +325,7 @@ pub fn check_item_union<'tcx>(
     if mode != Mode::Exec {
         return err_span(span, "a 'union' can only be exec-mode");
     }
-    let VariantData::Struct(hir_fields, _) = variant_data else {
+    let VariantData::Struct { fields: hir_fields, recovered: _ } = variant_data else {
         return err_span(span, "check_item_union: wrong VariantData");
     };
     for hir_field_def in hir_fields.iter() {
@@ -333,10 +336,11 @@ pub fn check_item_union<'tcx>(
     }
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),
@@ -547,10 +551,11 @@ pub(crate) fn check_item_external<'tcx>(
     // Turn it into VIR
 
     let def_id = id.owner_id.to_def_id();
-    let (typ_params, typ_bounds) = check_generics_bounds(
+    let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
-        generics,
+        generics.span,
+        Some(generics),
         vattrs.external_body,
         def_id,
         Some(&vattrs),

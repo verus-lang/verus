@@ -263,6 +263,16 @@ impl<A: ToDebugSNode + Clone> ToDebugSNode for Binder<A> {
     }
 }
 
+impl<A: ToDebugSNode + Clone> ToDebugSNode for VarBinder<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        Node::List(vec![
+            Node::Atom("->".to_string()),
+            Node::Atom((&self.name).into()),
+            self.a.to_node(opts),
+        ])
+    }
+}
+
 impl ToDebugSNode for Quant {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         let Quant { quant } = self;
@@ -339,6 +349,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     let KrateX {
         datatypes,
         functions,
+        reveal_groups,
         traits,
         trait_impls,
         assoc_type_impls,
@@ -362,6 +373,11 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
+            .expect("cannot write to vir write");
+    }
+    for group in reveal_groups.iter() {
+        let group_id_node = nodes!(group_id {path_to_node(&group.x.name.path)});
+        writeln!(&mut write, "{}\n", nw.node_to_string(&group_id_node))
             .expect("cannot write to vir write");
     }
     for t in traits.iter() {

@@ -8,9 +8,10 @@ For soundness's sake, be as defensive as possible:
 
 use crate::attributes::get_verifier_attrs;
 use crate::context::Context;
+use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
+    check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
     process_predicate_bounds, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
@@ -20,16 +21,21 @@ use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err, unsupported_err_unless};
 
 use rustc_ast::IsAuto;
+use rustc_hir::def_id::DefId;
 use rustc_hir::{
     AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
     ItemKind, MaybeOwner, Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn,
     TraitItem, TraitItemKind, TraitRef, Unsafety,
 };
-use vir::def::trait_self_type_param;
+use vir::def::{trait_self_type_param, Spanned};
 
+use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Fun, FunX, FunctionKind, ImplPath, Krate, KrateX, Path, Typ, VirErr};
+use vir::ast::{
+    Fun, FunX, Function, FunctionKind, ImplPath, Krate, KrateX, Path, Trait, TraitImpl, Typ, Typs,
+    VirErr,
+};
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -37,6 +43,7 @@ fn check_item<'tcx>(
     mpath: Option<&Option<Path>>,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
+    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
 ) -> Result<(), VirErr> {
     // delay computation of module_path because some external or builtin items don't have a valid Path
     let module_path = || {
@@ -82,12 +89,103 @@ fn check_item<'tcx>(
         if vattrs.size_of_global {
             return Ok(()); // handled earlier
         }
+        if vattrs.item_broadcast_use {
+            let err = crate::util::err_span(item.span, "invalid module-level broadcast use");
+            let ItemKind::Const(_ty, generics, body_id) = item.kind else {
+                return err;
+            };
+            unsupported_err_unless!(
+                generics.params.len() == 0 && generics.predicates.len() == 0,
+                item.span,
+                "const generics with broadcast"
+            );
+            let _def_id = body_id.hir_id.owner.to_def_id();
+
+            let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);
+
+            let rustc_hir::ExprKind::Block(block, _) = body.value.kind else {
+                return err;
+            };
+
+            let funs = block
+                .stmts
+                .iter()
+                .map(|stmt| {
+                    let err =
+                        crate::util::err_span(item.span, "invalid module-level broadcast use");
+
+                    let rustc_hir::StmtKind::Semi(expr) = stmt.kind else {
+                        return err;
+                    };
+
+                    let rustc_hir::ExprKind::Call(fun_target, args) = expr.kind else {
+                        return err;
+                    };
+
+                    let rustc_hir::ExprKind::Path(rustc_hir::QPath::Resolved(None, fun_path)) =
+                        &fun_target.kind
+                    else {
+                        return err;
+                    };
+
+                    let Some(VerusItem::Directive(verus_items::DirectiveItem::RevealHide)) =
+                        ctxt.get_verus_item(fun_path.res.def_id())
+                    else {
+                        return err;
+                    };
+
+                    let args: Vec<_> = args.iter().collect();
+
+                    let crate::reveal_hide::RevealHideResult::RevealItem(fun) = handle_reveal_hide(
+                        ctxt,
+                        expr,
+                        args.len(),
+                        &args,
+                        ctxt.tcx,
+                        None::<fn(vir::ast::ExprX) -> Result<vir::ast::Expr, VirErr>>,
+                    )?
+                    else {
+                        panic!("handle_reveal_hide must return a RevealItem");
+                    };
+
+                    Ok(fun)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let Some(Some(mpath)) = mpath else {
+                unsupported_err!(item.span, "unsupported broadcast use here", item);
+            };
+            let module = vir
+                .modules
+                .iter_mut()
+                .find(|m| &m.x.path == mpath)
+                .expect("cannot find current module");
+            let reveals = &mut Arc::make_mut(module).x.reveals;
+            if reveals.is_some() {
+                return err_span(
+                    item.span,
+                    "only one module-level `broadcast use` allowed for each module",
+                );
+            }
+            let span = crate::spans::err_air_span(item.span);
+            *reveals = Some(Spanned::new(span, funs));
+
+            return Ok(());
+        }
         if path.segments.iter().find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_")).is_some()
         {
             ctxt.erasure_info
                 .borrow_mut()
                 .ignored_functions
                 .push((item.owner_id.to_def_id(), item.span.data()));
+            return Ok(());
+        }
+
+        if vattrs.is_external(&ctxt.cmd_line_args) {
+            let mut erasure_info = ctxt.erasure_info.borrow_mut();
+            let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, item.owner_id.to_def_id());
+            let name = Arc::new(FunX { path: path.clone() });
+            erasure_info.external_functions.push(name);
             return Ok(());
         }
 
@@ -113,6 +211,7 @@ fn check_item<'tcx>(
             check_item_fn(
                 ctxt,
                 &mut vir.functions,
+                Some(&mut vir.reveal_groups),
                 item.owner_id.to_def_id(),
                 FunctionKind::Static,
                 visibility(),
@@ -122,6 +221,7 @@ fn check_item<'tcx>(
                 None,
                 generics,
                 CheckItemFnEither::BodyId(body_id),
+                external_fn_specification_trait_method_impls,
             )?;
         }
         ItemKind::Use { .. } => {}
@@ -227,7 +327,8 @@ fn check_item<'tcx>(
             if vattrs.is_external(&ctxt.cmd_line_args) {
                 return Ok(());
             }
-            if impll.unsafety != Unsafety::Normal {
+
+            if impll.unsafety != Unsafety::Normal && impll.of_trait.is_none() {
                 return err_span(item.span, "the verifier does not support `unsafe` here");
             }
 
@@ -243,6 +344,19 @@ fn check_item<'tcx>(
                 }
 
                 let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
+
+                /* sealed, `unsafe` */
+                {
+                    let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
+                    let trait_vattrs =
+                        get_verifier_attrs(trait_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+
+                    if trait_vattrs.sealed {
+                        return err_span(item.span, "cannot implement `sealed` trait");
+                    } else if impll.unsafety != Unsafety::Normal {
+                        return err_span(item.span, "the verifier does not support `unsafe` here");
+                    }
+                }
 
                 let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {
                     let ty = {
@@ -320,62 +434,43 @@ fn check_item<'tcx>(
             }
 
             let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
-                let trait_ref =
-                    ctxt.tcx.impl_trait_ref(item.owner_id.to_def_id()).expect("impl_trait_ref");
-                let trait_did = trait_ref.skip_binder().def_id;
-                let impl_paths = crate::rust_to_vir_base::get_impl_paths(
-                    ctxt.tcx,
-                    &ctxt.verus_items,
-                    impl_def_id,
-                    trait_did,
-                    trait_ref.skip_binder().args,
-                );
-                // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
-                // We keep this full list, with the first element being the Self type X
-                let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.skip_binder().args.types() {
-                    types.push(mid_ty_to_vir(
-                        ctxt.tcx,
-                        &ctxt.verus_items,
-                        impl_def_id,
-                        impll.generics.span,
-                        &ty,
-                        false,
-                    )?);
-                }
-                let types = Arc::new(types);
+                let impl_def_id = item.owner_id.to_def_id();
                 let path_span = path.span.to(impll.self_ty.span);
-                let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, path.res.def_id());
-                let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_fun(
-                    ctxt.tcx,
-                    &ctxt.verus_items,
-                    impll.generics,
+                let (trait_path, types, trait_impl) = trait_impl_to_vir(
+                    ctxt,
+                    item.span,
+                    path_span,
                     impl_def_id,
-                    Some(&mut *ctxt.diagnostics.borrow_mut()),
+                    Some(impll.generics),
+                    module_path(),
                 )?;
-                let trait_impl = vir::ast::TraitImplX {
-                    impl_path: impl_path.clone(),
-                    typ_params,
-                    typ_bounds,
-                    trait_path: path.clone(),
-                    trait_typ_args: types.clone(),
-                    trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
-                };
-                vir.trait_impls.push(ctxt.spanned_new(item.span, trait_impl));
-                Some((trait_ref, path, types))
+                vir.trait_impls.push(trait_impl);
+                let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+                Some((trait_ref, trait_path, types))
             } else {
                 None
             };
 
             for impl_item_ref in impll.items {
+                let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                if trait_path_typ_args.is_some() {
+                    let vattrs =
+                        get_verifier_attrs(fn_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    if vattrs.external {
+                        return err_span(
+                            item.span,
+                            "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
+                        );
+                    }
+                }
+
                 match impl_item_ref.kind {
                     AssocItemKind::Fn { has_self: true | false } => {
-                        let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                         let impl_item_visibility =
                             mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
                         match &impl_item.kind {
                             ImplItemKind::Fn(sig, body_id) => {
-                                let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
                                 let kind = if let Some((_, trait_path, trait_typ_args)) =
                                     trait_path_typ_args.clone()
                                 {
@@ -389,6 +484,7 @@ fn check_item<'tcx>(
                                         impl_path: impl_path.clone(),
                                         trait_path,
                                         trait_typ_args,
+                                        inherit_body_from: None,
                                     }
                                 } else {
                                     FunctionKind::Static
@@ -396,6 +492,7 @@ fn check_item<'tcx>(
                                 check_item_fn(
                                     ctxt,
                                     &mut vir.functions,
+                                    Some(&mut vir.reveal_groups),
                                     impl_item.owner_id.to_def_id(),
                                     kind,
                                     impl_item_visibility,
@@ -405,6 +502,7 @@ fn check_item<'tcx>(
                                     Some((&impll.generics, impl_def_id)),
                                     &impl_item.generics,
                                     CheckItemFnEither::BodyId(body_id),
+                                    external_fn_specification_trait_method_impls,
                                 )?;
                             }
                             _ => unsupported_err!(
@@ -415,7 +513,6 @@ fn check_item<'tcx>(
                         }
                     }
                     AssocItemKind::Type => {
-                        let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                         if impl_item.generics.params.len() != 0
                             || impl_item.generics.predicates.len() != 0
                             || impl_item.generics.has_where_clause_predicates
@@ -441,10 +538,11 @@ fn check_item<'tcx>(
                                 trait_path_typ_args.clone()
                             {
                                 let (typ_params, typ_bounds) =
-                                    crate::rust_to_vir_base::check_generics_bounds_fun(
+                                    crate::rust_to_vir_base::check_generics_bounds_no_polarity(
                                         ctxt.tcx,
                                         &ctxt.verus_items,
-                                        impll.generics,
+                                        impll.generics.span,
+                                        Some(impll.generics),
                                         impl_def_id,
                                         Some(&mut *ctxt.diagnostics.borrow_mut()),
                                     )?;
@@ -540,7 +638,7 @@ fn check_item<'tcx>(
             handle_const_or_static(body_id)?;
         }
         ItemKind::Static(_ty, Mutability::Mut, _body_id) => {
-            if vattrs.external {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
                 return Ok(());
             }
             unsupported_err!(item.span, "static mut");
@@ -554,10 +652,11 @@ fn check_item<'tcx>(
             let trait_def_id = item.owner_id.to_def_id();
             let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def_id);
             let (generics_params, typ_bounds) = {
-                let (generics_params, mut typ_bounds) = check_generics_bounds(
+                let (generics_params, mut typ_bounds) = check_generics_bounds_with_polarity(
                     ctxt.tcx,
                     &ctxt.verus_items,
-                    trait_generics,
+                    trait_generics.span,
+                    Some(trait_generics),
                     false,
                     trait_def_id,
                     None,
@@ -584,6 +683,7 @@ fn check_item<'tcx>(
                                 return false;
                             }
                         }
+                        vir::ast::GenericBoundX::TypEquality(..) => {}
                     }
                     true
                 });
@@ -603,17 +703,26 @@ fn check_item<'tcx>(
                     span,
                     defaultness: _,
                 } = trait_item;
-                let (generics_params, generics_bnds) = check_generics_bounds(
+                let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
                     ctxt.tcx,
                     &ctxt.verus_items,
-                    item_generics,
+                    item_generics.span,
+                    Some(item_generics),
                     false,
                     owner_id.to_def_id(),
                     None,
                     Some(&mut *ctxt.diagnostics.borrow_mut()),
                 )?;
-                unsupported_err_unless!(generics_params.len() == 0, *span, "trait generics");
-                unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
+
+                let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
+                let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                if vattrs.external {
+                    return err_span(
+                        *span,
+                        "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",
+                    );
+                }
+
                 match kind {
                     TraitItemKind::Fn(sig, fun) => {
                         let body_id = match fun {
@@ -626,6 +735,7 @@ fn check_item<'tcx>(
                         let fun = check_item_fn(
                             ctxt,
                             &mut methods,
+                            None,
                             owner_id.to_def_id(),
                             FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
                             visibility(),
@@ -635,12 +745,23 @@ fn check_item<'tcx>(
                             Some((trait_generics, trait_def_id)),
                             item_generics,
                             body_id,
+                            external_fn_specification_trait_method_impls,
                         )?;
                         if let Some(fun) = fun {
                             method_names.push(fun);
                         }
                     }
                     TraitItemKind::Type([], None) => {
+                        unsupported_err_unless!(
+                            item_generics_params.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
+                        unsupported_err_unless!(
+                            item_typ_bounds.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
                         assoc_typs.push(Arc::new(ident.to_string()));
                     }
                     TraitItemKind::Type(_, Some(_)) => {
@@ -650,6 +771,16 @@ fn check_item<'tcx>(
                         );
                     }
                     TraitItemKind::Type(_generic_bounds, None) => {
+                        unsupported_err_unless!(
+                            item_generics_params.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
+                        unsupported_err_unless!(
+                            item_typ_bounds.len() == 0,
+                            *span,
+                            "trait generics"
+                        );
                         assoc_typs.push(Arc::new(ident.to_string()));
 
                         let bounds = ctxt
@@ -705,9 +836,140 @@ fn check_item<'tcx>(
             return Ok(());
         }
         _ => {
+            if vattrs.is_external(&ctxt.cmd_line_args) {
+                return Ok(());
+            }
             unsupported_err!(item.span, "unsupported item", item);
         }
     }
+    Ok(())
+}
+
+fn trait_impl_to_vir<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: rustc_span::Span,
+    path_span: rustc_span::Span,
+    impl_def_id: rustc_hir::def_id::DefId,
+    hir_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
+    module_path: Path,
+) -> Result<(Path, Typs, TraitImpl), VirErr> {
+    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+    let trait_did = trait_ref.skip_binder().def_id;
+    let impl_paths = crate::rust_to_vir_base::get_impl_paths(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        impl_def_id,
+        trait_did,
+        trait_ref.skip_binder().args,
+        None,
+    );
+    // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
+    // We keep this full list, with the first element being the Self type X
+    let mut types: Vec<Typ> = Vec::new();
+    for ty in trait_ref.skip_binder().args.types() {
+        types.push(mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, impl_def_id, span, &ty, false)?);
+    }
+    let types = Arc::new(types);
+    let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_did);
+    let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        span,
+        hir_generics,
+        impl_def_id,
+        Some(&mut *ctxt.diagnostics.borrow_mut()),
+    )?;
+    let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
+    let trait_impl = vir::ast::TraitImplX {
+        impl_path: impl_path.clone(),
+        typ_params,
+        typ_bounds,
+        trait_path: trait_path.clone(),
+        trait_typ_args: types.clone(),
+        trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
+        owning_module: Some(module_path),
+    };
+    let trait_impl = ctxt.spanned_new(span, trait_impl);
+    Ok((trait_path, types, trait_impl))
+}
+
+fn collect_external_trait_impls<'tcx>(
+    ctxt: &Context<'tcx>,
+    krate: &mut KrateX,
+    external_fn_specification_trait_method_impls: &Vec<(DefId, rustc_span::Span)>,
+) -> Result<(), VirErr> {
+    if external_fn_specification_trait_method_impls.len() == 0 {
+        return Ok(());
+    }
+
+    let mut func_map = HashMap::<Fun, Function>::new();
+    for function in krate.functions.iter() {
+        func_map.insert(function.x.name.clone(), function.clone());
+    }
+    let mut trait_map = HashMap::<Path, Trait>::new();
+    for traitt in krate.traits.iter() {
+        trait_map.insert(traitt.x.name.clone(), traitt.clone());
+    }
+
+    let mut new_trait_impls = IndexMap::<Path, (DefId, Vec<(DefId, rustc_span::Span)>)>::new();
+
+    for (def_id, span) in external_fn_specification_trait_method_impls.iter() {
+        let trait_method_impl = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *def_id);
+        let trait_impl = trait_method_impl.pop_segment();
+        match new_trait_impls.get_mut(&trait_impl) {
+            Some(m) => {
+                m.1.push((*def_id, *span));
+            }
+            None => {
+                let impl_def_id = ctxt.tcx.impl_of_method(*def_id).unwrap();
+                new_trait_impls.insert(trait_impl, (impl_def_id, vec![(*def_id, *span)]));
+            }
+        }
+    }
+
+    for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
+        let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+        let trait_did = trait_ref.skip_binder().def_id;
+        let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_did);
+        let Some(traitt) = trait_map.get(&trait_path) else {
+            continue;
+        };
+
+        let span = funs[0].1;
+
+        let mut methods_we_have = IndexSet::<vir::ast::Ident>::new();
+        for (fun_def_id, fun_span) in funs.iter() {
+            let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *fun_def_id);
+            if !methods_we_have.insert(path.last_segment()) {
+                return err_span(*fun_span, "duplicate external_fn_specification for this method");
+            }
+        }
+
+        if traitt.x.assoc_typs_bounds.len() > 0 {
+            return err_span(
+                span,
+                "not supported: using external_fn_specification for a trait method impl where the trait has associated types",
+            );
+        }
+        for method in traitt.x.methods.iter() {
+            if !methods_we_have.contains::<vir::ast::Ident>(&method.path.last_segment()) {
+                return err_span(
+                    span,
+                    format!(
+                        "using external_fn_specification for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
+                        method.path.last_segment()
+                    ),
+                );
+            }
+        }
+
+        let module_path = impl_path.pop_segment();
+
+        let (_trait_path, _types, trait_impl) =
+            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path)?;
+        krate.trait_impls.push(trait_impl);
+    }
+
     Ok(())
 }
 
@@ -731,17 +993,17 @@ fn check_foreign_item<'tcx>(
                 generics,
             )?;
         }
-        ForeignItemKind::Static(..)
+        _ => {
             if get_verifier_attrs(
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 Some(&mut *ctxt.diagnostics.borrow_mut()),
             )?
-            .is_external(&ctxt.cmd_line_args) =>
-        {
-            return Ok(());
-        }
-        _ => {
-            unsupported_err!(item.span, "unsupported foreign item", item);
+            .is_external(&ctxt.cmd_line_args)
+            {
+                return Ok(());
+            } else {
+                unsupported_err!(item.span, "unsupported foreign item", item);
+            }
         }
     }
     Ok(())
@@ -754,6 +1016,11 @@ struct VisitMod<'tcx> {
 
 impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     type Map = rustc_middle::hir::map::Map<'tcx>;
+    type NestedFilter = rustc_middle::hir::nested_filter::All;
+
+    fn nested_visit_map(&mut self) -> Self::Map {
+        self._tcx.hir()
+    }
 
     fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
         self.ids.push(item.item_id());
@@ -761,8 +1028,24 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 }
 
-pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
-    let mut vir: KrateX = Default::default();
+pub type ItemToModuleMap = HashMap<ItemId, Option<Path>>;
+
+pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModuleMap), VirErr> {
+    let mut vir: KrateX = KrateX {
+        functions: Vec::new(),
+        reveal_groups: Vec::new(),
+        datatypes: Vec::new(),
+        traits: Vec::new(),
+        trait_impls: Vec::new(),
+        assoc_type_impls: Vec::new(),
+        modules: Vec::new(),
+        external_fns: Vec::new(),
+        external_types: Vec::new(),
+        path_as_rust_names: Vec::new(),
+        arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
+    };
+
+    let mut external_fn_specification_trait_method_impls = vec![];
 
     // Map each item to the module that contains it, or None if the module is external
     let mut item_to_module: HashMap<ItemId, Option<Path>> = HashMap::new();
@@ -784,20 +1067,38 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         // Shallowly visit just the top-level items (don't visit nested modules)
                         let path =
                             def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
-                        vir.modules.push(
-                            ctxt.spanned_new(item.span, vir::ast::ModuleX { path: path.clone() }),
-                        );
+                        vir.modules.push(ctxt.spanned_new(
+                            item.span,
+                            vir::ast::ModuleX { path: path.clone(), reveals: None },
+                        ));
                         let path = Some(path);
                         item_to_module
                             .extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
                     };
+                }
+                OwnerNode::Item(item @ Item { kind: _, owner_id: _, .. }) => {
+                    // If we have something like:
+                    //    #[verifier::external_body]
+                    //    fn test() {
+                    //        fn nested_item() { ... }
+                    //    }
+                    // Then we need to make sure nested_item() gets marked external.
+                    let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+                    let vattrs =
+                        get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                    if vattrs.external || vattrs.external_body {
+                        use crate::rustc_hir::intravisit::Visitor;
+                        let mut visitor = VisitMod { _tcx: ctxt.tcx, ids: Vec::new() };
+                        visitor.visit_item(item);
+                        item_to_module.extend(visitor.ids.iter().skip(1).map(move |ii| (*ii, None)))
+                    }
                 }
                 OwnerNode::Crate(mod_) => {
                     let path =
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
                     vir.modules.push(ctxt.spanned_new(
                         mod_.spans.inner_span,
-                        vir::ast::ModuleX { path: path.clone() },
+                        vir::ast::ModuleX { path: path.clone(), reveals: None },
                     ));
                     item_to_module
                         .extend(mod_.item_ids.iter().map(move |ii| (*ii, Some(path.clone()))))
@@ -839,7 +1140,14 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         // whole module is external, so skip the item
                         continue;
                     }
-                    check_item(ctxt, &mut vir, mpath, &item.item_id(), item)?
+                    check_item(
+                        ctxt,
+                        &mut vir,
+                        mpath,
+                        &item.item_id(),
+                        item,
+                        &mut external_fn_specification_trait_method_impls,
+                    )?
                 }
                 OwnerNode::ForeignItem(foreign_item) => check_foreign_item(
                     ctxt,
@@ -865,7 +1173,12 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
                         // checked by the type system
                     }
                     _ => {
-                        unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                        let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                        let vattrs =
+                            get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+                        if !vattrs.is_external(&ctxt.cmd_line_args) {
+                            unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                        }
                     }
                 },
                 OwnerNode::Crate(_mod_) => (),
@@ -877,5 +1190,13 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<Krate, VirErr> {
     vir.external_fns = erasure_info.external_functions.clone();
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
 
-    Ok(Arc::new(vir))
+    let crate_name = ctxt.tcx.crate_name(
+        ctxt.tcx.def_path(ctxt.krate.owners.iter_enumerated().next().unwrap().0.to_def_id()).krate,
+    );
+    if crate_name.as_str() == "vstd" {
+        crate::std_traits::add_std_traits(&mut vir, ctxt.no_span.clone());
+    }
+    collect_external_trait_impls(ctxt, &mut vir, &external_fn_specification_trait_method_impls)?;
+
+    Ok((Arc::new(vir), item_to_module))
 }

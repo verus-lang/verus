@@ -376,7 +376,7 @@ test_verify_one_file! {
         #[verifier::reject_recursive_types(T)]
         struct X<T> {
             r: u64,
-            g: Ghost<FnSpec(T) -> bool>,
+            g: Ghost<spec_fn(T) -> bool>,
         }
 
         union U {

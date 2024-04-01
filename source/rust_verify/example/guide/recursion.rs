@@ -254,7 +254,7 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
     let mut sum: u32 = 0;
     let mut idx: u32 = 0;
     while idx < n
-        invariant
+        invariant_except_break
             idx <= n,
             sum == triangle(idx as nat),
         ensures

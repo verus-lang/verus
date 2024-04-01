@@ -7,7 +7,8 @@
 
 use crate::ast::{
     ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents,
-    InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp, VirErr,
+    InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp,
+    VarBinders, VirErr,
 };
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
@@ -312,6 +313,21 @@ impl SyntacticEquality for Binders<Exp> {
     }
 }
 
+impl SyntacticEquality for VarBinders<Typ> {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        self.iter().zip(other.iter()).try_fold(true, |acc, (bnd_l, bnd_r)| {
+            Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
+        })
+    }
+}
+impl SyntacticEquality for VarBinders<Exp> {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        self.iter().zip(other.iter()).try_fold(true, |acc, (bnd_l, bnd_r)| {
+            Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
+        })
+    }
+}
+
 impl SyntacticEquality for Exp {
     // We expect to only call this after eval_expr has been called on both expressions
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
@@ -434,11 +450,15 @@ fn hash_trigs<H: Hasher>(state: &mut H, trigs: &Trigs) {
     hash_iter(state, trigs.iter().enumerate(), hash_exps)
 }
 
-fn hash_binders_typ<H: Hasher>(state: &mut H, bnds: &Binders<Typ>) {
+fn hash_var_binders_typ<H: Hasher>(state: &mut H, bnds: &VarBinders<Typ>) {
     hash_iter(state, bnds.iter().map(|b| (&b.name, &b.a)), |st, v| v.hash(st))
 }
 
 fn hash_binders_exp<H: Hasher>(state: &mut H, bnds: &Binders<Exp>) {
+    hash_iter(state, bnds.iter().map(|b| (&b.name, &b.a)), hash_exp)
+}
+
+fn hash_var_binders_exp<H: Hasher>(state: &mut H, bnds: &VarBinders<Exp>) {
     hash_iter(state, bnds.iter().map(|b| (&b.name, &b.a)), hash_exp)
 }
 
@@ -452,11 +472,13 @@ fn hash_bnd<H: Hasher>(state: &mut H, bnd: &Bnd) {
         }}
     }
     match &bnd.x {
-        Let(bnds) => dohash!(0; hash_binders_exp(bnds)),
-        Quant(quant, bnds, trigs) => dohash!(1, quant; hash_binders_typ(bnds), hash_trigs(trigs)),
-        Lambda(bnds, trigs) => dohash!(2; hash_binders_typ(bnds), hash_trigs(trigs)),
+        Let(bnds) => dohash!(0; hash_var_binders_exp(bnds)),
+        Quant(quant, bnds, trigs) => {
+            dohash!(1, quant; hash_var_binders_typ(bnds), hash_trigs(trigs))
+        }
+        Lambda(bnds, trigs) => dohash!(2; hash_var_binders_typ(bnds), hash_trigs(trigs)),
         Choose(bnds, trigs, e) => dohash!(3;
-                    hash_binders_typ(bnds), hash_trigs(trigs), hash_exp(e)),
+                    hash_var_binders_typ(bnds), hash_trigs(trigs), hash_exp(e)),
     }
 }
 
@@ -507,7 +529,10 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         }
         StaticVar(f) => dohash!(16, f),
         ExecFnByName(fun) => {
-            dohash!(16, fun);
+            dohash!(17, fun);
+        }
+        FuelConst(i) => {
+            dohash!(18, i);
         }
     }
 }
@@ -625,7 +650,7 @@ pub enum SeqFn {
     Last,
 }
 
-// TODO: Make the matching here more robust to changes in pervasive
+// TODO: Make the matching here more robust to changes in vstd
 /// Identify sequence functions for which we provide custom interpretation
 fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
@@ -651,7 +676,7 @@ fn strs_to_idents(s: Vec<&str>) -> Idents {
 
 /// Convert an interpreter-internal sequence representation back into a
 /// representation we can pass to AIR
-// TODO: More robust way of pointing to pervasive's sequence functions
+// TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
     let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
     let typs = Arc::new(vec![typ.clone()]);
@@ -912,9 +937,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | StrLen
                         | StrIsAscii
                         | CharToInt
-                        | InferSpecForLoopIter => ok,
+                        | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
+                        }
+                        CastToInteger => {
+                            panic!("CastToInteger should have been removed by poly!")
                         }
                     }
                 }
@@ -1015,6 +1043,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
+                        CastToInteger => {
+                            panic!("CastToInteger should have been removed by poly!")
+                        }
                         Not
                         | HeightTrigger
                         | Trigger(_)
@@ -1022,7 +1053,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | StrLen
                         | StrIsAscii
                         | CharToInt
-                        | InferSpecForLoopIter => ok,
+                        | InferSpecForLoopIter { .. } => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1402,10 +1433,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     state.cache_misses += 1;
                                     state.env.push_scope(true);
                                     for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                        let formal_id = UniqueIdent {
-                                            name: formal.x.name.clone(),
-                                            local: Some(0),
-                                        };
+                                        let formal_id = formal.x.name.clone();
                                         state.env.insert(formal_id, actual.clone()).unwrap();
                                     }
                                     let result = eval_expr_internal(ctx, state, &body);
@@ -1442,8 +1470,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             });
                             state.env.push_scope(true);
                             for (formal, actual) in bnds.iter().zip(new_args.iter()) {
-                                let formal_id =
-                                    UniqueIdent { name: formal.name.clone(), local: None };
+                                let formal_id = formal.name.clone();
                                 state.env.insert(formal_id, actual.clone()).unwrap();
                             }
                             let e = eval_expr_internal(ctx, state, body);
@@ -1465,7 +1492,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
                 for b in bnds.iter() {
-                    let id = UniqueIdent { name: b.name.clone(), local: None };
+                    let id = b.name.clone();
                     let val = eval_expr_internal(ctx, state, &b.a)?;
                     state.env.insert(id, val).unwrap();
                 }
@@ -1500,6 +1527,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
         ExecFnByName(_) => ok,
+        FuelConst(_) => ok,
     };
     let res = r?;
     state.depth -= 1;
@@ -1655,7 +1683,7 @@ fn eval_expr_launch(
         fun_calls: HashMap::new(),
     };
     // Don't run for too long
-    let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64 * RLIMIT_MULTIPLIER;
+    let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64;
     let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch, global };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);

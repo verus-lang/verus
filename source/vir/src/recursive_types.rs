@@ -166,6 +166,7 @@ fn new_span_info_typ_node(span_infos: &mut Vec<Span>, span: Span, text: String) 
 
 // polarity = Some(true) for positive, Some(false) for negative, None for neither
 fn check_positive_uses(
+    datatype: &Datatype,
     global: &CheckPositiveGlobal,
     local: &CheckPositiveLocal,
     polarity: Option<bool>,
@@ -186,9 +187,9 @@ fn check_positive_uses(
             */
             let flip_polarity = None; // strict positivity
             for t in ts.iter() {
-                check_positive_uses(global, local, flip_polarity, t)?;
+                check_positive_uses(datatype, global, local, flip_polarity, t)?;
             }
-            check_positive_uses(global, local, polarity, tr)?;
+            check_positive_uses(datatype, global, local, polarity, tr)?;
             Ok(())
         }
         TypX::AnonymousClosure(..) => {
@@ -196,7 +197,7 @@ fn check_positive_uses(
         }
         TypX::Tuple(ts) => {
             for t in ts.iter() {
-                check_positive_uses(global, local, polarity, t)?;
+                check_positive_uses(datatype, global, local, polarity, t)?;
             }
             Ok(())
         }
@@ -224,7 +225,7 @@ fn check_positive_uses(
                 let strictly_positive = *accept_rec != AcceptRecursiveType::Reject;
                 let t_polarity =
                     if strictly_positive && polarity == Some(true) { Some(true) } else { None };
-                check_positive_uses(global, local, t_polarity, t)?;
+                check_positive_uses(datatype, global, local, t_polarity, t)?;
             }
             for impl_path in impl_paths.iter() {
                 // REVIEW: this check isn't actually about polarity; should it be somewhere else?
@@ -242,17 +243,17 @@ fn check_positive_uses(
             }
             Ok(())
         }
-        TypX::Decorate(_, t) => check_positive_uses(global, local, polarity, t),
+        TypX::Decorate(_, t) => check_positive_uses(datatype, global, local, polarity, t),
         TypX::Primitive(_, ts) => {
             for t in ts.iter() {
-                check_positive_uses(global, local, polarity, t)?;
+                check_positive_uses(datatype, global, local, polarity, t)?;
             }
             Ok(())
         }
         TypX::FnDef(_fun, _type_args, _res_fun) => {
             panic!("FnDef type is not expected in struct definitions");
         }
-        TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
+        TypX::Boxed(t) => check_positive_uses(datatype, global, local, polarity, t),
         TypX::TypParam(x) => {
             let strictly_positive = local.tparams[x] != AcceptRecursiveType::Reject;
             match (strictly_positive, polarity) {
@@ -261,8 +262,9 @@ fn check_positive_uses(
                 (true, _) => Err(error(
                     &local.span,
                     format!(
-                        "Type parameter {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
-                        x
+                        "Type parameter {} of {} must be declared #[verifier::reject_recursive_types] to be used in a non-positive position",
+                        x,
+                        path_as_friendly_rust_name(&datatype.x.path),
                     ),
                 )),
             }
@@ -350,6 +352,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         for bound in tr.x.typ_bounds.iter() {
             match &**bound {
                 GenericBoundX::Trait(..) => {}
+                GenericBoundX::TypEquality(..) => {}
             }
         }
     }
@@ -359,21 +362,29 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         for (name, accept_rec) in datatype.x.typ_params.iter() {
             tparams.insert(name.clone(), *accept_rec);
         }
-        for bound in datatype.x.typ_bounds.iter() {
-            match &**bound {
-                GenericBoundX::Trait(..) => {}
-            }
-        }
         let local = CheckPositiveLocal {
             span: datatype.span.clone(),
             my_datatype: datatype.x.path.clone(),
             tparams,
         };
+        for bound in datatype.x.typ_bounds.iter() {
+            match &**bound {
+                GenericBoundX::Trait(..) => {}
+                GenericBoundX::TypEquality(_, _, _, typ) => {
+                    // This bound introduces a name (an abbreviation) for typ,
+                    // so assume that we're going to use the typ in any position.
+                    // (Actually, Rust's type system probably already stops a datatype
+                    // from mentioning itself in its own type equality bound, but there's
+                    // no harm in checking again.)
+                    check_positive_uses(datatype, &global, &local, None, typ)?;
+                }
+            }
+        }
         for variant in datatype.x.variants.iter() {
             for field in variant.fields.iter() {
                 // Check that field type only uses SCC siblings in positive positions
                 let (typ, _, _) = &field.a;
-                check_positive_uses(&global, &local, Some(true), typ)?;
+                check_positive_uses(datatype, &global, &local, Some(true), typ)?;
             }
         }
     }
@@ -426,9 +437,8 @@ fn type_scc_error(
     head: &TypNode,
     nodes: &Vec<TypNode>,
 ) -> VirErr {
-    let msg =
-        "found a cyclic self-reference in a trait definition, which may result in nontermination"
-            .to_string();
+    let msg = "found a cyclic self-reference in a definition, which may result in nontermination"
+        .to_string();
     let mut err = crate::messages::error_bare(msg);
     for (i, node) in nodes.iter().enumerate() {
         let mut push = |node: &TypNode, span: Span, text: &str| {
@@ -468,7 +478,7 @@ fn type_scc_error(
     err
 }
 
-fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Node>) -> VirErr {
+fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr {
     // Special case this error message because it doesn't look like
     // a 'trait' error to the user (even though we conceptualize it as a trait
     // error in VIR)
@@ -491,13 +501,23 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
     let msg = if do_req_ens_error {
         "cyclic dependency in the requires/ensures of function"
     } else {
-        "found a cyclic self-reference in a trait definition, which may result in nontermination"
+        "found a cyclic self-reference in a definition, which may result in nontermination"
     };
     let msg = msg.to_string();
     let mut err = crate::messages::error_bare(msg);
+
+    // Try to put Node::Fun first, since this is likely to be the easiest to understand
+    let mut nodes = nodes.clone();
+    if let Some(i) = nodes.iter().position(|n| matches!(n, Node::Fun(..))) {
+        let len = nodes.len();
+        let second_part = nodes.split_off(i);
+        nodes.splice(0..0, second_part);
+        assert!(nodes.len() == len);
+    }
+
     for (i, node) in nodes.iter().enumerate() {
-        let mut push = |node: &Node, span: Span, text: &str| {
-            if node == head {
+        let mut push = |span: Span, text: &str| {
+            if i == 0 {
                 err = err.primary_span(&span);
             }
             let msg = format!(
@@ -512,19 +532,19 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
             Node::Fun(fun) | Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => {
                 if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
                     let span = f.span.clone();
-                    push(node, span, ": function definition, whose body may have dependencies");
+                    push(span, ": function definition, whose body may have dependencies");
                 }
             }
             Node::Datatype(path) => {
                 if let Some(d) = krate.datatypes.iter().find(|t| t.x.path == *path) {
                     let span = d.span.clone();
-                    push(node, span, ": type definition");
+                    push(span, ": type definition");
                 }
             }
             Node::Trait(trait_path) => {
                 if let Some(t) = krate.traits.iter().find(|t| t.x.name == *trait_path) {
                     let span = t.span.clone();
-                    push(node, span, ": declaration of trait");
+                    push(span, ": declaration of trait");
                 }
             }
             Node::TraitImpl(ImplPath::TraitImplPath(impl_path)) => {
@@ -532,11 +552,17 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, head: &Node, nodes: &Vec<Nod
                     krate.trait_impls.iter().find(|t| t.x.impl_path.clone() == *impl_path)
                 {
                     let span = t.span.clone();
-                    push(node, span, ": implementation of trait for a type");
+                    push(span, ": implementation of trait for a type");
+                }
+            }
+            Node::ModuleReveal(path) => {
+                if let Some(t) = krate.modules.iter().find(|m| &m.x.path == path) {
+                    let span = t.span.clone();
+                    push(span, ": module-level reveal");
                 }
             }
             Node::SpanInfo { span_infos_index, text } => {
-                push(node, span_infos[*span_infos_index].clone(), text);
+                push(span_infos[*span_infos_index].clone(), text);
             }
         }
     }
@@ -557,9 +583,14 @@ pub(crate) fn suppress_bound_in_trait_decl(
     // always cause a cycle and would cause the trait declaration to be rejected.
     // See the check_traits comments below (particularly the part about not passing T's dictionary into
     // T's own members).
-    let GenericBoundX::Trait(bound_path, args) = &**bound;
+    let (bound_path, args) = match &**bound {
+        GenericBoundX::Trait(bound_path, args) => (bound_path, args),
+        GenericBoundX::TypEquality(..) => {
+            return false;
+        }
+    };
     if trait_path == bound_path {
-        assert!(args.len() == typ_params.len());
+        assert!(args.len() <= typ_params.len());
         for (typ_param, arg) in typ_params.iter().zip(args.iter()) {
             if let TypX::TypParam(bound_param) = &**arg {
                 if typ_param == bound_param {
@@ -581,7 +612,10 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     let t_path = &trt.x.name;
     let t_node = Node::Trait(t_path.clone());
     for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
-        let GenericBoundX::Trait(u_path, _) = &**bound;
+        let u_path = match &**bound {
+            GenericBoundX::Trait(u_path, _) => u_path,
+            GenericBoundX::TypEquality(u_path, _, _, _) => u_path,
+        };
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);
     }
@@ -601,9 +635,13 @@ pub(crate) fn add_trait_impl_to_graph(
     let src_node = new_span_info_node(
         span_infos,
         t.x.trait_typ_arg_impls.span.clone(),
-        ": an implementation of a trait, applying the trait to some type arguments, \
-            for some `Self` type, where applying the trait to type arguments and declaring \
-            the `Self` type may depend on other trait implementations to satisfy type bounds"
+        ": an implementation of a trait, which depends on (1) any supertraits \
+            of the trait or (2) any type arguments passed to the trait's type parameters. \
+            Specifically, (1) the implementation of a subtrait builds on, and depends on, \
+            the implementations of all supertraits of the subtrait, and \
+            (2) the implementation of a trait must satisfy any bounds on any type arguments \
+            used to instantiate the type parameters of the trait (including bounds on `Self`), \
+            so this implementation may depend on other implementations to satisfy these bounds."
             .to_string(),
     );
     call_graph.add_edge(trait_impl_src_node, src_node.clone());
@@ -652,6 +690,10 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //     f: dictionary_T_for_D_f,
     //     g: dictionary_T_for_D_g,
     //   };
+    // (Note that since the members dictionary_T_for_D_f and dictionary_T_for_D_g precede the
+    // construction of the Dictionary_T value, they do not depend on the implementation
+    // of T for D, and they can be called as ordinary functions without needing
+    // the implementation of T for D.  They can also call each other.)
     // A trait bound A: T is treated as an argument of type Dictionary_T<A>.
     // In other words, we have to justify any instantiation of a trait bound A: T
     // by passing in a dictionary that represents the implementation of T for A.
@@ -702,7 +744,30 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // This also ensures that whenever A is used in f and g,
     // the dictionary a: Dictionary_U<A> is available.
 
-    // To handle bounds on Self like this:
+    // To handle bounds on trait methods like this:
+    //   trait T {
+    //     fn f<A: U>(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // We take a Dictionary_U as a parameter:
+    //   struct Dictionary_T<Self, A> {
+    //     f: Fn<A>(a: Dictionary_U<A>, x: Self, y: Self) -> bool,
+    //     g: Fn(x: Self, y: Self) -> Self { requires(f(x, y)); },
+    //   }
+    // This adds an edge:
+    //   - f --> U
+    // which, together with T --> f, creates a path T --> U
+    // This also ensures that whenever A is used in f,
+    // the dictionary a: Dictionary_U<A> is available.
+
+    // In Rust, declaring a subtrait "trait T: U" is equivalent to declaring
+    // a trait with a Self bound: "trait T where Self: U".
+    // We handle the bound "Self: U" the same as we handle a bound "A: U"
+    // on any other type parameter A.
+    // (Note that Rust also adds an implicit recursive "Self: T" bound for every "trait T";
+    // as explained above, we remove this one particular "Self: T" bound,
+    // even though we retain every other bounds on Self.)
+    // For example:
     //   trait T: U {
     //     fn f(x: Self, y: Self) -> bool;
     //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
@@ -717,6 +782,20 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     //   - T --> U
     // This also ensures that whenever Self is used in f and g,
     // the dictionary a: Dictionary_U<Self> is available.
+
+    // To handle associated types, we pass each associated type in a trait as a separate parameter:
+    //   trait T {
+    //     type X;
+    //     type Y;
+    //     fn f(...);
+    //   }
+    //   fn g<A: T>(x: &A::X, y: &A::Y) { ... }
+    // The bound g<A: T> is interpreted as g<A, A_X, A_Y>(x: &A_X, y: &A_Y).
+    // (Note: passing each associated type separately is just for the hypothetical Coq/F* encoding;
+    // in the SMT encoding, we use a single parameter rather than separate parameters.)
+    // This separation makes it easier to encode type equality constraints such as:
+    //   fn g<A: T<X = u8>>
+    // which becomes g<A, A_Y>(x: &u8, y: &A_Y).
 
     // To handle bounds on associated types:
     //   trait T {
@@ -754,7 +833,6 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
                     return Err(scc_error(
                         krate,
                         &ctx.datatype_graph_span_infos,
-                        node,
                         &ctx.func_call_graph.shortest_cycle_back_to_self(node),
                     ));
                 }

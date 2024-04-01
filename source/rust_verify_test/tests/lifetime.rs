@@ -207,8 +207,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] consume_tracked_twice verus_code! {
-        proof fn f(tracked x: u8, tracked y: u8) {}
-        fn g(x: Tracked<u8>, y: Tracked<u8>) {
+        struct X { }
+
+        proof fn f(tracked x: X, tracked y: X) {}
+        fn g(x: Tracked<X>, y: Tracked<X>) {
             proof {
                 f(x.get(), x.get())
             }
@@ -377,7 +379,7 @@ test_verify_one_file! {
             )
         }
 
-        proof fn bar<'a>(f: FnSpec(u32) -> bool, v: u32, foo: Foo<'a, u32>) -> bool {
+        proof fn bar<'a>(f: spec_fn(u32) -> bool, v: u32, foo: Foo<'a, u32>) -> bool {
             f(v)
         }
     } => Ok(())
@@ -435,7 +437,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] lifetime_copy_succeed verus_code! {
         #[verifier(external_body)]
-        struct S<#[verifier(maybe_negative)]A, #[verifier(maybe_negative)]B>(A, std::marker::PhantomData<B>);
+        #[verifier(reject_recursive_types(A))]
+        #[verifier(reject_recursive_types(B))]
+        struct S<A, B>(A, std::marker::PhantomData<B>);
 
         #[verifier(external)]
         impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
@@ -452,7 +456,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] lifetime_copy_fail verus_code! {
         #[verifier(external_body)]
-        struct S<#[verifier(maybe_negative)]A, #[verifier(maybe_negative)]B>(A, std::marker::PhantomData<B>);
+        #[verifier(reject_recursive_types(A))]
+        #[verifier(reject_recursive_types(B))]
+        struct S<A, B>(A, std::marker::PhantomData<B>);
 
         #[verifier(external)]
         impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
@@ -625,4 +631,128 @@ test_verify_one_file! {
             y
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+}
+
+test_verify_one_file! {
+    #[test] index_with_extra_ref_issue1009 verus_code! {
+        use vstd::prelude::*;
+
+        fn get_internal<'a>(v: &'a Vec::<u8>, i: usize) -> (r: &'a u8)
+            requires
+                0 <= i < v.len()
+            ensures
+                r == &v[i as int]
+        {
+            &v[i]
+        }
+
+        fn get_internal2<'a>(v: &'a Vec::<u8>, i: usize) -> (r: &'a u8)
+            requires
+                0 <= i < v.len()
+            ensures
+                r == &v[i as int]
+        {
+            &(*v)[i]
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_is_copy_if_type_param_is_copy verus_code! {
+        use vstd::*;
+
+        #[verifier::external_body]
+        tracked struct T { }
+
+        impl Clone for T {
+            #[verifier::external_body]
+            fn clone(&self) -> Self {
+                T { }
+            }
+        }
+
+        impl Copy for T { }
+
+        fn test(t: Tracked<T>) {
+        }
+
+        fn test2(t: Tracked<T>) {
+            test(t);
+            test(t);
+        }
+
+        fn test3(t: Tracked<T>) {
+            test(t.clone());
+            test(t.clone());
+
+            let x = t.clone();
+            assert(x == t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_is_not_copy_just_because_type_param_is_clone verus_code! {
+        #[verifier::external_body]
+        tracked struct T { }
+
+        impl Clone for T {
+            #[verifier::external_body]
+            fn clone(&self) -> Self {
+                T { }
+            }
+        }
+
+        fn test(t: Tracked<T>) {
+        }
+
+        fn test2(t: Tracked<T>) {
+            test(t);
+            test(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] tracked_is_not_clone_just_because_type_param_is_clone verus_code! {
+        #[verifier::external_body]
+        tracked struct T { }
+
+        impl Clone for T {
+            #[verifier::external_body]
+            fn clone(&self) -> Self {
+                T { }
+            }
+        }
+
+        fn test(t: Tracked<T>) {
+        }
+
+        fn test2(t: Tracked<T>) {
+            test(t.clone());
+        }
+    } => Err(err) => assert_rust_error_msg(err, "the method `clone` exists for struct `Tracked<T>`, but its trait bounds were not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] moved_value_via_at_patterns verus_code! {
+        enum Opt<V> {
+            Some(V),
+            None
+        }
+
+        tracked struct X { }
+
+        tracked enum Foo {
+            Bar(Opt<X>),
+            Zaz(Opt<X>, X),
+        }
+
+        proof fn test(tracked foo: Foo) {
+            match foo {
+                Foo::Bar(a @ Opt::Some(b)) => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
 }

@@ -11,21 +11,46 @@ viceversa) we can always move it later.
 ## Editing the Source Code of Verus
 
 Before committing any changes to the source code,
-make sure that it conforms to the `rustfmt` tool's guidelines.
-We are using the default `rustfmt` settings from the Rust repository.
-To check the source code, type the following from the `source` directory:
+make sure that it conforms to the `rustfmt` and `verusfmt` tool's guidelines.
+We are using the default `rustfmt` settings from the Rust repository
+(which also apply to the `verusfmt` formatting for the `vstd`).
+
+If you are working on `vstd`, you will need to set up `verusfmt`, which ensures
+`verus! { ... }` code has consistent formatting. You can ensures you are on the latest release of verusfmt
+by following the [installation instructions](https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt).
+
+To check the Verus and vendored dependencies' source code, and `vstd`'s formatting,
+type the following from the `source` directory:
 
 ```
 vargo fmt -- --check
 ```
 
-If the source code follows the guidelines, `vargo fmt -- --check` will produce no output.
-Otherwise, it will report suggestions on how to reformat the source code.
+If the source code follows the guidelines, `vargo fmt -- --check` will only produce
+`vargo info [0]: formatting <item>` lines.
+Otherwise, it will report suggestions on how to reformat the source code, and will
+output a non-zero status code.
 
 To automatically apply these suggestions to the source code, type:
 
 ```
 vargo fmt
+```
+
+### Running verusfmt manually
+
+Make sure you are in `source` or one of its subdirectories
+(verusfmt picks up the configuration in `source/rustfmt.toml`), and run:
+
+```sh
+# To format a specific file
+verusfmt <file>.rs
+
+# To format all of vstd at once (on *nix)
+find vstd -name \*.rs -print0 | xargs -0 -n1 verusfmt
+
+# To format all of vstd at once (on Windows Powershell)
+Get-ChildItem -Path .\vstd -Filter *.rs -Recurse | ForEach-Object { verusfmt $_.FullName }
 ```
 
 ## User-facing documentation
@@ -90,6 +115,25 @@ VERUS_EXTRA_ARGS="--log-all" vargo test -p rust_verify_test --test refs -- --noc
 This will output the log files in `rust_verify_test/.verus-log`. Only run one test at
 a time when using this flag, so that the logs are not overwritten by other tests.
 
+## Contributing to the standard library (`vstd`)
+
+If you're contributing to the standard library, you should also test the
+standalone build of that library with
+```
+cd source/vstd
+cargo build
+```
+
+A common error you'll find at this stage is that imports of specific
+identifiers with `use` (as opposed to blanket imports using `*`) don't work
+when building the standalone exec-only version of `vstd`. To rectify this error,
+make sure every such import is prefixed by `#[cfg(verus_keep_ghost)]`, as
+in the following example:
+```
+#[cfg(verus_keep_ghost)]
+use crate::arithmetic::internals::general_internals::is_le;
+```
+
 ## Other tips
 
 You can use `--vstd-no-verify` to skip verification of the `vstd` library. This is pretty useful if you're building or running tests a lot. Note that it will still _build_ `vstd`—it just skips the SMT step. For example:
@@ -100,7 +144,6 @@ vargo build --vstd-no-verify
 # for tests
 vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
 ```
-
 
 ## Automatically minimizing an issue/error example
 

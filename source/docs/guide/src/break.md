@@ -22,12 +22,10 @@ the loop condition is true.
 To deal with this, `while` loops with a `break`,
 as well as Rust `loop` expressions (loops with no condition),
 must explicitly specify what is true after the loop exit using `ensures` clauses,
-as shown in the following code:
+as shown in the following code.
+Furthermore, invariants that don't hold after a `break`
+must be marked as `invariant_except_break` rather than `invariant`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/recursion.rs:loop_break}}
 ```
-
-(For convenience, you can also supply `invariant_ensures` clauses,
-in between the `invariant` clauses and `ensures` clauses, that act
-as both `invariant` and `ensures`.)

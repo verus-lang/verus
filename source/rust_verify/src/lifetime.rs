@@ -109,12 +109,15 @@ converting the synthetic line/column information back into spans for the origina
 and then sending the error messages and spans to the rustc diagnostics for the original source code.
 */
 
+// In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
+
 use crate::erase::ErasureHints;
 use crate::lifetime_emit::*;
 use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verus_items::VerusItems;
+use rustc_data_structures::sync::Lrc;
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
@@ -122,6 +125,48 @@ use std::fs::File;
 use std::io::Write;
 use vir::ast::VirErr;
 use vir::messages::{message_bare, Message, MessageLevel};
+
+const LDBG_PREFIX: &str = "!!!ldbg!!! ";
+
+#[allow(unused)]
+fn ldbg_prefix_all_lines(s: String) -> String {
+    let mut s2 = s.lines().map(|l| LDBG_PREFIX.to_string() + l).fold(
+        String::with_capacity(s.len()),
+        |mut acc, l| {
+            acc += &l;
+            acc += "\n";
+            acc
+        },
+    );
+    s2.pop().unwrap();
+    s2
+}
+
+// Derived from rust's std::dbg!
+#[macro_export]
+macro_rules! ldbg {
+    // NOTE: We cannot use `concat!` to make a static string as a format argument
+    // of `eprintln!` because `file!` could contain a `{` or
+    // `$val` expression could be a block (`{ .. }`), in which case the `eprintln!`
+    // will be malformed.
+    () => {
+        ::std::eprintln!("{}[lifetime {}:{}]", LDBG_PREFIX, $crate::file!(), $crate::line!())
+    };
+    ($val:expr $(,)?) => {
+        // Use of `match` here is intentional because it affects the lifetimes
+        // of temporaries - https://stackoverflow.com/a/48732525/1063961
+        match $val {
+            tmp => {
+                let __string = ::std::format!("[lifetime {}:{}] {} = {:#?}", ::std::file!(), ::std::line!(), ::std::stringify!($val), &tmp);
+                ::std::eprintln!("{}", $crate::lifetime::ldbg_prefix_all_lines(__string));
+                tmp
+            }
+        }
+    };
+    ($($val:expr),+ $(,)?) => {
+        ($(ldbg!($val)),+,)
+    };
+}
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
 pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
@@ -188,6 +233,8 @@ impl<A> Tracked<A> {
 struct Ghost<A> { a: PhantomData<A> }
 impl<A> Clone for Ghost<A> { fn clone(&self) -> Self { panic!() } }
 impl<A> Copy for Ghost<A> { }
+impl<A: Copy> Clone for Tracked<A> { fn clone(&self) -> Self { panic!() } }
+impl<A: Copy> Copy for Tracked<A> { }
 #[derive(Clone, Copy)] struct int;
 #[derive(Clone, Copy)] struct nat;
 struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }
@@ -205,6 +252,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
 ) -> State {
     let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
         cmd_line_args,
@@ -212,6 +260,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
         verus_items,
         krate,
         erasure_hints,
+        item_to_module_map,
     );
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
@@ -235,7 +284,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
-    fn after_parsing<'tcx>(
+    fn after_crate_root_parsing<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
@@ -263,9 +312,9 @@ impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
         Ok(self.rust_code.clone())
     }
 
-    fn read_binary_file(&self, path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
+    fn read_binary_file(&self, path: &std::path::Path) -> Result<Lrc<[u8]>, std::io::Error> {
         assert!(path.display().to_string() == Self::FILENAME.to_string());
-        Ok(self.rust_code.clone().into_bytes())
+        Ok(self.rust_code.as_bytes().into())
     }
 }
 
@@ -302,6 +351,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
+    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
@@ -313,6 +363,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         krate,
         &mut emit_state,
         erasure_hints,
+        item_to_module_map,
     );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
@@ -341,34 +392,38 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     let debug = false;
     if rust_output.len() > 0 {
         for ss in rust_output.split("\n") {
-            let diag: Diagnostic = serde_json::from_str(ss).expect("serde_json from_str");
-            if diag.level == "failure-note" {
-                continue;
-            }
-            if diag.level == "warning" {
-                dbg!("internal error: unexpected warning");
-                dbg!(diag);
-                continue;
-            }
-            assert!(diag.level == "error");
-            let msg_text = gen_state.unmangle_names(&diag.message);
-            let mut msg = message_bare(MessageLevel::Error, &msg_text);
-            if debug {
-                dbg!(&msg);
-            }
-            for dspan in &diag.spans {
-                if debug {
-                    dbg!(&dspan);
+            if let Some(ss) = ss.strip_prefix(LDBG_PREFIX) {
+                eprintln!("{}", ss);
+            } else {
+                let diag: Diagnostic = serde_json::from_str(ss).expect("serde_json from_str");
+                if diag.level == "failure-note" {
+                    continue;
                 }
-                let span = emit_state.get_span(
-                    dspan.line_start - 1,
-                    dspan.column_start - 1,
-                    dspan.line_end - 1,
-                    dspan.column_end - 1,
-                );
-                msg = msg.primary_span(&spans.to_air_span(span));
+                if diag.level == "warning" {
+                    dbg!("internal error: unexpected warning");
+                    dbg!(diag);
+                    continue;
+                }
+                assert!(diag.level == "error");
+                let msg_text = gen_state.unmangle_names(&diag.message);
+                let mut msg = message_bare(MessageLevel::Error, &msg_text);
+                if debug {
+                    dbg!(&msg);
+                }
+                for dspan in &diag.spans {
+                    if debug {
+                        dbg!(&dspan);
+                    }
+                    let span = emit_state.get_span(
+                        dspan.line_start - 1,
+                        dspan.column_start - 1,
+                        dspan.line_end - 1,
+                        dspan.column_end - 1,
+                    );
+                    msg = msg.primary_span(&spans.to_air_span(span));
+                }
+                msgs.push(msg);
             }
-            msgs.push(msg);
         }
     }
     if debug {

@@ -290,6 +290,16 @@ impl Hash for BoundLifetimes {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for BroadcastUse {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.paths.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for Closed {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -677,6 +687,16 @@ impl Hash for Expr {
                 state.write_u8(48u8);
                 v0.hash(state);
             }
+            #[cfg(feature = "full")]
+            Expr::Matches(v0) => {
+                state.write_u8(49u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::GetField(v0) => {
+                state.write_u8(50u8);
+                v0.hash(state);
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -872,6 +892,17 @@ impl Hash for ExprForLoop {
         self.body.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprGetField {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.base.hash(state);
+        self.member.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ExprGroup {
@@ -962,6 +993,7 @@ impl Hash for ExprLoop {
     {
         self.attrs.hash(state);
         self.label.hash(state);
+        self.invariant_except_break.hash(state);
         self.invariant.hash(state);
         self.invariant_ensures.hash(state);
         self.ensures.hash(state);
@@ -990,6 +1022,18 @@ impl Hash for ExprMatch {
         self.attrs.hash(state);
         self.expr.hash(state);
         self.arms.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ExprMatches {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.lhs.hash(state);
+        self.pat.hash(state);
+        self.op_expr.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1169,6 +1213,7 @@ impl Hash for ExprWhile {
         self.attrs.hash(state);
         self.label.hash(state);
         self.cond.hash(state);
+        self.invariant_except_break.hash(state);
         self.invariant.hash(state);
         self.invariant_ensures.hash(state);
         self.ensures.hash(state);
@@ -1587,6 +1632,10 @@ impl Hash for ImplItem {
                 state.write_u8(4u8);
                 TokenStreamHelper(v0).hash(state);
             }
+            ImplItem::BroadcastGroup(v0) => {
+                state.write_u8(5u8);
+                v0.hash(state);
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
@@ -1662,6 +1711,15 @@ impl Hash for Invariant {
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for InvariantEnsures {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for InvariantExceptBreak {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
@@ -1794,9 +1852,29 @@ impl Hash for Item {
                 state.write_u8(17u8);
                 v0.hash(state);
             }
+            Item::BroadcastUse(v0) => {
+                state.write_u8(18u8);
+                v0.hash(state);
+            }
+            Item::BroadcastGroup(v0) => {
+                state.write_u8(19u8);
+                v0.hash(state);
+            }
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ItemBroadcastGroup {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.vis.hash(state);
+        self.ident.hash(state);
+        self.paths.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -2154,6 +2232,35 @@ impl Hash for MacroDelimiter {
                 state.write_u8(1u8);
             }
             MacroDelimiter::Bracket(_) => {
+                state.write_u8(2u8);
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for MatchesOpExpr {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.op_token.hash(state);
+        self.rhs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for MatchesOpToken {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            MatchesOpToken::Implies(_) => {
+                state.write_u8(0u8);
+            }
+            MatchesOpToken::AndAnd(_) => {
+                state.write_u8(1u8);
+            }
+            MatchesOpToken::BigAnd => {
                 state.write_u8(2u8);
             }
         }
@@ -2791,6 +2898,7 @@ impl Hash for Signature {
         self.asyncness.hash(state);
         self.unsafety.hash(state);
         self.abi.hash(state);
+        self.broadcast.hash(state);
         self.mode.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
@@ -3088,6 +3196,8 @@ impl Hash for TypeFnSpec {
     where
         H: Hasher,
     {
+        self.fn_spec_token.hash(state);
+        self.spec_fn_token.hash(state);
         self.inputs.hash(state);
         self.output.hash(state);
     }
