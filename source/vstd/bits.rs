@@ -94,7 +94,7 @@ pub proof fn lemma_u64_pow2_no_overflow(n: nat)
     requires
         0 <= n < 64,
     ensures
-        pow2(n) < 0x1_0000_0000_0000_0000,
+        pow2(n) <= u64::MAX,
 {
     lemma_pow2_strictly_increases(n, 64);
     lemma2_to64();
@@ -103,7 +103,7 @@ pub proof fn lemma_u64_pow2_no_overflow(n: nat)
 pub proof fn lemma_u64_shl_is_mul(x: u64, shift: u64)
     requires
         0 <= shift < 64,
-        x * pow2(shift as nat) < 0x1_0000_0000_0000_0000,
+        x * pow2(shift as nat) <= u64::MAX,
     ensures
         x << shift == x * pow2(shift as nat),
     decreases shift,
