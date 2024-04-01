@@ -84,6 +84,7 @@ pub proof fn lemma_pow2_auto()
     }
 }
 
+/// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2`.
 pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
     ensures
         pow2(e1 + e2) == pow2(e1) * pow2(e2),
@@ -92,6 +93,16 @@ pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
     lemma_pow2(e2);
     lemma_pow2(e1+e2);
     lemma_pow_adds(2, e1, e2);
+}
+
+/// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2` for all exponents `e1`, `e2`.
+pub proof fn lemma_pow2_adds_auto()
+    ensures
+        forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2),
+{
+    assert forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2) by {
+        lemma_pow2_adds(e1, e2);
+    }
 }
 
 /// Proof that, for the given positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
