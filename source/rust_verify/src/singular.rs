@@ -1,4 +1,6 @@
-use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, SingularQueryX};
+use air::ast::{
+    BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, SingularQueryX,
+};
 use air::context::{QueryContext, ValidityResult};
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
@@ -393,13 +395,13 @@ pub fn check_singular_valid(
         } else if (res.len() == 2) && (res[1] == "0") {
             // multiple ensures are encoded as separate queries
             // where each query redefines the ideal
-            // ignore the first line of the output, which is a comment on the redefinition 
+            // ignore the first line of the output, which is a comment on the redefinition
             assert!(res[0].contains("// ** redefining"));
             continue;
         } else if res[0].contains("?") {
             /*
                 if the contains "?", it generally indicates an error in the query, for example:
-            
+
                 ? `sa` is not defined
                 ? error occurred in or before test line 4: `      (c - (d * tmp_1)) - y;`
                 ? expected ideal-expression. type 'help ideal;'

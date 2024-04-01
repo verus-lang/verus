@@ -215,10 +215,10 @@ pub type Command = Arc<CommandX>;
 pub type Commands = Arc<Vec<Command>>;
 #[derive(Debug)]
 pub enum CommandX {
-    Push,                    // push space for temporary global declarations
-    Pop,                     // pop temporary global declarations
-    SetOption(Ident, Ident), // set-option option value (no colon on the option)
-    Global(Decl),            // global declarations
-    CheckValid(Query), // SMT check-sat (reporting validity rather than satisfiability)
+    Push,                         // push space for temporary global declarations
+    Pop,                          // pop temporary global declarations
+    SetOption(Ident, Ident),      // set-option option value (no colon on the option)
+    Global(Decl),                 // global declarations
+    CheckValid(Query),            // SMT check-sat (reporting validity rather than satisfiability)
     CheckSingular(SingularQuery), // Singular check
 }

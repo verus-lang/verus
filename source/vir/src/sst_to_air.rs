@@ -2583,12 +2583,12 @@ pub(crate) fn body_stm_to_air(
 
         // put requires and ensures in the singular query
         let query = Arc::new(air::ast::SingularQueryX {
-            local : Arc::new(singular_vars),
+            local: Arc::new(singular_vars),
             requires: Arc::new(singular_req_stmts),
             ensures: Arc::new(singular_ens_stmts),
         });
 
-       let singular_command = Arc::new(CommandX::CheckSingular(query));
+        let singular_command = Arc::new(CommandX::CheckSingular(query));
 
         state.commands.push(CommandsWithContextX::new(
             ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
