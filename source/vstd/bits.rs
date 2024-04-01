@@ -5,15 +5,25 @@ use builtin_macros::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power2::{pow2, lemma_pow2_adds, lemma_pow2_pos, lemma2_to64, lemma_pow2_strictly_increases};
+use crate::arithmetic::power2::{
+    pow2,
+    lemma_pow2_adds,
+    lemma_pow2_pos,
+    lemma2_to64,
+    lemma_pow2_strictly_increases,
+};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::div_mod::lemma_div_denominator;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::mul::{lemma_mul_inequality, lemma_mul_is_commutative, lemma_mul_is_associative};
+use crate::arithmetic::mul::{
+    lemma_mul_inequality,
+    lemma_mul_is_commutative,
+    lemma_mul_is_associative,
+};
 #[cfg(verus_keep_ghost)]
 use crate::calc_macro::*;
-} // verus!
 
+} // verus!
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         verus! {
@@ -82,7 +92,7 @@ verus! {
 
 pub proof fn lemma_u64_pow2_no_overflow(n: nat)
     requires
-        0 <= n < 64
+        0 <= n < 64,
     ensures
         pow2(n) < 0x1_0000_0000_0000_0000,
 {
@@ -108,13 +118,16 @@ pub proof fn lemma_u64_shl_is_mul(x: u64, shift: u64)
                 0 < shift < 64,
         ;
         assert((x << (sub(shift, 1) as u64)) == x * pow2(sub(shift, 1) as nat)) by {
-                lemma_pow2_strictly_increases((shift-1) as nat, shift as nat);
-                lemma_mul_inequality(pow2((shift - 1) as nat) as int, pow2(shift as nat) as int, x as int);
-                lemma_mul_is_commutative(x as int, pow2((shift - 1) as nat) as int);
-                lemma_mul_is_commutative(x as int, pow2(shift as nat) as int);
-                lemma_u64_shl_is_mul(x, (shift - 1) as u64);
+            lemma_pow2_strictly_increases((shift - 1) as nat, shift as nat);
+            lemma_mul_inequality(
+                pow2((shift - 1) as nat) as int,
+                pow2(shift as nat) as int,
+                x as int,
+            );
+            lemma_mul_is_commutative(x as int, pow2((shift - 1) as nat) as int);
+            lemma_mul_is_commutative(x as int, pow2(shift as nat) as int);
+            lemma_u64_shl_is_mul(x, (shift - 1) as u64);
         }
-
         calc!{ (==)
             ((x << (sub(shift, 1) as u64)) * 2);
                 {}
@@ -132,4 +145,4 @@ pub proof fn lemma_u64_shl_is_mul(x: u64, shift: u64)
     }
 }
 
-}
+} // verus!

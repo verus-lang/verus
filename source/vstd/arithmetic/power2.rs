@@ -18,7 +18,13 @@ use builtin_macros::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto, lemma_pow_adds, lemma_pow_strictly_increases};
+use crate::arithmetic::power::{
+    pow,
+    lemma_pow_positive,
+    lemma_pow_auto,
+    lemma_pow_adds,
+    lemma_pow_strictly_increases,
+};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
 #[cfg(verus_keep_ghost)]
@@ -110,7 +116,7 @@ pub proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     requires
         e1 < e2,
     ensures
-        pow2(e1) < pow2(e2)
+        pow2(e1) < pow2(e2),
 {
     lemma_pow2(e1);
     lemma_pow2(e2);
@@ -120,7 +126,7 @@ pub proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
 /// Proof that if `e1 < e2` then `2^e1 < 2^e2` for all `e1`, `e2`.
 pub proof fn lemma_pow2_strictly_increases_auto()
     ensures
-        forall|e1: nat, e2: nat| e1 < e2 ==> #[trigger] pow2(e1) < #[trigger] pow2(e2)
+        forall|e1: nat, e2: nat| e1 < e2 ==> #[trigger] pow2(e1) < #[trigger] pow2(e2),
 {
     assert forall|e1: nat, e2: nat| e1 < e2 implies #[trigger] pow2(e1) < #[trigger] pow2(e2) by {
         lemma_pow2_strictly_increases(e1, e2);
