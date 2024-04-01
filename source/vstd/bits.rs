@@ -34,22 +34,21 @@ macro_rules! lemma_shr_is_div {
                     requires
                         0 < shift < <$uN>::BITS,
                 ;
-                assert(x as nat / pow2(shift as nat) == (x as nat / (pow2((shift - 1) as nat) * pow2(1))))
-                    by {
-                    lemma_pow2_adds((shift - 1) as nat, 1);
-                }
-                assert(x as nat / pow2(shift as nat) == (x as nat / pow2((shift - 1) as nat)) / 2) by {
-                    lemma_pow2_pos((shift - 1) as nat);
-                    lemma2_to64();
-                    lemma_div_denominator(x as int, pow2((shift - 1) as nat) as int, 2);
-                }
                 calc!{ (==)
                     (x >> shift) as nat;
                         {}
                     ((x >> ((sub(shift, 1)) as $uN)) / 2) as nat;
                         { $name(x, (shift - 1) as $uN); }
                     (x as nat / pow2((shift - 1) as nat)) / 2;
-                        {}
+                        {
+                            lemma_pow2_pos((shift - 1) as nat);
+                            lemma2_to64();
+                            lemma_div_denominator(x as int, pow2((shift - 1) as nat) as int, 2);
+                        }
+                    x as nat / (pow2((shift - 1) as nat) * pow2(1));
+                        {
+                            lemma_pow2_adds((shift - 1) as nat, 1);
+                        }
                     x as nat / pow2(shift as nat);
                 }
             }
