@@ -1,5 +1,4 @@
 //! Properties of bitwise operators.
-
 use builtin::*;
 use builtin_macros::*;
 
@@ -15,8 +14,10 @@ use crate::calc_macro::*;
 /// Proof that shifting x right by n is equivalent to division of x by 2^n, for
 /// given x and n.
 proof fn lemma_u64_shr_is_div(x: u64, shift: u64)
-    requires 0 <= shift < 64,
-    ensures x >> shift == x as nat / pow2(shift as nat),
+    requires
+        0 <= shift < 64,
+    ensures
+        x >> shift == x as nat / pow2(shift as nat),
     decreases shift,
 {
     reveal(pow2);
@@ -25,9 +26,11 @@ proof fn lemma_u64_shr_is_div(x: u64, shift: u64)
         assert(pow2(0) == 1) by (compute_only);
     } else {
         assert(x >> shift == (x >> ((sub(shift, 1)) as u64)) / 2) by (bit_vector)
-            requires 0 < shift < 64;
-
-        assert(x as nat / pow2(shift as nat) == (x as nat / (pow2((shift - 1) as nat) * pow2(1)))) by {
+            requires
+                0 < shift < 64,
+        ;
+        assert(x as nat / pow2(shift as nat) == (x as nat / (pow2((shift - 1) as nat) * pow2(1))))
+            by {
             lemma_pow2_adds((shift - 1) as nat, 1);
         }
         assert(x as nat / pow2(shift as nat) == (x as nat / pow2((shift - 1) as nat)) / 2) by {
@@ -35,7 +38,6 @@ proof fn lemma_u64_shr_is_div(x: u64, shift: u64)
             lemma2_to64();
             lemma_div_denominator(x as int, pow2((shift - 1) as nat) as int, 2);
         }
-
         calc!{ (==)
             (x >> shift) as nat;
                 {}
@@ -52,11 +54,13 @@ proof fn lemma_u64_shr_is_div(x: u64, shift: u64)
 /// of x by 2^n.
 proof fn lemma_u64_shr_is_div_auto()
     ensures
-        forall|x: u64, shift: u64| 0 <= shift < 64 ==> #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
+        forall|x: u64, shift: u64|
+            0 <= shift < 64 ==> #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
 {
-    assert forall|x: u64, shift: u64| 0 <= shift < 64 implies #[trigger] (x >> shift) == x as nat / pow2(shift as nat) by {
+    assert forall|x: u64, shift: u64| 0 <= shift < 64 implies #[trigger] (x >> shift) == x as nat
+        / pow2(shift as nat) by {
         lemma_u64_shr_is_div(x, shift);
     }
 }
 
-}
+} // verus!

@@ -91,7 +91,7 @@ pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
 {
     lemma_pow2(e1);
     lemma_pow2(e2);
-    lemma_pow2(e1+e2);
+    lemma_pow2(e1 + e2);
     lemma_pow_adds(2, e1, e2);
 }
 
