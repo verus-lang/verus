@@ -15,8 +15,9 @@ use crate::calc_macro::*;
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         verus! {
-        /// Proof that shifting x right by n is equivalent to division of x by 2^n, for
-        /// given x and n.
+        #[doc = "Proof that for given x and n of type "]
+        #[doc = stringify!($uN)]
+        #[doc = ", shifting x right by n is equivalent to division of x by 2^n."]
         pub proof fn $name(x: $uN, shift: $uN)
             requires
                 0 <= shift < <$uN>::BITS,
@@ -54,8 +55,9 @@ macro_rules! lemma_shr_is_div {
             }
         }
 
-        /// Proof that for all x and n, shifting x right by n is equivalent to division
-        /// of x by 2^n.
+        #[doc = "Proof that for all x and n of type "]
+        #[doc = stringify!($uN)]
+        #[doc = ", shifting x right by n is equivalent to division of x by 2^n."]
         pub proof fn $name_auto()
             ensures
                 forall|x: $uN, shift: $uN|
