@@ -8,7 +8,7 @@ upcoming features, and we reserve GitHub issues for actionable issues (bugs) wit
 existing features. Don't worry though: if we think an issue should be a discussion (or
 viceversa) we can always move it later.
 
-## Editing the Source Code of Verus
+## Editing the source code of Verus
 
 Before committing any changes to the source code,
 make sure that it conforms to the `rustfmt` and `verusfmt` tool's guidelines.
@@ -43,7 +43,7 @@ edit that file to customize it for your local setup. For instance,
 delete `[.exe]` if you're not using Windows and change it to `.exe` if
 you are.
 
-### Running verusfmt manually
+### Running `verusfmt` manually
 
 Make sure you are in `source` or one of its subdirectories
 (verusfmt picks up the configuration in `source/rustfmt.toml`), and run:
@@ -74,7 +74,7 @@ The output of the command will tell you where the HTML is generated.
 
 Meanwhile, the tutorial guide can be found in `source/docs/guide/`. From that directory, run `mdbook serve` to run a local webserver to render the guide as HTML.
 
-## Internal Code Documentation
+## Internal code documentation
 
 Commenting the code is strongly encouraged.  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
@@ -86,7 +86,7 @@ RUSTC_BOOTSTRAP=1 cargo doc
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
-## Running tests for the Rust to VIR translation, and inspecting the resulting vir/air/smt
+## Running tests for the Rust-to-VIR translation, and inspecting the resulting vir/air/smt
 
 `vargo test` will run the tests for `rust_verify_test`,
 
