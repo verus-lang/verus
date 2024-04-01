@@ -1,4 +1,4 @@
-use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
+use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, SingularQueryX};
 use air::context::{QueryContext, ValidityResult};
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
@@ -67,14 +67,14 @@ fn assert_not_reserved(name: &str) -> Result<(), String> {
     for keyword in RESERVED_KEYWORDS {
         if name == keyword {
             return Err(format!(
-                "usage of reserved keyword at variable name: {} in integer_ring",
-                name
+                "usage of the keyword {} is not supported when using the integer_ring solver",
+                keyword
             ));
         }
     }
     if name.starts_with(TMP_PREFIX) {
         return Err(format!(
-            "usage of reserved prefix `{}` at {} in in integer_ring",
+            "usage of reserved prefix `{}` in {} is not supported when using the integer_ring solver",
             TMP_PREFIX, name
         ));
     }
@@ -320,45 +320,16 @@ fn encode_singular_queries(
     func_span: &vir::messages::Span,
     queries: &mut Vec<(String, vir::messages::Message)>,
 ) -> Result<(), ValidityResult> {
-    let query: Query = if let CommandX::CheckValid(query) = &**command {
-        query.clone()
-    } else {
+    let CommandX::CheckSingular(ref query) = &**command else {
         panic!("internal error: integer_ring")
     };
 
-    let reqs_enss: air::ast::Stmts =
-        if let air::ast::StmtX::Block(stmts) = &*query.assertion.clone() {
-            stmts.clone()
-        } else {
-            panic!("internal error: integer_ring")
-        };
-
-    if reqs_enss.len() != 2 {
-        // we expect exactly two block statements
-        // one for requires and one for ensures
-        panic!("internal error: integer_ring")
-    }
-
-    let reqs = if let air::ast::StmtX::Block(stmts) = &*reqs_enss[0] {
-        stmts
-    } else {
-        panic!("internal error: integer_ring")
-    };
-
-    let enss = if let air::ast::StmtX::Block(stmts) = &*reqs_enss[1] {
-        stmts
-    } else {
-        panic!("internal error: integer_ring")
-    };
-
-    let decl = query.local.clone();
+    let SingularQueryX { requires: reqs, ensures: enss, local: _local } = &**query;
 
     let mut vars: Vec<String> = vec![];
-    for d in &**decl {
+    for d in &**query.local {
         if let air::ast::DeclX::Var(name, _typ) = &**d {
-            let mut v2: String = name.to_string();
-            v2.push('@');
-            vars.push(sanitize_var_name(v2));
+            vars.push(sanitize_var_name(name.to_string()));
         }
     }
 
@@ -420,19 +391,30 @@ pub fn check_singular_valid(
             // this query is ok (poly reduced to 0)
             continue;
         } else if (res.len() == 2) && (res[1] == "0") {
-            // this query is switching from the previous one
-            // this will redefine the ring
-            // ignore the first line of the output
+            // multiple ensures are encoded as separate queries
+            // where each query redefines the ideal
+            // ignore the first line of the output, which is a comment on the redefinition 
             assert!(res[0].contains("// ** redefining"));
             continue;
         } else if res[0].contains("?") {
-            // this query does not parse
+            /*
+                if the contains "?", it generally indicates an error in the query, for example:
+            
+                ? `sa` is not defined
+                ? error occurred in or before test line 4: `      (c - (d * tmp_1)) - y;`
+                ? expected ideal-expression. type 'help ideal;'
+                ? `ideal_I` is undefined
+                ...
+
+                probably not a good idea to try to parse this output. each line actually starts with a few spaces followed by a `?`.
+            */
             return ValidityResult::UnexpectedOutput(String::from(format!(
-                "{} \ngenerated singular query: {}",
+                "{}\ngenerated singular query: {}",
                 res[0].as_str(),
                 query
             )));
         } else {
+            // the resultant poly fails to reduce to 0. the poly is not going to be very informative, so we just return the error message.
             let err = error(
                 &err.spans[0],
                 "postcondition not satisfied, Singular cannot prove one of the the ensures"

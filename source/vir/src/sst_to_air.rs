@@ -2581,14 +2581,14 @@ pub(crate) fn body_stm_to_air(
             singular_ens_stmts.push(assert_stm);
         }
 
-        // split the requires and ensures into separate blocks
-        let assertion = Arc::new(StmtX::Block(Arc::new(vec![
-            air::ast::StmtX::Block(Arc::new(singular_req_stmts)).into(),
-            air::ast::StmtX::Block(Arc::new(singular_ens_stmts)).into(),
-        ])));
+        // put requires and ensures in the singular query
+        let query = Arc::new(air::ast::SingularQueryX {
+            local : Arc::new(singular_vars),
+            requires: Arc::new(singular_req_stmts),
+            ensures: Arc::new(singular_ens_stmts),
+        });
 
-        let query = Arc::new(QueryX { local: Arc::new(singular_vars), assertion });
-        let singular_command = Arc::new(CommandX::CheckValid(query));
+       let singular_command = Arc::new(CommandX::CheckSingular(query));
 
         state.commands.push(CommandsWithContextX::new(
             ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
