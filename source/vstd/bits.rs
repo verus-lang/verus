@@ -24,7 +24,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-// Proofs that shift right is equivalent to division by power of 2.
+  // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         verus! {
@@ -118,6 +118,9 @@ lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, u8);
 macro_rules! lemma_shl_is_mul {
     ($name:ident, $no_overflow:ident, $uN:ty) => {
         verus! {
+        #[doc = "Proof that for given x and n of type "]
+        #[doc = stringify!($uN)]
+        #[doc = ", shifting x left by n is equivalent to multiplication of x by 2^n (provided no overflow)."]
         pub proof fn $name(x: $uN, shift: $uN)
             requires
                 0 <= shift < <$uN>::BITS,
