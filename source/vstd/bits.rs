@@ -91,7 +91,7 @@ lemma_shr_is_div!(lemma_u8_shr_is_div, lemma_u8_shr_is_div_auto, u8);
 
 // Proofs that a given power of 2 fits in an unsigned type.
 macro_rules! lemma_pow2_no_overflow {
-    ($name:ident, $uN:ty) => {
+    ($name:ident, $name_auto:ident, $uN:ty) => {
         verus! {
         #[doc = "Proof that 2^n does not overflow "]
         #[doc = stringify!($uN)]
@@ -105,14 +105,26 @@ macro_rules! lemma_pow2_no_overflow {
             lemma_pow2_strictly_increases(n, $uN::BITS as nat);
             lemma2_to64();
         }
+
+        #[doc = "Proof that 2^n does not overflow "]
+        #[doc = stringify!($uN)]
+        #[doc = " for all exponents in bounds."]
+        pub proof fn $name_auto()
+            ensures
+                forall|n: nat| 0 <= n < $uN::BITS ==> #[trigger] pow2(n) <= $uN::MAX,
+        {
+            assert forall|n: nat| 0 <= n < $uN::BITS implies #[trigger] pow2(n) <= $uN::MAX by {
+                $name(n);
+            }
+        }
         }
     };
 }
 
-lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, u64);
-lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, u32);
-lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, u16);
-lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, u8);
+lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, lemma_u64_pow2_no_overflow_auto, u64);
+lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, lemma_u32_pow2_no_overflow_auto, u32);
+lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, lemma_u16_pow2_no_overflow_auto, u16);
+lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, lemma_u8_pow2_no_overflow_auto, u8);
 
 // Proofs that shift left is equivalent to multiplication by power of 2.
 macro_rules! lemma_shl_is_mul {
