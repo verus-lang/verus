@@ -1,4 +1,4 @@
-use crate::attributes::{get_mode, get_verifier_attrs, VerifierAttrs};
+use crate::attributes::{get_mode, VerifierAttrs};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
@@ -131,7 +131,7 @@ pub fn check_item_struct<'tcx>(
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     let is_strslice_struct = matches!(
         ctxt.verus_items.id_to_name.get(&id.owner_id.to_def_id()),
@@ -241,7 +241,7 @@ pub fn check_item_enum<'tcx>(
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
 
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");
@@ -315,7 +315,7 @@ pub fn check_item_union<'tcx>(
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_union());
 
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");

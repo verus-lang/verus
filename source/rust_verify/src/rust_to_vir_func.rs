@@ -1,5 +1,5 @@
 use crate::attributes::{
-    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, get_verifier_attrs, VerifierAttrs,
+    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
@@ -509,7 +509,7 @@ pub(crate) fn check_item_fn<'tcx>(
             crate::verus_items::CompilableOprItem::NewStrLit,
         ));
 
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
     let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification {
@@ -1418,7 +1418,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             Some(m) => (m, m, m),
         }
     };
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not yet supported for const");
@@ -1494,7 +1494,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     idents: &[Ident],
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = Arc::new(FunX { path });

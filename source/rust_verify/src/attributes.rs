@@ -102,6 +102,7 @@ enum VerusPrefix {
 enum AttrPrefix {
     Verus(VerusPrefix),
     Verifier,
+    Rustc,
 }
 
 fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>, VirErr> {
@@ -161,6 +162,17 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     attr.span,
                     "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
                 );
+            }
+            [segment] if segment.ident.as_str().starts_with("rustc_") => {
+                if !RUSTC_ATTRS_OK_TO_IGNORE.contains(&segment.ident.as_str()) {
+                    Ok(Some((
+                        AttrPrefix::Rustc,
+                        attr.span,
+                        AttrTree::Fun(attr.span, segment.ident.as_str().into(), None),
+                    )))
+                } else {
+                    Ok(None)
+                }
             }
             _ => Ok(None),
         },
@@ -295,6 +307,8 @@ pub(crate) enum Attr {
     Sealed,
     // Marks spec functions that depend on resolved prophecies
     ProphecyDependent,
+    // Unrecognized attribute that starts with 'rustc_', internal to the stdlib
+    UnsupportedRustcAttr(String, Span),
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -623,6 +637,10 @@ pub(crate) fn parse_attrs(
                     }
                 },
             },
+            AttrPrefix::Rustc => {
+                let AttrTree::Fun(span, name, _) = &attr;
+                v.push(Attr::UnsupportedRustcAttr(name.clone(), *span));
+            }
         }
     }
     Ok(v)
@@ -813,9 +831,46 @@ impl VerifierAttrs {
     }
 }
 
+// Check for the `get_field_many_variants` attribute
+// Skips additional checks that are meant to be applied only during the 'main' processing
+// of an item.
+pub(crate) fn is_get_field_many_variants(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<bool, VirErr> {
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::InternalGetFieldManyVariants => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
+// Check for the `sealed` attribute
+// Skips additional checks that are meant to be applied only during the 'main' processing
+// of an item.
+pub(crate) fn is_sealed(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<bool, VirErr> {
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::Sealed => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
 pub(crate) fn get_verifier_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
+    cmd_line_args: Option<&crate::config::Args>,
 ) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
         verus_macro: false,
@@ -863,6 +918,7 @@ pub(crate) fn get_verifier_attrs(
         prophecy_dependent: false,
         item_broadcast_use: false,
     };
+    let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
@@ -921,6 +977,9 @@ pub(crate) fn get_verifier_attrs(
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
             Attr::Sealed => vs.sealed = true,
             Attr::ProphecyDependent => vs.prophecy_dependent = true,
+            Attr::UnsupportedRustcAttr(name, span) => {
+                unsupported_rustc_attr = Some((name.clone(), span))
+            }
             _ => {}
         }
     }
@@ -938,5 +997,69 @@ pub(crate) fn get_verifier_attrs(
             }
         }
     }
+    if let Some((rustc_attr, span)) = unsupported_rustc_attr {
+        if cmd_line_args.is_none() || !vs.is_external(cmd_line_args.unwrap()) {
+            return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+        }
+    }
     Ok(vs)
 }
+
+// Rust has a bunch of internal attributes it uses for the standard library,
+// all of which start with "rustc_". They greatly vary in how interesting they
+// are to Verus. Some are effectively 'unsafe', while others have to do with
+// versioning or diagnostics and have nothing to do with semantics.
+//
+// Therefore, if we encounter any "rustc_" attribute, we will always error, unless either:
+//  - It is explicitly allowed, in the RUSTC_ATTRS_OK_TO_IGNORE list, or
+//  - We have carefully considered what it does and made sure Verus has relevant support.
+//
+// Here are some attributes not in the OK list, which require additional consideration
+// or investigation:
+//
+// rustc_deny_explicit_impl: given to marker traits, which probably should be kept 'external' anyway
+// rustc_coinductive
+// rustc_nounwind
+// rustc_promotable (see https://github.com/rust-lang/const-eval/blob/master/promotion.md)
+// rustc_reservation_impl (see https://github.com/rust-lang/rust/issues/64631)
+// rustc_never_returns_null_ptr
+// rustc_nonnull_optimization_guaranteed
+// rustc_safe_intrinsic
+// rustc_const_panic_str
+// rustc_do_not_const_check
+// rustc_has_incoherent_inherent_impls
+// rustc_inherit_overflow_checks
+// rustc_layout_scalar_valid_range_end
+// rustc_layout_scalar_valid_range_start
+// rustc_skip_array_during_method_dispatch
+// rustc_specialization_trait
+// rustc_unsafe_specialization_marker
+//
+// More complete list of rustc attrs:
+// https://doc.rust-lang.org/stable/nightly-rustc/src/rustc_feature/builtin_attrs.rs.html#539
+
+pub const RUSTC_ATTRS_OK_TO_IGNORE: &[&str] = &[
+    // Related to stability:
+    // https://rustc-dev-guide.rust-lang.org/stability.html
+    "rustc_allow_const_fn_unstable",
+    "rustc_const_stable",
+    "rustc_const_unstable",
+    "rustc_allowed_through_unstable_modules",
+    // Macros
+    "rustc_builtin_macro",
+    "rustc_macro_transparency",
+    // This is a crate-level attribute on the stdlib
+    "rustc_coherence_is_core",
+    // Diagnostics
+    "rustc_diagnostic_item",
+    "rustc_on_unimplemented",
+    "rustc_trivial_field_reads",
+    // Docs
+    "rustc_doc_primitive",
+    // Syntax-related
+    "rustc_paren_sugar",
+    // This has to do with the an edition migration, so not really in scope
+    // for verification.
+    // https://rust-lang.github.io/rfcs/2229-capture-disjoint-fields.html
+    "rustc_insignificant_dtor",
+];
