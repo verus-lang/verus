@@ -24,6 +24,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
+// Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         verus! {
@@ -88,61 +89,84 @@ lemma_shr_is_div!(lemma_u32_shr_is_div, lemma_u32_shr_is_div_auto, u32);
 lemma_shr_is_div!(lemma_u16_shr_is_div, lemma_u16_shr_is_div_auto, u16);
 lemma_shr_is_div!(lemma_u8_shr_is_div, lemma_u8_shr_is_div_auto, u8);
 
-verus! {
-
-pub proof fn lemma_u64_pow2_no_overflow(n: nat)
-    requires
-        0 <= n < 64,
-    ensures
-        pow2(n) <= u64::MAX,
-{
-    lemma_pow2_strictly_increases(n, 64);
-    lemma2_to64();
-}
-
-pub proof fn lemma_u64_shl_is_mul(x: u64, shift: u64)
-    requires
-        0 <= shift < 64,
-        x * pow2(shift as nat) <= u64::MAX,
-    ensures
-        x << shift == x * pow2(shift as nat),
-    decreases shift,
-{
-    lemma_u64_pow2_no_overflow(shift as nat);
-    if shift == 0 {
-        assert(x << 0 == x) by (bit_vector);
-        assert(pow2(0) == 1) by (compute_only);
-    } else {
-        assert(x << shift == mul(x << ((sub(shift, 1)) as u64), 2)) by (bit_vector)
+// Proofs that a given power of 2 fits in an unsigned type.
+macro_rules! lemma_pow2_no_overflow {
+    ($name:ident, $uN:ty) => {
+        verus! {
+        #[doc = "Proof that 2^n does not overflow "]
+        #[doc = stringify!($uN)]
+        #[doc = " for a given exponent n."]
+        pub proof fn $name(n: nat)
             requires
-                0 < shift < 64,
-        ;
-        assert((x << (sub(shift, 1) as u64)) == x * pow2(sub(shift, 1) as nat)) by {
-            lemma_pow2_strictly_increases((shift - 1) as nat, shift as nat);
-            lemma_mul_inequality(
-                pow2((shift - 1) as nat) as int,
-                pow2(shift as nat) as int,
-                x as int,
-            );
-            lemma_mul_is_commutative(x as int, pow2((shift - 1) as nat) as int);
-            lemma_mul_is_commutative(x as int, pow2(shift as nat) as int);
-            lemma_u64_shl_is_mul(x, (shift - 1) as u64);
+                0 <= n < <$uN>::BITS,
+            ensures
+                pow2(n) <= <$uN>::MAX,
+        {
+            lemma_pow2_strictly_increases(n, <$uN>::BITS as nat);
+            lemma2_to64();
         }
-        calc!{ (==)
-            ((x << (sub(shift, 1) as u64)) * 2);
-                {}
-            ((x * pow2(sub(shift, 1) as nat)) * 2);
-                {
-                    lemma_mul_is_associative(x as int, pow2(sub(shift, 1) as nat) as int, 2);
-                }
-            x * ((pow2(sub(shift, 1) as nat)) * 2);
-                {
-                    lemma_pow2_adds((shift - 1) as nat, 1);
-                    lemma2_to64();
-                }
-            x * pow2(shift as nat);
         }
-    }
+    };
 }
 
-} // verus!
+lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, u64);
+lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, u32);
+lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, u16);
+lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, u8);
+
+// Proofs that shift left is equivalent to multiplication by power of 2.
+macro_rules! lemma_shl_is_mul {
+    ($name:ident, $no_overflow:ident, $uN:ty) => {
+        verus! {
+        pub proof fn $name(x: $uN, shift: $uN)
+            requires
+                0 <= shift < <$uN>::BITS,
+                x * pow2(shift as nat) <= <$uN>::MAX,
+            ensures
+                x << shift == x * pow2(shift as nat),
+            decreases shift,
+        {
+            $no_overflow(shift as nat);
+            if shift == 0 {
+                assert(x << 0 == x) by (bit_vector);
+                assert(pow2(0) == 1) by (compute_only);
+            } else {
+                assert(x << shift == mul(x << ((sub(shift, 1)) as $uN), 2)) by (bit_vector)
+                    requires
+                        0 < shift < <$uN>::BITS,
+                ;
+                assert((x << (sub(shift, 1) as $uN)) == x * pow2(sub(shift, 1) as nat)) by {
+                    lemma_pow2_strictly_increases((shift - 1) as nat, shift as nat);
+                    lemma_mul_inequality(
+                        pow2((shift - 1) as nat) as int,
+                        pow2(shift as nat) as int,
+                        x as int,
+                    );
+                    lemma_mul_is_commutative(x as int, pow2((shift - 1) as nat) as int);
+                    lemma_mul_is_commutative(x as int, pow2(shift as nat) as int);
+                    $name(x, (shift - 1) as $uN);
+                }
+                calc!{ (==)
+                    ((x << (sub(shift, 1) as $uN)) * 2);
+                        {}
+                    ((x * pow2(sub(shift, 1) as nat)) * 2);
+                        {
+                            lemma_mul_is_associative(x as int, pow2(sub(shift, 1) as nat) as int, 2);
+                        }
+                    x * ((pow2(sub(shift, 1) as nat)) * 2);
+                        {
+                            lemma_pow2_adds((shift - 1) as nat, 1);
+                            lemma2_to64();
+                        }
+                    x * pow2(shift as nat);
+                }
+            }
+        }
+        }
+    };
+}
+
+lemma_shl_is_mul!(lemma_u64_shl_is_mul, lemma_u64_pow2_no_overflow, u64);
+lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_pow2_no_overflow, u32);
+lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_pow2_no_overflow, u16);
+lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_pow2_no_overflow, u8);
