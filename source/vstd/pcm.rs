@@ -6,7 +6,7 @@ verus! {
 /// Interface for ghost state that is consistent with the common
 /// presentations of partially commutative monoids (PCMs) / resource algebras.
 ///
-/// For applications, I generally advise using the
+/// For applications, the general advice is to use the
 /// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
 /// which lets you focus on updates and invariants rather than composition.
 ///
@@ -69,7 +69,10 @@ pub open spec fn frame_preserving_update<P: PCSemigroup>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
-pub open spec fn frame_preserving_update_nondeterministic<P: PCSemigroup>(a: P, bs: Set<P>) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<P: PCSemigroup>(
+    a: P,
+    bs: Set<P>,
+) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
         P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
@@ -153,17 +156,6 @@ impl<P: PCSemigroup> Resource<P> {
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    {
-        unimplemented!();
-    }
-
-    #[verifier::external_body]
-    pub proof fn copy_duplicable_part(tracked &self, new_value: P) -> (tracked out: Self)
-        requires
-            self.value() == P::op(self.value(), new_value),
-        ensures
-            out.loc() == self.loc(),
-            out.value() == new_value,
     {
         unimplemented!();
     }
