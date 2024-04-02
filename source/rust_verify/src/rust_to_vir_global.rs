@@ -3,10 +3,7 @@ use std::sync::Arc;
 use rustc_hir::{Item, ItemKind};
 use vir::ast::{IntRange, Typ, TypX, VirErr};
 
-use crate::{
-    attributes::get_verifier_attrs, context::Context, unsupported_err_unless,
-    verus_items::VerusItem,
-};
+use crate::{context::Context, unsupported_err_unless, verus_items::VerusItem};
 
 #[derive(Debug, Hash)]
 pub(crate) struct TypIgnoreImplPaths(pub Typ);
@@ -25,7 +22,7 @@ pub(crate) fn process_const_early<'tcx>(
     item: &Item<'tcx>,
 ) -> Result<(), VirErr> {
     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
     if vattrs.size_of_global {
         let err = crate::util::err_span(item.span, "invalid global size_of");
         let ItemKind::Const(_ty, generics, body_id) = item.kind else {
