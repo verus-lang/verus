@@ -4,7 +4,7 @@ use crate::set::*;
 verus! {
 
 /// Interface for ghost state that is consistent with the common
-/// presentations of PCMs / resource algebras.
+/// presentations of partially commutative monoids (PCMs) / resource algebras.
 ///
 /// For applications, I generally advise using the
 /// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
@@ -20,7 +20,7 @@ pub tracked struct Resource<P> {
 pub type Loc = int;
 
 /// See [`Resource`] for more information.
-pub trait PCM: Sized {
+pub trait PCSemigroup: Sized {
     spec fn valid(self) -> bool;
 
     spec fn op(self, other: Self) -> Self;
@@ -43,7 +43,7 @@ pub trait PCM: Sized {
     ;
 }
 
-pub trait UnitalPCM: PCM {
+pub trait PCM: PCSemigroup {
     spec fn unit() -> Self;
 
     proof fn op_unit(a: Self)
@@ -57,29 +57,29 @@ pub trait UnitalPCM: PCM {
     ;
 }
 
-pub open spec fn incl<P: PCM>(a: P, b: P) -> bool {
+pub open spec fn incl<P: PCSemigroup>(a: P, b: P) -> bool {
     exists|c| P::op(a, c) == b
 }
 
-pub open spec fn conjunct_shared<P: PCM>(a: P, b: P, c: P) -> bool {
+pub open spec fn conjunct_shared<P: PCSemigroup>(a: P, b: P, c: P) -> bool {
     forall|p: P| p.valid() && incl(a, p) && incl(b, p) ==> #[trigger] incl(c, p)
 }
 
-pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
+pub open spec fn frame_preserving_update<P: PCSemigroup>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
-pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: Set<P>) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<P: PCSemigroup>(a: P, bs: Set<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
         P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
 }
 
-pub open spec fn set_op<P: PCM>(s: Set<P>, t: P) -> Set<P> {
+pub open spec fn set_op<P: PCSemigroup>(s: Set<P>, t: P) -> Set<P> {
     Set::new(|v| exists|q| s.contains(q) && v == P::op(q, t))
 }
 
-impl<P: PCM> Resource<P> {
+impl<P: PCSemigroup> Resource<P> {
     pub open spec fn value(self) -> P;
 
     pub open spec fn loc(self) -> Loc;
@@ -119,7 +119,7 @@ impl<P: PCM> Resource<P> {
     }
 
     #[verifier::external_body]
-    pub proof fn create_unit(loc: Loc) -> (tracked out: Self) where P: UnitalPCM
+    pub proof fn create_unit(loc: Loc) -> (tracked out: Self) where P: PCM
         ensures
             out.value() == P::unit(),
             out.loc() == loc,
@@ -128,7 +128,7 @@ impl<P: PCM> Resource<P> {
     }
 
     #[verifier::external_body]
-    pub proof fn is_valid(tracked &self)
+    pub proof fn validate(tracked &self)
         ensures
             self.value().valid(),
     {
@@ -153,6 +153,17 @@ impl<P: PCM> Resource<P> {
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn copy_duplicable_part(tracked &self, new_value: P) -> (tracked out: Self)
+        requires
+            self.value() == P::op(self.value(), new_value),
+        ensures
+            out.loc() == self.loc(),
+            out.value() == new_value,
     {
         unimplemented!();
     }
@@ -186,7 +197,7 @@ impl<P: PCM> Resource<P> {
     }
 
     #[verifier::external_body]
-    pub proof fn is_valid_2(tracked &mut self, tracked other: &Self)
+    pub proof fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
         ensures
