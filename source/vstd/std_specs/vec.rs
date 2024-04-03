@@ -66,6 +66,7 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
 // be to have users call some function with a nonstandard name to perform indexing.
 /// This is a specification for the indexing operator `vec[i]`
 #[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index")]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
     requires
         i < vec.view().len(),

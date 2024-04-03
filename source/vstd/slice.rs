@@ -29,6 +29,7 @@ impl<T> SliceAdditionalSpecFns<T> for [T] {
 }
 
 #[verifier(external_body)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::slice_index_get")]
 pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
     requires
         0 <= i < slice.view().len(),
