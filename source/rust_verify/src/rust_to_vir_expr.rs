@@ -2003,6 +2003,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
             let is_index_mut = match tgt_ty.kind() {
                 TyKind::Array(_, _) => false,
+                TyKind::Slice(_) => false,
                 TyKind::Ref(_, _, Mutability::Not) => false,
                 TyKind::Ref(_, _, Mutability::Mut) => true,
                 _ => {
@@ -2027,42 +2028,23 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             };
             let (fun, typ_args) = match &**t1 {
                 TypX::Datatype(p, typ_args, _impl_paths)
-                    if p == &Arc::new(vir::ast::PathX {
-                        krate: Some(Arc::new("alloc".to_string())),
-                        segments: Arc::new(vec![
-                            Arc::new("vec".to_string()),
-                            Arc::new("Vec".to_string()),
-                        ]),
-                    }) =>
+                    if p == &vir::path!("alloc" => "vec", "Vec") =>
                 {
-                    let fun = vir::ast::FunX {
-                        path: Arc::new(vir::ast::PathX {
-                            krate: Some(Arc::new("vstd".to_string())),
-                            segments: Arc::new(vec![
-                                Arc::new("std_specs".to_string()),
-                                Arc::new("vec".to_string()),
-                                Arc::new("vec_index".to_string()),
-                            ]),
-                        }),
-                    };
+                    let fun = vir::fun!("vstd" => "std_specs", "vec", "vec_index");
                     (fun, typ_args.clone())
                 }
                 TypX::Primitive(vir::ast::Primitive::Array, typ_args) => {
-                    let fun = vir::ast::FunX {
-                        path: Arc::new(vir::ast::PathX {
-                            krate: Some(Arc::new("vstd".to_string())),
-                            segments: Arc::new(vec![
-                                Arc::new("array".to_string()),
-                                Arc::new("array_index_get".to_string()),
-                            ]),
-                        }),
-                    };
+                    let fun = vir::fun!("vstd" => "array", "array_index_get");
+                    (fun, typ_args.clone())
+                }
+                TypX::Primitive(vir::ast::Primitive::Slice, typ_args) => {
+                    let fun = vir::fun!("vstd" => "slice", "slice_index_get");
                     (fun, typ_args.clone())
                 }
                 _ => {
                     return err_span(
                         expr.span,
-                        "in exec code, Verus only supports the index operator for Vec and array types",
+                        "in exec code, Verus only supports the index operator for Vec, array, and slice types",
                     );
                 }
             };
@@ -2079,7 +2061,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
             let call_target = CallTarget::Fun(
                 vir::ast::CallTargetKind::Static,
-                Arc::new(fun),
+                fun,
                 typ_args,
                 // arbitrary impl_path
                 // REVIEW: why is this needed?
