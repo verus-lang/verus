@@ -10,8 +10,7 @@ use crate::context::Context;
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{
-    check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
-    process_predicate_bounds, typ_path_and_ident_to_vir_path,
+    def_id_to_vir_path, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
@@ -23,10 +22,10 @@ use rustc_ast::IsAuto;
 use rustc_hir::def_id::DefId;
 use rustc_hir::{
     AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
-    ItemKind, MaybeOwner, Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitFn,
-    TraitItem, TraitItemKind, TraitRef, Unsafety,
+    ItemKind, MaybeOwner, Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, QPath, TraitRef,
+    Unsafety,
 };
-use vir::def::{trait_self_type_param, Spanned};
+use vir::def::Spanned;
 
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
@@ -648,172 +647,17 @@ fn check_item<'tcx>(
             }
 
             let trait_def_id = item.owner_id.to_def_id();
-            let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def_id);
-            let (generics_params, typ_bounds) = {
-                let (generics_params, mut typ_bounds) = check_generics_bounds_with_polarity(
-                    ctxt.tcx,
-                    &ctxt.verus_items,
-                    trait_generics.span,
-                    Some(trait_generics),
-                    false,
-                    trait_def_id,
-                    None,
-                    Some(&mut *ctxt.diagnostics.borrow_mut()),
-                )?;
-                // Remove the Self: Trait bound introduced by rustc
-                Arc::make_mut(&mut typ_bounds).retain(|gb| {
-                    match &**gb {
-                        vir::ast::GenericBoundX::Trait(bnd, tp) => {
-                            if bnd == &trait_path {
-                                let gp: Vec<_> = Some(trait_self_type_param())
-                                    .into_iter()
-                                    .chain(generics_params.iter().map(|(p, _)| p.clone()))
-                                    .map(|p| Some(p))
-                                    .collect();
-                                let tp: Vec<_> = tp
-                                    .iter()
-                                    .map(|p| match &**p {
-                                        vir::ast::TypX::TypParam(p) => Some(p.clone()),
-                                        _ => None,
-                                    })
-                                    .collect();
-                                assert_eq!(*tp, *gp);
-                                return false;
-                            }
-                        }
-                        vir::ast::GenericBoundX::TypEquality(..) => {}
-                    }
-                    true
-                });
-                (generics_params, typ_bounds)
-            };
-            let mut assoc_typs: Vec<vir::ast::Ident> = Vec::new();
-            let mut assoc_typs_bounds: Vec<vir::ast::GenericBound> = Vec::new();
-            let mut methods: Vec<vir::ast::Function> = Vec::new();
-            let mut method_names: Vec<Fun> = Vec::new();
-            for trait_item_ref in *trait_items {
-                let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
-                let TraitItem {
-                    ident,
-                    owner_id,
-                    generics: item_generics,
-                    kind,
-                    span,
-                    defaultness: _,
-                } = trait_item;
-                let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
-                    ctxt.tcx,
-                    &ctxt.verus_items,
-                    item_generics.span,
-                    Some(item_generics),
-                    false,
-                    owner_id.to_def_id(),
-                    None,
-                    Some(&mut *ctxt.diagnostics.borrow_mut()),
-                )?;
-
-                let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
-                let vattrs = ctxt.get_verifier_attrs(attrs)?;
-                if vattrs.external {
-                    return err_span(
-                        *span,
-                        "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",
-                    );
-                }
-
-                match kind {
-                    TraitItemKind::Fn(sig, fun) => {
-                        let body_id = match fun {
-                            TraitFn::Provided(body_id) => CheckItemFnEither::BodyId(body_id),
-                            TraitFn::Required(param_names) => {
-                                CheckItemFnEither::ParamNames(*param_names)
-                            }
-                        };
-                        let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
-                        let fun = check_item_fn(
-                            ctxt,
-                            &mut methods,
-                            None,
-                            owner_id.to_def_id(),
-                            FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
-                            visibility(),
-                            &module_path(),
-                            attrs,
-                            sig,
-                            Some((trait_generics, trait_def_id)),
-                            item_generics,
-                            body_id,
-                            external_fn_specification_trait_method_impls,
-                        )?;
-                        if let Some(fun) = fun {
-                            method_names.push(fun);
-                        }
-                    }
-                    TraitItemKind::Type([], None) => {
-                        unsupported_err_unless!(
-                            item_generics_params.len() == 0,
-                            *span,
-                            "trait generics"
-                        );
-                        unsupported_err_unless!(
-                            item_typ_bounds.len() == 0,
-                            *span,
-                            "trait generics"
-                        );
-                        assoc_typs.push(Arc::new(ident.to_string()));
-                    }
-                    TraitItemKind::Type(_, Some(_)) => {
-                        return err_span(
-                            item.span,
-                            "Verus does not yet support associated types with a concrete type",
-                        );
-                    }
-                    TraitItemKind::Type(_generic_bounds, None) => {
-                        unsupported_err_unless!(
-                            item_generics_params.len() == 0,
-                            *span,
-                            "trait generics"
-                        );
-                        unsupported_err_unless!(
-                            item_typ_bounds.len() == 0,
-                            *span,
-                            "trait generics"
-                        );
-                        assoc_typs.push(Arc::new(ident.to_string()));
-
-                        let bounds = ctxt
-                            .tcx
-                            .item_bounds(trait_item.owner_id.def_id.to_def_id())
-                            .skip_binder();
-                        let bounds = bounds.iter().map(|p| (p, *span)).collect::<Vec<_>>();
-                        let vir_bounds = process_predicate_bounds(
-                            ctxt.tcx,
-                            trait_def_id,
-                            &ctxt.verus_items,
-                            bounds.iter(),
-                        )?;
-                        assoc_typs_bounds.extend(vir_bounds);
-                    }
-                    TraitItemKind::Const(_, _) => {
-                        return err_span(
-                            item.span,
-                            "Verus does not yet support associated constants",
-                        );
-                    }
-                }
-            }
-            let mut methods = vir::headers::make_trait_decls(methods)?;
-            vir.functions.append(&mut methods);
-            let traitx = vir::ast::TraitX {
-                name: trait_path,
-                visibility: visibility(),
-                methods: Arc::new(method_names),
-                assoc_typs: Arc::new(assoc_typs),
-                typ_params: generics_params,
-                typ_bounds,
-                assoc_typs_bounds: Arc::new(assoc_typs_bounds),
-            };
-            vir.traits.push(ctxt.spanned_new(item.span, traitx));
+            crate::rust_to_vir_trait::translate_trait(
+                ctxt,
+                vir,
+                item.span,
+                trait_def_id,
+                visibility(),
+                &module_path(),
+                trait_generics,
+                trait_items,
+                external_fn_specification_trait_method_impls,
+            )?;
         }
         ItemKind::TyAlias(_ty, _generics) => {
             // type alias (like lines of the form `type X = ...;`
