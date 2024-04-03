@@ -2549,55 +2549,63 @@ pub(crate) fn body_stm_to_air(
         if is_bit_vector_mode {
             panic! {"Error: integer_ring and bit_vector should not be used together"}
         };
+        #[cfg(feature = "singular")]
+        {
+            // parameters, requires, ensures to Singular Query
+            // in the resulting queryX::assertion, the last stmt should be ensure expression
+            let mut singular_vars: Vec<Decl> = vec![];
+            for param in params.iter() {
+                singular_vars.push(Arc::new(DeclX::Var(
+                    param.x.name.lower(),
+                    typ_to_air(ctx, &param.x.typ),
+                )));
+            }
+            let mut singular_req_stmts: Vec<Stmt> = vec![];
+            for req in reqs.iter() {
+                let error = error_with_label(
+                    &req.span,
+                    "Unspported expression in integer_ring".to_string(),
+                    "at the require clause".to_string(),
+                );
+                let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
+                singular_req_stmts.push(assert_stm);
+            }
 
-        // parameters, requires, ensures to Singular Query
-        // in the resulting queryX::assertion, the last stmt should be ensure expression
-        let mut singular_vars: Vec<Decl> = vec![];
-        for param in params.iter() {
-            singular_vars
-                .push(Arc::new(DeclX::Var(param.x.name.lower(), typ_to_air(ctx, &param.x.typ))));
+            let mut singular_ens_stmts: Vec<Stmt> = vec![];
+            for ens in post_condition.ens_exps.iter() {
+                let error = error_with_label(
+                    &ens.span,
+                    "Unspported expression in integer_ring".to_string(),
+                    "at the ensure clause".to_string(),
+                );
+                let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
+                singular_ens_stmts.push(assert_stm);
+            }
+
+            // put requires and ensures in the singular query
+            let query = Arc::new(air::ast::SingularQueryX {
+                local: Arc::new(singular_vars),
+                requires: Arc::new(singular_req_stmts),
+                ensures: Arc::new(singular_ens_stmts),
+            });
+
+            let singular_command = Arc::new(CommandX::CheckSingular(query));
+
+            state.commands.push(CommandsWithContextX::new(
+                ctx.fun
+                    .as_ref()
+                    .expect("asserts are expected to be in a function")
+                    .current_fun
+                    .clone(),
+                func_span.clone(),
+                "Singular check valid".to_string(),
+                Arc::new(vec![singular_command]),
+                ProverChoice::Singular,
+                true,
+            ));
         }
-        let mut singular_req_stmts: Vec<Stmt> = vec![];
-        for req in reqs.iter() {
-            let error = error_with_label(
-                &req.span,
-                "Unspported expression in integer_ring".to_string(),
-                "at the require clause".to_string(),
-            );
-            let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
-            singular_req_stmts.push(assert_stm);
-        }
-
-        let mut singular_ens_stmts: Vec<Stmt> = vec![];
-        for ens in post_condition.ens_exps.iter() {
-            let error = error_with_label(
-                &ens.span,
-                "Unspported expression in integer_ring".to_string(),
-                "at the ensure clause".to_string(),
-            );
-            let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
-            singular_ens_stmts.push(assert_stm);
-        }
-
-        // put requires and ensures in the singular query
-        let query = Arc::new(air::ast::SingularQueryX {
-            local: Arc::new(singular_vars),
-            requires: Arc::new(singular_req_stmts),
-            ensures: Arc::new(singular_ens_stmts),
-        });
-
-        let singular_command = Arc::new(CommandX::CheckSingular(query));
-
-        state.commands.push(CommandsWithContextX::new(
-            ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
-            func_span.clone(),
-            "Singular check valid".to_string(),
-            Arc::new(vec![singular_command]),
-            ProverChoice::Singular,
-            true,
-        ));
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = if is_nonlinear {

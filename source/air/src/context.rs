@@ -474,6 +474,7 @@ impl Context {
             CommandX::CheckValid(query) => {
                 self.check_valid(message_interface, diagnostics, &query, query_context)
             }
+            #[cfg(feature = "singular")]
             CommandX::CheckSingular(_) => {
                 panic!("CheckSingular not supported in this context");
             }

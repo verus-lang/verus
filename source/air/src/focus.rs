@@ -18,6 +18,7 @@ pub fn focus_command_on_assert_id(command: &Command, assert_id: &AssertId) -> Op
             let query = Arc::new(QueryX { local: query.local.clone(), assertion });
             Some(Arc::new(CommandX::CheckValid(query)))
         }
+        #[cfg(feature = "singular")]
         CommandX::CheckSingular(..) => {
             // TODO: what should we do here?
             None

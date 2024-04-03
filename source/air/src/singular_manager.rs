@@ -26,7 +26,7 @@ fn singular_writer_thread(requests: Receiver<Vec<u8>>, mut singular_pipe_stdin: 
             .and_then(|_| singular_pipe_stdin.flush())
             .expect("IO error: failure when sending data to Singular process across pipe");
     }
-    // singular_pipe_stdin.write_all(b"quit;\n").expect("IO error: failure quitting Singular process");
+    singular_pipe_stdin.write_all(b"quit;\n").expect("IO error: failure quitting Singular process");
 }
 
 impl SingularManager {
