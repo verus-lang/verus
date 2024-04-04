@@ -24,7 +24,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-// Proofs that shift right is equivalent to division by power of 2.
+  // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         verus! {
@@ -33,7 +33,7 @@ macro_rules! lemma_shr_is_div {
         #[doc = ", shifting x right by n is equivalent to division of x by 2^n."]
         pub proof fn $name(x: $uN, shift: $uN)
             requires
-                0 <= shift < $uN::BITS,
+                0 <= shift < <$uN>::BITS,
             ensures
                 x >> shift == x as nat / pow2(shift as nat),
             decreases shift,
@@ -45,7 +45,7 @@ macro_rules! lemma_shr_is_div {
             } else {
                 assert(x >> shift == (x >> ((sub(shift, 1)) as $uN)) / 2) by (bit_vector)
                     requires
-                        0 < shift < $uN::BITS,
+                        0 < shift < <$uN>::BITS,
                 ;
                 calc!{ (==)
                     (x >> shift) as nat;
@@ -73,9 +73,9 @@ macro_rules! lemma_shr_is_div {
         pub proof fn $name_auto()
             ensures
                 forall|x: $uN, shift: $uN|
-                    0 <= shift < $uN::BITS ==> #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
+                    0 <= shift < <$uN>::BITS ==> #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
         {
-            assert forall|x: $uN, shift: $uN| 0 <= shift < $uN::BITS implies #[trigger] (x >> shift) == x as nat
+            assert forall|x: $uN, shift: $uN| 0 <= shift < <$uN>::BITS implies #[trigger] (x >> shift) == x as nat
                 / pow2(shift as nat) by {
                 $name(x, shift);
             }
@@ -98,11 +98,11 @@ macro_rules! lemma_pow2_no_overflow {
         #[doc = " for a given exponent n."]
         pub proof fn $name(n: nat)
             requires
-                0 <= n < $uN::BITS,
+                0 <= n < <$uN>::BITS,
             ensures
-                pow2(n) <= $uN::MAX,
+                pow2(n) <= <$uN>::MAX,
         {
-            lemma_pow2_strictly_increases(n, $uN::BITS as nat);
+            lemma_pow2_strictly_increases(n, <$uN>::BITS as nat);
             lemma2_to64();
         }
 
@@ -111,9 +111,9 @@ macro_rules! lemma_pow2_no_overflow {
         #[doc = " for all exponents in bounds."]
         pub proof fn $name_auto()
             ensures
-                forall|n: nat| 0 <= n < $uN::BITS ==> #[trigger] pow2(n) <= $uN::MAX,
+                forall|n: nat| 0 <= n < <$uN>::BITS ==> #[trigger] pow2(n) <= <$uN>::MAX,
         {
-            assert forall|n: nat| 0 <= n < $uN::BITS implies #[trigger] pow2(n) <= $uN::MAX by {
+            assert forall|n: nat| 0 <= n < <$uN>::BITS implies #[trigger] pow2(n) <= <$uN>::MAX by {
                 $name(n);
             }
         }
@@ -135,8 +135,8 @@ macro_rules! lemma_shl_is_mul {
         #[doc = ", shifting x left by n is equivalent to multiplication of x by 2^n (provided no overflow)."]
         pub proof fn $name(x: $uN, shift: $uN)
             requires
-                0 <= shift < $uN::BITS,
-                x * pow2(shift as nat) <= $uN::MAX,
+                0 <= shift < <$uN>::BITS,
+                x * pow2(shift as nat) <= <$uN>::MAX,
             ensures
                 x << shift == x * pow2(shift as nat),
             decreases shift,
@@ -148,7 +148,7 @@ macro_rules! lemma_shl_is_mul {
             } else {
                 assert(x << shift == mul(x << ((sub(shift, 1)) as $uN), 2)) by (bit_vector)
                     requires
-                        0 < shift < $uN::BITS,
+                        0 < shift < <$uN>::BITS,
                 ;
                 assert((x << (sub(shift, 1) as $uN)) == x * pow2(sub(shift, 1) as nat)) by {
                     lemma_pow2_strictly_increases((shift - 1) as nat, shift as nat);
@@ -184,11 +184,11 @@ macro_rules! lemma_shl_is_mul {
         pub proof fn $name_auto()
             ensures
                 forall|x: $uN, shift: $uN|
-                    0 <= shift < $uN::BITS && x * pow2(shift as nat) <= $uN::MAX ==> #[trigger] (x << shift)
+                    0 <= shift < <$uN>::BITS && x * pow2(shift as nat) <= <$uN>::MAX ==> #[trigger] (x << shift)
                         == x * pow2(shift as nat),
         {
             assert forall|x: $uN, shift: $uN|
-                0 <= shift < $uN::BITS && x * pow2(shift as nat) <= $uN::MAX implies #[trigger] (x << shift)
+                0 <= shift < <$uN>::BITS && x * pow2(shift as nat) <= <$uN>::MAX implies #[trigger] (x << shift)
                 == x * pow2(shift as nat) by {
                 $name(x, shift);
             }
