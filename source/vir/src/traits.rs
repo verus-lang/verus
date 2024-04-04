@@ -171,7 +171,7 @@ copy by fn_call_to_vir in the rust_verify crate.  For example:
     f = vir::def::trait_inherit_default_name(&f, &impl_path)
   }
 */
-pub fn inherit_default_bodies(krate: &Krate) -> Krate {
+pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
     let mut kratex = (**krate).clone();
 
     let mut trait_map: HashMap<Path, &Trait> = HashMap::new();
@@ -180,7 +180,9 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
     // set of all impl methods (&impl_path, &trait_method_name)
     let mut method_impls: HashSet<(&Path, &Fun)> = HashSet::new();
     for tr in &krate.traits {
-        assert!(!trait_map.contains_key(&tr.x.name));
+        if trait_map.contains_key(&tr.x.name) {
+            return Err(crate::well_formed::trait_conflict_error(&trait_map[&tr.x.name], tr));
+        }
         trait_map.insert(tr.x.name.clone(), tr);
         assert!(!default_methods.contains_key(&tr.x.name));
         default_methods.insert(tr.x.name.clone(), Vec::new());
@@ -286,7 +288,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
         }
     }
 
-    Arc::new(kratex)
+    Ok(Arc::new(kratex))
 }
 
 pub(crate) fn redirect_calls_in_default_methods(

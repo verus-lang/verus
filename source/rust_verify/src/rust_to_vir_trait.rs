@@ -244,10 +244,10 @@ pub(crate) fn translate_trait<'tcx>(
             let ex_assoc_items = tcx.associated_items(ex_trait_id_for);
             let ex_assoc_item =
                 ex_assoc_items.find_by_name_and_kind(tcx, *ident, assoc_item.kind, ex_trait_id_for);
-            if let Some(ex_assoc_item) = ex_assoc_item {
-                Some(ex_assoc_item.def_id)
-            } else if is_verus_spec {
+            if is_verus_spec {
                 None
+            } else if let Some(ex_assoc_item) = ex_assoc_item {
+                Some(ex_assoc_item.def_id)
             } else {
                 let name = tcx.def_path_str(ex_trait_id_for);
                 return err_span(
@@ -293,11 +293,6 @@ pub(crate) fn translate_trait<'tcx>(
                     method_names.push(fun);
                 }
             }
-            TraitItemKind::Type([], None) => {
-                unsupported_err_unless!(item_generics_params.len() == 0, *span, "trait generics");
-                unsupported_err_unless!(item_typ_bounds.len() == 0, *span, "trait generics");
-                assoc_typs.push(Arc::new(ident.to_string()));
-            }
             TraitItemKind::Type(_, Some(_)) => {
                 return err_span(
                     trait_span,
@@ -314,6 +309,27 @@ pub(crate) fn translate_trait<'tcx>(
                 let vir_bounds =
                     process_predicate_bounds(tcx, trait_def_id, &ctxt.verus_items, bounds.iter())?;
                 assoc_typs_bounds.extend(vir_bounds);
+
+                if let Some(ex_trait_ref_for) = ex_trait_ref_for {
+                    let ex_item_id_for = ex_item_id_for.expect("ex_item_id_for");
+                    let external_predicates = tcx.item_bounds(ex_item_id_for);
+                    let proxy_predicates = tcx.item_bounds(owner_id.to_def_id());
+                    let preds1 = external_predicates.instantiate(tcx, ex_trait_ref_for.args);
+                    let preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args);
+                    // TODO, but kiw priority, since this is just a check for trusted declarations:
+                    // crate::rust_to_vir_func::predicates_match(tcx, true, &preds1.iter().collect(), &preds2.iter().collect())?;
+                    // (would need to fix up the TyKind::Alias projections inside the clauses)
+
+                    if preds1.len() != preds2.len() {
+                        return err_span(
+                            trait_span,
+                            format!(
+                                "Mismatched bounds on associated type\n{:?}\n vs.\n{:?}",
+                                preds1, preds2
+                            ),
+                        );
+                    }
+                }
             }
             TraitItemKind::Const(_, _) => {
                 return err_span(trait_span, "Verus does not yet support associated constants");

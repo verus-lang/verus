@@ -1012,7 +1012,7 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
     err
 }
 
-fn trait_conflict_error(tr1: &Trait, tr2: &Trait) -> Message {
+pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait) -> Message {
     let add_label = |err: Message, tr: &Trait| match &tr.x.proxy {
         Some(proxy) => err.primary_label(
             &proxy.span,
