@@ -1288,6 +1288,96 @@ where
     Ok(bounds)
 }
 
+pub(crate) fn check_item_external_generics<'tcx>(
+    generics: &'tcx Generics<'tcx>,
+    substs_ref: &rustc_middle::ty::GenericArgs<'tcx>,
+    skip_self: bool,
+    span: Span,
+) -> Result<(), VirErr> {
+    use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
+    // Check that the generics match (important because we do the substitution to get
+    // the types from the external definition)
+    let n_skip = if skip_self { 1 } else { 0 };
+    let mut substs_ref: Vec<_> = substs_ref.iter().skip(n_skip).collect();
+    substs_ref.retain(|arg| match arg.unpack() {
+        GenericArgKind::Const(cnst) => match (cnst.kind(), cnst.ty().kind()) {
+            (ConstKind::Value(ValTree::Leaf(ScalarInt::TRUE)), TyKind::Bool) => false,
+            _ => true,
+        },
+        _ => true,
+    });
+    let err = || {
+        err_span(
+            span,
+            format!(
+                "expected generics to match: \n expected {}\n found {}",
+                generics
+                    .params
+                    .iter()
+                    .map(|x| x.name.ident().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                substs_ref.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "),
+            ),
+        )
+    };
+
+    if substs_ref.len() != generics.params.len() {
+        return err();
+    }
+    for (generic_arg, generic_param) in substs_ref.iter().zip(generics.params.iter()) {
+        // So if we have like
+        //    struct ProxyName<X, 'a>(External<X, 'a>);
+        // We need to check the <X, 'a> line up
+        // The 'generic_param' (hir) is from ProxyName<X, 'a>
+        // and the 'generic_arg' (middle) is from the External<X, 'a>
+        let param_name = match generic_param.name {
+            rustc_hir::ParamName::Plain(ident) => ident.as_str().to_string(),
+            _ => {
+                return err();
+            }
+        };
+        use rustc_hir::GenericParamKind;
+        use rustc_hir::LifetimeParamKind;
+
+        match (generic_arg.unpack(), &generic_param.kind) {
+            (
+                GenericArgKind::Lifetime(region),
+                GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
+            ) => {
+                // I guess this check doesn't really matter since we ignore lifetimes anyway
+                match region.get_name() {
+                    Some(name) if name.as_str() == param_name => { /* okay */ }
+                    _ => {
+                        return err();
+                    }
+                }
+            }
+            (
+                GenericArgKind::Type(ty),
+                GenericParamKind::Type { default: None, synthetic: false },
+            ) => {
+                match ty.kind() {
+                    TyKind::Param(param) if param.name.as_str() == param_name => { /* okay */ }
+                    _ => {
+                        return err();
+                    }
+                }
+            }
+            (GenericArgKind::Const(_), GenericParamKind::Const { .. }) => {
+                return err_span(
+                    span,
+                    "external_type_specification: Const params not yet supported",
+                );
+            }
+            _ => {
+                return err();
+            }
+        }
+    }
+    Ok(())
+}
+
 fn check_generics_bounds_main<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,

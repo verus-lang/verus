@@ -2139,17 +2139,41 @@ fn erase_trait_item<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
     state: &mut State,
-    trait_id: DefId,
+    mut trait_id: DefId,
+    ex_trait_id_for: Option<DefId>,
     items: &[TraitItemRef],
 ) {
+    let tcx = ctxt.tcx;
+    if let Some(ex_trait_id_for) = ex_trait_id_for {
+        trait_id = ex_trait_id_for;
+    }
     for trait_item_ref in items {
-        let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
+        let mut trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let TraitItem { ident, owner_id, .. } = trait_item;
+        if let Some(ex_trait_id_for) = ex_trait_id_for {
+            let assoc_item = tcx.associated_item(owner_id.to_def_id());
+            let ex_assoc_items = tcx.associated_items(ex_trait_id_for);
+            let ex_assoc_item =
+                ex_assoc_items.find_by_name_and_kind(tcx, *ident, assoc_item.kind, ex_trait_id_for);
+            if let Some(ex_assoc_item) = ex_assoc_item {
+                let local_id = ex_assoc_item
+                    .def_id
+                    .as_local()
+                    .expect("erase_trait_item only called on locals");
+                let hir_id = tcx.local_def_id_to_hir_id(local_id);
+                trait_item =
+                    tcx.hir().trait_item(rustc_hir::TraitItemId { owner_id: hir_id.owner });
+            } else {
+                continue;
+            }
+        }
         let TraitItem { ident, owner_id, generics: _, kind, span: _, defaultness: _ } = trait_item;
         match kind {
             TraitItemKind::Fn(sig, fun) => {
-                let body_id = match fun {
-                    TraitFn::Provided(body_id) => Some(body_id),
-                    TraitFn::Required(..) => None,
+                let body_id = match (fun, ex_trait_id_for) {
+                    (TraitFn::Provided(body_id), None) => Some(body_id),
+                    (TraitFn::Required(..), None) => None,
+                    (_, Some(_)) => None,
                 };
                 let id = owner_id.to_def_id();
                 erase_fn(
@@ -2629,7 +2653,27 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             if vattrs.is_external(&ctxt.cmd_line_args) {
                                 continue;
                             }
-                            erase_trait_item(krate, &mut ctxt, &mut state, id, trait_items);
+                            let ex_trait_id_for =
+                                crate::rust_to_vir_trait::external_trait_specification_of(
+                                    tcx,
+                                    trait_items,
+                                    &vattrs,
+                                )
+                                .expect("already checked by rust_to_vir_trait")
+                                .map(|r| r.def_id);
+                            if let Some(ex_trait_id_for) = ex_trait_id_for {
+                                if ex_trait_id_for.as_local().is_none() {
+                                    continue;
+                                }
+                            }
+                            erase_trait_item(
+                                krate,
+                                &mut ctxt,
+                                &mut state,
+                                id,
+                                ex_trait_id_for,
+                                trait_items,
+                            );
                         }
                         ItemKind::Impl(impll) => {
                             if vattrs.is_external(&ctxt.cmd_line_args) {

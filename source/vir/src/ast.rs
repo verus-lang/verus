@@ -1130,6 +1130,7 @@ pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
     pub name: Path,
+    pub proxy: Option<Spanned<Path>>,
     pub visibility: Visibility,
     // REVIEW: typ_params does not yet explicitly include Self (right now, Self is implicit)
     pub typ_params: TypPositives,
