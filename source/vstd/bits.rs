@@ -24,7 +24,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-  // Proofs that shift right is equivalent to division by power of 2.
+// Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
