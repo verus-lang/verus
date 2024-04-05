@@ -27,6 +27,7 @@ use crate::calc_macro::*;
   // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
+        #[cfg(verus_keep_ghost)]
         verus! {
         #[doc = "Proof that for given x and n of type "]
         #[doc = stringify!($uN)]
@@ -92,6 +93,7 @@ lemma_shr_is_div!(lemma_u8_shr_is_div, lemma_u8_shr_is_div_auto, u8);
 // Proofs that a given power of 2 fits in an unsigned type.
 macro_rules! lemma_pow2_no_overflow {
     ($name:ident, $name_auto:ident, $uN:ty) => {
+        #[cfg(verus_keep_ghost)]
         verus! {
         #[doc = "Proof that 2^n does not overflow "]
         #[doc = stringify!($uN)]
@@ -129,6 +131,7 @@ lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, lemma_u8_pow2_no_overflow_aut
 // Proofs that shift left is equivalent to multiplication by power of 2.
 macro_rules! lemma_shl_is_mul {
     ($name:ident, $name_auto:ident, $no_overflow:ident, $uN:ty) => {
+        #[cfg(verus_keep_ghost)]
         verus! {
         #[doc = "Proof that for given x and n of type "]
         #[doc = stringify!($uN)]
