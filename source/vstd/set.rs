@@ -1,13 +1,11 @@
 use core::marker;
 
 #[allow(unused_imports)]
-use crate::map::*;
+use super::map::*;
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
@@ -447,7 +445,7 @@ pub broadcast group group_set_axioms {
 #[macro_export]
 macro_rules! set_internal {
     [$($elem:expr),* $(,)?] => {
-        $crate::set::Set::empty()
+        $crate::vstd::set::Set::empty()
             $(.insert($elem))*
     };
 }
@@ -455,7 +453,7 @@ macro_rules! set_internal {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::set::set_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
     };
 }
 

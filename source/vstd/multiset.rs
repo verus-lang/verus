@@ -1,19 +1,17 @@
 use core::marker;
 
 #[allow(unused_imports)]
-use crate::map::*;
+use super::map::*;
 #[cfg(verus_keep_ghost)]
-use crate::math::clip;
+use super::math::clip;
 #[cfg(verus_keep_ghost)]
-use crate::math::min;
+use super::math::min;
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use crate::set::*;
+use super::prelude::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::set::*;
 
 verus! {
 
@@ -604,26 +602,39 @@ pub proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: 
 
 #[macro_export]
 macro_rules! assert_multisets_equal {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
+    };
+}
+
+#[macro_export]
+macro_rules! assert_multisets_equal_internal {
     (::builtin::spec_eq($m1:expr, $m2:expr)) => {
-        assert_multisets_equal_internal!($m1, $m2)
+        $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2)
     };
     (::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
-        assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+        $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
+    };
+    (crate::builtin::spec_eq($m1:expr, $m2:expr)) => {
+        $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2)
+    };
+    (crate::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+        $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
     };
     ($m1:expr, $m2:expr $(,)?) => {
-        assert_multisets_equal!($m1, $m2, key => { })
+        $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         #[verifier::spec] let m1 = $m1;
         #[verifier::spec] let m2 = $m2;
-        ::builtin::assert_by(::builtin::equal(m1, m2), {
-            ::builtin::assert_forall_by(|$k $( : $t )?| {
-                ::builtin::ensures([
-                    ::builtin::equal(m1.count($k), m2.count($k))
+        $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(m1, m2), {
+            $crate::vstd::prelude::assert_forall_by(|$k $( : $t )?| {
+                $crate::vstd::prelude::ensures([
+                    $crate::vstd::prelude::equal(m1.count($k), m2.count($k))
                 ]);
                 { $bblock }
             });
-            ::builtin::assert_(::builtin::ext_equal(m1, m2));
+            $crate::vstd::prelude::assert_($crate::vstd::prelude::ext_equal(m1, m2));
         });
     }
 }
@@ -686,6 +697,8 @@ pub proof fn lemma_multiset_properties<V>()
     }
 }
 
+#[doc(hidden)]
+pub use assert_multisets_equal_internal;
 pub use assert_multisets_equal;
 
 } // verus!

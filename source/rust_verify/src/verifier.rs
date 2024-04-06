@@ -2390,7 +2390,7 @@ impl Verifier {
             spans: spans.clone(),
             verus_items,
             diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-            no_vstd: self.args.no_vstd,
+            no_vstd: self.args.vstd == crate::config::Vstd::NoVstd,
             arch_word_bits: None,
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
@@ -2696,6 +2696,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                                 self.rustc_args.clone(),
                                 file_loader,
                                 false,
+                                self.verifier.args.vstd,
                             );
                             if compile_status.is_err() {
                                 return;

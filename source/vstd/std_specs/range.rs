@@ -1,4 +1,5 @@
-use crate::prelude::*;
+use super::super::prelude::*;
+use super::super::view::View;
 use core::ops::Range;
 
 verus! {
@@ -40,7 +41,7 @@ pub struct RangeGhostIterator<A> {
     pub end: A,
 }
 
-impl<A: StepSpec> crate::pervasive::ForLoopGhostIteratorNew for Range<A> {
+impl<A: StepSpec> super::super::pervasive::ForLoopGhostIteratorNew for Range<A> {
     type GhostIter = RangeGhostIterator<A>;
 
     open spec fn ghost_iter(&self) -> RangeGhostIterator<A> {
@@ -48,9 +49,9 @@ impl<A: StepSpec> crate::pervasive::ForLoopGhostIteratorNew for Range<A> {
     }
 }
 
-impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for RangeGhostIterator<
-    A,
-> {
+impl<
+    A: StepSpec + core::iter::Step,
+> super::super::pervasive::ForLoopGhostIterator for RangeGhostIterator<A> {
     type ExecIter = Range<A>;
 
     type Item = A;
@@ -94,7 +95,7 @@ impl<A: StepSpec + core::iter::Step> crate::pervasive::ForLoopGhostIterator for 
     }
 }
 
-impl<A: StepSpec + core::iter::Step> crate::view::View for RangeGhostIterator<A> {
+impl<A: StepSpec + core::iter::Step> View for RangeGhostIterator<A> {
     type V = Seq<A>;
 
     // generate seq![start, start + 1, start + 2, ..., cur - 1]

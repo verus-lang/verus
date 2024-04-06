@@ -3,21 +3,21 @@ use core::marker;
 use core::{mem, mem::MaybeUninit};
 
 #[allow(unused_imports)]
-use crate::invariant::*;
+use super::invariant::*;
 #[allow(unused_imports)]
-use crate::modes::*;
+use super::modes::*;
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use crate::prelude::*;
+use super::prelude::*;
 #[allow(unused_imports)]
-use crate::set::*;
+use super::set::*;
 #[allow(unused_imports)]
-use crate::*;
+use super::*;
 
 verus! {
 
-broadcast use crate::map::group_map_axioms, crate::set::group_set_axioms;
+broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
@@ -93,7 +93,7 @@ pub ghost struct PointsToData<V> {
 #[macro_export]
 macro_rules! pcell_opt_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::cell::PointsToData {
+        $crate::vstd::cell::PointsToData {
             pcell: $pcell,
             value: $val,
         }
@@ -104,7 +104,7 @@ macro_rules! pcell_opt_internal {
 macro_rules! pcell_opt {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!(
-            $crate::cell::pcell_opt_internal!($($tail)*)
+            $crate::vstd::cell::pcell_opt_internal!($($tail)*)
         )
     }
 }
@@ -332,7 +332,7 @@ impl<T> InvCell<T> {
             self.inv(old_val),
     {
         let r;
-        crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
+        open_local_invariant!(self.perm_inv.borrow() => perm => {
             r = self.pcell.replace(Tracked(&mut perm), val);
         });
         r
@@ -347,7 +347,7 @@ impl<T: Copy> InvCell<T> {
             self.inv(val),
     {
         let r;
-        crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
+        open_local_invariant!(self.perm_inv.borrow() => perm => {
             r = *self.pcell.borrow(Tracked(&perm));
         });
         r

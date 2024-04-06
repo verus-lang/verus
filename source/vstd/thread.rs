@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::pervasive::*;
+use super::pervasive::*;
 use builtin::*;
 use builtin_macros::*;
 use core::marker;

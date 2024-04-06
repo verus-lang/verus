@@ -1,8 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::prelude::*;
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 

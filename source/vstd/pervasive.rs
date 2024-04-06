@@ -1,9 +1,7 @@
 #![allow(internal_features)]
 
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 #[cfg(not(feature = "std"))]
 macro_rules! println {
@@ -355,7 +353,7 @@ pub use builtin_macros::struct_with_invariants;
 
 verus! {
 
-use crate::view::View;
+use super::view::View;
 
 #[cfg(feature = "alloc")]
 #[verifier::external]

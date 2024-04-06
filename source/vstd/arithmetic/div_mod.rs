@@ -11,41 +11,40 @@
 //! Copyright by the contributors to the Dafny Project *
 //! SPDX-License-Identifier: MIT
 //! *******************************************************************************/
-use crate::calc_macro::*;
+use super::super::calc_macro::*;
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::prelude::*;
 
 verus! {
 
 #[allow(unused_imports)]
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::div_internals::{
+use super::super::arithmetic::internals::div_internals::{
     div_recursive,
     lemma_div_induction_auto,
     div_auto,
     div_pos,
     lemma_div_auto,
 };
-use crate::arithmetic::internals::div_internals_nonlinear as DivINL;
+use super::super::arithmetic::internals::div_internals_nonlinear as DivINL;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mod_internals::{
+use super::super::arithmetic::internals::mod_internals::{
     lemma_div_add_denominator,
     lemma_mod_auto,
     mod_recursive,
 };
-use crate::arithmetic::internals::mod_internals_nonlinear as ModINL;
+use super::super::arithmetic::internals::mod_internals_nonlinear as ModINL;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::{
+use super::internals::mul_internals::{
     group_mul_properties_internal,
     lemma_mul_induction,
     lemma_mul_induction_auto,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::general_internals::{is_le};
+use super::super::arithmetic::internals::general_internals::{is_le};
 #[cfg(verus_keep_ghost)]
-use crate::math::{add as add1, sub as sub1, div as div1};
-use crate::arithmetic::mul::*;
+use super::super::math::{add as add1, sub as sub1, div as div1};
+use super::super::arithmetic::mul::*;
 
 /*****************************************************************************
 * Division
@@ -799,7 +798,7 @@ pub broadcast proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
                 lemma_mul_basics(d);
             }
         }
-        crate::arithmetic::internals::div_internals::lemma_div_basics(d);
+        super::internals::div_internals::lemma_div_basics(d);
     }
     assert forall|i: int| i <= 0 && #[trigger] f(i) implies #[trigger] f(sub1(i, 1)) by {
         assert(d * (i - 1) + b == d * i + b - d) by {
@@ -808,7 +807,7 @@ pub broadcast proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
                 lemma_mul_basics(d);
             }
         }
-        crate::arithmetic::internals::div_internals::lemma_div_basics(d);
+        super::internals::div_internals::lemma_div_basics(d);
     }
     broadcast use group_mul_properties_internal;
 

@@ -1,8 +1,5 @@
 #![allow(unused_imports)]
-use crate::prelude::*;
-use builtin::*;
-use builtin_macros::*;
-
+use super::super::prelude::*;
 use core::sync::atomic::*;
 
 // Supports the core::sync::atomic functions

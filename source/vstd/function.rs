@@ -1,7 +1,5 @@
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 // TODO: get rid of fun_ext*
 

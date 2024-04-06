@@ -12,27 +12,26 @@
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::super::prelude::*;
 
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::general_internals::is_le;
+use super::super::super::arithmetic::internals::general_internals::is_le;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mod_internals::{
+use super::super::super::arithmetic::internals::mod_internals::{
     lemma_mod_induction_forall,
     lemma_mod_induction_forall2,
     mod_auto,
     lemma_mod_auto,
     lemma_mod_basics,
 };
-use crate::arithmetic::internals::mod_internals_nonlinear;
+use super::super::super::arithmetic::internals::mod_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::div_internals_nonlinear;
+use super::super::super::arithmetic::internals::div_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
-use crate::math::{add as add1, sub as sub1};
+use super::super::super::math::{add as add1, sub as sub1};
 
 /// This function recursively computes the quotient resulting from
 /// dividing two numbers `x` and `d`, in the case where `d > 0`

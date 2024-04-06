@@ -11,18 +11,17 @@
 //! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
-use crate::calc_macro::*;
+use super::super::calc_macro::*;
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::prelude::*;
 
 verus! {
 
-use crate::arithmetic::div_mod::*;
+use super::super::arithmetic::div_mod::*;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::general_internals::{is_le};
+use super::super::arithmetic::internals::general_internals::{is_le};
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::mul::{
+use super::super::arithmetic::mul::{
     lemma_mul_inequality,
     lemma_mul_nonnegative,
     lemma_mul_strictly_increases,
@@ -34,12 +33,9 @@ use crate::arithmetic::mul::{
     lemma_mul_is_associative,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::{
-    group_mul_properties_internal,
-    lemma_mul_induction_auto,
-};
+use super::internals::mul_internals::{group_mul_properties_internal, lemma_mul_induction_auto};
 #[cfg(verus_keep_ghost)]
-use crate::math::{sub as sub1};
+use super::super::math::{sub as sub1};
 
 /// This function performs exponentiation recursively, to compute `b`
 /// to the power of a natural number `e`

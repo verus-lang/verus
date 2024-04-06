@@ -1,10 +1,7 @@
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
-//use core::marker::PhantomData;
+use super::prelude::*;
 
 verus! {
 

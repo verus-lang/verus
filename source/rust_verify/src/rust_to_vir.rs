@@ -81,7 +81,7 @@ fn check_item<'tcx>(
     if vattrs.is_external(&ctxt.cmd_line_args)
         && crate::rust_to_vir_base::def_id_to_vir_path_option(
             ctxt.tcx,
-            &ctxt.verus_items,
+            Some(&ctxt.verus_items),
             item.owner_id.to_def_id(),
         )
         .is_none()

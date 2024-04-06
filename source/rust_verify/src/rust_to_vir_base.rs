@@ -127,16 +127,18 @@ fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident 
 
 pub(crate) fn def_id_to_vir_path_option<'tcx>(
     tcx: TyCtxt<'tcx>,
-    verus_items: &crate::verus_items::VerusItems,
+    verus_items: Option<&crate::verus_items::VerusItems>,
     def_id: DefId,
 ) -> Option<Path> {
-    let verus_item = verus_items.id_to_name.get(&def_id);
-    if let Some(VerusItem::Vstd(_, Some(fn_name))) = verus_item {
-        // interpreter.rs and def.rs refer directly to some impl methods,
-        // so make sure we use the fn_name names from `verus_items`
-        let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
-        let krate = Some(Arc::new("vstd".to_string()));
-        return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
+    if let Some(verus_items) = verus_items {
+        let verus_item = verus_items.id_to_name.get(&def_id);
+        if let Some(VerusItem::Vstd(_, Some(fn_name))) = verus_item {
+            // interpreter.rs and def.rs refer directly to some impl methods,
+            // so make sure we use the fn_name names from `verus_items`
+            let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
+            let krate = Some(Arc::new("vstd".to_string()));
+            return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
+        }
     }
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
     if let Some(path) = &path {
@@ -145,12 +147,20 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
     path
 }
 
+pub(crate) fn def_id_to_vir_path_ignoring_diagnostic_rename<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+) -> Path {
+    def_id_to_vir_path_option(tcx, None, def_id)
+        .unwrap_or_else(|| panic!("unhandled name {:?}", def_id))
+}
+
 pub(crate) fn def_id_to_vir_path<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
     def_id: DefId,
 ) -> Path {
-    def_id_to_vir_path_option(tcx, verus_items, def_id)
+    def_id_to_vir_path_option(tcx, Some(verus_items), def_id)
         .unwrap_or_else(|| panic!("unhandled name {:?}", def_id))
 }
 

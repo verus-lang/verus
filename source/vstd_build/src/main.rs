@@ -97,7 +97,7 @@ fn main() {
         verus_target_path.to_str().expect("invalid path").to_string(),
         "--multiple-errors".to_string(),
         "2".to_string(),
-        "--no-vstd".to_string(),
+        "--is-vstd".to_string(),
         "--compile".to_string(),
     ];
     if no_verify {

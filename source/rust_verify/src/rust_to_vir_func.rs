@@ -926,6 +926,8 @@ pub(crate) fn check_item_fn<'tcx>(
         publish
     };
     let autospec = vattrs.autospec.map(|method_name| {
+        let this_path =
+            crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(ctxt.tcx, id);
         let path = autospec_fun(&this_path, method_name.clone());
         Arc::new(FunX { path })
     });

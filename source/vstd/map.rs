@@ -1,10 +1,8 @@
-#[allow(unused_imports)]
-use crate::pervasive::*;
-use crate::set::*;
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+#![allow(unused_imports)]
+
+use super::pervasive::*;
+use super::prelude::*;
+use super::set::*;
 use core::marker;
 
 verus! {
@@ -454,10 +452,10 @@ impl<K, V> Map<K, V> {
     {
         #[verifier::proof]
         let mut tmp = Self::tracked_empty();
-        crate::modes::tracked_swap(&mut tmp, self);
+        super::modes::tracked_swap(&mut tmp, self);
         #[verifier::proof]
         let mut tmp = Self::tracked_map_keys(tmp, key_map);
-        crate::modes::tracked_swap(&mut tmp, self);
+        super::modes::tracked_swap(&mut tmp, self);
     }
 }
 

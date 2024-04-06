@@ -1,14 +1,12 @@
 //! Conversions to/from bytes
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
-
-use crate::pervasive::*;
-use crate::seq::*;
-use crate::seq_lib::*;
-use crate::slice::*;
-use crate::view::*;
+use super::pervasive::*;
+use super::prelude::*;
+use super::seq::*;
+use super::seq_lib::*;
+use super::slice::*;
+use super::view::*;
 
 verus! {
 

@@ -269,6 +269,7 @@ pub fn run_verus(
 
     let mut verus_args = Vec::new();
     let mut external_by_default = false;
+    let mut is_core = false;
     verus_args.push("--internal-test-mode".to_string());
 
     for option in options.iter() {
@@ -289,6 +290,9 @@ pub fn run_verus(
         } else if *option == "-V allow-inline-air" {
             verus_args.push("-V".to_string());
             verus_args.push("allow-inline-air".to_string());
+        } else if *option == "--is-core" {
+            verus_args.push("--is-core".to_string());
+            is_core = true;
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -324,7 +328,7 @@ pub fn run_verus(
     verus_args.push(entry_file.to_str().unwrap().to_string());
     verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
 
-    if import_vstd {
+    if import_vstd && !is_core {
         let lib_vstd_vir_path = verus_target_path.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
         let lib_vstd_path = verus_target_path.join("libvstd.rlib");
