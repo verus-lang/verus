@@ -351,7 +351,7 @@ pub broadcast group seq_axioms {
     axiom_seq_subrange_index,
     axiom_seq_add_len,
     axiom_seq_add_index1,
-    axiom_seq_add_index2 
+    axiom_seq_add_index2,
 }
 
 // ------------- Macros ---------------- //

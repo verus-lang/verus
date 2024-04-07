@@ -13,8 +13,8 @@ use crate::view::*;
 verus! {
 
 broadcast use seq_axioms;
-
 // Conversion between u16 and little-endian byte sequences
+
 pub closed spec fn spec_u16_to_le_bytes(x: u16) -> Seq<u8> {
     #[verusfmt::skip]
     seq![

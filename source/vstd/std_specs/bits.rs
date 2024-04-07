@@ -707,7 +707,7 @@ pub broadcast proof fn axiom_u64_leading_zeros(i: u64)
         forall|j: u64| 64 - u64_leading_zeros(i) <= j < 64 ==> #[trigger] (i >> j) & 1u64 == 0u64,
     decreases i,
 {
-    admit(); // TODO
+    admit();  // TODO
     // assert(i / 2 == (i >> 1u64)) by (bit_vector);
     // assert(((i >> 1) >> sub(63u64, 0)) & 1u64 == 0u64) by (bit_vector);
     // let x = u64_leading_zeros(i / 2) as u64;

@@ -13,7 +13,7 @@ use builtin::*;
 use builtin_macros::*;
 
 verus! {
-    
+
 broadcast use crate::set::set_axioms;
 
 impl<A> Set<A> {
@@ -855,7 +855,7 @@ pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
     ensures
         exists|a: A| s.contains(a),
 {
-    admit(); // REVIEW, should this be in `set`, or have a proof?
+    admit();  // REVIEW, should this be in `set`, or have a proof?
 }
 
 #[doc(hidden)]

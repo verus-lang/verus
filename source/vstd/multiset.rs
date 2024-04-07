@@ -417,6 +417,7 @@ pub proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
         m.update(v, mult).count(v) == mult,
 {
     broadcast use set_axioms, map_axioms, multiset_axioms;
+
     let map = Map::new(
         |key: V| (m.contains(key) || key == v),
         |key: V|
@@ -438,6 +439,7 @@ pub proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: nat, v2: V)
         m.update(v1, mult).count(v2) == m.count(v2),
 {
     broadcast use set_axioms, map_axioms, multiset_axioms;
+
     let map = Map::new(
         |key: V| (m.contains(key) || key == v1),
         |key: V|
@@ -460,6 +462,7 @@ pub proof fn lemma_insert_containment<V>(m: Multiset<V>, x: V, y: V)
         0 < m.insert(x).count(y) <==> x == y || 0 < m.count(y),
 {
     broadcast use multiset_axioms;
+
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -469,6 +472,7 @@ pub proof fn lemma_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
         m.insert(x).count(x) == m.count(x) + 1,
 {
     broadcast use multiset_axioms;
+
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -480,6 +484,7 @@ pub proof fn lemma_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
         0 < m.count(y) ==> 0 < m.insert(x).count(y),
 {
     broadcast use multiset_axioms;
+
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -489,6 +494,7 @@ pub proof fn lemma_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V
         x != y ==> m.count(y) == m.insert(x).count(y),
 {
     broadcast use multiset_axioms;
+
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -498,6 +504,7 @@ pub proof fn lemma_insert_len<V>(m: Multiset<V>, x: V)
         m.insert(x).len() == m.len() + 1,
 {
     broadcast use multiset_axioms;
+
 }
 
 // Lemmas about `intersection_with`
@@ -509,6 +516,7 @@ pub proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
         a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
 {
     broadcast use set_axioms, map_axioms, multiset_axioms;
+
     let m = Map::<V, nat>::new(
         |v: V| a.contains(v),
         |v: V| min(a.count(v) as int, b.count(v) as int) as nat,
@@ -524,6 +532,7 @@ pub proof fn lemma_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
         a.intersection_with(b).intersection_with(b) =~= a.intersection_with(b),
 {
     broadcast use multiset_axioms;
+
     assert forall|x: V| #[trigger]
         a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int) by {
         lemma_intersection_count(a, b, x);
@@ -549,6 +558,7 @@ pub proof fn lemma_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
         a.intersection_with(a.intersection_with(b)) =~= a.intersection_with(b),
 {
     broadcast use multiset_axioms;
+
     assert forall|x: V| #[trigger]
         a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int) by {
         lemma_intersection_count(a, b, x);
@@ -575,6 +585,7 @@ pub proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
         a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)),
 {
     broadcast use set_axioms, map_axioms, multiset_axioms;
+
     let m = Map::<V, nat>::new(|v: V| a.contains(v), |v: V| clip(a.count(v) - b.count(v)));
     assert(m.dom() =~= a.dom());
 }
@@ -587,6 +598,7 @@ pub proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: 
         a.count(x) <= b.count(x) ==> a.difference_with(b).count(x) == 0,
 {
     broadcast use multiset_axioms;
+
     lemma_difference_count(a, b, x);
 }
 
@@ -645,6 +657,7 @@ pub proof fn lemma_multiset_properties<V>()
                 == 0,  //from lemma_difference_bottoms_out
 {
     broadcast use multiset_axioms;
+
     assert forall|m: Multiset<V>, v: V, mult: nat| #[trigger]
         m.update(v, mult).count(v) == mult by {
         lemma_update_same(m, v, mult);

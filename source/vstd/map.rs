@@ -308,7 +308,7 @@ pub broadcast group map_axioms {
     axiom_map_remove_domain,
     axiom_map_remove_different,
     axiom_map_ext_equal,
-    axiom_map_ext_equal_deep, 
+    axiom_map_ext_equal_deep,
 }
 
 // Macros
