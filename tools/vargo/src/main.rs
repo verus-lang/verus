@@ -749,8 +749,11 @@ fn run() -> Result<(), String> {
                             return Ok(());
                         }
 
+                        let verusfmt_path =
+                            std::env::var("VARGO_VERUSFMT_PATH").unwrap_or("verusfmt".to_string());
+
                         if !vstd_no_verusfmt {
-                            match std::process::Command::new("verusfmt")
+                            match std::process::Command::new(&verusfmt_path)
                                 .arg("--version")
                                 .output()
                             {
@@ -808,7 +811,7 @@ fn run() -> Result<(), String> {
                                 .map(|x| x.path().to_owned())
                                 .collect::<Vec<_>>();
 
-                            let mut verusfmt = std::process::Command::new("verusfmt");
+                            let mut verusfmt = std::process::Command::new(&verusfmt_path);
                             if fmt_check {
                                 verusfmt.arg("--check");
                             }
