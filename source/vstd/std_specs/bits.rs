@@ -707,25 +707,24 @@ pub broadcast proof fn axiom_u64_leading_zeros(i: u64)
         forall|j: u64| 64 - u64_leading_zeros(i) <= j < 64 ==> #[trigger] (i >> j) & 1u64 == 0u64,
     decreases i,
 {
-    admit();  // TODO
-    // assert(i / 2 == (i >> 1u64)) by (bit_vector);
-    // assert(((i >> 1) >> sub(63u64, 0)) & 1u64 == 0u64) by (bit_vector);
-    // let x = u64_leading_zeros(i / 2) as u64;
-    // assert(i >> 0 == i) by (bit_vector);
-    // assert(1u64 & 1u64 == 1u64) by (bit_vector);
-    // assert(0 < x < 64 ==> ((i >> 1) >> sub(63u64, x)) == (i >> sub(63u64, sub(x, 1))))
-    //     by (bit_vector);
-    // assert(0 < x <= 64 ==> (i >> 1) >> sub(64, x) == 0 ==> i >> sub(64, sub(x, 1)) == 0)
-    //     by (bit_vector);
-    // if i != 0 {
-    //     axiom_u64_leading_zeros(i / 2);
-    // }
-    // assert forall|j: u64| 64 - u64_leading_zeros(i) <= j < 64 implies #[trigger] (i >> j) & 1u64
-    //     == 0u64 by {
-    //     let y = u64_leading_zeros(i) as u64;
-    //     assert(y <= 64 ==> i >> sub(64, y) == 0 ==> sub(64, y) <= j < 64 ==> (i >> j) & 1u64
-    //         == 0u64) by (bit_vector);
-    // }
+    assert(i / 2 == (i >> 1u64)) by (bit_vector);
+    assert(((i >> 1) >> sub(63u64, 0)) & 1u64 == 0u64) by (bit_vector);
+    let x = u64_leading_zeros(i / 2) as u64;
+    assert(i >> 0 == i) by (bit_vector);
+    assert(1u64 & 1u64 == 1u64) by (bit_vector);
+    assert(0 < x < 64 ==> ((i >> 1) >> sub(63u64, x)) == (i >> sub(63u64, sub(x, 1))))
+        by (bit_vector);
+    assert(0 < x <= 64 ==> (i >> 1) >> sub(64, x) == 0 ==> i >> sub(64, sub(x, 1)) == 0)
+        by (bit_vector);
+    if i != 0 {
+        axiom_u64_leading_zeros(i / 2);
+    }
+    assert forall|j: u64| 64 - u64_leading_zeros(i) <= j < 64 implies #[trigger] (i >> j) & 1u64
+        == 0u64 by {
+        let y = u64_leading_zeros(i) as u64;
+        assert(y <= 64 ==> i >> sub(64, y) == 0 ==> sub(64, y) <= j < 64 ==> (i >> j) & 1u64
+            == 0u64) by (bit_vector);
+    }
 }
 
 pub broadcast proof fn axiom_u64_leading_ones(i: u64)

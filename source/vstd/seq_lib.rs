@@ -1007,7 +1007,6 @@ impl<A> Seq<Seq<A>> {
     {
         broadcast use Seq::add_empty_right, Seq::push_distributes_over_add;
 
-        admit();  // TODO
         if self.len() != 0 {
             self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
             seq![self.last()].lemma_flatten_one_element();

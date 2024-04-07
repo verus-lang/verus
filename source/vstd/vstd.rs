@@ -60,7 +60,7 @@ use prelude::*;
 verus! {
 
 #[verifier::broadcast_use_by_default_when_this_crate_is_imported]
-pub broadcast group vstd_axioms {
+pub broadcast group vstd_default {
     seq::seq_axioms,
     seq_lib::seq_lib_default,
     map::map_axioms,
