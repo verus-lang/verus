@@ -250,7 +250,7 @@ pub proof fn lemma_mask_unfold(n: nat)
     }
 }
 
-pub proof fn lemma_mask_mod2(n: nat)
+pub proof fn lemma_mask_is_odd(n: nat)
     requires
         n > 0,
     ensures

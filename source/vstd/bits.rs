@@ -13,7 +13,8 @@ use crate::arithmetic::power2::{
     lemma2_to64,
     lemma_pow2_strictly_increases,
     mask,
-    lemma_mask_mod2,
+    lemma_mask_is_odd,
+    lemma_mask_div2,
 };
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::div_mod::{
@@ -250,11 +251,11 @@ pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
                 }
             add(mul(2, (x / 2) & (mask((n-1) as nat) as u64)), x % 2);
                 {
-                    // lemma_pow2_mask_div2 ?
+                    lemma_mask_div2(n);
                 }
             add(mul(2, (x / 2) & (mask(n) as u64 / 2)), x % 2);
                 {
-                    lemma_mask_mod2(n);
+                    lemma_mask_is_odd(n);
                 }
             add(mul(2, (x / 2) & (mask(n) as u64 / 2)), (x % 2) & ((mask(n) as u64) % 2));
                 {
