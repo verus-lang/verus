@@ -263,6 +263,7 @@ pub proof fn lemma_mask_unfold_auto()
     }
 }
 
+/// Proof that mask(n) is odd, for given n.
 pub proof fn lemma_mask_is_odd(n: nat)
     requires
         n > 0,
@@ -275,6 +276,16 @@ pub proof fn lemma_mask_is_odd(n: nat)
         (2 * mask((n-1) as nat) + 1) % 2;
             { lemma_mod_multiples_vanish(mask((n-1) as nat) as int, 1, 2); }
         1nat % 2;
+    }
+}
+
+/// Proof that mask(n) is odd, for all n.
+pub proof fn lemma_mask_is_odd_auto()
+    ensures
+        forall|n: nat| n > 0 ==> #[trigger] (mask(n) % 2) == 1,
+{
+    assert forall|n: nat| n > 0 implies #[trigger] (mask(n) % 2) == 1 by {
+        lemma_mask_is_odd(n);
     }
 }
 
