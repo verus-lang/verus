@@ -7,11 +7,13 @@ verus! {
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::power2::{
     pow2,
-    lemma_pow2_unroll,
+    lemma_pow2_unfold,
     lemma_pow2_adds,
     lemma_pow2_pos,
     lemma2_to64,
     lemma_pow2_strictly_increases,
+    mask,
+    lemma_mask_mod2,
 };
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::div_mod::{
@@ -213,10 +215,6 @@ lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_shl_is_mul_auto, lemma_u8_pow2_n
 
 verus! {
 
-pub open spec fn mask(n: nat) -> nat {
-    (pow2(n)-1) as nat
-}
-
 pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
     requires
         n < 64,
@@ -235,7 +233,7 @@ pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
         assert(x % 1 == 0);
     } else {
         // -----------------
-        assert(pow2(n) == 2 * pow2((n-1) as nat)) by { lemma_pow2_unroll(n); };
+        assert(pow2(n) == 2 * pow2((n-1) as nat)) by { lemma_pow2_unfold(n); };
         assert(
             x % (pow2(n) as u64)
             ==
@@ -296,57 +294,6 @@ proof fn lemma_and_split_low_bit(x: u64, m: u64) by (bit_vector)
     ensures
         x & m == add(mul(((x/2)&(m/2)),2), (x % 2) & (m % 2))
 {
-}
-
-proof fn lemma_mask_unfold(n: nat)
-    requires
-        n > 0,
-    ensures
-        mask(n) == 2*mask((n-1) as nat) + 1
-{
-    // TODO: calc!
-    assert(
-        mask(n)
-        ==
-        (pow2(n) - 1) as nat
-    );
-    lemma_pow2_unroll(n);
-    assert(
-        (pow2(n) - 1) as nat
-        ==
-        (2*pow2((n-1) as nat) - 1) as nat
-    );
-    assert(
-        (2*pow2((n-1) as nat) - 1) as nat
-        ==
-        (2*(pow2((n-1) as nat) - 1) + 1) as nat
-    );
-    lemma_pow2_pos((n-1) as nat);
-    assert(
-        (2*(pow2((n-1) as nat) - 1) + 1) as nat
-        ==
-        (2*mask((n-1) as nat) + 1) as nat
-    );
-}
-
-proof fn lemma_mask_mod2(n: nat)
-    requires
-        n > 0,
-    ensures
-        mask(n) % 2 == 1,
-{
-    lemma_mask_unfold(n);
-    assert(
-        mask(n) % 2
-        ==
-        (2 * mask((n-1) as nat) + 1) % 2
-    );
-    lemma_mod_multiples_vanish(mask((n-1) as nat) as int, 1, 2);
-    assert(
-        (2 * mask((n-1) as nat) + 1) % 2
-        ==
-        1nat % 2
-    );
 }
 
 }
