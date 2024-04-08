@@ -231,6 +231,8 @@ pub open spec fn mask(n: nat) -> nat {
     (pow2(n) - 1) as nat
 }
 
+/// Proof relating the n-bit mask to a function of the (n-1)-bit mask, for given
+/// n.
 pub proof fn lemma_mask_unfold(n: nat)
     requires
         n > 0,
@@ -247,6 +249,17 @@ pub proof fn lemma_mask_unfold(n: nat)
         (2*(pow2((n-1) as nat) - 1) + 1) as nat;
             { lemma_pow2_pos((n-1) as nat); }
         (2*mask((n-1) as nat) + 1) as nat;
+    }
+}
+
+/// Proof relating the n-bit mask to a function of the (n-1)-bit mask, for all
+/// n.
+pub proof fn lemma_mask_unfold_auto()
+    ensures
+        forall|n: nat| #![trigger mask(n)] n > 0 ==> mask(n) == 2 * mask((n - 1) as nat) + 1,
+{
+    assert forall|n: nat| n > 0 implies #[trigger] mask(n) == 2 * mask((n - 1) as nat) + 1 by {
+        lemma_mask_unfold(n);
     }
 }
 
