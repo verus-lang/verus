@@ -31,6 +31,8 @@ use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
 use crate::arithmetic::internals::general_internals::is_le;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::div_mod::lemma_mod_multiples_vanish;
+#[cfg(verus_keep_ghost)]
+use crate::calc_macro::*;
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
@@ -263,29 +265,17 @@ pub proof fn lemma_mask_unfold(n: nat)
     ensures
         mask(n) == 2*mask((n-1) as nat) + 1
 {
-    // TODO: calc!
-    assert(
-        mask(n)
-        ==
-        (pow2(n) - 1) as nat
-    );
-    lemma_pow2_unfold(n);
-    assert(
-        (pow2(n) - 1) as nat
-        ==
-        (2*pow2((n-1) as nat) - 1) as nat
-    );
-    assert(
-        (2*pow2((n-1) as nat) - 1) as nat
-        ==
-        (2*(pow2((n-1) as nat) - 1) + 1) as nat
-    );
-    lemma_pow2_pos((n-1) as nat);
-    assert(
-        (2*(pow2((n-1) as nat) - 1) + 1) as nat
-        ==
-        (2*mask((n-1) as nat) + 1) as nat
-    );
+    calc!{ (==)
+        mask(n);
+            {}
+        (pow2(n) - 1) as nat;
+            { lemma_pow2_unfold(n); }
+        (2*pow2((n-1) as nat) - 1) as nat;
+            {}
+        (2*(pow2((n-1) as nat) - 1) + 1) as nat;
+            { lemma_pow2_pos((n-1) as nat); }
+        (2*mask((n-1) as nat) + 1) as nat;
+    }
 }
 
 pub proof fn lemma_mask_mod2(n: nat)
