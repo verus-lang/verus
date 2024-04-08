@@ -226,67 +226,42 @@ pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
     lemma_u64_pow2_no_overflow(n);
     lemma_pow2_pos(n);
 
+    // Inductive proof.
     if n == 0 {
         assert(mask(0) == 0) by (compute_only);
         assert(x & 0 == 0) by (bit_vector);
         assert(pow2(0) == 1) by (compute_only);
         assert(x % 1 == 0);
     } else {
-        // -----------------
-        assert(pow2(n) == 2 * pow2((n-1) as nat)) by { lemma_pow2_unfold(n); };
-        assert(
-            x % (pow2(n) as u64)
-            ==
-            x % ((2 * pow2((n-1) as nat)) as u64)
-        );
-        // -----------------
-        lemma_pow2_pos((n-1) as nat);
-        lemma_mod_breakdown(x as int, 2, pow2((n-1) as nat) as int);
-        assert(
-            x % ((2 * pow2((n-1) as nat)) as u64)
-            ==
-            2 * ((x / 2) % (pow2((n-1) as nat) as u64)) + x % 2
-        );
-        // -----------------
-        lemma_u64_mask_is_mod(x/2, (n-1) as nat);
-        assert(
-            2 * ((x / 2) % (pow2((n-1) as nat) as u64)) + x % 2
-            ==
-            2 * ((x / 2) & (mask((n-1) as nat) as u64)) + x % 2
-        );
-        // -----------------
-        // assert(x % 2 == x & 1) by (bit_vector);
-        // assert(
-        //     2 * ((x / 2) & (mask((n-1) as nat) as u64)) + x % 2
-        //     ==
-        //     2 * ((x / 2) & (mask((n-1) as nat) as u64)) + (x & 1)
-        // );
-        // -----------------
-        //assert(
-        //    2 * ((x / 2) & (mask((n-1) as nat) as u64)) + (x & 1)
-        //    ==
-        //    2 * ((x >> 1) & (mask((n-1) as nat) as u64)) + (x & 1)
-        //) by {
-        //    lemma_u64_shr_is_div(x, 1);
-        //    lemma2_to64();
-        //}
-        // -----------------
-        assert(mask(n)/2 == mask((n-1) as nat));
-        assert(
-            2 * ((x / 2) & (mask((n-1) as nat) as u64)) + x % 2
-            ==
-            2 * ((x / 2) & (mask(n) as u64 / 2)) + (x % 2)
-        );
-        // -----------------
-        lemma_mask_mod2(n);
+        lemma_pow2_unfold(n);
         assert((x % 2) == ((x % 2) & 1)) by (bit_vector);
-        assert(
-            2 * ((x / 2) & (mask(n) as u64 / 2)) + (x % 2)
-            ==
-            2 * ((x / 2) & (mask(n) as u64 / 2)) + ((x % 2) & ((mask(n) as u64) % 2))
-        );
-        // -----------------
-        lemma_and_split_low_bit(x, mask(n) as u64);
+
+        calc!{ (==)
+            x % (pow2(n) as u64);
+                {}
+            x % ((2 * pow2((n-1) as nat)) as u64);
+                {
+                    lemma_pow2_pos((n-1) as nat);
+                    lemma_mod_breakdown(x as int, 2, pow2((n-1) as nat) as int);
+                }
+            add(mul(2, (x / 2) % (pow2((n-1) as nat) as u64)), x % 2);
+                {
+                    lemma_u64_mask_is_mod(x/2, (n-1) as nat);
+                }
+            add(mul(2, (x / 2) & (mask((n-1) as nat) as u64)), x % 2);
+                {
+                    // lemma_pow2_mask_div2 ?
+                }
+            add(mul(2, (x / 2) & (mask(n) as u64 / 2)), x % 2);
+                {
+                    lemma_mask_mod2(n);
+                }
+            add(mul(2, (x / 2) & (mask(n) as u64 / 2)), (x % 2) & ((mask(n) as u64) % 2));
+                {
+                    lemma_and_split_low_bit(x as u64, mask(n) as u64);
+                }
+            x & (mask(n) as u64)
+        }
     }
 }
 

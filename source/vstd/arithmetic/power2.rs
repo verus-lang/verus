@@ -147,34 +147,6 @@ pub proof fn lemma_pow2_strictly_increases_auto()
     }
 }
 
-/// Proof that, for the given positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
-pub proof fn lemma_pow2_mask_div2(e: nat)
-    requires
-        0 < e,
-    ensures
-        (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
-{
-    let f = |e: int| 0 < e ==> (pow2(e as nat) - 1) / 2 == pow2((e - 1) as nat) - 1;
-    assert forall|i: int| #[trigger] is_le(0, i) && f(i) implies f(i + 1) by {
-        broadcast use group_pow_properties;
-
-        lemma_pow2_auto();
-    };
-    lemma_mul_induction_auto(e as int, f);
-}
-
-/// Proof that, for any positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
-pub proof fn lemma_pow2_mask_div2_auto()
-    ensures
-        forall|e: nat| #![trigger pow2(e)] 0 < e ==> (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
-{
-    reveal(pow2);
-    assert forall|e: nat| 0 < e implies (#[trigger] (pow2(e)) - 1) / 2 == pow2((e - 1) as nat)
-        - 1 by {
-        lemma_pow2_mask_div2(e);
-    }
-}
-
 /// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64
 pub proof fn lemma2_to64()
     ensures
@@ -290,6 +262,28 @@ pub proof fn lemma_mask_mod2(n: nat)
         (2 * mask((n-1) as nat) + 1) % 2;
             { lemma_mod_multiples_vanish(mask((n-1) as nat) as int, 1, 2); }
         1nat % 2;
+    }
+}
+
+/// Proof that for given n, dividing the low n bit mask by 2 gives the low n-1
+/// bit mask.
+pub proof fn lemma_mask_div2(n: nat)
+    requires
+        n > 0
+    ensures
+        mask(n) / 2 == mask((n - 1) as nat),
+{
+    lemma_mask_unfold(n);
+}
+
+/// Proof that for all n, dividing the low n bit mask by 2 gives the low n-1
+/// bit mask.
+pub proof fn lemma_mask_div2_auto()
+    ensures
+        forall|n: nat| #![trigger mask(n)] n > 0 ==> mask(n) / 2 == mask((n - 1) as nat),
+{
+    assert forall|n: nat| n > 0 implies #[trigger] mask(n) / 2 == mask((n - 1) as nat) by {
+        lemma_mask_div2(n);
     }
 }
 
