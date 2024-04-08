@@ -98,10 +98,10 @@ pub proof fn lemma_pow2_unfold(e: nat)
     requires
         e > 0,
     ensures
-        pow2(e) == 2 * pow2((e-1) as nat)
+        pow2(e) == 2 * pow2((e - 1) as nat),
 {
     lemma_pow2(e);
-    lemma_pow2((e-1) as nat);
+    lemma_pow2((e - 1) as nat);
 }
 
 /// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2`.
@@ -228,14 +228,14 @@ pub proof fn lemma2_to64()
 
 /// Mask with low n bits set.
 pub open spec fn mask(n: nat) -> nat {
-    (pow2(n)-1) as nat
+    (pow2(n) - 1) as nat
 }
 
 pub proof fn lemma_mask_unfold(n: nat)
     requires
         n > 0,
     ensures
-        mask(n) == 2*mask((n-1) as nat) + 1
+        mask(n) == 2 * mask((n - 1) as nat) + 1,
 {
     calc!{ (==)
         mask(n);
@@ -269,7 +269,7 @@ pub proof fn lemma_mask_is_odd(n: nat)
 /// bit mask.
 pub proof fn lemma_mask_div2(n: nat)
     requires
-        n > 0
+        n > 0,
     ensures
         mask(n) / 2 == mask((n - 1) as nat),
 {

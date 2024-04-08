@@ -33,7 +33,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-  // Proofs that shift right is equivalent to division by power of 2.
+// Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
@@ -220,13 +220,12 @@ pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
     requires
         n < 64,
     ensures
-        x & (mask(n) as u64) == x % (pow2(n) as u64)
-    decreases n
+        x & (mask(n) as u64) == x % (pow2(n) as u64),
+    decreases n,
 {
     // Bounds.
     lemma_u64_pow2_no_overflow(n);
     lemma_pow2_pos(n);
-
     // Inductive proof.
     if n == 0 {
         assert(mask(0) == 0) by (compute_only);
@@ -236,7 +235,6 @@ pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
     } else {
         lemma_pow2_unfold(n);
         assert((x % 2) == ((x % 2) & 1)) by (bit_vector);
-
         calc!{ (==)
             x % (pow2(n) as u64);
                 {}
@@ -266,10 +264,11 @@ pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
     }
 }
 
-proof fn lemma_and_split_low_bit(x: u64, m: u64) by (bit_vector)
+proof fn lemma_and_split_low_bit(x: u64, m: u64)
+    by (bit_vector)
     ensures
-        x & m == add(mul(((x/2)&(m/2)),2), (x % 2) & (m % 2))
+        x & m == add(mul(((x / 2) & (m / 2)), 2), (x % 2) & (m % 2)),
 {
 }
 
-}
+} // verus!
