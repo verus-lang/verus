@@ -7,13 +7,19 @@ verus! {
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::power2::{
     pow2,
+    lemma_pow2_unroll,
     lemma_pow2_adds,
     lemma_pow2_pos,
     lemma2_to64,
     lemma_pow2_strictly_increases,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::div_mod::lemma_div_denominator;
+use crate::arithmetic::div_mod::{
+    lemma_div_denominator,
+    lemma_mod_breakdown,
+    lemma_mod_add_multiples_vanish,
+    lemma_mod_multiples_vanish,
+};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::mul::{
     lemma_mul_inequality,
@@ -24,7 +30,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-// Proofs that shift right is equivalent to division by power of 2.
+  // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
@@ -204,3 +210,143 @@ lemma_shl_is_mul!(lemma_u64_shl_is_mul, lemma_u64_shl_is_mul_auto, lemma_u64_pow
 lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_shl_is_mul_auto, lemma_u32_pow2_no_overflow, u32);
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_shl_is_mul_auto, lemma_u16_pow2_no_overflow, u16);
 lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_shl_is_mul_auto, lemma_u8_pow2_no_overflow, u8);
+
+verus! {
+
+pub open spec fn mask(n: nat) -> nat {
+    (pow2(n)-1) as nat
+}
+
+pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
+    requires
+        n < 64,
+    ensures
+        x & (mask(n) as u64) == x % (pow2(n) as u64)
+    decreases n
+{
+    // Bounds.
+    lemma_u64_pow2_no_overflow(n);
+    lemma_pow2_pos(n);
+
+    if n == 0 {
+        assert(mask(0) == 0) by (compute_only);
+        assert(x & 0 == 0) by (bit_vector);
+        assert(pow2(0) == 1) by (compute_only);
+        assert(x % 1 == 0);
+    } else {
+        // -----------------
+        assert(pow2(n) == 2 * pow2((n-1) as nat)) by { lemma_pow2_unroll(n); };
+        assert(
+            x % (pow2(n) as u64)
+            ==
+            x % ((2 * pow2((n-1) as nat)) as u64)
+        );
+        // -----------------
+        lemma_pow2_pos((n-1) as nat);
+        lemma_mod_breakdown(x as int, 2, pow2((n-1) as nat) as int);
+        assert(
+            x % ((2 * pow2((n-1) as nat)) as u64)
+            ==
+            2 * ((x / 2) % (pow2((n-1) as nat) as u64)) + x % 2
+        );
+        // -----------------
+        lemma_u64_mask_is_mod(x/2, (n-1) as nat);
+        assert(
+            2 * ((x / 2) % (pow2((n-1) as nat) as u64)) + x % 2
+            ==
+            2 * ((x / 2) & (mask((n-1) as nat) as u64)) + x % 2
+        );
+        // -----------------
+        // assert(x % 2 == x & 1) by (bit_vector);
+        // assert(
+        //     2 * ((x / 2) & (mask((n-1) as nat) as u64)) + x % 2
+        //     ==
+        //     2 * ((x / 2) & (mask((n-1) as nat) as u64)) + (x & 1)
+        // );
+        // -----------------
+        //assert(
+        //    2 * ((x / 2) & (mask((n-1) as nat) as u64)) + (x & 1)
+        //    ==
+        //    2 * ((x >> 1) & (mask((n-1) as nat) as u64)) + (x & 1)
+        //) by {
+        //    lemma_u64_shr_is_div(x, 1);
+        //    lemma2_to64();
+        //}
+        // -----------------
+        assert(mask(n)/2 == mask((n-1) as nat));
+        assert(
+            2 * ((x / 2) & (mask((n-1) as nat) as u64)) + x % 2
+            ==
+            2 * ((x / 2) & (mask(n) as u64 / 2)) + (x % 2)
+        );
+        // -----------------
+        lemma_mask_mod2(n);
+        assert((x % 2) == ((x % 2) & 1)) by (bit_vector);
+        assert(
+            2 * ((x / 2) & (mask(n) as u64 / 2)) + (x % 2)
+            ==
+            2 * ((x / 2) & (mask(n) as u64 / 2)) + ((x % 2) & ((mask(n) as u64) % 2))
+        );
+        // -----------------
+        lemma_and_split_low_bit(x, mask(n) as u64);
+    }
+}
+
+proof fn lemma_and_split_low_bit(x: u64, m: u64) by (bit_vector)
+    ensures
+        x & m == add(mul(((x/2)&(m/2)),2), (x % 2) & (m % 2))
+{
+}
+
+proof fn lemma_mask_unfold(n: nat)
+    requires
+        n > 0,
+    ensures
+        mask(n) == 2*mask((n-1) as nat) + 1
+{
+    // TODO: calc!
+    assert(
+        mask(n)
+        ==
+        (pow2(n) - 1) as nat
+    );
+    lemma_pow2_unroll(n);
+    assert(
+        (pow2(n) - 1) as nat
+        ==
+        (2*pow2((n-1) as nat) - 1) as nat
+    );
+    assert(
+        (2*pow2((n-1) as nat) - 1) as nat
+        ==
+        (2*(pow2((n-1) as nat) - 1) + 1) as nat
+    );
+    lemma_pow2_pos((n-1) as nat);
+    assert(
+        (2*(pow2((n-1) as nat) - 1) + 1) as nat
+        ==
+        (2*mask((n-1) as nat) + 1) as nat
+    );
+}
+
+proof fn lemma_mask_mod2(n: nat)
+    requires
+        n > 0,
+    ensures
+        mask(n) % 2 == 1,
+{
+    lemma_mask_unfold(n);
+    assert(
+        mask(n) % 2
+        ==
+        (2 * mask((n-1) as nat) + 1) % 2
+    );
+    lemma_mod_multiples_vanish(mask((n-1) as nat) as int, 1, 2);
+    assert(
+        (2 * mask((n-1) as nat) + 1) % 2
+        ==
+        1nat % 2
+    );
+}
+
+}
