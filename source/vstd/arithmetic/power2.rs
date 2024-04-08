@@ -94,6 +94,7 @@ pub proof fn lemma_pow2_auto()
     }
 }
 
+/// Proof relating 2^e to 2^(e-1) for a specific e.
 pub proof fn lemma_pow2_unfold(e: nat)
     requires
         e > 0,
@@ -102,6 +103,16 @@ pub proof fn lemma_pow2_unfold(e: nat)
 {
     lemma_pow2(e);
     lemma_pow2((e - 1) as nat);
+}
+
+/// Proof relating 2^e to 2^(e-1) for all e.
+pub proof fn lemma_pow2_unfold_auto()
+    ensures
+        forall|e: nat| e > 0 ==> #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
+{
+    assert forall|e: nat| e > 0 implies #[trigger] pow2(e) == 2 * pow2((e - 1) as nat) by {
+        lemma_pow2_unfold(e);
+    }
 }
 
 /// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2`.
