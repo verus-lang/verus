@@ -33,7 +33,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-// Proofs that shift right is equivalent to division by power of 2.
+  // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
@@ -214,61 +214,94 @@ lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_shl_is_mul_auto, lemma_u32_pow
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_shl_is_mul_auto, lemma_u16_pow2_no_overflow, u16);
 lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_shl_is_mul_auto, lemma_u8_pow2_no_overflow, u8);
 
-verus! {
+macro_rules! lemma_mask_is_mod {
+    ($name:ident, $name_auto:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
+        #[cfg(verus_keep_ghost)]
+        verus! {
+        pub proof fn $name(x: $uN, n: nat)
+            requires
+                n < <$uN>::BITS,
+            ensures
+                x & (mask(n) as $uN) == x % (pow2(n) as $uN),
+            decreases n,
+        {
+            // Bounds.
+            $no_overflow(n);
+            lemma_pow2_pos(n);
 
-pub proof fn lemma_u64_mask_is_mod(x: u64, n: nat)
-    requires
-        n < 64,
-    ensures
-        x & (mask(n) as u64) == x % (pow2(n) as u64),
-    decreases n,
-{
-    // Bounds.
-    lemma_u64_pow2_no_overflow(n);
-    lemma_pow2_pos(n);
-    // Inductive proof.
-    if n == 0 {
-        assert(mask(0) == 0) by (compute_only);
-        assert(x & 0 == 0) by (bit_vector);
-        assert(pow2(0) == 1) by (compute_only);
-        assert(x % 1 == 0);
-    } else {
-        lemma_pow2_unfold(n);
-        assert((x % 2) == ((x % 2) & 1)) by (bit_vector);
-        calc!{ (==)
-            x % (pow2(n) as u64);
-                {}
-            x % ((2 * pow2((n-1) as nat)) as u64);
-                {
-                    lemma_pow2_pos((n-1) as nat);
-                    lemma_mod_breakdown(x as int, 2, pow2((n-1) as nat) as int);
+            // Inductive proof.
+            if n == 0 {
+                assert(mask(0) == 0) by (compute_only);
+                assert(x & 0 == 0) by (bit_vector);
+                assert(pow2(0) == 1) by (compute_only);
+                assert(x % 1 == 0);
+            } else {
+                lemma_pow2_unfold(n);
+                assert((x % 2) == ((x % 2) & 1)) by (bit_vector);
+                calc!{ (==)
+                    x % (pow2(n) as $uN);
+                        {}
+                    x % ((2 * pow2((n-1) as nat)) as $uN);
+                        {
+                            lemma_pow2_pos((n-1) as nat);
+                            lemma_mod_breakdown(x as int, 2, pow2((n-1) as nat) as int);
+                        }
+                    add(mul(2, (x / 2) % (pow2((n-1) as nat) as $uN)), x % 2);
+                        {
+                            $name(x/2, (n-1) as nat);
+                        }
+                    add(mul(2, (x / 2) & (mask((n-1) as nat) as $uN)), x % 2);
+                        {
+                            lemma_mask_div2(n);
+                        }
+                    add(mul(2, (x / 2) & (mask(n) as $uN / 2)), x % 2);
+                        {
+                            lemma_mask_is_odd(n);
+                        }
+                    add(mul(2, (x / 2) & (mask(n) as $uN / 2)), (x % 2) & ((mask(n) as $uN) % 2));
+                        {
+                            $and_split_low_bit(x as $uN, mask(n) as $uN);
+                        }
+                    x & (mask(n) as $uN)
                 }
-            add(mul(2, (x / 2) % (pow2((n-1) as nat) as u64)), x % 2);
-                {
-                    lemma_u64_mask_is_mod(x/2, (n-1) as nat);
-                }
-            add(mul(2, (x / 2) & (mask((n-1) as nat) as u64)), x % 2);
-                {
-                    lemma_mask_div2(n);
-                }
-            add(mul(2, (x / 2) & (mask(n) as u64 / 2)), x % 2);
-                {
-                    lemma_mask_is_odd(n);
-                }
-            add(mul(2, (x / 2) & (mask(n) as u64 / 2)), (x % 2) & ((mask(n) as u64) % 2));
-                {
-                    lemma_and_split_low_bit(x as u64, mask(n) as u64);
-                }
-            x & (mask(n) as u64)
+            }
         }
-    }
+
+        proof fn $and_split_low_bit(x: $uN, m: $uN)
+            by (bit_vector)
+            ensures
+                x & m == add(mul(((x / 2) & (m / 2)), 2), (x % 2) & (m % 2)),
+        {
+        }
+        }
+    };
 }
 
-proof fn lemma_and_split_low_bit(x: u64, m: u64)
-    by (bit_vector)
-    ensures
-        x & m == add(mul(((x / 2) & (m / 2)), 2), (x % 2) & (m % 2)),
-{
-}
-
-} // verus!
+lemma_mask_is_mod!(
+    lemma_u64_mask_is_mod,
+    lemma_u64_mask_is_mod_auto,
+    lemma_u64_and_split_low_bit,
+    lemma_u64_pow2_no_overflow,
+    u64
+);
+lemma_mask_is_mod!(
+    lemma_u32_mask_is_mod,
+    lemma_u32_mask_is_mod_auto,
+    lemma_u32_and_split_low_bit,
+    lemma_u32_pow2_no_overflow,
+    u32
+);
+lemma_mask_is_mod!(
+    lemma_u16_mask_is_mod,
+    lemma_u16_mask_is_mod_auto,
+    lemma_u16_and_split_low_bit,
+    lemma_u16_pow2_no_overflow,
+    u16
+);
+lemma_mask_is_mod!(
+    lemma_u8_mask_is_mod,
+    lemma_u8_mask_is_mod_auto,
+    lemma_u8_and_split_low_bit,
+    lemma_u8_pow2_no_overflow,
+    u8
+);
