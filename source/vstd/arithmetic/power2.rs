@@ -284,18 +284,13 @@ pub proof fn lemma_mask_mod2(n: nat)
     ensures
         mask(n) % 2 == 1,
 {
-    lemma_mask_unfold(n);
-    assert(
-        mask(n) % 2
-        ==
-        (2 * mask((n-1) as nat) + 1) % 2
-    );
-    lemma_mod_multiples_vanish(mask((n-1) as nat) as int, 1, 2);
-    assert(
-        (2 * mask((n-1) as nat) + 1) % 2
-        ==
-        1nat % 2
-    );
+    calc!{ (==)
+        mask(n) % 2;
+            { lemma_mask_unfold(n); }
+        (2 * mask((n-1) as nat) + 1) % 2;
+            { lemma_mod_multiples_vanish(mask((n-1) as nat) as int, 1, 2); }
+        1nat % 2;
+    }
 }
 
 } // verus!
