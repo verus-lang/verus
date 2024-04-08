@@ -218,6 +218,9 @@ macro_rules! lemma_mask_is_mod {
     ($name:ident, $name_auto:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
+        #[doc = "Proof that for given n and x of type "]
+        #[doc = stringify!($uN)]
+        #[doc = ", and with the low n-bit mask is equivalent to modulo 2^n."]
         pub proof fn $name(x: $uN, n: nat)
             requires
                 n < <$uN>::BITS,
@@ -267,6 +270,9 @@ macro_rules! lemma_mask_is_mod {
             }
         }
 
+        // TODO(mbm): add auto lemma
+
+        // Helper lemma breaking an and operation into the low bit and the rest.
         proof fn $and_split_low_bit(x: $uN, m: $uN)
             by (bit_vector)
             ensures
