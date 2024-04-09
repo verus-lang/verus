@@ -322,4 +322,83 @@ pub proof fn lemma_mask_div2_auto()
     }
 }
 
+/// Proof establishing the concrete values of all masks of bit sizes from 0 to
+/// 32, and 64.
+pub proof fn lemma_mask_values()
+    ensures
+        mask(0) == 0x0,
+        mask(1) == 0x1,
+        mask(2) == 0x3,
+        mask(3) == 0x7,
+        mask(4) == 0xf,
+        mask(5) == 0x1f,
+        mask(6) == 0x3f,
+        mask(7) == 0x7f,
+        mask(8) == 0xff,
+        mask(9) == 0x1ff,
+        mask(10) == 0x3ff,
+        mask(11) == 0x7ff,
+        mask(12) == 0xfff,
+        mask(13) == 0x1fff,
+        mask(14) == 0x3fff,
+        mask(15) == 0x7fff,
+        mask(16) == 0xffff,
+        mask(17) == 0x1ffff,
+        mask(18) == 0x3ffff,
+        mask(19) == 0x7ffff,
+        mask(20) == 0xfffff,
+        mask(21) == 0x1fffff,
+        mask(22) == 0x3fffff,
+        mask(23) == 0x7fffff,
+        mask(24) == 0xffffff,
+        mask(25) == 0x1ffffff,
+        mask(26) == 0x3ffffff,
+        mask(27) == 0x7ffffff,
+        mask(28) == 0xfffffff,
+        mask(29) == 0x1fffffff,
+        mask(30) == 0x3fffffff,
+        mask(31) == 0x7fffffff,
+        mask(32) == 0xffffffff,
+        mask(64) == 0xffffffffffffffff,
+{
+    reveal(pow2);
+    #[verusfmt::skip]
+    assert(
+        mask(0) == 0x0 &&
+        mask(1) == 0x1 &&
+        mask(2) == 0x3 &&
+        mask(3) == 0x7 &&
+        mask(4) == 0xf &&
+        mask(5) == 0x1f &&
+        mask(6) == 0x3f &&
+        mask(7) == 0x7f &&
+        mask(8) == 0xff &&
+        mask(9) == 0x1ff &&
+        mask(10) == 0x3ff &&
+        mask(11) == 0x7ff &&
+        mask(12) == 0xfff &&
+        mask(13) == 0x1fff &&
+        mask(14) == 0x3fff &&
+        mask(15) == 0x7fff &&
+        mask(16) == 0xffff &&
+        mask(17) == 0x1ffff &&
+        mask(18) == 0x3ffff &&
+        mask(19) == 0x7ffff &&
+        mask(20) == 0xfffff &&
+        mask(21) == 0x1fffff &&
+        mask(22) == 0x3fffff &&
+        mask(23) == 0x7fffff &&
+        mask(24) == 0xffffff &&
+        mask(25) == 0x1ffffff &&
+        mask(26) == 0x3ffffff &&
+        mask(27) == 0x7ffffff &&
+        mask(28) == 0xfffffff &&
+        mask(29) == 0x1fffffff &&
+        mask(30) == 0x3fffffff &&
+        mask(31) == 0x7fffffff &&
+        mask(32) == 0xffffffff &&
+        mask(64) == 0xffffffffffffffff
+    ) by (compute_only);
+}
+
 } // verus!
