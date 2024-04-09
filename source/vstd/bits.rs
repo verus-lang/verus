@@ -33,7 +33,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-  // Proofs that shift right is equivalent to division by power of 2.
+// Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $name_auto:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
@@ -218,7 +218,7 @@ macro_rules! lemma_mask_is_mod {
     ($name:ident, $name_auto:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
-        #[doc = "Proof that for given n and x of type "]
+        #[doc = "Proof that for given natural n and x of type "]
         #[doc = stringify!($uN)]
         #[doc = ", and with the low n-bit mask is equivalent to modulo 2^n."]
         pub proof fn $name(x: $uN, n: nat)
@@ -270,7 +270,17 @@ macro_rules! lemma_mask_is_mod {
             }
         }
 
-        // TODO(mbm): add auto lemma
+        #[doc = "Proof that for all natural n and x of type "]
+        #[doc = stringify!($uN)]
+        #[doc = ", and with the low n-bit mask is equivalent to modulo 2^n."]
+        pub proof fn $name_auto()
+            ensures
+                forall|x: $uN, n: nat| n < <$uN>::BITS ==> #[trigger] (x & (mask(n) as $uN)) == (x % (pow2(n) as $uN)),
+        {
+            assert forall|x: $uN, n: nat| n < <$uN>::BITS implies #[trigger] (x & (mask(n) as $uN)) == (x % (pow2(n) as $uN)) by {
+                $name(x, n);
+            }
+        }
 
         // Helper lemma breaking an and operation into the low bit and the rest.
         proof fn $and_split_low_bit(x: $uN, m: $uN)
