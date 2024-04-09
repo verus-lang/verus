@@ -766,9 +766,10 @@ fn run() -> Result<(), String> {
                                     }
                                     let verusfmt_version_stdout = String::from_utf8(output.stdout)
                                         .map_err(|_| format!("invalid output from verusfmt"))?;
-                                    let verusfmt_version_re =
-                                        Regex::new(r"^verusfmt ([0-9]+)\.([0-9]+)\.([0-9]+)\n$")
-                                            .unwrap();
+                                    let verusfmt_version_re = Regex::new(
+                                        r"^verusfmt ([0-9]+)\.([0-9]+)\.([0-9]+)(?:-.*)?\n$",
+                                    )
+                                    .unwrap();
                                     let verusfmt_version = verusfmt_version_re
                                         .captures(&verusfmt_version_stdout)
                                         .ok_or(format!("invalid output from verusfmt"))?
