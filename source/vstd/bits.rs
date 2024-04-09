@@ -17,12 +17,7 @@ use crate::arithmetic::power2::{
     lemma_mask_div2,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::div_mod::{
-    lemma_div_denominator,
-    lemma_mod_breakdown,
-    lemma_mod_add_multiples_vanish,
-    lemma_mod_multiples_vanish,
-};
+use crate::arithmetic::div_mod::{lemma_div_denominator, lemma_mod_breakdown};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::mul::{
     lemma_mul_inequality,
