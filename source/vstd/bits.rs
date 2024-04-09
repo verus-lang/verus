@@ -209,6 +209,7 @@ lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_shl_is_mul_auto, lemma_u32_pow
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_shl_is_mul_auto, lemma_u16_pow2_no_overflow, u16);
 lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_shl_is_mul_auto, lemma_u8_pow2_no_overflow, u8);
 
+// Proofs that and with mask is equivalent to modulo with power of two.
 macro_rules! lemma_mask_is_mod {
     ($name:ident, $name_auto:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
