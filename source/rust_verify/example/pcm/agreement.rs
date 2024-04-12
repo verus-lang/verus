@@ -55,8 +55,13 @@ impl <T> AgreementResourceValue<T>
     }
 }
 
-impl <T> PCSemigroup for AgreementResourceValue<T>
+impl <T> PCM for AgreementResourceValue<T>
 {
+    open spec fn valid(self) -> bool
+    {
+        !(self is Invalid)
+    }
+
     open spec fn op(self, other: Self) -> Self
     {
         match (self, other) {
@@ -69,9 +74,9 @@ impl <T> PCSemigroup for AgreementResourceValue<T>
         }
     }
 
-    open spec fn valid(self) -> bool
+    open spec fn unit() -> Self
     {
-        !(self is Invalid)
+        AgreementResourceValue::<T>::Empty{ }
     }
 
     proof fn closed_under_incl(a: Self, b: Self)
@@ -84,14 +89,6 @@ impl <T> PCSemigroup for AgreementResourceValue<T>
 
     proof fn associative(a: Self, b: Self, c: Self)
     {
-    }
-}
-
-impl <T> PCM for AgreementResourceValue<T>
-{
-    open spec fn unit() -> Self
-    {
-        AgreementResourceValue::<T>::Empty{ }
     }
 
     proof fn op_unit(a: Self)

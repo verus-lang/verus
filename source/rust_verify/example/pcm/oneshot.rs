@@ -94,10 +94,14 @@ pub enum OneShotResourceValue
 }
 
 // To use `OneShotResourceValue` as a resource, we have to implement
-// `PCSemigroup` and `PCM`, showing how to use it in a resource
-// algebra.
-impl PCSemigroup for OneShotResourceValue
+// `PCM`, showing how to use it in a resource algebra.
+impl PCM for OneShotResourceValue
 {
+    open spec fn valid(self) -> bool
+    {
+        !(self is Invalid)
+    }
+
     open spec fn op(self, other: Self) -> Self
     {
         match (self, other) {
@@ -110,9 +114,9 @@ impl PCSemigroup for OneShotResourceValue
         }
     }
 
-    open spec fn valid(self) -> bool
+    open spec fn unit() -> Self
     {
-        !(self is Invalid)
+        OneShotResourceValue::Empty{ }
     }
 
     proof fn closed_under_incl(a: Self, b: Self)
@@ -125,14 +129,6 @@ impl PCSemigroup for OneShotResourceValue
 
     proof fn associative(a: Self, b: Self, c: Self)
     {
-    }
-}
-
-impl PCM for OneShotResourceValue
-{
-    open spec fn unit() -> Self
-    {
-        OneShotResourceValue::Empty{ }
     }
 
     proof fn op_unit(a: Self)

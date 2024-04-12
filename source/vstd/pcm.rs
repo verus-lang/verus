@@ -20,10 +20,12 @@ pub tracked struct Resource<P> {
 pub type Loc = int;
 
 /// See [`Resource`] for more information.
-pub trait PCSemigroup: Sized {
+pub trait PCM: Sized {
     spec fn valid(self) -> bool;
 
     spec fn op(self, other: Self) -> Self;
+
+    spec fn unit() -> Self;
 
     proof fn closed_under_incl(a: Self, b: Self)
         requires
@@ -41,10 +43,6 @@ pub trait PCSemigroup: Sized {
         ensures
             Self::op(a, Self::op(b, c)) == Self::op(Self::op(a, b), c),
     ;
-}
-
-pub trait PCM: PCSemigroup {
-    spec fn unit() -> Self;
 
     proof fn op_unit(a: Self)
         ensures
@@ -57,19 +55,19 @@ pub trait PCM: PCSemigroup {
     ;
 }
 
-pub open spec fn incl<P: PCSemigroup>(a: P, b: P) -> bool {
+pub open spec fn incl<P: PCM>(a: P, b: P) -> bool {
     exists|c| P::op(a, c) == b
 }
 
-pub open spec fn conjunct_shared<P: PCSemigroup>(a: P, b: P, c: P) -> bool {
+pub open spec fn conjunct_shared<P: PCM>(a: P, b: P, c: P) -> bool {
     forall|p: P| p.valid() && incl(a, p) && incl(b, p) ==> #[trigger] incl(c, p)
 }
 
-pub open spec fn frame_preserving_update<P: PCSemigroup>(a: P, b: P) -> bool {
+pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
-pub open spec fn frame_preserving_update_nondeterministic<P: PCSemigroup>(
+pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(
     a: P,
     bs: Set<P>,
 ) -> bool {
@@ -78,11 +76,11 @@ pub open spec fn frame_preserving_update_nondeterministic<P: PCSemigroup>(
         P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
 }
 
-pub open spec fn set_op<P: PCSemigroup>(s: Set<P>, t: P) -> Set<P> {
+pub open spec fn set_op<P: PCM>(s: Set<P>, t: P) -> Set<P> {
     Set::new(|v| exists|q| s.contains(q) && v == P::op(q, t))
 }
 
-impl<P: PCSemigroup> Resource<P> {
+impl<P: PCM> Resource<P> {
     pub open spec fn value(self) -> P;
 
     pub open spec fn loc(self) -> Loc;
@@ -122,7 +120,7 @@ impl<P: PCSemigroup> Resource<P> {
     }
 
     #[verifier::external_body]
-    pub proof fn create_unit(loc: Loc) -> (tracked out: Self) where P: PCM
+    pub proof fn create_unit(loc: Loc) -> (tracked out: Self)
         ensures
             out.value() == P::unit(),
             out.loc() == loc,

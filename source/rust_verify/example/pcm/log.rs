@@ -68,8 +68,13 @@ pub open spec fn is_prefix<T>(s1: Seq<T>, s2: Seq<T>) -> bool
     &&& forall |i| 0 <= i < s1.len() ==> s1[i] == s2[i]
 }
 
-impl <T> PCSemigroup for LogResourceValue<T>
+impl <T> PCM for LogResourceValue<T>
 {
+    open spec fn valid(self) -> bool
+    {
+        &&& !(self is Invalid)
+    }
+
     open spec fn op(self, other: Self) -> Self
     {
         match (self, other) {
@@ -90,10 +95,10 @@ impl <T> PCSemigroup for LogResourceValue<T>
             (_, _) => Self::Invalid,
         }
     }
-
-    open spec fn valid(self) -> bool
+    
+    open spec fn unit() -> Self
     {
-        &&& !(self is Invalid)
+        Self::PrefixKnowledge{ prefix: Seq::<T>::empty() }
     }
 
     proof fn closed_under_incl(a: Self, b: Self)
@@ -109,14 +114,6 @@ impl <T> PCSemigroup for LogResourceValue<T>
     {
         assert(forall |log1: Seq<T>, log2: Seq<T>| is_prefix(log1, log2) && is_prefix(log2, log1) <==> log1 =~= log2);
         assert(forall |log| is_prefix(log, Seq::<T>::empty()) ==> log =~= Seq::<T>::empty());
-    }
-}
-
-impl <T> PCM for LogResourceValue<T>
-{
-    open spec fn unit() -> Self
-    {
-        Self::PrefixKnowledge{ prefix: Seq::<T>::empty() }
     }
 
     proof fn op_unit(a: Self)

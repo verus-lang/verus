@@ -24,25 +24,6 @@ pub open spec fn combine_values<P: PCM>(values: Seq<P>) -> P
     }
 }
 
-/// Provides two quantified facts about a specific partially
-/// commutative semigroup: that it's closed under inclusion and
-/// that it's commutative. For instance, the latter
-/// fact is `forall |a, b| P::op(a, b) == P::op(b, a)`.
-/// Note that, to avoid trigger loops, it doesn't provide
-/// associativity.
-pub proof fn lemma_pcsemigroup_properties<P: PCSemigroup>()
-    ensures
-        forall|a: P, b: P| (#[trigger] P::op(a, b)).valid() ==> a.valid(),
-        forall|a: P, b: P| (#[trigger] P::op(a, b)) == P::op(b, a),
-{
-    assert forall|a: P, b: P| (#[trigger] P::op(a, b)).valid() implies a.valid() by {
-        P::closed_under_incl(a, b);
-    }
-    assert forall|a: P, b: P| (#[trigger] P::op(a, b)) == P::op(b, a) by {
-        P::commutative(a, b);
-    }
-}
-
 /// Provides four quantified facts about a partially commutative
 /// monoid: that it's closed under inclusion, that it's commutative,
 /// that it's a monoid, and that its unit element is valid. Note that,
@@ -54,7 +35,12 @@ pub proof fn lemma_pcm_properties<P: PCM>()
         forall|a: P| (#[trigger] P::op(a, P::unit())) == a,
         P::valid(P::unit()),
 {
-    lemma_pcsemigroup_properties::<P>();
+    assert forall|a: P, b: P| (#[trigger] P::op(a, b)).valid() implies a.valid() by {
+        P::closed_under_incl(a, b);
+    }
+    assert forall|a: P, b: P| (#[trigger] P::op(a, b)) == P::op(b, a) by {
+        P::commutative(a, b);
+    }
     assert forall|a: P| P::op(a, P::unit()) == a by {
         P::op_unit(a);
     }
