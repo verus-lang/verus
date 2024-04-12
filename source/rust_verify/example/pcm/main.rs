@@ -13,4 +13,4 @@ verus! {
 pub fn main() {
 }
 
-}
+} // verus!

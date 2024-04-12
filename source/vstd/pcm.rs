@@ -67,10 +67,7 @@ pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
-pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(
-    a: P,
-    bs: Set<P>,
-) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: Set<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
         P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()

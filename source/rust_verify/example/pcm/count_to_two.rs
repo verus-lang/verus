@@ -23,8 +23,7 @@ verus! {
 // one-shot or knowledge that that one-shot has been performed
 //
 // `oneshot1_inv_half` -- as above, but for thread 1's one-shot
-pub struct CounterTrackedState
-{
+pub struct CounterTrackedState {
     pub x_perm: PermissionU32,
     pub oneshot0_inv_half: OneShotResource,
     pub oneshot1_inv_half: OneShotResource,
@@ -39,8 +38,7 @@ pub struct CounterTrackedState
 // `oneshot0_id` -- the ID of thread 0's one-shot
 //
 // `oneshot1_id` -- the ID of thread 1's one-shot
-pub struct CounterInvariantConstants
-{
+pub struct CounterInvariantConstants {
     pub x_id: int,
     pub oneshot0_id: int,
     pub oneshot1_id: int,
@@ -48,25 +46,37 @@ pub struct CounterInvariantConstants
 
 // This is the invariant predicate that will be maintained for the
 // `CounterTrackedState`.
-pub struct CounterInvariantPredicate { }
-impl InvariantPredicate<CounterInvariantConstants, CounterTrackedState> for CounterInvariantPredicate {
+pub struct CounterInvariantPredicate {}
+
+impl InvariantPredicate<
+    CounterInvariantConstants,
+    CounterTrackedState,
+> for CounterInvariantPredicate {
     open spec fn inv(c: CounterInvariantConstants, cts: CounterTrackedState) -> bool {
         // The IDs of the resources held match those in the constants
         &&& cts.x_perm@.patomic == c.x_id
         &&& cts.oneshot0_inv_half.id() == c.oneshot0_id
-        &&& cts.oneshot1_inv_half.id() == c.oneshot1_id
-
+        &&& cts.oneshot1_inv_half.id()
+            == c.oneshot1_id
         // For each thread's one-shot, the invariant holds a resource that's either
         // (1) half authority to complete that one-shot or (2) knowledge that that
         // one-shot is complete.
-        &&& cts.oneshot0_inv_half@ is HalfRightToComplete || cts.oneshot0_inv_half@ is Complete
-        &&& cts.oneshot1_inv_half@ is HalfRightToComplete || cts.oneshot1_inv_half@ is Complete
 
+        &&& cts.oneshot0_inv_half@ is HalfRightToComplete || cts.oneshot0_inv_half@ is Complete
+        &&& cts.oneshot1_inv_half@ is HalfRightToComplete
+            || cts.oneshot1_inv_half@ is Complete
         // The key invariant is that the value of `x` is the count
         // of how many threads' one-shots have completed.
-        &&& cts.x_perm@.value ==
-            (if cts.oneshot0_inv_half@ is Complete { 1int } else { 0int }) +
-            (if cts.oneshot1_inv_half@ is Complete { 1int } else { 0int })
+
+        &&& cts.x_perm@.value == (if cts.oneshot0_inv_half@ is Complete {
+            1int
+        } else {
+            0int
+        }) + (if cts.oneshot1_inv_half@ is Complete {
+            1int
+        } else {
+            0int
+        })
     }
 }
 
@@ -75,17 +85,16 @@ impl InvariantPredicate<CounterInvariantConstants, CounterTrackedState> for Coun
 //
 // `x` -- the actual counter implemented as an atomic u32
 // `inv` -- the invariant holding the shared counter tracked state
-pub struct CounterSharedState
-{
+pub struct CounterSharedState {
     pub x: PAtomicU32,
-    pub inv: Tracked<AtomicInvariant<CounterInvariantConstants, CounterTrackedState, CounterInvariantPredicate>>,
+    pub inv: Tracked<
+        AtomicInvariant<CounterInvariantConstants, CounterTrackedState, CounterInvariantPredicate>,
+    >,
 }
 
-impl CounterSharedState
-{
+impl CounterSharedState {
     // This is the well-formedness predicate for a `CounterSharedState`.
-    pub open spec fn wf(self) -> bool
-    {
+    pub open spec fn wf(self) -> bool {
         &&& self.x.id() == self.inv@.constant().x_id
         &&& self.inv@.namespace() == 888
     }
@@ -94,16 +103,20 @@ impl CounterSharedState
     // of the one-shot associated with the given thread.
     pub open spec fn get_oneshot_id(self, which_thread: int) -> int
         recommends
-            which_thread == 0 || which_thread == 1
+            which_thread == 0 || which_thread == 1,
     {
         let c = self.inv@.constant();
-        if which_thread == 0 { c.oneshot0_id } else { c.oneshot1_id }
+        if which_thread == 0 {
+            c.oneshot0_id
+        } else {
+            c.oneshot1_id
+        }
     }
 
     // This function creates a new `CounterSharedState`.
     pub fn new(
         Tracked(oneshot0_inv_half): Tracked<OneShotResource>,
-        Tracked(oneshot1_inv_half): Tracked<OneShotResource>
+        Tracked(oneshot1_inv_half): Tracked<OneShotResource>,
     ) -> (result: Arc<Self>)
         requires
             oneshot0_inv_half@ is HalfRightToComplete,
@@ -115,23 +128,19 @@ impl CounterSharedState
     {
         // Create the atomic variable to be shared among threads.
         let (x, Tracked(x_perm)): (PAtomicU32, Tracked<PermissionU32>) = PAtomicU32::new(0);
-        
         // Create the `CounterTrackedState`.
-        let tracked cts = CounterTrackedState{ x_perm, oneshot0_inv_half, oneshot1_inv_half };
-
+        let tracked cts = CounterTrackedState { x_perm, oneshot0_inv_half, oneshot1_inv_half };
         // Create the invariant.
         let ghost c = CounterInvariantConstants {
             x_id: x.id(),
             oneshot0_id: oneshot0_inv_half.id(),
             oneshot1_id: oneshot1_inv_half.id(),
         };
-        assert(CounterInvariantPredicate::inv(c, cts)); // This is obvious, so no proof is needed.
+        assert(CounterInvariantPredicate::inv(c, cts));  // This is obvious, so no proof is needed.
         let inv = Tracked(AtomicInvariant::new(c, cts, 888));
-
         // Create the shared state to be shared among the threads
         // using Arcs.
-
-        Arc::new(CounterSharedState{ x, inv })
+        Arc::new(CounterSharedState { x, inv })
     }
 
     // This function reads the value of `x` from the `PAtomicU32`
@@ -143,7 +152,7 @@ impl CounterSharedState
     pub fn read_x(
         self: &Arc<Self>,
         Tracked(oneshot0_complete): Tracked<OneShotResource>,
-        Tracked(oneshot1_complete): Tracked<OneShotResource>
+        Tracked(oneshot1_complete): Tracked<OneShotResource>,
     ) -> (x: u32)
         requires
             self.wf(),
@@ -152,10 +161,9 @@ impl CounterSharedState
             oneshot0_complete@ is Complete,
             oneshot1_complete@ is Complete,
         ensures
-            x == 2
+            x == 2,
     {
         let x_value: u32;
-
         open_atomic_invariant!(self.inv.borrow() => inner => {
             proof {
                 // Since `oneshot0_complete` reflects thread 0's
@@ -186,7 +194,6 @@ impl CounterSharedState
             x_value = self.x.load(Tracked(&inner.x_perm));
             assert(x_value == 2); // This is the key assertion we needed to prove.
         });
-
         x_value
     }
 }
@@ -241,7 +248,6 @@ pub fn thread_routine(
             assert(oneshot_thread_half@ is Complete);
         }
     });
-
     // Return the updated permission. It's been updated from (a)
     // half the authority to complete the one-shot to (b)
     // knowledge that the one-shot is complete.
@@ -255,7 +261,7 @@ pub fn thread_routine(
 // threads, the result is 2.
 pub fn count_to_two() -> (result: Result<u32, ()>)
     ensures
-        result is Ok ==> result.unwrap() == 2
+        result is Ok ==> result.unwrap() == 2,
 {
     // Create two one-shots, one for each thread we're going to
     // fork. Calling `create_oneshot` provides two permissions to
@@ -265,51 +271,46 @@ pub fn count_to_two() -> (result: Result<u32, ()>)
     // necessary to have both halves to perform any one-shot, so
     // each thread will have to combine its half with the
     // corresponding one in the invariant.
-
-    let tracked (mut oneshot0_inv_half, mut oneshot0_thread_half) = OneShotResource::alloc().split();
-    let tracked (mut oneshot1_inv_half, mut oneshot1_thread_half) = OneShotResource::alloc().split();
-
+    let tracked (mut oneshot0_inv_half, mut oneshot0_thread_half) =
+        OneShotResource::alloc().split();
+    let tracked (mut oneshot1_inv_half, mut oneshot1_thread_half) =
+        OneShotResource::alloc().split();
     // Create the shared state that includes a new `PAtomicU32` and
     // an invariant that starts out holding `oneshot0_inv_half` and
     // `oneshot1_inv_half1.
-
-    let shared_state = CounterSharedState::new(Tracked(oneshot0_inv_half), Tracked(oneshot1_inv_half));
-
+    let shared_state = CounterSharedState::new(
+        Tracked(oneshot0_inv_half),
+        Tracked(oneshot1_inv_half),
+    );
     // For each thread, clone the shared-state Arc and use this to
     // fork the thread. Also pass each thread a tracked permission
     // providing half the authority to update its one-shot.
-
     let shared_state_clone = shared_state.clone();
-    let join_handle0 = vstd::thread::spawn(move || -> (return_value: Tracked<OneShotResource>)
-        ensures
-            return_value@.id() == shared_state.get_oneshot_id(0),
-            return_value@@ is Complete
-        {
-            thread_routine(shared_state_clone, Tracked(oneshot0_thread_half), Ghost(0))
-        }
+    let join_handle0 = vstd::thread::spawn(
+        move || -> (return_value: Tracked<OneShotResource>)
+            ensures
+                return_value@.id() == shared_state.get_oneshot_id(0),
+                return_value@@ is Complete,
+            { thread_routine(shared_state_clone, Tracked(oneshot0_thread_half), Ghost(0)) },
     );
-
     let shared_state_clone = shared_state.clone();
-    let join_handle1 = vstd::thread::spawn(move || -> (return_value: Tracked<OneShotResource>)
-        ensures
-            return_value@.id() == shared_state.get_oneshot_id(1),
-            return_value@@ is Complete
-        {
-            thread_routine(shared_state_clone, Tracked(oneshot1_thread_half), Ghost(1))
-        }
+    let join_handle1 = vstd::thread::spawn(
+        move || -> (return_value: Tracked<OneShotResource>)
+            ensures
+                return_value@.id() == shared_state.get_oneshot_id(1),
+                return_value@@ is Complete,
+            { thread_routine(shared_state_clone, Tracked(oneshot1_thread_half), Ghost(1)) },
     );
-
     // Let the threads run in parallel, then join them both when
     // they're done.
-
-    if let (Ok(oneshot0_complete), Ok(oneshot1_complete)) = (join_handle0.join(), join_handle1.join()) {
-
+    if let (Ok(oneshot0_complete), Ok(oneshot1_complete)) = (
+        join_handle0.join(),
+        join_handle1.join(),
+    ) {
         // If both joins succeeded, we can now read the shared
         // `PAtomicU32`'s value `x` by opening the invariant.
-
         Ok(shared_state.read_x(oneshot0_complete, oneshot1_complete))
-    }
-    else {
+    } else {
         // If either of the joins failed, we can't proceed.
         Err(())
     }
@@ -321,4 +322,4 @@ pub fn main() {
     }
 }
 
-}
+} // verus!
