@@ -246,6 +246,13 @@ fn func_body_to_air(
     if function.x.decrease.len() > 0 {
         // conditions on type arguments:
         def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds));
+
+        for param in function.x.params.iter() {
+            let arg = ident_var(&param.x.name.lower());
+            if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
+                def_reqs.push(pre.clone());
+            }
+        }
     }
     if let Some(req) = &function.x.decrease_when {
         // "when" means the function is only defined if the requirements hold

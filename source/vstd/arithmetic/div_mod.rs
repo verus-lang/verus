@@ -1175,6 +1175,7 @@ pub proof fn lemma_multiply_divide_lt_auto()
 /// Proof that adding an integer to a fraction is equivalent to adding
 /// that integer times the denominator to the numerator. Specifically,
 /// `x / d + j == (x + j * d) / d`.
+#[verifier::spinoff_prover]
 pub proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
     requires
         0 < d,
@@ -1914,7 +1915,6 @@ pub proof fn lemma_mul_mod_noop_general(x: int, y: int, m: int)
         (x * (y % m)) % m == (x * y) % m,
         ((x % m) * (y % m)) % m == (x * y) % m,
 {
-    lemma_mod_properties_auto();
     lemma_mul_mod_noop_left(x, y, m);
     lemma_mul_mod_noop_right(x, y, m);
     lemma_mul_mod_noop_right(x % m, y, m);

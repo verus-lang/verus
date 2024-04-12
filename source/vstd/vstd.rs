@@ -19,6 +19,7 @@ pub mod arithmetic;
 pub mod array;
 pub mod atomic;
 pub mod atomic_ghost;
+pub mod bits;
 pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
