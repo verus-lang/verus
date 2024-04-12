@@ -87,6 +87,7 @@ pub struct ArgsX {
     pub num_threads: usize,
     pub trace: bool,
     pub report_long_running: bool,
+    pub cvc5: bool,
 }
 
 impl ArgsX {
@@ -127,6 +128,7 @@ impl ArgsX {
             num_threads: Default::default(),
             trace: Default::default(),
             report_long_running: Default::default(),
+            cvc5: Default::default(),
         }
     }
 }
@@ -248,6 +250,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
+    const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
@@ -264,6 +267,10 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_USE_INTERNAL_PROFILER,
             "Use an internal profiler that shows internal quantifier instantiations",
+        ),
+        (
+            EXTENDED_CVC5,
+            "Use the cvc5 SMT solver, rather than the default (Z3)",
         ),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
     ];
@@ -579,6 +586,7 @@ pub fn parse_args_with_imports(
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
+        cvc5: extended.get(EXTENDED_CVC5).is_some(),
     };
 
     (Arc::new(args), unmatched)
