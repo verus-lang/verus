@@ -666,6 +666,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_termination_6 verus_code! {
+        pub trait T {
+            spec fn f(n: int) -> int;
+        }
+
+        impl T for bool {
+            open spec fn f(n: int) -> int
+                decreases n
+            {
+                if n <= 0 { 0 } else { 1 + Self::f(n - 1) }
+            }
+        }
+
+        impl T for u8 {
+            open spec fn f(n: int) -> int
+                decreases n
+            {
+                if n <= 0 { 0 } else { 1 + Self::f(n - 1) }
+            }
+        }
+
+        proof fn test() {
+            reveal_with_fuel(<u8 as T>::f, 3);
+            assert(<u8 as T>::f(2) == 2);
+            assert(<bool as T>::f(20) == 20); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[ignore] #[test] test_termination_bounds_1 verus_code! {
         trait T {
             spec fn f(&self) -> bool;

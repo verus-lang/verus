@@ -262,9 +262,17 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     };
 
     // New body: substitute rec%f(args, fuel) for f(args)
+    let resolve = |x: &Fun, typs: &Typs, resolved_method: &Option<(Fun, Typs)>| {
+        if let Some((m, ts)) = resolved_method {
+            (m.clone(), ts.clone())
+        } else {
+            (x.clone(), typs.clone())
+        }
+    };
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
         ExpX::Call(CallFun::Fun(x, resolved_method), typs, args)
-            if is_recursive_call(&ctxt, x, resolved_method) && ctx.func_map[x].x.body.is_some() =>
+            if is_recursive_call(&ctxt, x, resolved_method)
+                && ctx.func_map[&resolve(x, typs, resolved_method).0].x.body.is_some() =>
         {
             let mut args = (**args).clone();
             let varx = match fuel {
@@ -273,7 +281,8 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
             };
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
-            let callx = ExpX::Call(CallFun::Recursive(x.clone()), typs.clone(), Arc::new(args));
+            let (name, ts) = resolve(x, typs, resolved_method);
+            let callx = ExpX::Call(CallFun::Recursive(name), ts, Arc::new(args));
             SpannedTyped::new(&exp.span, &exp.typ, callx)
         }
         _ => exp.clone(),
