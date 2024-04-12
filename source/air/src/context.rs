@@ -91,6 +91,7 @@ pub struct Context {
     pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
     pub(crate) check_valid_used: bool,
+    pub(crate) cvc5: bool,
 }
 
 impl Context {
@@ -127,6 +128,7 @@ impl Context {
             profile_logfile_name: None,
             disable_incremental_solving: false,
             check_valid_used: false,
+            cvc5: false,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -140,7 +142,7 @@ impl Context {
     pub fn get_smt_process(&mut self) -> &mut SmtProcess {
         // Only start the smt process if there are queries to run
         if self.smt_process.is_none() {
-            self.smt_process = Some(SmtProcess::launch());
+            self.smt_process = Some(SmtProcess::launch(self.cvc5));
         }
         self.smt_process.as_mut().unwrap()
     }
@@ -198,6 +200,10 @@ impl Context {
         self.air_initial_log.log_set_option("disable_incremental_solving", "true");
         self.air_middle_log.log_set_option("disable_incremental_solving", "true");
         self.air_final_log.log_set_option("disable_incremental_solving", "true");
+    }
+    
+    pub fn use_cvc5(&mut self) {
+        self.cvc5 = true;
     }
 
     // emit blank line into log files

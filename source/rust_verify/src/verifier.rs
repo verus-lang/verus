@@ -1025,6 +1025,9 @@ impl Verifier {
             )?;
             air_context.set_smt_log(Box::new(file));
         }
+        if self.args.cvc5 {
+            air_context.use_cvc5();
+        }
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");

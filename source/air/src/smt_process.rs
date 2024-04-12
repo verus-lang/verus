@@ -2,11 +2,28 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-fn smt_executable_name() -> String {
-    if let Ok(path) = std::env::var("VERUS_Z3_PATH") {
-        path
-    } else {
-        if cfg!(windows) { "z3.exe" } else { "z3" }.to_string()
+pub struct SolverInfo {
+    executable_name: &'static str,
+    env_path_var: &'static str,
+}
+
+impl SolverInfo {
+    pub fn new(use_z3: bool) -> Self {
+        if use_z3 {
+            SolverInfo { executable_name: "z3", env_path_var: "VERUS_Z3_PATH" }
+        } else {
+            SolverInfo { executable_name: "cvc5", env_path_var: "VERUS_CVC5_PATH" }
+        }
+    }
+
+    pub fn executable(&self) -> String {
+        if let Ok(path) = std::env::var(self.env_path_var) {
+            path
+        } else if cfg!(windows) {
+            self.executable_name.to_string() + ".exe"
+        } else {
+            self.executable_name.to_string()
+        }
     }
 }
 
@@ -62,8 +79,9 @@ fn reader_thread(
 }
 
 impl SmtProcess {
-    pub fn launch() -> Self {
-        let mut child = match std::process::Command::new(smt_executable_name())
+    pub fn launch(use_z3: bool) -> Self {
+        let solver_info = SolverInfo::new(use_z3);
+        let mut child = match std::process::Command::new(solver_info.executable())
             .args(&["-smt2", "-in"])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -73,10 +91,10 @@ impl SmtProcess {
             Err(err) => {
                 eprintln!(
                     "{}",
-                    yansi::Paint::red(format!("error: could not execute Z3 process ({err})"))
+                    yansi::Paint::red(format!("error: could not execute {} process ({})", solver_info.executable_name, err))
                 );
                 eprintln!(
-                    "help: z3 needs to be in the PATH, or the environment variable VERUS_Z3_PATH must be set to the path of the z3 executable"
+                    "help: {} needs to be in the PATH, or the environment variable {} must be set to the path of the z3 executable", solver_info.executable_name, solver_info.env_path_var
                 );
                 std::process::exit(128);
             }
