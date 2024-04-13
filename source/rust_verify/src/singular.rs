@@ -1,7 +1,7 @@
 use air::ast::{
     BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, SingularQueryX,
 };
-use air::context::{QueryContext, ValidityResult};
+use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
@@ -100,9 +100,9 @@ struct SingularEncoder {
 }
 
 impl SingularEncoder {
-    fn new(user_vars: Vec<String>) -> Self {
+    fn new(solver:SmtSolver, user_vars: Vec<String>) -> Self {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
-        let pp = Printer::new(message_interface.clone(), false);
+        let pp = Printer::new(message_interface.clone(), false, solver);
         SingularEncoder {
             tmp_idx: 0,
             node_map: HashMap::new(),
@@ -318,6 +318,7 @@ impl SingularEncoder {
 }
 
 fn encode_singular_queries(
+    solver: SmtSolver,  // Needed by the AIR printer, even for Singular queries
     command: &Command,
     func_span: &vir::messages::Span,
     queries: &mut Vec<(String, vir::messages::Message)>,
@@ -335,7 +336,7 @@ fn encode_singular_queries(
         }
     }
 
-    let mut encoder = SingularEncoder::new(vars);
+    let mut encoder = SingularEncoder::new(solver, vars);
 
     // encode requires
     for stmt in &**reqs {
@@ -378,7 +379,7 @@ pub fn check_singular_valid(
     _query_context: QueryContext<'_, '_>,
 ) -> ValidityResult {
     let mut queries = vec![];
-    if let Err(res) = encode_singular_queries(command, func_span, &mut queries) {
+    if let Err(res) = encode_singular_queries(context.get_solver().clone(), command, func_span, &mut queries) {
         // in case of any encoding error, skip running Singular
         return res;
     }

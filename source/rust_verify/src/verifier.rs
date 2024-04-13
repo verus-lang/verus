@@ -8,7 +8,7 @@ use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
-use air::context::{QueryContext, ValidityResult};
+use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
@@ -1077,7 +1077,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, cvc5: self.args.cvc5 },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: if self.args.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 }  },
             profile_file_name,
         )?;
 
@@ -1177,7 +1177,7 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, cvc5: self.args.cvc5 },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: if self.args.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 }  },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {

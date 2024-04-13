@@ -1,18 +1,18 @@
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::mpsc::{channel, Receiver, Sender};
+use crate::context::SmtSolver;
 
-pub struct SolverInfo {
+struct SolverInfo {
     executable_name: &'static str,
     env_path_var: &'static str,
 }
 
 impl SolverInfo {
-    pub fn new(use_z3: bool) -> Self {
-        if use_z3 {
-            SolverInfo { executable_name: "z3", env_path_var: "VERUS_Z3_PATH" }
-        } else {
-            SolverInfo { executable_name: "cvc5", env_path_var: "VERUS_CVC5_PATH" }
+    pub fn new(solver: &SmtSolver) -> Self {
+        match solver {
+            SmtSolver::Z3 => SolverInfo { executable_name: "z3", env_path_var: "VERUS_Z3_PATH" },
+            SmtSolver::Cvc5 => SolverInfo { executable_name: "cvc5", env_path_var: "VERUS_CVC5_PATH" },
         }
     }
 
@@ -79,8 +79,8 @@ fn reader_thread(
 }
 
 impl SmtProcess {
-    pub fn launch(use_z3: bool) -> Self {
-        let solver_info = SolverInfo::new(use_z3);
+    pub fn launch(solver: &SmtSolver) -> Self {
+        let solver_info = SolverInfo::new(solver);
         let mut child = match std::process::Command::new(solver_info.executable())
             .args(&["-smt2", "-in"])
             .stdin(std::process::Stdio::piped())

@@ -5,7 +5,7 @@ use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
     Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
-use crate::context::Context;
+use crate::context::{Context, SmtSolver};
 use crate::messages::MessageInterface;
 use crate::printer::{node_to_string, Printer};
 use crate::scope_map::ScopeMap;
@@ -93,6 +93,7 @@ fn check_typs(typing: &Typing, typs: &[Typ]) -> Result<(), TypeError> {
 }
 
 fn check_exprs(
+    solver: &SmtSolver,
     typing: &mut Typing,
     f_name: &str,
     f_typs: &[Typ],
@@ -108,7 +109,7 @@ fn check_exprs(
         ));
     }
     for i in 0..f_typs.len() {
-        let et = check_expr(typing, &exprs[i])?;
+        let et = check_expr(solver, typing, &exprs[i])?;
         if !typ_eq(&et, &f_typs[i]) {
             return Err(format!(
                 "in call to {}, argument #{} has type {:?} when it should have type {:?}",
@@ -130,6 +131,7 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
 }
 
 fn check_bv_unary_exprs(
+    solver: &SmtSolver,
     typing: &mut Typing,
     op: UnaryOp,
     f_name: &str,
@@ -137,7 +139,7 @@ fn check_bv_unary_exprs(
 ) -> Result<Typ, TypeError> {
     match op {
         UnaryOp::BitExtract(high, _) => {
-            let t0 = check_expr(typing, expr)?;
+            let t0 = check_expr(solver, typing, expr)?;
             let w_old = get_bv_width(&t0)?;
             let w_new = high + 1;
             if w_old < w_new {
@@ -150,7 +152,7 @@ fn check_bv_unary_exprs(
             }
         }
         UnaryOp::BitNot => {
-            let t0 = check_expr(typing, expr)?;
+            let t0 = check_expr(solver, typing, expr)?;
             match get_bv_width(&t0) {
                 Ok(_) => Ok(t0.clone()),
                 Err(..) => Err("Interner Error: not a bv type inside a bvnot".to_string()),
@@ -161,13 +163,14 @@ fn check_bv_unary_exprs(
 }
 
 fn check_bv_exprs(
+    solver: &SmtSolver,
     typing: &mut Typing,
     bop: BinaryOp,
     f_name: &str,
     exprs: &[Expr],
 ) -> Result<Typ, TypeError> {
-    let t0 = check_expr(typing, &exprs[0])?;
-    let t1 = check_expr(typing, &exprs[1])?;
+    let t0 = check_expr(solver, typing, &exprs[0])?;
+    let t1 = check_expr(solver, typing, &exprs[1])?;
     let w0 = get_bv_width(&t0)?;
     let w1 = get_bv_width(&t1)?;
 
@@ -189,7 +192,7 @@ fn check_bv_exprs(
     }
 }
 
-fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
+fn check_expr(solver: &SmtSolver, typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
@@ -204,34 +207,34 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             (true, _) => Err(format!("use of undeclared variable {}", x)),
         },
         ExprX::Apply(x, es) => match typing.get(x).cloned() {
-            Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
+            Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(solver, typing, x, &f_typs, &f_typ, es),
             _ => Err(format!("use of undeclared function {}", x)),
         },
         ExprX::ApplyLambda(t, e0, es) => {
-            let t0 = check_expr(typing, e0)?;
+            let t0 = check_expr(solver, typing, e0)?;
             match &*t0 {
                 TypX::Lambda => {
                     for e in es.iter() {
-                        check_expr(typing, e)?;
+                        check_expr(solver, typing, e)?;
                     }
                     Ok(t.clone())
                 }
                 _ => Err("expected function type".to_string()),
             }
         }
-        ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
+        ExprX::Unary(UnaryOp::Not, e1) => check_exprs(solver, typing, "not", &[bt()], &bt(), &[e1.clone()]),
         ExprX::Unary(UnaryOp::BitNot, e1) => {
-            check_bv_unary_exprs(typing, UnaryOp::BitNot, "bvnot", &e1.clone())
+            check_bv_unary_exprs(solver, typing, UnaryOp::BitNot, "bvnot", &e1.clone())
         }
         ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
-            check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
+            check_bv_unary_exprs(solver, typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
         }
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
-            check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs(solver, typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(op @ (BinaryOp::Eq | BinaryOp::Relation(..)), e1, e2) => {
-            let t1 = check_expr(typing, e1)?;
-            let t2 = check_expr(typing, e2)?;
+            let t1 = check_expr(solver, typing, e1)?;
+            let t2 = check_expr(solver, typing, e2)?;
             if typ_eq(&t1, &t2) {
                 Ok(bt())
             } else {
@@ -247,67 +250,67 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             }
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
-            check_exprs(typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs(solver, typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Ge, e1, e2) => {
-            check_exprs(typing, ">=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs(solver, typing, ">=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Lt, e1, e2) => {
-            check_exprs(typing, "<", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs(solver, typing, "<", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Gt, e1, e2) => {
-            check_exprs(typing, ">", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs(solver, typing, ">", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::EuclideanDiv, e1, e2) => {
-            check_exprs(typing, "div", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_exprs(solver, typing, "div", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::EuclideanMod, e1, e2) => {
-            check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_exprs(solver, typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitULt, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitULt, "bvlt", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitULt, "bvlt", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUGt, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitUGt, "bvgt", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitUGt, "bvgt", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitULe, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitULe, "bvle", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitULe, "bvle", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUGe, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitUGe, "bvge", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitUGe, "bvge", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitXor, "^", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitXor, "^", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUMod, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitUMod, "bvmod", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitUMod, "bvmod", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitAnd, "&", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitAnd, "&", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitOr, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitOr, "|", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitOr, "|", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAdd, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitAdd, "bvadd", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitAdd, "bvadd", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitSub, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitSub, "bvsub", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitSub, "bvsub", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitMul, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitMul, "bvmul", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitMul, "bvmul", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUDiv, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitUDiv, "bvdiv", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitUDiv, "bvdiv", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::LShr, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::LShr, ">>", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::LShr, ">>", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::Shl, "<<", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::Shl, "<<", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitConcat, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitConcat, "concat", &[e1.clone(), e2.clone()])
+            check_bv_exprs(solver, typing, BinaryOp::BitConcat, "concat", &[e1.clone(), e2.clone()])
         }
 
         ExprX::Multi(op, exprs) => {
@@ -324,21 +327,21 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             match op {
                 MultiOp::Distinct => {
                     if exprs.len() > 0 {
-                        let t0 = check_expr(typing, &exprs[0])?;
+                        let t0 = check_expr(solver, typing, &exprs[0])?;
                         for e in &exprs[1..] {
-                            let tk = check_expr(typing, e)?;
+                            let tk = check_expr(solver, typing, e)?;
                             expect_typ(&tk, &t0, "arguments to distinct must all have same type")?;
                         }
                     }
                     Ok(bt())
                 }
-                _ => check_exprs(typing, x, &f_typs, &t, exprs),
+                _ => check_exprs(solver, typing, x, &f_typs, &t, exprs),
             }
         }
         ExprX::IfElse(e1, e2, e3) => {
-            let t1 = check_expr(typing, e1)?;
-            let t2 = check_expr(typing, e2)?;
-            let t3 = check_expr(typing, e3)?;
+            let t1 = check_expr(solver, typing, e1)?;
+            let t2 = check_expr(solver, typing, e2)?;
+            let t3 = check_expr(solver, typing, e3)?;
             if !typ_eq(&t1, &bt()) {
                 Err(format!(
                     "in if/then/else, condition has type {} instead of Bool",
@@ -360,7 +363,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 BindX::Let(bs) => {
                     let mut binders: Vec<Binder<Typ>> = Vec::new();
                     for b in bs.iter() {
-                        let typ = check_expr(typing, &b.a)?;
+                        let typ = check_expr(solver, typing, &b.a)?;
                         binders.push(Arc::new(BinderX { name: b.name.clone(), a: typ }));
                     }
                     Arc::new(binders)
@@ -384,14 +387,14 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 | BindX::Lambda(_, triggers, _) => {
                     for trigger in triggers.iter() {
                         for expr in trigger.iter() {
-                            check_expr(typing, expr)?;
+                            check_expr(solver, typing, expr)?;
                         }
                     }
                 }
             }
             // Type-check inner expressions
             if let BindX::Choose(_, _, _, e2) = &**bind {
-                let t2 = check_expr(typing, e2)?;
+                let t2 = check_expr(solver, typing, e2)?;
                 if !typ_eq(&t2, &bt()) {
                     return Err(format!(
                         "in choose, condition has type {} instead of Bool",
@@ -400,7 +403,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 }
             }
             // Type-check expr
-            let t1 = check_expr(typing, e1)?;
+            let t1 = check_expr(solver, typing, e1)?;
             let tb = match &**bind {
                 BindX::Let(_) => t1,
                 BindX::Quant(_, _, _, _) => {
@@ -414,29 +417,29 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             typing.decls.pop_scope();
             Ok(tb)
         }
-        ExprX::LabeledAssertion(_, _, _, expr) => check_expr(typing, expr),
-        ExprX::LabeledAxiom(_, _, expr) => check_expr(typing, expr),
+        ExprX::LabeledAssertion(_, _, _, expr) => check_expr(solver, typing, expr),
+        ExprX::LabeledAxiom(_, _, expr) => check_expr(solver, typing, expr),
     };
     match result {
         Ok(t) => Ok(t),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false).expr_to_node(expr),
+                &Printer::new(typing.message_interface.clone(), false, solver.clone()).expr_to_node(expr),
             );
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
     }
 }
 
-fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
+fn check_stmt(solver: &SmtSolver, typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
     let result = match &**stmt {
         StmtX::Assume(expr) => expect_typ(
-            &check_expr(typing, expr)?,
+            &check_expr(solver, typing, expr)?,
             &bt(),
             "assume statement expects expression of type bool",
         ),
         StmtX::Assert(_, _, _, expr) => expect_typ(
-            &check_expr(typing, expr)?,
+            &check_expr(solver, typing, expr)?,
             &bt(),
             "assert statement expects expression of type bool",
         ),
@@ -455,7 +458,7 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
                 if !mutable {
                     Err(format!("cannot assign to const variable {}", x))
                 } else {
-                    let t_expr = check_expr(typing, expr)?;
+                    let t_expr = check_expr(solver, typing, expr)?;
                     if !typ_eq(&t_expr, &typ) {
                         Err(format!(
                             "in assignment, {} has type {}, while expression has type {}",
@@ -474,10 +477,10 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
             typing.snapshots.insert(snap.clone());
             Ok(())
         }
-        StmtX::DeadEnd(s) => check_stmt(typing, s),
+        StmtX::DeadEnd(s) => check_stmt(solver, typing, s),
         StmtX::Block(stmts) => {
             for s in stmts.iter() {
-                check_stmt(typing, s)?;
+                check_stmt(solver, typing, s)?;
             }
             Ok(())
         }
@@ -488,7 +491,7 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
                 typing.break_labels_local.insert(label.clone());
                 typing.break_labels_in_scope.push_scope(false);
                 typing.break_labels_in_scope.insert(label.clone(), ()).expect("push break");
-                check_stmt(typing, s)?;
+                check_stmt(solver, typing, s)?;
                 typing.break_labels_in_scope.pop_scope();
                 Ok(())
             }
@@ -503,7 +506,7 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
         StmtX::Switch(stmts) => {
             let snapshots = typing.snapshots.clone(); // snapshots from branches are not retained
             for s in stmts.iter() {
-                check_stmt(typing, s)?;
+                check_stmt(solver, typing, s)?;
                 typing.snapshots = snapshots.clone(); // reset to pre-branch snapshots
             }
             Ok(())
@@ -513,7 +516,7 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
         Ok(()) => Ok(()),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false).stmt_to_node(stmt),
+                &Printer::new(typing.message_interface.clone(), false, solver.clone()).stmt_to_node(stmt),
             );
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
@@ -536,14 +539,14 @@ pub(crate) fn check_decl(
         }
         DeclX::Var(_, typ) => check_typ(typing, typ),
         DeclX::Axiom(expr) => {
-            expect_typ(&check_expr(typing, expr)?, &bt(), "axiom expects expression of type bool")
+            expect_typ(&check_expr(&context.solver, typing, expr)?, &bt(), "axiom expects expression of type bool")
         }
     };
     match result {
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(context.message_interface.clone(), false).decl_to_node(decl),
+                &Printer::new(context.message_interface.clone(), false, context.solver.clone()).decl_to_node(decl),
             );
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }
@@ -615,7 +618,7 @@ pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<Query,
     }
     context.typing.snapshots = HashSet::new();
     context.typing.break_labels_local = HashSet::new();
-    check_stmt(&mut context.typing, &query.assertion)?;
+    check_stmt(&context.solver, &mut context.typing, &query.assertion)?;
 
     // Call crate::closure to rewrite query
     assert_eq!(context.apply_map.num_scopes(), context.typing.decls.num_scopes());

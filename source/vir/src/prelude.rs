@@ -2,13 +2,14 @@ use crate::ast::Path;
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
+use air::context::SmtSolver;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
-    pub cvc5: bool,
+    pub solver: SmtSolver,
 }
 
 pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
@@ -53,21 +54,22 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let Height = str_to_node(T_HEIGHT);
     let height_axioms = 
-        if config.cvc5 {
-            nodes_vec!(
-                (declare-fun partial-order (Height Height) Bool)
-                (axiom (forall ((x Height)) (partial-order x x)))
-                (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
-                (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
-                (axiom (forall ((x Height) (y Height)) (! (= (height_lt x y) (and (partial-order x y) (not (= x y))))))))
-        } else {
-            nodes_vec!(
-            (axiom (forall ((x [Height]) (y [Height])) (!
-                (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
-                :pattern (([height_lt] x y))
-                :qid prelude_height_lt
-                :skolemid skolem_prelude_height_lt
-                ))))
+        match config.solver {
+            SmtSolver::Z3 => 
+                nodes_vec!(
+                (axiom (forall ((x [Height]) (y [Height])) (!
+                    (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
+                    :pattern (([height_lt] x y))
+                    :qid prelude_height_lt
+                    :skolemid skolem_prelude_height_lt
+                    )))),
+            SmtSolver::Cvc5 => 
+                nodes_vec!(
+                    (declare-fun partial-order (Height Height) Bool)
+                    (axiom (forall ((x Height)) (partial-order x x)))
+                    (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
+                    (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
+                    (axiom (forall ((x Height) (y Height)) (! (= (height_lt x y) (and (partial-order x y) (not (= x y)))))))),
         };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
