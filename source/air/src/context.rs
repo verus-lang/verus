@@ -142,7 +142,7 @@ impl Context {
     pub fn get_smt_process(&mut self) -> &mut SmtProcess {
         // Only start the smt process if there are queries to run
         if self.smt_process.is_none() {
-            self.smt_process = Some(SmtProcess::launch(self.cvc5));
+            self.smt_process = Some(SmtProcess::launch(!self.cvc5));
         }
         self.smt_process.as_mut().unwrap()
     }
@@ -230,15 +230,20 @@ impl Context {
     }
 
     pub(crate) fn set_z3_param_bool(&mut self, option: &str, value: bool, write_to_logs: bool) {
-        if option == "air_recommended_options" && value {
-            self.set_z3_param_bool("auto_config", false, true);
-            self.set_z3_param_bool("smt.mbqi", false, true);
-            self.set_z3_param_u32("smt.case_split", 3, true);
-            self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
-            self.set_z3_param_bool("smt.delay_units", true, true);
-            self.set_z3_param_u32("smt.arith.solver", 2, true);
-            self.set_z3_param_bool("smt.arith.nl", false, true);
-            self.set_z3_param_bool("pi.enabled", false, true);
+        if option == "air_recommended_options" && value { 
+            if !self.cvc5 {
+                self.set_z3_param_bool("auto_config", false, true);
+                self.set_z3_param_bool("smt.mbqi", false, true);
+                self.set_z3_param_u32("smt.case_split", 3, true);
+                self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
+                self.set_z3_param_bool("smt.delay_units", true, true);
+                self.set_z3_param_u32("smt.arith.solver", 2, true);
+                self.set_z3_param_bool("smt.arith.nl", false, true);
+                self.set_z3_param_bool("pi.enabled", false, true);
+            } else {
+                self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
+                self.set_z3_param_bool("incremental", true, true);
+            }
         } else if option == "disable_incremental_solving" && value {
             self.disable_incremental_solving = true;
             if write_to_logs {
