@@ -1077,7 +1077,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, cvc5: self.args.cvc5 },
             profile_file_name,
         )?;
 
@@ -1177,7 +1177,7 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, cvc5: self.args.cvc5 },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
