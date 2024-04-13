@@ -98,8 +98,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>) -> Self {
-        let solver = SmtSolver::Z3;
+    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>, solver: SmtSolver) -> Self {
         let mut context = Context {
             message_interface: message_interface.clone(),
             smt_process: None,
@@ -210,10 +209,6 @@ impl Context {
         self.air_final_log.log_set_option("disable_incremental_solving", "true");
     }
     
-    pub fn use_cvc5(&mut self) {
-        self.solver = SmtSolver::Cvc5;
-    }
-
     // emit blank line into log files
     pub fn blank_line(&mut self) {
         self.air_initial_log.blank_line();

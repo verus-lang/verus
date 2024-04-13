@@ -252,9 +252,10 @@ impl Printer {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
                             if matches!(self.solver, SmtSolver::Z3) {
+                                eprintln!("Adding a skolemid");
                                 nodes.push(str_to_node(":skolemid"));
+                                nodes.push(str_to_node(&mk_skolem_id(s)));
                             }
-                            nodes.push(str_to_node(&mk_skolem_id(s)));
                         }
                         Node::List(nodes)
                     }

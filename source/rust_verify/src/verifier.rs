@@ -977,7 +977,7 @@ impl Verifier {
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(message_interface.clone());
+        let mut air_context = air::context::Context::new(message_interface.clone(), if self.args.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 } );
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1024,9 +1024,6 @@ impl Verifier {
                 .as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
-        }
-        if self.args.cvc5 {
-            air_context.use_cvc5();
         }
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
