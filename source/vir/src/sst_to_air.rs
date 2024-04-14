@@ -1733,7 +1733,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             let assertion = one_stmt(air_body);
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            let mut bv_commands = mk_bitvector_option();
+            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             state.commands.push(CommandsWithContextX::new(
                 ctx.fun
@@ -2611,7 +2611,7 @@ pub(crate) fn body_stm_to_air(
         let commands = if is_nonlinear {
             vec![mk_option_command("smt.arith.solver", "6"), Arc::new(CommandX::CheckValid(query))]
         } else if is_bit_vector_mode {
-            let mut bv_commands = mk_bitvector_option();
+            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             bv_commands
         } else {

@@ -71,7 +71,7 @@ fn reader_thread(
                 .expect("IO error: failure when receiving data to Z3 process across pipe");
             line = line.replace("\n", "").replace("\r", "");
             eprintln!("Received: {}", line);
-            if line == match solver { Smt::Solver::Z3 => DONE, SmtSolver::Cvc5 => DONE_QUOTED } {
+            if line == match solver { SmtSolver::Z3 => DONE, SmtSolver::Cvc5 => DONE_QUOTED } {
                 responses
                     .send((smt_pipe_stdout, lines))
                     .expect("internal error: Z3 reader thread failure");
@@ -111,8 +111,9 @@ impl SmtProcess {
         let (requests_sender, requests_receiver) = channel();
         let (responses_sender, responses_receiver) = channel();
         let (recv_responses_sender, recv_responses_receiver) = channel();
+        let solver_clone = solver.clone();
         std::thread::spawn(move || writer_thread(requests_receiver, child_stdin));
-        std::thread::spawn(move || reader_thread(recv_responses_receiver, responses_sender, solver.clone()));
+        std::thread::spawn(move || reader_thread(recv_responses_receiver, responses_sender, solver_clone));
         SmtProcess {
             requests: Some(requests_sender),
             responses_buf_recv: Some((smt_pipe_stdout, responses_receiver)),

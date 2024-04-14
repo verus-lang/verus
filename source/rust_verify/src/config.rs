@@ -1,5 +1,6 @@
 use getopts::Options;
 use std::sync::Arc;
+use air::context::SmtSolver;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: f32 = 10f32;
@@ -129,6 +130,14 @@ impl ArgsX {
             trace: Default::default(),
             report_long_running: Default::default(),
             cvc5: Default::default(),
+        }
+    }
+
+    pub fn solver(&self) -> SmtSolver {
+        if self.cvc5 {
+            SmtSolver::Cvc5
+        } else {
+            SmtSolver::Z3
         }
     }
 }

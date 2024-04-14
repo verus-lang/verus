@@ -209,7 +209,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
-    if matches!(solver, SmtSolver::Z3) {
+    if matches!(context.solver, SmtSolver::Z3) {
         context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
         context.set_z3_param_u32("rlimit", context.rlimit, false);
     }
@@ -264,7 +264,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
     }
 
-    if matches!(solver, SmtSolver::Z3) {
+    if matches!(context.solver, SmtSolver::Z3) {
         context.smt_log.log_set_option("rlimit", "0");
         context.set_z3_param_u32("rlimit", 0, false);
     }

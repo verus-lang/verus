@@ -8,7 +8,7 @@ use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
-use air::context::{QueryContext, SmtSolver, ValidityResult};
+use air::context::{QueryContext, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
@@ -977,7 +977,7 @@ impl Verifier {
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(message_interface.clone(), if self.args.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 } );
+        let mut air_context = air::context::Context::new(message_interface.clone(), self.args.solver());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1074,7 +1074,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: if self.args.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 }  },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver() },
             profile_file_name,
         )?;
 
@@ -1174,7 +1174,7 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: if self.args.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 }  },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver() },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
@@ -1780,6 +1780,7 @@ impl Verifier {
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
+            self.args.solver(),
             false,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
