@@ -36,11 +36,13 @@ pub struct SmtProcess {
 }
 
 const DONE: &str = "<<DONE>>";
+const DONE_QUOTED: &str = "\"<<DONE>>\"";
 
 /// A separate thread writes data to the SMT solver over a pipe.
 /// (Rust's documentation says you need a separate thread; otherwise, it lets the pipes deadlock.)
 pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
     while let Ok(req) = requests.recv() {
+        eprintln!("Sending: {}, followed by (echo \"<<DONE>>\")", String::from_utf8(req.clone()).unwrap());
         smt_pipe_stdin
             .write_all(&req)
             .and_then(|_| writeln!(&smt_pipe_stdin))
@@ -57,6 +59,7 @@ pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: Chi
 fn reader_thread(
     recv_requests: Receiver<BufReader<ChildStdout>>,
     responses: Sender<(BufReader<ChildStdout>, Vec<String>)>,
+    solver: SmtSolver,
 ) {
     while let Ok(mut smt_pipe_stdout) = recv_requests.recv() {
         let mut lines = Vec::new();
@@ -67,7 +70,8 @@ fn reader_thread(
                 // The Z3 process could die unexpectedly.  In that case, we die too:
                 .expect("IO error: failure when receiving data to Z3 process across pipe");
             line = line.replace("\n", "").replace("\r", "");
-            if line == DONE {
+            eprintln!("Received: {}", line);
+            if line == match solver { Smt::Solver::Z3 => DONE, SmtSolver::Cvc5 => DONE_QUOTED } {
                 responses
                     .send((smt_pipe_stdout, lines))
                     .expect("internal error: Z3 reader thread failure");
@@ -82,7 +86,10 @@ impl SmtProcess {
     pub fn launch(solver: &SmtSolver) -> Self {
         let solver_info = SolverInfo::new(solver);
         let mut child = match std::process::Command::new(solver_info.executable())
-            .args(&["-smt2", "-in"])
+            .args(match solver {
+                SmtSolver::Z3 => vec!["-smt2", "-in"],
+                SmtSolver::Cvc5 => vec!["--no-interactive", "--produce-models"],
+            })
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .spawn()
@@ -105,7 +112,7 @@ impl SmtProcess {
         let (responses_sender, responses_receiver) = channel();
         let (recv_responses_sender, recv_responses_receiver) = channel();
         std::thread::spawn(move || writer_thread(requests_receiver, child_stdin));
-        std::thread::spawn(move || reader_thread(recv_responses_receiver, responses_sender));
+        std::thread::spawn(move || reader_thread(recv_responses_receiver, responses_sender, solver.clone()));
         SmtProcess {
             requests: Some(requests_sender),
             responses_buf_recv: Some((smt_pipe_stdout, responses_receiver)),

@@ -197,9 +197,11 @@ impl Context {
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
         self.rlimit = rlimit;
-        self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
-        self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
-        self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        if matches!(self.solver, SmtSolver::Z3) {
+            self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
+            self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
+            self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        }
     }
 
     pub fn disable_incremental_solving(&mut self) {
@@ -263,7 +265,7 @@ impl Context {
     }
 
     pub(crate) fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
-        if option == "rlimit" && write_to_logs {
+        if option == "rlimit" && write_to_logs && matches!(self.solver, SmtSolver::Z3) {
             self.set_rlimit(value);
         } else {
             if write_to_logs {

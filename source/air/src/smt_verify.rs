@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX, UnaryOp,
 };
 use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
-use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
+use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, SmtSolver, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
 use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
@@ -115,6 +115,21 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
     }
 }
 
+impl SmtSolver {
+//    pub fn reason_unknown_incomplete_str(&self) -> &str {
+//        match self {
+//            SmtSolver::Z3 => "(:reason-unknown \"unknown\")",
+//            SmtSolver::Cvc5 => "(:reason-unknown unknown)",
+//        }
+//    }
+    pub fn reason_unknown_incomplete_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"(incomplete",
+            SmtSolver::Cvc5 => "(:reason-unknown incomplete)",
+        }
+    }
+}
+
 pub type ReportLongRunning<'a> =
     (std::time::Duration, Box<dyn FnMut(std::time::Duration, bool) -> () + 'a>);
 
@@ -194,8 +209,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
     let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
     context.smt_log.log_assert(&str_var(QUERY));
 
-    context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
-    context.set_z3_param_u32("rlimit", context.rlimit, false);
+    if matches!(solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+        context.set_z3_param_u32("rlimit", context.rlimit, false);
+    }
 
     context.smt_log.log_word("check-sat");
 
@@ -247,8 +264,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
     }
 
-    context.smt_log.log_set_option("rlimit", "0");
-    context.set_z3_param_u32("rlimit", 0, false);
+    if matches!(solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", "0");
+        context.set_z3_param_u32("rlimit", 0, false);
+    }
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
     let unsat = match unsat {
@@ -275,7 +294,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                     // it appears this sometimes happens when rlimit is exceeded
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Unknown);
-                } else if line.starts_with("(:reason-unknown \"(incomplete") {
+                } else if line == context.solver.reason_unknown_incomplete_str() {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if line
