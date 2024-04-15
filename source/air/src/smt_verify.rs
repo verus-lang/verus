@@ -245,13 +245,14 @@ pub(crate) fn smt_check_assertion<'ctx>(
     // Process SMT results
     let mut unsat = None;
     for line in smt_output {
+        eprintln!("Processing smt_output line: <<{}>>", line);
         if line == "unsat" {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unsat);
         } else if line == "sat" {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Sat);
-        } else if line == "unknown" {
+        } else if line == "unknown" || line == "cvc5 interrupted by timeout." {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {

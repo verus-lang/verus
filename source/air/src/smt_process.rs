@@ -63,6 +63,7 @@ fn reader_thread(
 ) {
     while let Ok(mut smt_pipe_stdout) = recv_requests.recv() {
         let mut lines = Vec::new();
+        let mut empty_lines = 0;
         loop {
             let mut line = String::new();
             smt_pipe_stdout
@@ -71,11 +72,19 @@ fn reader_thread(
                 .expect("IO error: failure when receiving data to Z3 process across pipe");
             line = line.replace("\n", "").replace("\r", "");
             eprintln!("Received: {}", line);
-            if line == match solver { SmtSolver::Z3 => DONE, SmtSolver::Cvc5 => DONE_QUOTED } {
-                responses
-                    .send((smt_pipe_stdout, lines))
-                    .expect("internal error: Z3 reader thread failure");
-                break;
+            if line == "" {
+                empty_lines += 1;
+            } else {
+                empty_lines = 0;
+                if line == match solver { SmtSolver::Z3 => DONE, SmtSolver::Cvc5 => DONE_QUOTED } {
+                    responses
+                        .send((smt_pipe_stdout, lines))
+                        .expect("internal error: Z3 reader thread failure");
+                    break;
+                }
+            }
+            if empty_lines > 2 {
+                panic!("Got too many empty lines!");
             }
             lines.push(line);
         }
@@ -88,7 +97,7 @@ impl SmtProcess {
         let mut child = match std::process::Command::new(solver_info.executable())
             .args(match solver {
                 SmtSolver::Z3 => vec!["-smt2", "-in"],
-                SmtSolver::Cvc5 => vec!["--no-interactive", "--produce-models", "--tlimit", "500"],
+                SmtSolver::Cvc5 => vec!["--no-interactive", "--produce-models", "--tlimit", "30000"],
             })
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
