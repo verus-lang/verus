@@ -225,8 +225,9 @@ impl Printer {
                     nodes.push(self.expr_to_node(expr));
                 }
                 match op {
-                    MultiOp::Distinct if exprs.len() == 0 => {
+                    MultiOp::Distinct if exprs.len() <= 1 => {
                         // Z3 doesn't like the expression "(distinct)"
+                        // cvc5 doesn't like the singleton expression "(distinct expr)"
                         return Node::Atom("true".to_string());
                     }
                     _ => {}
