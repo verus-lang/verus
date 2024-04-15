@@ -116,7 +116,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 }
 
 impl SmtSolver {
-//    pub fn reason_unknown_incomplete_str(&self) -> &str {
+//    pub fn reason_unknown_unknown_str(&self) -> &str {
 //        match self {
 //            SmtSolver::Z3 => "(:reason-unknown \"unknown\")",
 //            SmtSolver::Cvc5 => "(:reason-unknown unknown)",
@@ -295,7 +295,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                     // it appears this sometimes happens when rlimit is exceeded
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Unknown);
-                } else if line == context.solver.reason_unknown_incomplete_str() {
+                } else if line.starts_with(context.solver.reason_unknown_incomplete_str()) {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if line
