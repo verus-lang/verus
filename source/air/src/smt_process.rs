@@ -97,7 +97,7 @@ impl SmtProcess {
         let mut child = match std::process::Command::new(solver_info.executable())
             .args(match solver {
                 SmtSolver::Z3 => vec!["-smt2", "-in"],
-                SmtSolver::Cvc5 => vec!["--no-interactive", "--produce-models", "--tlimit", "30000"],
+                SmtSolver::Cvc5 => vec!["--no-interactive", "--produce-models", "--rlimit", "10000000"],    // ~= 30s
             })
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

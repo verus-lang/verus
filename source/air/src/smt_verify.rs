@@ -116,12 +116,13 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 }
 
 impl SmtSolver {
-//    pub fn reason_unknown_unknown_str(&self) -> &str {
-//        match self {
-//            SmtSolver::Z3 => "(:reason-unknown \"unknown\")",
-//            SmtSolver::Cvc5 => "(:reason-unknown unknown)",
-//        }
-//    }
+    pub fn reason_unknown_canceled_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"canceled\")",
+            SmtSolver::Cvc5 => "(:reason-unknown resourceout)",
+        }
+    }
+
     pub fn reason_unknown_incomplete_str(&self) -> &str {
         match self {
             SmtSolver::Z3 => "(:reason-unknown \"(incomplete",
@@ -288,7 +289,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             let mut reason = None;
             for line in smt_output {
-                if line == "(:reason-unknown \"canceled\")" {
+                if line == context.solver.reason_unknown_canceled_str() {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
                 } else if line == "(:reason-unknown \"unknown\")" {
