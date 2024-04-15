@@ -357,7 +357,11 @@ impl Printer {
                 })
             }))
         }));
-        node!((declare-datatypes {decls} {defns}))
+        if datatypes.len() > 0 {
+            node!((declare-datatypes {decls} {defns}))
+        } else {
+            nodes!(assert true)
+        }
     }
 
     pub fn const_decl_to_node(&self, x: &Ident, typ: &Typ) -> Node {
