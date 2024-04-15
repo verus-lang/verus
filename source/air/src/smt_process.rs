@@ -42,7 +42,7 @@ const DONE_QUOTED: &str = "\"<<DONE>>\"";
 /// (Rust's documentation says you need a separate thread; otherwise, it lets the pipes deadlock.)
 pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
     while let Ok(req) = requests.recv() {
-        eprintln!("Sending: {}, followed by (echo \"<<DONE>>\")", String::from_utf8(req.clone()).unwrap());
+        //eprintln!("Sending: {}, followed by (echo \"<<DONE>>\")", String::from_utf8(req.clone()).unwrap());
         smt_pipe_stdin
             .write_all(&req)
             .and_then(|_| writeln!(&smt_pipe_stdin))
@@ -88,7 +88,7 @@ impl SmtProcess {
         let mut child = match std::process::Command::new(solver_info.executable())
             .args(match solver {
                 SmtSolver::Z3 => vec!["-smt2", "-in"],
-                SmtSolver::Cvc5 => vec!["--no-interactive", "--produce-models"],
+                SmtSolver::Cvc5 => vec!["--no-interactive", "--produce-models", "--tlimit", "500"],
             })
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
