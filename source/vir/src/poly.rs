@@ -124,6 +124,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Char => Some(Arc::new(MonoTypX::Char)),
         TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
         TypX::Datatype(path, typs, _impl_paths) => {
             let monotyps = monotyps_as_mono(typs)?;
@@ -134,7 +135,15 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
         }
-        _ => None,
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
+        }
+        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
+        TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::Boxed(..) | TypX::TypParam(..) | TypX::Lambda(..) | TypX::FnDef(..) => None,
+        TypX::ConstInt(_) => None,
+        TypX::Projection { .. } => None,
     }
 }
 
