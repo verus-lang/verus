@@ -2578,6 +2578,12 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
+        // write_dep_info will internally check whether the `--emit=dep-info` flag is set
+        if let Err(_) = queries.write_dep_info() {
+            // ErrorGuaranteed indicates than an error has already been reported to the user, so we can just exit
+            std::process::exit(-1);
+        }
+
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
