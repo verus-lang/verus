@@ -17,17 +17,15 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
             i2 < v.len(),
             exists|i:int| i1 <= i <= i2 && k == v[i],
             forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        decreases
+            i2 - i1,
     {
-        let ghost d = i2 - i1;
-
         let ix = i1 + (i2 - i1) / 2;
         if v[ix] < k {
             i1 = ix + 1;
         } else {
             i2 = ix;
         }
-
-        assert(i2 - i1 < d);
     }
     i1
 }
@@ -68,6 +66,8 @@ fn binary_search_no_spinoff(v: &Vec<u64>, k: u64) -> (r: usize)
         invariant
             i2 < v.len(),
             exists|i:int| i1 <= i <= i2 && k == v[i],
+        decreases
+            i2 - i1,
     {
         let ghost d = i2 - i1;
 
