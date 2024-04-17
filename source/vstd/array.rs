@@ -42,6 +42,7 @@ impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
 }
 
 #[verifier(external_body)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_index_get")]
 pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &T)
     requires
         0 <= i < N,
@@ -60,7 +61,7 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
 
 // Referenced by Verus' internal encoding for array literals
 #[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "vstd::array::array_index")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_index")]
 pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
     ar.view().index(i)
 }
@@ -68,8 +69,7 @@ pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
 pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
 #[verifier(external_body)]
-#[verifier(broadcast_forall)]
-pub proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
+pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 {
@@ -79,7 +79,7 @@ pub proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
 #[doc(hidden)]
 #[verifier(external_body)]
 #[verifier::when_used_as_spec(spec_array_as_slice)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "vstd::array::array_as_slice")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_as_slice")]
 pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ensures
         ar@ == out@,

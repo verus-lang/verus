@@ -51,9 +51,9 @@ pub fn check_krate_simplified(krate: &Krate) {
         } = &function.x;
 
         let mask_exprs = match mask_spec {
-            MaskSpec::InvariantOpens(es) => es.clone(),
-            MaskSpec::InvariantOpensExcept(es) => es.clone(),
-            MaskSpec::NoSpec => Arc::new(vec![]),
+            Some(MaskSpec::InvariantOpens(es)) => es.clone(),
+            Some(MaskSpec::InvariantOpensExcept(es)) => es.clone(),
+            None => Arc::new(vec![]),
         };
 
         let all_exprs = require

@@ -1040,9 +1040,14 @@ fn erase_inv_block<'tcx>(
     span: Span,
     body: &Block<'tcx>,
 ) -> Exp {
-    assert!(body.stmts.len() == 3);
-    let open_stmt = &body.stmts[0];
-    let mid_stmt = &body.stmts[1];
+    assert!(body.stmts.len() == 4);
+    let spend_stmt = &body.stmts[0];
+    let open_stmt = &body.stmts[1];
+    let mid_stmt = &body.stmts[2];
+    if !crate::rust_to_vir_expr::is_spend_open_invariant_credit_call(&ctxt.verus_items, spend_stmt)
+    {
+        panic!("missing spend_open_invariant_credit call for erase_inv_block");
+    }
     let (_guard_hir, _inner_hir, inner_pat, arg, atomicity) =
         crate::rust_to_vir_expr::invariant_block_open(&ctxt.verus_items, open_stmt)
             .expect("invariant_block_open");
@@ -1059,7 +1064,12 @@ fn erase_inv_block<'tcx>(
     };
     let arg = erase_expr(ctxt, state, false, arg).expect("erase_inv_block arg");
     let mid_body = erase_stmt(ctxt, state, mid_stmt);
-    Box::new((span, ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, mid_body)))
+    let mid_exp = Box::new((
+        mid_stmt.span,
+        ExpX::OpenInvariant(atomicity, inner_pat, arg, pat_typ, mid_body),
+    ));
+    let spend_body = erase_stmt(ctxt, state, spend_stmt);
+    Box::new((span, ExpX::Block(spend_body, Some(mid_exp))))
 }
 
 fn erase_expr<'tcx>(
@@ -2175,7 +2185,8 @@ fn erase_impl<'tcx>(
                 let ImplItem { ident, owner_id, kind, .. } = impl_item;
                 let id = owner_id.to_def_id();
                 let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                    .expect("get_verifier_attrs");
                 if vattrs.is_external(&ctxt.cmd_line_args) {
                     continue;
                 }
@@ -2312,7 +2323,8 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     } else {
         ctxt.tcx.item_attrs(id)
     };
-    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+    let vattrs =
+        get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args)).expect("get_verifier_attrs");
     if vattrs.external_type_specification {
         return;
     }
@@ -2491,8 +2503,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             _trait_items,
                         ) => {
                             let attrs = tcx.hir().attrs(item.hir_id());
-                            let vattrs =
-                                get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                            let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                                .expect("get_verifier_attrs");
                             if vattrs.is_external(&ctxt.cmd_line_args) {
                                 continue;
                             }
@@ -2518,7 +2530,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         continue;
                     }
                     let attrs = tcx.hir().attrs(item.hir_id());
-                    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                    let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                        .expect("get_verifier_attrs");
                     if vattrs.external || vattrs.internal_reveal_fn {
                         continue;
                     }

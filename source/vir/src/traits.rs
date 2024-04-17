@@ -58,7 +58,7 @@ pub fn demote_foreign_traits(
                             "requires are not allowed on the implementation for Drop",
                         ));
                     }
-                    if !matches!(&function.x.mask_spec, crate::ast::MaskSpec::InvariantOpens(es) if es.len() == 0)
+                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(es)) if es.len() == 0)
                     {
                         return Err(error(
                             &function.span,
@@ -271,7 +271,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
                     decrease_by: None,
                     broadcast_forall: None,
                     fndef_axioms: None,
-                    mask_spec: crate::ast::MaskSpec::NoSpec,
+                    mask_spec: None,
                     item_kind: default_function.x.item_kind,
                     publish: default_function.x.publish,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),

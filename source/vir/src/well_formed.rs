@@ -465,15 +465,6 @@ fn check_function(
     diags: &mut Vec<VirErrAs>,
     _no_verify: bool,
 ) -> Result<(), VirErr> {
-    if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
-        if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
-            return Err(error(
-                &function.span,
-                "not yet supported: trait method declarations that open invariants",
-            ));
-        }
-    }
-
     if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
         if function.x.require.len() > 0 {
             return Err(error(
@@ -481,10 +472,10 @@ fn check_function(
                 "trait method implementation cannot declare requires clauses; these can only be inherited from the trait declaration",
             ));
         }
-        if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
+        if function.x.mask_spec.is_some() {
             return Err(error(
                 &function.span,
-                "trait method implementation cannot open invariants; this can only be inherited from the trait declaration",
+                "trait method implementation cannot declare an opens_invariants spec; this can only be inherited from the trait declaration",
             ));
         }
     }
@@ -588,13 +579,8 @@ fn check_function(
             }
         }
     }
-    match &function.x.mask_spec {
-        MaskSpec::NoSpec => {}
-        _ => {
-            if function.x.mode == Mode::Spec {
-                return Err(error(&function.span, "invariants cannot be opened in spec functions"));
-            }
-        }
+    if function.x.mask_spec.is_some() && function.x.mode == Mode::Spec {
+        return Err(error(&function.span, "invariants cannot be opened in spec functions"));
     }
     if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
@@ -709,38 +695,6 @@ fn check_function(
                 }
             }
         }
-        if function.x.ensure.len() != 1 {
-            return Err(error(
-                &function.span,
-                "only a single ensures is allowed in integer_ring mode",
-            ));
-        } else {
-            let ens = function.x.ensure[0].clone();
-            if let crate::ast::ExprX::Binary(crate::ast::BinaryOp::Eq(_), lhs, rhs) = &ens.x {
-                if let crate::ast::ExprX::Binary(
-                    crate::ast::BinaryOp::Arith(crate::ast::ArithOp::EuclideanMod, _),
-                    _,
-                    _,
-                ) = &lhs.x
-                {
-                    match &rhs.x {
-                        crate::ast::ExprX::Const(crate::ast::Constant::Int(zero))
-                            if "0" == zero.to_string() => {}
-                        _ => {
-                            return Err(error(
-                                &function.span,
-                                "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
-                            ));
-                        }
-                    }
-                }
-            } else {
-                return Err(error(
-                    &function.span,
-                    "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
-                ));
-            }
-        }
         if function.x.has_return() {
             return Err(error(
                 &function.span,
@@ -841,8 +795,8 @@ fn check_function(
         check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
     }
     match &function.x.mask_spec {
-        MaskSpec::NoSpec => {}
-        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+        None => {}
+        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
             for expr in es.iter() {
                 let msg = "'opens_invariants' clause of public function";
                 let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));

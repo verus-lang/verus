@@ -1,4 +1,5 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
+use rustc_ast::Attribute;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::def_id::DefId;
@@ -49,5 +50,16 @@ pub(crate) struct BodyCtxt<'tcx> {
 impl<'tcx> ContextX<'tcx> {
     pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {
         self.verus_items.id_to_name.get(&def_id)
+    }
+
+    pub(crate) fn get_verifier_attrs(
+        &self,
+        attrs: &[Attribute],
+    ) -> Result<crate::attributes::VerifierAttrs, vir::ast::VirErr> {
+        crate::attributes::get_verifier_attrs(
+            attrs,
+            Some(&mut *self.diagnostics.borrow_mut()),
+            Some(&self.cmd_line_args),
+        )
     }
 }

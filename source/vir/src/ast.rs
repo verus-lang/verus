@@ -204,6 +204,8 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
+    /// UTF-8 character type
+    Char,
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
     /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
@@ -221,6 +223,11 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs, ImplPaths),
+    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
+    /// despite the fact that it is in fact a datatype
+    StrSlice,
+    /// Other primitive type (applied to type arguments)
+    Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
     /// (though needed sometimes to encode trait resolution)
     Decorate(TypDecoration, Typ),
@@ -241,13 +248,6 @@ pub enum TypX {
     ConstInt(BigInt),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
-    /// despite the fact that it is in fact a datatype
-    StrSlice,
-    /// UTF-8 character type
-    Char,
-    /// Other primitive type (applied to type arguments)
-    Primitive(Primitive, Typs),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -928,7 +928,6 @@ pub struct FunctionAttrsX {
 pub enum MaskSpec {
     InvariantOpens(Exprs),
     InvariantOpensExcept(Exprs),
-    NoSpec,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1014,7 +1013,7 @@ pub struct FunctionX {
     /// in during ast_simplify.
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
-    pub mask_spec: MaskSpec,
+    pub mask_spec: Option<MaskSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private

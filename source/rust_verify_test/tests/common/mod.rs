@@ -440,6 +440,10 @@ macro_rules! test_verify_one_file {
 pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     if let Some(e) = err.iter().find(|e| e.label == Some("at this exit".to_string())) {
         return e;
+    } else if let Some(e) =
+        err.iter().find(|e| e.label == Some("might not be allowed at this call-site".to_string()))
+    {
+        return e;
     } else if let Some(e) = err.iter().find(|e| {
         e.label == Some(vir::def::THIS_POST_FAILED.to_string()) && !e.text[0].text.contains("TRAIT")
     }) {
@@ -451,7 +455,7 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
         .expect("span")
 }
 
-/// Assert that one verification failure happened on source lines containin the string "FAILS".
+/// Assert that one verification failure happened on source lines containing the string "FAILS".
 #[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);

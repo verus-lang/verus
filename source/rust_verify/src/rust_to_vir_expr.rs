@@ -1,6 +1,6 @@
 use crate::attributes::{
-    get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs,
-    parse_attrs, parse_attrs_opt, Attr, GhostBlockAttr,
+    get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, parse_attrs,
+    parse_attrs_opt, Attr, GhostBlockAttr,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -15,7 +15,8 @@ use crate::util::{
     err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
 };
 use crate::verus_items::{
-    self, CompilableOprItem, OpenInvariantBlockItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
+    self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, SpecGhostTrackedItem,
+    UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -668,6 +669,40 @@ fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, Vi
     )
 }
 
+pub(crate) fn is_spend_open_invariant_credit_call(
+    verus_items: &verus_items::VerusItems,
+    spend_stmt: &Stmt,
+) -> bool {
+    match spend_stmt.kind {
+        StmtKind::Semi(Expr {
+            kind:
+                ExprKind::Call(
+                    Expr {
+                        kind:
+                            ExprKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path { res: Res::Def(_, fun_id), .. },
+                            )),
+                        ..
+                    },
+                    [Expr { .. }],
+                ),
+            ..
+        }) => match verus_items.id_to_name.get(&fun_id) {
+            Some(&VerusItem::Vstd(
+                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit),
+                _,
+            )) => true,
+            Some(&VerusItem::Vstd(
+                VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof),
+                _,
+            )) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 pub(crate) fn invariant_block_open<'a>(
     verus_items: &verus_items::VerusItems,
     open_stmt: &'a Stmt,
@@ -791,6 +826,7 @@ fn invariant_block_to_vir<'tcx>(
     // (and similarly for open_local_invariant!)
     //
     // #[verifier(invariant_block)] {
+    //      spend_open_invariant_credit($credit_expr);
     //      let (guard, mut $inner) = open_atomic_invariant_begin($eexpr);
     //      $bblock
     //      open_invariant_end(guard, $inner);
@@ -811,13 +847,18 @@ fn invariant_block_to_vir<'tcx>(
         _ => panic!("invariant_block_to_vir called with non-Body expression"),
     };
 
-    if body.stmts.len() != 3 || body.expr.is_some() {
+    if body.stmts.len() != 4 || body.expr.is_some() {
         return malformed_inv_block_err(expr);
     }
 
-    let open_stmt = &body.stmts[0];
-    let mid_stmt = &body.stmts[1];
-    let close_stmt = &body.stmts[body.stmts.len() - 1];
+    let spend_stmt = &body.stmts[0];
+    let open_stmt = &body.stmts[1];
+    let mid_stmt = &body.stmts[2];
+    let close_stmt = &body.stmts[3];
+
+    if !is_spend_open_invariant_credit_call(&bctx.ctxt.verus_items, spend_stmt) {
+        return malformed_inv_block_err(expr);
+    }
 
     let (guard_hir, inner_hir, inner_pat, inv_arg, atomicity) = {
         if let Some(block_open) = invariant_block_open(&bctx.ctxt.verus_items, open_stmt) {
@@ -870,8 +911,18 @@ fn invariant_block_to_vir<'tcx>(
     let inner_ty = typ_of_node(bctx, inner_pat.span, &inner_hir, false)?;
     let vir_binder = Arc::new(VarBinderX { name, a: inner_ty });
 
-    let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity);
-    Ok(bctx.spanned_typed_new(expr.span, &typ_of_node(bctx, expr.span, &expr.hir_id, false)?, e))
+    let mid_exp = bctx.spanned_typed_new(
+        mid_stmt.span,
+        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity),
+    );
+    let spend_stmt_vir = stmt_to_vir(&bctx, spend_stmt)
+        .expect("could not convert spend_open_invariant_credit call to vir");
+    Ok(bctx.spanned_typed_new(
+        expr.span,
+        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        ExprX::Block(Arc::new(spend_stmt_vir), Some(mid_exp)),
+    ))
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -1169,8 +1220,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-    let expr_vattrs =
-        get_verifier_attrs(expr_attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
+    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
     if expr_vattrs.truncate {
         if !match &expr.kind {
             ExprKind::Cast(_, _) => true,
@@ -1952,6 +2002,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
             let is_index_mut = match tgt_ty.kind() {
                 TyKind::Array(_, _) => false,
+                TyKind::Slice(_) => false,
                 TyKind::Ref(_, _, Mutability::Not) => false,
                 TyKind::Ref(_, _, Mutability::Mut) => true,
                 _ => {
@@ -1976,42 +2027,23 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             };
             let (fun, typ_args) = match &**t1 {
                 TypX::Datatype(p, typ_args, _impl_paths)
-                    if p == &Arc::new(vir::ast::PathX {
-                        krate: Some(Arc::new("alloc".to_string())),
-                        segments: Arc::new(vec![
-                            Arc::new("vec".to_string()),
-                            Arc::new("Vec".to_string()),
-                        ]),
-                    }) =>
+                    if p == &vir::path!("alloc" => "vec", "Vec") =>
                 {
-                    let fun = vir::ast::FunX {
-                        path: Arc::new(vir::ast::PathX {
-                            krate: Some(Arc::new("vstd".to_string())),
-                            segments: Arc::new(vec![
-                                Arc::new("std_specs".to_string()),
-                                Arc::new("vec".to_string()),
-                                Arc::new("vec_index".to_string()),
-                            ]),
-                        }),
-                    };
+                    let fun = vir::fun!("vstd" => "std_specs", "vec", "vec_index");
                     (fun, typ_args.clone())
                 }
                 TypX::Primitive(vir::ast::Primitive::Array, typ_args) => {
-                    let fun = vir::ast::FunX {
-                        path: Arc::new(vir::ast::PathX {
-                            krate: Some(Arc::new("vstd".to_string())),
-                            segments: Arc::new(vec![
-                                Arc::new("array".to_string()),
-                                Arc::new("array_index_get".to_string()),
-                            ]),
-                        }),
-                    };
+                    let fun = vir::fun!("vstd" => "array", "array_index_get");
+                    (fun, typ_args.clone())
+                }
+                TypX::Primitive(vir::ast::Primitive::Slice, typ_args) => {
+                    let fun = vir::fun!("vstd" => "slice", "slice_index_get");
                     (fun, typ_args.clone())
                 }
                 _ => {
                     return err_span(
                         expr.span,
-                        "in exec code, Verus only supports the index operator for Vec and array types",
+                        "in exec code, Verus only supports the index operator for Vec, array, and slice types",
                     );
                 }
             };
@@ -2028,7 +2060,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
             let call_target = CallTarget::Fun(
                 vir::ast::CallTargetKind::Static,
-                Arc::new(fun),
+                fun,
                 typ_args,
                 // arbitrary impl_path
                 // REVIEW: why is this needed?
@@ -2356,7 +2388,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
         }
         StmtKind::Item(item_id) => {
             let attrs = bctx.ctxt.tcx.hir().attrs(item_id.hir_id());
-            let vattrs = get_verifier_attrs(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))?;
+            let vattrs = bctx.ctxt.get_verifier_attrs(attrs)?;
             if vattrs.internal_reveal_fn {
                 dbg!(&item_id.hir_id());
                 unreachable!();

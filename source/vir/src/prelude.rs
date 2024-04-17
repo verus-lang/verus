@@ -686,6 +686,8 @@ pub(crate) fn datatype_height_axiom(
     let height = str_to_node(HEIGHT);
     let height_lt = str_to_node(HEIGHT_LT);
     let height_rec_fun = str_to_node(HEIGHT_REC_FUN);
+    let qid = str_to_node(format!("prelude_datatype_height_{}", field).as_str());
+    let skolem_id = str_to_node(format!("skolem_prelude_datatype_height_{}", field).as_str());
     let field = str_to_node(field.as_str());
     let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
@@ -710,8 +712,8 @@ pub(crate) fn datatype_height_axiom(
                 )
             )
             :pattern (([height] [field_of_x]))
-            :qid prelude_datatype_height
-            :skolemid skolem_prelude_datatype_height
+            :qid [qid]
+            :skolemid [skolem_id]
         )))
     )
 }

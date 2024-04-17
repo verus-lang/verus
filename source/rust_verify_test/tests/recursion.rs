@@ -1171,6 +1171,42 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file_with_options! {
+    #[test] proof_decreases_when_fail2_ok ["-V allow-inline-air"] => verus_code! {
+        spec fn f(x: u8, y: int) -> int decreases y {
+            if x == 300 {
+                f(x, y) + 1
+            } else {
+                7
+            }
+        }
+
+        proof fn good() {
+            inline_air_stmt("(assert (= (f.? (I 200) (I 3)) (Add (f.? (I 200) (I 3)) 0)))");
+            inline_air_stmt("(assume (= (f.? (I 200) (I 3)) (Add (f.? (I 200) (I 3)) 0)))");
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_decreases_when_fail2 ["-V allow-inline-air"] => verus_code! {
+        spec fn f(x: u8, y: int) -> int decreases y {
+            if x == 300 {
+                f(x, y) + 1
+            } else {
+                7
+            }
+        }
+
+        proof fn bad()
+            ensures false
+        {
+            inline_air_stmt("(assert (= (f.? (I 300) (I 3)) (Add (f.? (I 300) (I 3)) 1)))");
+            inline_air_stmt("(assume (= (f.? (I 300) (I 3)) (Add (f.? (I 300) (I 3)) 1)))");
+        }
+    } => Err(err) => { assert!(err.errors.len() == 1); }
+}
+
 test_verify_one_file! {
     #[test] proof_decreases_recommends_fail verus_code! {
         spec fn f(i: int) -> int

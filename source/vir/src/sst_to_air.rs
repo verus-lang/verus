@@ -515,20 +515,8 @@ fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity
     ident_apply(&inv_fn_ident, &args)
 }
 
-pub fn default_mask_set_for_mode(mode: Mode) -> MaskSet {
-    // By default, we assume an #[verifier::exec] fn can open any invariant, and that
-    // a #[verifier::proof] fn can open no invariants.
-    if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
-}
-
-pub fn mask_set_from_spec(
-    spec: &MaskSpec,
-    mode: Mode,
-    function_name: &Fun,
-    args: &Vec<Expr>,
-) -> MaskSet {
+pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>) -> MaskSet {
     match spec {
-        MaskSpec::NoSpec => default_mask_set_for_mode(mode),
         MaskSpec::InvariantOpens(exprs) => {
             let mut l = vec![];
             for (i, e) in exprs.iter().enumerate() {
@@ -1462,7 +1450,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let callee_mask_set =
-                mask_set_from_spec(&func.x.mask_spec, func.x.mode, &func.x.name, &req_args);
+                mask_set_from_spec(&func.x.mask_spec_or_default(), &func.x.name, &req_args);
             if !ctx.checking_spec_preconditions() {
                 callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
@@ -2607,49 +2595,63 @@ pub(crate) fn body_stm_to_air(
         if is_bit_vector_mode {
             panic! {"Error: integer_ring and bit_vector should not be used together"}
         };
-        // parameters, requires, ensures to Singular Query
-        // in the resulting queryX::assertion, the last stmt should be ensure expression
-        let mut singular_vars: Vec<Decl> = vec![];
-        for param in params.iter() {
-            singular_vars
-                .push(Arc::new(DeclX::Var(param.x.name.lower(), typ_to_air(ctx, &param.x.typ))));
-        }
-        let mut singular_stmts: Vec<Stmt> = vec![];
-        for req in reqs.iter() {
-            let error = error_with_label(
-                &req.span,
-                "Failed to translate this expression into a singular query".to_string(),
-                "at the require clause".to_string(),
-            );
-            let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
-            singular_stmts.push(assert_stm);
-        }
-        for ens in post_condition.ens_exps.iter() {
-            let error = error_with_label(
-                &ens.span,
-                "Failed to translate this expression into a singular query".to_string(),
-                "at the ensure clause".to_string(),
-            );
-            let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
-            let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
-            singular_stmts.push(assert_stm);
-        }
+        #[cfg(feature = "singular")]
+        {
+            // parameters, requires, ensures to Singular Query
+            // in the resulting queryX::assertion, the last stmt should be ensure expression
+            let mut singular_vars: Vec<Decl> = vec![];
+            for param in params.iter() {
+                singular_vars.push(Arc::new(DeclX::Var(
+                    param.x.name.lower(),
+                    typ_to_air(ctx, &param.x.typ),
+                )));
+            }
+            let mut singular_req_stmts: Vec<Stmt> = vec![];
+            for req in reqs.iter() {
+                let error = error_with_label(
+                    &req.span,
+                    "Unspported expression in integer_ring".to_string(),
+                    "at the require clause".to_string(),
+                );
+                let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
+                singular_req_stmts.push(assert_stm);
+            }
 
-        let query = Arc::new(QueryX {
-            local: Arc::new(singular_vars),
-            assertion: Arc::new(air::ast::StmtX::Block(Arc::new(singular_stmts))),
-        });
-        let singular_command = Arc::new(CommandX::CheckValid(query));
+            let mut singular_ens_stmts: Vec<Stmt> = vec![];
+            for ens in post_condition.ens_exps.iter() {
+                let error = error_with_label(
+                    &ens.span,
+                    "Unspported expression in integer_ring".to_string(),
+                    "at the ensure clause".to_string(),
+                );
+                let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
+                singular_ens_stmts.push(assert_stm);
+            }
 
-        state.commands.push(CommandsWithContextX::new(
-            ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
-            func_span.clone(),
-            "Singular check valid".to_string(),
-            Arc::new(vec![singular_command]),
-            ProverChoice::Singular,
-            true,
-        ));
+            // put requires and ensures in the singular query
+            let query = Arc::new(air::ast::SingularQueryX {
+                local: Arc::new(singular_vars),
+                requires: Arc::new(singular_req_stmts),
+                ensures: Arc::new(singular_ens_stmts),
+            });
+
+            let singular_command = Arc::new(CommandX::CheckSingular(query));
+
+            state.commands.push(CommandsWithContextX::new(
+                ctx.fun
+                    .as_ref()
+                    .expect("asserts are expected to be in a function")
+                    .current_fun
+                    .clone(),
+                func_span.clone(),
+                "Singular check valid".to_string(),
+                Arc::new(vec![singular_command]),
+                ProverChoice::Singular,
+                true,
+            ));
+        }
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = if is_nonlinear {

@@ -164,11 +164,11 @@ test_both! {
     open_inv_in_spec open_inv_in_spec_local verus_code! {
         use vstd::invariant::*;
 
-        pub closed spec fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(i: AtomicInvariant<A, u8, B>) {
-          open_atomic_invariant!(&i => inner => {
+        pub closed spec fn open_inv_in_spec<A, B: InvariantPredicate<A, u8>>(credit: OpenInvariantCredit, i: AtomicInvariant<A, u8, B>) {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "Cannot open invariant in Spec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode proof")
 }
 
 test_both! {
@@ -186,10 +186,10 @@ test_both! {
     open_inv_in_proof open_inv_in_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>)
+        pub proof fn open_inv_in_proof<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
           opens_invariants any
         {
-          open_atomic_invariant!(&i => inner => {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
     } => Ok(())
@@ -221,12 +221,40 @@ test_both! {
     } => Err(err) => assert_vir_error_msg(err, "Invariant must be Proof mode")
 }
 
+test_both! {
+    spend_credit_twice spend_credit_twice_local verus_code! {
+        use vstd::invariant::*;
+
+        pub proof fn spend_credit_twice<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
+            opens_invariants any
+        {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {});
+            open_atomic_invariant_in_proof!(credit => &i => inner => {});
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `credit`")
+}
+
+test_both! {
+    create_credit_in_proof create_credit_in_proof_local verus_code! {
+        use vstd::invariant::*;
+
+        pub proof fn create_credit_in_proof<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>)
+            opens_invariants any
+        {
+            open_atomic_invariant_in_proof!(vstd::pervasive::proof_from_false() => &i => inner => {}); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 // This test doesn't apply to LocalInvariant
 test_verify_one_file! {
     #[test] exec_code_in_inv_block verus_code! {
         use vstd::invariant::*;
 
-        pub fn exec_fn() { }
+        pub fn exec_fn()
+            opens_invariants none
+        {
+        }
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>) {
             open_atomic_invariant!(&i => inner => {
@@ -314,8 +342,8 @@ test_both! {
     return_early_proof return_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
-          open_atomic_invariant!(&i => inner => {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>) {
+          open_atomic_invariant_in_proof!(credit => &i => inner => {
             return;
           });
         }
@@ -326,10 +354,10 @@ test_both! {
     break_early_proof break_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
-            open_atomic_invariant!(&i => inner => {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {
               break;
             });
           }
@@ -342,10 +370,10 @@ test_both! {
     continue_early_proof continue_early_proof_local verus_code! {
         use vstd::invariant::*;
 
-        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
+        pub proof fn blah<A, B: InvariantPredicate<A, u8>>(tracked credit: OpenInvariantCredit, tracked i: AtomicInvariant<A, u8, B>) {
           let mut idx: int = 0;
           while idx < 5 {
-            open_atomic_invariant!(&i => inner => {
+            open_atomic_invariant_in_proof!(credit => &i => inner => {
               break;
             });
           }
@@ -354,7 +382,7 @@ test_both! {
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
-// Check that we can't open a AtomicInvariant with open_local_invariant and vice-versa
+// Check that we can't open an AtomicInvariant with open_local_invariant and vice-versa
 
 test_verify_one_file! {
     #[test] mixup1 verus_code! {
@@ -415,11 +443,11 @@ test_verify_one_file! {
         fn stuff()
           opens_invariants [ 0int ]
         {
-            stuff2();
+            stuff2(); // FAILS
         }
 
         fn stuff2()
-          opens_invariants [ 0int, 1int ] // FAILS
+          opens_invariants [ 0int, 1int ]
         {
         }
 
@@ -446,14 +474,14 @@ test_verify_one_file! {
         }
 
         fn symbolic(x: u8)
-          opens_invariants [ x ] // FAILS
+          opens_invariants [ x ]
         {
         }
 
         fn symbolic_caller(x: u8, y: u8)
           opens_invariants [ y ]
         {
-          symbolic(x);
+          symbolic(x); // FAILS
         }
 
         fn symbolic2(x: u8)
@@ -525,4 +553,169 @@ test_verify_one_file! {
         {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl verus_code! {
+        trait Tr {
+            fn stuff()
+                opens_invariants none;
+        }
+        struct X {}
+        impl Tr for X {
+            fn stuff()
+                opens_invariants any;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare an opens_invariants spec")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl2 verus_code! {
+        use vstd::invariant::*;
+
+        struct B { }
+        impl InvariantPredicate<(), u8> for B {
+            open spec fn inv(k: (), v: u8) -> bool { true }
+        }
+
+        trait Tr {
+            fn stuff(Tracked(i): Tracked<LocalInvariant<(), u8, B>>)
+                opens_invariants none;
+        }
+        struct X {}
+        impl Tr for X {
+            fn stuff(Tracked(i): Tracked<LocalInvariant<(), u8, B>>) {
+                open_local_invariant!(&i => inner => {
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl3 verus_code! {
+        use vstd::invariant::*;
+
+        struct B { }
+        impl InvariantPredicate<(), u8> for B {
+            open spec fn inv(k: (), v: u8) -> bool { true }
+        }
+
+        trait Tr {
+            proof fn stuff(tracked credit: OpenInvariantCredit, tracked i: LocalInvariant<(), u8, B>);
+        }
+        struct X {}
+        impl Tr for X {
+            proof fn stuff(tracked credit: OpenInvariantCredit, tracked i: LocalInvariant<(), u8, B>) {
+                open_local_invariant_in_proof!(credit => &i => inner => {
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl4 verus_code! {
+        use vstd::invariant::*;
+
+        struct B { }
+        impl InvariantPredicate<(), u8> for B {
+            open spec fn inv(k: (), v: u8) -> bool { true }
+        }
+
+        trait Tr {
+            fn stuff_open_none()
+                opens_invariants none;
+
+            fn stuff_open_any()
+                opens_invariants any;
+
+            proof fn stuff_open_mid(x: int, y: int)
+                opens_invariants [y];
+        }
+
+        struct X {}
+        impl Tr for X {
+            fn stuff_open_none() { }
+            fn stuff_open_any() { }
+            proof fn stuff_open_mid(j: int, r: int) { }
+        }
+
+        fn test_generic1<T: Tr>()
+            opens_invariants none
+        {
+            T::stuff_open_none(); // ok
+        }
+
+        fn test_generic2<T: Tr>()
+            opens_invariants none
+        {
+            T::stuff_open_any(); // FAILS
+        }
+
+        proof fn test_generic3<T: Tr>(x: int, y: int)
+            opens_invariants [x]
+        {
+            T::stuff_open_mid(x, y); // FAILS
+        }
+
+        fn test_specific1()
+            opens_invariants none
+        {
+            X::stuff_open_none(); // ok
+        }
+
+        fn test_specific2()
+            opens_invariants none
+        {
+            X::stuff_open_any(); // FAILS
+        }
+
+        proof fn test_specific3(x: int, y: int)
+            opens_invariants [x]
+        {
+            X::stuff_open_mid(x, y); // FAILS
+        }
+
+        proof fn test_specific4(x: int, y: int)
+            opens_invariants [x, y]
+        {
+            X::stuff_open_mid(x, y); // ok
+        }
+
+        proof fn test_specific5(x: int, y: int)
+            opens_invariants [y]
+        {
+            X::stuff_open_mid(y, x); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_trait_method_impl5 verus_code! {
+        proof fn open_me(x: int)
+            opens_invariants [x]
+        { }
+
+        trait Tr {
+            proof fn stuff_open_none(a: int, b: int)
+                opens_invariants [a];
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            proof fn stuff_open_none(b: int, a: int) {
+                open_me(b);
+            }
+        }
+
+        struct Y { }
+
+        impl Tr for Y {
+            proof fn stuff_open_none(b: int, a: int) {
+                open_me(a); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

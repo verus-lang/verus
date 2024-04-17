@@ -1,5 +1,5 @@
 use crate::attributes::{
-    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, get_verifier_attrs, VerifierAttrs,
+    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
@@ -24,8 +24,8 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, MaskSpec,
-    Mode, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
+    ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
 use vir::ast_util::air_unique_var;
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -509,7 +509,7 @@ pub(crate) fn check_item_fn<'tcx>(
             crate::verus_items::CompilableOprItem::NewStrLit,
         ));
 
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
     let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification {
@@ -1125,7 +1125,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
         unsupported_err_unless!(broadcast_forall.is_none(), span, "broadcast_forall");
-        unsupported_err_unless!(matches!(mask_spec, MaskSpec::NoSpec), span, "opens_invariants");
+        unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
 
         Ok(FunctionX {
@@ -1418,7 +1418,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             Some(m) => (m, m, m),
         }
     };
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not yet supported for const");
@@ -1471,7 +1471,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         decrease_by: None,
         broadcast_forall: None,
         fndef_axioms: None,
-        mask_spec: MaskSpec::NoSpec,
+        mask_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         publish: get_publish(&vattrs).0,
         attrs: Arc::new(fattrs),
@@ -1494,7 +1494,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     idents: &[Ident],
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
-    let vattrs = get_verifier_attrs(attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = Arc::new(FunX { path });
@@ -1579,7 +1579,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         broadcast_forall: None,
         fndef_axioms: None,
-        mask_spec: MaskSpec::NoSpec,
+        mask_spec: None,
         item_kind: ItemKind::Function,
         publish: None,
         attrs: Default::default(),

@@ -227,7 +227,8 @@ pub fn get_dependencies(
     let result: Vec<_> =
         dependencies.split_whitespace().skip(1).map(|x| PathBuf::from(x)).collect();
     assert!(result.len() > 0);
-    let mut path_iters: Vec<_> = result.iter().map(|x| x.iter()).collect();
+    let mut path_iters: Vec<_> =
+        result.iter().map(|x| x.iter().take(x.iter().count() - 1)).collect();
     let mut chomp_components = 0;
     loop {
         let common = path_iters

@@ -246,6 +246,13 @@ fn func_body_to_air(
     if function.x.decrease.len() > 0 {
         // conditions on type arguments:
         def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds));
+
+        for param in function.x.params.iter() {
+            let arg = ident_var(&param.x.name.lower());
+            if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
+                def_reqs.push(pre.clone());
+            }
+        }
     }
     if let Some(req) = &function.x.decrease_when {
         // "when" means the function is only defined if the requirements hold
@@ -321,15 +328,16 @@ fn func_body_to_air(
     }
 
     // For trait method implementations, use trait method function name and add Self type argument
-    let (name, typ_args) =
+    let (name, rec_name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
-            (method.clone(), trait_typ_args.clone())
+            (method.clone(), function.x.name.clone(), trait_typ_args.clone())
         } else if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
-            (crate::def::trait_default_name(&function.x.name), Arc::new(typ_args))
+            let name = crate::def::trait_default_name(&function.x.name);
+            (name.clone(), name, Arc::new(typ_args))
         } else {
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
-            (function.x.name.clone(), Arc::new(typ_args))
+            (function.x.name.clone(), function.x.name.clone(), Arc::new(typ_args))
         };
 
     // non-recursive:
@@ -350,8 +358,8 @@ fn func_body_to_air(
         let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node).len();
         assert!(cycle_len >= 1);
 
-        let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&name)));
-        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&name));
+        let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name)));
+        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&rec_name));
         let args = func_def_args(&function.x.typ_params, &pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
@@ -482,11 +490,33 @@ pub fn func_name_to_air(
     function: &Function,
 ) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
+    let declare_rec = |commands: &mut Vec<Command>| {
+        // Check whether we need to declare the recursive version too
+        if function.x.body.is_some() {
+            if crate::recursion::fun_is_recursive(ctx, &function) {
+                let rec_f =
+                    suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
+                let mut rec_typs =
+                    vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
+                for _ in function.x.typ_params.iter() {
+                    for x in crate::def::types().iter().rev() {
+                        rec_typs.insert(0, str_typ(x));
+                    }
+                }
+                rec_typs.push(str_typ(FUEL_TYPE));
+                let typ = typ_to_air(ctx, &function.x.ret.x.typ);
+                let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
+                commands.push(Arc::new(CommandX::Global(rec_decl)));
+            }
+        }
+    };
+
     if function.x.mode == Mode::Spec {
         if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
             // Implementations of trait methods use the trait method declaration's function,
             // so there's no need to declare another function.
-            return Ok(Arc::new(vec![]));
+            declare_rec(&mut commands);
+            return Ok(Arc::new(commands));
         }
 
         let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
@@ -509,23 +539,7 @@ pub fn func_name_to_air(
             commands.push(Arc::new(CommandX::Global(decl)));
         }
 
-        // Check whether we need to declare the recursive version too
-        if function.x.body.is_some() {
-            if crate::recursion::fun_is_recursive(ctx, &function) {
-                let rec_f =
-                    suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
-                let mut rec_typs =
-                    vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
-                for _ in function.x.typ_params.iter() {
-                    for x in crate::def::types().iter().rev() {
-                        rec_typs.insert(0, str_typ(x));
-                    }
-                }
-                rec_typs.push(str_typ(FUEL_TYPE));
-                let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
-                commands.push(Arc::new(CommandX::Global(rec_decl)));
-            }
-        }
+        declare_rec(&mut commands);
     }
 
     if matches!(function.x.item_kind, ItemKind::Static) {
@@ -654,8 +668,8 @@ pub fn func_decl_to_air(
 
     // Inv mask
     match &function.x.mask_spec {
-        MaskSpec::NoSpec => {}
-        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+        None => {}
+        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
             for (i, e) in es.iter().enumerate() {
                 let req_params = params_to_pre_post_pars(&function.x.params, true);
                 let _ = req_ens_to_air(
@@ -1053,8 +1067,8 @@ pub fn func_def_to_sst(
         }
     }
 
-    let inv_spec_exprs = match &req_ens_function.x.mask_spec {
-        MaskSpec::NoSpec => Arc::new(vec![]),
+    let mask_spec = req_ens_function.x.mask_spec_or_default();
+    let inv_spec_exprs = match &mask_spec {
         MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
     };
     let mut inv_spec_air_exprs = vec![];
@@ -1082,8 +1096,7 @@ pub fn func_def_to_sst(
         inv_spec_air_exprs
             .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
     }
-    let mask_set = match &req_ens_function.x.mask_spec {
-        MaskSpec::NoSpec => crate::sst_to_air::default_mask_set_for_mode(req_ens_function.x.mode),
+    let mask_set = match mask_spec {
         MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(inv_spec_air_exprs),
         MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(inv_spec_air_exprs),
     };

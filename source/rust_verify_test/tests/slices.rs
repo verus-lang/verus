@@ -14,6 +14,13 @@ test_verify_one_file! {
             assert(t == 19);
         }
 
+        fn foo_index(x: &[u64])
+            requires x@.len() == 2, x[0] == 19,
+        {
+            let t = x[0];
+            assert(t == 19);
+        }
+
         fn foo2(x: Vec<u64>)
             requires x@.len() == 2, x[0] == 19,
         {
@@ -25,12 +32,24 @@ test_verify_one_file! {
             let t = *slice_index_get(x, 0); // FAILS
         }
 
+        fn foo3_index(x: &[u64])
+        {
+            let t = x[0]; // FAILS
+        }
+
         // Generics
 
         fn foo_generic<T>(x: &[T])
             requires x@.len() === 2, x[0] === x[1],
         {
             let t = slice_index_get(x, 0);
+            assert(*t === x[1]);
+        }
+
+        fn foo_generic_index<T>(x: &[T])
+            requires x@.len() === 2, x[0] === x[1],
+        {
+            let t = &x[0];
             assert(*t === x[1]);
         }
 
@@ -45,12 +64,17 @@ test_verify_one_file! {
             let t = slice_index_get(x, 0); // FAILS
         }
 
+        fn foo_generic3_index<T>(x: &[T])
+        {
+            let t = &x[0]; // FAILS
+        }
+
         fn foo_generic4(x: &[u64])
             requires x@.len() == 2, x[0] == 19, x[1] == 19,
         {
             foo_generic(x);
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file! {

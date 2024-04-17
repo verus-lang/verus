@@ -8,7 +8,7 @@
 #[path = "../../common/consts.rs"]
 mod consts;
 
-const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 2, 10];
+const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 3, 0];
 
 mod util;
 
@@ -749,8 +749,11 @@ fn run() -> Result<(), String> {
                             return Ok(());
                         }
 
+                        let verusfmt_path =
+                            std::env::var("VARGO_VERUSFMT_PATH").unwrap_or("verusfmt".to_string());
+
                         if !vstd_no_verusfmt {
-                            match std::process::Command::new("verusfmt")
+                            match std::process::Command::new(&verusfmt_path)
                                 .arg("--version")
                                 .output()
                             {
@@ -763,9 +766,10 @@ fn run() -> Result<(), String> {
                                     }
                                     let verusfmt_version_stdout = String::from_utf8(output.stdout)
                                         .map_err(|_| format!("invalid output from verusfmt"))?;
-                                    let verusfmt_version_re =
-                                        Regex::new(r"^verusfmt ([0-9]+)\.([0-9]+)\.([0-9]+)\n$")
-                                            .unwrap();
+                                    let verusfmt_version_re = Regex::new(
+                                        r"^verusfmt ([0-9]+)\.([0-9]+)\.([0-9]+)(?:-.*)?\n$",
+                                    )
+                                    .unwrap();
                                     let verusfmt_version = verusfmt_version_re
                                         .captures(&verusfmt_version_stdout)
                                         .ok_or(format!("invalid output from verusfmt"))?
@@ -808,7 +812,7 @@ fn run() -> Result<(), String> {
                                 .map(|x| x.path().to_owned())
                                 .collect::<Vec<_>>();
 
-                            let mut verusfmt = std::process::Command::new("verusfmt");
+                            let mut verusfmt = std::process::Command::new(&verusfmt_path);
                             if fmt_check {
                                 verusfmt.arg("--check");
                             }

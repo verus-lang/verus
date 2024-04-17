@@ -34,10 +34,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
     };
     let is_broadcast_use = {
         let expr_attrs = ctxt.tcx.hir().attrs(block_expr.hir_id);
-        let expr_vattrs = crate::attributes::get_verifier_attrs(
-            expr_attrs,
-            Some(&mut *ctxt.diagnostics.borrow_mut()),
-        )?;
+        let expr_vattrs = ctxt.get_verifier_attrs(expr_attrs)?;
         expr_vattrs.broadcast_use_reveal
     };
     let ExprKind::Path(QPath::Resolved(None, path)) = &block_expr.kind else {
