@@ -1781,6 +1781,7 @@ impl Verifier {
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
             false,
+            self.args.all_triggers_always,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;

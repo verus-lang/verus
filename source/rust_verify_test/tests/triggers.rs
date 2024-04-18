@@ -353,3 +353,42 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_all_triggers_always_negative verus_code! {
+        spec fn a(v: int) -> bool;
+        spec fn b(v: int) -> bool;
+
+        pub proof fn test()
+        {
+            assume(forall|x: int| (#[trigger] a(x)) && b(x));
+            assert(b(3)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_all_triggers_always_positive ["-V all-triggers-always"] => verus_code! {
+        spec fn a(v: int) -> bool;
+        spec fn b(v: int) -> bool;
+
+        pub proof fn test()
+        {
+            assume(forall|x: int| (#[trigger] a(x)) && b(x));
+            assert(b(3));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_all_triggers_always_with_triggers ["-V all-triggers-always"] => verus_code! {
+        spec fn a(v: int) -> bool;
+        spec fn b(v: int) -> bool;
+
+        pub proof fn test()
+        {
+            assume(forall|x: int| #![trigger a(x)] a(x) && b(x));
+            assert(b(3));
+        }
+    } => Ok(())
+}

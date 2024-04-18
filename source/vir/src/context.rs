@@ -52,6 +52,7 @@ pub struct GlobalCtx {
     pub arch: crate::ast::ArchWordBits,
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
+    pub all_triggers_always: bool,
 }
 
 // Context for verifying one function
@@ -211,6 +212,7 @@ impl GlobalCtx {
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
         after_simplify: bool,
+        all_triggers_always: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -454,6 +456,7 @@ impl GlobalCtx {
             crate_name,
             vstd_crate_name,
             func_call_graph_log,
+            all_triggers_always,
         })
     }
 
@@ -479,6 +482,7 @@ impl GlobalCtx {
             crate_name: self.crate_name.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
+            all_triggers_always: self.all_triggers_always,
         }
     }
 

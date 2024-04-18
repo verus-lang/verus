@@ -74,6 +74,7 @@ pub struct ArgsX {
     pub show_triggers: ShowTriggers,
     pub ignore_unexpected_smt: bool,
     pub allow_inline_air: bool,
+    pub all_triggers_always: bool,
     pub debugger: bool,
     pub profile: bool,
     pub profile_all: bool,
@@ -114,6 +115,7 @@ impl ArgsX {
             show_triggers: Default::default(),
             ignore_unexpected_smt: Default::default(),
             allow_inline_air: Default::default(),
+            all_triggers_always: Default::default(),
             debugger: Default::default(),
             profile: Default::default(),
             profile_all: Default::default(),
@@ -249,6 +251,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
+    const EXTENDED_ALL_TRIGGERS_ALWAYS: &str = "all-triggers-always";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -266,6 +269,10 @@ pub fn parse_args_with_imports(
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
+        (
+            EXTENDED_ALL_TRIGGERS_ALWAYS,
+            "Always select all valid triggers for user-level quantifiers",
+        ),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -539,6 +546,7 @@ pub fn parse_args_with_imports(
         },
         ignore_unexpected_smt: extended.get(EXTENDED_IGNORE_UNEXPECTED_SMT).is_some(),
         allow_inline_air: extended.get(EXTENDED_ALLOW_INLINE_AIR).is_some(),
+        all_triggers_always: extended.get(EXTENDED_ALL_TRIGGERS_ALWAYS).is_some(),
         debugger: extended.get(EXTENDED_DEBUG).is_some(),
         profile: {
             if matches.opt_present(OPT_PROFILE) {

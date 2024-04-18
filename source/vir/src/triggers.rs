@@ -428,37 +428,50 @@ pub(crate) fn build_triggers(
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
     };
-    get_manual_triggers(&mut state, exp)?;
-    if state.triggers.len() > 0 || allow_empty {
-        if state.auto_trigger != AutoType::None {
-            return Err(error(
-                span,
-                "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",
-            ));
-        }
-        let mut trigs: Vec<Trig> = Vec::new();
-        for (group, trig) in state.triggers {
-            for (x, _) in vars {
-                if !state.coverage[&group].contains(x) {
-                    let group_name = match group {
-                        None => "".to_string(),
-                        Some(id) => format!(" group {}", id),
-                    };
-                    return Err(error(
-                        span,
-                        format!(
-                            "trigger{} does not cover variable {}",
-                            group_name,
-                            crate::def::user_local_name(x)
-                        ),
-                    ));
-                }
+    let selected = if !ctx.global.all_triggers_always {
+        get_manual_triggers(&mut state, exp)?;
+        if state.triggers.len() > 0 || allow_empty {
+            if state.auto_trigger != AutoType::None {
+                return Err(error(
+                    span,
+                    "cannot use both manual triggers (#[trigger] or #![trigger ...]) and #![auto]",
+                ));
             }
-            trigs.push(Arc::new(trig.clone()));
+            let mut trigs: Vec<Trig> = Vec::new();
+            for (group, trig) in state.triggers {
+                for (x, _) in vars {
+                    if !state.coverage[&group].contains(x) {
+                        let group_name = match group {
+                            None => "".to_string(),
+                            Some(id) => format!(" group {}", id),
+                        };
+                        return Err(error(
+                            span,
+                            format!(
+                                "trigger{} does not cover variable {}",
+                                group_name,
+                                crate::def::user_local_name(x)
+                            ),
+                        ));
+                    }
+                }
+                trigs.push(Arc::new(trig.clone()));
+            }
+            Some(Arc::new(trigs))
+        } else {
+            None
         }
-        Ok(Arc::new(trigs))
     } else {
+        None
+    };
+    let selected = if let Some(selected) = selected {
+        selected
+    } else {
+        if ctx.global.all_triggers_always {
+            state.auto_trigger = AutoType::All;
+        }
         let vars = &vars.iter().cloned().map(|(x, _)| x).collect();
-        crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
-    }
+        crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)?
+    };
+    Ok(selected)
 }
