@@ -1009,9 +1009,16 @@ impl<A> Seq<Seq<A>> {
 
         if self.len() != 0 {
             self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
+            // let s = self.drop_last().flatten();
+            // let s2 = self.drop_last().flatten_alt();
+            // assert(s == s2);
             seq![self.last()].lemma_flatten_one_element();
+            assert(seq![self.last()].flatten() == self.last());
             lemma_flatten_concat(self.drop_last(), seq![self.last()]);
-            assert(self =~= self.drop_last().push(self.last()));
+            assert((self.drop_last() + seq![self.last()]).flatten() == self.drop_last().flatten()
+                + self.last());
+            assert(self.drop_last() + seq![self.last()] =~= self);
+            assert(self.flatten_alt() == self.drop_last().flatten_alt() + self.last());
         }
     }
 }
