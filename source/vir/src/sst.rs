@@ -175,10 +175,12 @@ pub enum StmX {
         // Any while loop not satisfying (1) is converted to (2).
         loop_isolation: bool,
         is_for_loop: bool,
+        id: u64,
         label: Option<String>,
         cond: Option<(Stm, Exp)>,
         body: Stm,
         invs: LoopInvs,
+        decrease: Exps,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         modified_vars: Arc<Vec<UniqueIdent>>,
     },
