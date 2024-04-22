@@ -19,16 +19,6 @@ pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 #[verifier(external_body)]
 pub struct ExGlobal(alloc::alloc::Global);
 
-////// Declare 'view' function
-pub trait VecAdditionalSpecFns<T> {
-    spec fn spec_len(&self) -> nat;
-
-    spec fn spec_index(&self, i: int) -> T
-        recommends
-            0 <= i < self.spec_len(),
-    ;
-}
-
 impl<T, A: Allocator> View for Vec<T, A> {
     type V = Seq<T>;
 
@@ -39,16 +29,19 @@ impl<T: DeepView, A: Allocator> DeepView for Vec<T, A> {
     type V = Seq<T::V>;
 
     open spec fn deep_view(&self) -> Seq<T::V> {
-        Seq::new(self.view().len(), |i: int| self[i].deep_view())
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
     }
 }
 
-impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
-    #[verifier(inline)]
-    open spec fn spec_len(&self) -> nat {
-        self.view().len()
-    }
+pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
+    spec fn spec_index(&self, i: int) -> T
+        recommends
+            0 <= i < self.view().len(),
+    ;
+}
 
+impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
