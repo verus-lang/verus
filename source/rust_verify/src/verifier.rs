@@ -2396,7 +2396,7 @@ impl Verifier {
             vstd_crate_name,
             no_span: self.air_no_span.clone().unwrap(),
         });
-        let multi_crate = self.args.export.is_some() || import_len > 0;
+        let multi_crate = self.args.export.is_some() || import_len > 0 || self.args.use_crate_name;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 

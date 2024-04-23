@@ -1,0 +1,46 @@
+verus_git_url = "https://github.com/verus-lang/verus.git"
+verus_refspec = "main"
+verus_features = ["singular"]
+
+[[project]]
+name = "memory-allocator"
+git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
+refspec = "main"
+crate_root = "verus-mimalloc/lib.rs"
+extra_args = [
+    "--extern", "libc=build/liblibc.rlib",
+    "--rlimit", "240",
+]
+prepare_script = """
+pushd test_libc
+cargo clean
+cargo +1.76.0 build --release
+popd
+LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
+mkdir -p build
+cp $LIBC_RLIB_NAME build/liblibc.rlib
+"""
+
+[[project]]
+name = "page-table"
+git_url = "https://github.com/utaal/verified-nrkernel.git"
+refspec = "page-table"
+crate_root = "page-table/main.rs"
+extra_args = ["--rlimit", "60"]
+
+[[project]]
+name = "verified-storage"
+git_url = "https://github.com/microsoft/verified-storage.git"
+refspec = "main"
+crate_root = "storage_node/src/lib.rs"
+extra_args = [
+    "-L", "dependency=deps_hack/target/debug/deps",
+    "--extern=deps_hack=deps_hack/target/debug/libdeps_hack.rlib",
+]
+prepare_script = """
+DEBIAN_FRONTEND=noninteractive apt-get install -y libpmem1 libpmemlog1 libpmem-dev libpmemlog-dev llvm-dev clang libclang-dev # verified-storage
+
+cd deps_hack
+cargo clean
+cargo +1.76.0 build
+"""

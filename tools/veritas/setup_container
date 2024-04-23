@@ -1,0 +1,6 @@
+export REPOS_CACHE_PATH=/root/repos-cache/
+export Z3_CACHE_PATH=/root/z3-cache/
+export WORKDIR_PATH=/root/work/
+export OUTPUT_PATH=/root/output/
+
+export VERUS_SINGULAR_PATH=/usr/bin/Singular
