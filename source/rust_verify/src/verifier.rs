@@ -2432,6 +2432,12 @@ impl Verifier {
         // If this turns out to be slow, we could keep the library crates separate from
         // the new crate.  (We do need to have all the crate definitions available in some form,
         // because well_formed and modes checking look up definitions from libraries.)
+        // Currently, the most expensive merged-crate operations are (most expensive first):
+        // - ast_simplify::simplify_krate
+        // - modes::check_crate
+        // - traits::demote_foreign_traits
+        // - GlobalCtx::new
+        // - well_formed::check_crate
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
 
