@@ -25,7 +25,6 @@ impl<T: DeepView> DeepView for [T] {
     }
 }
 
-#[verusfmt::skip] // this doesn't help
 pub trait SliceAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends
