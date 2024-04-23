@@ -265,6 +265,8 @@ pub struct Verifier {
     pub time_vir_rust_to_vir: Duration,
     /// time spent in hir when creating the VIR for the crate
     pub time_hir: Duration,
+    /// time spent importing VIR from other crates
+    pub time_import: Duration,
     /// execution times for each bucket run in parallel
     pub bucket_times: HashMap<BucketId, BucketStats>,
     /// smt runtimes for each function per bucket
@@ -373,6 +375,7 @@ impl Verifier {
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
+            time_import: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
 
@@ -407,6 +410,7 @@ impl Verifier {
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
+            time_import: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_times: HashMap::new(),
@@ -2316,7 +2320,7 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
-        let time0 = Instant::now();
+        let time_hir0 = Instant::now();
 
         match rustc_hir_analysis::check_crate(tcx) {
             Ok(()) => {}
@@ -2356,8 +2360,8 @@ impl Verifier {
             })
         };
 
-        let time1 = Instant::now();
-        self.time_hir = time1 - time0;
+        let time_hir1 = Instant::now();
+        self.time_hir = time_hir1 - time_hir0;
 
         let time0 = Instant::now();
 
@@ -2587,6 +2591,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
+            let time_import0 = Instant::now();
             let imported = match crate::import_export::import_crates(&self.verifier.args) {
                 Ok(imported) => imported,
                 Err(err) => {
@@ -2597,6 +2602,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
             };
+            let time_import1 = Instant::now();
+            self.verifier.time_import = time_import1 - time_import0;
             let verus_items =
                 Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
             let spans = SpanContextX::new(
