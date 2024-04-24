@@ -291,7 +291,7 @@ pub fn count_to_two() -> (result: Result<u32, ()>)
             ensures
                 return_value@.id() == shared_state.get_oneshot_id(0),
                 return_value@@ is Complete,
-            { thread_routine(shared_state_clone, Tracked(oneshot0_thread_half), Ghost(0)) },
+            { thread_routine(shared_state_clone, Tracked(oneshot0_thread_half), Ghost(0)) }
     );
     let shared_state_clone = shared_state.clone();
     let join_handle1 = vstd::thread::spawn(
@@ -299,7 +299,7 @@ pub fn count_to_two() -> (result: Result<u32, ()>)
             ensures
                 return_value@.id() == shared_state.get_oneshot_id(1),
                 return_value@@ is Complete,
-            { thread_routine(shared_state_clone, Tracked(oneshot1_thread_half), Ghost(1)) },
+            { thread_routine(shared_state_clone, Tracked(oneshot1_thread_half), Ghost(1)) }
     );
     // Let the threads run in parallel, then join them both when
     // they're done.
