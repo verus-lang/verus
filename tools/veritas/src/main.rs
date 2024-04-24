@@ -324,6 +324,9 @@ struct VerusOutputSmtTimesMs {
 struct VerusOutputVerificationResults {
     encountered_vir_error: bool,
     success: Option<bool>,
+    verified: Option<u64>,
+    errors: Option<u64>,
+    is_verifying_entire_crate: Option<bool>,
 }
 
 #[derive(Deserialize, Hash)]
@@ -694,7 +697,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         writeln!(&mut summary_md).unwrap();
         writeln!(
             &mut summary_md,
-            "| project | refspec | success | total verus time (ms) | smt run time (ms) |"
+            "| project | refspec | outcome | total verus time (ms) | smt run time (ms) |"
         )
         .unwrap();
         writeln!(
@@ -720,10 +723,21 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 ),
                 project_summary
                     .as_ref()
-                    .and_then(|t| t
-                        .verification_results
-                        .success
-                        .map(|s| format!("{}", *project_runner_success && s)))
+                    .and_then(|t| t.verification_results.success.map(|s| {
+                        let mut outcome = if *project_runner_success && s {
+                            "success"
+                        } else {
+                            "failure"
+                        }
+                        .to_owned();
+                        if let (Some(verified), Some(errors)) = (
+                            t.verification_results.verified,
+                            t.verification_results.errors,
+                        ) {
+                            outcome += &format!(" ({verified} verified, {errors} errors)");
+                        }
+                        outcome
+                    }))
                     .unwrap_or("unknown".to_owned()),
                 project_verification_duration.as_millis(),
                 project_summary
