@@ -549,6 +549,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
 
         project_summaries.push((
             project.clone(),
+            output.status.success(),
             proj_checkout.hash,
             project_verification_duration,
             verus_output,
@@ -592,6 +593,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             .map(
                 |(
                     run_configuration,
+                    runner_success,
                     project_checkout_hash,
                     project_verification_duration,
                     project_summary,
@@ -627,6 +629,10 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                     project_summary_json_map.insert(
                         "valid_output".to_owned(),
                         serde_json::Value::Bool(valid_output),
+                    );
+                    project_summary_json_map.insert(
+                        "runner_success".to_owned(),
+                        serde_json::Value::Bool(*runner_success),
                     );
                     Ok(serde_json::Value::Object(project_summary_json_map))
                 },
@@ -698,6 +704,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         .unwrap();
         for (
             project_run_configuration,
+            project_runner_success,
             project_checkout_hash,
             project_verification_duration,
             project_summary,
@@ -713,7 +720,10 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 ),
                 project_summary
                     .as_ref()
-                    .and_then(|t| t.verification_results.success.map(|s| format!("{}", s)))
+                    .and_then(|t| t
+                        .verification_results
+                        .success
+                        .map(|s| format!("{}", *project_runner_success && s)))
                     .unwrap_or("unknown".to_owned()),
                 project_verification_duration.as_millis(),
                 project_summary
