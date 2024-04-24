@@ -32,6 +32,7 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod pcm;
+pub mod pcm_lib;
 pub mod pervasive;
 #[cfg(feature = "alloc")]
 pub mod ptr;
