@@ -752,7 +752,7 @@ pub broadcast proof fn axiom_u64_leading_ones(i: u64)
     }
 }
 
-#[verifier::prune_unless_this_module_is_used]
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group bits_axioms {
     axiom_u8_trailing_zeros,
     axiom_u8_trailing_ones,

@@ -388,7 +388,7 @@ pub broadcast proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)
     admit();
 }
 
-#[verifier::prune_unless_this_module_is_used]
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group multiset_axioms {
     axiom_multiset_empty,
     axiom_multiset_contained,

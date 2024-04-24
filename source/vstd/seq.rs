@@ -333,7 +333,7 @@ pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     admit();
 }
 
-#[verifier::prune_unless_this_module_is_used]
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group seq_axioms {
     axiom_seq_index_decreases,
     axiom_seq_empty,

@@ -1050,9 +1050,11 @@ impl Visitor {
         } = item_broadcast_group;
         if self.erase_ghost.erase() {
             if matches!(vis, Visibility::Public(_)) {
-                quote_spanned! { span =>
+                let mut item_fn: ItemFn = parse_quote_spanned! { span =>
                     #vis fn #ident() { panic!() }
-                }
+                };
+                item_fn.attrs.extend(attrs.into_iter().cloned());
+                item_fn.to_token_stream()
             } else {
                 TokenStream::new()
             }

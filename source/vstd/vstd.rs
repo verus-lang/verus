@@ -59,7 +59,8 @@ use prelude::*;
 
 verus! {
 
-#[verifier::broadcast_use_by_default_when_this_crate_is_imported]
+#[cfg(feature = "alloc")]
+#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
 pub broadcast group vstd_default {
     seq::seq_axioms,
     seq_lib::seq_lib_default,
@@ -73,6 +74,22 @@ pub broadcast group vstd_default {
     multiset::multiset_axioms,
     string::string_axioms,
     ptr::ptr_axioms,
+    std_specs::range::range_axioms,
+}
+
+#[cfg(not(feature = "alloc"))]
+#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
+pub broadcast group vstd_default {
+    seq::seq_axioms,
+    seq_lib::seq_lib_default,
+    map::map_axioms,
+    set::set_axioms,
+    set_lib::set_lib_axioms,
+    std_specs::bits::bits_axioms,
+    std_specs::control_flow::control_flow_axioms,
+    array::array_axioms,
+    multiset::multiset_axioms,
+    string::string_axioms,
     std_specs::range::range_axioms,
 }
 

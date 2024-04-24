@@ -2096,7 +2096,7 @@ macro_rules! assert_seqs_equal_internal {
     }
 }
 
-#[verifier::prune_unless_this_module_is_used]
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group seq_lib_default {
     Seq::filter_lemma,
     Seq::add_empty_left,
