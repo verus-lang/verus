@@ -1873,6 +1873,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 cond: None,
                 body,
                 invs: header.loop_invariants(),
+                decrease: header.decrease,
             })
         }
         ExprKind::Loop(
@@ -1923,9 +1924,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let cond = Some(expr_to_vir(bctx, cond, ExprModifier::REGULAR)?);
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
-            if header.decrease.len() > 0 {
-                return err_span(expr.span, "termination checking of loops is not supported");
-            }
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
                 loop_isolation: loop_isolation(),
@@ -1934,6 +1932,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 cond,
                 body,
                 invs: header.loop_invariants(),
+                decrease: header.decrease,
             })
         }
         ExprKind::Ret(expr) => {

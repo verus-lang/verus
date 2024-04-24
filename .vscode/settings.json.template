@@ -16,3 +16,10 @@
     "rust-analyzer.workspace.symbol.search.scope": "workspace_and_dependencies",
     "rust-analyzer.diagnostics.disabled": ["unresolved-extern-crate", "syntax-error"]
 }
+
+// if you're developing a tool that doesn't link with verus, use the following instead
+// {
+//     "rust-analyzer.linkedProjects": [
+//         "tools/veritas/Cargo.toml"
+//     ]
+// }

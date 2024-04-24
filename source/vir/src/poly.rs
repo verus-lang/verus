@@ -124,6 +124,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Char => Some(Arc::new(MonoTypX::Char)),
         TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
         TypX::Datatype(path, typs, _impl_paths) => {
             let monotyps = monotyps_as_mono(typs)?;
@@ -134,7 +135,15 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
         }
-        _ => None,
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
+        }
+        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
+        TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::Boxed(..) | TypX::TypParam(..) | TypX::Lambda(..) | TypX::FnDef(..) => None,
+        TypX::ConstInt(_) => None,
+        TypX::Projection { .. } => None,
     }
 }
 
@@ -720,7 +729,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr_typ(&t, ExprX::If(e0, e1.clone(), Some(e2)))
         }
         ExprX::Match(..) => panic!("Match should already be removed"),
-        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => {
             let cond = cond.as_ref().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
             let body = poly_expr(ctx, state, body);
             let invs = invs.iter().map(|inv| crate::ast::LoopInvariant {
@@ -728,6 +737,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 ..inv.clone()
             });
             let invs = Arc::new(invs.collect());
+            let decrease =
+                decrease.iter().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
+            let decrease = Arc::new(decrease.collect());
             mk_expr(ExprX::Loop {
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
@@ -735,6 +747,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 cond,
                 body,
                 invs,
+                decrease,
             })
         }
         ExprX::OpenInvariant(inv, binder, body, atomicity) => {
