@@ -656,18 +656,23 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             run_configuration.verus_features.join(" ")
         )
         .unwrap();
+        writeln!(&mut summary_md).unwrap();
         writeln!(
             &mut summary_md,
-            "|project|refspec|success|total verus time (ms)|smt run time (ms)|"
+            "| project | refspec | success | total verus time (ms) | smt run time (ms) |"
         )
         .unwrap();
-        writeln!(&mut summary_md, "-----").unwrap();
+        writeln!(
+            &mut summary_md,
+            "| ------- | ------- | ------- | --------------------- | ----------------- |"
+        )
+        .unwrap();
         for (project_run_configuration, project_verification_duration, project_summary) in
             project_summaries.iter()
         {
             writeln!(
                 &mut summary_md,
-                "|{}|{}|{}|{}|{}|",
+                "| {} | {} | {} | {} | {} |",
                 project_run_configuration.name,
                 project_run_configuration.refspec,
                 project_summary
