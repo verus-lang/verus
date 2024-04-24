@@ -71,7 +71,7 @@ fn reader_thread(
                 // The Z3 process could die unexpectedly.  In that case, we die too:
                 .expect("IO error: failure when receiving data to Z3 process across pipe");
             line = line.replace("\n", "").replace("\r", "");
-            eprintln!("Received: {}", line);
+            //eprintln!("Received: {}", line);
             if line == "" {
                 empty_lines += 1;
             } else {
