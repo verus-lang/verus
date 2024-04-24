@@ -191,6 +191,11 @@ struct WorkDir {
     workdir_path: PathBuf,
 }
 
+struct Checkout {
+    repository: git2::Repository,
+    hash: String,
+}
+
 impl WorkDir {
     fn init() -> Result<Self, String> {
         let workdir_path = env_var_dir_or_err(WORKDIR_PATH_VAR)?;
@@ -211,19 +216,20 @@ impl WorkDir {
         repo_name: &str,
         repo_url: &str,
         refspec: &str,
-    ) -> Result<git2::Repository, String> {
+    ) -> Result<Checkout, String> {
         let work_path = self
             .workdir_path
             .join(repo_name.to_owned() + "-" + &digest::str_digest(refspec));
 
         let cached_repo = cache.ensure_cache_repo(repo_name, repo_url)?;
-        let repo = git2::Repository::init(work_path)
+        let repository = git2::Repository::init(work_path)
             .map_err(|e| format!("failed to init repo in work path: {}", e))?;
-        let mut origin_remote = repo
+        let mut origin_remote = repository
             .find_remote("origin")
             .ok()
             .or_else(|| {
-                repo.remote("origin", &cached_repo.path().to_string_lossy())
+                repository
+                    .remote("origin", &cached_repo.path().to_string_lossy())
                     .ok()
             })
             .expect("failed to create anonymous remote");
@@ -234,23 +240,25 @@ impl WorkDir {
             .map_err(|e| format!("failed to fetch {} from origin: {}", refspec, e))?;
         std::mem::drop(origin_remote);
         let remote_refspec = format!("remotes/origin/{refspec}");
-        let (object, reference) = repo
+        let (object, reference) = repository
             .revparse_ext(&remote_refspec)
             .map_err(|e| format!("failed to find {}: {}", refspec, e))?;
-        repo.checkout_tree(&object, None)
+        repository
+            .checkout_tree(&object, None)
             .map_err(|e| format!("cannot checkout {}: {}", refspec, e))?;
         match &reference {
-            Some(gref) => repo
+            Some(gref) => repository
                 .set_head(gref.name().unwrap())
                 .map_err(|e| format!("cannot set head: {}", e))?,
-            None => repo
+            None => repository
                 .set_head_detached(object.id())
                 .map_err(|e| format!("cannot set head: {}", e))?,
         }
+        let hash = object.id().to_string();
         std::mem::drop(object);
         std::mem::drop(reference);
 
-        Ok(repo)
+        Ok(Checkout { repository, hash })
     }
 
     fn scratch(&mut self) -> Result<PathBuf, String> {
@@ -372,6 +380,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
     )?;
     info("building verus");
     let verus_workdir = verus_checkout
+        .repository
         .workdir()
         .expect("no workdir in work repository");
     let z3_version = {
@@ -449,6 +458,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             &project.refspec,
         )?;
         let proj_workdir = proj_checkout
+            .repository
             .workdir()
             .expect("no workdir in work repository");
         if let Some(prepare_script) = &project.prepare_script {
@@ -537,7 +547,12 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         )
         .map_err(|e| format!("cannot write output json: {}", e))?;
 
-        project_summaries.push((project.clone(), project_verification_duration, verus_output));
+        project_summaries.push((
+            project.clone(),
+            proj_checkout.hash,
+            project_verification_duration,
+            verus_output,
+        ));
     }
 
     let summary_output_path = run_output_path.join("summary.json");
@@ -561,9 +576,11 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 verification_results: VerusOutputVerificationResults,
                 times_ms: ProjectSummaryTimesMs,
                 verification_duration_ms: u128,
+                project_commit_hash: String,
             },
             ParseFailure {
                 run_configuration: RunConfigurationProject,
+                project_commit_hash: String,
             },
         }
 
@@ -573,7 +590,12 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         let project_summaries = project_summaries
             .iter()
             .map(
-                |(run_configuration, project_verification_duration, project_summary)| {
+                |(
+                    run_configuration,
+                    project_checkout_hash,
+                    project_verification_duration,
+                    project_summary,
+                )| {
                     let valid_output = project_summary.is_some();
                     let project_summary_json =
                         serde_json::to_value(if let Some(project_summary) = project_summary {
@@ -588,10 +610,12 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                                     smt_total: project_summary.times_ms.smt.total,
                                 },
                                 verification_duration_ms: project_verification_duration.as_millis(),
+                                project_commit_hash: project_checkout_hash.clone(),
                             }
                         } else {
                             ProjectSummary::ParseFailure {
                                 run_configuration: run_configuration.clone(),
+                                project_commit_hash: project_checkout_hash.clone(),
                             }
                         })
                         .map_err(|e| format!("cannot convert summary to json: {}", e))?;
@@ -620,6 +644,10 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 serde_json::Number::from_f64(verus_build_duration.as_millis() as f64)
                     .expect("valid verus_build_duration"),
             ),
+        );
+        summary.insert(
+            "verus_commit_hash".to_owned(),
+            serde_json::Value::String(verus_checkout.hash.clone()),
         );
         summary.insert("project_summaries".to_owned(), project_summaries_json_value);
         let summary = serde_json::Value::Object(summary);
@@ -651,8 +679,9 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         use std::fmt::Write;
         writeln!(
             &mut summary_md,
-            "veritas report for verus {} (with features: {})",
+            "veritas report for verus `{}` (`{}`) with features: `{}`",
             run_configuration.verus_refspec,
+            verus_checkout.hash,
             run_configuration.verus_features.join(" ")
         )
         .unwrap();
@@ -667,14 +696,21 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             "| ------- | ------- | ------- | --------------------- | ----------------- |"
         )
         .unwrap();
-        for (project_run_configuration, project_verification_duration, project_summary) in
-            project_summaries.iter()
+        for (
+            project_run_configuration,
+            project_checkout_hash,
+            project_verification_duration,
+            project_summary,
+        ) in project_summaries.iter()
         {
             writeln!(
                 &mut summary_md,
                 "| {} | {} | {} | {} | {} |",
                 project_run_configuration.name,
-                project_run_configuration.refspec,
+                format!(
+                    "`{}` (`{}`)",
+                    &project_run_configuration.refspec, &project_checkout_hash
+                ),
                 project_summary
                     .as_ref()
                     .and_then(|t| t.verification_results.success.map(|s| format!("{}", s)))
