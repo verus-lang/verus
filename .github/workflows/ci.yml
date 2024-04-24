@@ -36,8 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # features: ['', 'singular', 'record-history']
-        features: ['', 'record-history']
+        features: ['', 'singular', 'record-history']
     steps:
       - name: checkout
         uses: actions/checkout@v4
