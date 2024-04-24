@@ -1,5 +1,5 @@
 use getopts::Options;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: f32 = 10f32;
@@ -451,6 +451,14 @@ pub fn parse_args_with_imports(
     let log = parse_opts_or_pairs(matches.opt_strs(OPT_LOG_MULTI));
 
     let extended = parse_opts_or_pairs(matches.opt_strs(OPT_EXTENDED_MULTI));
+    {
+        let extended_keys_set: HashSet<_> = EXTENDED_KEYS.iter().map(|(k, _)| *k).collect();
+        for extended_key in extended.keys() {
+            if !extended_keys_set.contains(extended_key.as_str()) {
+                error(format!("unexpected extended option -V {}", extended_key));
+            }
+        }
+    }
 
     let args = ArgsX {
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
