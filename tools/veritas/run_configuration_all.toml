@@ -44,3 +44,10 @@ cd deps_hack
 cargo clean
 cargo +1.76.0 build
 """
+
+[[project]]
+name = "node-replication"
+git_url = "https://github.com/achreto/verified-node-replication.git"
+refspec = "main"
+crate_root = "verified-node-replication/src/lib.rs"
+extra_args = ["--crate-type=dylib"]

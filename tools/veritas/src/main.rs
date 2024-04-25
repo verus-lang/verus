@@ -132,16 +132,17 @@ impl ReposCache {
             .repos_cache_path
             .join(repo_name.to_owned() + "-" + &digest::str_digest(&repo_url));
 
-        let repo = git2::Repository::init_bare(repo_path)
+        let repo = git2::Repository::init_bare(&repo_path)
             .map_err(|e| format!("failed to init bare repo: {}", e))?;
         let mut origin_remote = repo
             .find_remote("origin")
             .ok()
             .or_else(|| repo.remote("origin", repo_url).ok())
             .expect("failed to create anonymous remote");
+        info(&format!("fetching {repo_url} into {}", repo_path.display()));
         origin_remote
             .fetch(
-                &["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"],
+                &["+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"],
                 None,
                 None,
             )
@@ -293,11 +294,17 @@ struct RunConfigurationProject {
     prepare_script: Option<String>,
 }
 
+fn verus_verify_vstd_default() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize, Hash)]
 struct RunConfiguration {
     verus_git_url: String,
     verus_refspec: String,
     verus_features: Vec<String>,
+    #[serde(default = "verus_verify_vstd_default")]
+    verus_verify_vstd: bool,
 
     #[serde(rename = "project")]
     projects: Vec<RunConfigurationProject>,
@@ -324,6 +331,9 @@ struct VerusOutputSmtTimesMs {
 struct VerusOutputVerificationResults {
     encountered_vir_error: bool,
     success: Option<bool>,
+    verified: Option<u64>,
+    errors: Option<u64>,
+    is_verifying_entire_crate: Option<bool>,
 }
 
 #[derive(Deserialize, Hash)]
@@ -346,23 +356,24 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             })?,
         )
         .map_err(|e| format!("cannot parse run configuration: {}", e))?;
-        run_configuration.projects.insert(
-            0,
-            RunConfigurationProject {
-                name: "verus-vstd".to_owned(),
-                git_url: run_configuration.verus_git_url.clone(),
-                refspec: run_configuration.verus_refspec.clone(),
-                crate_root: "source/vstd/vstd.rs".to_owned(),
-                extra_args: Some(vec![
-                    "--no-vstd".to_owned(),
-                    "--crate-type=lib".to_owned(),
-                    "-V".to_owned(),
-                    "use-crate-name".to_owned(),
-                ]),
-                prepare_script: None,
-            },
-        );
-
+        if run_configuration.verus_verify_vstd {
+            run_configuration.projects.insert(
+                0,
+                RunConfigurationProject {
+                    name: "verus-vstd".to_owned(),
+                    git_url: run_configuration.verus_git_url.clone(),
+                    refspec: run_configuration.verus_refspec.clone(),
+                    crate_root: "source/vstd/vstd.rs".to_owned(),
+                    extra_args: Some(vec![
+                        "--no-vstd".to_owned(),
+                        "--crate-type=lib".to_owned(),
+                        "-V".to_owned(),
+                        "use-crate-name".to_owned(),
+                    ]),
+                    prepare_script: None,
+                },
+            );
+        }
         run_configuration
     };
     dbg!(&run_configuration);
@@ -371,13 +382,17 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
     let mut workdir = WorkDir::init()?;
     let mut z3_cache = Z3Cache::init()?;
 
-    info("checking out verus");
+    info(&format!(
+        "checking out verus {}",
+        run_configuration.verus_refspec
+    ));
     let verus_checkout = workdir.checkout(
         &mut repos_cache,
         VERUS_PROJECT_NAME,
         &run_configuration.verus_git_url,
         &run_configuration.verus_refspec,
     )?;
+    info(&format!("checked out verus commit {}", verus_checkout.hash));
     info("building verus");
     let verus_workdir = verus_checkout
         .repository
@@ -694,7 +709,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         writeln!(&mut summary_md).unwrap();
         writeln!(
             &mut summary_md,
-            "| project | refspec | success | total verus time (ms) | smt run time (ms) |"
+            "| project | refspec | outcome | total verus time (ms) | smt run time (ms) |"
         )
         .unwrap();
         writeln!(
@@ -720,10 +735,21 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 ),
                 project_summary
                     .as_ref()
-                    .and_then(|t| t
-                        .verification_results
-                        .success
-                        .map(|s| format!("{}", *project_runner_success && s)))
+                    .and_then(|t| t.verification_results.success.map(|s| {
+                        let mut outcome = if *project_runner_success && s {
+                            "success"
+                        } else {
+                            "failure"
+                        }
+                        .to_owned();
+                        if let (Some(verified), Some(errors)) = (
+                            t.verification_results.verified,
+                            t.verification_results.errors,
+                        ) {
+                            outcome += &format!(" ({verified} verified, {errors} errors)");
+                        }
+                        outcome
+                    }))
                     .unwrap_or("unknown".to_owned()),
                 project_verification_duration.as_millis(),
                 project_summary

@@ -12,5 +12,5 @@ docker run --platform=linux/amd64 \
     -v verus-veritas-cargo-cache:/root/.cargo \
     -v verus-veritas-z3-cache:/root/z3-cache \
     -v verus-veritas-rustup:/root/.rustup \
-    -v /Users/utaal/Src/verus/tools/veritas/output:/root/output \
+    -v ./output:/root/output \
     --rm ghcr.io/utaal/verus-lang/veritas:rust-1.76.0 $@
