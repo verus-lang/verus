@@ -496,7 +496,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 .arg(&project.crate_root)
                 .args(project.extra_args.as_ref().map(|ea| &ea[..]).unwrap_or(&[]))
                 .arg("--output-json")
-                .arg("--time-expanded")
+                .arg("--time")
                 .arg("--no-report-long-running"),
         )
         .output()
