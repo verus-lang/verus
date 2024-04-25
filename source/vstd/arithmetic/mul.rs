@@ -431,7 +431,8 @@ pub proof fn lemma_mul_is_distributive_add_other_way(x: int, y: int, z: int)
     ensures
         (y + z) * x == y * x + z * x,
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
 }
 
 /// Proof that multiplication distributes over addition when the
@@ -452,7 +453,8 @@ pub proof fn lemma_mul_is_distributive_sub(x: int, y: int, z: int)
     ensures
         x * (y - z) == x * y - x * z,
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
 }
 
 /// Proof that multiplication distributes over subtraction
@@ -505,7 +507,8 @@ pub proof fn lemma_mul_is_distributive(x: int, y: int, z: int)
         x * y == y * x,
         x * z == z * x,
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
 }
 
 /// Proof that multiplication distributes over addition and

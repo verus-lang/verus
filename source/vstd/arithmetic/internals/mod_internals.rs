@@ -20,7 +20,7 @@ verus! {
 use crate::arithmetic::internals::general_internals::*;
 use crate::arithmetic::mul::*;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::lemma_mul_auto;
+use crate::arithmetic::internals::mul_internals::mul_properties_default;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
@@ -153,7 +153,10 @@ pub proof fn lemma_div_add_denominator(n: int, x: int)
     lemma_fundamental_div_mod(x, n);
     lemma_fundamental_div_mod(x + n, n);
     let zp = (x + n) / n - x / n - 1;
-    assert(0 == n * zp + ((x + n) % n) - (x % n)) by { lemma_mul_auto() };
+    assert(0 == n * zp + ((x + n) % n) - (x % n)) by {
+        broadcast use mul_properties_default;
+
+    };
     if (zp > 0) {
         lemma_mul_inequality(1, zp, n);
     }
@@ -175,7 +178,8 @@ pub proof fn lemma_div_sub_denominator(n: int, x: int)
     lemma_fundamental_div_mod(x - n, n);
     let zm = (x - n) / n - x / n + 1;
     assert(0 == n * zm + ((x - n) % n) - (x % n)) by {
-        lemma_mul_auto();
+        broadcast use mul_properties_default;
+
     }
     if (zm > 0) {
         lemma_mul_inequality(1, zm, n);
@@ -204,7 +208,8 @@ pub proof fn lemma_mod_add_denominator(n: int, x: int)
         };
     };
     assert(0 == n * zp + ((x + n) % n) - (x % n)) by {
-        lemma_mul_auto();
+        broadcast use mul_properties_default;
+
     }
     if (zp > 0) {
         lemma_mul_inequality(1, zp, n);
@@ -228,7 +233,8 @@ pub proof fn lemma_mod_sub_denominator(n: int, x: int)
     let zm = (x - n) / n - x / n + 1;
     lemma_mul_is_distributive_auto();  // OBSERVE
     assert(0 == n * zm + ((x - n) % n) - (x % n)) by {
-        lemma_mul_auto();
+        broadcast use mul_properties_default;
+
     }
     if (zm > 0) {
         lemma_mul_inequality(1, zm, n);
@@ -382,7 +388,8 @@ pub proof fn lemma_mod_auto(n: int)
         mod_auto(n),
 {
     lemma_mod_basics(n);
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     assert forall|x: int, y: int|
         {
             let z = (x % n) + (y % n);

@@ -36,7 +36,7 @@ use crate::arithmetic::mul::{
     lemma_mul_nonnegative,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::{lemma_mul_auto, lemma_mul_induction_auto};
+use crate::arithmetic::internals::mul_internals::{mul_properties_default, lemma_mul_induction_auto};
 #[cfg(verus_keep_ghost)]
 use crate::math::{sub as sub1};
 
@@ -426,7 +426,8 @@ pub proof fn lemma_pow_auto()
     lemma_pow_distributes_auto();
     lemma_pow_adds_auto();
     lemma_pow_sub_add_cancel_auto();
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     lemma_mul_increases_auto();
     lemma_mul_strictly_increases_auto();
 }

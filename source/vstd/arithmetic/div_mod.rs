@@ -37,7 +37,7 @@ use crate::arithmetic::internals::mod_internals::{
 use crate::arithmetic::internals::mod_internals_nonlinear as ModINL;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::{
-    lemma_mul_auto,
+    mul_properties_default,
     lemma_mul_induction,
     lemma_mul_induction_auto,
 };
@@ -561,7 +561,8 @@ pub proof fn lemma_remainder_upper(x: int, d: int)
     ensures
         x - d < x / d * d,
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     lemma_div_induction_auto(d, x, |u: int| 0 <= u ==> u - d < u / d * d);
 }
 
@@ -590,7 +591,8 @@ pub proof fn lemma_remainder_lower(x: int, d: int)
     ensures
         x >= x / d * d,
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     lemma_div_induction_auto(d, x, |u: int| 0 <= u ==> u >= u / d * d);
 }
 
@@ -615,7 +617,8 @@ pub proof fn lemma_remainder(x: int, d: int)
     ensures
         0 <= x - (x / d * d) < d,
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     lemma_div_induction_auto(d, x, |u: int| 0 <= u - u / d * d < d);
 }
 
@@ -951,7 +954,8 @@ pub proof fn lemma_round_down(a: int, r: int, d: int)
     ensures
         a == d * ((a + r) / d),
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     lemma_div_induction_auto(d, a, |u: int| u % d == 0 ==> u == d * ((u + r) / d));
 }
 
@@ -999,7 +1003,8 @@ pub proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
         }
         crate::arithmetic::internals::div_internals::lemma_div_basics(d);
     }
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     lemma_mul_induction(f);
     assert(f(x));
 }
@@ -1052,7 +1057,8 @@ pub proof fn lemma_div_by_multiple(b: int, d: int)
         (b * d) / d == b,
 {
     lemma_div_multiples_vanish(b, d);
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
 }
 
 /// Proof that multiplying a whole number by a common numerator and
@@ -1187,7 +1193,8 @@ pub proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
     // OBSERVE: push precondition on its on scope
     assert(f(0) && (forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1))) && (
     forall|i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)))) by {
-        lemma_mul_auto();
+        broadcast use mul_properties_default;
+
     }
     lemma_mul_induction(f);
     assert(f(j));
@@ -1404,6 +1411,7 @@ pub proof fn lemma_mod_is_zero_auto()
 
 /// Proof that multiplying by a number then dividing by that same
 /// number produces a remainder of 0. Specifically, `(x * m) % m == 0`.
+#[verifier::spinoff_prover]
 pub proof fn lemma_mod_multiples_basic(x: int, m: int)
     requires
         m > 0,
@@ -1411,7 +1419,8 @@ pub proof fn lemma_mod_multiples_basic(x: int, m: int)
         (x * m) % m == 0,
 {
     lemma_mod_auto(m);
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     let f = |u: int| (u * m) % m == 0;
     lemma_mul_induction(f);
     assert(f(x));
@@ -1488,7 +1497,8 @@ pub proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
             }),
 {
     lemma_mod_auto(m);
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     let f = |u: int| (m * u + b) % m == b % m;
     lemma_mul_induction(f);
     assert(f(a));
@@ -1656,7 +1666,8 @@ pub proof fn lemma_mod_adds(a: int, b: int, d: int)
         a % d + b % d == (a + b) % d + d * ((a % d + b % d) / d),
         (a % d + b % d) < d ==> a % d + b % d == (a + b) % d,
 {
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
     lemma_div_auto(d);
 }
 
@@ -1688,15 +1699,17 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
 {
     assert((x - x * d) % d == x % d) by {
         let f = |i: int| (x - i * d) % d == x % d;
-        lemma_mul_auto();
         assert(f(0) && (forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1))) && (
         forall|i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)))) by {
+            broadcast use mul_properties_default;
+
             lemma_mod_auto(d);
         };
         lemma_mul_induction(f);
         assert(f(x));
     }
-    lemma_mul_auto();
+    broadcast use mul_properties_default;
+
 }
 
 /// This proof isn't exported from this module. It's just used in
