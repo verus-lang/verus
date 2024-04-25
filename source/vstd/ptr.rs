@@ -175,12 +175,16 @@ pub ghost struct PointsToData<V> {
 }
 
 // TODO add similiar height axioms for other ghost objects
-#[verifier::external_body]
 pub broadcast proof fn points_to_height_axiom<V>(points_to: PointsTo<V>)
     ensures
         #[trigger] is_smaller_than(points_to@, points_to),
 {
-    unimplemented!()
+    admit();
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group ptr_axioms {
+    points_to_height_axiom,
 }
 
 /// Points to uninitialized memory.

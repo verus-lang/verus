@@ -188,17 +188,16 @@ impl<K, V> Map<K, V> {
 
 // Trusted axioms
 /* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
         #[trigger](decreases_to!(m => m[key])),
 {
+    admit();
 }
 */
 
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().finite(),
@@ -206,46 +205,46 @@ pub broadcast proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key:
     ensures
         #[trigger] (decreases_to!(m => m[key])),
 {
+    admit();
 }
 
 // REVIEW: this is currently a special case that is hard-wired into the verifier
 // It implements a version of https://github.com/FStarLang/FStar/pull/2954 .
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
         #[trigger] is_smaller_than_recursive_function_field(m[key], m),
 {
+    admit();
 }
 
 /// The domain of the empty map is the empty set
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_empty<K, V>()
     ensures
         #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),
 {
+    admit();
 }
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
 /// the original map's domain set.
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
+    admit();
 }
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value)[key] == value,
 {
+    admit();
 }
 
 /// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
         m.dom().contains(key1),
@@ -253,20 +252,20 @@ pub broadcast proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, k
     ensures
         m.insert(key2, value)[key1] == m[key1],
 {
+    admit();
 }
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
+    admit();
 }
 
 /// Removing a key-value pair from a map does not change the value mapped to by
 /// any other keys in the map.
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
         m.dom().contains(key1),
@@ -274,10 +273,10 @@ pub broadcast proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, k
     ensures
         m.remove(key2)[key1] == m[key1],
 {
+    admit();
 }
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] (m1 =~= m2) <==> {
@@ -285,9 +284,9 @@ pub broadcast proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
 {
+    admit();
 }
 
-#[verifier(external_body)]
 pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] (m1 =~~= m2) <==> {
@@ -295,6 +294,21 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, 
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] =~~= m2[k]
         },
 {
+    admit();
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group map_axioms {
+    axiom_map_index_decreases_finite,
+    axiom_map_index_decreases_infinite,
+    axiom_map_empty,
+    axiom_map_insert_domain,
+    axiom_map_insert_same,
+    axiom_map_insert_different,
+    axiom_map_remove_domain,
+    axiom_map_remove_different,
+    axiom_map_ext_equal,
+    axiom_map_ext_equal_deep,
 }
 
 // Macros

@@ -80,7 +80,6 @@ pub fn ex_u8_leading_ones(i: u8) -> (r: u32)
     i.leading_ones()
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u8_trailing_zeros(i: u8)
     ensures
         0 <= #[trigger] u8_trailing_zeros(i) <= 8,
@@ -113,7 +112,6 @@ pub broadcast proof fn axiom_u8_trailing_zeros(i: u8)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u8_trailing_ones(i: u8)
     ensures
         0 <= #[trigger] u8_trailing_ones(i) <= 8,
@@ -136,7 +134,6 @@ pub broadcast proof fn axiom_u8_trailing_ones(i: u8)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u8_leading_zeros(i: u8)
     ensures
         0 <= #[trigger] u8_leading_zeros(i) <= 8,
@@ -167,7 +164,6 @@ pub broadcast proof fn axiom_u8_leading_zeros(i: u8)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u8_leading_ones(i: u8)
     ensures
         0 <= #[trigger] u8_leading_ones(i) <= 8,
@@ -266,7 +262,6 @@ pub fn ex_u16_leading_ones(i: u16) -> (r: u32)
     i.leading_ones()
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u16_trailing_zeros(i: u16)
     ensures
         0 <= #[trigger] u16_trailing_zeros(i) <= 16,
@@ -300,7 +295,6 @@ pub broadcast proof fn axiom_u16_trailing_zeros(i: u16)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u16_trailing_ones(i: u16)
     ensures
         0 <= #[trigger] u16_trailing_ones(i) <= 16,
@@ -324,7 +318,6 @@ pub broadcast proof fn axiom_u16_trailing_ones(i: u16)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u16_leading_zeros(i: u16)
     ensures
         0 <= #[trigger] u16_leading_zeros(i) <= 16,
@@ -357,7 +350,6 @@ pub broadcast proof fn axiom_u16_leading_zeros(i: u16)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u16_leading_ones(i: u16)
     ensures
         0 <= #[trigger] u16_leading_ones(i) <= 16,
@@ -458,7 +450,6 @@ pub fn ex_u32_leading_ones(i: u32) -> (r: u32)
     i.leading_ones()
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u32_trailing_zeros(i: u32)
     ensures
         0 <= #[trigger] u32_trailing_zeros(i) <= 32,
@@ -492,7 +483,6 @@ pub broadcast proof fn axiom_u32_trailing_zeros(i: u32)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u32_trailing_ones(i: u32)
     ensures
         0 <= #[trigger] u32_trailing_ones(i) <= 32,
@@ -516,7 +506,6 @@ pub broadcast proof fn axiom_u32_trailing_ones(i: u32)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u32_leading_zeros(i: u32)
     ensures
         0 <= #[trigger] u32_leading_zeros(i) <= 32,
@@ -549,7 +538,6 @@ pub broadcast proof fn axiom_u32_leading_zeros(i: u32)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u32_leading_ones(i: u32)
     ensures
         0 <= #[trigger] u32_leading_ones(i) <= 32,
@@ -651,7 +639,6 @@ pub fn ex_u64_leading_ones(i: u64) -> (r: u32)
     i.leading_ones()
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u64_trailing_zeros(i: u64)
     ensures
         0 <= #[trigger] u64_trailing_zeros(i) <= 64,
@@ -685,7 +672,6 @@ pub broadcast proof fn axiom_u64_trailing_zeros(i: u64)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u64_trailing_ones(i: u64)
     ensures
         0 <= #[trigger] u64_trailing_ones(i) <= 64,
@@ -709,7 +695,6 @@ pub broadcast proof fn axiom_u64_trailing_ones(i: u64)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u64_leading_zeros(i: u64)
     ensures
         0 <= #[trigger] u64_leading_zeros(i) <= 64,
@@ -722,6 +707,7 @@ pub broadcast proof fn axiom_u64_leading_zeros(i: u64)
         forall|j: u64| 64 - u64_leading_zeros(i) <= j < 64 ==> #[trigger] (i >> j) & 1u64 == 0u64,
     decreases i,
 {
+    reveal(u64_leading_zeros);
     assert(i / 2 == (i >> 1u64)) by (bit_vector);
     assert(((i >> 1) >> sub(63u64, 0)) & 1u64 == 0u64) by (bit_vector);
     let x = u64_leading_zeros(i / 2) as u64;
@@ -742,7 +728,6 @@ pub broadcast proof fn axiom_u64_leading_zeros(i: u64)
     }
 }
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_u64_leading_ones(i: u64)
     ensures
         0 <= #[trigger] u64_leading_ones(i) <= 64,
@@ -765,6 +750,26 @@ pub broadcast proof fn axiom_u64_leading_ones(i: u64)
         assert(y <= 64 ==> (!i) >> sub(64, y) == 0 ==> sub(64, y) <= j < 64 ==> (i >> j) & 1u64
             == 1u64) by (bit_vector);
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group bits_axioms {
+    axiom_u8_trailing_zeros,
+    axiom_u8_trailing_ones,
+    axiom_u8_leading_zeros,
+    axiom_u8_leading_ones,
+    axiom_u16_trailing_zeros,
+    axiom_u16_trailing_ones,
+    axiom_u16_leading_zeros,
+    axiom_u16_leading_ones,
+    axiom_u32_trailing_zeros,
+    axiom_u32_trailing_ones,
+    axiom_u32_leading_zeros,
+    axiom_u32_leading_ones,
+    axiom_u64_trailing_zeros,
+    axiom_u64_trailing_ones,
+    axiom_u64_leading_zeros,
+    axiom_u64_leading_ones,
 }
 
 } // verus!

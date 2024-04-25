@@ -55,3 +55,43 @@ pub mod std_specs;
 // Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
 pub mod prelude;
+
+use prelude::*;
+
+verus! {
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
+pub broadcast group vstd_default {
+    seq::seq_axioms,
+    seq_lib::seq_lib_default,
+    map::map_axioms,
+    set::set_axioms,
+    set_lib::set_lib_axioms,
+    std_specs::bits::bits_axioms,
+    std_specs::control_flow::control_flow_axioms,
+    std_specs::vec::vec_axioms,
+    array::array_axioms,
+    multiset::multiset_axioms,
+    string::string_axioms,
+    ptr::ptr_axioms,
+    std_specs::range::range_axioms,
+}
+
+#[cfg(not(feature = "alloc"))]
+#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
+pub broadcast group vstd_default {
+    seq::seq_axioms,
+    seq_lib::seq_lib_default,
+    map::map_axioms,
+    set::set_axioms,
+    set_lib::set_lib_axioms,
+    std_specs::bits::bits_axioms,
+    std_specs::control_flow::control_flow_axioms,
+    array::array_axioms,
+    multiset::multiset_axioms,
+    string::string_axioms,
+    std_specs::range::range_axioms,
+}
+
+} // verus!

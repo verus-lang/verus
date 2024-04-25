@@ -886,9 +886,6 @@ pub struct FunctionAttrsX {
     pub inline: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
-    /// Do not process or verify function body
-    /// TODO: needed only until https://github.com/verus-lang/verus/pull/1022 is merged
-    pub external_body: bool,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
@@ -921,6 +918,8 @@ pub struct FunctionAttrsX {
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
     pub prophecy_dependent: bool,
+    /// broadcast proof from size_of global
+    pub size_of_broadcast_proof: bool,
 }
 
 /// Function specification of its invariant mask
