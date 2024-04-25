@@ -21,7 +21,7 @@ verus! {
 use crate::arithmetic::power::{
     pow,
     lemma_pow_positive,
-    lemma_pow_auto,
+    pow_properties,
     lemma_pow_adds,
     lemma_pow_strictly_increases,
 };
@@ -142,7 +142,8 @@ pub proof fn lemma_pow2_mask_div2(e: nat)
 {
     let f = |e: int| 0 < e ==> (pow2(e as nat) - 1) / 2 == pow2((e - 1) as nat) - 1;
     assert forall|i: int| #[trigger] is_le(0, i) && f(i) implies f(i + 1) by {
-        lemma_pow_auto();
+        broadcast use pow_properties;
+
         lemma_pow2_auto();
     };
     lemma_mul_induction_auto(e as int, f);

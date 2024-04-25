@@ -67,39 +67,18 @@ pub proof fn lemma_log0(base: int, pow: int)
 /// Proof that since `pow` is greater than or equal to `base`, its
 /// logarithm in that base is 1 more than the logarithm of `pow /
 /// base`
-pub proof fn lemma_log_s(base: int, pow: int)
+pub broadcast proof fn lemma_log_s(base: int, pow: int)
     requires
         base > 1,
         pow >= base,
     ensures
+        #![trigger log(base, div1(pow, base))]
         pow / base >= 0,
         log(base, pow) == 1 + log(base, pow / base),
 {
     lemma_div_pos_is_pos_auto();
     lemma_div_decreases_auto();
     reveal(log);
-}
-
-/// Proof that whenever a value is greater than or equal to a base,
-/// that value's logarithm in that base is 1 more than the logarithm
-/// of that value divided by the base
-pub proof fn lemma_log_s_auto()
-    ensures
-        forall|base: int, pow: int|
-            #![trigger log(base, div1(pow, base))]
-            base > 1 && pow >= base ==> div1(pow, base) >= 0 && log(base, pow) == 1 + log(
-                base,
-                div1(pow, base),
-            ),
-{
-    assert forall|base: int, pow: int|
-        #![trigger log(base, div1(pow, base))]
-        base > 1 && pow >= base implies div1(pow, base) >= 0 && log(base, pow) == 1 + log(
-        base,
-        div1(pow, base),
-    ) by {
-        lemma_log_s(base, pow);
-    }
 }
 
 /// Proof that the integer logarithm is always nonnegative. Specifically,

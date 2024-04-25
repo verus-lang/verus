@@ -23,7 +23,7 @@ use crate::arithmetic::internals::mul_internals::*;
 /// Proof that multiplication using `*` is equivalent to
 /// multiplication using a recursive definition. Specifically,
 /// `x * y` is equivalent in that way.
-pub proof fn lemma_mul_is_mul_recursive(x: int, y: int)
+pub broadcast proof fn lemma_mul_is_mul_recursive(x: int, y: int)
     ensures
         (x * y) == mul_recursive(x, y),
 {
@@ -36,16 +36,6 @@ pub proof fn lemma_mul_is_mul_recursive(x: int, y: int)
         assert(x * y == -1 * (-x * y)) by { lemma_mul_is_associative(-1, -x, y) };  // OBSERVE
         assert((x * y) == mul_recursive(x, y));
     }
-}
-
-/// Proof that multiplication using `*` is equivalent to
-/// multiplication using a recursive definition
-pub proof fn lemma_mul_is_mul_recursive_auto()
-    ensures
-        forall|x: int, y: int| x * y == mul_recursive(x, y),
-{
-    assert forall|x: int, y: int| x * y == mul_recursive(x, y) by { lemma_mul_is_mul_recursive(x, y)
-    };
 }
 
 /// Proof that multiplying two positive integers with `*` results in

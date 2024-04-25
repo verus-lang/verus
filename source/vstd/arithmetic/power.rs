@@ -54,17 +54,9 @@ pub open spec fn pow(b: int, e: nat) -> int
 }
 
 /// Proof that the given integer `b` to the power of 0 is 1
-pub proof fn lemma_pow0(b: int)
+pub broadcast proof fn lemma_pow0(b: int)
     ensures
-        pow(b, 0) == 1,
-{
-    reveal(pow);
-}
-
-/// Proof that any integer to the power of 0 is 1
-pub proof fn lemma_pow0_auto()
-    ensures
-        forall|b: int| #[trigger] pow(b, 0 as nat) == 1,
+        #[trigger] pow(b, 0) == 1,
 {
     reveal(pow);
 }
@@ -82,9 +74,9 @@ proof fn lemma_mul_basics_auto()
 }
 
 /// Proof that the given integer `b` to the power of 1 is `b`
-pub proof fn lemma_pow1(b: int)
+pub broadcast proof fn lemma_pow1(b: int)
     ensures
-        pow(b, 1) == b,
+        #[trigger] pow(b, 1) == b,
 {
     calc! { (==)
         pow(b, 1);
@@ -97,23 +89,12 @@ pub proof fn lemma_pow1(b: int)
     }
 }
 
-/// Proof that any integer to the power of 1 is itself
-pub proof fn lemma_pow1_auto()
-    ensures
-        forall|b: int| #[trigger] pow(b, 1) == b,
-{
-    reveal(pow);
-    assert forall|b: int| #[trigger] pow(b, 1) == b by {
-        lemma_pow1(b);
-    };
-}
-
 /// Proof that 0 to the power of the given positive integer `e` is 0
-pub proof fn lemma0_pow(e: nat)
+pub broadcast proof fn lemma0_pow(e: nat)
     requires
         e > 0,
     ensures
-        pow(0, e) == 0,
+        #[trigger] pow(0, e) == 0,
     decreases e,
 {
     reveal(pow);
@@ -123,21 +104,10 @@ pub proof fn lemma0_pow(e: nat)
     }
 }
 
-/// Proof that 0 to the power of any positive integer is 0
-pub proof fn lemma0_pow_auto()
-    ensures
-        forall|e: nat| e > 0 ==> #[trigger] pow(0, e) == 0,
-{
-    reveal(pow);
-    assert forall|e: nat| e > 0 implies #[trigger] pow(0, e) == 0 by {
-        lemma0_pow(e);
-    }
-}
-
 /// Proof that 1 to the power of the given natural number `e` is 1
-pub proof fn lemma1_pow(e: nat)
+pub broadcast proof fn lemma1_pow(e: nat)
     ensures
-        pow(1, e) == 1,
+        #[trigger] pow(1, e) == 1,
     decreases e,
 {
     reveal(pow);
@@ -147,63 +117,28 @@ pub proof fn lemma1_pow(e: nat)
     }
 }
 
-/// Proof that 1 to the power of any natural number is 1
-pub proof fn lemma1_pow_auto()
-    ensures
-        forall|e: nat| e > 0 ==> #[trigger] pow(1, e) == 1,
-{
-    reveal(pow);
-    assert forall|e: nat| e > 0 implies #[trigger] pow(1, e) == 1 by {
-        lemma1_pow(e);
-    }
-}
-
 /// Proof that taking the given number `x` to the power of 2 produces `x * x`
-pub proof fn lemma_square_is_pow2(x: int)
+pub broadcast proof fn lemma_square_is_pow2(x: int)
     ensures
-        pow(x, 2) == x * x,
+        #[trigger] pow(x, 2) == x * x,
 {
     reveal_with_fuel(pow, 3);
 }
 
-/// Proof that taking any positive integer to the power of 2 is
-/// equivalent to multiplying that integer by itself
-pub proof fn lemma_square_is_pow2_auto()
-    ensures
-        forall|x: int| x > 0 ==> #[trigger] pow(x, 2) == x * x,
-{
-    reveal(pow);
-    assert forall|x: int| x > 0 implies #[trigger] pow(x, 2) == x * x by {
-        lemma_square_is_pow2(x);
-    }
-}
-
 /// Proof that taking the given positive integer `b` to the power of
 /// the given natural number `n` produces a positive result
-pub proof fn lemma_pow_positive(b: int, e: nat)
+pub broadcast proof fn lemma_pow_positive(b: int, e: nat)
     requires
         b > 0,
     ensures
-        0 < pow(b, e),
+        0 < #[trigger] pow(b, e),
 {
     // dafny does not need to reveal
     reveal(pow);
     broadcast use lemma_mul_increases;
+    broadcast use lemma_pow0;
 
-    lemma_pow0_auto();
     lemma_mul_induction_auto(e as int, |u: int| 0 <= u ==> 0 < pow(b, u as nat));
-}
-
-/// Proof that taking any positive integer to any natural number power
-/// produces a positive result
-pub proof fn lemma_pow_positive_auto()
-    ensures
-        forall|b: int, e: nat| b > 0 ==> 0 < #[trigger] pow(b, e),
-{
-    reveal(pow);
-    assert forall|b: int, e: nat| b > 0 implies 0 < #[trigger] pow(b, e) by {
-        lemma_pow_positive(b, e);
-    }
 }
 
 // TODO: temporarily needed until `broadcast use` can be used in calc!
@@ -221,9 +156,9 @@ proof fn lemma_mul_is_associative_auto()
 /// Proof that taking an integer `b` to the power of the sum of two
 /// natural numbers `e1` and `e2` is equivalent to multiplying `b` to
 /// the power of `e1` by `b` to the power of `e2`
-pub proof fn lemma_pow_adds(b: int, e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow_adds(b: int, e1: nat, e2: nat)
     ensures
-        pow(b, e1 + e2) == pow(b, e1) * pow(b, e2),
+        #[trigger] pow(b, e1 + e2) == pow(b, e1) * pow(b, e2),
     decreases e1,
 {
     if e1 == 0 {
@@ -249,45 +184,17 @@ pub proof fn lemma_pow_adds(b: int, e1: nat, e2: nat)
     }
 }
 
-/// Proof that taking an integer to the power of the sum of two
-/// natural numbers is equivalent to taking it to the power of each of
-/// those numbers and multiplying the results
-pub proof fn lemma_pow_adds_auto()
-    ensures
-        forall|x: int, y: nat, z: nat| #[trigger] pow(x, y + z) == pow(x, y) * pow(x, z),
-{
-    assert forall|x: int, y: nat, z: nat| #[trigger] pow(x, y + z) == pow(x, y) * pow(x, z) by {
-        lemma_pow_adds(x, y, z);
-    }
-}
-
 /// Proof that if `e1 >= e2`, then `b` to the power of `e1` is equal
 /// to the product of `b` to the power of `e1 - e2` and `b` to the
 /// power of `e2`
-pub proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
     requires
         e1 >= e2,
     ensures
-        pow(b, (e1 - e2) as nat) * pow(b, e2) == pow(b, e1),
+        #[trigger] pow(b, (e1 - e2) as nat) * pow(b, e2) == pow(b, e1),
     decreases e1,
 {
     lemma_pow_adds(b, (e1 - e2) as nat, e2);
-}
-
-/// Proof that, for any `x`, `y`, and `z` such that `y >= z`, we know
-/// `x` to the power of `y` is equal to the product of `x` to the
-/// power of `y - z` and `x` to the power of `z`
-pub proof fn lemma_pow_sub_add_cancel_auto()
-    ensures
-        forall|x: int, y: nat, z: nat|
-            y >= z ==> #[trigger] pow(x, (y - z) as nat) * pow(x, z) == pow(x, y),
-{
-    assert forall|x: int, y: nat, z: nat| y >= z implies #[trigger] pow(x, (y - z) as nat) * pow(
-        x,
-        z,
-    ) == pow(x, y) by {
-        lemma_pow_sub_add_cancel(x, y, z);
-    }
 }
 
 /// Proof that, as long as `e1 <= e2`, taking a positive integer `b`
@@ -301,7 +208,8 @@ pub proof fn lemma_pow_subtracts(b: int, e1: nat, e2: nat)
         pow(b, e1) > 0,
         pow(b, (e2 - e1) as nat) == pow(b, e2) / pow(b, e1) > 0,
 {
-    lemma_pow_positive_auto();
+    broadcast use lemma_pow_positive;
+
     calc! {
         (==)
         pow(b, e2) / pow(b , e1);
@@ -324,7 +232,8 @@ pub proof fn lemma_pow_subtracts_auto()
                 > 0,
 {
     reveal(pow);
-    lemma_pow_positive_auto();
+    broadcast use lemma_pow_positive;
+
     assert forall|b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 implies #[trigger] pow(
         b,
         (e2 - e1) as nat,
@@ -415,9 +324,9 @@ proof fn lemma_mul_is_commutative_auto()
 
 /// Proof that `a * b` to the power of `e` is equal to the product of
 /// `a` to the power of `e` and `b` to the power of `e`
-pub proof fn lemma_pow_distributes(a: int, b: int, e: nat)
+pub broadcast proof fn lemma_pow_distributes(a: int, b: int, e: nat)
     ensures
-        pow(a * b, e) == pow(a, e) * pow(b, e),
+        #[trigger] pow(a * b, e) == pow(a, e) * pow(b, e),
     decreases e,
 {
     reveal(pow);
@@ -439,22 +348,19 @@ pub proof fn lemma_pow_distributes(a: int, b: int, e: nat)
     }
 }
 
-/// Proof that, for any `x`, `y`, and `z`, `x * y` to the power of `z`
-/// is equal to the product of `x` to the power of `z` and `y` to the
-/// power of `z`
-pub proof fn lemma_pow_distributes_auto()
-    ensures
-        forall|x: int, y: nat, z: nat| #[trigger] pow(x * y, z) == pow(x, z) * pow(y as int, z),
-{
-    // reveal pow();
-    assert forall|x: int, y: nat, z: nat| #[trigger]
-        pow(x * y, z) == pow(x, z) * pow(y as int, z) by {
-        lemma_pow_distributes(x, y as int, z);
-    }
+pub broadcast group pow_properties {
+    lemma_pow0,
+    lemma_pow1,
+    lemma_pow_distributes,
+    lemma_pow_adds,
+    lemma_pow_sub_add_cancel,
+    mul_properties_internal,
+    lemma_mul_increases,
+    lemma_mul_strictly_increases,
 }
 
 /// Proof of various useful properties of [`pow`] (exponentiation)
-pub proof fn lemma_pow_auto()
+proof fn lemma_pow_properties_prove_pow_auto()
     ensures
         forall|x: int| pow(x, 0) == 1,
         forall|x: int| #[trigger] pow(x, 1) == x,
@@ -468,12 +374,7 @@ pub proof fn lemma_pow_auto()
         forall|x: int, y: nat, z: nat| #[trigger] pow(x * y, z) == pow(x, z) * pow(y as int, z),
 {
     reveal(pow);
-    lemma_pow0_auto();
-    lemma_pow1_auto();
-    lemma_pow_distributes_auto();
-    lemma_pow_adds_auto();
-    lemma_pow_sub_add_cancel_auto();
-    broadcast use mul_properties_internal, lemma_mul_increases, lemma_mul_strictly_increases;
+    broadcast use pow_properties;
 
 }
 
@@ -508,7 +409,10 @@ pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
                 reveal(pow);
                 assert(pow(b as int, e1) < b * pow(b as int, e1)) by {
                     // cannot be replaced to lemma_pow_auto()
-                    assert(pow(b as int, e1) > 0) by { lemma_pow_positive_auto() };
+                    assert(pow(b as int, e1) > 0) by {
+                        broadcast use lemma_pow_positive;
+
+                    }
                     lemma_mul_strictly_increases(b as int, pow(b as int, e1));
                 };
             };
@@ -682,7 +586,8 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
         // because the divisor and dividend need to have the same type
         x as int / pow(b as int, e2) < pow(b as int, (e1 - e2) as nat),
 {
-    lemma_pow_positive_auto();
+    broadcast use lemma_pow_positive;
+
     assert(x as int / pow(b as int, e2) >= pow(b as int, (e1 - e2) as nat) ==> false) by {
         if x as int / pow(b as int, e2) >= pow(b as int, (e1 - e2) as nat) {
             lemma_mul_inequality(
@@ -710,7 +615,8 @@ pub proof fn lemma_pow_division_inequality_auto()
                 < #[trigger] pow(b, (sub1(e1 as int, e2 as int)) as nat),
 {
     reveal(pow);
-    lemma_pow_positive_auto();
+    broadcast use lemma_pow_positive;
+
     assert forall|x: nat, b: int, e1: nat, e2: nat|
         b > 0 && e2 <= e1 && x < pow(b, e1) implies #[trigger] (x as int / pow(b, e2))
         < #[trigger] pow(b, (sub1(e1 as int, e2 as int)) as nat) by {
@@ -734,7 +640,8 @@ pub proof fn lemma_pow_mod(b: nat, e: nat)
 
     };
     assert((pow(b as int, (e - 1) as nat) * b) % b as int == 0) by {
-        lemma_pow_positive_auto();
+        broadcast use lemma_pow_positive;
+
         lemma_mod_multiples_basic(pow(b as int, (e - 1) as nat), b as int);
     };
     // TODO
