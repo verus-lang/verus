@@ -182,7 +182,7 @@ step_specs!(isize, axiom_spec_range_next_isize);
 verus! {
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
-pub broadcast group range_axioms {
+pub broadcast group group_range_axioms {
     axiom_spec_range_next_u8,
     axiom_spec_range_next_u16,
     axiom_spec_range_next_u32,

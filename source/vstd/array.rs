@@ -96,7 +96,7 @@ pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
-pub broadcast group array_axioms {
+pub broadcast group group_array_axioms {
     array_len_matches_n,
     axiom_spec_array_as_slice,
 }

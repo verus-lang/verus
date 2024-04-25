@@ -76,7 +76,7 @@ pub fn ex_result_from_residual<T, E, F: From<E>>(result: Result<Infallible, E>) 
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
-pub broadcast group control_flow_axioms {
+pub broadcast group group_control_flow_axioms {
     spec_from_blanket_identity,
 }
 

@@ -14,7 +14,7 @@ use builtin_macros::*;
 
 verus! {
 
-broadcast use crate::set::set_axioms;
+broadcast use crate::set::group_set_axioms;
 
 impl<A> Set<A> {
     /// Is `true` if called by a "full" set, i.e., a set containing every element of type `A`.
@@ -914,7 +914,7 @@ macro_rules! assert_sets_equal_internal {
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
-pub broadcast group set_lib_axioms {
+pub broadcast group group_set_lib_axioms {
     axiom_is_empty,
 }
 

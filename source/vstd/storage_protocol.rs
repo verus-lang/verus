@@ -3,7 +3,7 @@ use crate::prelude::*;
 
 verus! {
 
-broadcast use crate::set::set_axioms, crate::map::map_axioms;
+broadcast use crate::set::group_set_axioms, crate::map::group_map_axioms;
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
 /// of "PCM" ghost state, which we also have an interface for [here](crate::pcm::Resource).
