@@ -1515,21 +1515,31 @@ impl Verifier {
                                     let axioms_list = used_axioms
                                         .iter()
                                         .map(|x| {
-                                            fun_as_friendly_rust_name(
-                                                &function_opgen.ctx().fun_ident_map[x],
+                                            format!(
+                                                "  - {}",
+                                                fun_as_friendly_rust_name(
+                                                    &function_opgen.ctx().fun_ident_map[x],
+                                                )
                                             )
                                         })
                                         .collect::<Vec<String>>()
-                                        .join(", ");
+                                        .join(",\n");
                                     let msg = format!(
                                         "{} used these broadcasted lemmas and reveal groups:\n{}",
                                         op.to_friendly_desc()
                                             .unwrap_or("checking this function".to_owned()),
                                         axioms_list,
                                     );
-                                    reporter.report(
-                                        &vir::messages::warning(&function.span, msg).to_any(),
+                                    reporter
+                                        .report(&vir::messages::note(&function.span, msg).to_any());
+                                } else {
+                                    let msg = format!(
+                                        "{} did not use any broadcasted lemmas and reveal groups",
+                                        op.to_friendly_desc()
+                                            .unwrap_or("checking this function".to_owned()),
                                     );
+                                    reporter
+                                        .report(&vir::messages::note(&function.span, msg).to_any());
                                 }
                             }
 
