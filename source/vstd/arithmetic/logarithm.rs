@@ -20,9 +20,9 @@ verus! {
 use crate::calc_macro::*;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::div_mod::{
-    lemma_div_pos_is_pos_auto,
-    lemma_div_decreases_auto,
-    lemma_div_is_ordered_auto,
+    lemma_div_pos_is_pos,
+    lemma_div_decreases,
+    lemma_div_is_ordered,
     lemma_div_multiples_vanish,
 };
 #[cfg(verus_keep_ghost)]
@@ -76,8 +76,8 @@ pub broadcast proof fn lemma_log_s(base: int, pow: int)
         pow / base >= 0,
         log(base, pow) == 1 + log(base, pow / base),
 {
-    lemma_div_pos_is_pos_auto();
-    lemma_div_decreases_auto();
+    broadcast use lemma_div_pos_is_pos, lemma_div_decreases;
+
     reveal(log);
 }
 
@@ -115,9 +115,8 @@ pub proof fn lemma_log_is_ordered(base: int, pow1: int, pow2: int)
         assert(log(base, pow1) == 0);
         lemma_log_nonnegative(base, pow2);
     } else {
-        lemma_div_pos_is_pos_auto();
-        lemma_div_decreases_auto();
-        lemma_div_is_ordered_auto();
+        broadcast use lemma_div_pos_is_pos, lemma_div_is_ordered, lemma_div_decreases;
+
         lemma_log_is_ordered(base, pow1 / base, pow2 / base);
     }
 }
