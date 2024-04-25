@@ -176,5 +176,11 @@ test_verify_one_file! {
         fn test4<const N: usize>(ar: &[u8; N]) {
             assert(len_of_slice(ar) == ar@.len());
         }
+
+        fn test5<const N: usize>(ar: Box<[u8; N]>) {
+            let sl: Box<[u8]> = ar;
+            assert(sl@.len() == N);
+        }
+
     } => Ok(())
 }

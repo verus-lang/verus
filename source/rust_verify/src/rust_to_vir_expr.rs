@@ -1125,34 +1125,27 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustment_idx - 1,
             )?;
 
+            let (ty1, ty2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let f = match (ty1.kind(), ty2.kind()) {
-                (TyKind::Ref(_, t1, Mutability::Not), TyKind::Ref(_, t2, Mutability::Not)) => {
-                    match (t1.kind(), t2.kind()) {
-                        (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
-                            if el_ty1 == el_ty2 {
-                                // coercing from &[el_ty, const_len] -> &[el_ty]
-                                if bctx.ctxt.no_vstd {
-                                    return err_span(
-                                        expr.span,
-                                        "Coercing an array to a slice is not supported with --no-vstd",
-                                    );
-                                }
-                                let fun = vir::fun!("vstd" => "array", "array_as_slice");
-                                let typ_args = match &*undecorate_typ(&arg.typ) {
-                                    TypX::Primitive(Primitive::Array, typs) => typs.clone(),
-                                    _ => {
-                                        return err_span(
-                                            expr.span,
-                                            "Verus internal error: expected array",
-                                        );
-                                    }
-                                };
-                                Some((fun, typ_args))
-                            } else {
-                                None
-                            }
+                (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
+                    if el_ty1 == el_ty2 {
+                        // coercing from &[el_ty, const_len] -> &[el_ty]
+                        if bctx.ctxt.no_vstd {
+                            return err_span(
+                                expr.span,
+                                "Coercing an array to a slice is not supported with --no-vstd",
+                            );
                         }
-                        _ => None,
+                        let fun = vir::fun!("vstd" => "array", "array_as_slice");
+                        let typ_args = match &*undecorate_typ(&arg.typ) {
+                            TypX::Primitive(Primitive::Array, typs) => typs.clone(),
+                            _ => {
+                                return err_span(expr.span, "Verus internal error: expected array");
+                            }
+                        };
+                        Some((fun, typ_args))
+                    } else {
+                        None
                     }
                 }
                 _ => None,
@@ -2501,5 +2494,32 @@ pub(crate) fn closure_to_vir<'tcx>(
         Ok(bctx.spanned_typed_new(closure_expr.span, &closure_vir_typ, exprx))
     } else {
         panic!("closure_to_vir expects ExprKind::Closure");
+    }
+}
+
+fn remove_decoration_typs_for_unsizing<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty1: rustc_middle::ty::Ty<'tcx>,
+    ty2: rustc_middle::ty::Ty<'tcx>,
+) -> (rustc_middle::ty::Ty<'tcx>, rustc_middle::ty::Ty<'tcx>) {
+    match (ty1.kind(), ty2.kind()) {
+        (TyKind::Ref(_, t1, Mutability::Not), TyKind::Ref(_, t2, Mutability::Not)) => {
+            remove_decoration_typs_for_unsizing(tcx, *t1, *t2)
+        }
+        (TyKind::Adt(AdtDef(adt_def_data1), args1), TyKind::Adt(AdtDef(adt_def_data2), args2))
+            if verus_items::get_rust_item(tcx, adt_def_data1.did)
+                == Some(verus_items::RustItem::Box)
+                && verus_items::get_rust_item(tcx, adt_def_data2.did)
+                    == Some(verus_items::RustItem::Box) =>
+        {
+            let rustc_middle::ty::GenericArgKind::Type(t1) = args1[0].unpack() else {
+                panic!("unexpected type argument")
+            };
+            let rustc_middle::ty::GenericArgKind::Type(t2) = args2[0].unpack() else {
+                panic!("unexpected type argument")
+            };
+            remove_decoration_typs_for_unsizing(tcx, t1, t2)
+        }
+        _ => (ty1, ty2),
     }
 }
