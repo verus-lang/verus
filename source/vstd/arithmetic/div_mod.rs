@@ -290,7 +290,7 @@ pub broadcast proof fn lemma_div_minus_one(x: int, d: int)
 
 /// Proof that dividing any non-negative integer less than `d` by `d`
 /// produces a quotient of 0
-pub proof fn lemma_basic_div_d(d: int)
+pub proof fn lemma_basic_div_specific_divisor(d: int)
     requires
         0 < d,
     ensures
@@ -306,7 +306,7 @@ pub broadcast proof fn lemma_basic_div()
         forall|x: int, d: int| 0 <= x < d ==> #[trigger] (x / d) == 0,
 {
     assert forall|x: int, d: int| 0 <= x < d implies #[trigger] (x / d) == 0 by {
-        lemma_basic_div_d(d);
+        lemma_basic_div_specific_divisor(d);
     }
 }
 
