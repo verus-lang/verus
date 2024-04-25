@@ -485,10 +485,9 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
                 pow(b as int, e2),
             );
             lemma_fundamental_div_mod(x as int, pow(b as int, e2));
-            broadcast use lemma_mul_is_commutative;
+            broadcast use lemma_mul_is_commutative, mod_properties;
 
             lemma_pow_adds(b as int, (e1 - e2) as nat, e2);
-            lemma_mod_properties_auto();
         }
     };
 }
@@ -540,7 +539,8 @@ pub broadcast proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     decreases e,
 {
     reveal(pow);
-    lemma_mod_properties_auto();
+    broadcast use mod_properties;
+
     if e > 0 {
         calc! { (==)
         pow(b % m, e) % m; {}
