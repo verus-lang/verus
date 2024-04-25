@@ -51,5 +51,10 @@ pub broadcast proof fn seq_reverse_len<A>(s: Seq<A>)
 ```
 
 To bring this ambient lemma into scope, for a specific proof, or for an entire
-module, you can use `broadcast use seq_reverse_len;` or, in a proof, call
-the quantified fact directly in a proof with `seq_reverse_len(*)`.
+module, you can use `broadcast use seq_reverse_len;`.
+
+Some of these broadcast-ed lemmas are available in the verus standard library `vstd`,
+some as part of broadcast "groups", which combine a number of properties into a single
+group name, which can be brought into scope with `broadcast use broadcast_group_name;`.
+We are working on extending the discoverablility of these groups in the standard library
+documentation: they currently appear as regular functions.
