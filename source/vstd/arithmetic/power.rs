@@ -200,13 +200,13 @@ pub broadcast proof fn lemma_pow_sub_add_cancel(b: int, e1: nat, e2: nat)
 /// Proof that, as long as `e1 <= e2`, taking a positive integer `b`
 /// to the power of `e2 - e1` is equivalent to dividing `b` to the
 /// power of `e2` by `b` to the power of `e1`.
-pub proof fn lemma_pow_subtracts(b: int, e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow_subtracts(b: int, e1: nat, e2: nat)
     requires
         b > 0,
         e1 <= e2,
     ensures
         pow(b, e1) > 0,
-        pow(b, (e2 - e1) as nat) == pow(b, e2) / pow(b, e1) > 0,
+        #[trigger] pow(b, (e2 - e1) as nat) == pow(b, e2) / pow(b, e1) > 0,
 {
     broadcast use lemma_pow_positive;
 
@@ -217,28 +217,6 @@ pub proof fn lemma_pow_subtracts(b: int, e1: nat, e2: nat)
         pow(b , (e2 - e1) as nat) * pow(b , e1) / pow(b , e1);
         { lemma_div_by_multiple(pow(b , (e2 - e1) as nat), pow(b , e1)); }
         pow(b , (e2 - e1) as nat);
-    }
-}
-
-/// Proof that, for all `b`, `e1`, and `e2`, as long as `b` is
-/// positive and `e1 <= e2`, taking `b` to the power of `e2 - e1` is
-/// equivalent to dividing `b` to the power of `e2` by `b` to the
-/// power of `e1`.
-pub proof fn lemma_pow_subtracts_auto()
-    ensures
-        forall|b: int, e1: nat| b > 0 ==> pow(b, e1) > 0,
-        forall|b: int, e1: nat, e2: nat|
-            b > 0 && e1 <= e2 ==> #[trigger] pow(b, (e2 - e1) as nat) == pow(b, e2) / pow(b, e1)
-                > 0,
-{
-    reveal(pow);
-    broadcast use lemma_pow_positive;
-
-    assert forall|b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 implies #[trigger] pow(
-        b,
-        (e2 - e1) as nat,
-    ) == pow(b, e2) / pow(b, e1) > 0 by {
-        lemma_pow_subtracts(b, e1, e2);
     }
 }
 
@@ -257,10 +235,10 @@ proof fn lemma_mul_is_distributive_auto()
 /// Proof that `a` to the power of `b * c` is equal to the result of
 /// taking `a` to the power of `b`, then taking that to the power of
 /// `c`
-pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
+pub broadcast proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
     ensures
         0 <= b * c,
-        pow(pow(a, b), c) == pow(a, b * c),
+        #[trigger] pow(pow(a, b), c) == pow(a, b * c),
     decreases c,
 {
     lemma_mul_nonnegative(b as int, c as int);
@@ -298,19 +276,6 @@ pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
             pow(pow(a, b), c);
         }
     }
-}
-
-/// Proof that, for any `a`, `b`, and `c`, `a` to the power of `b * c`
-/// is equal to the result of taking `a` to the power of `b`, then
-/// taking that to the power of `c`
-pub proof fn lemma_pow_multiplies_auto()
-    ensures
-        forall|b: nat, c: nat| 0 <= #[trigger] (b * c),
-        forall|a: int, b: nat, c: nat| #[trigger] pow(pow(a, b), c) == pow(a, b * c),
-{
-    assert forall|a: int, b: nat, c: nat| #[trigger] pow(pow(a, b), c) == pow(a, b * c) by {
-        lemma_pow_multiplies(a, b, c);
-    };
 }
 
 // TODO: temporarily needed until `broadcast use` can be used in calc!
@@ -382,12 +347,12 @@ proof fn lemma_pow_properties_prove_pow_auto()
 /// increases as the power strictly increases. Specifically, given
 /// that `b > 1` and `e1 < e2`, we can conclude that `pow(b, e1) <
 /// pow(b, e2)`.
-pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
     requires
         1 < b,
         e1 < e2,
     ensures
-        pow(b as int, e1) < pow(b as int, e2),
+        #[trigger] pow(b as int, e1) < #[trigger] pow(b as int, e2),
 {
     let f = |e: int| 0 < e ==> pow(b as int, e1) < pow(b as int, (e1 + e) as nat);
     assert forall|i: int| (#[trigger] is_le(0, i) && f(i)) implies f(i + 1) by {
@@ -422,29 +387,15 @@ pub proof fn lemma_pow_strictly_increases(b: nat, e1: nat, e2: nat)
     lemma_mul_induction_auto(e2 - e1, f);
 }
 
-/// Proof that any number greater than 1 raised to a power strictly
-/// increases as the power strictly increases
-pub proof fn lemma_pow_strictly_increases_auto()
-    ensures
-        forall|b: int, e1: nat, e2: nat|
-            1 < b && e1 < e2 ==> #[trigger] pow(b, e1) < #[trigger] pow(b, e2),
-{
-    reveal(pow);
-    assert forall|b: int, e1: nat, e2: nat| 1 < b && e1 < e2 implies #[trigger] pow(b, e1)
-        < #[trigger] pow(b, e2) by {
-        lemma_pow_strictly_increases(b as nat, e1, e2);
-    }
-}
-
 /// Proof that a positive number raised to a power increases as the
 /// power increases. Specifically, since `e1 <= e2`, we know `pow(b,
 /// e1) <= pow(b, e2)`.
-pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
     requires
         b > 0,
         e1 <= e2,
     ensures
-        pow(b as int, e1) <= pow(b as int, e2),
+        #[trigger] pow(b as int, e1) <= #[trigger] pow(b as int, e2),
 {
     if e1 != e2 {
         if b > 1 {
@@ -456,24 +407,10 @@ pub proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
     }
 }
 
-/// Proof that a positive number raised to a power increases as the
-/// power increases
-pub proof fn lemma_pow_increases_auto()
-    ensures
-        forall|b: int, e1: nat, e2: nat|
-            b > 0 && e1 <= e2 ==> #[trigger] pow(b, e1) <= #[trigger] pow(b, e2),
-{
-    reveal(pow);
-    assert forall|b: int, e1: nat, e2: nat| b > 0 && e1 <= e2 implies #[trigger] pow(b, e1)
-        <= #[trigger] pow(b, e2) by {
-        lemma_pow_increases(b as nat, e1, e2);
-    }
-}
-
 /// Proof that if an exponentiation result strictly increases when the
 /// exponent changes, then the change is an increase. Specifically, if
 /// we know `pow(b, e1) < pow(b, e2)`, then we can conclude `e1 < e2`.
-pub proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2: nat)
     requires
         b > 0,
         pow(b as int, e1) < pow(b as int, e2),
@@ -486,26 +423,11 @@ pub proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2: nat)
     }
 }
 
-/// Proof that if an exponentiation result strictly increases when the
-/// exponent changes, then the change is an increase. That is,
-/// whenever we know `b > 0` and `pow(b, e1) < pow(b, e2)`, we can
-/// conclude `e1 < e2`.
-pub proof fn lemma_pow_strictly_increases_converse_auto()
-    ensures
-        forall|b: nat, e1: nat, e2: nat| b > 0 && pow(b as int, e1) < pow(b as int, e2) ==> e1 < e2,
-{
-    reveal(pow);
-    assert forall|b: nat, e1: nat, e2: nat|
-        b > 0 && pow(b as int, e1) < pow(b as int, e2) implies e1 < e2 by {
-        lemma_pow_strictly_increases_converse(b, e1, e2);
-    }
-}
-
 /// Proof that if the exponentiation of a number greater than 1
 /// doesn't decrease when the exponent changes, then the change isn't
 /// a decrease. Specifically, given that `b > 1` and `pow(b, e1) <=
 /// pow(b, e2)`, we can conclude that `e1 <= e2`.
-pub proof fn lemma_pow_increases_converse(b: nat, e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow_increases_converse(b: nat, e1: nat, e2: nat)
     requires
         1 < b,
         pow(b as int, e1) <= pow(b as int, e2),
@@ -518,29 +440,15 @@ pub proof fn lemma_pow_increases_converse(b: nat, e1: nat, e2: nat)
     }
 }
 
-/// Proof that whenever the exponentiation of a number greater than 1
-/// doesn't decrease when the exponent changes, then the change isn't
-/// a decrease
-pub proof fn lemma_pow_increases_converse_auto()
-    ensures
-        forall|b: nat, e1: nat, e2: nat|
-            1 < b && pow(b as int, e1) <= pow(b as int, e2) ==> e1 <= e2,
-{
-    assert forall|b: nat, e1: nat, e2: nat|
-        1 < b && pow(b as int, e1) <= pow(b as int, e2) implies e1 <= e2 by {
-        lemma_pow_increases_converse(b, e1, e2);
-    }
-}
-
 /// Proof that `(b^(xy))^z = (b^x)^(yz)`, given that `x * y` and `y *
 /// z` are nonnegative and `b` is positive
-pub proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
+pub broadcast proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
     requires
         b > 0,
     ensures
         0 <= x * y,
         0 <= y * z,
-        pow(pow(b as int, x * y), z) == pow(pow(b as int, x), y * z),
+        #[trigger] pow(pow(b as int, x * y), z) == pow(pow(b as int, x), y * z),
 {
     lemma_mul_nonnegative(x as int, y as int);
     lemma_mul_nonnegative(y as int, z as int);
@@ -551,25 +459,6 @@ pub proof fn lemma_pull_out_pows(b: nat, x: nat, y: nat, z: nat)
         pow(pow(pow(b as int, x), y), z);
         { lemma_pow_multiplies(pow(b as int, x), y, z); }
         pow(pow(b as int, x), y * z);
-    }
-}
-
-/// Proof that for any `b`, `x`, `y`, and `z` such that `x * y >= 0`
-/// and `y * z >= 0` and `b > 0`, we know `(b^(xy))^z = (b^x)^(yz)`
-pub proof fn lemma_pull_out_pows_auto()
-    ensures
-        forall|y: nat, z: nat| 0 <= #[trigger] (z * y) && 0 <= y * z,
-        forall|b: nat, x: nat, y: nat, z: nat|
-            b > 0 ==> #[trigger] pow(pow(b as int, x * y), z) == pow(pow(b as int, x), y * z),
-{
-    // reveal(pow);
-    broadcast use lemma_mul_nonnegative;
-
-    assert forall|b: nat, x: nat, y: nat, z: nat| b > 0 implies #[trigger] pow(
-        pow(b as int, x * y),
-        z,
-    ) == pow(pow(b as int, x), y * z) by {
-        lemma_pull_out_pows(b, x, y, z);
     }
 }
 
@@ -584,7 +473,7 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
         pow(b as int, e2) > 0,
         // also somewhat annoying that division operator needs explicit type casting
         // because the divisor and dividend need to have the same type
-        x as int / pow(b as int, e2) < pow(b as int, (e1 - e2) as nat),
+        #[trigger] (x as int / pow(b as int, e2)) < #[trigger] pow(b as int, (e1 - e2) as nat),
 {
     broadcast use lemma_pow_positive;
 
@@ -604,33 +493,13 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
     };
 }
 
-/// Proof that for all `x`, `b`, `e1`, and `e2` such that `e2 <= e1`
-/// and `x < pow(b, e1)`, we know that dividing `x` by `pow(b, e2)`
-/// produces a result less than `pow(b, e1 - e2)`
-pub proof fn lemma_pow_division_inequality_auto()
-    ensures
-        forall|b: int, e2: nat| b > 0 && e2 <= e2 ==> pow(b, e2) > 0,
-        forall|x: nat, b: int, e1: nat, e2: nat|
-            b > 0 && e2 <= e1 && x < pow(b, e1) ==> #[trigger] (x as int / pow(b, e2))
-                < #[trigger] pow(b, (sub1(e1 as int, e2 as int)) as nat),
-{
-    reveal(pow);
-    broadcast use lemma_pow_positive;
-
-    assert forall|x: nat, b: int, e1: nat, e2: nat|
-        b > 0 && e2 <= e1 && x < pow(b, e1) implies #[trigger] (x as int / pow(b, e2))
-        < #[trigger] pow(b, (sub1(e1 as int, e2 as int)) as nat) by {
-        lemma_pow_division_inequality(x, b as nat, e1, e2);
-    };
-}
-
 /// Proof that `pow(b, e)` modulo `b` is 0
-pub proof fn lemma_pow_mod(b: nat, e: nat)
+pub broadcast proof fn lemma_pow_mod(b: nat, e: nat)
     requires
         b > 0,
         e > 0,
     ensures
-        pow(b as int, e) % b as int == 0,
+        #[trigger] pow(b as int, e) % b as int == 0,
 {
     reveal(pow);
     assert(pow(b as int, e) % b as int == (b * pow(b as int, (e - 1) as nat)) % b as int);
@@ -660,25 +529,14 @@ pub proof fn lemma_pow_mod(b: nat, e: nat)
     // }
 }
 
-/// Proof that for any `b` and `e`, we know `pow(b, e)` modulo `b` is 0
-pub proof fn lemma_pow_mod_auto()
-    ensures
-        forall|b: nat, e: nat| b > 0 && e > 0 ==> #[trigger] pow(b as int, e) % b as int == 0,
-{
-    assert forall|b: nat, e: nat| b > 0 && e > 0 implies #[trigger] pow(b as int, e) % b as int
-        == 0 by {
-        lemma_pow_mod(b, e);
-    }
-}
-
 /// Proof that exponentiation then modulo produces the same result as
 /// doing the modulo first, then doing the exponentiation, then doing
 /// the modulo again. Specifically, `((b % m)^e) % m == b^e % m`.
-pub proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
+pub broadcast proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     requires
         m > 0,
     ensures
-        pow(b % m, e) % m == pow(b, e) % m,
+        #[trigger] pow(b % m, e) % m == pow(b, e) % m,
     decreases e,
 {
     reveal(pow);
@@ -696,19 +554,6 @@ pub proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
         (b * (pow(b, (e - 1) as nat))) % m; {}
         pow(b, e) % m;
     }
-    }
-}
-
-/// Proof that exponentiation then modulo produces the same result as
-/// doing the modulo first, then doing the exponentiation, then doing
-/// the modulo again
-pub proof fn lemma_pow_mod_noop_auto()
-    ensures
-        forall|b: int, e: nat, m: int| m > 0 ==> #[trigger] pow(b % m, e) % m == pow(b, e) % m,
-{
-    assert forall|b: int, e: nat, m: int| m > 0 implies #[trigger] pow(b % m, e) % m == pow(b, e)
-        % m by {
-        lemma_pow_mod_noop(b, e, m);
     }
 }
 
