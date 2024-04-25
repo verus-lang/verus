@@ -1069,6 +1069,9 @@ impl Visitor {
                 #vis fn #ident() #block
             };
             item_fn.attrs.extend(attrs.into_iter().cloned());
+            if self.rustdoc {
+                crate::rustdoc::process_item_fn_broadcast_group(&mut item_fn);
+            }
             item_fn.to_token_stream()
         }
     }
