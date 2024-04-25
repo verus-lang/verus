@@ -24,19 +24,20 @@ use crate::arithmetic::internals::general_internals::{is_le};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::mul::{
     lemma_mul_inequality,
-    lemma_mul_nonnegative_auto,
+    lemma_mul_nonnegative,
     lemma_mul_strictly_increases,
     lemma_mul_left_inequality,
-    lemma_mul_basics_auto,
-    lemma_mul_increases_auto,
-    lemma_mul_strictly_increases_auto,
-    lemma_mul_is_commutative_auto,
-    lemma_mul_is_distributive_auto,
-    lemma_mul_is_associative_auto,
-    lemma_mul_nonnegative,
+    mul_basics,
+    lemma_mul_increases,
+    lemma_mul_is_commutative,
+    mul_is_distributive,
+    lemma_mul_is_associative,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::{mul_properties_default, lemma_mul_induction_auto};
+use crate::arithmetic::internals::mul_internals::{
+    mul_properties_internal,
+    lemma_mul_induction_auto,
+};
 #[cfg(verus_keep_ghost)]
 use crate::math::{sub as sub1};
 
@@ -66,6 +67,18 @@ pub proof fn lemma_pow0_auto()
         forall|b: int| #[trigger] pow(b, 0 as nat) == 1,
 {
     reveal(pow);
+}
+
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_basics_auto()
+    ensures
+        forall|x: int| #[trigger] (0 * x) == 0,
+        forall|x: int| #[trigger] (x * 0) == 0,
+        forall|x: int| #[trigger] (x * 1) == x,
+        forall|x: int| #[trigger] (1 * x) == x,
+{
+    broadcast use mul_basics;
+
 }
 
 /// Proof that the given integer `b` to the power of 1 is `b`
@@ -175,7 +188,8 @@ pub proof fn lemma_pow_positive(b: int, e: nat)
 {
     // dafny does not need to reveal
     reveal(pow);
-    lemma_mul_increases_auto();
+    broadcast use lemma_mul_increases;
+
     lemma_pow0_auto();
     lemma_mul_induction_auto(e as int, |u: int| 0 <= u ==> 0 < pow(b, u as nat));
 }
@@ -190,6 +204,18 @@ pub proof fn lemma_pow_positive_auto()
     assert forall|b: int, e: nat| b > 0 implies 0 < #[trigger] pow(b, e) by {
         lemma_pow_positive(b, e);
     }
+}
+
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_is_associative_auto()
+    ensures
+        forall|x: int, y: int, z: int|
+            #![trigger x * (y * z)]
+            #![trigger (x * y) * z]
+            x * (y * z) == (x * y) * z,
+{
+    broadcast use lemma_mul_is_associative;
+
 }
 
 /// Proof that taking an integer `b` to the power of the sum of two
@@ -307,6 +333,18 @@ pub proof fn lemma_pow_subtracts_auto()
     }
 }
 
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_is_distributive_auto()
+    ensures
+        forall|x: int, y: int, z: int| #[trigger] (x * (y + z)) == x * y + x * z,
+        forall|x: int, y: int, z: int| #[trigger] ((y + z) * x) == y * x + z * x,
+        forall|x: int, y: int, z: int| #[trigger] (x * (y - z)) == x * y - x * z,
+        forall|x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,
+{
+    broadcast use mul_is_distributive;
+
+}
+
 /// Proof that `a` to the power of `b * c` is equal to the result of
 /// taking `a` to the power of `b`, then taking that to the power of
 /// `c`
@@ -332,7 +370,7 @@ pub proof fn lemma_pow_multiplies(a: int, b: nat, c: nat)
             b * c - b;
             { lemma_mul_basics_auto(); }
             b * c - b * 1;
-            { lemma_mul_is_distributive_auto(); }
+            { lemma_mul_is_distributive_auto() }
             b * (c - 1);
         }
         lemma_mul_nonnegative(b as int, c - 1);
@@ -364,6 +402,15 @@ pub proof fn lemma_pow_multiplies_auto()
     assert forall|a: int, b: nat, c: nat| #[trigger] pow(pow(a, b), c) == pow(a, b * c) by {
         lemma_pow_multiplies(a, b, c);
     };
+}
+
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_is_commutative_auto()
+    ensures
+        forall|x: int, y: int| #[trigger] (x * y) == y * x,
+{
+    broadcast use lemma_mul_is_commutative;
+
 }
 
 /// Proof that `a * b` to the power of `e` is equal to the product of
@@ -426,10 +473,8 @@ pub proof fn lemma_pow_auto()
     lemma_pow_distributes_auto();
     lemma_pow_adds_auto();
     lemma_pow_sub_add_cancel_auto();
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal, lemma_mul_increases, lemma_mul_strictly_increases;
 
-    lemma_mul_increases_auto();
-    lemma_mul_strictly_increases_auto();
 }
 
 /// Proof that a number greater than 1 raised to a power strictly
@@ -614,7 +659,8 @@ pub proof fn lemma_pull_out_pows_auto()
             b > 0 ==> #[trigger] pow(pow(b as int, x * y), z) == pow(pow(b as int, x), y * z),
 {
     // reveal(pow);
-    lemma_mul_nonnegative_auto();
+    broadcast use lemma_mul_nonnegative;
+
     assert forall|b: nat, x: nat, y: nat, z: nat| b > 0 implies #[trigger] pow(
         pow(b as int, x * y),
         z,
@@ -645,7 +691,8 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
                 pow(b as int, e2),
             );
             lemma_fundamental_div_mod(x as int, pow(b as int, e2));
-            lemma_mul_is_commutative_auto();
+            broadcast use lemma_mul_is_commutative;
+
             lemma_pow_adds(b as int, (e1 - e2) as nat, e2);
             lemma_mod_properties_auto();
         }
@@ -683,7 +730,8 @@ pub proof fn lemma_pow_mod(b: nat, e: nat)
     assert(pow(b as int, e) % b as int == (b * pow(b as int, (e - 1) as nat)) % b as int);
     assert((b * pow(b as int, (e - 1) as nat)) % b as int == (pow(b as int, (e - 1) as nat) * b)
         % b as int) by {
-        lemma_mul_is_commutative_auto();
+        broadcast use lemma_mul_is_commutative;
+
     };
     assert((pow(b as int, (e - 1) as nat) * b) % b as int == 0) by {
         lemma_pow_positive_auto();

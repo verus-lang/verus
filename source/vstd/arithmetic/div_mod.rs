@@ -37,7 +37,7 @@ use crate::arithmetic::internals::mod_internals::{
 use crate::arithmetic::internals::mod_internals_nonlinear as ModINL;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::{
-    mul_properties_default,
+    mul_properties_internal,
     lemma_mul_induction,
     lemma_mul_induction_auto,
 };
@@ -475,6 +475,39 @@ pub proof fn lemma_small_mod(x: nat, m: nat)
     ModINL::lemma_small_mod(x, m);
 }
 
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_is_distributive_auto()
+    ensures
+        forall|x: int, y: int, z: int| #[trigger] (x * (y + z)) == x * y + x * z,
+        forall|x: int, y: int, z: int| #[trigger] ((y + z) * x) == y * x + z * x,
+        forall|x: int, y: int, z: int| #[trigger] (x * (y - z)) == x * y - x * z,
+        forall|x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,
+{
+    broadcast use mul_is_distributive;
+
+}
+
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_is_commutative_auto()
+    ensures
+        forall|x: int, y: int| #[trigger] (x * y) == y * x,
+{
+    broadcast use lemma_mul_is_commutative;
+
+}
+
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_basics_auto()
+    ensures
+        forall|x: int| #[trigger] (0 * x) == 0,
+        forall|x: int| #[trigger] (x * 0) == 0,
+        forall|x: int| #[trigger] (x * 1) == x,
+        forall|x: int| #[trigger] (1 * x) == x,
+{
+    broadcast use mul_basics;
+
+}
+
 /// The remainder of a nonnegative integer `x` divided by the product of two positive integers
 /// `y` and `z` is equivalent to dividing `x` by `y`, dividing the quotient by `z`, multiplying
 /// the remainder by `y`, and then adding the product to the remainder of `x` divided by `y`.
@@ -488,7 +521,8 @@ pub proof fn lemma_breakdown(x: int, y: int, z: int)
         0 < y * z,
         (x % (y * z)) == y * ((x / y) % z) + x % y,
 {
-    lemma_mul_strictly_positive_auto();
+    broadcast use lemma_mul_strictly_positive;
+
     lemma_div_pos_is_pos(x, y);
     calc! {
         (<)
@@ -499,7 +533,7 @@ pub proof fn lemma_breakdown(x: int, y: int, z: int)
         y * (z - 1) + y;
         (==)    { lemma_mul_basics_auto(); }
         y * (z - 1) + y * 1;
-        (==)    { lemma_mul_is_distributive_auto(); }
+        (==)    { /* TODO(broadcast_use) */ lemma_mul_is_distributive_auto(); }
         y * (z - 1 + 1);
         (==) {}
         y * z;
@@ -542,7 +576,8 @@ pub proof fn lemma_breakdown_auto()
             0 <= x && 0 < y && 0 < z ==> x % (y * z) == y * ((x / y) % z) + x % y,
 {
     assert forall|y: int, z: int| #![trigger y * z] 0 < y && 0 < z implies 0 < y * z by {
-        lemma_mul_strictly_positive_auto();
+        broadcast use lemma_mul_strictly_positive;
+
     }
     assert forall|x: int, y: int, z: int|
         #![trigger y * z, x % (y * z), y * ((x / y) % z) + x % y]
@@ -561,7 +596,7 @@ pub proof fn lemma_remainder_upper(x: int, d: int)
     ensures
         x - d < x / d * d,
 {
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     lemma_div_induction_auto(d, x, |u: int| 0 <= u ==> u - d < u / d * d);
 }
@@ -591,7 +626,7 @@ pub proof fn lemma_remainder_lower(x: int, d: int)
     ensures
         x >= x / d * d,
 {
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     lemma_div_induction_auto(d, x, |u: int| 0 <= u ==> u >= u / d * d);
 }
@@ -617,7 +652,7 @@ pub proof fn lemma_remainder(x: int, d: int)
     ensures
         0 <= x - (x / d * d) < d,
 {
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     lemma_div_induction_auto(d, x, |u: int| 0 <= u - u / d * d < d);
 }
@@ -656,6 +691,18 @@ pub proof fn lemma_fundamental_div_mod_auto()
     assert forall|x: int, d: int| d != 0 implies x == #[trigger] (d * (x / d) + (x % d)) by {
         lemma_fundamental_div_mod(x, d);
     }
+}
+
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_is_associative_auto()
+    ensures
+        forall|x: int, y: int, z: int|
+            #![trigger x * (y * z)]
+            #![trigger (x * y) * z]
+            x * (y * z) == (x * y) * z,
+{
+    broadcast use lemma_mul_is_associative;
+
 }
 
 /// Proof that dividing `x` by `c * d` is equivalent to first dividing
@@ -761,7 +808,8 @@ pub proof fn lemma_div_denominator_auto()
         forall|x: int, c: int, d: int|
             0 <= x && 0 < c && 0 < d ==> #[trigger] ((x / c) / d) == x / (c * d),
 {
-    lemma_mul_nonzero_auto();
+    broadcast use lemma_mul_nonzero;
+
     assert forall|x: int, c: int, d: int| 0 <= x && 0 < c && 0 < d implies #[trigger] ((x / c) / d)
         == x / (c * d) by {
         lemma_div_denominator(x, c, d);
@@ -867,8 +915,8 @@ pub proof fn lemma_truncate_middle(x: int, b: int, c: int)
         0 < b * c,
         (b * x) % (b * c) == b * (x % c),
 {
-    lemma_mul_strictly_positive_auto();
-    lemma_mul_nonnegative_auto();
+    broadcast use lemma_mul_strictly_positive, lemma_mul_nonnegative;
+
     calc! {
     (==)
     b * x;
@@ -935,7 +983,8 @@ pub proof fn lemma_div_multiples_vanish_quotient_auto()
             0 < x && 0 <= a && 0 < d ==> a / d == (x * a) / (x * d),
 {
     assert forall|x: int, d: int| #![trigger x * d] 0 < x && 0 < d implies 0 < x * d by {
-        lemma_mul_strictly_positive_auto();
+        broadcast use lemma_mul_strictly_positive;
+
     }
     assert forall|x: int, a: int, d: int|
         #![trigger a / d, x * a, x * d]
@@ -954,7 +1003,7 @@ pub proof fn lemma_round_down(a: int, r: int, d: int)
     ensures
         a == d * ((a + r) / d),
 {
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     lemma_div_induction_auto(d, a, |u: int| u % d == 0 ==> u == d * ((u + r) / d));
 }
@@ -1003,7 +1052,7 @@ pub proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
         }
         crate::arithmetic::internals::div_internals::lemma_div_basics(d);
     }
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     lemma_mul_induction(f);
     assert(f(x));
@@ -1057,7 +1106,7 @@ pub proof fn lemma_div_by_multiple(b: int, d: int)
         (b * d) / d == b,
 {
     lemma_div_multiples_vanish(b, d);
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
 }
 
@@ -1193,7 +1242,7 @@ pub proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
     // OBSERVE: push precondition on its on scope
     assert(f(0) && (forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1))) && (
     forall|i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)))) by {
-        broadcast use mul_properties_default;
+        broadcast use mul_properties_internal;
 
     }
     lemma_mul_induction(f);
@@ -1240,8 +1289,8 @@ pub proof fn lemma_part_bound1(a: int, b: int, c: int)
         b * ((a / b) - (c * ((b * (a / b)) / (b * c))));
     }
     assert(b * (a / b) % (b * c) <= b * (c - 1)) by {
-        lemma_mul_is_commutative_auto();
-        lemma_mul_inequality_auto();
+        broadcast use lemma_mul_is_commutative, lemma_mul_inequality;
+
     };
 }
 
@@ -1256,7 +1305,8 @@ pub proof fn lemma_part_bound1_auto()
             0 <= a && 0 < b && 0 < c ==> b * (a / b) % (b * c) <= b * (c - 1),
 {
     assert forall|b: int, c: int| #![trigger b * c] 0 < b && 0 < c implies 0 < b * c by {
-        lemma_mul_strictly_positive_auto();
+        broadcast use lemma_mul_strictly_positive;
+
     }
     assert forall|a: int, b: int, c: int|
         #![trigger (b * (a / b) % (b * c))]
@@ -1419,7 +1469,7 @@ pub proof fn lemma_mod_multiples_basic(x: int, m: int)
         (x * m) % m == 0,
 {
     lemma_mod_auto(m);
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     let f = |u: int| (u * m) % m == 0;
     lemma_mul_induction(f);
@@ -1497,7 +1547,7 @@ pub proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
             }),
 {
     lemma_mod_auto(m);
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     let f = |u: int| (m * u + b) % m == b % m;
     lemma_mul_induction(f);
@@ -1666,7 +1716,7 @@ pub proof fn lemma_mod_adds(a: int, b: int, d: int)
         a % d + b % d == (a + b) % d + d * ((a % d + b % d) / d),
         (a % d + b % d) < d ==> a % d + b % d == (a + b) % d,
 {
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
     lemma_div_auto(d);
 }
@@ -1701,14 +1751,14 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
         let f = |i: int| (x - i * d) % d == x % d;
         assert(f(0) && (forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1))) && (
         forall|i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)))) by {
-            broadcast use mul_properties_default;
+            broadcast use mul_properties_internal;
 
             lemma_mod_auto(d);
         };
         lemma_mul_induction(f);
         assert(f(x));
     }
-    broadcast use mul_properties_default;
+    broadcast use mul_properties_internal;
 
 }
 
@@ -2048,6 +2098,15 @@ pub proof fn lemma_mod_mul_equivalent_auto()
     }
 }
 
+// TODO: temporarily needed until `broadcast use` can be used in calc!
+proof fn lemma_mul_is_distributive_sub_auto()
+    ensures
+        forall|x: int, y: int, z: int| #[trigger] (x * (y - z)) == x * y - x * z,
+{
+    broadcast use lemma_mul_is_distributive_sub;
+
+}
+
 /// Proof that multiplying the divisor by a positive number can't
 /// decrease the remainder. Specifically, because `k > 0`, we have
 /// `x % d <= x % (d * k)`.
@@ -2103,7 +2162,6 @@ pub proof fn lemma_mod_ordering_auto()
 /// Proof that the remainder when `x` is divided by `a * b`, taken
 /// modulo `a`, is equivalent to `x` modulo `a`. That is,
 /// `(x % (a * b)) % a == x % a`.
-#[verifier::spinoff_prover]
 pub proof fn lemma_mod_mod(x: int, a: int, b: int)
     requires
         0 < a,
@@ -2112,7 +2170,8 @@ pub proof fn lemma_mod_mod(x: int, a: int, b: int)
         0 < a * b,
         (x % (a * b)) % a == x % a,
 {
-    lemma_mul_strictly_positive_auto();
+    broadcast use lemma_mul_strictly_positive;
+
     calc! { (==)
         x;
         { lemma_fundamental_div_mod(x, a * b); }
@@ -2125,7 +2184,8 @@ pub proof fn lemma_mod_mod(x: int, a: int, b: int)
         a * (b * (x / (a * b)) + x % (a * b) / a) + (x % (a * b)) % a;
     }
     lemma_mod_properties_auto();
-    lemma_mul_is_commutative_auto();
+    broadcast use lemma_mul_is_commutative;
+
     lemma_fundamental_div_mod_converse(
         x,
         a,
@@ -2146,7 +2206,8 @@ pub proof fn lemma_mod_mod_auto()
             0 < a && 0 < b ==> (x % (a * b)) % a == x % a,
 {
     assert forall|a: int, b: int| #![trigger a * b] 0 < a && 0 < b implies 0 < a * b by {
-        lemma_mul_strictly_positive_auto();
+        broadcast use lemma_mul_strictly_positive;
+
     }
     assert forall|x: int, a: int, b: int| #![trigger x % (a * b)] 0 < a && 0 < b implies (x % (a
         * b)) % a == x % a by {
@@ -2164,11 +2225,12 @@ pub proof fn lemma_part_bound2(x: int, y: int, z: int)
         y * z > 0,
         (x % y) % (y * z) < y,
 {
-    lemma_mul_strictly_positive_auto();
+    broadcast use lemma_mul_strictly_positive;
+
     lemma_mod_properties_auto();
     assert(x % y < y);
-    lemma_mul_increases_auto();
-    lemma_mul_is_commutative_auto();
+    broadcast use lemma_mul_is_commutative, lemma_mul_increases;
+
     assert(y <= y * z);
     assert(0 <= x % y < y * z);
     lemma_mod_properties_auto();
@@ -2185,7 +2247,8 @@ pub proof fn lemma_part_bound2_auto()
             (0 <= x && 0 < y && 0 < z) ==> (#[trigger] (x % y) % #[trigger] (y * z) < y),
 {
     assert forall|y: int, z: int| 0 < y && 0 < z implies #[trigger] (y * z) > 0 by {
-        lemma_mul_strictly_positive_auto();
+        broadcast use lemma_mul_strictly_positive;
+
     };
     assert forall|x: int, y: int, z: int| 0 <= x && 0 < y && 0 < z implies #[trigger] (x % y)
         % #[trigger] (y * z) < y by {
@@ -2204,7 +2267,8 @@ pub proof fn lemma_mod_breakdown(x: int, y: int, z: int)
         y * z > 0,
         x % (y * z) == y * ((x / y) % z) + x % y,
 {
-    lemma_mul_strictly_positive_auto();
+    broadcast use lemma_mul_strictly_positive;
+
     lemma_div_pos_is_pos(x, y);
     assert(0 <= x / y);
     assert((y * (x / y)) % (y * z) + (x % y) % (y * z) < y * z) by {
@@ -2250,7 +2314,8 @@ pub proof fn lemma_mod_breakdown_auto()
             0 <= x && 0 < y && 0 < z ==> x % (y * z) == y * ((x / y) % z) + x % y,
 {
     assert forall|y: int, z: int| #![trigger y * z] 0 < y && 0 < z implies y * z > 0 by {
-        lemma_mul_strictly_positive_auto();
+        broadcast use lemma_mul_strictly_positive;
+
     }
     assert forall|x: int, y: int, z: int| #![trigger x % (y * z)] 0 <= x && 0 < y && 0 < z implies x
         % (y * z) == y * ((x / y) % z) + x % y by {
