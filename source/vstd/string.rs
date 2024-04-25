@@ -176,7 +176,7 @@ pub broadcast proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
-pub broadcast group string_axioms {
+pub broadcast group group_string_axioms {
     axiom_str_literal_is_ascii,
     axiom_str_literal_len,
     axiom_str_literal_get_char,

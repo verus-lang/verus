@@ -27,15 +27,15 @@ use crate::arithmetic::mul::{
     lemma_mul_nonnegative,
     lemma_mul_strictly_increases,
     lemma_mul_left_inequality,
-    mul_basics,
+    group_mul_basics,
     lemma_mul_increases,
     lemma_mul_is_commutative,
-    mul_is_distributive,
+    group_mul_is_distributive,
     lemma_mul_is_associative,
 };
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::{
-    mul_properties_internal,
+    group_mul_properties_internal,
     lemma_mul_induction_auto,
 };
 #[cfg(verus_keep_ghost)]
@@ -69,7 +69,7 @@ proof fn lemma_mul_basics_auto()
         forall|x: int| #[trigger] (x * 1) == x,
         forall|x: int| #[trigger] (1 * x) == x,
 {
-    broadcast use mul_basics;
+    broadcast use group_mul_basics;
 
 }
 
@@ -228,7 +228,7 @@ proof fn lemma_mul_is_distributive_auto()
         forall|x: int, y: int, z: int| #[trigger] (x * (y - z)) == x * y - x * z,
         forall|x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,
 {
-    broadcast use mul_is_distributive;
+    broadcast use group_mul_is_distributive;
 
 }
 
@@ -313,13 +313,13 @@ pub broadcast proof fn lemma_pow_distributes(a: int, b: int, e: nat)
     }
 }
 
-pub broadcast group pow_properties {
+pub broadcast group group_pow_properties {
     lemma_pow0,
     lemma_pow1,
     lemma_pow_distributes,
     lemma_pow_adds,
     lemma_pow_sub_add_cancel,
-    mul_properties_internal,
+    group_mul_properties_internal,
     lemma_mul_increases,
     lemma_mul_strictly_increases,
 }
@@ -339,7 +339,7 @@ proof fn lemma_pow_properties_prove_pow_auto()
         forall|x: int, y: nat, z: nat| #[trigger] pow(x * y, z) == pow(x, z) * pow(y as int, z),
 {
     reveal(pow);
-    broadcast use pow_properties;
+    broadcast use group_pow_properties;
 
 }
 
@@ -485,7 +485,7 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
                 pow(b as int, e2),
             );
             lemma_fundamental_div_mod(x as int, pow(b as int, e2));
-            broadcast use lemma_mul_is_commutative, mod_properties;
+            broadcast use lemma_mul_is_commutative, group_mod_properties;
 
             lemma_pow_adds(b as int, (e1 - e2) as nat, e2);
         }
@@ -539,7 +539,7 @@ pub broadcast proof fn lemma_pow_mod_noop(b: int, e: nat, m: int)
     decreases e,
 {
     reveal(pow);
-    broadcast use mod_properties;
+    broadcast use group_mod_properties;
 
     if e > 0 {
         calc! { (==)

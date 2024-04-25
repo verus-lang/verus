@@ -17,7 +17,7 @@ use builtin_macros::*;
 
 verus! {
 
-broadcast use seq_axioms;
+broadcast use group_seq_axioms;
 
 impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns
@@ -704,7 +704,7 @@ impl<A> Seq<A> {
             forall|x: A| self.to_multiset().contains(x) ==> self.to_multiset().count(x) == 1,
         decreases self.len(),
     {
-        broadcast use crate::multiset::multiset_axioms;
+        broadcast use crate::multiset::group_multiset_axioms;
 
         if self.len() == 0 {
             assert(forall|x: A|
@@ -797,7 +797,7 @@ impl<A> Seq<A> {
             self.len() == self.to_set().len(),
         decreases self.len(),
     {
-        broadcast use crate::set::set_axioms;
+        broadcast use crate::set::group_set_axioms;
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -819,7 +819,7 @@ impl<A> Seq<A> {
             self.to_set().len() <= self.len(),
         decreases self.len(),
     {
-        broadcast use crate::set::set_axioms, seq_to_set_is_finite;
+        broadcast use crate::set::group_set_axioms, seq_to_set_is_finite;
 
         lemma_seq_properties::<A>();
         lemma_set_properties::<A>();
@@ -836,7 +836,7 @@ impl<A> Seq<A> {
         ensures
             self.to_set().len() == 0 <==> self.len() == 0,
     {
-        broadcast use crate::set::set_axioms, seq_to_set_is_finite;
+        broadcast use crate::set::group_set_axioms, seq_to_set_is_finite;
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
         assert(!(self.len() == 0) ==> !(self.to_set().len() == 0)) by {
@@ -856,7 +856,7 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         decreases self.len(),
     {
-        broadcast use crate::set::set_axioms, seq_to_set_is_finite;
+        broadcast use crate::set::group_set_axioms, seq_to_set_is_finite;
 
         lemma_seq_properties::<A>();
         if self.len() == 0 {
@@ -1308,7 +1308,7 @@ proof fn to_multiset_build<A>(s: Seq<A>, a: A)
         s.push(a).to_multiset() =~= s.to_multiset().insert(a),
     decreases s.len(),
 {
-    broadcast use crate::multiset::multiset_axioms;
+    broadcast use crate::multiset::group_multiset_axioms;
 
     if s.len() == 0 {
         assert(s.to_multiset() =~= Multiset::<A>::empty());
@@ -1329,7 +1329,7 @@ proof fn to_multiset_len<A>(s: Seq<A>)
         s.len() == s.to_multiset().len(),
     decreases s.len(),
 {
-    broadcast use crate::multiset::multiset_axioms;
+    broadcast use crate::multiset::group_multiset_axioms;
 
     if s.len() == 0 {
         assert(s.to_multiset() =~= Multiset::<A>::empty());
@@ -1347,7 +1347,7 @@ proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
         s.contains(a) <==> s.to_multiset().count(a) > 0,
     decreases s.len(),
 {
-    broadcast use crate::multiset::multiset_axioms;
+    broadcast use crate::multiset::group_multiset_axioms;
 
     if s.len() != 0 {
         // ==>
@@ -1411,7 +1411,7 @@ proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
         seq_to_set_rec(seq).finite(),
     decreases seq.len(),
 {
-    broadcast use crate::set::set_axioms;
+    broadcast use crate::set::group_set_axioms;
 
     if seq.len() > 0 {
         let sub_seq = seq.drop_last();
@@ -1427,7 +1427,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
         forall|a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a),
     decreases seq.len(),
 {
-    broadcast use crate::set::set_axioms;
+    broadcast use crate::set::group_set_axioms;
 
     if seq.len() > 0 {
         assert(forall|a| #[trigger]
@@ -1453,7 +1453,7 @@ proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures
         seq.to_set() == seq_to_set_rec(seq),
 {
-    broadcast use crate::set::set_axioms;
+    broadcast use crate::set::group_set_axioms;
 
     assert(forall|n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
         seq_to_set_rec_contains(seq);
@@ -1467,7 +1467,7 @@ pub broadcast proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
     ensures
         #[trigger] seq.to_set().finite(),
 {
-    broadcast use crate::set::set_axioms;
+    broadcast use crate::set::group_set_axioms;
 
     assert(seq.to_set().finite()) by {
         seq_to_set_equal_rec(seq);
@@ -1533,7 +1533,7 @@ pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     ensures
         (a + b).to_multiset() =~= (b + a).to_multiset(),
 {
-    broadcast use crate::multiset::multiset_axioms;
+    broadcast use crate::multiset::group_multiset_axioms;
 
     lemma_multiset_commutative(a, b);
     lemma_multiset_commutative(b, a);
@@ -1546,7 +1546,7 @@ pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
         (a + b).to_multiset() =~= a.to_multiset().add(b.to_multiset()),
     decreases a.len(),
 {
-    broadcast use crate::multiset::multiset_axioms;
+    broadcast use crate::multiset::group_multiset_axioms;
 
     if a.len() == 0 {
         assert(a + b =~= b);
@@ -1567,7 +1567,7 @@ pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: spec_fn(A, A) -> 
         x =~= y,
     decreases x.len(), y.len(),
 {
-    broadcast use crate::multiset::multiset_axioms;
+    broadcast use crate::multiset::group_multiset_axioms;
 
     x.to_multiset_ensures();
     y.to_multiset_ensures();
@@ -2097,7 +2097,7 @@ macro_rules! assert_seqs_equal_internal {
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
-pub broadcast group seq_lib_default {
+pub broadcast group group_seq_lib_default {
     Seq::filter_lemma,
     Seq::add_empty_left,
     Seq::add_empty_right,

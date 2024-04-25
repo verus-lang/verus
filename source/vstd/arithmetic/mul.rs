@@ -92,7 +92,7 @@ pub broadcast proof fn lemma_mul_basics_4(x: int)
 {
 }
 
-pub broadcast group mul_basics {
+pub broadcast group group_mul_basics {
     lemma_mul_basics_1,
     lemma_mul_basics_2,
     lemma_mul_basics_3,
@@ -282,7 +282,7 @@ pub broadcast proof fn lemma_mul_is_distributive_add_other_way(x: int, y: int, z
     ensures
         #[trigger] ((y + z) * x) == y * x + z * x,
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
 }
 
@@ -292,7 +292,7 @@ pub broadcast proof fn lemma_mul_is_distributive_sub(x: int, y: int, z: int)
     ensures
         #[trigger] (x * (y - z)) == x * y - x * z,
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
 }
 
@@ -309,16 +309,16 @@ pub broadcast proof fn lemma_mul_is_distributive_sub_other_way(x: int, y: int, z
     lemma_mul_is_commutative(x, z);
 }
 
-pub broadcast group mul_is_distributive {
+pub broadcast group group_mul_is_distributive {
     lemma_mul_is_distributive_add,
     lemma_mul_is_distributive_add_other_way,
     lemma_mul_is_distributive_sub,
     lemma_mul_is_distributive_sub_other_way,
 }
 
-pub broadcast group mul_is_commutative_and_distributive {
+pub broadcast group group_mul_is_commutative_and_distributive {
     lemma_mul_is_commutative,
-    mul_is_distributive,
+    group_mul_is_distributive,
 }
 
 /// Proof that multiplication is commutative, distributes over
@@ -336,7 +336,7 @@ proof fn lemma_mul_is_distributive(x: int, y: int, z: int)
         x * y == y * x,
         x * z == z * x,
 {
-    broadcast use mul_is_commutative_and_distributive;
+    broadcast use group_mul_is_commutative_and_distributive;
 
 }
 
@@ -418,11 +418,11 @@ pub broadcast proof fn lemma_mul_cancels_negatives(x: int, y: int)
     lemma_mul_induction_auto(x, |u: int| (-u) * y == -(u * y) == u * (-y));
 }
 
-pub broadcast group mul_properties {
-    mul_basics,
+pub broadcast group group_mul_properties {
+    group_mul_basics,
     lemma_mul_strict_inequality,
     lemma_mul_inequality,
-    mul_is_commutative_and_distributive,
+    group_mul_is_commutative_and_distributive,
     lemma_mul_is_associative,
     lemma_mul_ordering,
     lemma_mul_nonzero,
@@ -431,7 +431,7 @@ pub broadcast group mul_properties {
     lemma_mul_increases,
 }
 
-// Check that the mul_properties broadcast group provides the same properties as the _auto lemma it replaces
+// Check that the group_mul_properties broadcast group group_provides the same properties as the _auto lemma it replaces
 proof fn lemma_mul_properties_prove_mul_properties_auto()
     ensures
         forall|x: int, y: int| #[trigger] (x * y) == y * x,
@@ -455,7 +455,7 @@ proof fn lemma_mul_properties_prove_mul_properties_auto()
         forall|x: int, y: int| (0 < x && 0 < y) ==> (y <= #[trigger] (x * y)),
         forall|x: int, y: int| (0 < x && 0 < y) ==> (0 < #[trigger] (x * y)),
 {
-    broadcast use mul_properties;
+    broadcast use group_mul_properties;
 
 }
 

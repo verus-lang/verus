@@ -20,7 +20,7 @@ verus! {
 use crate::arithmetic::internals::general_internals::*;
 use crate::arithmetic::mul::*;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::mul_properties_internal;
+use crate::arithmetic::internals::mul_internals::group_mul_properties_internal;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
@@ -155,7 +155,7 @@ pub proof fn lemma_div_add_denominator(n: int, x: int)
     lemma_fundamental_div_mod(x + n, n);
     let zp = (x + n) / n - x / n - 1;
     assert(0 == n * zp + ((x + n) % n) - (x % n)) by {
-        broadcast use mul_properties_internal;
+        broadcast use group_mul_properties_internal;
 
     };
     if (zp > 0) {
@@ -179,7 +179,7 @@ pub proof fn lemma_div_sub_denominator(n: int, x: int)
     lemma_fundamental_div_mod(x - n, n);
     let zm = (x - n) / n - x / n + 1;
     assert(0 == n * zm + ((x - n) % n) - (x % n)) by {
-        broadcast use mul_properties_internal;
+        broadcast use group_mul_properties_internal;
 
     }
     if (zm > 0) {
@@ -205,12 +205,12 @@ pub proof fn lemma_mod_add_denominator(n: int, x: int)
     let zp = (x + n) / n - x / n - 1;
     assert(n * zp == n * ((x + n) / n - x / n) - n) by {
         assert(n * (((x + n) / n - x / n) - 1) == n * ((x + n) / n - x / n) - n) by {
-            broadcast use mul_is_commutative_and_distributive;
+            broadcast use group_mul_is_commutative_and_distributive;
 
         };
     };
     assert(0 == n * zp + ((x + n) % n) - (x % n)) by {
-        broadcast use mul_properties_internal;
+        broadcast use group_mul_properties_internal;
 
     }
     if (zp > 0) {
@@ -218,7 +218,7 @@ pub proof fn lemma_mod_add_denominator(n: int, x: int)
     } else if (zp < 0) {
         lemma_mul_inequality(zp, -1, n);
     } else {
-        broadcast use mul_properties_internal;
+        broadcast use group_mul_properties_internal;
 
     }
 }
@@ -235,10 +235,10 @@ pub proof fn lemma_mod_sub_denominator(n: int, x: int)
     lemma_fundamental_div_mod(x, n);
     lemma_fundamental_div_mod(x - n, n);
     let zm = (x - n) / n - x / n + 1;
-    broadcast use mul_is_distributive;  // OBSERVE
+    broadcast use group_mul_is_distributive;  // OBSERVE
 
     assert(0 == n * zm + ((x - n) % n) - (x % n)) by {
-        broadcast use mul_properties_internal;
+        broadcast use group_mul_properties_internal;
 
     }
     if (zm > 0) {
@@ -395,7 +395,7 @@ pub proof fn lemma_mod_auto(n: int)
         mod_auto(n),
 {
     lemma_mod_basics(n);
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     assert forall|x: int, y: int|
         {

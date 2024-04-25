@@ -11,7 +11,7 @@ use builtin_macros::*;
 
 verus! {
 
-broadcast use crate::map::map_axioms, crate::set::set_axioms;
+broadcast use crate::map::group_map_axioms, crate::set::group_set_axioms;
 
 impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.

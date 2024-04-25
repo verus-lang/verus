@@ -37,7 +37,7 @@ use crate::arithmetic::internals::mod_internals::{
 use crate::arithmetic::internals::mod_internals_nonlinear as ModINL;
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::{
-    mul_properties_internal,
+    group_mul_properties_internal,
     lemma_mul_induction,
     lemma_mul_induction_auto,
 };
@@ -137,7 +137,7 @@ pub broadcast proof fn lemma_div_basics_5(x: int, y: int)
     };
 }
 
-pub broadcast group div_basics {
+pub broadcast group group_div_basics {
     lemma_div_basics_1,
     lemma_div_basics_2,
     lemma_div_basics_3,
@@ -145,7 +145,7 @@ pub broadcast group div_basics {
     lemma_div_basics_5,
 }
 
-// Check that the div_basics broadcast group provides the same properties as the _auto lemma it replaces
+// Check that the group_div_basics broadcast group group_provides the same properties as the _auto lemma it replaces
 proof fn lemma_div_basics_prove_auto()
     ensures
         forall|x: int| x != 0 ==> #[trigger] (0int / x) == 0,
@@ -153,7 +153,7 @@ proof fn lemma_div_basics_prove_auto()
         forall|x: int, y: int| x >= 0 && y > 0 ==> #[trigger] (x / y) >= 0,
         forall|x: int, y: int| x >= 0 && y > 0 ==> #[trigger] (x / y) <= x,
 {
-    broadcast use div_basics;
+    broadcast use group_div_basics;
 
 }
 
@@ -385,7 +385,7 @@ proof fn lemma_mul_is_distributive_auto()
         forall|x: int, y: int, z: int| #[trigger] (x * (y - z)) == x * y - x * z,
         forall|x: int, y: int, z: int| #[trigger] ((y - z) * x) == y * x - z * x,
 {
-    broadcast use mul_is_distributive;
+    broadcast use group_mul_is_distributive;
 
 }
 
@@ -406,7 +406,7 @@ proof fn lemma_mul_basics_auto()
         forall|x: int| #[trigger] (x * 1) == x,
         forall|x: int| #[trigger] (1 * x) == x,
 {
-    broadcast use mul_basics;
+    broadcast use group_mul_basics;
 
 }
 
@@ -481,7 +481,7 @@ pub broadcast proof fn lemma_remainder_upper(x: int, d: int)
         #![trigger (x - d), (x / d * d)]
         x - d < x / d * d,
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     lemma_div_induction_auto(d, x, |u: int| 0 <= u ==> u - d < u / d * d);
 }
@@ -496,7 +496,7 @@ pub broadcast proof fn lemma_remainder_lower(x: int, d: int)
     ensures
         x >= #[trigger] (x / d * d),
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     lemma_div_induction_auto(d, x, |u: int| 0 <= u ==> u >= u / d * d);
 }
@@ -512,7 +512,7 @@ pub broadcast proof fn lemma_remainder(x: int, d: int)
     ensures
         0 <= #[trigger] (x - (x / d * d)) < d,
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     lemma_div_induction_auto(d, x, |u: int| 0 <= u - u / d * d < d);
 }
@@ -762,7 +762,7 @@ pub broadcast proof fn lemma_round_down(a: int, r: int, d: int)
         #![trigger (d * ((a + r) / d))]
         a == d * ((a + r) / d),
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     lemma_div_induction_auto(d, a, |u: int| u % d == 0 ==> u == d * ((u + r) / d));
 }
@@ -798,7 +798,7 @@ pub broadcast proof fn lemma_div_multiples_vanish_fancy(x: int, b: int, d: int)
         }
         crate::arithmetic::internals::div_internals::lemma_div_basics(d);
     }
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     lemma_mul_induction(f);
     assert(f(x));
@@ -829,7 +829,7 @@ pub broadcast proof fn lemma_div_by_multiple(b: int, d: int)
         (b * d) / d == b,
 {
     lemma_div_multiples_vanish(b, d);
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
 }
 
@@ -917,7 +917,7 @@ pub broadcast proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
     // OBSERVE: push precondition on its on scope
     assert(f(0) && (forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1))) && (
     forall|i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)))) by {
-        broadcast use mul_properties_internal;
+        broadcast use group_mul_properties_internal;
 
     }
     lemma_mul_induction(f);
@@ -1048,7 +1048,7 @@ pub broadcast proof fn lemma_mod_twice(x: int, m: int)
     lemma_mod_auto(m);
 }
 
-pub broadcast group mod_basics {
+pub broadcast group group_mod_basics {
     lemma_mod_self_0,
     lemma_mod_twice,
 }
@@ -1063,12 +1063,12 @@ pub broadcast proof fn lemma_mod_division_less_than_divisor(x: int, m: int)
     lemma_mod_auto(m);
 }
 
-pub broadcast group mod_properties {
-    mod_basics,
+pub broadcast group group_mod_properties {
+    group_mod_basics,
     lemma_mod_division_less_than_divisor,
 }
 
-// Check that the mod_properties_auto broadcast group provides the same properties as the _auto lemma it replaces
+// Check that the mod_properties_auto broadcast group group_provides the same properties as the _auto lemma it replaces
 // TODO: temporarily needed until `broadcast use` can be used in calc!
 proof fn lemma_mod_properties_auto()
     ensures
@@ -1076,7 +1076,7 @@ proof fn lemma_mod_properties_auto()
         forall|x: int, m: int| m > 0 ==> #[trigger] ((x % m) % m) == x % m,
         forall|x: int, m: int| m > 0 ==> 0 <= #[trigger] (x % m) < m,
 {
-    broadcast use mod_properties;
+    broadcast use group_mod_properties;
 
 }
 
@@ -1114,7 +1114,7 @@ pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
         #[trigger] ((x * m) % m) == 0,
 {
     lemma_mod_auto(m);
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     let f = |u: int| (u * m) % m == 0;
     lemma_mul_induction(f);
@@ -1159,7 +1159,7 @@ pub broadcast proof fn lemma_mod_multiples_vanish(a: int, b: int, m: int)
             }),
 {
     lemma_mod_auto(m);
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     let f = |u: int| (m * u + b) % m == b % m;
     lemma_mul_induction(f);
@@ -1244,7 +1244,7 @@ pub broadcast proof fn lemma_mod_adds(a: int, b: int, d: int)
         a % d + b % d == (a + b) % d + d * ((a % d + b % d) / d),
         (a % d + b % d) < d ==> a % d + b % d == (a + b) % d,
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     lemma_div_auto(d);
 }
@@ -1263,14 +1263,14 @@ pub proof fn lemma_mod_neg_neg(x: int, d: int)
         let f = |i: int| (x - i * d) % d == x % d;
         assert(f(0) && (forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1))) && (
         forall|i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)))) by {
-            broadcast use mul_properties_internal;
+            broadcast use group_mul_properties_internal;
 
             lemma_mod_auto(d);
         };
         lemma_mul_induction(f);
         assert(f(x));
     }
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
 }
 
@@ -1394,12 +1394,12 @@ pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
     lemma_fundamental_div_mod_converse_div(x, d, q, r);
 }
 
-pub broadcast group fundamental_div_mod_converse {
+pub broadcast group group_fundamental_div_mod_converse {
     lemma_fundamental_div_mod_converse_mod,
     lemma_fundamental_div_mod_converse_div,
 }
 
-// Check that the fundamental_div_mod_converse broadcast group provides the same properties as the _auto lemma it replaces
+// Check that the group_fundamental_div_mod_converse broadcast group group_provides the same properties as the _auto lemma it replaces
 /// Proof of the converse of the fundamental property of division and
 /// modulo. That is, whenever `0 <= r < d` and `x == q * d + r`, we
 /// know that `q` is the quotient `x / d` and `r` is the remainder `x % d`.
@@ -1411,7 +1411,7 @@ proof fn lemma_fundamental_div_mod_converse_prove_auto()
         forall|x: int, d: int, q: int, r: int|
             d != 0 && 0 <= r < d && x == #[trigger] (q * d + r) ==> r == #[trigger] (x % d),
 {
-    broadcast use fundamental_div_mod_converse;
+    broadcast use group_fundamental_div_mod_converse;
 
 }
 
@@ -1574,7 +1574,7 @@ pub broadcast proof fn lemma_mod_ordering(x: int, k: int, d: int)
         (x % (d * k)) % d;
     }
     assert((x % (d * k)) % d <= x % (d * k)) by {
-        broadcast use mod_properties;
+        broadcast use group_mod_properties;
 
         lemma_mod_decreases((x % (d * k)) as nat, d as nat);
     };
@@ -1605,7 +1605,7 @@ pub broadcast proof fn lemma_mod_mod(x: int, a: int, b: int)
         { lemma_mul_is_distributive_auto(); }
         a * (b * (x / (a * b)) + x % (a * b) / a) + (x % (a * b)) % a;
     }
-    broadcast use mod_properties, lemma_mul_is_commutative;
+    broadcast use group_mod_properties, lemma_mul_is_commutative;
 
     lemma_fundamental_div_mod_converse(
         x,

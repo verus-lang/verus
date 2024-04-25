@@ -298,7 +298,7 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, 
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
-pub broadcast group map_axioms {
+pub broadcast group group_map_axioms {
     axiom_map_index_decreases_finite,
     axiom_map_index_decreases_infinite,
     axiom_map_empty,

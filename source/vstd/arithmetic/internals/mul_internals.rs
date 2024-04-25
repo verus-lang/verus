@@ -150,18 +150,18 @@ pub open spec fn mul_auto() -> bool {
     &&& forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z)
 }
 
-pub broadcast group mul_properties_internal {
+pub broadcast group group_mul_properties_internal {
     lemma_mul_commutes,
     lemma_mul_distributes_plus,
     lemma_mul_distributes_minus,
 }
 
-// Check that the mul_properties_internal broadcast group provides the same properties as the _auto lemma it replaces
+// Check that the group_mul_properties_internal broadcast group group_provides the same properties as the _auto lemma it replaces
 proof fn lemma_mul_properties_internal_prove_mul_auto()
     ensures
         mul_auto(),
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     assert(mul_auto());
 }
@@ -191,7 +191,7 @@ pub proof fn lemma_mul_induction_auto(x: int, f: spec_fn(int) -> bool)
         mul_auto(),
         f(x),
 {
-    broadcast use mul_properties_internal;
+    broadcast use group_mul_properties_internal;
 
     assert(forall|i| is_le(0, i) && #[trigger] f(i) ==> f(i + 1));
     assert(forall|i| is_le(i, 0) && #[trigger] f(i) ==> f(i - 1));

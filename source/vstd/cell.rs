@@ -17,7 +17,7 @@ use crate::*;
 
 verus! {
 
-broadcast use crate::map::map_axioms, crate::set::set_axioms;
+broadcast use crate::map::group_map_axioms, crate::set::group_set_axioms;
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
