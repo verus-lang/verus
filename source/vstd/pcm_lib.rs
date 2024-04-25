@@ -13,7 +13,9 @@ use builtin_macros::*;
 
 verus! {
 
+broadcast use crate::vstd_default;
 /// Combines a list of values into one value using P::op().
+
 pub open spec fn combine_values<P: PCM>(values: Seq<P>) -> P
     decreases values.len(),
 {
