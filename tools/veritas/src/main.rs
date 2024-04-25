@@ -132,16 +132,17 @@ impl ReposCache {
             .repos_cache_path
             .join(repo_name.to_owned() + "-" + &digest::str_digest(&repo_url));
 
-        let repo = git2::Repository::init_bare(repo_path)
+        let repo = git2::Repository::init_bare(&repo_path)
             .map_err(|e| format!("failed to init bare repo: {}", e))?;
         let mut origin_remote = repo
             .find_remote("origin")
             .ok()
             .or_else(|| repo.remote("origin", repo_url).ok())
             .expect("failed to create anonymous remote");
+        info(&format!("fetching {repo_url} into {}", repo_path.display()));
         origin_remote
             .fetch(
-                &["refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"],
+                &["+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"],
                 None,
                 None,
             )
@@ -293,11 +294,17 @@ struct RunConfigurationProject {
     prepare_script: Option<String>,
 }
 
+fn verus_verify_vstd_default() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize, Hash)]
 struct RunConfiguration {
     verus_git_url: String,
     verus_refspec: String,
     verus_features: Vec<String>,
+    #[serde(default = "verus_verify_vstd_default")]
+    verus_verify_vstd: bool,
 
     #[serde(rename = "project")]
     projects: Vec<RunConfigurationProject>,
@@ -349,23 +356,24 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             })?,
         )
         .map_err(|e| format!("cannot parse run configuration: {}", e))?;
-        run_configuration.projects.insert(
-            0,
-            RunConfigurationProject {
-                name: "verus-vstd".to_owned(),
-                git_url: run_configuration.verus_git_url.clone(),
-                refspec: run_configuration.verus_refspec.clone(),
-                crate_root: "source/vstd/vstd.rs".to_owned(),
-                extra_args: Some(vec![
-                    "--no-vstd".to_owned(),
-                    "--crate-type=lib".to_owned(),
-                    "-V".to_owned(),
-                    "use-crate-name".to_owned(),
-                ]),
-                prepare_script: None,
-            },
-        );
-
+        if run_configuration.verus_verify_vstd {
+            run_configuration.projects.insert(
+                0,
+                RunConfigurationProject {
+                    name: "verus-vstd".to_owned(),
+                    git_url: run_configuration.verus_git_url.clone(),
+                    refspec: run_configuration.verus_refspec.clone(),
+                    crate_root: "source/vstd/vstd.rs".to_owned(),
+                    extra_args: Some(vec![
+                        "--no-vstd".to_owned(),
+                        "--crate-type=lib".to_owned(),
+                        "-V".to_owned(),
+                        "use-crate-name".to_owned(),
+                    ]),
+                    prepare_script: None,
+                },
+            );
+        }
         run_configuration
     };
     dbg!(&run_configuration);
@@ -374,13 +382,17 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
     let mut workdir = WorkDir::init()?;
     let mut z3_cache = Z3Cache::init()?;
 
-    info("checking out verus");
+    info(&format!(
+        "checking out verus {}",
+        run_configuration.verus_refspec
+    ));
     let verus_checkout = workdir.checkout(
         &mut repos_cache,
         VERUS_PROJECT_NAME,
         &run_configuration.verus_git_url,
         &run_configuration.verus_refspec,
     )?;
+    info(&format!("checked out verus commit {}", verus_checkout.hash));
     info("building verus");
     let verus_workdir = verus_checkout
         .repository
