@@ -97,6 +97,7 @@ pub struct Context {
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
+    pub(crate) enable_usage_info: bool,
     pub(crate) check_valid_used: bool,
 }
 
@@ -134,6 +135,7 @@ impl Context {
             expected_solver_version: None,
             profile_logfile_name: None,
             disable_incremental_solving: false,
+            enable_usage_info: false,
             check_valid_used: false,
         };
         context.axiom_infos.push_scope(false);
@@ -210,6 +212,10 @@ impl Context {
         self.air_initial_log.log_set_option("disable_incremental_solving", "true");
         self.air_middle_log.log_set_option("disable_incremental_solving", "true");
         self.air_final_log.log_set_option("disable_incremental_solving", "true");
+    }
+
+    pub fn set_usage_info(&mut self, enable_usage_info: bool) {
+        self.enable_usage_info = enable_usage_info;
     }
 
     // emit blank line into log files
