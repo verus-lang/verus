@@ -529,6 +529,7 @@ pub fn prune_krate_for_module(
     }
     for f in this_module_reveals.iter().flat_map(|o| o.x.iter()) {
         revealed_functions.insert(f.clone());
+        state.reached_functions.insert(f.clone());
     }
     for group in &krate.reveal_groups {
         if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {
