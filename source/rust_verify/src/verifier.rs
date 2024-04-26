@@ -1520,28 +1520,25 @@ impl Verifier {
                                     let axioms_list = used_axioms
                                         .iter()
                                         .map(|x| {
+                                            let funx = &function_opgen.ctx().fun_ident_map[x];
+                                            let is_reveal_group = krate
+                                                .reveal_groups
+                                                .iter()
+                                                .find(|g| &g.x.name == funx)
+                                                .is_some();
                                             format!(
-                                                "  - {}",
-                                                fun_as_friendly_rust_name(
-                                                    &function_opgen.ctx().fun_ident_map[x],
-                                                )
+                                                "  -{} {}",
+                                                if is_reveal_group { " (group)" } else { "" },
+                                                fun_as_friendly_rust_name(&funx,),
                                             )
                                         })
                                         .collect::<Vec<String>>()
                                         .join(",\n");
                                     let msg = format!(
-                                        "{} used these broadcasted lemmas and reveal groups:\n{}",
+                                        "{} used these broadcasted lemmas and broadcast groups:\n{}",
                                         op.to_friendly_desc()
                                             .unwrap_or("checking this function".to_owned()),
                                         axioms_list,
-                                    );
-                                    reporter
-                                        .report(&vir::messages::note(&function.span, msg).to_any());
-                                } else {
-                                    let msg = format!(
-                                        "{} did not use any broadcasted lemmas and reveal groups",
-                                        op.to_friendly_desc()
-                                            .unwrap_or("checking this function".to_owned()),
                                     );
                                     reporter
                                         .report(&vir::messages::note(&function.span, msg).to_any());
