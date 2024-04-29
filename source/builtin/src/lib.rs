@@ -753,12 +753,22 @@ unsafe impl Integer for char {}
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_integer"]
 #[allow(non_camel_case_types)]
 #[verifier::spec]
-pub fn spec_literal_integer<
+pub const fn spec_literal_integer<
     hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat: Integer,
 >(
     _s: &str,
 ) -> hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat {
-    unimplemented!()
+    // The implementation doesn't matter since this is only used in spec code.
+    // However, we need to provide an executable implementation in order to mark
+    // this function as `const`.
+
+    // Because 'const' on trait functions is not supported, this is currently
+    // the only way I can think of to make an implementation for this:
+
+    let x: u128 = 0;
+    let z = (&x as *const u128)
+        as *const hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat;
+    unsafe { core::ptr::read(z) }
 }
 
 // spec literals of the form "33int",
