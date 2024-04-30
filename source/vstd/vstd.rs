@@ -11,6 +11,7 @@
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
+#![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -36,6 +37,7 @@ pub mod pcm_lib;
 pub mod pervasive;
 #[cfg(feature = "alloc")]
 pub mod ptr;
+pub mod raw_ptr;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
@@ -76,6 +78,7 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     ptr::group_ptr_axioms,
     std_specs::range::group_range_axioms,
+    raw_ptr::group_raw_ptr_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -92,6 +95,7 @@ pub broadcast group group_vstd_default {
     multiset::group_multiset_axioms,
     string::group_string_axioms,
     std_specs::range::group_range_axioms,
+    raw_ptr::group_raw_ptr_axioms,
 }
 
 } // verus!

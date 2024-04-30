@@ -81,6 +81,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Char => false,
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
+        TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::FnDef(..) => false,
     }
 }

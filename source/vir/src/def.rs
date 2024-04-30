@@ -68,6 +68,7 @@ const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
+const PTR_TYPE: &str = "ptr_mut%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
@@ -154,8 +155,10 @@ pub const DECORATE_ARC: &str = "ARC";
 pub const DECORATE_GHOST: &str = "GHOST";
 pub const DECORATE_TRACKED: &str = "TRACKED";
 pub const DECORATE_NEVER: &str = "NEVER";
+pub const DECORATE_CONST_PTR: &str = "CONST_PTR";
 pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
+pub const TYPE_ID_PTR: &str = "PTR";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -363,6 +366,11 @@ pub fn slice_type() -> Path {
 
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn ptr_type() -> Path {
+    let ident = Arc::new(PTR_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 

@@ -98,6 +98,13 @@ impl ToString for TypX {
             }
             TypX::Closure => "_".to_string(),
             TypX::FnDef => "_".to_string(),
+            TypX::RawPtr(t, mutbl) => {
+                let p = match mutbl {
+                    rustc_middle::ty::Mutability::Not => "*const ",
+                    rustc_middle::ty::Mutability::Mut => "*mut ",
+                };
+                format!("{}{}", p, t.to_string())
+            }
         }
     }
 }

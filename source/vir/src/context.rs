@@ -184,6 +184,7 @@ fn datatypes_invs(
                             roots.insert(container_path.clone());
                         }
                         TypX::Primitive(Primitive::Slice, _) => {}
+                        TypX::Primitive(Primitive::Ptr, _) => {}
                     }
                 }
             }

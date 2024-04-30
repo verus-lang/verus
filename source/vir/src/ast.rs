@@ -174,6 +174,11 @@ pub enum TypDecoration {
     Tracked,
     /// !, represented as Never<()>
     Never,
+    /// This is applied to `*mut T` to turn it into `*const T`
+    /// (This is _not_ applied to `T` on its own.)
+    /// This is done because `*mut T` is represented identically `*const T`,
+    /// but neither are represented identically to T.
+    ConstPtr,
 }
 
 #[derive(
@@ -192,6 +197,7 @@ pub enum TypDecoration {
 pub enum Primitive {
     Array,
     Slice,
+    Ptr, // Mut ptr, unless Const decoration is applied
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.

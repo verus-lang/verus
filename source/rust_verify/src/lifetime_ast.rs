@@ -50,6 +50,7 @@ pub(crate) enum TypX {
     },
     Closure,
     FnDef,
+    RawPtr(Typ, rustc_middle::ty::Mutability),
 }
 
 pub(crate) type Pattern = Box<(Span, PatternX)>;
