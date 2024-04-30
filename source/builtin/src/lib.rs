@@ -11,8 +11,9 @@
     register_tool(verus),
     register_tool(verifier)
 )]
-#![feature(const_trait_impl)]
-#![feature(effects)]
+
+#![cfg_attr(verus_keep_ghost, feature(const_trait_impl))]
+#![cfg_attr(verus_keep_ghost, feature(effects))]
 
 use core::marker::PhantomData;
 
@@ -882,7 +883,7 @@ pub trait SpecOrd<Rhs = Self> {
     fn spec_ge(self, rhs: Rhs) -> bool;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecNeg {
     type Output;
 
@@ -892,7 +893,7 @@ pub trait SpecNeg {
     fn spec_neg(self) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecAdd<Rhs = Self> {
     type Output;
 
@@ -902,7 +903,7 @@ pub trait SpecAdd<Rhs = Self> {
     fn spec_add(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecSub<Rhs = Self> {
     type Output;
 
@@ -912,7 +913,7 @@ pub trait SpecSub<Rhs = Self> {
     fn spec_sub(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecMul<Rhs = Self> {
     type Output;
 
@@ -922,7 +923,7 @@ pub trait SpecMul<Rhs = Self> {
     fn spec_mul(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecEuclideanDiv<Rhs = Self> {
     type Output;
 
@@ -932,7 +933,7 @@ pub trait SpecEuclideanDiv<Rhs = Self> {
     fn spec_euclidean_div(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecEuclideanMod<Rhs = Self> {
     type Output;
 
@@ -942,7 +943,7 @@ pub trait SpecEuclideanMod<Rhs = Self> {
     fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecBitAnd<Rhs = Self> {
     type Output;
 
@@ -952,7 +953,7 @@ pub trait SpecBitAnd<Rhs = Self> {
     fn spec_bitand(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecBitOr<Rhs = Self> {
     type Output;
 
@@ -962,7 +963,7 @@ pub trait SpecBitOr<Rhs = Self> {
     fn spec_bitor(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecBitXor<Rhs = Self> {
     type Output;
 
@@ -972,7 +973,7 @@ pub trait SpecBitXor<Rhs = Self> {
     fn spec_bitxor(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecShl<Rhs = Self> {
     type Output;
 
@@ -982,7 +983,7 @@ pub trait SpecShl<Rhs = Self> {
     fn spec_shl(self, rhs: Rhs) -> Self::Output;
 }
 
-#[const_trait]
+#[cfg_attr(verus_keep_ghost, const_trait)]
 pub trait SpecShr<Rhs = Self> {
     type Output;
 
@@ -1078,13 +1079,24 @@ macro_rules! impl_ord {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
+macro_rules! impl_unary_op {
+    ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
+        $(
+            impl $trt for $t {
+                type Output = $ret;
+            }
+        )*
+    }
+}
+
+#[cfg(verus_keep_ghost)]
 macro_rules! impl_unary_op {
     ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
         $(
             impl const $trt for $t {
                 type Output = $ret;
 
-                #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self) -> Self::Output {
                     <$ret>::CONST_DEFAULT
@@ -1094,13 +1106,26 @@ macro_rules! impl_unary_op {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 macro_rules! impl_binary_op {
     ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
         $(
+            impl<Rhs: Integer> $trt<Rhs> for $t {
+                type Output = $ret;
+            }
+        )*
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+macro_rules! impl_binary_op {
+    ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
+        $(
+
+            #[cfg(verus_keep_ghost)]
             impl<Rhs: Integer> const $trt<Rhs> for $t {
                 type Output = $ret;
 
-                #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self, _rhs: Rhs) -> Self::Output {
                     <$ret>::CONST_DEFAULT
@@ -1110,13 +1135,24 @@ macro_rules! impl_binary_op {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
+macro_rules! impl_binary_op_nat {
+    ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
+        $(
+            impl $trt<$t> for nat {
+                type Output = $ret;
+            }
+        )*
+    }
+}
+
+#[cfg(verus_keep_ghost)]
 macro_rules! impl_binary_op_nat {
     ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
         $(
             impl const $trt<$t> for nat {
                 type Output = $ret;
 
-                #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self, _rhs: $t) -> Self::Output {
                     <$ret>::CONST_DEFAULT
@@ -1126,13 +1162,25 @@ macro_rules! impl_binary_op_nat {
     }
 }
 
+#[cfg(not(verus_keep_ghost))]
 macro_rules! impl_binary_op_rhs {
     ($trt:ident, $fun:ident, $rhs: ty, $ret:ty, [$($t:ty)*]) => {
         $(
+            impl $trt<$rhs> for $t {
+                type Output = $ret;
+            }
+        )*
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+macro_rules! impl_binary_op_rhs {
+    ($trt:ident, $fun:ident, $rhs: ty, $ret:ty, [$($t:ty)*]) => {
+        $(
+            #[cfg(verus_keep_ghost)]
             impl const $trt<$rhs> for $t {
                 type Output = $ret;
 
-                #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self, _rhs: $rhs) -> Self::Output {
                     <$ret>::CONST_DEFAULT
