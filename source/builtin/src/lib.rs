@@ -11,7 +11,6 @@
     register_tool(verus),
     register_tool(verifier)
 )]
-
 #![cfg_attr(verus_keep_ghost, feature(const_trait_impl))]
 #![cfg_attr(verus_keep_ghost, feature(effects))]
 
