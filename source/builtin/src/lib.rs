@@ -11,6 +11,8 @@
     register_tool(verus),
     register_tool(verifier)
 )]
+#![feature(const_trait_impl)]
+#![feature(effects)]
 
 use core::marker::PhantomData;
 
@@ -503,6 +505,7 @@ pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] _a: &'a A) -> &'a Tracked<A
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::int")]
 #[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
 pub struct int;
 
 // TODO: we should eventually be able to remove this and other int/nat ops,
@@ -571,6 +574,7 @@ impl core::cmp::Ord for int {
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::nat")]
 #[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
 pub struct nat;
 
 impl core::ops::Add for nat {
@@ -731,34 +735,73 @@ impl<T> SyncSendIfSend<T> {
 // in an arithmetic operation.
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Integer")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub unsafe trait Integer {}
-unsafe impl Integer for u8 {}
-unsafe impl Integer for u16 {}
-unsafe impl Integer for u32 {}
-unsafe impl Integer for u64 {}
-unsafe impl Integer for u128 {}
-unsafe impl Integer for usize {}
-unsafe impl Integer for i8 {}
-unsafe impl Integer for i16 {}
-unsafe impl Integer for i32 {}
-unsafe impl Integer for i64 {}
-unsafe impl Integer for i128 {}
-unsafe impl Integer for isize {}
-unsafe impl Integer for int {}
-unsafe impl Integer for nat {}
-unsafe impl Integer for char {}
+pub unsafe trait Integer: Copy {
+    const CONST_DEFAULT: Self;
+}
+unsafe impl Integer for u8 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u16 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u32 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u64 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u128 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for usize {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i8 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i16 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i32 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i64 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i128 {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for isize {
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for int {
+    const CONST_DEFAULT: Self = int;
+}
+unsafe impl Integer for nat {
+    const CONST_DEFAULT: Self = nat;
+}
+unsafe impl Integer for char {
+    const CONST_DEFAULT: Self = ' ';
+}
+
+pub unsafe trait Boolean: Copy {
+    const CONST_DEFAULT: Self;
+}
+unsafe impl Boolean for bool {
+    const CONST_DEFAULT: Self = false;
+}
 
 // spec literals of the form "33", which could have any Integer type
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_integer"]
 #[allow(non_camel_case_types)]
 #[verifier::spec]
-pub fn spec_literal_integer<
+pub const fn spec_literal_integer<
     hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat: Integer,
 >(
     _s: &str,
 ) -> hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat {
-    unimplemented!()
+    hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat::CONST_DEFAULT
 }
 
 // spec literals of the form "33int",
@@ -766,48 +809,48 @@ pub fn spec_literal_integer<
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_int"]
 #[verifier::spec]
-pub fn spec_literal_int(_s: &str) -> int {
-    unimplemented!()
+pub const fn spec_literal_int(_s: &str) -> int {
+    int
 }
 
 // spec literals of the form "33nat"
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_nat"]
 #[verifier::spec]
-pub fn spec_literal_nat(_s: &str) -> nat {
-    unimplemented!()
+pub const fn spec_literal_nat(_s: &str) -> nat {
+    nat
 }
 
 // Fixed-width add
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::add"]
 #[verifier::spec]
-pub fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
-    unimplemented!()
+pub const fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
+    IntegerType::CONST_DEFAULT
 }
 
 // Fixed-width sub
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::sub"]
 #[verifier::spec]
-pub fn sub<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
-    unimplemented!()
+pub const fn sub<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
+    IntegerType::CONST_DEFAULT
 }
 
 // Fixed-width mul
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::mul"]
 #[verifier::spec]
-pub fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
-    unimplemented!()
+pub const fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
+    IntegerType::CONST_DEFAULT
 }
 
 // represent "expr as typ", including converting to and from int and nat
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_cast_integer"]
 #[verifier::spec]
-pub fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
-    unimplemented!()
+pub const fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
+    To::CONST_DEFAULT
 }
 
 #[cfg(verus_keep_ghost)]
@@ -839,6 +882,7 @@ pub trait SpecOrd<Rhs = Self> {
     fn spec_ge(self, rhs: Rhs) -> bool;
 }
 
+#[const_trait]
 pub trait SpecNeg {
     type Output;
 
@@ -848,6 +892,7 @@ pub trait SpecNeg {
     fn spec_neg(self) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecAdd<Rhs = Self> {
     type Output;
 
@@ -857,6 +902,7 @@ pub trait SpecAdd<Rhs = Self> {
     fn spec_add(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecSub<Rhs = Self> {
     type Output;
 
@@ -866,6 +912,7 @@ pub trait SpecSub<Rhs = Self> {
     fn spec_sub(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecMul<Rhs = Self> {
     type Output;
 
@@ -875,6 +922,7 @@ pub trait SpecMul<Rhs = Self> {
     fn spec_mul(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecEuclideanDiv<Rhs = Self> {
     type Output;
 
@@ -884,6 +932,7 @@ pub trait SpecEuclideanDiv<Rhs = Self> {
     fn spec_euclidean_div(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecEuclideanMod<Rhs = Self> {
     type Output;
 
@@ -893,6 +942,7 @@ pub trait SpecEuclideanMod<Rhs = Self> {
     fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecBitAnd<Rhs = Self> {
     type Output;
 
@@ -902,6 +952,7 @@ pub trait SpecBitAnd<Rhs = Self> {
     fn spec_bitand(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecBitOr<Rhs = Self> {
     type Output;
 
@@ -911,6 +962,7 @@ pub trait SpecBitOr<Rhs = Self> {
     fn spec_bitor(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecBitXor<Rhs = Self> {
     type Output;
 
@@ -920,6 +972,7 @@ pub trait SpecBitXor<Rhs = Self> {
     fn spec_bitxor(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecShl<Rhs = Self> {
     type Output;
 
@@ -929,6 +982,7 @@ pub trait SpecShl<Rhs = Self> {
     fn spec_shl(self, rhs: Rhs) -> Self::Output;
 }
 
+#[const_trait]
 pub trait SpecShr<Rhs = Self> {
     type Output;
 
@@ -1027,13 +1081,13 @@ macro_rules! impl_ord {
 macro_rules! impl_unary_op {
     ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
         $(
-            impl $trt for $t {
+            impl const $trt for $t {
                 type Output = $ret;
 
                 #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self) -> Self::Output {
-                    unimplemented!()
+                    <$ret>::CONST_DEFAULT
                 }
             }
         )*
@@ -1043,13 +1097,13 @@ macro_rules! impl_unary_op {
 macro_rules! impl_binary_op {
     ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
         $(
-            impl<Rhs: Integer> $trt<Rhs> for $t {
+            impl<Rhs: Integer> const $trt<Rhs> for $t {
                 type Output = $ret;
 
                 #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self, _rhs: Rhs) -> Self::Output {
-                    unimplemented!()
+                    <$ret>::CONST_DEFAULT
                 }
             }
         )*
@@ -1059,13 +1113,13 @@ macro_rules! impl_binary_op {
 macro_rules! impl_binary_op_nat {
     ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
         $(
-            impl $trt<$t> for nat {
+            impl const $trt<$t> for nat {
                 type Output = $ret;
 
                 #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self, _rhs: $t) -> Self::Output {
-                    unimplemented!()
+                    <$ret>::CONST_DEFAULT
                 }
             }
         )*
@@ -1075,13 +1129,13 @@ macro_rules! impl_binary_op_nat {
 macro_rules! impl_binary_op_rhs {
     ($trt:ident, $fun:ident, $rhs: ty, $ret:ty, [$($t:ty)*]) => {
         $(
-            impl $trt<$rhs> for $t {
+            impl const $trt<$rhs> for $t {
                 type Output = $ret;
 
                 #[cfg(verus_keep_ghost)]
                 #[verifier::spec]
                 fn $fun(self, _rhs: $rhs) -> Self::Output {
-                    unimplemented!()
+                    <$ret>::CONST_DEFAULT
                 }
             }
         )*

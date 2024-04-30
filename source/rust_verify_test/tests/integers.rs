@@ -456,8 +456,11 @@ test_verify_one_file! {
             t as nat + 3
         }
 
+        #[derive(Clone, Copy)]
         struct S;
-        unsafe impl Integer for S {}
+        unsafe impl Integer for S {
+            const CONST_DEFAULT: S = S;
+        }
 
         proof fn test() {
             assert(plus_three(S) + 1 == 1 + plus_three(S));
