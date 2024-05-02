@@ -454,7 +454,7 @@ macro_rules! lemma_low_bits_mask_is_mod {
             }
         }
 
-        // Helper lemma breaking an and operation into the low bit and the rest.
+        // Helper lemma breaking a bitwise-and operation into the low bit and the rest.
         proof fn $and_split_low_bit(x: $uN, m: $uN)
             by (bit_vector)
             ensures
