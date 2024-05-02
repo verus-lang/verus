@@ -240,4 +240,150 @@ pub proof fn lemma2_to64()
     ) by(compute_only);
 }
 
+/// Mask with low n bits set.
+pub open spec fn low_bits_mask(n: nat) -> nat {
+    (pow2(n) - 1) as nat
+}
+
+/// Proof establishing the concrete values of all masks of bit sizes from 0 to
+/// 64.
+pub proof fn lemma_low_bits_mask_values_to64()
+    ensures
+        low_bits_mask(0) == 0x0,
+        low_bits_mask(1) == 0x1,
+        low_bits_mask(2) == 0x3,
+        low_bits_mask(3) == 0x7,
+        low_bits_mask(4) == 0xf,
+        low_bits_mask(5) == 0x1f,
+        low_bits_mask(6) == 0x3f,
+        low_bits_mask(7) == 0x7f,
+        low_bits_mask(8) == 0xff,
+        low_bits_mask(9) == 0x1ff,
+        low_bits_mask(10) == 0x3ff,
+        low_bits_mask(11) == 0x7ff,
+        low_bits_mask(12) == 0xfff,
+        low_bits_mask(13) == 0x1fff,
+        low_bits_mask(14) == 0x3fff,
+        low_bits_mask(15) == 0x7fff,
+        low_bits_mask(16) == 0xffff,
+        low_bits_mask(17) == 0x1ffff,
+        low_bits_mask(18) == 0x3ffff,
+        low_bits_mask(19) == 0x7ffff,
+        low_bits_mask(20) == 0xfffff,
+        low_bits_mask(21) == 0x1fffff,
+        low_bits_mask(22) == 0x3fffff,
+        low_bits_mask(23) == 0x7fffff,
+        low_bits_mask(24) == 0xffffff,
+        low_bits_mask(25) == 0x1ffffff,
+        low_bits_mask(26) == 0x3ffffff,
+        low_bits_mask(27) == 0x7ffffff,
+        low_bits_mask(28) == 0xfffffff,
+        low_bits_mask(29) == 0x1fffffff,
+        low_bits_mask(30) == 0x3fffffff,
+        low_bits_mask(31) == 0x7fffffff,
+        low_bits_mask(32) == 0xffffffff,
+        low_bits_mask(33) == 0x1ffffffff,
+        low_bits_mask(34) == 0x3ffffffff,
+        low_bits_mask(35) == 0x7ffffffff,
+        low_bits_mask(36) == 0xfffffffff,
+        low_bits_mask(37) == 0x1fffffffff,
+        low_bits_mask(38) == 0x3fffffffff,
+        low_bits_mask(39) == 0x7fffffffff,
+        low_bits_mask(40) == 0xffffffffff,
+        low_bits_mask(41) == 0x1ffffffffff,
+        low_bits_mask(42) == 0x3ffffffffff,
+        low_bits_mask(43) == 0x7ffffffffff,
+        low_bits_mask(44) == 0xfffffffffff,
+        low_bits_mask(45) == 0x1fffffffffff,
+        low_bits_mask(46) == 0x3fffffffffff,
+        low_bits_mask(47) == 0x7fffffffffff,
+        low_bits_mask(48) == 0xffffffffffff,
+        low_bits_mask(49) == 0x1ffffffffffff,
+        low_bits_mask(50) == 0x3ffffffffffff,
+        low_bits_mask(51) == 0x7ffffffffffff,
+        low_bits_mask(52) == 0xfffffffffffff,
+        low_bits_mask(53) == 0x1fffffffffffff,
+        low_bits_mask(54) == 0x3fffffffffffff,
+        low_bits_mask(55) == 0x7fffffffffffff,
+        low_bits_mask(56) == 0xffffffffffffff,
+        low_bits_mask(57) == 0x1ffffffffffffff,
+        low_bits_mask(58) == 0x3ffffffffffffff,
+        low_bits_mask(59) == 0x7ffffffffffffff,
+        low_bits_mask(60) == 0xfffffffffffffff,
+        low_bits_mask(61) == 0x1fffffffffffffff,
+        low_bits_mask(62) == 0x3fffffffffffffff,
+        low_bits_mask(63) == 0x7fffffffffffffff,
+        low_bits_mask(64) == 0xffffffffffffffff,
+{
+    reveal(pow2);
+    #[verusfmt::skip]
+    assert(
+        low_bits_mask(0) == 0x0 &&
+        low_bits_mask(1) == 0x1 &&
+        low_bits_mask(2) == 0x3 &&
+        low_bits_mask(3) == 0x7 &&
+        low_bits_mask(4) == 0xf &&
+        low_bits_mask(5) == 0x1f &&
+        low_bits_mask(6) == 0x3f &&
+        low_bits_mask(7) == 0x7f &&
+        low_bits_mask(8) == 0xff &&
+        low_bits_mask(9) == 0x1ff &&
+        low_bits_mask(10) == 0x3ff &&
+        low_bits_mask(11) == 0x7ff &&
+        low_bits_mask(12) == 0xfff &&
+        low_bits_mask(13) == 0x1fff &&
+        low_bits_mask(14) == 0x3fff &&
+        low_bits_mask(15) == 0x7fff &&
+        low_bits_mask(16) == 0xffff &&
+        low_bits_mask(17) == 0x1ffff &&
+        low_bits_mask(18) == 0x3ffff &&
+        low_bits_mask(19) == 0x7ffff &&
+        low_bits_mask(20) == 0xfffff &&
+        low_bits_mask(21) == 0x1fffff &&
+        low_bits_mask(22) == 0x3fffff &&
+        low_bits_mask(23) == 0x7fffff &&
+        low_bits_mask(24) == 0xffffff &&
+        low_bits_mask(25) == 0x1ffffff &&
+        low_bits_mask(26) == 0x3ffffff &&
+        low_bits_mask(27) == 0x7ffffff &&
+        low_bits_mask(28) == 0xfffffff &&
+        low_bits_mask(29) == 0x1fffffff &&
+        low_bits_mask(30) == 0x3fffffff &&
+        low_bits_mask(31) == 0x7fffffff &&
+        low_bits_mask(32) == 0xffffffff &&
+        low_bits_mask(33) == 0x1ffffffff &&
+        low_bits_mask(34) == 0x3ffffffff &&
+        low_bits_mask(35) == 0x7ffffffff &&
+        low_bits_mask(36) == 0xfffffffff &&
+        low_bits_mask(37) == 0x1fffffffff &&
+        low_bits_mask(38) == 0x3fffffffff &&
+        low_bits_mask(39) == 0x7fffffffff &&
+        low_bits_mask(40) == 0xffffffffff &&
+        low_bits_mask(41) == 0x1ffffffffff &&
+        low_bits_mask(42) == 0x3ffffffffff &&
+        low_bits_mask(43) == 0x7ffffffffff &&
+        low_bits_mask(44) == 0xfffffffffff &&
+        low_bits_mask(45) == 0x1fffffffffff &&
+        low_bits_mask(46) == 0x3fffffffffff &&
+        low_bits_mask(47) == 0x7fffffffffff &&
+        low_bits_mask(48) == 0xffffffffffff &&
+        low_bits_mask(49) == 0x1ffffffffffff &&
+        low_bits_mask(50) == 0x3ffffffffffff &&
+        low_bits_mask(51) == 0x7ffffffffffff &&
+        low_bits_mask(52) == 0xfffffffffffff &&
+        low_bits_mask(53) == 0x1fffffffffffff &&
+        low_bits_mask(54) == 0x3fffffffffffff &&
+        low_bits_mask(55) == 0x7fffffffffffff &&
+        low_bits_mask(56) == 0xffffffffffffff &&
+        low_bits_mask(57) == 0x1ffffffffffffff &&
+        low_bits_mask(58) == 0x3ffffffffffffff &&
+        low_bits_mask(59) == 0x7ffffffffffffff &&
+        low_bits_mask(60) == 0xfffffffffffffff &&
+        low_bits_mask(61) == 0x1fffffffffffffff &&
+        low_bits_mask(62) == 0x3fffffffffffffff &&
+        low_bits_mask(63) == 0x7fffffffffffffff &&
+        low_bits_mask(64) == 0xffffffffffffffff
+    ) by (compute_only);
+}
+
 } // verus!
