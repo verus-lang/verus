@@ -486,7 +486,7 @@ impl<V> DListXor<V> {
 
 #[verifier::external_body]
 fn print_result(msg: StrSlice<'static>, value: u32) {
-    println!("{}: {value}", msg.into_rust_str());
+    println!("{}: {value}", msg);
 }
 
 fn main() {

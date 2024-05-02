@@ -653,15 +653,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     param_env_src: DefId,
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
-    as_datatype: bool,
     allow_mut_ref: bool,
 ) -> Result<(Typ, bool), VirErr> {
     use vir::ast::TypDecoration;
     let t_rec = |t: &rustc_middle::ty::Ty<'tcx>| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, as_datatype, allow_mut_ref)
+        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
     };
-    let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, as_datatype: bool, allow_mut_ref: bool| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, as_datatype, allow_mut_ref)
+    let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, allow_mut_ref: bool| {
+        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
     };
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
@@ -710,32 +709,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (dec_typ, false)
         }
         TyKind::Array(ty, const_len) => {
-            let typ = mid_ty_to_vir_ghost(
-                tcx,
-                verus_items,
-                param_env_src,
-                span,
-                ty,
-                as_datatype,
-                allow_mut_ref,
-            )?
-            .0;
+            let typ =
+                mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0;
             let len = mid_ty_const_to_vir(tcx, Some(span), const_len)?;
             let typs = Arc::new(vec![typ, len]);
             (Arc::new(TypX::Primitive(Primitive::Array, typs)), false)
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
-            let is_strslice = matches!(
-                verus_items.id_to_name.get(&did),
-                Some(&crate::verus_items::VerusItem::Vstd(
-                    crate::verus_items::VstdItem::StrSlice,
-                    _
-                ))
-            );
-            if is_strslice && !as_datatype {
-                return Ok((Arc::new(TypX::StrSlice), false));
-            }
             let verus_item = verus_items.id_to_name.get(&did);
             if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Int)) = verus_item {
                 (Arc::new(TypX::Int(IntRange::Int)), false)
@@ -869,7 +850,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let mut trait_typ_args = Vec::new();
                     for ty in t_args.iter() {
                         let ty = ty.as_type().expect("already checked for as_type");
-                        trait_typ_args.push(t_rec_flags(&ty, false, false)?.0);
+                        trait_typ_args.push(t_rec_flags(&ty, false)?.0);
                     }
                     let trait_typ_args = Arc::new(trait_typ_args);
                     let proj = TypX::Projection { trait_typ_args, trait_path, name };
@@ -910,7 +891,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             param_env_src,
                             span,
                             &t,
-                            as_datatype,
                             allow_mut_ref,
                         )?);
                     }
@@ -927,10 +907,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
             (Arc::new(typx), false)
         }
+        TyKind::Str => (Arc::new(TypX::StrSlice), false),
 
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
-        TyKind::Str => unsupported_err!(span, "str type"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")
         }
@@ -968,7 +948,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
 ) -> Result<Typ, VirErr> {
-    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, false, allow_mut_ref)?.0)
+    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0)
 }
 
 pub(crate) fn mid_ty_const_to_vir<'tcx>(

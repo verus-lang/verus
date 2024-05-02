@@ -733,21 +733,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ))
             }
         },
-        VerusItem::CompilableOpr(CompilableOprItem::NewStrLit) => {
-            record_compilable_operator(bctx, expr, CompilableOperator::NewStrLit);
-            let s = if let ExprKind::Lit(lit0) = &args[0].kind {
-                if let rustc_ast::LitKind::Str(s, _) = lit0.node {
-                    s
-                } else {
-                    panic!("unexpected arguments to new_strlit")
-                }
-            } else {
-                panic!("unexpected arguments to new_strlit")
-            };
-
-            let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
-            mk_expr(ExprX::Const(c))
-        }
         VerusItem::CompilableOpr(
             compilable_opr @ (CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec),
         ) => {
