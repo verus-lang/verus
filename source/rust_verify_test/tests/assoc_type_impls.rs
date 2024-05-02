@@ -290,7 +290,7 @@ test_verify_one_file! {
 
             spec fn b(&self) -> Self::X;
         }
-    } => Err(err) => assert_vir_error_msg(err, "projection type")
+    } => Ok(())
 }
 
 test_verify_one_file! {

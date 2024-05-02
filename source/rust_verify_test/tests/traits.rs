@@ -1018,6 +1018,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assoc_bounds_4_pass verus_code! {
+        trait U<'a> {
+            type X;
+        }
+
+        trait T<'a> {
+            type Y: U<'a>;
+        }
+
+        proof fn f<'a, A: T<'a>>(
+            x: <<A as T<'a>>::Y as U<'a>>::X
+        ) {
+        }
+
+        struct S<A, 'a> {
+            s: &'a A,
+        }
+
+        fn g<'a>(s: S<u8, 'a>) {
+            let x = s.s;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_verify_1 verus_code! {
         trait T {
             fn f(&self)

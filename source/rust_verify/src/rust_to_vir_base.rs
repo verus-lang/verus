@@ -837,12 +837,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let infcx = tcx.infer_ctxt().ignoring_regions().build();
             let cause = rustc_infer::traits::ObligationCause::dummy();
             let at = infcx.at(&cause, param_env);
-            let resolved_ty = infcx.resolve_vars_if_possible(*ty);
-            if !rustc_middle::ty::TypeVisitableExt::has_escaping_bound_vars(&resolved_ty) {
-                let norm = at.normalize(*ty);
-                if norm.value != *ty {
-                    return t_rec(&norm.value);
-                }
+            let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
+            let norm = at.normalize(*ty);
+            if norm.value != *ty {
+                return t_rec(&norm.value);
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -851,15 +849,17 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   use crate::rustc_middle::ty::DefIdTree;
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
-            if t.args.iter().find(|x| x.as_type().is_none()).is_some() {
+            let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
+            if t_args.iter().find(|x| x.as_type().is_none()).is_some() {
                 unsupported_err!(span, "projection type")
             }
-            match (trait_def, t.args.into_type_list(tcx)) {
-                (Some(trait_def), typs) if typs.len() >= 1 => {
+            match trait_def {
+                Some(trait_def) if t_args.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
                     // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
                     let mut trait_typ_args = Vec::new();
-                    for ty in typs.iter() {
+                    for ty in t_args.iter() {
+                        let ty = ty.as_type().expect("already checked for as_type");
                         trait_typ_args.push(t_rec_flags(&ty, false, false)?.0);
                     }
                     let trait_typ_args = Arc::new(trait_typ_args);
