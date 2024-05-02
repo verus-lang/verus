@@ -140,6 +140,10 @@ pub enum IntRange {
     USize,
     /// Rust's isize type
     ISize,
+    /// Rust's 'char' type, representing a Unicode Scalar Value:
+    /// The range 0 to 0x10FFFF, inclusive, MINUS the range 0xD800 to 0xDFFF.
+    /// Or another way: [0, 0xD800) union [0xE000, 0x10FFFF]. See unicode.rs.
+    Char,
 }
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
@@ -210,8 +214,6 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
-    /// UTF-8 character type
-    Char,
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
     /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
@@ -322,8 +324,6 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
-    /// Used only for handling casts from chars to ints
-    CharToInt,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
     /// Evaluate to Some(spec) if successful, None otherwise.

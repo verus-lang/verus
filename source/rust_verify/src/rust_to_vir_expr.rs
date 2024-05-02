@@ -1535,11 +1535,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 (TypX::Int(_), TypX::Int(_)) => {
                     Ok(mk_ty_clip(&to_vir_ty, &source_vir, expr_vattrs.truncate))
                 }
-                (TypX::Char, TypX::Int(_)) => {
-                    let source_unicode =
-                        mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()))?;
-                    Ok(mk_ty_clip(&to_vir_ty, &source_unicode, expr_vattrs.truncate))
-                }
                 _ => {
                     return err_span(
                         expr.span,
@@ -1656,6 +1651,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         IntRange::I(_) | IntRange::ISize => {
                             // Non-Euclidean division, which will need more encoding
                             unsupported_err!(expr.span, "div/mod on signed finite-width integers")
+                        }
+                        IntRange::Char => {
+                            unsupported_err!(expr.span, "div/mod on char type")
                         }
                     }
                 }
