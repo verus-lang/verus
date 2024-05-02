@@ -17,15 +17,17 @@ pub enum ParamMode {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct DocModeInfo {
+pub struct DocSigInfo {
     pub fn_mode: String,
     pub ret_mode: ParamMode,
     pub param_modes: Vec<ParamMode>,
+    pub broadcast: bool,
 }
 
 enum VerusDocAttr {
-    ModeInfo(DocModeInfo),
+    ModeInfo(DocSigInfo),
     Specification(String, NodeRef),
+    BroadcastGroup,
 }
 
 // Types of spec clauses we handle.
@@ -145,7 +147,7 @@ fn interpret_as_verusdoc_attribute(node: &NodeRef) -> Option<VerusDocAttr> {
         let comment_idx = attr_data.find("// ").unwrap();
         let json_text = &attr_data[comment_idx + 3..];
 
-        let doc_mode_info: DocModeInfo = serde_json::from_str(json_text).unwrap();
+        let doc_mode_info: DocSigInfo = serde_json::from_str(json_text).unwrap();
 
         Some(VerusDocAttr::ModeInfo(doc_mode_info))
     } else if SPEC_NAMES.contains(&attr_name) {
@@ -153,6 +155,8 @@ fn interpret_as_verusdoc_attribute(node: &NodeRef) -> Option<VerusDocAttr> {
         pre_node.detach();
 
         Some(VerusDocAttr::Specification(attr_name.to_string(), pre_node))
+    } else if attr_name == "broadcast_group" {
+        Some(VerusDocAttr::BroadcastGroup)
     } else {
         panic!("unrecognized attr_name: '{:}'", attr_name);
     }
@@ -232,6 +236,10 @@ fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
     //   <pre class="... verus-spec-code">...</pre>
     // </div>
 
+    if attrs.iter().find(|x| matches!(x, VerusDocAttr::BroadcastGroup)).is_some() {
+        docblock_elem.append(mk_spec_keyword_node("broadcast group"));
+    }
+
     for spec_name in SPEC_NAMES.iter() {
         let code_blocks: Vec<NodeRef> = attrs
             .iter()
@@ -270,7 +278,11 @@ fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
     for attr in attrs.iter() {
         match attr {
             VerusDocAttr::ModeInfo(doc_mode_info) => {
-                update_mode_info(docblock_elem, doc_mode_info);
+                update_sig_info(docblock_elem, UpdateSigMode::DocSigInfo(doc_mode_info));
+                break;
+            }
+            VerusDocAttr::BroadcastGroup => {
+                update_sig_info(docblock_elem, UpdateSigMode::BroadcastGroup);
                 break;
             }
             _ => {}
@@ -278,7 +290,12 @@ fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
     }
 }
 
-fn update_mode_info(docblock_elem: &NodeRef, info: &DocModeInfo) {
+enum UpdateSigMode<'a> {
+    DocSigInfo(&'a DocSigInfo),
+    BroadcastGroup,
+}
+
+fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
     // The signature is a dom tree with special formatting for syntax highlighting and such.
     // We first collect it as pure text, to get a string like
     //    pub fn foo<...>(...) -> ...
@@ -319,33 +336,43 @@ fn update_mode_info(docblock_elem: &NodeRef, info: &DocModeInfo) {
     } else {
         return;
     };
-    let fn_mode = format!("{:} ", info.fn_mode);
-    splices.push((fn_idx, fn_mode.clone()));
 
-    let arg0_idx = get_arg0_idx(&full_text, fn_idx);
+    match info {
+        UpdateSigMode::DocSigInfo(info) => {
+            // TODO: separate these if possible
+            let broadcast = if info.broadcast { "broadcast ".to_owned() } else { "".to_owned() };
+            let fn_mode = format!("{:} ", info.fn_mode);
+            splices.push((fn_idx, broadcast + &fn_mode));
 
-    let mut arg_idx = arg0_idx;
+            let arg0_idx = get_arg0_idx(&full_text, fn_idx);
 
-    for i in 0..info.param_modes.len() {
-        match info.param_modes[i] {
-            ParamMode::Default => {}
-            ParamMode::Tracked => {
-                splices.push((arg_idx, "tracked ".to_string()));
+            let mut arg_idx = arg0_idx;
+
+            for i in 0..info.param_modes.len() {
+                match info.param_modes[i] {
+                    ParamMode::Default => {}
+                    ParamMode::Tracked => {
+                        splices.push((arg_idx, "tracked ".to_string()));
+                    }
+                }
+
+                arg_idx = next_comma_or_rparen(&full_text, arg_idx);
+
+                // skip of the comma and space
+                arg_idx += 2;
+            }
+
+            match info.ret_mode {
+                ParamMode::Default => {}
+                ParamMode::Tracked => {
+                    let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
+                    let type_idx = arrow_idx + 3;
+                    splices.push((type_idx, "tracked ".to_string()));
+                }
             }
         }
-
-        arg_idx = next_comma_or_rparen(&full_text, arg_idx);
-
-        // skip of the comma and space
-        arg_idx += 2;
-    }
-
-    match info.ret_mode {
-        ParamMode::Default => {}
-        ParamMode::Tracked => {
-            let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
-            let type_idx = arrow_idx + 3;
-            splices.push((type_idx, "tracked ".to_string()));
+        UpdateSigMode::BroadcastGroup => {
+            splices.push((fn_idx, "broadcast group ".to_owned()));
         }
     }
 

@@ -1,7 +1,6 @@
 use crate::ast::Ident;
 use std::sync::Arc;
 
-pub const QUERY: &str = "%%query%%";
 pub const PREFIX_LABEL: &str = "%%location_label%%";
 pub const GLOBAL_PREFIX_LABEL: &str = "%%global_location_label%%";
 const BREAK_LABEL: &str = "%%break_label%%";

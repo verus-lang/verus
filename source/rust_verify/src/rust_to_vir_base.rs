@@ -657,6 +657,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
         TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(verus_items, ty))), false),
+        TyKind::Char => (Arc::new(TypX::Int(IntRange::Char)), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = t_rec(tys)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, t0.clone())), ghost)
@@ -687,6 +688,17 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typ = t_rec(ty)?.0;
             let typs = Arc::new(vec![typ]);
             (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
+        }
+        TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty, mutbl }) => {
+            let typ = t_rec(ty)?.0;
+            let typs = Arc::new(vec![typ]);
+
+            let typ = Arc::new(TypX::Primitive(Primitive::Ptr, typs));
+            let dec_typ = match mutbl {
+                Mutability::Not => Arc::new(TypX::Decorate(TypDecoration::ConstPtr, typ)),
+                Mutability::Mut => typ,
+            };
+            (dec_typ, false)
         }
         TyKind::Array(ty, const_len) => {
             let typ = mid_ty_to_vir_ghost(
@@ -906,12 +918,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
             (Arc::new(typx), false)
         }
-        TyKind::Char => (Arc::new(TypX::Char), false),
 
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::Str => unsupported_err!(span, "str type"),
-        TyKind::RawPtr(..) => unsupported_err!(span, "raw pointer types"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")
         }
@@ -1081,7 +1091,6 @@ pub(crate) fn is_smt_equality<'tcx>(
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
-        (TypX::Char, TypX::Char) => Ok(true),
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
             let ty = bctx.types.node_type(*id1);
             Ok(implements_structural(&bctx.ctxt, ty))

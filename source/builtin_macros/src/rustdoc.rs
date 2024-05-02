@@ -64,6 +64,13 @@ pub fn process_item_fn(item: &mut ItemFn) {
     }
 }
 
+pub fn process_item_fn_broadcast_group(item: &mut ItemFn) {
+    match attr_for_broadcast_group(&mut item.attrs, &item.sig) {
+        Some(attr) => item.attrs.insert(0, attr),
+        None => {}
+    }
+}
+
 pub fn process_impl_item_method(item: &mut ImplItemMethod) {
     match attr_for_sig(&mut item.attrs, &item.sig, Some(&item.block)) {
         Some(attr) => item.attrs.insert(0, attr),
@@ -89,7 +96,7 @@ fn attr_for_sig(
 ) -> Option<Attribute> {
     let mut v = vec![];
 
-    v.push(encoded_mode_info(sig));
+    v.push(encoded_sig_info(sig));
 
     match &sig.requires {
         Some(es) => {
@@ -128,6 +135,14 @@ fn attr_for_sig(
         }
         None => {}
     }
+
+    if v.len() == 0 { None } else { Some(doc_attr_from_string(&v.join("\n\n"), sig.span())) }
+}
+
+fn attr_for_broadcast_group(_attrs: &mut Vec<Attribute>, sig: &Signature) -> Option<Attribute> {
+    let mut v = vec![];
+
+    v.push(encoded_str("broadcast_group", ""));
 
     if v.len() == 0 { None } else { Some(doc_attr_from_string(&v.join("\n\n"), sig.span())) }
 }
@@ -196,7 +211,7 @@ fn module_path_to_string(p: &Path) -> String {
     lead.to_string() + &main
 }
 
-fn encoded_mode_info(sig: &Signature) -> String {
+fn encoded_sig_info(sig: &Signature) -> String {
     let fn_mode = fn_mode_to_string(&sig.mode, &sig.publish);
     let ret_mode = match &sig.output {
         ReturnType::Default => "Default",
@@ -216,6 +231,8 @@ fn encoded_mode_info(sig: &Signature) -> String {
         .collect::<Vec<&str>>();
     let param_modes = param_modes.join(",");
 
+    let broadcast = sig.broadcast.is_some();
+
     // JSON blob is parsed by the verusdoc post-processor into a `DocModeInfo` object.
     // I decided not to pull in serde as a dependency for builtin_macros,
     // but if serialization gets too complicated, we should probably do that instead.
@@ -224,7 +241,7 @@ fn encoded_mode_info(sig: &Signature) -> String {
     // complicate the post-processing.
 
     let info = format!(
-        r#"// {{ "fn_mode": "{fn_mode:}", "ret_mode": "{ret_mode:}", "param_modes": [{param_modes:}] }}"#
+        r#"// {{ "fn_mode": "{fn_mode:}", "ret_mode": "{ret_mode:}", "param_modes": [{param_modes:}], "broadcast": {broadcast:} }}"#
     );
 
     encoded_str("modes", &info)

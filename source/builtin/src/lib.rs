@@ -1092,6 +1092,7 @@ impl_ord!([
     int nat
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
+    char
 ]);
 
 impl_unary_op!(SpecNeg, spec_neg, int, [

@@ -337,7 +337,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Not
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
-                | UnaryOp::CharToInt
                 | UnaryOp::CastToInteger => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,

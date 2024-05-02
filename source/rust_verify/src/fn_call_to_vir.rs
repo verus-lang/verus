@@ -972,13 +972,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
-                ((TypX::Char, _), TypX::Int(_)) => {
-                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    let source_unicode =
-                        mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()))?;
-                    Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
-                }
                 ((_, true), TypX::Int(IntRange::Int)) => {
                     mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))
                 }

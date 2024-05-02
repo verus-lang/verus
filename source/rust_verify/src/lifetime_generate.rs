@@ -427,6 +427,10 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         TyKind::Tuple(_) => Box::new(TypX::Tuple(
             ty.tuple_fields().iter().map(|t| erase_ty(ctxt, state, &t)).collect(),
         )),
+        TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: t, mutbl }) => {
+            let ty = erase_ty(ctxt, state, t);
+            Box::new(TypX::RawPtr(ty, *mutbl))
+        }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
             state.reach_datatype(ctxt, did);
@@ -564,6 +568,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
         PatKind::Lit(_expr) => mk_pat(PatternX::Wildcard),
+        PatKind::Range(_, _, _) => mk_pat(PatternX::Wildcard),
         PatKind::Binding(ann, hir_id, x, None) => {
             if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
                 mk_pat(PatternX::Wildcard)

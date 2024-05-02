@@ -75,9 +75,9 @@ pub proof fn lemma_mul_induction(f: spec_fn(int) -> bool)
 }
 
 /// Proof that multiplication is always commutative
-proof fn lemma_mul_commutes()
+pub broadcast proof fn lemma_mul_commutes(x: int, y: int)
     ensures
-        forall|x: int, y: int| #[trigger] (x * y) == y * x,
+        #[trigger] (x * y) == y * x,
 {
 }
 
@@ -103,10 +103,9 @@ proof fn lemma_mul_successor()
 /// Proof that multiplication distributes over addition and over
 /// subtraction
 #[verifier(spinoff_prover)]
-proof fn lemma_mul_distributes()
+pub broadcast proof fn lemma_mul_distributes_plus(x: int, y: int, z: int)
     ensures
-        forall|x: int, y: int, z: int| #[trigger] ((x + y) * z) == (x * z + y * z),
-        forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z),
+        #[trigger] ((x + y) * z) == (x * z + y * z),
 {
     lemma_mul_successor();
     assert forall|x: int, y: int, z: int| #[trigger] ((x + y) * z) == (x * z + y * z) by {
@@ -121,6 +120,14 @@ proof fn lemma_mul_distributes()
         lemma_mul_induction(f1);
         assert(f1(y));
     }
+}
+
+#[verifier(spinoff_prover)]
+pub broadcast proof fn lemma_mul_distributes_minus(x: int, y: int, z: int)
+    ensures
+        #[trigger] ((x - y) * z) == (x * z - y * z),
+{
+    lemma_mul_successor();
     assert forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z) by {
         let f2 = |i: int| ((x - i) * z) == (x * z - i * z);
         assert(f2(0));
@@ -143,14 +150,20 @@ pub open spec fn mul_auto() -> bool {
     &&& forall|x: int, y: int, z: int| #[trigger] ((x - y) * z) == (x * z - y * z)
 }
 
-/// Proof that multiplication is commutative, distributes over
-/// addition, and distributes over subtraction
-pub proof fn lemma_mul_auto()
+pub broadcast group group_mul_properties_internal {
+    lemma_mul_commutes,
+    lemma_mul_distributes_plus,
+    lemma_mul_distributes_minus,
+}
+
+// Check that the group_mul_properties_internal broadcast group group_provides the same properties as the _auto lemma it replaces
+proof fn lemma_mul_properties_internal_prove_mul_auto()
     ensures
         mul_auto(),
 {
-    lemma_mul_commutes();
-    lemma_mul_distributes();
+    broadcast use group_mul_properties_internal;
+
+    assert(mul_auto());
 }
 
 /// This utility function helps prove a mathematical property by
@@ -178,7 +191,8 @@ pub proof fn lemma_mul_induction_auto(x: int, f: spec_fn(int) -> bool)
         mul_auto(),
         f(x),
 {
-    lemma_mul_auto();
+    broadcast use group_mul_properties_internal;
+
     assert(forall|i| is_le(0, i) && #[trigger] f(i) ==> f(i + 1));
     assert(forall|i| is_le(i, 0) && #[trigger] f(i) ==> f(i - 1));
     lemma_mul_induction(f);
