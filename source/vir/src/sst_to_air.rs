@@ -1694,17 +1694,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stm.span.clone(),
                         "assert_nonlinear_by".to_string(),
                         match ctx.global.solver {
-                            SmtSolver::Z3 => 
-                                Arc::new(vec![
-                                    mk_option_command("smt.arith.solver", "6"),
-                                    Arc::new(CommandX::CheckValid(query)),
-                                ]),
-                            SmtSolver::Cvc5 => 
-                                // TODO: What cvc5 settings would help here?
-                                // TODO: Can we even adjust the settings at this point?
-                                Arc::new(vec![
-                                    Arc::new(CommandX::CheckValid(query)),
-                                ]),
+                            SmtSolver::Z3 => Arc::new(vec![
+                                mk_option_command("smt.arith.solver", "6"),
+                                Arc::new(CommandX::CheckValid(query)),
+                            ]),
+                            SmtSolver::Cvc5 =>
+                            // TODO: What cvc5 settings would help here?
+                            // TODO: Can we even adjust the settings at this point?
+                            {
+                                Arc::new(vec![Arc::new(CommandX::CheckValid(query))])
+                            }
                         },
                         ProverChoice::Nonlinear,
                         true,
@@ -2620,12 +2619,16 @@ pub(crate) fn body_stm_to_air(
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = if is_nonlinear {
             match ctx.global.solver {
-                SmtSolver::Z3 => 
-                    vec![mk_option_command("smt.arith.solver", "6"), Arc::new(CommandX::CheckValid(query))],
-                SmtSolver::Cvc5 => 
-                    // TODO: What cvc5 settings would help here?
-                    // TODO: Can we even adjust the settings at this point?
-                    vec![Arc::new(CommandX::CheckValid(query))],
+                SmtSolver::Z3 => vec![
+                    mk_option_command("smt.arith.solver", "6"),
+                    Arc::new(CommandX::CheckValid(query)),
+                ],
+                SmtSolver::Cvc5 =>
+                // TODO: What cvc5 settings would help here?
+                // TODO: Can we even adjust the settings at this point?
+                {
+                    vec![Arc::new(CommandX::CheckValid(query))]
+                }
             }
         } else if is_bit_vector_mode {
             let mut bv_commands = mk_bitvector_option(&ctx.global.solver);

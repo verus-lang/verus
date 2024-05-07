@@ -207,7 +207,9 @@ fn check_expr(solver: &SmtSolver, typing: &mut Typing, expr: &Expr) -> Result<Ty
             (true, _) => Err(format!("use of undeclared variable {}", x)),
         },
         ExprX::Apply(x, es) => match typing.get(x).cloned() {
-            Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(solver, typing, x, &f_typs, &f_typ, es),
+            Some(DeclaredX::Fun(f_typs, f_typ)) => {
+                check_exprs(solver, typing, x, &f_typs, &f_typ, es)
+            }
             _ => Err(format!("use of undeclared function {}", x)),
         },
         ExprX::ApplyLambda(t, e0, es) => {
@@ -222,13 +224,19 @@ fn check_expr(solver: &SmtSolver, typing: &mut Typing, expr: &Expr) -> Result<Ty
                 _ => Err("expected function type".to_string()),
             }
         }
-        ExprX::Unary(UnaryOp::Not, e1) => check_exprs(solver, typing, "not", &[bt()], &bt(), &[e1.clone()]),
+        ExprX::Unary(UnaryOp::Not, e1) => {
+            check_exprs(solver, typing, "not", &[bt()], &bt(), &[e1.clone()])
+        }
         ExprX::Unary(UnaryOp::BitNot, e1) => {
             check_bv_unary_exprs(solver, typing, UnaryOp::BitNot, "bvnot", &e1.clone())
         }
-        ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
-            check_bv_unary_exprs(solver, typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
-        }
+        ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => check_bv_unary_exprs(
+            solver,
+            typing,
+            UnaryOp::BitExtract(*high, *low),
+            "extract",
+            &e1.clone(),
+        ),
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(solver, typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
         }
@@ -424,7 +432,8 @@ fn check_expr(solver: &SmtSolver, typing: &mut Typing, expr: &Expr) -> Result<Ty
         Ok(t) => Ok(t),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false, solver.clone()).expr_to_node(expr),
+                &Printer::new(typing.message_interface.clone(), false, solver.clone())
+                    .expr_to_node(expr),
             );
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
@@ -516,7 +525,8 @@ fn check_stmt(solver: &SmtSolver, typing: &mut Typing, stmt: &Stmt) -> Result<()
         Ok(()) => Ok(()),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false, solver.clone()).stmt_to_node(stmt),
+                &Printer::new(typing.message_interface.clone(), false, solver.clone())
+                    .stmt_to_node(stmt),
             );
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
@@ -538,15 +548,18 @@ pub(crate) fn check_decl(
             check_typs(typing, &typs_vec)
         }
         DeclX::Var(_, typ) => check_typ(typing, typ),
-        DeclX::Axiom(expr) => {
-            expect_typ(&check_expr(&context.solver, typing, expr)?, &bt(), "axiom expects expression of type bool")
-        }
+        DeclX::Axiom(expr) => expect_typ(
+            &check_expr(&context.solver, typing, expr)?,
+            &bt(),
+            "axiom expects expression of type bool",
+        ),
     };
     match result {
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(context.message_interface.clone(), false, context.solver.clone()).decl_to_node(decl),
+                &Printer::new(context.message_interface.clone(), false, context.solver.clone())
+                    .decl_to_node(decl),
             );
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }

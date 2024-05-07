@@ -66,7 +66,10 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
 }
 
 #[derive(Clone)]
-pub enum SmtSolver { Z3, Cvc5 }
+pub enum SmtSolver {
+    Z3,
+    Cvc5,
+}
 
 pub struct Context {
     pub(crate) message_interface: Arc<dyn crate::messages::MessageInterface>,
@@ -98,7 +101,10 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>, solver: SmtSolver) -> Self {
+    pub fn new(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        solver: SmtSolver,
+    ) -> Self {
         let mut context = Context {
             message_interface: message_interface.clone(),
             smt_process: None,
@@ -120,9 +126,27 @@ impl Context {
             debug: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
-            air_initial_log: Emitter::new(message_interface.clone(), false, false, None, solver.clone()),
-            air_middle_log: Emitter::new(message_interface.clone(), false, false, None, solver.clone()),
-            air_final_log: Emitter::new(message_interface.clone(), false, false, None, solver.clone()),
+            air_initial_log: Emitter::new(
+                message_interface.clone(),
+                false,
+                false,
+                None,
+                solver.clone(),
+            ),
+            air_middle_log: Emitter::new(
+                message_interface.clone(),
+                false,
+                false,
+                None,
+                solver.clone(),
+            ),
+            air_final_log: Emitter::new(
+                message_interface.clone(),
+                false,
+                false,
+                None,
+                solver.clone(),
+            ),
             smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
@@ -210,7 +234,7 @@ impl Context {
         self.air_middle_log.log_set_option("disable_incremental_solving", "true");
         self.air_final_log.log_set_option("disable_incremental_solving", "true");
     }
-    
+
     // emit blank line into log files
     pub fn blank_line(&mut self) {
         self.air_initial_log.blank_line();
@@ -235,7 +259,7 @@ impl Context {
     }
 
     pub(crate) fn set_z3_param_bool(&mut self, option: &str, value: bool, write_to_logs: bool) {
-        if option == "air_recommended_options" && value { 
+        if option == "air_recommended_options" && value {
             match self.solver {
                 SmtSolver::Z3 => {
                     self.set_z3_param_bool("auto_config", false, true);

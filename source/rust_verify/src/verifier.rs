@@ -977,7 +977,8 @@ impl Verifier {
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(message_interface.clone(), self.args.solver());
+        let mut air_context =
+            air::context::Context::new(message_interface.clone(), self.args.solver());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1178,13 +1179,11 @@ impl Verifier {
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
-            air_context.set_expected_solver_version(
-                if self.args.cvc5 {
-                    crate::consts::EXPECTED_CVC5_VERSION.to_string()
-
-                } else {
-                    crate::consts::EXPECTED_Z3_VERSION.to_string()
-                });
+            air_context.set_expected_solver_version(if self.args.cvc5 {
+                crate::consts::EXPECTED_CVC5_VERSION.to_string()
+            } else {
+                crate::consts::EXPECTED_Z3_VERSION.to_string()
+            });
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;

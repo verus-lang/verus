@@ -1,6 +1,6 @@
+use air::context::SmtSolver;
 use getopts::Options;
 use std::sync::Arc;
-use air::context::SmtSolver;
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: f32 = 10f32;
@@ -134,11 +134,7 @@ impl ArgsX {
     }
 
     pub fn solver(&self) -> SmtSolver {
-        if self.cvc5 {
-            SmtSolver::Cvc5
-        } else {
-            SmtSolver::Z3
-        }
+        if self.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 }
     }
 }
 
@@ -277,10 +273,7 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_INTERNAL_PROFILER,
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
-        (
-            EXTENDED_CVC5,
-            "Use the cvc5 SMT solver, rather than the default (Z3)",
-        ),
+        (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
     ];
 

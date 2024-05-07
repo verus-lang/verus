@@ -1,7 +1,7 @@
+use crate::context::SmtSolver;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use crate::context::SmtSolver;
 
 struct SolverInfo {
     executable_name: &'static str,
@@ -12,7 +12,9 @@ impl SolverInfo {
     pub fn new(solver: &SmtSolver) -> Self {
         match solver {
             SmtSolver::Z3 => SolverInfo { executable_name: "z3", env_path_var: "VERUS_Z3_PATH" },
-            SmtSolver::Cvc5 => SolverInfo { executable_name: "cvc5", env_path_var: "VERUS_CVC5_PATH" },
+            SmtSolver::Cvc5 => {
+                SolverInfo { executable_name: "cvc5", env_path_var: "VERUS_CVC5_PATH" }
+            }
         }
     }
 
@@ -76,7 +78,12 @@ fn reader_thread(
                 empty_lines += 1;
             } else {
                 empty_lines = 0;
-                if line == match solver { SmtSolver::Z3 => DONE, SmtSolver::Cvc5 => DONE_QUOTED } {
+                if line
+                    == match solver {
+                        SmtSolver::Z3 => DONE,
+                        SmtSolver::Cvc5 => DONE_QUOTED,
+                    }
+                {
                     responses
                         .send((smt_pipe_stdout, lines))
                         .expect("internal error: Z3 reader thread failure");
@@ -98,12 +105,14 @@ impl SmtProcess {
             .args(match solver {
                 SmtSolver::Z3 => vec!["-smt2", "-in"],
                 SmtSolver::Cvc5 => vec![
-                    "--no-interactive", // We don't need a human interface
-                    "--produce-models", // Needed for error reporting
+                    "--no-interactive",    // We don't need a human interface
+                    "--produce-models",    // Needed for error reporting
                     "--quant-dsplit=none", // Recommended by Andrew Reynolds (@ajreynol)
-                    "--no-cbqi", // Recommended by Andrew Reynolds (@ajreynol)
-                    "--user-pat=strict", // Recommended by Andrew Reynolds (@ajreynol)
-                    "--rlimit", "10000000"],    // ~= 30s
+                    "--no-cbqi",           // Recommended by Andrew Reynolds (@ajreynol)
+                    "--user-pat=strict",   // Recommended by Andrew Reynolds (@ajreynol)
+                    "--rlimit",
+                    "10000000",
+                ], // ~= 30s
             })
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -113,10 +122,14 @@ impl SmtProcess {
             Err(err) => {
                 eprintln!(
                     "{}",
-                    yansi::Paint::red(format!("error: could not execute {} process ({})", solver_info.executable_name, err))
+                    yansi::Paint::red(format!(
+                        "error: could not execute {} process ({})",
+                        solver_info.executable_name, err
+                    ))
                 );
                 eprintln!(
-                    "help: {} needs to be in the PATH, or the environment variable {} must be set to the path of the z3 executable", solver_info.executable_name, solver_info.env_path_var
+                    "help: {} needs to be in the PATH, or the environment variable {} must be set to the path of the z3 executable",
+                    solver_info.executable_name, solver_info.env_path_var
                 );
                 std::process::exit(128);
             }
@@ -128,7 +141,9 @@ impl SmtProcess {
         let (recv_responses_sender, recv_responses_receiver) = channel();
         let solver_clone = solver.clone();
         std::thread::spawn(move || writer_thread(requests_receiver, child_stdin));
-        std::thread::spawn(move || reader_thread(recv_responses_receiver, responses_sender, solver_clone));
+        std::thread::spawn(move || {
+            reader_thread(recv_responses_receiver, responses_sender, solver_clone)
+        });
         SmtProcess {
             requests: Some(requests_sender),
             responses_buf_recv: Some((smt_pipe_stdout, responses_receiver)),

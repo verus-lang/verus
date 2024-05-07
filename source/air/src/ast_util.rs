@@ -278,16 +278,17 @@ pub fn mk_option_command(s1: &str, s2: &str) -> Command {
 
 pub fn mk_bitvector_option(solver: &SmtSolver) -> Vec<Command> {
     match solver {
-        SmtSolver::Z3 => 
-            vec![
-                mk_option_command("sat.euf", "true"),
-                mk_option_command("tactic.default_tactic", "sat"),
-                mk_option_command("smt.ematching", "false"),
-                mk_option_command("smt.case_split", "0"),
-            ],
-        SmtSolver::Cvc5 => 
-            // TODO: What options are best for cvc5 here?
+        SmtSolver::Z3 => vec![
+            mk_option_command("sat.euf", "true"),
+            mk_option_command("tactic.default_tactic", "sat"),
+            mk_option_command("smt.ematching", "false"),
+            mk_option_command("smt.case_split", "0"),
+        ],
+        SmtSolver::Cvc5 =>
+        // TODO: What options are best for cvc5 here?
+        {
             vec![]
+        }
     }
 }
 

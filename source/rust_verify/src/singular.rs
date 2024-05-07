@@ -100,7 +100,7 @@ struct SingularEncoder {
 }
 
 impl SingularEncoder {
-    fn new(solver:SmtSolver, user_vars: Vec<String>) -> Self {
+    fn new(solver: SmtSolver, user_vars: Vec<String>) -> Self {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
         let pp = Printer::new(message_interface.clone(), false, solver);
         SingularEncoder {
@@ -318,7 +318,7 @@ impl SingularEncoder {
 }
 
 fn encode_singular_queries(
-    solver: SmtSolver,  // Needed by the AIR printer, even for Singular queries
+    solver: SmtSolver, // Needed by the AIR printer, even for Singular queries
     command: &Command,
     func_span: &vir::messages::Span,
     queries: &mut Vec<(String, vir::messages::Message)>,
@@ -379,7 +379,9 @@ pub fn check_singular_valid(
     _query_context: QueryContext<'_, '_>,
 ) -> ValidityResult {
     let mut queries = vec![];
-    if let Err(res) = encode_singular_queries(context.get_solver().clone(), command, func_span, &mut queries) {
+    if let Err(res) =
+        encode_singular_queries(context.get_solver().clone(), command, func_span, &mut queries)
+    {
         // in case of any encoding error, skip running Singular
         return res;
     }
