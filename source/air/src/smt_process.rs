@@ -44,7 +44,6 @@ const DONE_QUOTED: &str = "\"<<DONE>>\"";
 /// (Rust's documentation says you need a separate thread; otherwise, it lets the pipes deadlock.)
 pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
     while let Ok(req) = requests.recv() {
-        //eprintln!("Sending: {}, followed by (echo \"<<DONE>>\")", String::from_utf8(req.clone()).unwrap());
         smt_pipe_stdin
             .write_all(&req)
             .and_then(|_| writeln!(&smt_pipe_stdin))
@@ -73,7 +72,6 @@ fn reader_thread(
                 // The Z3 process could die unexpectedly.  In that case, we die too:
                 .expect("IO error: failure when receiving data to Z3 process across pipe");
             line = line.replace("\n", "").replace("\r", "");
-            //eprintln!("Received: {}", line);
             if line == "" {
                 empty_lines += 1;
             } else {
@@ -111,8 +109,8 @@ impl SmtProcess {
                     "--no-cbqi",           // Recommended by Andrew Reynolds (@ajreynol)
                     "--user-pat=strict",   // Recommended by Andrew Reynolds (@ajreynol)
                     "--rlimit",
-                    "10000000",
-                ], // ~= 30s
+                    "10000000", // ~= 30s
+                ],
             })
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

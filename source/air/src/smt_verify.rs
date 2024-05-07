@@ -246,7 +246,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
     // Process SMT results
     let mut unsat = None;
     for line in smt_output {
-        //eprintln!("Processing smt_output line: <<{}>>", line);
         if line == "unsat" {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unsat);
