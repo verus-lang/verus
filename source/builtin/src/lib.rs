@@ -722,6 +722,21 @@ impl<T> SyncSendIfSend<T> {
     }
 }
 
+#[doc(hidden)]
+#[allow(dead_code)]
+pub struct AlwaysSyncSend<T> {
+    t: core::marker::PhantomData<T>,
+}
+
+unsafe impl<T> Sync for AlwaysSyncSend<T> {}
+unsafe impl<T> Send for AlwaysSyncSend<T> {}
+
+impl<T> AlwaysSyncSend<T> {
+    pub fn assume_new() -> Self {
+        AlwaysSyncSend { t: PhantomData }
+    }
+}
+
 //
 // Integers
 //
@@ -1092,6 +1107,7 @@ impl_ord!([
     int nat
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
+    char
 ]);
 
 impl_unary_op!(SpecNeg, spec_neg, int, [

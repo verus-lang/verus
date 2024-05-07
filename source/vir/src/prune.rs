@@ -30,7 +30,6 @@ enum ReachedType {
     Lambda(usize),
     Datatype(Path),
     StrSlice,
-    Char,
     Primitive,
 }
 
@@ -108,7 +107,6 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::StrSlice => ReachedType::StrSlice,
-        TypX::Char => ReachedType::Char,
         TypX::Primitive(_, _) => ReachedType::Primitive,
     }
 }
@@ -212,7 +210,6 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Lambda(..)
         | TypX::Datatype(..)
         | TypX::StrSlice
-        | TypX::Char
         | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
@@ -529,6 +526,7 @@ pub fn prune_krate_for_module(
     }
     for f in this_module_reveals.iter().flat_map(|o| o.x.iter()) {
         revealed_functions.insert(f.clone());
+        state.reached_functions.insert(f.clone());
     }
     for group in &krate.reveal_groups {
         if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {

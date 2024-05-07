@@ -66,6 +66,7 @@ mod sst_visitor;
 pub mod traits;
 mod triggers;
 mod triggers_auto;
+mod unicode;
 pub mod update_cell;
 pub mod util;
 mod visitor;

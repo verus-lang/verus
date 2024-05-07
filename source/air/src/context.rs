@@ -270,6 +270,7 @@ impl Context {
                     self.set_z3_param_u32("smt.arith.solver", 2, true);
                     self.set_z3_param_bool("smt.arith.nl", false, true);
                     self.set_z3_param_bool("pi.enabled", false, true);
+                    self.set_z3_param_bool("rewriter.sort_disjunctions", false, true);
                 }
                 SmtSolver::Cvc5 => {
                     self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));

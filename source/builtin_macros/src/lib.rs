@@ -9,6 +9,7 @@
 
 use synstructure::{decl_attribute, decl_derive};
 mod atomic_ghost;
+mod calc_macro;
 mod enum_synthesize;
 mod fndecl;
 mod is_variant;
@@ -176,4 +177,9 @@ pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::Tok
 #[proc_macro]
 pub fn atomic_with_ghost_helper(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     atomic_ghost::atomic_ghost(input)
+}
+
+#[proc_macro]
+pub fn calc_proc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    calc_macro::calc_macro(input)
 }

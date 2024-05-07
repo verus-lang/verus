@@ -155,6 +155,7 @@ test_verify_one_file! {
 
             #[inductive(stuff)]
             fn stuff_inductive(pre: Self, post: Self) {
+                broadcast use f_is_true;
                 assert(f());
             }
         }}
@@ -550,6 +551,39 @@ test_verify_one_file! {
                 broadcast use Ring::properties;
                 assert(p.spec_succ().spec_prev() == p);
                 assert(p.spec_prev().spec_succ() == p);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_pruning_module_level_reveal verus_code! {
+        // TODO: this intentionally proves false,
+        // as this was the original scenario where this bug was discovered
+        // it's obviously not an unsoundness (due to the `assume(false)`
+
+        pub open spec fn f(i: int) -> bool { false }
+
+        mod m1 {
+            use super::*;
+
+            broadcast use super::m2::lemma;
+
+            pub proof fn lemma(i: int)
+                ensures f(i)
+                decreases i
+            {
+            }
+        }
+
+        mod m2 {
+            use super::*;
+
+            pub broadcast proof fn lemma(i: int)
+                ensures f(i)
+                decreases i
+            {
+                assume(false);
             }
         }
     } => Ok(())

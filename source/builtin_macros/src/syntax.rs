@@ -996,14 +996,15 @@ impl Visitor {
                             };
 
                             ::builtin_macros::verus! {
+                                #[verus::internal(size_of_broadcast_proof)]
                                 #[verifier::external_body]
-                                #[verus::internal(broadcast_forall)]
                                 #[allow(non_snake_case)]
-                                proof fn #lemma_ident()
+                                broadcast proof fn #lemma_ident()
                                     ensures
                                         ::vstd::layout::size_of::<#type_>() == #size_lit,
                                         #ensures_align
-                                {}
+                                {
+                                }
                             }
                             });
                         }
@@ -1049,9 +1050,11 @@ impl Visitor {
         } = item_broadcast_group;
         if self.erase_ghost.erase() {
             if matches!(vis, Visibility::Public(_)) {
-                quote_spanned! { span =>
+                let mut item_fn: ItemFn = parse_quote_spanned! { span =>
                     #vis fn #ident() { panic!() }
-                }
+                };
+                item_fn.attrs.extend(attrs.into_iter().cloned());
+                item_fn.to_token_stream()
             } else {
                 TokenStream::new()
             }
@@ -1066,6 +1069,9 @@ impl Visitor {
                 #vis fn #ident() #block
             };
             item_fn.attrs.extend(attrs.into_iter().cloned());
+            if self.rustdoc {
+                crate::rustdoc::process_item_fn_broadcast_group(&mut item_fn);
+            }
             item_fn.to_token_stream()
         }
     }
@@ -2071,7 +2077,7 @@ impl VisitMut for Visitor {
 
         let do_replace = match &expr {
             Expr::Lit(ExprLit { lit: Lit::Int(..), .. }) if use_spec_traits => true,
-            Expr::Cast(..) if use_spec_traits => true,
+            Expr::Cast(cast) if use_spec_traits && !is_ptr_type(&cast.ty) => true,
             Expr::Index(..) if use_spec_traits => true,
             Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
@@ -3575,5 +3581,13 @@ fn mk_verus_attr(span: Span, tokens: TokenStream) -> Attribute {
         bracket_token: token::Bracket { span },
         path: Path { leading_colon: None, segments: path_segments },
         tokens: quote! { (#tokens) },
+    }
+}
+
+fn is_ptr_type(typ: &Type) -> bool {
+    match typ {
+        Type::Ptr(_) => true,
+        Type::Paren(t) => is_ptr_type(&t.elem),
+        _ => false,
     }
 }

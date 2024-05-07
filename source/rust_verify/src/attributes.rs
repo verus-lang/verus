@@ -309,6 +309,8 @@ pub(crate) enum Attr {
     ProphecyDependent,
     // Unrecognized attribute that starts with 'rustc_', internal to the stdlib
     UnsupportedRustcAttr(String, Span),
+    // Broadcast proof for size_of global
+    SizeOfBroadcastProof,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -626,6 +628,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "get_field_many_variants" => {
                         v.push(Attr::InternalGetFieldManyVariants)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "size_of_broadcast_proof" => {
+                        v.push(Attr::SizeOfBroadcastProof)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -816,6 +821,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) sealed: bool,
     pub(crate) prophecy_dependent: bool,
     pub(crate) item_broadcast_use: bool,
+    pub(crate) size_of_broadcast_proof: bool,
 }
 
 impl VerifierAttrs {
@@ -917,6 +923,7 @@ pub(crate) fn get_verifier_attrs(
         sealed: false,
         prophecy_dependent: false,
         item_broadcast_use: false,
+        size_of_broadcast_proof: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -980,6 +987,7 @@ pub(crate) fn get_verifier_attrs(
             Attr::UnsupportedRustcAttr(name, span) => {
                 unsupported_rustc_attr = Some((name.clone(), span))
             }
+            Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             _ => {}
         }
     }

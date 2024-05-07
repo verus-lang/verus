@@ -1126,6 +1126,56 @@ test_verify_one_file! {
             assert(m_range7(y) <==> -4 <= y <= 3);
             assert(m_range8(x) <==> 3 <= x <= 17);
         }
+
+        fn test_exec(x: u64, y: i64) {
+            let a = match x {
+                5u64 .. => true,
+                _ => false,
+            };
+            assert(a <==> 5 <= x);
+
+            let b = match x {
+                ..=5u64 => true,
+                _ => false,
+            };
+            assert(b <==> x <= 5);
+
+            let c = match x {
+                ..5u64 => true,
+                _ => false,
+            };
+            assert(c <==> x < 5);
+
+            let d = match x {
+                3u64..5u64 => true,
+                _ => false,
+            };
+            assert(d <==> 3 <= x < 5);
+
+            let e = match x {
+                3u64..=5u64 => true,
+                _ => false,
+            };
+            assert(e <==> 3 <= x <= 5);
+
+            let f = match x {
+                3u64..=3u64 => true,
+                _ => false,
+            };
+            assert(f <==> x == 3);
+
+            let g = match y {
+                -4i64..=3i64 => true,
+                _ => false,
+            };
+            assert(g <==> -4 <= y <= 3);
+
+            let h = match x {
+                A..=B => true,
+                _ => false,
+            };
+            assert(h <==> 3 <= x <= 17);
+        }
     } => Ok(())
 }
 

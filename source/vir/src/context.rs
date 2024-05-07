@@ -179,13 +179,14 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) => {}
+                        TypX::Bool | TypX::StrSlice | TypX::AnonymousClosure(..) => {}
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::Primitive(Primitive::Array, _) => {
                             roots.insert(container_path.clone());
                         }
                         TypX::Primitive(Primitive::Slice, _) => {}
+                        TypX::Primitive(Primitive::Ptr, _) => {}
                     }
                 }
             }
@@ -593,13 +594,8 @@ impl Ctx {
         let mut commands: Vec<Command> = Vec::new();
         let mut names: Vec<Fun> = Vec::new();
         for function in &self.functions {
-            match (
-                function.x.mode,
-                function.x.body.as_ref(),
-                function.x.attrs.external_body,
-                function.x.attrs.broadcast_forall,
-            ) {
-                (Mode::Spec, Some(_), _, false) | (Mode::Proof, _, false, true) => {
+            match (function.x.mode, function.x.body.as_ref(), function.x.attrs.broadcast_forall) {
+                (Mode::Spec, Some(_), false) | (Mode::Proof, _, true) => {
                     names.push(function.x.name.clone());
                 }
                 _ => {}

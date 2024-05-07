@@ -1,6 +1,6 @@
 use air::context::SmtSolver;
 use getopts::Options;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
 
 pub const DEFAULT_RLIMIT_SECS: f32 = 10f32;
@@ -88,6 +88,7 @@ pub struct ArgsX {
     pub num_threads: usize,
     pub trace: bool,
     pub report_long_running: bool,
+    pub use_crate_name: bool,
     pub cvc5: bool,
 }
 
@@ -129,6 +130,7 @@ impl ArgsX {
             num_threads: Default::default(),
             trace: Default::default(),
             report_long_running: Default::default(),
+            use_crate_name: Default::default(),
             cvc5: Default::default(),
         }
     }
@@ -257,6 +259,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
+    const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -275,6 +278,10 @@ pub fn parse_args_with_imports(
         ),
         (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
+        (
+            EXTENDED_USE_CRATE_NAME,
+            "Use the crate name in paths (useful when verifying vstd without --export)",
+        ),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -460,6 +467,14 @@ pub fn parse_args_with_imports(
     let log = parse_opts_or_pairs(matches.opt_strs(OPT_LOG_MULTI));
 
     let extended = parse_opts_or_pairs(matches.opt_strs(OPT_EXTENDED_MULTI));
+    {
+        let extended_keys_set: HashSet<_> = EXTENDED_KEYS.iter().map(|(k, _)| *k).collect();
+        for extended_key in extended.keys() {
+            if !extended_keys_set.contains(extended_key.as_str()) {
+                error(format!("unexpected extended option -V {}", extended_key));
+            }
+        }
+    }
 
     let args = ArgsX {
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
@@ -588,6 +603,7 @@ pub fn parse_args_with_imports(
             .unwrap_or(default_num_threads),
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
+        use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
         cvc5: extended.get(EXTENDED_CVC5).is_some(),
     };
 
