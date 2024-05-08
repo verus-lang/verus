@@ -55,11 +55,11 @@ pub open spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
 // (the axiom also shows that slice@.len() is in-bounds for usize)
-#[verifier(external_body)]
 pub broadcast proof fn axiom_spec_len<T>(slice: &[T])
     ensures
         #[trigger] spec_slice_len(slice) == slice@.len(),
 {
+    admit();
 }
 
 #[verifier::external_fn_specification]
@@ -88,6 +88,11 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
         out@ == slice@.subrange(i as int, j as int),
 {
     &slice[i..j]
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group group_slice_axioms {
+    axiom_spec_len,
 }
 
 } // verus!
