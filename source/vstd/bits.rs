@@ -225,16 +225,17 @@ pub proof fn lemma_low_bits_mask_unfold(n: nat)
     ensures
         low_bits_mask(n) == 2 * low_bits_mask((n - 1) as nat) + 1,
 {
-    calc!{ (==)
-        low_bits_mask(n);
-            {}
-        (pow2(n) - 1) as nat;
-            { lemma_pow2_unfold(n); }
-        (2*pow2((n-1) as nat) - 1) as nat;
-            {}
-        (2*(pow2((n-1) as nat) - 1) + 1) as nat;
-            { lemma_pow2_pos((n-1) as nat); }
-        (2*low_bits_mask((n-1) as nat) + 1) as nat;
+    calc! {
+        (==)
+        low_bits_mask(n); {}
+        (pow2(n) - 1) as nat; {
+            lemma_pow2_unfold(n);
+        }
+        (2 * pow2((n - 1) as nat) - 1) as nat; {}
+        (2 * (pow2((n - 1) as nat) - 1) + 1) as nat; {
+            lemma_pow2_pos((n - 1) as nat);
+        }
+        (2 * low_bits_mask((n - 1) as nat) + 1) as nat;
     }
 }
 
@@ -260,11 +261,14 @@ pub proof fn lemma_low_bits_mask_is_odd(n: nat)
     ensures
         low_bits_mask(n) % 2 == 1,
 {
-    calc!{ (==)
-        low_bits_mask(n) % 2;
-            { lemma_low_bits_mask_unfold(n); }
-        (2 * low_bits_mask((n-1) as nat) + 1) % 2;
-            { lemma_mod_multiples_vanish(low_bits_mask((n-1) as nat) as int, 1, 2); }
+    calc! {
+        (==)
+        low_bits_mask(n) % 2; {
+            lemma_low_bits_mask_unfold(n);
+        }
+        (2 * low_bits_mask((n - 1) as nat) + 1) % 2; {
+            lemma_mod_multiples_vanish(low_bits_mask((n - 1) as nat) as int, 1, 2);
+        }
         1nat % 2;
     }
 }

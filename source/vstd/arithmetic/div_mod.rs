@@ -429,32 +429,34 @@ pub broadcast proof fn lemma_breakdown(x: int, y: int, z: int)
     lemma_div_pos_is_pos(x, y);
     calc! {
         (<)
-        (y * (x / y)) % (y * z) + (x % y) % (y * z);
-        (<=)    { lemma_part_bound1(x, y, z); }
-        y * (z - 1) + (x % y) % (y * z);
-        (<)    { lemma_part_bound2(x, y, z); }
-        y * (z - 1) + y;
-        (==)    { lemma_mul_basics_auto(); }
-        y * (z - 1) + y * 1;
-        (==)    { /* TODO(broadcast_use) */ lemma_mul_is_distributive_auto(); }
-        y * (z - 1 + 1);
-        (==) {}
+        (y * (x / y)) % (y * z) + (x % y) % (y * z); (<=) {
+            lemma_part_bound1(x, y, z);
+        }
+        y * (z - 1) + (x % y) % (y * z); (<) {
+            lemma_part_bound2(x, y, z);
+        }
+        y * (z - 1) + y; (==) {
+            lemma_mul_basics_auto();
+        }
+        y * (z - 1) + y * 1; (==) {  /* TODO(broadcast_use) */
+            lemma_mul_is_distributive_auto();
+        }
+        y * (z - 1 + 1); (==) {}
         y * z;
     }
     calc! {
         (==)
-        x % (y * z);
-        { ModINL::lemma_fundamental_div_mod(x,y); }
-        (y * (x / y) + x % y) % (y * z);
-        {
+        x % (y * z); {
+            ModINL::lemma_fundamental_div_mod(x, y);
+        }
+        (y * (x / y) + x % y) % (y * z); {
             lemma_mod_properties_auto();
             assert(0 <= x % y);
             lemma_mul_nonnegative(y, x / y);
             assert((y * (x / y)) % (y * z) + (x % y) % (y * z) < y * z);
             lemma_mod_adds(y * (x / y), x % y, y * z);
         }
-        (y * (x / y)) % (y * z) + (x % y) % (y * z);
-        {
+        (y * (x / y)) % (y * z) + (x % y) % (y * z); {
             lemma_mod_properties_auto();
             lemma_mul_increases(z, y);
             lemma_mul_is_commutative_auto();
@@ -464,8 +466,9 @@ pub broadcast proof fn lemma_breakdown(x: int, y: int, z: int)
             lemma_small_mod((x % y) as nat, (y * z) as nat);
             assert((x % y) % (y * z) == x % y);
         }
-        (y * (x / y)) % (y * z) + x % y;
-        { lemma_truncate_middle(x / y, y, z); }
+        (y * (x / y)) % (y * z) + x % y; {
+            lemma_truncate_middle(x / y, y, z);
+        }
         y * ((x / y) % z) + x % y;
     }
 }
@@ -575,43 +578,45 @@ pub broadcast proof fn lemma_div_denominator(x: int, c: int, d: int)
     assert(r == x - (c * d) * k);
     calc! {
         (==)
-        c * ((x / c) % d) + x % c;
-        {
+        c * ((x / c) % d) + x % c; {
             lemma_mod_multiples_vanish(-k, x / c, d);
             lemma_mul_is_commutative_auto();
         }
-        c * ((x / c + (-k) * d) % d) + x % c;
-        { lemma_hoist_over_denominator(x, (-k) * d, c as nat); }
-        c * (((x + (((-k) * d) * c)) / c) % d) + x % c;
-        { lemma_mul_is_associative(-k, d, c); }
-        c * (((x + ((-k) * (d * c))) / c) % d) + x % c;
-        { lemma_mul_unary_negation(k, d * c); }
-        c * (((x + (-(k * (d * c)))) / c) % d) + x % c;
-        { lemma_mul_is_associative(k, d, c); }
-        c * (((x + (-(k * d * c))) / c) % d) + x % c;
-        { }
-        c * (((x - k * d * c) / c) % d) + x % c;
-        {
+        c * ((x / c + (-k) * d) % d) + x % c; {
+            lemma_hoist_over_denominator(x, (-k) * d, c as nat);
+        }
+        c * (((x + (((-k) * d) * c)) / c) % d) + x % c; {
+            lemma_mul_is_associative(-k, d, c);
+        }
+        c * (((x + ((-k) * (d * c))) / c) % d) + x % c; {
+            lemma_mul_unary_negation(k, d * c);
+        }
+        c * (((x + (-(k * (d * c)))) / c) % d) + x % c; {
+            lemma_mul_is_associative(k, d, c);
+        }
+        c * (((x + (-(k * d * c))) / c) % d) + x % c; {}
+        c * (((x - k * d * c) / c) % d) + x % c; {
             lemma_mul_is_associative_auto();
             lemma_mul_is_commutative_auto();
         }
-        c * ((r / c) % d) + x % c;
-        { }
-        c * (r / c) + x % c;
-        {
+        c * ((r / c) % d) + x % c; {}
+        c * (r / c) + x % c; {
             lemma_fundamental_div_mod(r, c);
             assert(r == c * (r / c) + r % c);
             lemma_mod_mod(x, c, d);
             assert(r % c == x % c);
         }
-        r;
-        { lemma_mod_properties_auto(); lemma_mod_is_mod_recursive_auto(); }
-        r % (c * d);
-        { }
-        (x - (c * d) * k) % (c * d);
-        { lemma_mul_unary_negation(c * d, k); }
-        (x + (c * d) * (-k)) % (c * d);
-        { lemma_mod_multiples_vanish(-k, x, c * d); }
+        r; {
+            lemma_mod_properties_auto();
+            lemma_mod_is_mod_recursive_auto();
+        }
+        r % (c * d); {}
+        (x - (c * d) * k) % (c * d); {
+            lemma_mul_unary_negation(c * d, k);
+        }
+        (x + (c * d) * (-k)) % (c * d); {
+            lemma_mod_multiples_vanish(-k, x, c * d);
+        }
         x % (c * d);
     }
     assert(c * (x / c) + x % c - r == c * (x / c) - c * ((x / c) % d) ==> x - r == c * (x / c) - c
@@ -650,12 +655,14 @@ pub broadcast proof fn lemma_mul_hoist_inequality(x: int, y: int, z: int)
         x * (y / z) <= (x * y) / z,
 {
     calc! {
-    (==)
-    (x * y) / z;
-    (==)   { lemma_fundamental_div_mod(y, z); }
-    (x * (z * (y / z) + y % z)) / z;
-    (==)    { lemma_mul_is_distributive_auto(); }
-    (x * (z * (y / z)) + x * (y % z)) / z;
+        (==)
+        (x * y) / z; (==) {
+            lemma_fundamental_div_mod(y, z);
+        }
+        (x * (z * (y / z) + y % z)) / z; (==) {
+            lemma_mul_is_distributive_auto();
+        }
+        (x * (z * (y / z)) + x * (y % z)) / z;
     }
     assert((x * (z * (y / z)) + x * (y % z)) / z >= x * (y / z)) by {
         lemma_mod_properties_auto();
@@ -709,14 +716,18 @@ pub proof fn lemma_truncate_middle(x: int, b: int, c: int)
     broadcast use lemma_mul_strictly_positive, lemma_mul_nonnegative;
 
     calc! {
-    (==)
-    b * x;
-    { ModINL::lemma_fundamental_div_mod(b * x, b * c); }
-    (b * c) * ((b * x) / (b * c)) + (b * x) % (b * c);
-    { lemma_div_denominator(b * x, b, c); }
-    (b * c) * (((b * x) / b) / c) + (b * x) % (b * c);
-    { lemma_mul_is_commutative_auto(); lemma_div_by_multiple(x, b); }
-    (b * c) * (x / c) + (b * x) % (b * c);
+        (==)
+        b * x; {
+            ModINL::lemma_fundamental_div_mod(b * x, b * c);
+        }
+        (b * c) * ((b * x) / (b * c)) + (b * x) % (b * c); {
+            lemma_div_denominator(b * x, b, c);
+        }
+        (b * c) * (((b * x) / b) / c) + (b * x) % (b * c); {
+            lemma_mul_is_commutative_auto();
+            lemma_div_by_multiple(x, b);
+        }
+        (b * c) * (x / c) + (b * x) % (b * c);
     }
     assert(b * x == (b * c) * (x / c) + b * (x % c)) by {
         ModINL::lemma_fundamental_div_mod(x, c);
@@ -739,14 +750,15 @@ pub broadcast proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: in
         a / d == (x * a) / (x * d),
 {
     lemma_mul_strictly_positive(x, d);
-    calc! { (==)
-        (x * a) / (x * d);
-        {
+    calc! {
+        (==)
+        (x * a) / (x * d); {
             lemma_mul_nonnegative(x, a);
             lemma_div_denominator(x * a, x, d);
         }
-        ((x * a) / x) / d;
-        { lemma_div_multiples_vanish(a, x); }
+        ((x * a) / x) / d; {
+            lemma_div_multiples_vanish(a, x);
+        }
         a / d;
     }
 }
@@ -942,12 +954,15 @@ pub broadcast proof fn lemma_part_bound1(a: int, b: int, c: int)
     lemma_mul_strictly_positive(b, c - 1);
     calc! {
         (==)
-        b * (a / b) % (b * c);
-        { ModINL::lemma_fundamental_div_mod(b * (a / b), b * c); }
-        b * (a / b) - (b * c) * ((b * (a / b)) / (b * c));
-        { lemma_mul_is_associative_auto(); }
-        b * (a / b) - b * (c * ((b * (a / b)) / (b * c)));
-        { lemma_mul_is_distributive_auto(); }
+        b * (a / b) % (b * c); {
+            ModINL::lemma_fundamental_div_mod(b * (a / b), b * c);
+        }
+        b * (a / b) - (b * c) * ((b * (a / b)) / (b * c)); {
+            lemma_mul_is_associative_auto();
+        }
+        b * (a / b) - b * (c * ((b * (a / b)) / (b * c))); {
+            lemma_mul_is_distributive_auto();
+        }
         b * ((a / b) - (c * ((b * (a / b)) / (b * c))));
     }
     assert(b * (a / b) % (b * c) <= b * (c - 1)) by {
@@ -980,14 +995,18 @@ pub broadcast proof fn lemma_mod_is_mod_recursive(x: int, m: int)
         calc! {
             (==)
             mod_recursive(x, m); {}
-            mod_recursive(x + m, m);
-            { lemma_mod_is_mod_recursive(x + m, m); }
-            (x + m) % m;
-            { lemma_add_mod_noop(x, m, m); }
-            ((x % m) + (m % m)) % m;
-            { lemma_mod_basics_auto(); }
-            (x % m) % m;
-            { lemma_mod_basics_auto(); }
+            mod_recursive(x + m, m); {
+                lemma_mod_is_mod_recursive(x + m, m);
+            }
+            (x + m) % m; {
+                lemma_add_mod_noop(x, m, m);
+            }
+            ((x % m) + (m % m)) % m; {
+                lemma_mod_basics_auto();
+            }
+            (x % m) % m; {
+                lemma_mod_basics_auto();
+            }
             x % m;
         }
     } else if x < m {
@@ -996,14 +1015,18 @@ pub broadcast proof fn lemma_mod_is_mod_recursive(x: int, m: int)
         calc! {
             (==)
             mod_recursive(x, m); {}
-            mod_recursive(x - m, m);
-            { lemma_mod_is_mod_recursive(x - m, m); }
-            (x - m) % m;
-            { lemma_sub_mod_noop(x, m, m); }
-            ((x % m) - (m % m)) % m;
-            { lemma_mod_basics_auto(); }
-            (x % m) % m;
-            { lemma_mod_basics_auto(); }
+            mod_recursive(x - m, m); {
+                lemma_mod_is_mod_recursive(x - m, m);
+            }
+            (x - m) % m; {
+                lemma_sub_mod_noop(x, m, m);
+            }
+            ((x % m) - (m % m)) % m; {
+                lemma_mod_basics_auto();
+            }
+            (x % m) % m; {
+                lemma_mod_basics_auto();
+            }
             x % m;
         }
     }
@@ -1554,22 +1577,28 @@ pub broadcast proof fn lemma_mod_ordering(x: int, k: int, d: int)
     lemma_mul_strictly_increases(d, k);
     calc! {
         (==)
-        x % d + d * (x / d);
-        { lemma_fundamental_div_mod(x, d); }
-        x;
-        { lemma_fundamental_div_mod(x, d * k); }
-        x % (d * k) + (d * k) * (x / (d * k));
-        { lemma_mul_is_associative_auto(); }
-        x % (d * k) + d * (k * (x / (d * k)));
+        x % d + d * (x / d); {
+            lemma_fundamental_div_mod(x, d);
         }
+        x; {
+            lemma_fundamental_div_mod(x, d * k);
+        }
+        x % (d * k) + (d * k) * (x / (d * k)); {
+            lemma_mul_is_associative_auto();
+        }
+        x % (d * k) + d * (k * (x / (d * k)));
+    }
     calc! {
         (==)
-        x % d;
-        { lemma_mod_properties_auto(); }
-        (x % d) % d;
-        { lemma_mod_multiples_vanish(x / d  - k * (x / (d * k)), x % d, d); }
-        (x % d + d * (x / d  - k * (x / (d * k)))) % d;
-        { lemma_mul_is_distributive_sub_auto(); }
+        x % d; {
+            lemma_mod_properties_auto();
+        }
+        (x % d) % d; {
+            lemma_mod_multiples_vanish(x / d - k * (x / (d * k)), x % d, d);
+        }
+        (x % d + d * (x / d - k * (x / (d * k)))) % d; {
+            lemma_mul_is_distributive_sub_auto();
+        }
         (x % d + d * (x / d) - d * (k * (x / (d * k)))) % d; {}
         (x % (d * k)) % d;
     }
@@ -1594,15 +1623,20 @@ pub broadcast proof fn lemma_mod_mod(x: int, a: int, b: int)
 {
     broadcast use lemma_mul_strictly_positive;
 
-    calc! { (==)
-        x;
-        { lemma_fundamental_div_mod(x, a * b); }
-        (a * b) * (x / (a * b)) + x % (a * b);
-        { lemma_mul_is_associative_auto(); }
-        a * (b * (x / (a * b))) + x % (a * b);
-        { lemma_fundamental_div_mod(x % (a * b), a); }
-        a * (b * (x / (a * b))) + a * (x % (a * b) / a) + (x % (a * b)) % a;
-        { lemma_mul_is_distributive_auto(); }
+    calc! {
+        (==)
+        x; {
+            lemma_fundamental_div_mod(x, a * b);
+        }
+        (a * b) * (x / (a * b)) + x % (a * b); {
+            lemma_mul_is_associative_auto();
+        }
+        a * (b * (x / (a * b))) + x % (a * b); {
+            lemma_fundamental_div_mod(x % (a * b), a);
+        }
+        a * (b * (x / (a * b))) + a * (x % (a * b) / a) + (x % (a * b)) % a; {
+            lemma_mul_is_distributive_auto();
+        }
         a * (b * (x / (a * b)) + x % (a * b) / a) + (x % (a * b)) % a;
     }
     broadcast use group_mod_properties, lemma_mul_is_commutative;
@@ -1660,19 +1694,19 @@ pub broadcast proof fn lemma_mod_breakdown(x: int, y: int, z: int)
         lemma_mul_basics_auto();
         lemma_mul_is_distributive_auto();
     };
-    calc! { (==)
-        x % (y * z);
-        { lemma_fundamental_div_mod(x, y); }
-        (y * (x / y) + x%  y) % (y * z);
-        {
+    calc! {
+        (==)
+        x % (y * z); {
+            lemma_fundamental_div_mod(x, y);
+        }
+        (y * (x / y) + x % y) % (y * z); {
             lemma_mod_properties_auto();
             assert(0 <= x % y);
             lemma_mul_nonnegative(y, x / y);
             assert((y * (x / y)) % (y * z) + (x % y) % (y * z) < y * z);
             lemma_mod_adds(y * (x / y), x % y, y * z);
         }
-        (y * (x / y)) % (y * z) + (x % y) % (y * z);
-        {
+        (y * (x / y)) % (y * z) + (x % y) % (y * z); {
             lemma_mod_properties_auto();
             lemma_mul_increases(z, y);
             lemma_mul_is_commutative_auto();
@@ -1680,8 +1714,9 @@ pub broadcast proof fn lemma_mod_breakdown(x: int, y: int, z: int)
             lemma_small_mod((x % y) as nat, (y * z) as nat);
             assert((x % y) % (y * z) == x % y);
         }
-        (y * (x / y)) % (y * z) + x % y;
-        { lemma_truncate_middle(x / y, y, z); }
+        (y * (x / y)) % (y * z) + x % y; {
+            lemma_truncate_middle(x / y, y, z);
+        }
         y * ((x / y) % z) + x % y;
     }
 }

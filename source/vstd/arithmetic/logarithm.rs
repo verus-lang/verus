@@ -137,20 +137,21 @@ pub proof fn lemma_log_pow(base: int, n: nat)
         lemma_pow_positive(base, n);
         calc! {
             (==)
-            log(base, pow(base, n));
-            (==) { reveal(pow); }
-            log(base, base * pow(base, n_minus_1));
-            (==)
-            {
+            log(base, pow(base, n)); (==) {
+                reveal(pow);
+            }
+            log(base, base * pow(base, n_minus_1)); (==) {
                 lemma_pow_positive(base, n_minus_1);
                 lemma_mul_increases(pow(base, n_minus_1), base);
                 lemma_mul_is_commutative(pow(base, n_minus_1), base);
                 lemma_log_s(base, base * pow(base, n_minus_1));
             }
-            1 + log(base, (base * pow(base, n_minus_1)) / base);
-            (==) { lemma_div_multiples_vanish(pow(base, n_minus_1), base); }
-            1 + log(base, pow(base, n_minus_1));
-            (==) { lemma_log_pow(base, n_minus_1); }
+            1 + log(base, (base * pow(base, n_minus_1)) / base); (==) {
+                lemma_div_multiples_vanish(pow(base, n_minus_1), base);
+            }
+            1 + log(base, pow(base, n_minus_1)); (==) {
+                lemma_log_pow(base, n_minus_1);
+            }
             1 + (n - 1);
         }
     }
