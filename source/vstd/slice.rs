@@ -16,12 +16,28 @@ impl<T> View for [T] {
     spec fn view(&self) -> Seq<T>;
 }
 
+impl<T> View for &[T] {
+    type V = Seq<T>;
+
+    open spec fn view(&self) -> Seq<T> {
+        (**self).view()
+    }
+}
+
 impl<T: DeepView> DeepView for [T] {
     type V = Seq<T::V>;
 
     open spec fn deep_view(&self) -> Seq<T::V> {
         let v = self.view();
         Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
+impl<T: DeepView> DeepView for &[T] {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Self::V {
+        (**self).deep_view()
     }
 }
 
