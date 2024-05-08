@@ -505,8 +505,8 @@ test_verify_one_file! {
           requires i.namespace() == 1,
           opens_invariants [ 1int ]
         {
-            open_local_invariant!(&i => inner => { // FAILS
-                test_inside_open();
+            open_local_invariant!(&i => inner => {
+                test_inside_open(); // FAILS
             });
         }
 
@@ -716,6 +716,40 @@ test_verify_one_file! {
             proof fn stuff_open_none(b: int, a: int) {
                 open_me(a); // FAILS
             }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] local_invariant_non_termination_into_inner_issue1102 verus_code!{
+        use vstd::invariant::*;
+
+        #[verifier::external_body]
+        tracked struct X { }
+
+        #[verifier::external_body]
+        proof fn no_dupes(tracked x: X, tracked y: X)
+            ensures false
+        {
+        }
+
+        struct Pred { }
+        impl InvariantPredicate<(), X> for Pred {
+            open spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        #[allow(unreachable_code)]
+        fn stuff(tracked inv: LocalInvariant<(), X, Pred>)
+        {
+            open_local_invariant!(&inv => x1 => {
+                let tracked x2 = inv.into_inner(); // FAILS
+                proof {
+                    no_dupes(x1, x2);
+                    assert(false);
+                }
+
+                loop { }
+            });
         }
     } => Err(err) => assert_fails(err, 1)
 }

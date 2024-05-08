@@ -217,6 +217,7 @@ macro_rules! declare_invariant_impl {
             #[verifier::external_body]
             pub proof fn into_inner(#[verifier::proof] self) -> (tracked v: V)
                 ensures self.inv(v),
+                opens_invariants [ self.namespace() ]
             {
                 unimplemented!();
             }
@@ -301,6 +302,20 @@ pub fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>)
 //
 //  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
 //  last the entire block.
+//
+//  TODO: there's an issue with with plan; for a LocalInvariant, the body might be
+//  nonterminating, in which case the call to open_invariant_end will be ignored by
+//  Rust's borrowck, and as a result, the lifetime doesn't get extended properly.
+//  To fix this, I gave `into_inner` a specification that it opens the relevant
+//  name, thus preventing any problems the same way we prevent re-entrancy.
+//  However, this means guard no longer serves any purpose. Therefore, we should either:
+//
+//    - Commit to using the 'guard' object to extend the lifetime, which means
+//      figuring out to make this system work in the non-terminating case, or
+//
+//    - Commit to using the opens_invariants specification on into_inner to prevent
+//      unsoundness, in which case we should be able to remove the 'guard' object
+//      entirely.
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
