@@ -1018,6 +1018,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assoc_bounds_4_pass verus_code! {
+        trait U<'a> {
+            type X;
+        }
+
+        trait T<'a> {
+            type Y: U<'a>;
+        }
+
+        proof fn f<'a, A: T<'a>>(
+            x: <<A as T<'a>>::Y as U<'a>>::X
+        ) {
+        }
+
+        struct S<A, 'a> {
+            s: &'a A,
+        }
+
+        fn g<'a>(s: S<u8, 'a>) {
+            let x = s.s;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_verify_1 verus_code! {
         trait T {
             fn f(&self)
@@ -1591,7 +1616,7 @@ test_verify_one_file! {
         }
         spec fn t<A>() -> bool { true }
 
-        #[verifier::external_body] /* vattr */
+        #[verifier::external_body]
         broadcast proof fn f_not_g<A: T>()
             ensures
                 #[trigger] t::<A>(),
@@ -1606,6 +1631,7 @@ test_verify_one_file! {
             }
 
             proof fn p(&self) {
+                broadcast use f_not_g;
                 assert(exists|x: &Self| self.f() != x.f()); // FAILS
             }
         }
@@ -1619,21 +1645,25 @@ test_verify_one_file! {
             }
 
             proof fn p(&self) {
+                broadcast use f_not_g;
                 assert(self.f() != S3(!self.0).f())
             }
         }
 
         fn test1() {
+            broadcast use f_not_g;
             assert(t::<S1>());
             assert(false);
         }
 
         fn test2() {
+            broadcast use f_not_g;
             assert(t::<S2>());
             assert(false); // FAILS
         }
 
         fn test3() {
+            broadcast use f_not_g;
             assert(t::<S3>());
             assert(false); // FAILS
         }
@@ -1659,14 +1689,17 @@ test_verify_one_file! {
         }
 
         proof fn test1() {
+            broadcast use p;
             assert(f::<S<(bool, u8)>>(3));
         }
 
         proof fn test2() {
+            broadcast use p;
             assert(f::<S<(u32, u8)>>(3)); // FAILS
         }
 
         proof fn test3() {
+            broadcast use p;
             assert(f::<S<(bool, u32)>>(3)); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)

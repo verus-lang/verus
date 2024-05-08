@@ -123,7 +123,7 @@ pub trait InvariantPredicate<K, V> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct AtomicInvariant<K, V, Pred> {
     dummy: builtin::SyncSendIfSend<V>,
-    dummy1: core::marker::PhantomData<(K, Pred)>,
+    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 /// A `LocalInvariant` is a ghost object that provides "interior mutability"
@@ -164,7 +164,7 @@ pub struct AtomicInvariant<K, V, Pred> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct LocalInvariant<K, V, Pred> {
     dummy: builtin::SendIfSend<V>,
-    dummy1: core::marker::PhantomData<(K, Pred)>, // TODO ignore Send/Sync here
+    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 macro_rules! declare_invariant_impl {

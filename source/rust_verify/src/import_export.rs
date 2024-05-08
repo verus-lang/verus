@@ -2,9 +2,9 @@ use crate::config::Args;
 use crate::spans::FileStartEndPos;
 use crate::verifier::io_vir_err;
 use serde::{Deserialize, Serialize};
-use vir::ast::{Krate, VirErr};
-
 use std::collections::HashMap;
+use std::sync::Arc;
+use vir::ast::{Krate, Mode, VirErr};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct CrateMetadata {
@@ -61,8 +61,19 @@ pub(crate) fn export_crate(
     vir_crate: Krate,
 ) -> Result<(), VirErr> {
     if let Some(file_path) = &args.export {
-        // TODO: we should prune out all non-public data before serializing the crate
-        // (it probably doesn't matter much yet, but it will matter as the libraries grow.)
+        // for efficiency's sake, prune out elements of AST that won't be needed by importers:
+        let mut kratex = (*vir_crate).clone();
+        kratex.functions.retain(|f| f.x.visibility.restricted_to.is_none());
+        for func in kratex.functions.iter_mut() {
+            let mut functionx = func.x.clone();
+            functionx.decrease_by = None;
+            if functionx.mode != Mode::Spec || functionx.publish.is_none() {
+                functionx.body = None;
+            }
+            *func = func.new_x(functionx);
+        }
+        let vir_crate = Arc::new(kratex);
+
         let file = std::io::BufWriter::new(match std::fs::File::create(file_path) {
             Ok(file) => file,
             Err(err) => {

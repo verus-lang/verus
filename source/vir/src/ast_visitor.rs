@@ -56,7 +56,6 @@ where
                 TypX::Bool
                 | TypX::Int(_)
                 | TypX::StrSlice
-                | TypX::Char
                 | TypX::TypParam(_)
                 | TypX::TypeId
                 | TypX::ConstInt(_)
@@ -118,7 +117,6 @@ where
         TypX::Bool
         | TypX::Int(_)
         | TypX::StrSlice
-        | TypX::Char
         | TypX::TypParam(_)
         | TypX::TypeId
         | TypX::ConstInt(_)

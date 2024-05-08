@@ -519,6 +519,16 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.len() >= 1);
+    let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
+    for e in &err.errors {
+        assert!(e.code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+        assert!(e.message.contains(expected_msg));
+    }
+}
+
+#[allow(dead_code)]
 pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
     assert!(
         err.spans

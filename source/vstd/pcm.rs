@@ -4,9 +4,9 @@ use crate::set::*;
 verus! {
 
 /// Interface for ghost state that is consistent with the common
-/// presentations of PCMs / resource algebras.
+/// presentations of partially commutative monoids (PCMs) / resource algebras.
 ///
-/// For applications, I generally advise using the
+/// For applications, the general advice is to use the
 /// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
 /// which lets you focus on updates and invariants rather than composition.
 ///
@@ -25,6 +25,8 @@ pub trait PCM: Sized {
 
     spec fn op(self, other: Self) -> Self;
 
+    spec fn unit() -> Self;
+
     proof fn closed_under_incl(a: Self, b: Self)
         requires
             Self::op(a, b).valid(),
@@ -41,10 +43,6 @@ pub trait PCM: Sized {
         ensures
             Self::op(a, Self::op(b, c)) == Self::op(Self::op(a, b), c),
     ;
-}
-
-pub trait UnitalPCM: PCM {
-    spec fn unit() -> Self;
 
     proof fn op_unit(a: Self)
         ensures
@@ -119,7 +117,7 @@ impl<P: PCM> Resource<P> {
     }
 
     #[verifier::external_body]
-    pub proof fn create_unit(loc: Loc) -> (tracked out: Self) where P: UnitalPCM
+    pub proof fn create_unit(loc: Loc) -> (tracked out: Self)
         ensures
             out.value() == P::unit(),
             out.loc() == loc,
@@ -128,7 +126,7 @@ impl<P: PCM> Resource<P> {
     }
 
     #[verifier::external_body]
-    pub proof fn is_valid(tracked &self)
+    pub proof fn validate(tracked &self)
         ensures
             self.value().valid(),
     {
@@ -186,7 +184,7 @@ impl<P: PCM> Resource<P> {
     }
 
     #[verifier::external_body]
-    pub proof fn is_valid_2(tracked &mut self, tracked other: &Self)
+    pub proof fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
         ensures

@@ -64,11 +64,11 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
     &ar[i]
 }
 
-#[verifier(external_body)]
 pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] ar@.len()) == N,
 {
+    admit();
 }
 
 // Referenced by Verus' internal encoding for array literals
@@ -80,11 +80,11 @@ pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
 
 pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
-#[verifier(external_body)]
 pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 {
+    admit();
 }
 
 // Referenced by Verus' internal encoding for array -> slice coercion
@@ -105,6 +105,12 @@ pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
         ar@ == out@,
 {
     ar.as_slice()
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group group_array_axioms {
+    array_len_matches_n,
+    axiom_spec_array_as_slice,
 }
 
 } // verus!

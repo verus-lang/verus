@@ -140,6 +140,10 @@ pub enum IntRange {
     USize,
     /// Rust's isize type
     ISize,
+    /// Rust's 'char' type, representing a Unicode Scalar Value:
+    /// The range 0 to 0x10FFFF, inclusive, MINUS the range 0xD800 to 0xDFFF.
+    /// Or another way: [0, 0xD800) union [0xE000, 0x10FFFF]. See unicode.rs.
+    Char,
 }
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
@@ -174,6 +178,11 @@ pub enum TypDecoration {
     Tracked,
     /// !, represented as Never<()>
     Never,
+    /// This is applied to `*mut T` to turn it into `*const T`
+    /// (This is _not_ applied to `T` on its own.)
+    /// This is done because `*mut T` is represented identically `*const T`,
+    /// but neither are represented identically to T.
+    ConstPtr,
 }
 
 #[derive(
@@ -192,6 +201,7 @@ pub enum TypDecoration {
 pub enum Primitive {
     Array,
     Slice,
+    Ptr, // Mut ptr, unless Const decoration is applied
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.
@@ -204,8 +214,6 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
-    /// UTF-8 character type
-    Char,
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
     /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
@@ -316,8 +324,6 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
-    /// Used only for handling casts from chars to ints
-    CharToInt,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
     /// Evaluate to Some(spec) if successful, None otherwise.
@@ -886,9 +892,6 @@ pub struct FunctionAttrsX {
     pub inline: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
-    /// Do not process or verify function body
-    /// TODO: needed only until https://github.com/verus-lang/verus/pull/1022 is merged
-    pub external_body: bool,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
@@ -921,6 +924,8 @@ pub struct FunctionAttrsX {
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
     pub prophecy_dependent: bool,
+    /// broadcast proof from size_of global
+    pub size_of_broadcast_proof: bool,
 }
 
 /// Function specification of its invariant mask

@@ -175,7 +175,8 @@ pub fn main() {
         let vir_rust_to_vir = verifier.time_vir_rust_to_vir; // included in verifier.time_vir
         let vir_vir_time = verifier.time_vir;
         let hir_time = verifier.time_hir;
-        let vir_time = hir_time + vir_vir_time;
+        let import_time = verifier.time_import;
+        let vir_time = hir_time + import_time + vir_vir_time;
         let verify_crate_time = verifier.time_verify_crate;
 
         // total verify time is now the time to verify the crate plus the vir time
@@ -221,6 +222,7 @@ pub fn main() {
                     "vir" : {
                         "total": vir_time.as_millis(),
                         "hir": hir_time.as_millis(),
+                        "import": import_time.as_millis(),
                         "rust-to-vir": vir_rust_to_vir.as_millis()
                     }
                 },
@@ -288,6 +290,7 @@ pub fn main() {
             println!("    verification-time:  {:>10} ms", verify.as_millis());
             println!("        vir-time:           {:>10} ms", vir_time.as_millis());
             println!("            hir-time:           {:>10} ms", hir_time.as_millis());
+            println!("            import-time:        {:>10} ms", import_time.as_millis());
             println!("            rust-to-vir:        {:>10} ms", vir_rust_to_vir.as_millis());
             println!("        verify-crate-time:  {:>10} ms", verify_crate_time.as_millis());
             println!("    unaccounted-time:   {:>10} ms", unaccounted.as_millis());
