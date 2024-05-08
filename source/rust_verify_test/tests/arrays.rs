@@ -5,6 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
+        use vstd::prelude::*;
         use vstd::array::*;
 
         fn test(ar: [u8; 20])
