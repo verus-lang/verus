@@ -12,6 +12,7 @@ Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innova
 - Issue/feature request triage
 - Documentation write-a-thon
 - Experience reports building systems in Verus: What's working well and what isn't working
+- Language design, planned changes. and discussion
 - Proof stability
 - Verifying Rust's standard library 
 
