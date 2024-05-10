@@ -812,6 +812,11 @@ where
             let t = map_typ_visitor_env(t, env, ft)?;
             ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p.clone(), ts, x.clone(), t))
         }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2)) => {
+            let t1 = map_typ_visitor_env(t1, env, ft)?;
+            let t2 = map_typ_visitor_env(t2, env, ft)?;
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2))
+        }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
             ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter)
         }
@@ -1158,6 +1163,11 @@ where
             let ts = map_typs_visitor_env(ts, env, ft)?;
             let t = map_typ_visitor_env(t, env, ft)?;
             Ok(Arc::new(GenericBoundX::TypEquality(trait_path.clone(), ts, name.clone(), t)))
+        }
+        GenericBoundX::ConstTyp(t, s) => {
+            let t = map_typ_visitor_env(t, env, ft)?;
+            let s = map_typ_visitor_env(s, env, ft)?;
+            Ok(Arc::new(GenericBoundX::ConstTyp(t, s)))
         }
     }
 }

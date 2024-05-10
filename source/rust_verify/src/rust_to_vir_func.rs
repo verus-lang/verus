@@ -1093,6 +1093,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
                                 typ,
                             )
                         }
+                        GenericBoundX::ConstTyp(t1, t2) => {
+                            let t1 = subst_typ(&typ_substs, t1);
+                            let t2 = subst_typ(&typ_substs, t2);
+                            GenericBoundX::ConstTyp(t1, t2)
+                        }
                     };
                     Arc::new(gbx)
                 })

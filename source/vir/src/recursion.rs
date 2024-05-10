@@ -500,6 +500,9 @@ pub(crate) fn expand_call_graph(
         let tr = match &**bound {
             GenericBoundX::Trait(tr, _) => tr,
             GenericBoundX::TypEquality(tr, _, _, _) => tr,
+            GenericBoundX::ConstTyp(_, _) => {
+                continue;
+            }
         };
         call_graph.add_edge(f_node.clone(), Node::Trait(tr.clone()));
     }
