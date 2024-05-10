@@ -56,11 +56,14 @@ impl Provenance {
 // TODO flesh out the metadata system for working with DSTs
 // It may make sense to use <T as Pointee>::Metadata directly.
 #[verifier::external_body]
-pub ghost struct Metadata {}
+pub ghost struct DynMetadata {}
 
-impl Metadata {
-    // Unit metadata used for thin pointers
-    pub spec fn unit() -> Metadata;
+pub ghost enum Metadata {
+    Thin,
+    /// Length in bytes for a str; length in items for a
+    Length(usize),
+    /// For 'dyn' types (not yet supported)
+    Dyn(DynMetadata),
 }
 
 pub ghost struct PtrData {
@@ -91,13 +94,13 @@ pub ghost struct PointsToData<T> {
     pub opt_value: MemContents<T>,
 }
 
-impl<T> View for *mut T {
+impl<T: ?Sized> View for *mut T {
     type V = PtrData;
 
     spec fn view(&self) -> Self::V;
 }
 
-impl<T> View for *const T {
+impl<T: ?Sized> View for *const T {
     type V = PtrData;
 
     #[verifier::inline]
@@ -190,7 +193,7 @@ pub broadcast proof fn ptrs_mut_eq<T>(a: *mut T)
 // Null ptrs
 #[verifier::inline]
 pub open spec fn ptr_null<T: ?Sized + core::ptr::Thin>() -> *const T {
-    ptr_from_data(PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::unit() })
+    ptr_from_data(PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::Thin })
 }
 
 #[cfg(verus_keep_ghost)]
@@ -205,9 +208,7 @@ pub fn ex_ptr_null<T: ?Sized + core::ptr::Thin>() -> (res: *const T)
 
 #[verifier::inline]
 pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Thin>() -> *mut T {
-    ptr_mut_from_data(
-        PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::unit() },
-    )
+    ptr_mut_from_data(PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::Thin })
 }
 
 #[cfg(verus_keep_ghost)]
@@ -220,6 +221,42 @@ pub fn ex_ptr_null_mut<T: ?Sized + core::ptr::Thin>() -> (res: *mut T)
     core::ptr::null_mut()
 }
 
+//////////////////////////////////////
+// Casting
+// as-casts and implicit casts are translated internally to these functions
+// (including casts that involve *const ptrs)
+pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> *mut U {
+    ptr_mut_from_data(
+        PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: Metadata::Thin },
+    )
+}
+
+#[verifier::external_body]
+#[verifier::when_used_as_spec(spec_cast_ptr_to_thin_ptr)]
+pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U)
+    ensures
+        result == spec_cast_ptr_to_thin_ptr::<T, U>(ptr),
+{
+    ptr as *mut U
+}
+
+pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> *mut [T] {
+    ptr_mut_from_data(
+        PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: Metadata::Length(N) },
+    )
+}
+
+#[verifier::external_body]
+#[verifier::when_used_as_spec(spec_cast_array_ptr_to_slice_ptr)]
+pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (result: *mut [T])
+    ensures
+        result == spec_cast_array_ptr_to_slice_ptr(ptr),
+{
+    ptr as *mut [T]
+}
+
+//////////////////////////////////////
+// Reading and writing
 /// core::ptr::write
 /// (This does _not_ drop the contents)
 #[inline(always)]

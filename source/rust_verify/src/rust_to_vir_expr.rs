@@ -1125,30 +1125,82 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustment_idx - 1,
             )?;
 
-            let (ty1, ty2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let f = match (ty1.kind(), ty2.kind()) {
-                (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
-                    if el_ty1 == el_ty2 {
-                        // coercing from &[el_ty, const_len] -> &[el_ty]
-                        if bctx.ctxt.no_vstd {
-                            return err_span(
-                                expr.span,
-                                "Coercing an array to a slice is not supported with --no-vstd",
-                            );
-                        }
-                        let fun = vir::fun!("vstd" => "array", "array_as_slice");
-                        let typ_args = match &*undecorate_typ(&arg.typ) {
-                            TypX::Primitive(Primitive::Array, typs) => typs.clone(),
-                            _ => {
-                                return err_span(expr.span, "Verus internal error: expected array");
+                (
+                    TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: t1, mutbl: _ }),
+                    TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: t2, mutbl: _ }),
+                ) => {
+                    match (t1.kind(), t2.kind()) {
+                        (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
+                            if el_ty1 == el_ty2 {
+                                // coercing from *mut [el_ty, const_len] -> *mut [el_ty]
+                                // (either *mut or *const is ok)
+                                if bctx.ctxt.no_vstd {
+                                    return err_span(
+                                        expr.span,
+                                        "Coercing an array to a slice is not supported with --no-vstd",
+                                    );
+                                }
+                                let fun =
+                                    vir::fun!("vstd" => "raw_ptr", "cast_array_ptr_to_slice_ptr");
+
+                                let arg_typ = undecorate_typ(&arg.typ);
+                                let array_typ = match &*arg_typ {
+                                    TypX::Primitive(Primitive::Ptr, typs) => &typs[0],
+                                    _ => {
+                                        return err_span(
+                                            expr.span,
+                                            "Verus internal error: expected Primitive::Ptr",
+                                        );
+                                    }
+                                };
+                                let typ_args = match &*undecorate_typ(array_typ) {
+                                    TypX::Primitive(Primitive::Array, typs) => typs.clone(),
+                                    _ => {
+                                        return err_span(
+                                            expr.span,
+                                            "Verus internal error: expected array",
+                                        );
+                                    }
+                                };
+                                Some((fun, typ_args))
+                            } else {
+                                None
                             }
-                        };
-                        Some((fun, typ_args))
-                    } else {
-                        None
+                        }
+                        _ => None,
                     }
                 }
-                _ => None,
+                _ => {
+                    let (ty1, ty2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
+                    match (ty1.kind(), ty2.kind()) {
+                        (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
+                            if el_ty1 == el_ty2 {
+                                // coercing from &[el_ty, const_len] -> &[el_ty]
+                                if bctx.ctxt.no_vstd {
+                                    return err_span(
+                                        expr.span,
+                                        "Coercing an array to a slice is not supported with --no-vstd",
+                                    );
+                                }
+                                let fun = vir::fun!("vstd" => "array", "array_as_slice");
+                                let typ_args = match &*undecorate_typ(&arg.typ) {
+                                    TypX::Primitive(Primitive::Array, typs) => typs.clone(),
+                                    _ => {
+                                        return err_span(
+                                            expr.span,
+                                            "Verus internal error: expected array",
+                                        );
+                                    }
+                                };
+                                Some((fun, typ_args))
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    }
+                }
             };
 
             if let Some((fun, typ_args)) = f {
@@ -1525,8 +1577,25 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
             let source_ty = bctx.types.expr_ty_adjusted(source);
             let to_ty = bctx.types.expr_ty(expr);
-            if is_simple_ptr_cast(source_ty, to_ty) {
-                return Ok(source_vir);
+            match is_ptr_cast(bctx, expr.span, source_ty, to_ty)? {
+                Some(PtrCastKind::Trivial) => {
+                    return Ok(source_vir);
+                }
+                Some(PtrCastKind::Complex(fun, typ_args)) => {
+                    let autospec_usage =
+                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                    let call_target = CallTarget::Fun(
+                        vir::ast::CallTargetKind::Static,
+                        fun,
+                        typ_args,
+                        Arc::new(vec![]),
+                        autospec_usage,
+                    );
+                    let args = Arc::new(vec![source_vir]);
+                    let x = ExprX::Call(call_target, args);
+                    return mk_expr(x);
+                }
+                None => {}
             }
 
             let source_vir_ty = &source_vir.typ;
@@ -2545,19 +2614,52 @@ fn remove_decoration_typs_for_unsizing<'tcx>(
     }
 }
 
-fn is_simple_ptr_cast<'tcx>(
+enum PtrCastKind {
+    Trivial,
+    Complex(vir::ast::Fun, vir::ast::Typs),
+}
+
+fn is_ptr_cast<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
     src: rustc_middle::ty::Ty<'tcx>,
     dst: rustc_middle::ty::Ty<'tcx>,
-) -> bool {
+) -> Result<Option<PtrCastKind>, VirErr> {
+    // Mutability can always be ignored
     match (src.kind(), dst.kind()) {
         (
             TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: ty1, mutbl: _ }),
             TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: ty2, mutbl: _ }),
         ) => {
-            // TODO lots of casts between types should also be fine
-            // The main thing to look out for is fat pointers
-            ty1 == ty2
+            if ty1 == ty2 {
+                return Ok(Some(PtrCastKind::Trivial));
+            } else if ty2.is_sized(bctx.ctxt.tcx, bctx.ctxt.tcx.param_env(bctx.fun_id)) {
+                let src_ty = mid_ty_to_vir(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    span,
+                    ty1,
+                    false,
+                )?;
+                let dst_ty = mid_ty_to_vir(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    span,
+                    ty2,
+                    false,
+                )?;
+                let fun = vir::fun!("vstd" => "raw_ptr", "cast_ptr_to_thin_ptr");
+                let typs = Arc::new(vec![src_ty, dst_ty]);
+                return Ok(Some(PtrCastKind::Complex(fun, typs)));
+            }
+
+            //match (ty1.kind(), ty2.kind()) {
+            //
+            //}
+            return Ok(None);
         }
-        _ => false,
+        _ => Ok(None),
     }
 }
