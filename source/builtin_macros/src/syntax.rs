@@ -1189,6 +1189,21 @@ impl Visitor {
                     fun.sig.erase_spec_fields();
                     spec_items.push(TraitItem::Method(spec_fun));
                 }
+                TraitItem::Method(fun) if erase_ghost => match (&mut fun.default, &fun.sig.mode) {
+                    (
+                        Some(default),
+                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
+                    ) => {
+                        // replace body with panic!()
+                        let span = default.span();
+                        let expr: Expr = Expr::Verbatim(quote_spanned! {
+                            span => { panic!() }
+                        });
+                        let stmt = Stmt::Expr(expr);
+                        default.stmts = vec![stmt];
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
