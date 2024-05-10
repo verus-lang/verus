@@ -292,6 +292,8 @@ pub enum NullaryOpr {
     TraitBound(Path, Typs),
     /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
     TypEqualityBound(Path, Typs, Ident, Typ),
+    /// predicate representing const type bound, e.g., `const X: usize`
+    ConstTypBound(Typ, Typ),
     /// A failed InferSpecForLoopIter subexpression
     NoInferSpecForLoopIter,
 }
@@ -858,6 +860,8 @@ pub enum GenericBoundX {
     /// An equality bound for associated type X of trait T(t1, ..., tn),
     /// written in Rust as T<t1, ..., tn, X = typ>
     TypEquality(Path, Typs, Ident, Typ),
+    /// Const param has type (e.g., const X: usize)
+    ConstTyp(Typ, Typ),
 }
 
 /// When instantiating type S<A> with A = T in a recursive type definition,

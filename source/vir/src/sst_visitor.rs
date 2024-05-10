@@ -236,6 +236,13 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     )))
                 })
             }
+            ExpX::NullaryOpr(NullaryOpr::ConstTypBound(t1, t2)) => {
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| {
+                    exp_new(ExpX::NullaryOpr(NullaryOpr::ConstTypBound(R::get(t1), R::get(t2))))
+                })
+            }
             ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => R::ret(|| exp.clone()),
             ExpX::Unary(op, e1) => {
                 let e1 = self.visit_exp(e1)?;

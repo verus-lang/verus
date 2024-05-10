@@ -60,6 +60,7 @@ pub(crate) fn translate_trait<'tcx>(
                     }
                 }
                 GenericBoundX::TypEquality(..) => {}
+                GenericBoundX::ConstTyp(..) => {}
             }
             true
         });

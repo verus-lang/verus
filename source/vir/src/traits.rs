@@ -421,23 +421,28 @@ fn demote_one_expr(traits: &HashSet<Path>, expr: &Expr) -> Result<Expr, VirErr> 
 pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBounds) -> Vec<Expr> {
     let mut bound_exprs: Vec<Expr> = Vec::new();
     for bound in typ_bounds.iter() {
-        let op = match &**bound {
+        let exprx = match &**bound {
             crate::ast::GenericBoundX::Trait(path, typ_args) => {
                 if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
                     continue;
                 }
-                crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone())
+                let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
+                ExprX::NullaryOpr(op)
             }
             crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
-                crate::ast::NullaryOpr::TypEqualityBound(
+                let op = crate::ast::NullaryOpr::TypEqualityBound(
                     path.clone(),
                     typ_args.clone(),
                     name.clone(),
                     typ.clone(),
-                )
+                );
+                ExprX::NullaryOpr(op)
+            }
+            crate::ast::GenericBoundX::ConstTyp(t1, t2) => {
+                let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
+                ExprX::NullaryOpr(op)
             }
         };
-        let exprx = ExprX::NullaryOpr(op);
         bound_exprs.push(SpannedTyped::new(span, &Arc::new(TypX::Bool), exprx));
     }
     bound_exprs
@@ -450,23 +455,28 @@ pub(crate) fn trait_bounds_to_sst(
 ) -> Vec<crate::sst::Exp> {
     let mut bound_exps: Vec<crate::sst::Exp> = Vec::new();
     for bound in typ_bounds.iter() {
-        let op = match &**bound {
+        let expx = match &**bound {
             crate::ast::GenericBoundX::Trait(path, typ_args) => {
                 if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
                     continue;
                 }
-                crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone())
+                let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
+                crate::sst::ExpX::NullaryOpr(op)
             }
             crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
-                crate::ast::NullaryOpr::TypEqualityBound(
+                let op = crate::ast::NullaryOpr::TypEqualityBound(
                     path.clone(),
                     typ_args.clone(),
                     name.clone(),
                     typ.clone(),
-                )
+                );
+                crate::sst::ExpX::NullaryOpr(op)
+            }
+            crate::ast::GenericBoundX::ConstTyp(t1, t2) => {
+                let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
+                crate::sst::ExpX::NullaryOpr(op)
             }
         };
-        let expx = crate::sst::ExpX::NullaryOpr(op);
         bound_exps.push(SpannedTyped::new(span, &Arc::new(TypX::Bool), expx));
     }
     bound_exps
@@ -509,6 +519,16 @@ pub(crate) fn typ_equality_bound_to_air(
     air::ast_util::mk_and(&vec![eqd, eqt])
 }
 
+pub(crate) fn const_typ_bound_to_air(ctx: &Ctx, c: &Typ, t: &Typ) -> air::ast::Expr {
+    let expr =
+        air::ast_util::str_apply(crate::def::CONST_INT, &vec![crate::sst_to_air::typ_to_id(c)]);
+    if let Some(inv) = crate::sst_to_air::typ_invariant(ctx, t, &expr) {
+        inv
+    } else {
+        air::ast_util::mk_true()
+    }
+}
+
 pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<air::ast::Expr> {
     let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
     for bound in typ_bounds.iter() {
@@ -520,6 +540,9 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
             }
             crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
                 bound_exprs.push(typ_equality_bound_to_air(ctx, path, typ_args, name, typ));
+            }
+            crate::ast::GenericBoundX::ConstTyp(c, t) => {
+                bound_exprs.push(const_typ_bound_to_air(ctx, c, t));
             }
         }
     }

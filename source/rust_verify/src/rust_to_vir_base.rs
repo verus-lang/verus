@@ -1286,8 +1286,11 @@ where
                     panic!("internal error: generic_bound should return GenericBoundX::Trait")
                 }
             }
-            ClauseKind::ConstArgHasType(..) => {
-                // Do nothing
+            ClauseKind::ConstArgHasType(cnst, ty) => {
+                let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
+                let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
+                let bound = GenericBoundX::ConstTyp(t1, t2);
+                bounds.push(Arc::new(bound));
             }
             _ => {
                 return err_span(*span, "Verus does not yet support this type of bound");
