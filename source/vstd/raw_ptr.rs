@@ -323,6 +323,46 @@ pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> 
 }
 */
 
+macro_rules! pointer_specs {
+    ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {
+        #[cfg(verus_keep_ghost)]
+        mod $mod_ident {
+            use super::*;
+
+            verus!{
+
+            #[verifier::inline]
+            pub open spec fn spec_addr<T: ?Sized>(p: *$mu T) -> usize { p@.addr }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(spec_addr)]
+            pub fn ex_addr<T: ?Sized>(p: *$mu T) -> (addr: usize)
+                ensures addr == spec_addr(p)
+            {
+                p.addr()
+            }
+
+            pub open spec fn spec_with_addr<T: ?Sized>(p: *$mu T, addr: usize) -> *$mu T {
+                $ptr_from_data(PtrData { addr: addr, .. p@ })
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(spec_with_addr)]
+            pub fn ex_with_addr<T: ?Sized>(p: *$mu T, addr: usize) -> (q: *$mu T)
+                ensures q == spec_with_addr(p, addr)
+            {
+                p.with_addr(addr)
+            }
+
+            }
+        }
+    };
+}
+
+pointer_specs!(ptr_mut_specs, ptr_mut_from_data, mut);
+
+pointer_specs!(ptr_const_specs, ptr_from_data, const);
+
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,

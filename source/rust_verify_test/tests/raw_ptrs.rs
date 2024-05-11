@@ -154,7 +154,30 @@ test_verify_one_file! {
             assert(y@.provenance == x@.provenance);
             assert(y@.metadata == vstd::raw_ptr::Metadata::Length(16));
         }
-    } => Err(err) => assert_fails(err, 7)
+
+        fn test_strict_provenance(a: *mut u64) {
+            let ad = a.addr();
+            assert(ad == a@.addr);
+
+            let b = a.with_addr(7);
+            assert(b@.addr == 7);
+            assert(b@.provenance == a@.provenance);
+            assert(b@.metadata == a@.metadata);
+
+            assert(a == b); // FAILS
+        }
+
+        fn test_strict_provenance_const(a: *const u64) {
+            let ad = a.addr();
+            assert(ad == a@.addr);
+
+            let b = a.with_addr(7);
+            assert(b@.addr == 7);
+            assert(b@.provenance == a@.provenance);
+            assert(b@.metadata == a@.metadata);
+        }
+
+    } => Err(err) => assert_fails(err, 8)
 }
 
 test_verify_one_file! {
