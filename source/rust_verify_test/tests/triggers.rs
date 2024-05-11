@@ -345,6 +345,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_with_trigger verus_code! {
+        trait T {
+            spec fn s(&self) -> bool;
+        }
+        impl T for u8 {
+            spec fn s(&self) -> bool { true }
+        }
+        spec fn f(i: int) -> u8 { 0 }
+        spec fn g() -> bool {
+            forall|i: int| #![trigger f(i)] f(i).s()
+        }
+        proof fn p() {
+            assert(g() == g());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_broadcast_arith_trigger verus_code! {
         pub broadcast proof fn testb(x: int, y: int)
             ensures

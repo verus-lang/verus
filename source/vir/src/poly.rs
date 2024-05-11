@@ -640,7 +640,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 .map(|es| Arc::new(es.iter().map(|e| poly_expr(ctx, state, e)).collect()));
             let triggers = Arc::new(triggers.collect());
             let body = poly_expr(ctx, state, body);
-            mk_expr(ExprX::WithTriggers { triggers, body })
+            mk_expr_typ(&body.clone().typ, ExprX::WithTriggers { triggers, body })
         }
         ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
             if op.is_some() {
