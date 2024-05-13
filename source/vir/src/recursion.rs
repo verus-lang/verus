@@ -18,7 +18,7 @@ use crate::sst::PostConditionKind;
 use crate::sst::PostConditionSst;
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, FunctionSst, InternalFun, LocalDecl, LocalDeclX, Stm,
-    StmX, UniqueIdent,
+    StmX, UniqueIdent, UnwindSst,
 };
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -345,6 +345,7 @@ pub(crate) fn check_termination_commands(
             statics: vec![],
             reqs: Arc::new(vec![]),
             mask_set: MaskSet::empty(),
+            unwind: UnwindSst::NoUnwind,
         },
         &vec![],
         false,

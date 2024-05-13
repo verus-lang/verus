@@ -747,6 +747,9 @@ pub trait Visit<'ast> {
     fn visit_signature_invariants(&mut self, i: &'ast SignatureInvariants) {
         visit_signature_invariants(self, i);
     }
+    fn visit_signature_unwind(&mut self, i: &'ast SignatureUnwind) {
+        visit_signature_unwind(self, i);
+    }
     fn visit_span(&mut self, i: &Span) {
         visit_span(self, i);
     }
@@ -4035,6 +4038,9 @@ where
     if let Some(it) = &node.invariants {
         v.visit_signature_invariants(it);
     }
+    if let Some(it) = &node.unwind {
+        v.visit_signature_unwind(it);
+    }
 }
 pub fn visit_signature_decreases<'ast, V>(v: &mut V, node: &'ast SignatureDecreases)
 where
@@ -4056,6 +4062,16 @@ where
 {
     tokens_helper(v, &node.token.span);
     v.visit_invariant_name_set(&node.set);
+}
+pub fn visit_signature_unwind<'ast, V>(v: &mut V, node: &'ast SignatureUnwind)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    if let Some(it) = &node.when {
+        tokens_helper(v, &(it).0.span);
+        v.visit_expr(&(it).1);
+    }
 }
 pub fn visit_span<'ast, V>(v: &mut V, node: &Span)
 where

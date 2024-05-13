@@ -272,6 +272,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
                     broadcast_forall: None,
                     fndef_axioms: None,
                     mask_spec: None,
+                    unwind_spec: None,
                     item_kind: default_function.x.item_kind,
                     publish: default_function.x.publish,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),

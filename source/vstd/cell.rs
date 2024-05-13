@@ -154,6 +154,7 @@ impl<V> PCell<V> {
         ensures
             perm@ === pcell_opt![ self.id() => Option::Some(v) ],
         opens_invariants none
+        no_unwind
     {
         unsafe {
             *(self.ucell.get()) = MaybeUninit::new(v);
@@ -171,6 +172,7 @@ impl<V> PCell<V> {
             perm@.value === Option::None,
             v === old(perm)@.value.get_Some_0(),
         opens_invariants none
+        no_unwind
     {
         unsafe {
             let mut m = MaybeUninit::uninit();
@@ -190,6 +192,7 @@ impl<V> PCell<V> {
             perm@.value === Option::Some(in_v),
             out_v === old(perm)@.value.get_Some_0(),
         opens_invariants none
+        no_unwind
     {
         unsafe {
             let mut m = MaybeUninit::new(in_v);
@@ -210,6 +213,7 @@ impl<V> PCell<V> {
         ensures
             *v === perm@.value.get_Some_0(),
         opens_invariants none
+        no_unwind
     {
         unsafe { (*self.ucell.get()).assume_init_ref() }
     }
@@ -224,6 +228,7 @@ impl<V> PCell<V> {
         ensures
             v === perm@.value.get_Some_0(),
         opens_invariants none
+        no_unwind
     {
         let tracked mut perm = perm;
         self.take(Tracked(&mut perm))
@@ -252,6 +257,7 @@ impl<V: Copy> PCell<V> {
             perm@.pcell === old(perm)@.pcell,
             perm@.value === Some(in_v),
         opens_invariants none
+        no_unwind
     {
         let _out = self.replace(Tracked(&mut *perm), in_v);
     }

@@ -207,10 +207,18 @@ pub struct LocalDeclX {
 }
 
 #[derive(Clone)]
+pub enum UnwindSst {
+    MayUnwind,
+    NoUnwind,
+    NoUnwindWhen(Exp),
+}
+
+#[derive(Clone)]
 pub struct FunctionSst {
     pub reqs: Exps,
     pub post_condition: PostConditionSst,
     pub mask_set: crate::inv_masks::MaskSet, // Actually AIR
+    pub unwind: UnwindSst,
     pub body: Stm,
     pub local_decls: Vec<LocalDecl>,
     pub statics: Vec<Fun>,

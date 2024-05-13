@@ -2,7 +2,7 @@ use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
     Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs,
-    UnaryOpr, VarIdent, Variant, VirErr,
+    UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::error;
@@ -639,6 +639,7 @@ where
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind: _,
         publish: _,
         attrs: _,
@@ -677,6 +678,14 @@ where
             for e in es.iter() {
                 expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
+        }
+    }
+    match unwind_spec {
+        None => {}
+        Some(UnwindSpec::MayUnwind) => {}
+        Some(UnwindSpec::NoUnwind) => {}
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
         }
     }
 
@@ -1216,6 +1225,7 @@ where
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,
@@ -1293,6 +1303,14 @@ where
             })?)))
         }
     };
+    let unwind_spec = match unwind_spec {
+        None => None,
+        Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
+        Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            Some(UnwindSpec::NoUnwindWhen(map_expr_visitor_env(e, map, env, fe, fs, ft)?))
+        }
+    };
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let item_kind = *item_kind;
@@ -1344,6 +1362,7 @@ where
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,

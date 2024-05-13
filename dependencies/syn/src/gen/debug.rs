@@ -3104,6 +3104,7 @@ impl Debug for Signature {
         formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);
+        formatter.field("unwind", &self.unwind);
         formatter.finish()
     }
 }
@@ -3123,6 +3124,15 @@ impl Debug for SignatureInvariants {
         let mut formatter = formatter.debug_struct("SignatureInvariants");
         formatter.field("token", &self.token);
         formatter.field("set", &self.set);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for SignatureUnwind {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureUnwind");
+        formatter.field("token", &self.token);
+        formatter.field("when", &self.when);
         formatter.finish()
     }
 }
