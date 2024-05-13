@@ -268,18 +268,17 @@ test_both! {
     inv_lifetime inv_lifetime_local verus_code! {
         use vstd::invariant::*;
 
-        proof fn throw_away<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
-        }
-
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>)
           requires
             i.inv(0),
         {
           open_atomic_invariant!(&i => inner => {
-            proof { throw_away(i); }
+            proof {
+              i.into_inner(); // FAILS
+            }
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `i` because it is borrowed")
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_both! {

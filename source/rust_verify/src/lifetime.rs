@@ -239,9 +239,9 @@ impl<A: Copy> Copy for Tracked<A> { }
 #[derive(Clone, Copy)] struct nat;
 struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }
 struct InvariantBlockGuard;
-fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
-fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
-fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) { panic!() }
+fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
+fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
+fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
 ";
 
