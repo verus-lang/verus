@@ -367,6 +367,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::Fuel(fueled_f, _, is_broadcast_use) if *is_broadcast_use => {
                         reach_function(ctxt, state, fueled_f);
                     }
+                    ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: _, fun } => {
+                        reach_function(ctxt, state, fun);
+                    }
                     _ => {}
                 }
                 Ok(e.clone())

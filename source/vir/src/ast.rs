@@ -819,6 +819,9 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
+    /// Assert or assume user-defined type invariant for `expr` and return `expr`
+    /// These are added in user_defined_type_invariants.rs
+    AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
     /// Assert-forall or assert-by statement
     AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
@@ -967,6 +970,8 @@ pub struct FunctionAttrsX {
     pub prophecy_dependent: bool,
     /// broadcast proof from size_of global
     pub size_of_broadcast_proof: bool,
+    /// is type invariant
+    pub is_type_invariant_fn: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1179,6 +1184,7 @@ pub struct DatatypeX {
     pub mode: Mode,
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
+    pub user_defined_invariant_fn: Option<Fun>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

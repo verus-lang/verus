@@ -128,7 +128,9 @@ pub(crate) fn translate_trait<'tcx>(
     let ex_trait_ref_for = external_trait_specification_of(tcx, trait_items, trait_vattrs)?;
     if let Some(ex_trait_ref_for) = ex_trait_ref_for {
         crate::rust_to_vir_base::check_item_external_generics(
+            None,
             trait_generics,
+            false,
             ex_trait_ref_for.args,
             true,
             trait_generics.span,

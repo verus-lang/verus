@@ -427,13 +427,16 @@ impl GlobalCtx {
             if f.x.attrs.is_decrease_by {
                 for g_node in func_call_graph.get_scc_nodes(&f_node) {
                     if f_node != g_node {
-                        let g =
+                        let g_opt =
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
-                        return Err(crate::messages::error(
+                        let mut error = crate::messages::error(
                             &f.span,
                             "found cyclic dependency in decreases_by function",
-                        )
-                        .secondary_span(&g.unwrap().span));
+                        );
+                        if let Some(g) = g_opt {
+                            error = error.secondary_span(&g.span);
+                        }
+                        return Err(error);
                     }
                 }
             }

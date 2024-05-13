@@ -5,6 +5,7 @@ use crate::ast::{
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
+use crate::ast_util::undecorate_typ;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
@@ -70,7 +71,7 @@ fn is_recursive_call(ctxt: &Ctxt, target: &Fun, resolved_method: &Option<(Fun, T
 }
 
 pub fn height_is_int(typ: &Typ) -> bool {
-    match &*crate::ast_util::undecorate_typ(typ) {
+    match &*undecorate_typ(typ) {
         TypX::Int(_) => true,
         _ => false,
     }
@@ -89,7 +90,7 @@ fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
 }
 
 fn exp_for_decrease(ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
-    match &*crate::ast_util::undecorate_typ(&exp.typ) {
+    match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
         TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctx, &exp.typ) {
             exp.clone()
@@ -526,6 +527,26 @@ pub(crate) fn expand_call_graph(
                 }
             }
             ExprX::StaticVar(fun) => call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone())),
+            ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: _, fun } => {
+                call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone()));
+
+                let typ = undecorate_typ(&expr.typ);
+                let impl_paths = match &*typ {
+                    TypX::Datatype(_, _, impl_paths) => impl_paths,
+                    _ => panic!("expected datatype"),
+                };
+                for impl_path in impl_paths.iter() {
+                    let expr_node = crate::recursive_types::new_span_info_node(
+                        span_infos,
+                        expr.span.clone(),
+                        ": constructor of datatype with some type arguments, which may depend on \
+                            other trait implementations to satisfy trait bounds"
+                            .to_string(),
+                    );
+                    call_graph.add_edge(f_node.clone(), expr_node.clone());
+                    call_graph.add_edge(expr_node.clone(), Node::TraitImpl(impl_path.clone()));
+                }
+            }
             _ => {}
         }
         Ok(())

@@ -458,7 +458,10 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
         return e;
     }
     err.iter()
-        .filter(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string()))
+        .filter(|e| {
+            e.label != Some(vir::def::THIS_PRE_FAILED.to_string())
+                && e.label != Some("type invariant declared here".to_string())
+        })
         .next()
         .expect("span")
 }
@@ -571,4 +574,19 @@ pub fn assert_fails_bv_64bit(err: TestErr) {
 #[allow(dead_code)]
 pub fn assert_fails_bv_32bit_64bit(err: TestErr) {
     assert_fails_bv(err, true, true);
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_type_invariant_error(err: TestErr, count: usize) {
+    assert_eq!(err.errors.len(), count);
+    for c in 0..count {
+        assert!(err.errors[c].message.contains("may fail to meet its declared type invariant"));
+        assert!(
+            relevant_error_span(&err.errors[c].spans)
+                .text
+                .iter()
+                .find(|x| x.text.contains("FAILS"))
+                .is_some()
+        );
+    }
 }

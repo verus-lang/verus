@@ -689,6 +689,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
             mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
         }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr: e1, fun } => {
+            let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
+            mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
+                is_assume: *is_assume,
+                expr: e1,
+                fun: fun.clone(),
+            })
+        }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             let mut bs: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);

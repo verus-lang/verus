@@ -70,6 +70,7 @@ pub mod traits;
 mod triggers;
 mod triggers_auto;
 mod unicode;
+mod user_defined_type_invariants;
 pub mod util;
 mod visitor;
 pub mod well_formed;

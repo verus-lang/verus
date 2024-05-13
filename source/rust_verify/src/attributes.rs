@@ -314,6 +314,8 @@ pub(crate) enum Attr {
     UnsupportedRustcAttr(String, Span),
     // Broadcast proof for size_of global
     SizeOfBroadcastProof,
+    // Is this a type_invariant spec function
+    TypeInvariantFn,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -535,6 +537,9 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => {
                     v.push(Attr::ProphecyDependent)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
+                    v.push(Attr::TypeInvariantFn)
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -834,6 +839,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) prophecy_dependent: bool,
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
+    pub(crate) type_invariant_fn: bool,
 }
 
 impl VerifierAttrs {
@@ -938,6 +944,7 @@ pub(crate) fn get_verifier_attrs(
         prophecy_dependent: false,
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
+        type_invariant_fn: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1005,6 +1012,7 @@ pub(crate) fn get_verifier_attrs(
                 unsupported_rustc_attr = Some((name.clone(), span))
             }
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
+            Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             _ => {}
         }
     }

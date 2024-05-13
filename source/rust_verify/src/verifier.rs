@@ -1982,12 +1982,11 @@ impl Verifier {
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
         // The 'user_filter' handles the filter provided on the command line
-        // (--verify-module, --verify-funciton, etc.)
+        // (--verify-module, --verify-function, etc.)
         // Whereas the 'buckets' are the way we group obligations for parallelizing
         // and context pruning.
         // Buckets usually fall along module boundaries, but the user can create
-        // more buckets using #[spinoff_prover] can create
-        // more buckets.
+        // more buckets using #[spinoff_prover].
         //
         // For example, suppose module M has functions a, b, c, d.
         // with a and b both marked spinoff_prover.

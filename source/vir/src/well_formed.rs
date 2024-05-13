@@ -877,6 +877,41 @@ fn check_function(
         check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
     }
 
+    if function.x.attrs.is_type_invariant_fn {
+        if function.x.mode != Mode::Spec {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function must be `spec`",
+            ));
+        }
+        if !matches!(&*function.x.ret.x.typ, TypX::Bool) {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function must return bool",
+            ));
+        }
+        if !matches!(function.x.kind, FunctionKind::Static) {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function cannot be a trait function",
+            ));
+        }
+
+        // Not strictly needed, but probably a mistake on the user's part
+        if function.x.decrease_when.is_some() {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function should not have a 'when' clause (consider adding it as a conjunct in the body)",
+            ));
+        }
+        if function.x.require.len() > 0 {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function should not have a 'recommends' clause (consider adding it as a conjunct in the body)",
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -885,6 +920,26 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
         for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span)?;
+        }
+    }
+
+    if dt.x.user_defined_invariant_fn.is_some() {
+        if dt.x.proxy.is_some() {
+            return Err(error(
+                &dt.span,
+                "#[verifier::type_invariant] cannot be applied to a datatype that uses #[verifier::external_type_specification]",
+            ));
+        }
+        match &dt.x.transparency {
+            DatatypeTransparency::Never => {}
+            DatatypeTransparency::WhenVisible(vis) => {
+                if vis.is_public() {
+                    return Err(error(
+                        &dt.span,
+                        "#[verifier::type_invariant]: a struct with a type invariant cannot have any fields public to the crate",
+                    ));
+                }
+            }
         }
     }
 
