@@ -10,9 +10,22 @@ pub use super::std_specs::vec::VecAdditionalSpecFns;
 
 verus! {
 
-pub trait SliceAdditionalSpecFns<T> {
-    spec fn view(&self) -> Seq<T>;
+impl<T> View for [T] {
+    type V = Seq<T>;
 
+    spec fn view(&self) -> Seq<T>;
+}
+
+impl<T: DeepView> DeepView for [T] {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
+pub trait SliceAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends
             0 <= i < self.view().len(),
@@ -20,8 +33,6 @@ pub trait SliceAdditionalSpecFns<T> {
 }
 
 impl<T> SliceAdditionalSpecFns<T> for [T] {
-    spec fn view(&self) -> Seq<T>;
-
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
@@ -37,6 +48,27 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
         *out == slice@.index(i as int),
 {
     &slice[i]
+}
+
+////// Len (with autospec)
+pub open spec fn spec_slice_len<T>(slice: &[T]) -> usize;
+
+// This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
+// (the axiom also shows that slice@.len() is in-bounds for usize)
+pub broadcast proof fn axiom_spec_len<T>(slice: &[T])
+    ensures
+        #[trigger] spec_slice_len(slice) == slice@.len(),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+#[verifier::when_used_as_spec(spec_slice_len)]
+pub fn slice_len<T>(slice: &[T]) -> (len: usize)
+    ensures
+        len == spec_slice_len(slice),
+{
+    slice.len()
 }
 
 #[cfg(feature = "alloc")]
@@ -58,13 +90,9 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i..j]
 }
 
-#[verifier(external_fn_specification)]
-pub exec fn slice_len<T>(slice: &[T]) -> (length: usize)
-    ensures
-        length >= 0,
-        length == slice@.len(),
-{
-    slice.len()
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group group_slice_axioms {
+    axiom_spec_len,
 }
 
 } // verus!

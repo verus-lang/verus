@@ -231,17 +231,43 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
     }
 }
 
+fn check_polarity_attribute(name: &str) -> bool {
+    name == "accept_recursive_types"
+        || name == "reject_recursive_types"
+        || name == "reject_recursive_types_in_ground_variants"
+}
+
 fn attr_is_polarity(attr: &Attribute) -> bool {
     match attr.parse_meta() {
         Ok(Meta::List(list)) => {
-            let segments = list.path.segments.iter().collect::<Vec<_>>();
+            let segments =
+                list.path.segments.iter().map(|e| e.ident.to_string()).collect::<Vec<_>>();
             match &segments[..] {
-                [prefix_segment, segment] if prefix_segment.ident.to_string() == "verifier" => {
-                    let name = segment.ident.to_string();
-                    name == "accept_recursive_types"
-                        || name == "reject_recursive_types"
-                        || name == "reject_recursive_types_in_ground_variants"
+                [prefix_segment, name] if prefix_segment == "verifier" => {
+                    check_polarity_attribute(name.as_str())
                 }
+                [segment] if segment == "cfg_attr" => list.nested.iter().all(|elm| match elm {
+                    NestedMeta::Meta(Meta::Path(path)) => {
+                        let segments =
+                            path.segments.iter().map(|e| e.ident.to_string()).collect::<Vec<_>>();
+                        segments[..] == ["verus_keep_ghost"]
+                    }
+                    NestedMeta::Meta(Meta::List(list)) => {
+                        let segments = list
+                            .path
+                            .segments
+                            .iter()
+                            .map(|e| e.ident.to_string())
+                            .collect::<Vec<_>>();
+                        match &segments[..] {
+                            [prefix_segment, name] if prefix_segment == "verifier" => {
+                                check_polarity_attribute(name)
+                            }
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                }),
                 _ => false,
             }
         }
@@ -731,7 +757,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<
         if !attr_is_polarity(attr) {
             return Err(Error::new(
                 attr.span(),
-                "the only attributes allowed here are verifier::accept_recursive_types, verifier::reject_recursive_types, and verifier::reject_recursive_types_in_ground_variants",
+                "the only attributes allowed here are verus_keep_ghost, verifier::accept_recursive_types, verifier::reject_recursive_types, and verifier::reject_recursive_types_in_ground_variants",
             ));
         }
     }

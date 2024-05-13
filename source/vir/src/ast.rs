@@ -140,6 +140,10 @@ pub enum IntRange {
     USize,
     /// Rust's isize type
     ISize,
+    /// Rust's 'char' type, representing a Unicode Scalar Value:
+    /// The range 0 to 0x10FFFF, inclusive, MINUS the range 0xD800 to 0xDFFF.
+    /// Or another way: [0, 0xD800) union [0xE000, 0x10FFFF]. See unicode.rs.
+    Char,
 }
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
@@ -174,6 +178,11 @@ pub enum TypDecoration {
     Tracked,
     /// !, represented as Never<()>
     Never,
+    /// This is applied to `*mut T` to turn it into `*const T`
+    /// (This is _not_ applied to `T` on its own.)
+    /// This is done because `*mut T` is represented identically `*const T`,
+    /// but neither are represented identically to T.
+    ConstPtr,
 }
 
 #[derive(
@@ -192,6 +201,7 @@ pub enum TypDecoration {
 pub enum Primitive {
     Array,
     Slice,
+    Ptr, // Mut ptr, unless Const decoration is applied
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.
@@ -221,6 +231,11 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs, ImplPaths),
+    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
+    /// despite the fact that it is in fact a datatype
+    StrSlice,
+    /// Other primitive type (applied to type arguments)
+    Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
     /// (though needed sometimes to encode trait resolution)
     Decorate(TypDecoration, Typ),
@@ -241,13 +256,6 @@ pub enum TypX {
     ConstInt(BigInt),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
-    /// despite the fact that it is in fact a datatype
-    StrSlice,
-    /// UTF-8 character type
-    Char,
-    /// Other primitive type (applied to type arguments)
-    Primitive(Primitive, Typs),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -284,6 +292,8 @@ pub enum NullaryOpr {
     TraitBound(Path, Typs),
     /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
     TypEqualityBound(Path, Typs, Ident, Typ),
+    /// predicate representing const type bound, e.g., `const X: usize`
+    ConstTypBound(Typ, Typ),
     /// A failed InferSpecForLoopIter subexpression
     NoInferSpecForLoopIter,
 }
@@ -316,8 +326,6 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
-    /// Used only for handling casts from chars to ints
-    CharToInt,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
     /// Evaluate to Some(spec) if successful, None otherwise.
@@ -792,6 +800,7 @@ pub enum ExprX {
         cond: Option<Expr>,
         body: Expr,
         invs: LoopInvariants,
+        decrease: Exprs,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
@@ -851,6 +860,8 @@ pub enum GenericBoundX {
     /// An equality bound for associated type X of trait T(t1, ..., tn),
     /// written in Rust as T<t1, ..., tn, X = typ>
     TypEquality(Path, Typs, Ident, Typ),
+    /// Const param has type (e.g., const X: usize)
+    ConstTyp(Typ, Typ),
 }
 
 /// When instantiating type S<A> with A = T in a recursive type definition,
@@ -885,9 +896,6 @@ pub struct FunctionAttrsX {
     pub inline: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
-    /// Do not process or verify function body
-    /// TODO: needed only until https://github.com/verus-lang/verus/pull/1022 is merged
-    pub external_body: bool,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
@@ -920,6 +928,8 @@ pub struct FunctionAttrsX {
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
     pub prophecy_dependent: bool,
+    /// broadcast proof from size_of global
+    pub size_of_broadcast_proof: bool,
 }
 
 /// Function specification of its invariant mask

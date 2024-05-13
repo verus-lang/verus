@@ -359,6 +359,7 @@ impl ExpX {
             }
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot => {
@@ -372,7 +373,6 @@ impl ExpX {
                 UnaryOp::StrIsAscii => {
                     (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
                 }
-                UnaryOp::CharToInt => (format!("{} as char", exp.x.to_string_prec(global, 99)), 90),
                 UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
                     return exp.x.to_string_prec(global, precedence);
                 }

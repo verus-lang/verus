@@ -1,14 +1,28 @@
 #![allow(unused_imports)]
 use crate::seq::*;
 use crate::slice::SliceAdditionalSpecFns;
+use crate::view::*;
 use builtin::*;
 use builtin_macros::*;
 
 verus! {
 
-pub trait ArrayAdditionalSpecFns<T> {
-    spec fn view(&self) -> Seq<T>;
+impl<T, const N: usize> View for [T; N] {
+    type V = Seq<T>;
 
+    spec fn view(&self) -> Seq<T>;
+}
+
+impl<T: DeepView, const N: usize> DeepView for [T; N] {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
+pub trait ArrayAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends
             0 <= i < self.view().len(),
@@ -21,8 +35,6 @@ pub trait ArrayAdditionalExecFns<T> {
 }
 
 impl<T, const N: usize> ArrayAdditionalSpecFns<T> for [T; N] {
-    spec fn view(&self) -> Seq<T>;
-
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
@@ -52,11 +64,11 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
     &ar[i]
 }
 
-#[verifier(external_body)]
 pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] ar@.len()) == N,
 {
+    admit();
 }
 
 // Referenced by Verus' internal encoding for array literals
@@ -68,11 +80,11 @@ pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
 
 pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
-#[verifier(external_body)]
 pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 {
+    admit();
 }
 
 // Referenced by Verus' internal encoding for array -> slice coercion
@@ -93,6 +105,12 @@ pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
         ar@ == out@,
 {
     ar.as_slice()
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group group_array_axioms {
+    array_len_matches_n,
+    axiom_spec_array_as_slice,
 }
 
 } // verus!

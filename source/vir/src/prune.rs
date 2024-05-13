@@ -30,7 +30,6 @@ enum ReachedType {
     Lambda(usize),
     Datatype(Path),
     StrSlice,
-    Char,
     Primitive,
 }
 
@@ -108,7 +107,6 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::StrSlice => ReachedType::StrSlice,
-        TypX::Char => ReachedType::Char,
         TypX::Primitive(_, _) => ReachedType::Primitive,
     }
 }
@@ -212,7 +210,6 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Lambda(..)
         | TypX::Datatype(..)
         | TypX::StrSlice
-        | TypX::Char
         | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
@@ -292,6 +289,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
                         reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
                         path
+                    }
+                    crate::ast::GenericBoundX::ConstTyp(_, _) => {
+                        continue;
                     }
                 };
                 if function.x.mode == crate::ast::Mode::Spec || function.x.attrs.broadcast_forall {
@@ -529,6 +529,7 @@ pub fn prune_krate_for_module(
     }
     for f in this_module_reveals.iter().flat_map(|o| o.x.iter()) {
         revealed_functions.insert(f.clone());
+        state.reached_functions.insert(f.clone());
     }
     for group in &krate.reveal_groups {
         if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {
@@ -669,6 +670,10 @@ pub fn prune_krate_for_module(
                         bound_types.push(typ_to_reached_type(t));
                     }
                     bound_types.push(typ_to_reached_type(typ));
+                }
+                crate::ast::GenericBoundX::ConstTyp(t, s) => {
+                    bound_types.push(typ_to_reached_type(t));
+                    bound_types.push(typ_to_reached_type(s));
                 }
             }
         }

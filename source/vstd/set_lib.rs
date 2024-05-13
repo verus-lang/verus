@@ -14,6 +14,8 @@ use builtin_macros::*;
 
 verus! {
 
+broadcast use crate::set::group_set_axioms;
+
 impl<A> Set<A> {
     /// Is `true` if called by a "full" set, i.e., a set containing every element of type `A`.
     pub open spec fn is_full(self) -> bool {
@@ -846,7 +848,6 @@ pub proof fn lemma_set_properties<A>()
     }
 }
 
-#[verifier(external_body)]
 pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
     requires
         s.finite(),
@@ -854,6 +855,7 @@ pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
     ensures
         exists|a: A| s.contains(a),
 {
+    admit();  // REVIEW, should this be in `set`, or have a proof?
 }
 
 #[doc(hidden)]
@@ -909,6 +911,11 @@ macro_rules! assert_sets_equal_internal {
             ::builtin::assert_(::builtin::ext_equal(s1, s2));
         });
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group group_set_lib_axioms {
+    axiom_is_empty,
 }
 
 pub use assert_sets_equal_internal;

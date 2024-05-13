@@ -1126,8 +1126,54 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             )?;
 
             let f = match (ty1.kind(), ty2.kind()) {
-                (TyKind::Ref(_, t1, Mutability::Not), TyKind::Ref(_, t2, Mutability::Not)) => {
+                (
+                    TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: t1, mutbl: _ }),
+                    TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: t2, mutbl: _ }),
+                ) => {
                     match (t1.kind(), t2.kind()) {
+                        (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
+                            if el_ty1 == el_ty2 {
+                                // coercing from *mut [el_ty, const_len] -> *mut [el_ty]
+                                // (either *mut or *const is ok)
+                                if bctx.ctxt.no_vstd {
+                                    return err_span(
+                                        expr.span,
+                                        "Coercing an array to a slice is not supported with --no-vstd",
+                                    );
+                                }
+                                let fun =
+                                    vir::fun!("vstd" => "raw_ptr", "cast_array_ptr_to_slice_ptr");
+
+                                let arg_typ = undecorate_typ(&arg.typ);
+                                let array_typ = match &*arg_typ {
+                                    TypX::Primitive(Primitive::Ptr, typs) => &typs[0],
+                                    _ => {
+                                        return err_span(
+                                            expr.span,
+                                            "Verus internal error: expected Primitive::Ptr",
+                                        );
+                                    }
+                                };
+                                let typ_args = match &*undecorate_typ(array_typ) {
+                                    TypX::Primitive(Primitive::Array, typs) => typs.clone(),
+                                    _ => {
+                                        return err_span(
+                                            expr.span,
+                                            "Verus internal error: expected array",
+                                        );
+                                    }
+                                };
+                                Some((fun, typ_args))
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    }
+                }
+                _ => {
+                    let (ty1, ty2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
+                    match (ty1.kind(), ty2.kind()) {
                         (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2)) => {
                             if el_ty1 == el_ty2 {
                                 // coercing from &[el_ty, const_len] -> &[el_ty]
@@ -1155,7 +1201,6 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         _ => None,
                     }
                 }
-                _ => None,
             };
 
             if let Some((fun, typ_args)) = f {
@@ -1185,6 +1230,19 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     format!("unsizing operation from `{ty1:}` to `{ty2:}`")
                 );
             }
+        }
+        Adjust::Pointer(PointerCoercion::MutToConstPointer) => {
+            let mut new_expr: Arc<SpannedTyped<vir::ast::ExprX>> = expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                ExprModifier::REGULAR,
+                adjustments,
+                adjustment_idx - 1,
+            )?;
+            let typ =
+                Arc::new(TypX::Decorate(vir::ast::TypDecoration::ConstPtr, new_expr.typ.clone()));
+            Arc::make_mut(&mut new_expr).typ = typ;
+            Ok(new_expr)
         }
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
@@ -1515,22 +1573,44 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         },
         ExprKind::Cast(source, _) => {
-            let source_vir = &expr_to_vir(bctx, source, modifier)?;
-            let source_ty = &source_vir.typ;
-            let to_ty = expr_typ()?;
-            match (&*undecorate_typ(source_ty), &*undecorate_typ(&to_ty)) {
-                (TypX::Int(_), TypX::Int(_)) => {
-                    Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
+            let source_vir = expr_to_vir(bctx, source, modifier)?;
+
+            let source_ty = bctx.types.expr_ty_adjusted(source);
+            let to_ty = bctx.types.expr_ty(expr);
+            match is_ptr_cast(bctx, expr.span, source_ty, to_ty)? {
+                Some(PtrCastKind::Trivial) => {
+                    return Ok(source_vir);
                 }
-                (TypX::Char, TypX::Int(_)) => {
-                    let source_unicode =
-                        mk_expr(ExprX::Unary(UnaryOp::CharToInt, source_vir.clone()))?;
-                    Ok(mk_ty_clip(&to_ty, &source_unicode, expr_vattrs.truncate))
+                Some(PtrCastKind::Complex(fun, typ_args)) => {
+                    let autospec_usage =
+                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                    let call_target = CallTarget::Fun(
+                        vir::ast::CallTargetKind::Static,
+                        fun,
+                        typ_args,
+                        Arc::new(vec![]),
+                        autospec_usage,
+                    );
+                    let args = Arc::new(vec![source_vir]);
+                    let x = ExprX::Call(call_target, args);
+                    return mk_expr(x);
+                }
+                None => {}
+            }
+
+            let source_vir_ty = &source_vir.typ;
+            let to_vir_ty = expr_typ()?;
+            match (&*undecorate_typ(source_vir_ty), &*undecorate_typ(&to_vir_ty)) {
+                (TypX::Int(_), TypX::Int(_)) => {
+                    Ok(mk_ty_clip(&to_vir_ty, &source_vir, expr_vattrs.truncate))
                 }
                 _ => {
                     return err_span(
                         expr.span,
-                        "Verus currently only supports casts from integer types and `char` to integer types",
+                        format!(
+                            "Verus does not support this cast: `{:#?}` to `{:#?}`",
+                            source_ty, to_ty
+                        ),
                     );
                 }
             }
@@ -1640,6 +1720,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         IntRange::I(_) | IntRange::ISize => {
                             // Non-Euclidean division, which will need more encoding
                             unsupported_err!(expr.span, "div/mod on signed finite-width integers")
+                        }
+                        IntRange::Char => {
+                            unsupported_err!(expr.span, "div/mod on char type")
                         }
                     }
                 }
@@ -1873,6 +1956,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 cond: None,
                 body,
                 invs: header.loop_invariants(),
+                decrease: header.decrease,
             })
         }
         ExprKind::Loop(
@@ -1923,9 +2007,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let cond = Some(expr_to_vir(bctx, cond, ExprModifier::REGULAR)?);
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
-            if header.decrease.len() > 0 {
-                return err_span(expr.span, "termination checking of loops is not supported");
-            }
             let label = label.map(|l| l.ident.to_string());
             mk_expr(ExprX::Loop {
                 loop_isolation: loop_isolation(),
@@ -1934,6 +2015,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 cond,
                 body,
                 invs: header.loop_invariants(),
+                decrease: header.decrease,
             })
         }
         ExprKind::Ret(expr) => {
@@ -2502,5 +2584,82 @@ pub(crate) fn closure_to_vir<'tcx>(
         Ok(bctx.spanned_typed_new(closure_expr.span, &closure_vir_typ, exprx))
     } else {
         panic!("closure_to_vir expects ExprKind::Closure");
+    }
+}
+
+fn remove_decoration_typs_for_unsizing<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty1: rustc_middle::ty::Ty<'tcx>,
+    ty2: rustc_middle::ty::Ty<'tcx>,
+) -> (rustc_middle::ty::Ty<'tcx>, rustc_middle::ty::Ty<'tcx>) {
+    match (ty1.kind(), ty2.kind()) {
+        (TyKind::Ref(_, t1, Mutability::Not), TyKind::Ref(_, t2, Mutability::Not)) => {
+            remove_decoration_typs_for_unsizing(tcx, *t1, *t2)
+        }
+        (TyKind::Adt(AdtDef(adt_def_data1), args1), TyKind::Adt(AdtDef(adt_def_data2), args2))
+            if verus_items::get_rust_item(tcx, adt_def_data1.did)
+                == Some(verus_items::RustItem::Box)
+                && verus_items::get_rust_item(tcx, adt_def_data2.did)
+                    == Some(verus_items::RustItem::Box) =>
+        {
+            let rustc_middle::ty::GenericArgKind::Type(t1) = args1[0].unpack() else {
+                panic!("unexpected type argument")
+            };
+            let rustc_middle::ty::GenericArgKind::Type(t2) = args2[0].unpack() else {
+                panic!("unexpected type argument")
+            };
+            remove_decoration_typs_for_unsizing(tcx, t1, t2)
+        }
+        _ => (ty1, ty2),
+    }
+}
+
+enum PtrCastKind {
+    Trivial,
+    Complex(vir::ast::Fun, vir::ast::Typs),
+}
+
+fn is_ptr_cast<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    src: rustc_middle::ty::Ty<'tcx>,
+    dst: rustc_middle::ty::Ty<'tcx>,
+) -> Result<Option<PtrCastKind>, VirErr> {
+    // Mutability can always be ignored
+    match (src.kind(), dst.kind()) {
+        (
+            TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: ty1, mutbl: _ }),
+            TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: ty2, mutbl: _ }),
+        ) => {
+            if ty1 == ty2 {
+                return Ok(Some(PtrCastKind::Trivial));
+            } else if ty2.is_sized(bctx.ctxt.tcx, bctx.ctxt.tcx.param_env(bctx.fun_id)) {
+                let src_ty = mid_ty_to_vir(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    span,
+                    ty1,
+                    false,
+                )?;
+                let dst_ty = mid_ty_to_vir(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    span,
+                    ty2,
+                    false,
+                )?;
+                let fun = vir::fun!("vstd" => "raw_ptr", "cast_ptr_to_thin_ptr");
+                let typs = Arc::new(vec![src_ty, dst_ty]);
+                return Ok(Some(PtrCastKind::Complex(fun, typs)));
+            }
+
+            //match (ty1.kind(), ty2.kind()) {
+            //
+            //}
+            return Ok(None);
+        }
+        _ => Ok(None),
     }
 }

@@ -265,6 +265,8 @@ pub struct Verifier {
     pub time_vir_rust_to_vir: Duration,
     /// time spent in hir when creating the VIR for the crate
     pub time_hir: Duration,
+    /// time spent importing VIR from other crates
+    pub time_import: Duration,
     /// execution times for each bucket run in parallel
     pub bucket_times: HashMap<BucketId, BucketStats>,
     /// smt runtimes for each function per bucket
@@ -373,6 +375,7 @@ impl Verifier {
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
+            time_import: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
 
@@ -407,6 +410,7 @@ impl Verifier {
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
+            time_import: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_times: HashMap::new(),
@@ -2316,7 +2320,7 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
-        let time0 = Instant::now();
+        let time_hir0 = Instant::now();
 
         match rustc_hir_analysis::check_crate(tcx) {
             Ok(()) => {}
@@ -2356,8 +2360,8 @@ impl Verifier {
             })
         };
 
-        let time1 = Instant::now();
-        self.time_hir = time1 - time0;
+        let time_hir1 = Instant::now();
+        self.time_hir = time_hir1 - time_hir0;
 
         let time0 = Instant::now();
 
@@ -2391,7 +2395,7 @@ impl Verifier {
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
         });
-        let multi_crate = self.args.export.is_some() || import_len > 0;
+        let multi_crate = self.args.export.is_some() || import_len > 0 || self.args.use_crate_name;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
@@ -2427,6 +2431,12 @@ impl Verifier {
         // If this turns out to be slow, we could keep the library crates separate from
         // the new crate.  (We do need to have all the crate definitions available in some form,
         // because well_formed and modes checking look up definitions from libraries.)
+        // Currently, the most expensive merged-crate operations are (most expensive first):
+        // - ast_simplify::simplify_krate
+        // - modes::check_crate
+        // - traits::demote_foreign_traits
+        // - GlobalCtx::new
+        // - well_formed::check_crate
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
 
@@ -2579,9 +2589,16 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
+        // write_dep_info will internally check whether the `--emit=dep-info` flag is set
+        if let Err(_) = queries.write_dep_info() {
+            // ErrorGuaranteed indicates than an error has already been reported to the user, so we can just exit
+            std::process::exit(-1);
+        }
+
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
+            let time_import0 = Instant::now();
             let imported = match crate::import_export::import_crates(&self.verifier.args) {
                 Ok(imported) => imported,
                 Err(err) => {
@@ -2592,6 +2609,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
             };
+            let time_import1 = Instant::now();
+            self.verifier.time_import = time_import1 - time_import0;
             let verus_items =
                 Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
             let spans = SpanContextX::new(

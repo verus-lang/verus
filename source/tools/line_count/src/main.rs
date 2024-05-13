@@ -1541,7 +1541,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
     }
     let mut multiline_comment = 0;
     let mut kind_multiline_override = None;
-    let override_re = regex::Regex::new(r"\$line_count\$(([A-Za-z,]+)(\$\{)?\$)|(\}\$)").unwrap();
+    let override_re = regex::Regex::new(r"\$line_count\$(([A-Za-z,]*)(\$\{)?\$)|(\}\$)").unwrap();
     for line in file_stats.lines.iter_mut() {
         let trimmed = line.text.trim();
         let mut start_not_comment = (multiline_comment == 0).then(|| 0);
@@ -1551,7 +1551,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
             .chain(trimmed.match_indices("*/").map(|(m, _)| (m + 2, false)))
             .collect::<Vec<_>>();
         all_comment_indices.sort_by_key(|(m, _)| *m);
-        let mut entriely_comment = true;
+        let mut entirely_comment = true;
         let had_comment_start_end = all_comment_indices.len() > 0;
         for (i, s) in all_comment_indices {
             if !s {
@@ -1568,12 +1568,13 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                         .filter(|x| x.is_empty())
                     {
                     } else {
-                        entriely_comment = false;
+                        entirely_comment = false;
                     }
                 }
             }
         }
-        if entriely_comment && (multiline_comment > 0 || had_comment_start_end) {
+        let entirely_comment = entirely_comment && (multiline_comment > 0 || had_comment_start_end);
+        if entirely_comment {
             line.line_content = HashSet::from([LineContent::Comment]);
             line.kinds = HashSet::from([CodeKind::Comment])
         }
@@ -1597,34 +1598,38 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         }
         if let Some(captures) = override_re.captures(trimmed) {
             if captures.get(1).is_some() {
-                let kinds = captures
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .split(',')
-                    .map(|x| match x {
-                        "Trusted" => CodeKind::Trusted,
-                        "Spec" => CodeKind::Spec,
-                        "Proof" => CodeKind::Proof,
-                        "Exec" => CodeKind::Exec,
-                        "Comment" => CodeKind::Comment,
-                        "Layout" => CodeKind::Layout,
-                        "Directives" => CodeKind::Directives,
-                        "Definitions" => CodeKind::Definitions,
-                        _ => panic!("unknown code kind {}", x),
-                    })
-                    .collect::<HashSet<_>>();
+                let kinds_str = captures.get(2).unwrap().as_str();
+                let kinds = if kinds_str != "" {
+                    kinds_str
+                        .split(',')
+                        .map(|x| match x {
+                            "Trusted" => CodeKind::Trusted,
+                            "Spec" => CodeKind::Spec,
+                            "Proof" => CodeKind::Proof,
+                            "Exec" => CodeKind::Exec,
+                            "Comment" => CodeKind::Comment,
+                            "Layout" => CodeKind::Layout,
+                            "Directives" => CodeKind::Directives,
+                            "Definitions" => CodeKind::Definitions,
+                            _ => panic!("unknown code kind {}", x),
+                        })
+                        .collect::<HashSet<_>>()
+                } else {
+                    HashSet::new()
+                };
                 if captures.get(3).is_some() {
                     kind_multiline_override = Some(kinds);
                 } else {
                     line.kinds = kinds.clone();
                 }
             }
-            if let Some(kinds) = &kind_multiline_override {
-                line.kinds = kinds.clone();
-            }
             if captures.get(4).is_some() {
                 kind_multiline_override = None;
+            }
+        }
+        if let Some(kinds) = &kind_multiline_override {
+            if !entirely_comment {
+                line.kinds = kinds.clone();
             }
         }
     }

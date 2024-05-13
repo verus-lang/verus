@@ -54,12 +54,9 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> bool {
     match &**typ {
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::ConstInt(_)
-        | TypX::StrSlice
-        | TypX::Char
-        | TypX::Primitive(_, _) => true,
+        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_) | TypX::StrSlice | TypX::Primitive(_, _) => {
+            true
+        }
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -176,7 +173,6 @@ fn check_positive_uses(
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
         TypX::StrSlice => Ok(()),
-        TypX::Char => Ok(()),
         TypX::Lambda(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative
@@ -353,6 +349,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
             match &**bound {
                 GenericBoundX::Trait(..) => {}
                 GenericBoundX::TypEquality(..) => {}
+                GenericBoundX::ConstTyp(..) => {}
             }
         }
     }
@@ -378,6 +375,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
                     // no harm in checking again.)
                     check_positive_uses(datatype, &global, &local, None, typ)?;
                 }
+                GenericBoundX::ConstTyp(..) => {}
             }
         }
         for variant in datatype.x.variants.iter() {
@@ -588,6 +586,9 @@ pub(crate) fn suppress_bound_in_trait_decl(
         GenericBoundX::TypEquality(..) => {
             return false;
         }
+        GenericBoundX::ConstTyp(..) => {
+            return false;
+        }
     };
     if trait_path == bound_path {
         assert!(args.len() <= typ_params.len());
@@ -615,6 +616,9 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
         let u_path = match &**bound {
             GenericBoundX::Trait(u_path, _) => u_path,
             GenericBoundX::TypEquality(u_path, _, _, _) => u_path,
+            GenericBoundX::ConstTyp(..) => {
+                continue;
+            }
         };
         let u_node = Node::Trait(u_path.clone());
         call_graph.add_edge(t_node.clone(), u_node);

@@ -94,7 +94,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::StrSlice, TypX::StrSlice) => true,
-        (TypX::Char, TypX::Char) => true,
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
@@ -114,7 +113,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::ConstInt(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::StrSlice, _) => false,
-        (TypX::Char, _) => false,
         (TypX::FnDef(..), _) => false,
     }
 }
@@ -166,7 +164,13 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
             GenericBoundX::TypEquality(x1, ts1, a1, t1),
             GenericBoundX::TypEquality(x2, ts2, a2, t2),
         ) => x1 == x2 && n_types_equal(ts1, ts2) && a1 == a2 && types_equal(t1, t2),
-        (GenericBoundX::Trait(..) | GenericBoundX::TypEquality(..), _) => false,
+        (GenericBoundX::ConstTyp(t1, s1), GenericBoundX::ConstTyp(t2, s2)) => {
+            types_equal(t1, t2) && types_equal(s1, s2)
+        }
+        (
+            GenericBoundX::Trait(..) | GenericBoundX::TypEquality(..) | GenericBoundX::ConstTyp(..),
+            _,
+        ) => false,
     }
 }
 
@@ -224,11 +228,12 @@ impl IntegerTypeBitwidth {
     }
 }
 
+/// Returns None if the given IntRange is unbounded or not a power-of-2 range (e.g., Char)
 pub fn bitwidth_from_int_range(int_range: &IntRange) -> Option<IntegerTypeBitwidth> {
     match int_range {
         IntRange::U(size) | IntRange::I(size) => Some(IntegerTypeBitwidth::Width(*size)),
         IntRange::USize | IntRange::ISize => Some(IntegerTypeBitwidth::ArchWordSize),
-        IntRange::Int | IntRange::Nat => None,
+        IntRange::Int | IntRange::Nat | IntRange::Char => None,
     }
 }
 
@@ -260,7 +265,11 @@ impl IntRange {
     pub fn is_bounded(&self) -> bool {
         match self {
             IntRange::Int | IntRange::Nat => false,
-            IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize => true,
+            IntRange::U(_)
+            | IntRange::I(_)
+            | IntRange::USize
+            | IntRange::ISize
+            | IntRange::Char => true,
         }
     }
 }
@@ -610,6 +619,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::Int) => "int".to_owned(),
         TypX::Int(IntRange::ISize) => "isize".to_owned(),
         TypX::Int(IntRange::USize) => "usize".to_owned(),
+        TypX::Int(IntRange::Char) => "char".to_owned(),
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
         TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
@@ -628,6 +638,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             match prim {
                 crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
                 crate::ast::Primitive::Slice => format!("[{typs_str}]"),
+                crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
             }
         }
         TypX::Datatype(path, typs, _) => format!(
@@ -645,6 +656,14 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Decorate(TypDecoration::MutRef, typ) => {
             format!("&mut {}", typ_to_diagnostic_str(typ))
         }
+        TypX::Decorate(TypDecoration::ConstPtr, typ) => match &**typ {
+            TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
+                format!("*const {}", typ_to_diagnostic_str(&typs[0]))
+            }
+            _ => {
+                format!("[Internal Error *const decoration] {}", typ_to_diagnostic_str(typ))
+            }
+        },
         TypX::Decorate(
             decoration @ (TypDecoration::Box
             | TypDecoration::Rc
@@ -676,7 +695,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::ConstInt(_) => format!("constint"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::StrSlice => format!("StrSlice"),
-        TypX::Char => format!("char"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
             path_as_friendly_rust_name(&f.path),

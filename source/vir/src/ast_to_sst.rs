@@ -80,6 +80,7 @@ pub(crate) struct State<'a> {
     // Statics that are referenced (not counting statics in loops)
     pub statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
+    loop_id_counter: u64,
 }
 
 #[derive(Clone)]
@@ -147,6 +148,7 @@ impl<'a> State<'a> {
             containing_closure: None,
             statics: IndexSet::new(),
             assert_id_counter: 0,
+            loop_id_counter: 0,
         }
     }
 
@@ -1973,9 +1975,11 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Match(..) => {
             panic!("internal error: Match should have been simplified by ast_simplify")
         }
-        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs } => {
+        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => {
             let is_for_loop = *is_for_loop;
             let loop_isolation = *loop_isolation;
+            let id = state.loop_id_counter;
+            state.loop_id_counter += 1;
             let invs = if is_for_loop && !loop_isolation {
                 // The syntax macro doesn't have enough context to know whether ensures is needed,
                 // so we have to fix up the invariants here.
@@ -2035,6 +2039,12 @@ pub(crate) fn expr_to_stm_opt(
                 let inv1 = crate::sst::LoopInv { inv: exp, at_entry, at_exit };
                 invs1.push(inv1);
             }
+            let mut decrease1: Vec<Exp> = Vec::new();
+            for dec in decrease.iter() {
+                let (rec, exp) = expr_to_pure_exp_check(ctx, state, dec)?;
+                check_recommends.extend(rec);
+                decrease1.push(exp);
+            }
             if ctx.checking_spec_preconditions() {
                 stms1.splice(0..0, check_recommends);
             }
@@ -2055,15 +2065,20 @@ pub(crate) fn expr_to_stm_opt(
                 // !loop_isolation handling expects a "loop", not a "while"
                 assert!(cnd.is_none());
             }
+            let (decls, _) =
+                crate::recursion::mk_decreases_at_entry(ctx, &expr.span, Some(id), &decrease1)?;
+            state.local_decls.extend(decls);
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
                     loop_isolation,
                     is_for_loop,
+                    id,
                     label: label.clone(),
                     cond: cnd,
                     body: stms_to_one_stm(&body.span, stms1),
                     invs: Arc::new(invs1),
+                    decrease: Arc::new(decrease1),
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: Arc::new(vec![]),

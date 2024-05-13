@@ -1,9 +1,9 @@
 use crate::ast::{
     BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX, UnaryOp,
 };
-use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
+use crate::ast_util::{ident_var, mk_and, mk_not};
 use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
-use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
+use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
@@ -192,7 +192,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
     let mut discovered_error = None;
     let mut discovered_assert_id = None;
     let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
-    context.smt_log.log_assert(&str_var(QUERY));
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
     context.set_z3_param_u32("rlimit", context.rlimit, false);
@@ -415,8 +414,7 @@ pub(crate) fn smt_check_query<'ctx>(
 
     // check assertion
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
-    context.smt_log.log_decl(&Arc::new(DeclX::Const(str_ident(QUERY), Arc::new(TypX::Bool))));
-    context.smt_log.log_assert(&mk_implies(&str_var(QUERY), &not_expr));
+    context.smt_log.log_assert(&not_expr);
     let result =
         smt_check_assertion(context, diagnostics, infos, air_model, false, report_long_running);
 

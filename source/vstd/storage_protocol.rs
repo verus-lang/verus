@@ -3,6 +3,7 @@ use crate::prelude::*;
 
 verus! {
 
+broadcast use crate::set::group_set_axioms, crate::map::group_map_axioms;
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
 /// of "PCM" ghost state, which we also have an interface for [here](crate::pcm::Resource).
@@ -24,6 +25,7 @@ verus! {
 /// For applications, I generally advise using the
 /// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
 /// rather than using this interface directly.
+
 #[verifier::external_body]
 #[verifier::accept_recursive_types(K)]
 #[verifier::accept_recursive_types(P)]

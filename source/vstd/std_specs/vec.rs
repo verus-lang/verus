@@ -19,16 +19,6 @@ pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 #[verifier(external_body)]
 pub struct ExGlobal(alloc::alloc::Global);
 
-////// Declare 'view' function
-pub trait VecAdditionalSpecFns<T> {
-    spec fn spec_len(&self) -> nat;
-
-    spec fn spec_index(&self, i: int) -> T
-        recommends
-            0 <= i < self.spec_len(),
-    ;
-}
-
 impl<T, A: Allocator> View for Vec<T, A> {
     type V = Seq<T>;
 
@@ -39,16 +29,19 @@ impl<T: DeepView, A: Allocator> DeepView for Vec<T, A> {
     type V = Seq<T::V>;
 
     open spec fn deep_view(&self) -> Seq<T::V> {
-        Seq::new(self.view().len(), |i: int| self[i].deep_view())
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
     }
 }
 
-impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
-    #[verifier(inline)]
-    open spec fn spec_len(&self) -> nat {
-        self.view().len()
-    }
+pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
+    spec fn spec_index(&self, i: int) -> T
+        recommends
+            0 <= i < self.view().len(),
+    ;
+}
 
+impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     #[verifier(inline)]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
@@ -81,11 +74,11 @@ pub open spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
 
 // This axiom is slightly better than defining spec_vec_len to just be `v@.len() as usize`
 // (the axiom also shows that v@.len() is in-bounds for usize)
-#[verifier(external_body)]
 pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
     ensures
         #[trigger] spec_vec_len(v) == v@.len(),
 {
+    admit();
 }
 
 #[verifier::external_fn_specification]
@@ -253,6 +246,11 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
         len > vec.len() ==> vec@ == old(vec)@,
 {
     vec.truncate(len)
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group group_vec_axioms {
+    axiom_spec_len,
 }
 
 } // verus!

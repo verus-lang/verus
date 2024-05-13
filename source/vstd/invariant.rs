@@ -123,7 +123,7 @@ pub trait InvariantPredicate<K, V> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct AtomicInvariant<K, V, Pred> {
     dummy: builtin::SyncSendIfSend<V>,
-    dummy1: core::marker::PhantomData<(K, Pred)>,
+    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 /// A `LocalInvariant` is a ghost object that provides "interior mutability"
@@ -164,7 +164,7 @@ pub struct AtomicInvariant<K, V, Pred> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct LocalInvariant<K, V, Pred> {
     dummy: builtin::SendIfSend<V>,
-    dummy1: core::marker::PhantomData<(K, Pred)>, // TODO ignore Send/Sync here
+    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 macro_rules! declare_invariant_impl {
@@ -217,6 +217,7 @@ macro_rules! declare_invariant_impl {
             #[verifier::external_body]
             pub proof fn into_inner(#[verifier::proof] self) -> (tracked v: V)
                 ensures self.inv(v),
+                opens_invariants [ self.namespace() ]
             {
                 unimplemented!();
             }
@@ -235,7 +236,26 @@ pub struct InvariantBlockGuard;
 
 // In the "Logical Paradoxes" section of the Iris 4.1 Reference
 // (`https://plv.mpi-sws.org/iris/appendix-4.1.pdf`), they show that
-// opening invariants carries the risk of unsoundness. One solution to
+// opening invariants carries the risk of unsoundness.
+//
+// The paradox is similar to "Landin's knot", a short program that implements
+// an infinite loop by combining two features: higher-order closures
+// and mutable state:
+//
+//    let r := new_ref();
+//    r := () -> {
+//        let f = !r;
+//        f();
+//    };
+//    let f = !r;
+//    f();
+//
+// Invariants effectively serve as "mutable state"
+// Therefore, in order to implement certain higher-order features
+// like "proof closures" or "dyn", we need to make sure we have an
+// answer to this paradox.
+//
+// One solution to
 // this, described in the paper "Later Credits: Resourceful Reasoning
 // for the Later Modality" by Spies et al. (available at
 // `https://plv.mpi-sws.org/later-credits/paper-later-credits.pdf`) is
@@ -298,16 +318,13 @@ pub fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>)
 //   });
 //
 //  where `inner` will have type `X`.
-//
-//  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
-//  last the entire block.
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
     _inv: &'a AtomicInvariant<K, V, Pred>,
-) -> (&'a InvariantBlockGuard, V) {
+) -> (InvariantBlockGuard, V) {
     unimplemented!();
 }
 
@@ -317,7 +334,7 @@ pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
 #[verifier::external] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
     _inv: &'a LocalInvariant<K, V, Pred>,
-) -> (&'a InvariantBlockGuard, V) {
+) -> (InvariantBlockGuard, V) {
     unimplemented!();
 }
 
@@ -325,7 +342,7 @@ pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_invariant_end"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
-pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
+pub fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) {
     unimplemented!();
 }
 

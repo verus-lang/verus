@@ -18,7 +18,13 @@ use builtin_macros::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power::{pow, lemma_pow_positive, lemma_pow_auto};
+use crate::arithmetic::power::{
+    pow,
+    lemma_pow_positive,
+    group_pow_properties,
+    lemma_pow_adds,
+    lemma_pow_strictly_increases,
+};
 #[cfg(verus_keep_ghost)]
 use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
 #[cfg(verus_keep_ghost)]
@@ -84,6 +90,49 @@ pub proof fn lemma_pow2_auto()
     }
 }
 
+/// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2`.
+pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
+    ensures
+        pow2(e1 + e2) == pow2(e1) * pow2(e2),
+{
+    lemma_pow2(e1);
+    lemma_pow2(e2);
+    lemma_pow2(e1 + e2);
+    lemma_pow_adds(2, e1, e2);
+}
+
+/// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2` for all exponents `e1`, `e2`.
+pub proof fn lemma_pow2_adds_auto()
+    ensures
+        forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2),
+{
+    assert forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2) by {
+        lemma_pow2_adds(e1, e2);
+    }
+}
+
+/// Proof that if `e1 < e2` then `2^e1 < 2^e2` for given `e1`, `e2`.
+pub proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
+    requires
+        e1 < e2,
+    ensures
+        pow2(e1) < pow2(e2),
+{
+    lemma_pow2(e1);
+    lemma_pow2(e2);
+    lemma_pow_strictly_increases(2, e1, e2);
+}
+
+/// Proof that if `e1 < e2` then `2^e1 < 2^e2` for all `e1`, `e2`.
+pub proof fn lemma_pow2_strictly_increases_auto()
+    ensures
+        forall|e1: nat, e2: nat| e1 < e2 ==> #[trigger] pow2(e1) < #[trigger] pow2(e2),
+{
+    assert forall|e1: nat, e2: nat| e1 < e2 implies #[trigger] pow2(e1) < #[trigger] pow2(e2) by {
+        lemma_pow2_strictly_increases(e1, e2);
+    }
+}
+
 /// Proof that, for the given positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
 pub proof fn lemma_pow2_mask_div2(e: nat)
     requires
@@ -93,7 +142,8 @@ pub proof fn lemma_pow2_mask_div2(e: nat)
 {
     let f = |e: int| 0 < e ==> (pow2(e as nat) - 1) / 2 == pow2((e - 1) as nat) - 1;
     assert forall|i: int| #[trigger] is_le(0, i) && f(i) implies f(i + 1) by {
-        lemma_pow_auto();
+        broadcast use group_pow_properties;
+
         lemma_pow2_auto();
     };
     lemma_mul_induction_auto(e as int, f);

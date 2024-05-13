@@ -89,21 +89,16 @@ macro_rules! declare_atomic_type {
 
             // TODO into_inner
 
-            /*
             #[inline(always)]
-            pub fn into_inner(self) -> ($value_ty, G) {
-                requires(self.well_formed());
-                ensures(|res: ($value_ty, G)| {
-                    let (v, g) = res;
-                    Pred::atomic_inv(self.constant(), v, g)
-                });
-
-                let { patomic, atomic_inv } = self;
-                let (perm, g) = atomic_inv.into_inner();
-                let v = patomic.into_inner(perm);
-                (v, g)
+            pub fn into_inner(self) -> (res: ($value_ty, Tracked<G>))
+                requires self.well_formed(),
+                ensures Pred::atomic_inv(self.constant(), res.0, res.1@),
+            {
+                let Self { patomic, atomic_inv: Tracked(atomic_inv) } = self;
+                let tracked (perm, g) = atomic_inv.into_inner();
+                let v = patomic.into_inner(Tracked(perm));
+                (v, Tracked(g))
             }
-            */
         }
 
         }
@@ -420,6 +415,7 @@ macro_rules! atomic_with_ghost_no_op {
             $crate::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
                 let tracked (perm, mut $g) = pair;
+                let ghost result = perm.view().value;
                 let ghost $res = result;
                 let ghost $prev = result;
                 let ghost $next = result;

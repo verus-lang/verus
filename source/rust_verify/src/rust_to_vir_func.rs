@@ -978,7 +978,6 @@ pub(crate) fn check_item_fn<'tcx>(
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
-        external_body: vattrs.external_body,
         broadcast_forall: vattrs.broadcast_forall,
         bit_vector: vattrs.bit_vector,
         autospec,
@@ -993,6 +992,7 @@ pub(crate) fn check_item_fn<'tcx>(
         print_zero_args: n_params == 0,
         print_as_method: has_self_param,
         prophecy_dependent: vattrs.prophecy_dependent,
+        size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
     };
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -1128,6 +1128,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
                                 name.clone(),
                                 typ,
                             )
+                        }
+                        GenericBoundX::ConstTyp(t1, t2) => {
+                            let t1 = subst_typ(&typ_substs, t1);
+                            let t2 = subst_typ(&typ_substs, t2);
+                            GenericBoundX::ConstTyp(t1, t2)
                         }
                     };
                     Arc::new(gbx)

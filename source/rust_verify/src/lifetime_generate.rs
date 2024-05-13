@@ -427,34 +427,19 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         TyKind::Tuple(_) => Box::new(TypX::Tuple(
             ty.tuple_fields().iter().map(|t| erase_ty(ctxt, state, &t)).collect(),
         )),
+        TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: t, mutbl }) => {
+            let ty = erase_ty(ctxt, state, t);
+            Box::new(TypX::RawPtr(ty, *mutbl))
+        }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
             state.reach_datatype(ctxt, did);
             let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, did);
 
             let rust_item = verus_items::get_rust_item(ctxt.tcx, did);
-            let mut typ_args: Vec<Typ> = Vec::new();
             let (_, args) = adt_args(rust_item, args);
 
-            for arg in args.iter() {
-                match arg.unpack() {
-                    rustc_middle::ty::GenericArgKind::Type(t) => {
-                        typ_args.push(erase_ty(ctxt, state, &t));
-                    }
-                    rustc_middle::ty::GenericArgKind::Lifetime(region) => {
-                        let lifetime = erase_hir_region(ctxt, state, &region);
-                        if let Some(lifetime) = lifetime {
-                            typ_args.push(Box::new(TypX::TypParam(lifetime)));
-                        } else {
-                            typ_args.push(Box::new(TypX::Primitive("'_".to_string())));
-                        }
-                    }
-                    rustc_middle::ty::GenericArgKind::Const(cnst) => {
-                        let t = erase_generic_const(ctxt, state, &cnst);
-                        typ_args.push(t);
-                    }
-                }
-            }
+            let (typ_args, _) = erase_generic_args(ctxt, state, args, false);
             let datatype_name = match rust_item {
                 Some(RustItem::Box) => {
                     assert!(typ_args.len() == 1);
@@ -512,33 +497,21 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             let name = state.typ_param(assoc_item.name.to_string(), None);
             let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
             if let Some(trait_def) = trait_def {
-                // TODO: ignoring non-type arguments is probably not okay here
-                let typs = t.args.iter().filter_map(|ta| ta.as_type()).collect::<Vec<_>>();
-                if typs.len() >= 1 {
-                    let trait_path_vir = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def);
-                    erase_trait(ctxt, state, trait_def);
-                    // If the type being erased is in one of the definitions of the trait it references,
-                    // do not expect it to be in the `trait_decl_set`: we are in the process of erasing
-                    // this very trait.
-                    assert!(
-                        state.enclosing_trait_ids.contains(&trait_def)
-                            || state.trait_decl_set.contains(&trait_path_vir)
-                    );
-                    let trait_path = state.trait_name(&trait_path_vir);
-                    let mut typs_iter = typs.iter();
-                    let self_ty = typs_iter.next().unwrap();
-                    let self_typ = erase_ty(ctxt, state, &self_ty);
-                    let mut trait_typ_args = Vec::new();
-                    for ty in typs_iter {
-                        let t = erase_ty(ctxt, state, &ty);
-                        trait_typ_args.push(t);
-                    }
-                    let trait_as_datatype =
-                        Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
-                    Box::new(TypX::Projection { self_typ, trait_as_datatype, name })
-                } else {
-                    panic!("unexpected TyKind::Alias");
-                }
+                let (trait_typ_args, self_typ) = erase_generic_args(ctxt, state, t.args, true);
+                let self_typ = self_typ.expect("self_typ");
+                let trait_path_vir = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def);
+                erase_trait(ctxt, state, trait_def);
+                // If the type being erased is in one of the definitions of the trait it references,
+                // do not expect it to be in the `trait_decl_set`: we are in the process of erasing
+                // this very trait.
+                assert!(
+                    state.enclosing_trait_ids.contains(&trait_def)
+                        || state.trait_decl_set.contains(&trait_path_vir)
+                );
+                let trait_path = state.trait_name(&trait_path_vir);
+                let trait_as_datatype =
+                    Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
+                Box::new(TypX::Projection { self_typ, trait_as_datatype, name })
             } else {
                 panic!("unexpected TyKind::Alias");
             }
@@ -552,11 +525,50 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
     }
 }
 
+fn erase_generic_args<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    args: &[rustc_middle::ty::GenericArg<'tcx>],
+    mut skip_self: bool,
+) -> (Vec<Typ>, Option<Typ>) {
+    let mut lifetimes: Vec<Typ> = Vec::new();
+    let mut typ_args: Vec<Typ> = Vec::new();
+    let mut self_typ: Option<Typ> = None;
+    for arg in args.iter() {
+        match arg.unpack() {
+            rustc_middle::ty::GenericArgKind::Type(t) => {
+                let typ = erase_ty(ctxt, state, &t);
+                if skip_self {
+                    self_typ = Some(typ);
+                } else {
+                    typ_args.push(typ);
+                }
+                skip_self = false;
+            }
+            rustc_middle::ty::GenericArgKind::Lifetime(region) => {
+                let lifetime = erase_hir_region(ctxt, state, &region);
+                if let Some(lifetime) = lifetime {
+                    lifetimes.push(Box::new(TypX::TypParam(lifetime)));
+                } else {
+                    lifetimes.push(Box::new(TypX::Primitive("'_".to_string())));
+                }
+            }
+            rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                let t = erase_generic_const(ctxt, state, &cnst);
+                typ_args.push(t);
+            }
+        }
+    }
+    lifetimes.extend(typ_args);
+    (lifetimes, self_typ)
+}
+
 fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> Pattern {
     let mk_pat = |p: PatternX| Box::new((pat.span, p));
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
         PatKind::Lit(_expr) => mk_pat(PatternX::Wildcard),
+        PatKind::Range(_, _, _) => mk_pat(PatternX::Wildcard),
         PatKind::Binding(ann, hir_id, x, None) => {
             if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
                 mk_pat(PatternX::Wildcard)
@@ -1728,8 +1740,7 @@ fn erase_mir_predicates<'a, 'tcx>(
                     Some(Bound::Copy)
                 } else if state.trait_decl_set.contains(&trait_path) {
                     let substs = pred.trait_ref.args;
-                    let trait_typ_args =
-                        substs.types().skip(1).map(|ty| erase_ty(ctxt, state, &ty)).collect();
+                    let (trait_typ_args, _) = erase_generic_args(ctxt, state, substs, true);
                     let trait_path = state.trait_name(&trait_path);
                     let datatype = Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
                     Some(Bound::Trait(datatype))

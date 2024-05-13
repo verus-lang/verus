@@ -78,6 +78,19 @@ fn check_item<'tcx>(
             );
         }
     }
+    if vattrs.is_external(&ctxt.cmd_line_args)
+        && crate::rust_to_vir_base::def_id_to_vir_path_option(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            item.owner_id.to_def_id(),
+        )
+        .is_none()
+    {
+        // If the path of an external item would cause a panic in def_id_to_vir_path,
+        // ignore it completely to avoid a panic (potentially leading to less informative
+        // error messages to users if they try to access the external item directly from Verus code)
+        return Ok(());
+    }
 
     let visibility = || mk_visibility(ctxt, item.owner_id.to_def_id());
 
