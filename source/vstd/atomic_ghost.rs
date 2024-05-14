@@ -87,8 +87,6 @@ macro_rules! declare_atomic_type {
                 atomic_with_ghost!(self => load(); g => { })
             }
 
-            // TODO into_inner
-
             #[inline(always)]
             pub fn into_inner(self) -> (res: ($value_ty, Tracked<G>))
                 requires self.well_formed(),
