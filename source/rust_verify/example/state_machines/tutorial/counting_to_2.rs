@@ -124,7 +124,7 @@ fn main() {
     // Thread 1
     let global_arc1 = global_arc.clone();
     let join_handle1 = spawn(
-        move || -> (new_token: Tracked<X::inc_a>)
+        (move || -> (new_token: Tracked<X::inc_a>)
             ensures
                 new_token@@.instance == instance && new_token@@.value == true,
             {
@@ -133,17 +133,17 @@ fn main() {
                 let globals = &*global_arc1;
                 let _ =
                     atomic_with_ghost!(&globals.atomic => fetch_add(1);
-            ghost c => {
-                globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
-            }
-        );
+                        ghost c => {
+                            globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
+                        }
+                    );
                 Tracked(token)
-            },
+            }),
     );
     // Thread 2
     let global_arc2 = global_arc.clone();
     let join_handle2 = spawn(
-        move || -> (new_token: Tracked<X::inc_b>)
+        (move || -> (new_token: Tracked<X::inc_b>)
             ensures
                 new_token@@.instance == instance && new_token@@.value == true,
             {
@@ -152,12 +152,12 @@ fn main() {
                 let globals = &*global_arc2;
                 let _ =
                     atomic_with_ghost!(&globals.atomic => fetch_add(1);
-            ghost c => {
-                globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
-            }
-        );
+                        ghost c => {
+                            globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
+                        }
+                    );
                 Tracked(token)
-            },
+            }),
     );
     // Join threads
     let tracked inc_a_token;

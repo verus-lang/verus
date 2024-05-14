@@ -148,7 +148,7 @@ fn do_count(num_threads: u32) {
         }
         let global_arc = global_arc.clone();
         let join_handle = spawn(
-            move || -> (new_token: Tracked<X::stamped_tickets>)
+            (move || -> (new_token: Tracked<X::stamped_tickets>)
                 ensures
                     new_token@@.instance == instance,
                     new_token@@.count == 1nat,
@@ -158,16 +158,16 @@ fn do_count(num_threads: u32) {
                     let tracked stamped_token;
                     let _ =
                         atomic_with_ghost!(
-                &global_arc.atomic => fetch_add(1);
-                update prev -> next;
-                returning ret;
-                ghost c => {
-                    stamped_token =
-                        global_arc.instance.borrow().tr_inc(&mut c, unstamped_token);
-                }
-            );
+                            &global_arc.atomic => fetch_add(1);
+                            update prev -> next;
+                            returning ret;
+                            ghost c => {
+                                stamped_token =
+                                    global_arc.instance.borrow().tr_inc(&mut c, unstamped_token);
+                            }
+                        );
                     Tracked(stamped_token)
-                },
+                }),
         );
         join_handles.push(join_handle);
         i = i + 1;
