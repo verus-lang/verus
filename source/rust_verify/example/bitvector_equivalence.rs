@@ -30,7 +30,7 @@ spec fn equal_lower_n_bits(a: u32, b: u32, n: u32) -> bool
 
 // bitvector translation for `equivalence_proof_increment`
 // in bit-vector mode, all spec functions should be unwrapped to definition (or use macro)
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn equivalence_proof_increment_bv(a: u32, b: u32, n: u32)
     requires
         n < 32,
@@ -94,7 +94,7 @@ proof fn equivalence_proof(a: u32, b: u32)
 }
 
 // This fails because of trigger not being instantiated
-// #[verifier(bit_vector)]
+// #[verifier::bit_vector]
 // proof fn equivalence_proof_bv(a:u32, b:u32)
 //     requires
 //         forall|i: u32| #![auto]
@@ -102,7 +102,7 @@ proof fn equivalence_proof(a: u32, b: u32)
 //     ensures
 //         a == b,
 // {}
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn equivalence_proof_bv(a: u32, b: u32)
     requires
         get_bit!(a, 0u32) == get_bit!(b, 0u32),

@@ -3,7 +3,7 @@ use core::ops::Range;
 
 verus! {
 
-#[verifier(external_type_specification)]
+#[verifier::external_type_specification]
 #[verifier::reject_recursive_types_in_ground_variants(Idx)]
 pub struct ExRange<Idx>(Range<Idx>);
 

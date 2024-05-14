@@ -13,7 +13,7 @@ use builtin_macros::*;
 
 verus! {
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_and32_auto()
     ensures
         forall|a: u32, b: u32| #[trigger] (a & b) == b & a,
@@ -24,7 +24,7 @@ proof fn bit_and32_auto()
 {
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_or32_auto()
     ensures
         forall|a: u32, b: u32| #[trigger] (a | b) == b | a,
@@ -35,7 +35,7 @@ proof fn bit_or32_auto()
 {
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_xor32_auto()
     ensures
         forall|a: u32, b: u32| #[trigger] (a ^ b) == b ^ a,
@@ -46,7 +46,7 @@ proof fn bit_xor32_auto()
 {
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_not32_auto()
     ensures
         forall|a: u32| #[trigger] !(!a) == a,
@@ -54,21 +54,21 @@ proof fn bit_not32_auto()
 {
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_lshr32_auto()
     ensures
         forall|a: u32| #[trigger] (a >> 0u32) == a,
 {
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_shl32_auto()
     ensures
         forall|a: u32| #[trigger] (a << 0u32) == a,
 {
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_property32_auto()
     ensures
 // absorb

@@ -56,7 +56,7 @@ proof fn lemma_0_mod_anything()
 
 /// Proof that a natural number `x` divided by a larger natural number
 /// `m` gives a remainder equal to `x`
-#[verifier(nonlinear)]
+#[verifier::nonlinear]
 pub proof fn lemma_small_mod(x: nat, m: nat)
     requires
         x < m,
@@ -68,7 +68,7 @@ pub proof fn lemma_small_mod(x: nat, m: nat)
 
 /// Proof of Euclid's division lemma, i.e., that any integer `x`
 /// modulo any positive integer `m` is in the half-open range `[0, m)`.
-#[verifier(nonlinear)]
+#[verifier::nonlinear]
 pub proof fn lemma_mod_range(x: int, m: int)
     requires
         m > 0,

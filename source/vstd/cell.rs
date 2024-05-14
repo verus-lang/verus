@@ -56,7 +56,7 @@ broadcast use crate::map::group_map_axioms, crate::set::group_set_axioms;
 ///
 /// ### Example (TODO)
 
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PCell<V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
@@ -64,12 +64,12 @@ pub struct PCell<V> {
 
 // PCell is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
 // (It doesn't matter if you move the bytes to another thread if you can't access them.)
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<T> Sync for PCell<T> {
 
 }
 
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<T> Send for PCell<T> {
 
 }
@@ -77,7 +77,7 @@ unsafe impl<T> Send for PCell<T> {
 // PointsTo<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
 // (Note: this depends on the current behavior that #[verifier::spec] fields are still counted for marker traits)
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub tracked struct PointsTo<V> {
     phantom: marker::PhantomData<V>,
@@ -112,7 +112,7 @@ macro_rules! pcell_opt {
 pub use pcell_opt_internal;
 pub use pcell_opt;
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub struct CellId {
     id: int,
 }
@@ -127,7 +127,7 @@ impl<V> PCell<V> {
 
     /// Return an empty ("uninitialized") cell.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@@ === pcell_opt![ pt.0.id() => Option::None ],
@@ -137,7 +137,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             (pt.1@@ === PointsToData { pcell: pt.0.id(), value: Option::Some(v) }),
@@ -147,7 +147,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm)@ === pcell_opt![ self.id() => Option::None ],
@@ -161,7 +161,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
             self.id() === old(perm)@.pcell,
@@ -180,7 +180,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pcell,
@@ -202,7 +202,7 @@ impl<V> PCell<V> {
     // that `self` actually contains the data in its interior, so it needs
     // to outlive the returned borrow.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             self.id() === perm@.pcell,
@@ -243,7 +243,7 @@ impl<V> PCell<V> {
 
 impl<V: Copy> PCell<V> {
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
             self.id() === old(perm)@.pcell,

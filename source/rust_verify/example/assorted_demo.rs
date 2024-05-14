@@ -32,7 +32,7 @@ spec fn divides(v: u64, d: u64) -> bool {
     exists|k: u64| mul(d, k) == v
 }
 
-#[verifier(external)]
+#[verifier::external]
 fn gcd_external(a: u64, b: u64) -> u64 {
     let mut i = a;
     while i >= 1 {
@@ -44,7 +44,7 @@ fn gcd_external(a: u64, b: u64) -> u64 {
     i
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 fn gcd(a: u64, b: u64) -> (result: u64)
     requires
         a >= 0,

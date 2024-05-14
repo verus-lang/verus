@@ -8,7 +8,7 @@ use builtin_macros::*;
 
 verus! {
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn left_shift_by_one(bv: u32, e: u32)
     requires
         e > 0,
@@ -21,7 +21,7 @@ proof fn left_shift_by_one(bv: u32, e: u32)
     // get this error when updated to new syntax. Type casting (i.e. `(e - 1u32) as u32`) does not make this error disappear
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn left_shift_by_one_is_mul2(bv: u32, e: u32)
     requires
         e > 0,
@@ -86,7 +86,7 @@ proof fn lemma_pow2_2e(e: nat)
     }
 }
 
-#[verifier(nonlinear)]
+#[verifier::nonlinear]
 proof fn lemma_pow2_two_e(e: nat)
     requires
         e >= 0,
@@ -113,7 +113,7 @@ proof fn lemma_pow2_increase(e: nat)
     }
 }
 
-#[verifier(nonlinear)]
+#[verifier::nonlinear]
 proof fn lemma_mul_upper_bound(x: nat, y: nat, z: nat)
     requires
         x < y,

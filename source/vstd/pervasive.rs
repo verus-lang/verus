@@ -117,7 +117,7 @@ impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>> FnWith
 #[cfg(verus_keep_ghost)]
 #[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verifier::external_body]
 #[rustc_diagnostic_item = "verus::vstd::vstd::exec_nonstatic_call"]
 fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -> (output:
     Output) where F: FnOnce<Args, Output = Output>
@@ -156,20 +156,20 @@ pub closed spec fn spec_affirm(b: bool) -> bool
 }
 
 /// In spec, all types are inhabited
-#[verifier(external_body)]  /* vattr */
+#[verifier::external_body]  /* vattr */
 #[allow(dead_code)]
 pub closed spec fn arbitrary<A>() -> A {
     unimplemented!()
 }
 
-#[verifier(external_body)]  /* vattr */
+#[verifier::external_body]  /* vattr */
 #[allow(dead_code)]
 pub proof fn proof_from_false<A>() -> (tracked a: A) {
     requires(false);
     unimplemented!()
 }
 
-#[verifier(external_body)]  /* vattr */
+#[verifier::external_body]  /* vattr */
 #[allow(dead_code)]
 pub fn unreached<A>() -> A
     requires
@@ -178,7 +178,7 @@ pub fn unreached<A>() -> A
     panic!("unreached_external")
 }
 
-#[verifier(external_body)]  /* vattr */
+#[verifier::external_body]  /* vattr */
 pub fn print_u64(i: u64) {
     println!("{}", i);
 }

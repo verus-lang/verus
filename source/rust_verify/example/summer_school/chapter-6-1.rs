@@ -12,13 +12,13 @@ use state_machines_macros::state_machine;
 
 verus! {
 
-#[verifier(external_body)]  /* vattr */
+#[verifier::external_body]  /* vattr */
 pub struct Key {}
 
-#[verifier(external_body)]  /* vattr */
+#[verifier::external_body]  /* vattr */
 pub struct Value {}
 
-#[verifier(external_body)]  /* vattr */
+#[verifier::external_body]  /* vattr */
 #[verifier::spec]
 pub fn default() -> Value {
     unimplemented!()

@@ -70,7 +70,7 @@ fn test() -> bool {
     b.f(&true) && p(&true, &b)
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 fn main() {
     println!("{}", test());
 }

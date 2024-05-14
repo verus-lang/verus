@@ -58,7 +58,7 @@ proof fn s_prop2<C>(x: S<C>, y: S<C>) {
     assert(s_property(x) == s_property(y));
 }
 
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn g<A>(a: A) -> A {
     a
 }

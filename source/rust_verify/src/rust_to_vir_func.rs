@@ -933,7 +933,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
             sig.span,
-            "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
+            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
         );
     }
     let fattrs = FunctionAttrsX {

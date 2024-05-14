@@ -72,7 +72,7 @@ pub ghost struct PtrData {
     pub metadata: Metadata,
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 pub tracked struct PointsTo<T> {
     phantom: core::marker::PhantomData<T>,
@@ -260,7 +260,7 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
 /// core::ptr::write
 /// (This does _not_ drop the contents)
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v: T)
     requires
         old(perm).ptr() == ptr,
@@ -278,7 +278,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 /// core::ptr::read
 /// (TODO this should work differently if T is Copy)
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
     requires
         old(perm).ptr() == ptr,
@@ -294,7 +294,7 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
 
 /// equivalent to &*X
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
     requires
         perm.ptr() == ptr,
@@ -308,7 +308,7 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
 /* coming soon
 /// equivalent to &mut *X
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,

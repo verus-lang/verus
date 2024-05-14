@@ -27,22 +27,22 @@ pub trait ResultAdditionalSpecFns<T, E> {
 }
 
 impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn is_Ok(&self) -> bool {
         builtin::is_variant(self, "Ok")
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn get_Ok_0(&self) -> T {
         builtin::get_variant_field(self, "Ok", "0")
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn is_Err(&self) -> bool {
         builtin::is_variant(self, "Err")
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn get_Err_0(&self) -> E {
         builtin::get_variant_field(self, "Err", "0")
     }
@@ -50,7 +50,7 @@ impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
 
 ////// Specs for std methods
 // is_ok
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn is_ok<T, E>(result: &Result<T, E>) -> bool {
     builtin::is_variant(result, "Ok")
 }
@@ -65,7 +65,7 @@ pub fn ex_result_is_ok<T, E>(result: &Result<T, E>) -> (b: bool)
 }
 
 // is_err
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn is_err<T, E>(result: &Result<T, E>) -> bool {
     builtin::is_variant(result, "Err")
 }
@@ -92,7 +92,7 @@ pub fn as_ref<T, E>(result: &Result<T, E>) -> (r: Result<&T, &E>)
 }
 
 // unwrap
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn spec_unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> T
     recommends
         result.is_Ok(),
@@ -100,7 +100,7 @@ pub open spec fn spec_unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> T
     result.get_Ok_0()
 }
 
-#[verifier(when_used_as_spec(spec_unwrap))]
+#[verifier::when_used_as_spec(spec_unwrap)]
 #[verifier::external_fn_specification]
 pub fn unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> (t: T)
     requires
@@ -112,7 +112,7 @@ pub fn unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> (t: T)
 }
 
 // unwrap_err
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn spec_unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -> E
     recommends
         result.is_Err(),
@@ -120,7 +120,7 @@ pub open spec fn spec_unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -
     result.get_Err_0()
 }
 
-#[verifier(when_used_as_spec(spec_unwrap_err))]
+#[verifier::when_used_as_spec(spec_unwrap_err)]
 #[verifier::external_fn_specification]
 pub fn unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -> (e: E)
     requires
@@ -147,7 +147,7 @@ pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_r
 }
 
 // ok
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn ok<T, E>(result: Result<T, E>) -> Option<T> {
     match result {
         Ok(t) => Some(t),
@@ -165,7 +165,7 @@ pub fn ex_result_ok<T, E>(result: Result<T, E>) -> (opt: Option<T>)
 }
 
 // err
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn err<T, E>(result: Result<T, E>) -> Option<E> {
     match result {
         Ok(_) => None,

@@ -6,13 +6,13 @@ use core::ops::Try;
 
 verus! {
 
-#[verifier(external_type_specification)]
+#[verifier::external_type_specification]
 #[verifier::accept_recursive_types(B)]
 #[verifier::reject_recursive_types_in_ground_variants(C)]
 pub struct ExControlFlow<B, C>(ControlFlow<B, C>);
 
-#[verifier(external_type_specification)]
-#[verifier(external_body)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
 pub struct ExInfallible(Infallible);
 
 #[verifier::external_fn_specification]

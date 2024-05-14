@@ -39,7 +39,7 @@ impl<'a> StrSlice<'a> {
     /// It is more useful to talk about the length of characters and therefore this function was added.
     /// Please note that this function counts the unicode variation selectors as characters.
     /// Warning: O(n)
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn unicode_len(&self) -> (l: usize)
         ensures
             l as nat == self@.len(),
@@ -48,7 +48,7 @@ impl<'a> StrSlice<'a> {
     }
 
     /// Warning: O(n) not O(1) due to unicode decoding needed
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn get_char(&self, i: usize) -> (c: char)
         requires
             i < self@.len(),
@@ -59,7 +59,7 @@ impl<'a> StrSlice<'a> {
         self.inner.chars().nth(i).unwrap()
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn substring_ascii(&self, from: usize, to: usize) -> (ret: StrSlice<'a>)
         requires
             self.is_ascii(),
@@ -72,7 +72,7 @@ impl<'a> StrSlice<'a> {
         StrSlice { inner: &self.inner[from..to] }
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn substring_char(&self, from: usize, to: usize) -> (ret: StrSlice<'a>)
         requires
             from < self@.len(),
@@ -115,7 +115,7 @@ impl<'a> StrSlice<'a> {
         String::from_str(self)
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn get_ascii(&self, i: usize) -> (b: u8)
         requires
             self.is_ascii(),
@@ -129,7 +129,7 @@ impl<'a> StrSlice<'a> {
     // slice support is added
     // pub fn as_bytes<'a>(&'a [u8]) -> (ret: &'a [u8])
     #[cfg(feature = "alloc")]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn as_bytes(&self) -> (ret: alloc::vec::Vec<u8>)
         requires
             self.is_ascii(),
@@ -143,12 +143,12 @@ impl<'a> StrSlice<'a> {
         v
     }
 
-    #[verifier(external)]
+    #[verifier::external]
     pub fn from_rust_str(inner: &'a str) -> StrSlice<'a> {
         StrSlice { inner }
     }
 
-    #[verifier(external)]
+    #[verifier::external]
     pub fn into_rust_str(&'a self) -> &'a str {
         self.inner
     }
@@ -188,7 +188,7 @@ impl String {
 
     pub spec fn is_ascii(&self) -> bool;
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn from_str<'a>(s: StrSlice<'a>) -> (ret: String)
         ensures
             s@ == ret@,
@@ -197,7 +197,7 @@ impl String {
         String { inner: s.inner.to_string() }
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn as_str<'a>(&'a self) -> (ret: StrSlice<'a>)
         ensures
             self@ == ret@,
@@ -207,7 +207,7 @@ impl String {
         StrSlice { inner }
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn append<'a, 'b>(&'a mut self, other: StrSlice<'b>)
         ensures
             self@ == old(self)@ + other@,
@@ -216,7 +216,7 @@ impl String {
         self.inner += other.inner;
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn concat<'b>(self, other: StrSlice<'b>) -> (ret: String)
         ensures
             ret@ == self@ + other@,
@@ -225,7 +225,7 @@ impl String {
         String { inner: self.inner + other.inner }
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn eq(&self, other: &Self) -> (b: bool)
         ensures
             b == (self.view() == other.view()),
@@ -233,7 +233,7 @@ impl String {
         self.inner == other.inner
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn clone(&self) -> (result: String)
         ensures
             result == self,
@@ -241,17 +241,17 @@ impl String {
         String { inner: self.inner.clone() }
     }
 
-    #[verifier(external)]
+    #[verifier::external]
     pub fn from_rust_string(inner: alloc::string::String) -> String {
         String { inner }
     }
 
-    #[verifier(external)]
+    #[verifier::external]
     pub fn into_rust_string(self) -> alloc::string::String {
         self.inner
     }
 
-    #[verifier(external)]
+    #[verifier::external]
     pub fn as_rust_string_ref(&self) -> &alloc::string::String {
         &self.inner
     }

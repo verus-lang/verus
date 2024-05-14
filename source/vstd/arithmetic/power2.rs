@@ -33,7 +33,7 @@ use crate::arithmetic::internals::general_internals::is_le;
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
 /// repeatedly recursively unfolding it.
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn pow2(e: nat) -> nat
     decreases
             e  // ensures pow2(e) > 0

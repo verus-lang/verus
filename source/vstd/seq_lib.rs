@@ -2013,7 +2013,7 @@ pub proof fn lemma_seq_properties<A>()
 }
 
 #[doc(hidden)]
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
     s
 }

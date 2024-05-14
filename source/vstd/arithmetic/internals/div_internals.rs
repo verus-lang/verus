@@ -36,7 +36,7 @@ use crate::math::{add as add1, sub as sub1};
 
 /// This function recursively computes the quotient resulting from
 /// dividing two numbers `x` and `d`, in the case where `d > 0`
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn div_pos(x: int, d: int) -> int
     recommends
         d > 0,
@@ -60,7 +60,7 @@ pub open spec fn div_pos(x: int, d: int) -> int
 /// This function recursively computes the quotient resulting from
 /// dividing two numbers `x` and `d`. It's only meaningful when `d !=
 /// 0`, of course.
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn div_recursive(x: int, d: int) -> int
     recommends
         d != 0,

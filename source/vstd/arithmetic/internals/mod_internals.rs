@@ -35,7 +35,7 @@ use crate::arithmetic::internals::div_internals_nonlinear;
 use crate::math::{add as add1, sub as sub1};
 
 /// This function performs the modulus operation recursively.
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn mod_recursive(x: int, d: int) -> int
     recommends
         d > 0,

@@ -5,13 +5,13 @@ verus! {
 
 // external_fn_specification doesn't generally support specifying generic functions
 // like this; it is special-cased for Clone for now
-#[verifier(external_fn_specification)]
+#[verifier::external_fn_specification]
 pub fn ex_clone_clone<T: Clone>(a: &T) -> T {
     a.clone()
 }
 
 /*
-#[verifier(external_fn_specification)]
+#[verifier::external_fn_specification]
 pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)
 {
     a.clone_from(b)

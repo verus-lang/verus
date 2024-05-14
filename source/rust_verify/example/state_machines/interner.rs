@@ -148,7 +148,7 @@ struct Interned<T> {
     id: usize,
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 fn compute_eq<T>(a: &T, b: &T) -> (res: bool)
     ensures
         res <==> (a === b),

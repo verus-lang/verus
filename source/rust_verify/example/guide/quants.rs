@@ -372,7 +372,7 @@ proof fn hosted_exists(x: int, i: int)
 }
 // ANCHOR_END: hoist
 
-#[verifier(external_body)]
+#[verifier::external_body]
 proof fn lemma_even_f(i: int)
     requires
         is_even(i),
@@ -418,7 +418,7 @@ proof fn test_even_f()
 
 spec fn g(i: int, j: int) -> bool;
 
-#[verifier(external_body)]
+#[verifier::external_body]
 proof fn lemma_g_proves_f(i: int, j: int)
     requires
         g(i, j),

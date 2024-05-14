@@ -11,7 +11,7 @@ use vstd::{prelude::*, ptr::*, string::*, *};
 
 verus! {
 
-#[verifier(external_body)]
+#[verifier::external_body]
 proof fn lemma_usize_u64(x: u64)
     ensures
         x as usize as u64 == x,
@@ -484,7 +484,7 @@ impl<V> DListXor<V> {
     }
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 fn print_result(msg: StrSlice<'static>, value: u32) {
     println!("{}: {value}", msg.into_rust_str());
 }

@@ -25,7 +25,7 @@ verus! {
 
 /// This function performs multiplication recursively. It's only valid
 /// when `x` is non-negative.
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn mul_pos(x: int, y: int) -> int
     recommends
         x >= 0,
@@ -102,7 +102,7 @@ proof fn lemma_mul_successor()
 
 /// Proof that multiplication distributes over addition and over
 /// subtraction
-#[verifier(spinoff_prover)]
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_mul_distributes_plus(x: int, y: int, z: int)
     ensures
         #[trigger] ((x + y) * z) == (x * z + y * z),
@@ -122,7 +122,7 @@ pub broadcast proof fn lemma_mul_distributes_plus(x: int, y: int, z: int)
     }
 }
 
-#[verifier(spinoff_prover)]
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_mul_distributes_minus(x: int, y: int, z: int)
     ensures
         #[trigger] ((x - y) * z) == (x * z - y * z),

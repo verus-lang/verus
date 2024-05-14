@@ -40,27 +40,27 @@ pub trait OptionAdditionalFns<T>: Sized {
 }
 
 impl<T> OptionAdditionalFns<T> for Option<T> {
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn is_Some(&self) -> bool {
         builtin::is_variant(self, "Some")
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn get_Some_0(&self) -> T {
         builtin::get_variant_field(self, "Some", "0")
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn is_None(&self) -> bool {
         builtin::is_variant(self, "None")
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn arrow_Some_0(&self) -> T {
         builtin::get_variant_field(self, "Some", "0")
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn arrow_0(&self) -> T {
         builtin::get_variant_field(self, "Some", "0")
     }
@@ -82,7 +82,7 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
 
 ////// Specs for std methods
 // is_some
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn is_some<T>(option: &Option<T>) -> bool {
     builtin::is_variant(option, "Some")
 }
@@ -97,7 +97,7 @@ pub fn ex_option_is_some<T>(option: &Option<T>) -> (b: bool)
 }
 
 // is_none
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn is_none<T>(option: &Option<T>) -> bool {
     builtin::is_variant(option, "None")
 }
@@ -122,7 +122,7 @@ pub fn as_ref<T>(option: &Option<T>) -> (a: Option<&T>)
 }
 
 // unwrap
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
     recommends
         option.is_Some(),
@@ -130,7 +130,7 @@ pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
     option.get_Some_0()
 }
 
-#[verifier(when_used_as_spec(spec_unwrap))]
+#[verifier::when_used_as_spec(spec_unwrap)]
 #[verifier::external_fn_specification]
 pub fn unwrap<T>(option: Option<T>) -> (t: T)
     requires
@@ -142,7 +142,7 @@ pub fn unwrap<T>(option: Option<T>) -> (t: T)
 }
 
 // unwrap_or
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
     match option {
         Some(t) => t,
@@ -150,7 +150,7 @@ pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
     }
 }
 
-#[verifier(when_used_as_spec(spec_unwrap_or))]
+#[verifier::when_used_as_spec(spec_unwrap_or)]
 #[verifier::external_fn_specification]
 pub fn unwrap_or<T>(option: Option<T>, default: T) -> (t: T)
     ensures

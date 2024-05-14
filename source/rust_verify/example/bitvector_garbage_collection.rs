@@ -51,7 +51,7 @@ spec fn bucket_view(bucket: u32) -> Seq<Color> {
     )
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn set_two_bit_proof(
     bv: u32,
     target: u32,
@@ -136,7 +136,7 @@ fn set_color(bucket: u32, high: bool, low: bool, i: u32, ghost_bucket: Seq<Color
     new_bucket
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn get_color_proof(bv: u32, index: u32, v: u32)
     requires
         v == 3u32 & (bv >> mul(index, 2)),

@@ -58,7 +58,7 @@ impl<A> Seq<A> {
     ;
 
     /// `[]` operator, synonymous with `index`
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_index(self, i: int) -> A
         recommends
             0 <= i < self.len(),
@@ -133,13 +133,13 @@ impl<A> Seq<A> {
     ;
 
     /// Returns a sequence containing only the first n elements of the original sequence
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn take(self, n: int) -> Seq<A> {
         self.subrange(0, n)
     }
 
     /// Returns a sequence without the first n elements of the original sequence
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn skip(self, n: int) -> Seq<A> {
         self.subrange(n, self.len() as int)
     }
@@ -158,7 +158,7 @@ impl<A> Seq<A> {
     pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
 
     /// `+` operator, synonymous with `add`
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_add(self, rhs: Seq<A>) -> Seq<A> {
         self.add(rhs)
     }

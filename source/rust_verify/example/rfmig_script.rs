@@ -181,7 +181,7 @@ struct State2 {
     s: nat,
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 proof fn exchange(tracked s1: State1) -> (tracked s2: State2)
     ensures
         s1.s == s2.s,
@@ -189,12 +189,12 @@ proof fn exchange(tracked s1: State1) -> (tracked s2: State2)
     todo!()
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 proof fn exercise1(tracked s1: &State1) -> (result: bool) {
     todo!()
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 proof fn exercise2(tracked s1: &State1) -> (result: bool) {
     todo!()
 }
@@ -209,12 +209,12 @@ proof fn p(tracked s1: State1) {
 mod F1 {
     use vstd::{prelude::*, ptr::*};
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     fn send_pointer(ptr: PPtr<u64>) {
         todo!()
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     proof fn transfer_permission(tracked perm: PointsTo<u64>) {
         todo!()
     }

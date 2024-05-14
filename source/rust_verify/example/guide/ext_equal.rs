@@ -28,7 +28,7 @@ mod m1 {
 }
 
 // ANCHOR: ext_eq_struct
-#[verifier(ext_equal)]  // necessary for invoking =~= on the struct
+#[verifier::ext_equal]  // necessary for invoking =~= on the struct
 struct Foo {
     a: Seq<int>,
     b: Set<int>,
@@ -59,7 +59,7 @@ proof fn ext_equal_nested() {
 // ANCHOR_END: ext_eq_nested
 
 // ANCHOR: ext_eq_fnspec
-#[verifier(ext_equal)]  // necessary for invoking =~= on the struct
+#[verifier::ext_equal]  // necessary for invoking =~= on the struct
 struct Bar {
     a: spec_fn(int) -> int,
 }

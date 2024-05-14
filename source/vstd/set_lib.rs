@@ -859,7 +859,7 @@ pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
 }
 
 #[doc(hidden)]
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> {
     s
 }

@@ -878,7 +878,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     if expr_vattrs.spinoff_prover {
                         return err_span(
                             expr.span,
-                            "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith and assert by bit_vector",
+                            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith and assert by bit_vector",
                         );
                     }
                     mk_expr(ExprX::AssertQuery {

@@ -39,8 +39,8 @@ spec fn u64_view(u: u64) -> Seq<bool> {
     Seq::new(64, |i: int| get_bit64!(u, i as u64))
 }
 
-#[verifier(external_body)]  // TODO: remove this
-#[verifier(bit_vector)]
+#[verifier::external_body]  // TODO: remove this
+#[verifier::bit_vector]
 proof fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u64, bit: bool)
     requires
         bv_new == set_bit64!(bv_old, index, bit),
@@ -52,7 +52,7 @@ proof fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u64, bit: bool)
 {
 }
 
-#[verifier(bit_vector)]
+#[verifier::bit_vector]
 proof fn bit_or_64_proof(bv1: u64, bv2: u64, bv_new: u64)
     requires
         bv_new == bv1 | bv2,

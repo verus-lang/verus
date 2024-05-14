@@ -18,7 +18,7 @@ fn main() {
 mod fib {
     use super::*;
 
-    #[verifier(memoize)]
+    #[verifier::memoize]
     spec fn fib(x: nat) -> nat
         decreases x,
     {
@@ -257,7 +257,7 @@ mod veribetrkv_example_original {
         }
     }
 
-    #[verifier(recommends_by)]
+    #[verifier::recommends_by]
     proof fn mod_F2_X_rec(p: Seq<bool>, q: Seq<bool>) {
         if p.len() > (q.len() - 1) as nat {
             zeroes_len((p.len() - q.len()) as nat);

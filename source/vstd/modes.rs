@@ -8,7 +8,7 @@ use builtin_macros::*;
 
 verus! {
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub proof fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
     ensures
         a == old(b),
@@ -17,7 +17,7 @@ pub proof fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
     unimplemented!();
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub proof fn tracked_static_ref<V>(tracked v: V) -> (tracked res: &'static V)
     ensures
         res == v,

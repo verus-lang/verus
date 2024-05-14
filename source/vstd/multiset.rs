@@ -42,7 +42,7 @@ verus! {
 // (1) would be complicated and it's not clear what the use would be; (2) has some
 // weird properties (e.g., you can't in general define a multiset `map` function
 // since it might map an infinite number of elements to the same one).
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(V)]
 pub struct Multiset<V> {
@@ -124,13 +124,13 @@ impl<V> Multiset<V> {
         forall|v: V| self.count(v) <= m2.count(v)
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     #[deprecated = "use m1.subset_of(m2) or m1 <= m2 instead"]
     pub open spec fn le(self, m2: Self) -> bool {
         self.subset_of(m2)
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_le(self, m2: Self) -> bool {
         self.subset_of(m2)
     }

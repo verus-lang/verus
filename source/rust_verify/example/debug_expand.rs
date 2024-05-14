@@ -7,7 +7,7 @@ use vstd::prelude::*;
 
 verus! {
 
-#[verifier(external)]
+#[verifier::external]
 fn main() {
 }
 
@@ -157,7 +157,7 @@ proof fn test_ensures_failure(b: bool) -> (good_msg: Message)
 }
 
 // example: opaque/reveal
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn is_good_integer_9(
     x: int,
 ) -> bool
@@ -166,7 +166,7 @@ spec fn is_good_integer_9(
     x >= 0 && x != 5
 }
 
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn is_good_message_9(msg: Message) -> bool {
     match msg {
         Message::Quit(b) => b,
@@ -184,7 +184,7 @@ proof fn test_opaque(b: bool) {
 }
 
 // example: `reveal` does not flow
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn is_good_message_10(msg: Message) -> bool {
     //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Note: this function is opaque
     match msg {
@@ -255,7 +255,7 @@ mod M4 {
 }
 
 // example: reveal at ensures
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn is_good_integer_13(
     x: int,
 ) -> bool
@@ -264,7 +264,7 @@ spec fn is_good_integer_13(
     x >= 0 && x != 5
 }
 
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn is_good_message_13(msg: Message) -> bool {
     match msg {
         Message::Quit(b) => b,

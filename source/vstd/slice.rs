@@ -33,13 +33,13 @@ pub trait SliceAdditionalSpecFns<T>: View<V = Seq<T>> {
 }
 
 impl<T> SliceAdditionalSpecFns<T> for [T] {
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
     }
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::slice_index_get")]
 pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
     requires
@@ -72,7 +72,7 @@ pub fn slice_len<T>(slice: &[T]) -> (len: usize)
 }
 
 #[cfg(feature = "alloc")]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
     ensures
         out@ == slice@,
@@ -80,7 +80,7 @@ pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
     slice.to_vec()
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &'a [T])
     requires
         0 <= i <= j <= slice@.len(),

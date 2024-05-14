@@ -15,7 +15,7 @@ spec fn arith_sum_int(i: int) -> int
     }
 }
 
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn arith_sum_u64(i: u64) -> u64
     decreases i,
 {
