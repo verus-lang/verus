@@ -18,6 +18,7 @@ proof fn calc_example_simple() {
     // ANCHOR_END: simple
 }
 
+#[verusfmt::skip]
 proof fn calc_example_transitive_relations() {
     // ANCHOR: transitive
     let x: int = 2;
@@ -27,9 +28,9 @@ proof fn calc_example_transitive_relations() {
         x; (==) {}
         5 - 3; (<) {}
         5int; {}  // Notice that no intermediate relation
-        // is specified here, so `calc!` will
-        // consider the top-level relation
-        // `R`; here `<=`.
+                  // is specified here, so `calc!` will
+                  // consider the top-level relation
+                  // `R`; here `<=`.
         y;
     }
     // ANCHOR_END: transitive

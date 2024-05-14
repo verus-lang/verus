@@ -58,7 +58,6 @@ fn memoized_computation(cell: &InvCell<Option<u64>>) -> (res: u64)
         },
     }
 }
-
 // ANCHOR_END: inv_cell_example
 
 } // verus!

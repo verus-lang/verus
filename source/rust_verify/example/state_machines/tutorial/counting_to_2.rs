@@ -120,7 +120,9 @@ fn main() {
     let atomic = AtomicU32::new(Ghost(tr_instance), 0, Tracked(counter_token));
     let global = Global { atomic, instance: Tracked(instance.clone()) };
     let global_arc = Arc::new(global);
+
     // Spawn threads
+
     // Thread 1
     let global_arc1 = global_arc.clone();
     let join_handle1 = spawn(
@@ -140,6 +142,7 @@ fn main() {
                 Tracked(token)
             }),
     );
+
     // Thread 2
     let global_arc2 = global_arc.clone();
     let join_handle2 = spawn(
@@ -159,6 +162,7 @@ fn main() {
                 Tracked(token)
             }),
     );
+
     // Join threads
     let tracked inc_a_token;
     match join_handle1.join() {
@@ -182,6 +186,7 @@ fn main() {
             return ;
         },
     };
+
     // Join threads, load the atomic again
     let global = &*global_arc;
     let x =
@@ -190,6 +195,7 @@ fn main() {
             instance.finalize(&c, &inc_a_token, &inc_b_token);
         }
     );
+
     assert(x == 2);
 }
 

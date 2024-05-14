@@ -31,8 +31,8 @@ pub enum ConsumerState {
     Idle(nat),  // local copy of head
     Consuming(nat),
 }
-
 // ANCHOR_END: enum_state
+
 // ANCHOR: fields
 tokenized_state_machine!{FifoQueue<T> {
     fields {
@@ -455,9 +455,8 @@ tokenized_state_machine!{FifoQueue<T> {
         by { }
     }
 }}
+
 // ANCHOR: impl_queue_struct
-
-
 struct_with_invariants!{
     struct Queue<T> {
         buffer: Vec<PCell<T>>,
@@ -488,9 +487,8 @@ struct_with_invariants!{
     }
 }
 // ANCHOR_END: impl_queue_struct
+
 // ANCHOR: impl_producer_struct
-
-
 pub struct Producer<T> {
     queue: Arc<Queue<T>>,
     tail: usize,
@@ -504,8 +502,8 @@ impl<T> Producer<T> {
             < (*self.queue).buffer@.len()
     }
 }
-
 // ANCHOR_END: impl_producer_struct
+
 // ANCHOR: impl_consumer_struct
 pub struct Consumer<T> {
     queue: Arc<Queue<T>>,
@@ -520,8 +518,8 @@ impl<T> Consumer<T> {
             < (*self.queue).buffer@.len()
     }
 }
-
 // ANCHOR_END: impl_consumer_struct
+
 // ANCHOR: impl_new_queue
 pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
     requires
@@ -590,8 +588,8 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
     let cons = Consumer::<T> { queue: queue_arc, head: 0, consumer: Tracked(consumer_token) };
     (prod, cons)
 }
-
 // ANCHOR_END: impl_new_queue
+
 // ANCHOR: impl_producer
 impl<T> Producer<T> {
     fn enqueue(&mut self, t: T)
@@ -659,8 +657,8 @@ impl<T> Producer<T> {
         }
     }
 }
-
 // ANCHOR_END: impl_producer
+
 // ANCHOR: impl_consumer
 impl<T> Consumer<T> {
     fn dequeue(&mut self) -> (t: T)
@@ -716,17 +714,24 @@ impl<T> Consumer<T> {
 
 fn main() {
     let (mut producer, mut consumer) = new_queue(20);
+
     // Simple test:
+
     producer.enqueue(5);
     producer.enqueue(6);
     producer.enqueue(7);
+
     let x = consumer.dequeue();
     print_u64(x);
+
     let x = consumer.dequeue();
     print_u64(x);
+
     let x = consumer.dequeue();
     print_u64(x);
+
     // Multi-threaded test:
+
     let producer = producer;
     let _join_handle = vstd::thread::spawn(
         move ||

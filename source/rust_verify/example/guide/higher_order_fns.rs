@@ -31,9 +31,7 @@ mod X {
     fn test() {
         higher_order_fn(double);
     }
-
     // ANCHOR_END: example1
-
 }
 
 mod Y {
@@ -59,9 +57,7 @@ mod Y {
     fn test() {
         higher_order_fn(double);
     }
-
     // ANCHOR_END: example2
-
 }
 
 mod Z {
@@ -91,19 +87,16 @@ mod Z {
     fn test() {
         higher_order_fn(double);
     }
-
     // ANCHOR_END: example3
-
 }
 
 // ANCHOR: vec_map
 // ANCHOR: vec_map_signature
 fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(T) -> U) -> (result: Vec<U>) where
-    T: Copy
+    T: Copy,
     // ANCHOR_END: vec_map_signature
-    // ANCHOR: vec_map_requires
-    ,
 
+    // ANCHOR: vec_map_requires
     requires
         forall|i|
             0 <= i < v.len() ==> call_requires(
@@ -112,7 +105,6 @@ fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(T) -> U) -> (result: Vec<U>) where
             ),
 // ANCHOR_END: vec_map_requires
 // ANCHOR: vec_map_ensures
-
     ensures
         result.len() == v.len(),
         forall|i|
@@ -121,8 +113,8 @@ fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(T) -> U) -> (result: Vec<U>) where
                 (v[i],),
                 #[trigger] result[i],
             )
-        // ANCHOR_END: vec_map_ensures
         ,
+        // ANCHOR_END: vec_map_ensures
 {
     let mut result = Vec::new();
     let mut j = 0;
@@ -138,8 +130,8 @@ fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(T) -> U) -> (result: Vec<U>) where
     }
     result
 }
-
 // ANCHOR_END: vec_map
+
 // ANCHOR: vec_map_example
 fn double(x: u8) -> (res: u8)
     requires
@@ -158,8 +150,8 @@ fn test_vec_map() {
     let w = vec_map(&v, double);
     assert(w[2] == 40);
 }
-
 // ANCHOR_END: vec_map_example
+
 fn main() {
 }
 

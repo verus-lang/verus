@@ -1,6 +1,8 @@
 // rust_verify/tests/example.rs ignore --- ordianary rust, not verus
+
 // ANCHOR: full
 // Ordinary Rust code, not Verus
+
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicU64, Ordering};

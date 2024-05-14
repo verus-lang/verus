@@ -12,8 +12,8 @@ spec fn f(x: nat, y: nat) -> bool;
 spec fn g(x: nat) -> bool;
 
 spec fn h(x: nat, y: nat) -> bool;
-
 // ANCHOR_END: def_f_g
+
 spec fn j(x: nat) -> bool;
 
 proof fn quantifier_example()
@@ -73,8 +73,8 @@ proof fn trigger_forever2()
 {
     assert(g(4));
 }
-
 // ANCHOR_END: trigger_forever2
+
 fn simple_loop()
     ensures
         forall|x| 0 <= x < 10 ==> g(x),

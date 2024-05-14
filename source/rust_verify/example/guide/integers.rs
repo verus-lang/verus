@@ -9,8 +9,8 @@ verus! {
 fn test_u8(u: u8) {
     assert(0 <= u < 256);
 }
-
 // ANCHOR_END: test_u8
+
 // ANCHOR: test_consts
 fn test_consts() {
     let u: u8 = 1u8;
@@ -20,8 +20,8 @@ fn test_consts() {
         0int <= u < i < n < 4int
     });
 }
-
 // ANCHOR_END: test_consts
+
 // ANCHOR: test_consts_infer
 fn test_consts_infer() {
     let u: u8 = 1;
@@ -31,8 +31,8 @@ fn test_consts_infer() {
         0 <= u < i < n < 4
     });
 }
-
 // ANCHOR_END: test_consts_infer
+
 // ANCHOR: test_consts_large
 fn test_consts_large() {
     assert({
@@ -41,8 +41,8 @@ fn test_consts_large() {
         j == 2 * i
     });
 }
-
 // ANCHOR_END: test_consts_large
+
 // ANCHOR: test_coerce
 fn test_coerce() {
     let u: u8 = 1;
@@ -52,8 +52,8 @@ fn test_coerce() {
         u == i && u == n
     });
 }
-
 // ANCHOR_END: test_coerce
+
 /*
 // ANCHOR: test_coerce_fail
 fn test_coerce_fail() {
@@ -79,8 +79,8 @@ fn test_sum2(x: u8, y: u8) {
         0 <= sum2 < 511
     });
 }
-
 // ANCHOR_END: test_sum2
+
 // ANCHOR: test_sum3
 fn test_sum3(x: u8, y: u8)
     requires
@@ -88,15 +88,15 @@ fn test_sum3(x: u8, y: u8)
 {
     let sum1: u8 = x + y;  // succeeds
 }
-
 // ANCHOR_END: test_sum3
+
 // ANCHOR: test_sum_mixed
 fn test_sum_mixed(x: u8, y: u16) {
     assert(x + y >= y);  // x + y has type int, so the assertion succeeds
     assert(x - y <= x);  // x - y has type int, so the assertion succeeds
 }
-
 // ANCHOR_END: test_sum_mixed
+
 /*
 // ANCHOR: test_sum_add_sub
 fn test_sum_add_sub(x: u8, y: u8) {

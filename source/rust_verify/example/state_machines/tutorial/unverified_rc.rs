@@ -1,6 +1,8 @@
 // rust_verify/tests/example.rs ignore --- ordinary rust, not verus
+
 // ANCHOR: full
 // Ordinary Rust code, not Verus
+
 struct InnerRc<T> {
     rc_cell: std::cell::UnsafeCell<u64>,
     t: T,

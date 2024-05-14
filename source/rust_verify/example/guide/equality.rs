@@ -11,10 +11,9 @@ fn equal1(x: u8, y: u8) {
     let eq2 = y == x;  // means y.eq(x) in Rust
     assert(eq1 ==> eq2);  // succeeds
 }
-
 // ANCHOR_END: eq1
-/*
 
+/*
 // ANCHOR: eq2
 fn equal2<A: Eq>(x: A, y: A) {
     let eq1 = x == y; // means x.eq(y) in Rust
@@ -32,8 +31,8 @@ fn equal3(x: u8, y: u8) {
         eq1 ==> eq2
     });
 }
-
 // ANCHOR_END: eq3
+
 fn main() {
 }
 

@@ -121,6 +121,7 @@ fn do_count(num_threads: u32) {
     let atomic = AtomicU32::new(Ghost(tracked_instance), 0, Tracked(counter_token));
     let global = Global { atomic, instance: tracked_instance };
     let global_arc = Arc::new(global);
+
     // ANCHOR: loop_spawn
     // Spawn threads
     let mut join_handles: Vec<JoinHandle<Tracked<X::stamped_tickets>>> = Vec::new();

@@ -57,8 +57,8 @@ fn test_triangle_step_by_step() {
     assert(triangle(9) == 45);
     assert(triangle(10) == 55);  // succeeds
 }
-
 // ANCHOR_END: step_by_step
+
 // ANCHOR: fuel
 fn test_triangle_reveal() {
     proof {
@@ -66,16 +66,16 @@ fn test_triangle_reveal() {
     }
     assert(triangle(10) == 55);
 }
-
 // ANCHOR_END: fuel
+
 // ANCHOR: fuel_by
 fn test_triangle_assert_by() {
     assert(triangle(10) == 55) by {
         reveal_with_fuel(triangle, 11);
     }
 }
-
 // ANCHOR_END: fuel_by
+
 // ANCHOR: min
 spec fn min(x: int, y: int) -> int {
     if x <= y {
@@ -84,8 +84,8 @@ spec fn min(x: int, y: int) -> int {
         y
     }
 }
-
 // ANCHOR_END: min
+
 /*
 // ANCHOR: rec_fail
 fn rec_triangle(n: u32) -> (sum: u32)
@@ -114,8 +114,8 @@ fn rec_triangle(n: u32) -> (sum: u32)
         n + rec_triangle(n - 1)
     }
 }
-
 // ANCHOR_END: rec
+
 // ANCHOR: mut
 fn mut_triangle(n: u32, sum: &mut u32)
     requires
@@ -130,8 +130,8 @@ fn mut_triangle(n: u32, sum: &mut u32)
         *sum = *sum + n;
     }
 }
-
 // ANCHOR_END: mut
+
 /*
 // ANCHOR: tail_fail
 fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
@@ -194,8 +194,8 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
         tail_triangle(n, idx, sum);
     }
 }
-
 // ANCHOR_END: tail
+
 // ANCHOR: loop
 fn loop_triangle(n: u32) -> (sum: u32)
     requires
@@ -219,8 +219,8 @@ fn loop_triangle(n: u32) -> (sum: u32)
     }
     sum
 }
-
 // ANCHOR_END: loop
+
 // ANCHOR: loop_return
 fn loop_triangle_return(n: u32) -> (sum: u32)
     ensures
@@ -244,8 +244,9 @@ fn loop_triangle_return(n: u32) -> (sum: u32)
     }
     sum
 }
-
 // ANCHOR_END: loop_return
+
+#[verusfmt::skip]
 // ANCHOR: loop_break
 fn loop_triangle_break(n: u32) -> (sum: u32)
     ensures
@@ -258,8 +259,7 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
             idx <= n,
             sum == triangle(idx as nat),
         ensures
-            sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat)
-                >= 0x1_0000_0000),
+            sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= 0x1_0000_0000),
     {
         idx = idx + 1;
         if sum as u64 + idx as u64 >= 0x1_0000_0000 {
@@ -267,14 +267,14 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
                 triangle_is_monotonic(idx as nat, n as nat);
             }
             sum = 0xffff_ffff;
-            break ;
+            break;
         }
         sum = sum + idx;
     }
     sum
 }
-
 // ANCHOR_END: loop_break
+
 // ANCHOR: ackermann
 spec fn ackermann(m: nat, n: nat) -> nat
     decreases m, n,
@@ -292,8 +292,8 @@ proof fn test_ackermann() {
     reveal_with_fuel(ackermann, 12);
     assert(ackermann(3, 2) == 29);
 }
-
 // ANCHOR_END: ackermann
+
 // ANCHOR: even
 spec fn abs(i: int) -> int {
     if i < 0 {
@@ -354,69 +354,68 @@ fn test_odd() {
     }
     assert(!is_odd(10));
 }
-
 // ANCHOR_END: even
+
+#[verusfmt::skip]
 mod M {
-    use builtin::*;
+use builtin::*;
 
-    spec fn abs(i: int) -> int {
-        if i < 0 {
-            -i
-        } else {
-            i
-        }
+spec fn abs(i: int) -> int {
+    if i < 0 {
+        -i
+    } else {
+        i
     }
+}
 
-    // ANCHOR: even2
-    spec fn is_even(i: int) -> bool
-        decreases abs(i), 0int,
-    {
-        if i == 0 {
-            true
-        } else if i > 0 {
-            is_odd(i - 1)
-        } else {
-            is_odd(i + 1)
-        }
+// ANCHOR: even2
+spec fn is_even(i: int) -> bool
+    decreases abs(i), 0int,
+{
+    if i == 0 {
+        true
+    } else if i > 0 {
+        is_odd(i - 1)
+    } else {
+        is_odd(i + 1)
     }
+}
 
-    spec fn is_odd(i: int) -> bool
-        decreases abs(i), 1int,
-    {
-        !is_even(i)
+spec fn is_odd(i: int) -> bool
+    decreases abs(i), 1int,
+{
+    !is_even(i)
+}
+
+proof fn even_odd_mod2(i: int)
+    ensures
+        is_even(i) <==> i % 2 == 0,
+        is_odd(i) <==> i % 2 == 1,
+    decreases abs(i),
+{
+    reveal_with_fuel(is_odd, 2);
+    if i < 0 {
+        even_odd_mod2(i + 1);
     }
-
-    proof fn even_odd_mod2(i: int)
-        ensures
-            is_even(i) <==> i % 2 == 0,
-            is_odd(i) <==> i % 2 == 1,
-        decreases abs(i),
-    {
-        reveal_with_fuel(is_odd, 2);
-        if i < 0 {
-            even_odd_mod2(i + 1);
-        }
-        if i > 0 {
-            even_odd_mod2(i - 1);
-        }
+    if i > 0 {
+        even_odd_mod2(i - 1);
     }
+}
 
-    fn test_even() {
-        proof {
-            reveal_with_fuel(is_even, 21);
-        }
-        assert(is_even(10));
+fn test_even() {
+    proof {
+        reveal_with_fuel(is_even, 21);
     }
+    assert(is_even(10));
+}
 
-    fn test_odd() {
-        proof {
-            reveal_with_fuel(is_odd, 22);
-        }
-        assert(!is_odd(10));
+fn test_odd() {
+    proof {
+        reveal_with_fuel(is_odd, 22);
     }
-
-    // ANCHOR_END: even2
-
+    assert(!is_odd(10));
+}
+// ANCHOR_END: even2
 }
 
 fn main() {
