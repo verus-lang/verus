@@ -1,10 +1,12 @@
 const REPOS_CACHE_PATH_VAR: &str = "REPOS_CACHE_PATH";
 const WORKDIR_PATH_VAR: &str = "WORKDIR_PATH";
 const Z3_CACHE_PATH_VAR: &str = "Z3_CACHE_PATH";
+const CVC5_CACHE_PATH_VAR: &str = "CVC5_CACHE_PATH";
 const OUTPUT_PATH_VAR: &str = "OUTPUT_PATH";
 const RUNNER_PATH: &str = "/root/veritas";
 const BUILD_VERUS_SCRIPT_FILENAME: &str = "build_verus.sh";
 const GET_Z3_SCRIPT_FILENAME: &str = "get-z3.sh";
+const GET_CVC5_SCRIPT_FILENAME: &str = "get-cvc5.sh";
 const VERUS_PROJECT_NAME: &str = "verus";
 
 mod printing {
@@ -25,7 +27,7 @@ mod printing {
     }
 }
 
-use std::{path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command};
 
 #[allow(unused_imports)]
 use printing::{info, log_command, warn};
@@ -188,6 +190,41 @@ impl Z3Cache {
     }
 }
 
+struct Cvc5Cache {
+    cvc5_cache_path: PathBuf,
+}
+
+impl Cvc5Cache {
+    fn init() -> Result<Self, String> {
+        let cvc5_cache_path = env_var_dir_or_err(CVC5_CACHE_PATH_VAR)?;
+        Ok(Cvc5Cache { cvc5_cache_path })
+    }
+
+    fn ensure_cvc5_version(
+        &mut self,
+        workdir: &mut WorkDir,
+        version: &str,
+    ) -> Result<PathBuf, String> {
+        let cvc5_path = self.cvc5_cache_path.join("cvc5-".to_owned() + version);
+        if cvc5_path.exists() {
+            return Ok(cvc5_path);
+        }
+        let scratch_dir = workdir.scratch()?;
+
+        let result = log_command(
+            Command::new("/bin/bash")
+                .current_dir(scratch_dir)
+                .arg(std::path::Path::new(RUNNER_PATH).join(GET_CVC5_SCRIPT_FILENAME))
+                .arg(version)
+                .arg(&cvc5_path),
+        )
+        .status()
+        .map_err(|e| format!("cannot execute verus build script: {}", e))?;
+        result.success_or_err()?;
+        Ok(cvc5_path)
+    }
+}
+
 struct WorkDir {
     workdir_path: PathBuf,
 }
@@ -303,6 +340,7 @@ struct RunConfiguration {
     verus_git_url: String,
     verus_refspec: String,
     verus_features: Vec<String>,
+    verus_extra_args: Option<Vec<String>>,
     #[serde(default = "verus_verify_vstd_default")]
     verus_verify_vstd: bool,
 
@@ -357,6 +395,15 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         )
         .map_err(|e| format!("cannot parse run configuration: {}", e))?;
         if run_configuration.verus_verify_vstd {
+            let mut extra_args = vec![
+                        "--no-vstd".to_owned(),
+                        "--crate-type=lib".to_owned(),
+                        "-V".to_owned(),
+                        "use-crate-name".to_owned(),
+                    ];
+            if let Some(ref args) = run_configuration.verus_extra_args {
+                extra_args.extend(args.clone());
+            }
             run_configuration.projects.insert(
                 0,
                 RunConfigurationProject {
@@ -364,12 +411,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                     git_url: run_configuration.verus_git_url.clone(),
                     refspec: run_configuration.verus_refspec.clone(),
                     crate_root: "source/vstd/vstd.rs".to_owned(),
-                    extra_args: Some(vec![
-                        "--no-vstd".to_owned(),
-                        "--crate-type=lib".to_owned(),
-                        "-V".to_owned(),
-                        "use-crate-name".to_owned(),
-                    ]),
+                    extra_args: Some(extra_args),
                     prepare_script: None,
                 },
             );
@@ -381,6 +423,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
     let mut repos_cache = ReposCache::init()?;
     let mut workdir = WorkDir::init()?;
     let mut z3_cache = Z3Cache::init()?;
+    let mut cvc5_cache = Cvc5Cache::init()?;
 
     info(&format!(
         "checking out verus {}",
@@ -415,6 +458,36 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
     let z3_cached = z3_cache.ensure_z3_version(&mut workdir, &z3_version)?;
     std::fs::copy(&z3_cached, verus_workdir.join("source/z3"))
         .map_err(|e| format!("cannot copy z3 to verus source: {}", e))?;
+
+    let cvc5_version = {
+        let get_cvc5_src = std::fs::read_to_string(verus_workdir.join("source/tools/get-cvc5.sh"))
+            .map_err(|e| format!("cannot read get-cvc5.sh: {}", e))?;
+        let cvc5_version_regex =
+            regex::Regex::new(r#"cvc5_version="([^"]+)""#).expect("invalid regex for cvc5_version");
+        cvc5_version_regex
+            .captures(&get_cvc5_src)
+            .ok_or_else(|| "cannot find cvc5_version in get_cvc5.sh".to_string())?
+            .get(1)
+            .expect("no capture group")
+            .as_str()
+            .to_string()
+    };
+    info(&format!("getting cvc5 {cvc5_version}"));
+    let cvc5_cached = cvc5_cache.ensure_cvc5_version(&mut workdir, &cvc5_version)?;
+    dbg!("cvc5_cached: {}", cvc5_cached.clone());
+    dbg!("dst: {}", verus_workdir.join("source/cvc5"));
+    if fs::metadata(&cvc5_cached).is_ok() {
+        dbg!("cvc5_cached exists");
+    } else {
+        dbg!("cvc5_cached does not exist");
+    }
+    if fs::metadata(verus_workdir.join("source")).is_ok() {
+        dbg!("dst exists");
+    } else {
+        dbg!("dst exists");
+    }
+    std::fs::copy(&cvc5_cached, verus_workdir.join("source/cvc5"))
+        .map_err(|e| format!("cannot copy cvc5 to verus source: {}", e))?;
 
     let features_args = if run_configuration.verus_features.len() > 0 {
         Some("--features".to_string())

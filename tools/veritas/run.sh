@@ -5,7 +5,7 @@ if [ "$(dirname "$0")" != "." ]; then
     exit 1
 fi
 
-docker run --platform=linux/amd64 \
+docker run \
     -v verus-veritas-repo-cache:/root/repos-cache \
     -v .:/root/veritas \
     -v /root/work \
@@ -13,4 +13,4 @@ docker run --platform=linux/amd64 \
     -v verus-veritas-z3-cache:/root/z3-cache \
     -v verus-veritas-rustup:/root/.rustup \
     -v ./output:/root/output \
-    --rm ghcr.io/utaal/verus-lang/veritas:rust-1.76.0 $@
+    --rm veritas:rust-1.76.0 $@
