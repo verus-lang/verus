@@ -21,8 +21,7 @@ proof fn test_expansion_very_easy() {
 //example: simple function inline
 spec fn is_good_integer(z: int) -> bool {
     z >= 0 && z != 5
-    //          ^^^^^^
-
+    //        ^^^^^^
 }
 
 proof fn test_expansion_easy() {
@@ -52,9 +51,10 @@ pub enum Message {
     Write(bool),
 }
 
+#[verusfmt::skip]
 spec fn is_good_integer_3(x: int) -> bool {
     x >= 0 && x != 5
-    //  ^^^^^^^
+//  ^^^^^^
 
 }
 
@@ -62,27 +62,27 @@ spec fn is_good_message(msg: Message) -> bool {
     match msg {
         Message::Quit(b) => b,
         Message::Move { x, y } => is_good_integer_3((x as int) - (y as int)),
-        //                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         Message::Write(b) => b,
     }
 }
 
 spec fn is_good(msg: Message) -> bool {
     is_good_message(msg)
-    //^^^^^^^^^^^^^^^^^^^^
+    //^^^^^^^^^^^^^^^^^^
 
 }
 
 proof fn test_expansion_multiple_call() {
     let x = Message::Move { x: 5, y: 6 };
     assert(is_good(x));
-    //^^^^^^ ^^^^^^^^^^
+    //^^^^^^ ^^^^^^^^^
 }
 
 // example: boolean OR, negation
 spec fn is_good_integer_5(x: int) -> bool {
     !(x < 0 || !(x != 5))
-    //               ^^^^^^
+    //           ^^^^^^
 
 }
 
@@ -92,17 +92,17 @@ proof fn test_expansion_negate() {
 }
 
 //example: requires
+#[verusfmt::skip]
 spec fn is_good_integer_7(x: int) -> bool {
     x >= 0 && x != 5
-    //  ^^^^^^
-
+//  ^^^^^^
 }
 
 spec fn is_good_message_7(msg: Message) -> bool {
     match msg {
         Message::Quit(b) => b,
         Message::Move { x, y } => is_good_integer_7((x as int) - (y as int)),
-        //                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         Message::Write(b) => b,
     }
 }
@@ -111,7 +111,7 @@ proof fn test_require_failure(m: Message, b: bool) -> (good_int: int)
     requires
         b,
         is_good_message_7(m),
-//  ^^^^^^^^^^^^^^^^^^^^
+//      ^^^^^^^^^^^^^^^^^^^^
 
     ensures
         is_good_integer_7(good_int),
@@ -122,14 +122,14 @@ proof fn test_require_failure(m: Message, b: bool) -> (good_int: int)
 proof fn test_7(x: int) {
     let x = Message::Move { x: 0, y: 5 };
     test_require_failure(x, true);
-    //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //^^^^^^^^^^^^^^^^^^^^^^^^^^^
     assert(false);
 }
 
 //example: ensures
 spec fn is_good_integer_8(x: int) -> bool {
     x >= 0 && x != 5
-    //            ^^^^^^
+    //        ^^^^^^
 
 }
 
@@ -137,7 +137,7 @@ spec fn is_good_message_8(msg: Message) -> bool {
     match msg {
         Message::Quit(b) => b,
         Message::Move { x, y } => is_good_integer_8((x as int) - (y as int)),
-        //                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         Message::Write(b) => b,
     }
 }
@@ -145,7 +145,7 @@ spec fn is_good_message_8(msg: Message) -> bool {
 proof fn test_ensures_failure(b: bool) -> (good_msg: Message)
     ensures
         is_good_message_8(good_msg),
-//^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 {
     let mut ret = Message::Write(true);
@@ -170,7 +170,7 @@ spec fn is_good_message_9(msg: Message) -> bool {
     match msg {
         Message::Quit(b) => b,
         Message::Move { x, y } => is_good_integer_9((x as int) - (y as int)),
-        //                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         Message::Write(b) => b,
     }
 }
@@ -179,13 +179,13 @@ proof fn test_opaque(b: bool) {
     let good_msg = Message::Move { x: 0, y: 0 };
     reveal(is_good_message_9);
     assert(is_good_message_9(good_msg));
-    //  ^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 }
 
 // example: `reveal` does not flow
 #[verifier(opaque)]
 spec fn is_good_message_10(msg: Message) -> bool {
-    //   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Note: this function is opaque
+    //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Note: this function is opaque
     match msg {
         Message::Quit(b) => b,
         Message::Move { x, y } => is_good_integer_9((x as int) - (y as int)),
@@ -205,7 +205,7 @@ proof fn test_reveal(b: bool) {
             },
         );
         assert(is_good_message_10(good_msg));
-        //    ^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     }
 }
 
@@ -222,7 +222,7 @@ proof fn test_hide(b: bool) {
     hide(is_good_integer_11);
     let i = 0;
     assert(is_good_integer_11(i));
-    // ^^^^^^ ^^^^^^^^^^^^^^^^^^
+    //^^^^^^^^^^^^^^^^^^^^^^^^^^^
 }
 
 //example: publish
@@ -268,7 +268,7 @@ spec fn is_good_message_13(msg: Message) -> bool {
     match msg {
         Message::Quit(b) => b,
         Message::Move { x, y } => is_good_integer_13((x as int) - (y as int)),
-        //                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         Message::Write(b) => b,
     }
 }
@@ -276,7 +276,7 @@ spec fn is_good_message_13(msg: Message) -> bool {
 proof fn test_reveal_at_ensures(b: bool) -> (good_msg: Message)
     ensures
         is_good_message_13(good_msg),
-//  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 {
     let good_msg = Message::Move { x: 0, y: 0 };
