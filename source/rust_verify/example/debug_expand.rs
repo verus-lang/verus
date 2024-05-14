@@ -22,6 +22,7 @@ proof fn test_expansion_very_easy() {
 spec fn is_good_integer(z: int) -> bool {
     z >= 0 && z != 5
     //        ^^^^^^
+
 }
 
 proof fn test_expansion_easy() {
