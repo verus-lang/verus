@@ -9,12 +9,18 @@ Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innova
 
 ## Potential Topics
 - Overview of new/upcoming features 
-- Issue/feature request triage
+- Issue triage
+- Feature prioritization
 - Documentation write-a-thon
 - Experience reports building systems in Verus: What's working well and what isn't working
-- Language design, planned changes. and discussion
+- Language design, planned changes, and discussion
 - Proof stability
-- Verifying Rust's standard library 
+- Specifying and Verifying Rust's standard library 
+- Verus and AI
+- Syntactic suggestions (1 hour max)
+- Benchmarking suite and CI
+- Paper planning
+- cvc5 integration
 
 ## Program
 
