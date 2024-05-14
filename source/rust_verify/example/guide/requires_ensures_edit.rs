@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 
 verus! {
 
@@ -58,15 +58,13 @@ fn main() {
     let n = octuple(10);
 }
 // ANCHOR_END: pre4
-*/
-
-// ANCHOR: post1
+*/// ANCHOR: post1
 fn main() {
     let n = octuple(10);
     assert(n == 80);
 }
-// ANCHOR_END: post1
 
+// ANCHOR_END: post1
 // ANCHOR: post2
 fn octuple(x1: i8) -> (x8: i8)
     requires
@@ -79,6 +77,7 @@ fn octuple(x1: i8) -> (x8: i8)
     let x4 = x2 + x2;
     x4 + x4
 }
+
 // ANCHOR_END: post2
 
 } // verus!

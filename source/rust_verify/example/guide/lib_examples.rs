@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use vstd::{seq::*, set::*, map::*, prelude::*};
+use vstd::{map::*, prelude::*, seq::*, set::*};
 
 verus! {
 
@@ -27,18 +27,21 @@ proof fn test_map1() {
     assert(m[20] == 200);
     assert(m[30] == 300);
 }
-// ANCHOR_END: macro
 
+// ANCHOR_END: macro
 mod m0 {
-use vstd::{seq::*, prelude::*};
-// ANCHOR: new0
-proof fn test_seq2() {
-    let s: Seq<int> = Seq::new(5, |i: int| 10 * i);
-    assert(s.len() == 5);
-    assert(s[2] == 20);
-    assert(s[3] == 30);
-}
-// ANCHOR_END: new0
+    use vstd::{seq::*, prelude::*};
+
+    // ANCHOR: new0
+    proof fn test_seq2() {
+        let s: Seq<int> = Seq::new(5, |i: int| 10 * i);
+        assert(s.len() == 5);
+        assert(s[2] == 20);
+        assert(s[3] == 30);
+    }
+
+    // ANCHOR_END: new0
+
 }
 
 // ANCHOR: new
@@ -54,7 +57,6 @@ proof fn test_set2() {
     assert(s.contains(20));
     assert(s.contains(30));
     assert(!s.contains(60));
-
     let s_infinite: Set<int> = Set::new(|i: int| i % 10 == 0);
     assert(s_infinite.contains(20));
     assert(s_infinite.contains(30));
@@ -62,23 +64,16 @@ proof fn test_set2() {
 }
 
 proof fn test_map2() {
-    let m: Map<int, int> = Map::new(
-        |i: int| 0 <= i <= 40 && i % 10 == 0,
-        |i: int| 10 * i,
-    );
+    let m: Map<int, int> = Map::new(|i: int| 0 <= i <= 40 && i % 10 == 0, |i: int| 10 * i);
     assert(m[20] == 200);
     assert(m[30] == 300);
-
-    let m_infinite: Map<int, int> = Map::new(
-        |i: int| i % 10 == 0,
-        |i: int| 10 * i,
-    );
+    let m_infinite: Map<int, int> = Map::new(|i: int| i % 10 == 0, |i: int| 10 * i);
     assert(m_infinite[20] == 200);
     assert(m_infinite[30] == 300);
     assert(m_infinite[90] == 900);
 }
-// ANCHOR_END: new
 
+// ANCHOR_END: new
 /*
 // ANCHOR: test_eq_fail
 proof fn test_eq_fail() {
@@ -98,11 +93,11 @@ proof fn test_eq() {
     let s3: Seq<int> = Seq::new(5, |i: int| 10 * i);
     assert(s1 =~= s2);
     assert(s1 =~= s3);
-    assert(s1 === s2); // succeeds
-    assert(s1 === s3); // succeeds
+    assert(s1 === s2);  // succeeds
+    assert(s1 === s3);  // succeeds
 }
-// ANCHOR_END: test_eq
 
+// ANCHOR_END: test_eq
 /*
 // ANCHOR: lemma_len_intersect_fail
 pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
@@ -187,8 +182,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
     ensures
         s1.intersect(s2).len() <= s1.len(),
-    decreases
-        s1.len(),
+    decreases s1.len(),
 {
     if s1.is_empty() {
         assert(s1.intersect(s2).len() == 0) by {
@@ -202,10 +196,11 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
             assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
         }
         // simplifying ".remove(a).len()" yields s1.intersect(s2).len() <= s1.len())
+
     }
 }
-// ANCHOR_END: lemma_len_intersect_commented
 
+// ANCHOR_END: lemma_len_intersect_commented
 // ANCHOR: test_vec1
 fn test_vec1() {
     let mut v: Vec<u32> = Vec::new();
@@ -221,8 +216,8 @@ fn test_vec1() {
     assert(v[2] == 21);
     assert(v[3] == 30);
 }
-// ANCHOR_END: test_vec1
 
+// ANCHOR_END: test_vec1
 // ANCHOR: test_vec2
 spec fn has_five_sorted_numbers(s: Seq<u32>) -> bool {
     s.len() == 5 && s[0] <= s[1] <= s[2] <= s[3] <= s[4]
@@ -243,8 +238,8 @@ fn test_vec2() {
     assert(v@.subrange(2, 4) =~= seq![21, 30]);
     assert(has_five_sorted_numbers(v@));
 }
-// ANCHOR_END: test_vec2
 
+// ANCHOR_END: test_vec2
 // ANCHOR: ret_spec_fn
 spec fn adder(x: int) -> spec_fn(int) -> int {
     |y: int| x + y
@@ -255,8 +250,8 @@ proof fn test_adder() {
     assert(f(20) == 30);
     assert(f(60) == 70);
 }
-// ANCHOR_END: ret_spec_fn
 
+// ANCHOR_END: ret_spec_fn
 fn main() {
 }
 

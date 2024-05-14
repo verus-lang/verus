@@ -5,22 +5,24 @@ use vstd::{cell::*, prelude::*};
 
 //// InvCell
 
-verus!{
+verus! {
 
 // ANCHOR: inv_cell_example
-spec fn result_of_computation() -> u64 { 2 }
+spec fn result_of_computation() -> u64 {
+    2
+}
 
 fn expensive_computation() -> (res: u64)
-    ensures res == result_of_computation()
+    ensures
+        res == result_of_computation(),
 {
     1 + 1
 }
 
-
 spec fn cell_is_valid(cell: &InvCell<Option<u64>>) -> bool {
     &&& cell.wf()
-    &&& forall |v| (cell.inv(v) <==>
-        match v {
+    &&& forall|v|
+        (cell.inv(v) <==> match v {
             Option::Some(i) => i == result_of_computation(),
             Option::None => true,
         })
@@ -34,17 +36,18 @@ spec fn cell_is_valid(cell: &InvCell<Option<u64>>) -> bool {
 // The precondition here, given in the definition of `cell_is_valid` above,
 // says that the InvCell has an invariant that the interior contents is either
 // `None` or `Some(i)` where `i` is the desired value.
-
 fn memoized_computation(cell: &InvCell<Option<u64>>) -> (res: u64)
-    requires cell_is_valid(cell),
-    ensures res == result_of_computation(),
+    requires
+        cell_is_valid(cell),
+    ensures
+        res == result_of_computation(),
 {
     let c = cell.get();
     match c {
         Option::Some(i) => {
             // The value has already been computed; return the cache value
             i
-        } 
+        },
         Option::None => {
             // The value hasn't been computed yet. Compute it here
             let i = expensive_computation();
@@ -52,11 +55,11 @@ fn memoized_computation(cell: &InvCell<Option<u64>>) -> (res: u64)
             cell.replace(Option::Some(i));
             // And return it now
             i
-        }
+        },
     }
 }
+
 // ANCHOR_END: inv_cell_example
 
-}
-
-fn main() { }
+} // verus!
+fn main() {}

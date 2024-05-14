@@ -2,13 +2,13 @@
 
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
-use vstd::option::*;
 use vstd::modes::*;
+use vstd::option::*;
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;
 
-verus!{
+verus! {
 
 // ANCHOR: full
 tokenized_state_machine!{ State {
@@ -60,36 +60,36 @@ tokenized_state_machine!{ State {
 
     #[inductive(initialize)]
     fn initialize_inductive(post: Self, v: int) { }
-   
+
     #[inductive(add_token)]
     fn add_token_inductive(pre: Self, post: Self, v: int) { }
-   
+
     #[inductive(remove_token)]
     fn remove_token_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(have_token)]
     fn have_token_inductive(pre: Self, post: Self) { }
 }}
 
 proof fn option_example() {
-    #[verifier::proof] let (Tracked(instance), Tracked(mut token_exists), Tracked(token_opt)) =
+    #[verifier::proof]
+    let (Tracked(instance), Tracked(mut token_exists), Tracked(token_opt)) =
         State::Instance::initialize(5);
-
-    #[verifier::proof] let token = token_opt.tracked_unwrap();
+    #[verifier::proof]
+    let token = token_opt.tracked_unwrap();
     assert(token@.value == 5);
-
     instance.have_token(&token_exists, &token);
     assert(token_exists@.value == true);
-
-    instance.remove_token(&mut token_exists, token); // consumes token
-    assert(token_exists@.value == false); // updates token_exists to `false`
-
-    #[verifier::proof] let token = instance.add_token(19, &mut token_exists);
-    assert(token_exists@.value == true); // updates token_exists to `true`
-    assert(token@.value == 19); // new token has value 19
+    instance.remove_token(&mut token_exists, token);  // consumes token
+    assert(token_exists@.value == false);  // updates token_exists to `false`
+    #[verifier::proof]
+    let token = instance.add_token(19, &mut token_exists);
+    assert(token_exists@.value == true);  // updates token_exists to `true`
+    assert(token@.value == 19);  // new token has value 19
 }
+
 // ANCHOR_END: full
-
-fn main() { }
-
+fn main() {
 }
+
+} // verus!

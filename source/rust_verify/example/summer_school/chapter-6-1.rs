@@ -1,26 +1,28 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
-use vstd::seq::*;
 use vstd::map::*;
+use vstd::seq::*;
 use vstd::set::*;
+use vstd::{pervasive::*, *};
 
-use state_machines_macros::state_machine;
-use state_machines_macros::case_on_next;
 use state_machines_macros::case_on_init;
+use state_machines_macros::case_on_next;
+use state_machines_macros::state_machine;
 
-verus!{
+verus! {
 
-#[verifier(external_body)] /* vattr */
-pub struct Key { }
+#[verifier(external_body)]  /* vattr */
+pub struct Key {}
 
-#[verifier(external_body)] /* vattr */
-pub struct Value { }
+#[verifier(external_body)]  /* vattr */
+pub struct Value {}
 
-#[verifier(external_body)] /* vattr */
+#[verifier(external_body)]  /* vattr */
 #[verifier::spec]
-pub fn default() -> Value { unimplemented!() }
+pub fn default() -> Value {
+    unimplemented!()
+}
 
 state_machine!{
     MapSpec {
@@ -141,7 +143,7 @@ state_machine!{
         #[inductive(initialize)]
         fn initialize_inductive(post: Self, map_count: int) {
         }
-       
+
         #[inductive(insert)]
         fn insert_inductive(pre: Self, post: Self, idx: int, key: Key, value: Value) {
             //assert(forall(|k: Key| pre.host_has_key(idx, k) ==> post.host_has_key(idx, k)));
@@ -149,10 +151,10 @@ state_machine!{
             //assert(forall(|k: Key| pre.host_has_key(idx, k) == post.host_has_key(idx, k)));
             assert(forall |i: int, k: Key| pre.host_has_key(i, k) == post.host_has_key(i, k));
         }
-       
+
         #[inductive(query)]
         fn query_inductive(pre: Self, post: Self, idx: int, key: Key, value: Value) { }
-       
+
         #[inductive(transfer)]
         fn transfer_inductive(pre: Self, post: Self, send_idx: int, recv_idx: int, key: Key, value: Value) {
             assert(forall |i: int, k: Key| !equal(k, key) ==> pre.host_has_key(i, k) == post.host_has_key(i, k));
@@ -189,11 +191,8 @@ state_machine!{
 }
 
 spec fn interp(a: ShardedKVProtocol::State) -> MapSpec::State {
-    MapSpec::State {
-        map: a.interp_map()
-    }
+    MapSpec::State { map: a.interp_map() }
 }
-
 
 proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVProtocol::State)
     requires
@@ -201,10 +200,9 @@ proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: Shard
         post.invariant(),
         interp(pre).invariant(),
         ShardedKVProtocol::State::next(pre, post),
-
-    ensures MapSpec::State::next(interp(pre), interp(post)),
+    ensures
+        MapSpec::State::next(interp(pre), interp(post)),
 {
-
     case_on_next!{pre, post, ShardedKVProtocol => {
         insert(idx, key, value) => {
             assert_maps_equal!(pre.interp_map().insert(key, value), post.interp_map(), k => {
@@ -287,8 +285,10 @@ proof fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: Shard
 }
 
 proof fn init_refines_init_with_macro(post: ShardedKVProtocol::State)
-    requires post.invariant() && ShardedKVProtocol::State::init(post),
-    ensures MapSpec::State::init(interp(post)),
+    requires
+        post.invariant() && ShardedKVProtocol::State::init(post),
+    ensures
+        MapSpec::State::init(interp(post)),
 {
     case_on_init!{post, ShardedKVProtocol => {
         initialize(n) => {
@@ -302,6 +302,7 @@ proof fn init_refines_init_with_macro(post: ShardedKVProtocol::State)
     }}
 }
 
-fn main() { }
-
+fn main() {
 }
+
+} // verus!

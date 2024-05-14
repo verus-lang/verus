@@ -1,14 +1,15 @@
 #[allow(unused_imports)]
-use vstd::*;
-use vstd::prelude::*;
+use prelude::*;
 #[allow(unused_imports)]
 use seq::*;
+use vstd::prelude::*;
 #[allow(unused_imports)]
-use prelude::*;
+use vstd::*;
 
 verus! {
 
-#[is_variant] #[derive(PartialEq, Eq)] // TODO(utaal): Structural is not implemented for Box
+#[is_variant]
+#[derive(PartialEq, Eq)]  // TODO(utaal): Structural is not implemented for Box
 enum Tree {
     Nil,
     Node { value: i64, left: Box<Tree>, right: Box<Tree> },
@@ -16,7 +17,7 @@ enum Tree {
 
 impl Tree {
     spec fn view(&self) -> Seq<int>
-        decreases self
+        decreases self,
     {
         match *self {
             Tree::Nil => seq![],
@@ -25,7 +26,7 @@ impl Tree {
     }
 
     spec fn is_sorted(&self) -> bool
-        decreases self
+        decreases self,
     {
         match *self {
             Tree::Nil => true,
@@ -34,11 +35,11 @@ impl Tree {
                 &&& sequences_ordered_at_interface(seq![value as int], right@)
                 &&& left.is_sorted()
                 &&& right.is_sorted()
-            }
+            },
         }
-    }
+    }// #[verifier::proof] fn sorted_tree_means_sorted_sequence(&self)
+    // TODO(utaal): is self being Spec too restrictive?
 
-    // #[verifier::proof] fn sorted_tree_means_sorted_sequence(&self) // TODO(utaal): is self being Spec too restrictive?
 }
 
 spec fn sequences_ordered_at_interface(seq1: Seq<int>, seq2: Seq<int>) -> bool {
@@ -61,16 +62,17 @@ proof fn sorted_tree_means_sorted_sequence(tree: Tree)
         tree.is_sorted(),
     ensures
         sequence_is_sorted(tree@),
-    decreases tree // guessed by Dafny
+    decreases tree  // guessed by Dafny ,
 {
     // reveal_with_fuel(sorted_tree_means_sorted_sequence, 3); // TODO(utaal) ICE revealing current method with fuel panics in AIR
     if let Tree::Node { left, right, value: _ } = tree {
-        sorted_tree_means_sorted_sequence(*left); // guessed by Dafny
-        sorted_tree_means_sorted_sequence(*right); // guessed by Dafny
+        sorted_tree_means_sorted_sequence(*left);  // guessed by Dafny
+        sorted_tree_means_sorted_sequence(*right);  // guessed by Dafny
     }
 }
 
-#[is_variant] #[derive(Eq, PartialEq, Structural)]
+#[is_variant]
+#[derive(Eq, PartialEq, Structural)]
 enum TreeSortedness {
     Unsorted,
     Empty,
@@ -83,14 +85,17 @@ fn check_is_sorted_tree(tree: &Tree) -> (ret: TreeSortedness)
         tree.is_Nil() == ret.is_Empty(),
         if let TreeSortedness::Bounded(l, r) = ret {
             l == tree@[0] && r == tree@.last()
-        } else { true },
-        // TODO: suboptimal span for error message:
-        // error: postcondition not satisfied
-        //   --> rust_verify/example/summer_school.rs:82:13
-        //    |
-        // 82 |             TreeSortedness::Unsorted => true,
-        //    |             ^^^^^^^^^^^^^^^^^^^^^^^^
-    decreases tree
+        } else {
+            true
+        },
+// TODO: suboptimal span for error message:
+// error: postcondition not satisfied
+//   --> rust_verify/example/summer_school.rs:82:13
+//    |
+// 82 |             TreeSortedness::Unsorted => true,
+//    |             ^^^^^^^^^^^^^^^^^^^^^^^^
+
+    decreases tree,
 {
     match tree {
         Tree::Nil => TreeSortedness::Empty,
@@ -111,7 +116,6 @@ fn check_is_sorted_tree(tree: &Tree) -> (ret: TreeSortedness)
                     left_bound = ll;
                 },
             }
-
             // assert(left.is_Nil() ==> left_sortedness.is_Empty());
             // assert(left_sortedness.is_Empty() ==> left.is_Nil());
 
@@ -133,21 +137,17 @@ fn check_is_sorted_tree(tree: &Tree) -> (ret: TreeSortedness)
                     right_bound = rr;
                 },
             }
-
             proof {
                 sorted_tree_means_sorted_sequence(**left);
                 sorted_tree_means_sorted_sequence(**right);
             }
-
             // assert(equal(tree@, left@.add(seq![*value as int]).add(right@)));
             // assert(tree@.len() > 0);
-
             // assert(left.is_sorted());
             // assert(right.is_sorted());
             // assert(sequences_ordered_at_interface(left@, seq![*value as int]));
             // assert(sequences_ordered_at_interface(seq![*value as int], right@));
             // assert(tree.is_sorted());
-
             // TODO cannot use proof variable inside forall/assert_by statements (left)
             // #[verifier::spec] let left = left;
             // assert_by(left_bound == tree@[0], {
@@ -162,7 +162,7 @@ fn check_is_sorted_tree(tree: &Tree) -> (ret: TreeSortedness)
             // });
             assert(right_bound == tree@.last());
             TreeSortedness::Bounded(left_bound, right_bound)
-        }
+        },
     }
 }
 
@@ -171,13 +171,13 @@ fn find_in_binary_tree(tree: &Tree, needle: i64) -> (ret: bool)
         tree.is_sorted(),
     ensures
         ret == tree@.contains(needle as int),
-    decreases tree
+    decreases tree,
 {
     match tree {
         Tree::Nil => false,
         Tree::Node { left, value, right } => {
             if needle == *value {
-                assert(tree@[left@.len() as int] == needle); // trigger
+                assert(tree@[left@.len() as int] == needle);  // trigger
                 true
             } else if needle < *value {
                 let ret = find_in_binary_tree(left, needle);
@@ -185,53 +185,55 @@ fn find_in_binary_tree(tree: &Tree, needle: i64) -> (ret: bool)
                     //let idx = choose(|idx: nat| idx < left@.len() && left@.index(nat) == needle); // TODO(utaal): bad error message for stray nat?
                     proof {
                         let idx = choose|idx: int| 0 <= idx < left@.len() && left@[idx] == needle;
-                        assert(tree@[idx] == needle);   // trigger
+                        assert(tree@[idx] == needle);  // trigger
                     }
                 } else {
                     proof {
                         sorted_tree_means_sorted_sequence(**right);
                     }
-//                    assert_forall_by(|idx: nat| {
-//                        requires(idx < tree@.len());
-//                        ensures(tree@.index(idx) != needle);
-//                        if idx < left@.len() {
-//                          assert(tree@.index(idx) != needle);
-//                        } else if idx==left@.len() {
-//                          assert(tree@.index(idx) != needle);
-//                        } else {
-//                          assert(tree@.index(idx) == right@.index(idx + left@.len() + 1));    // TODO(utaal): surprising complaint "expected struct `builtin::int`, found struct `builtin::nat`"
-//                          #[verifier::spec] let right_idx: int = idx - (left@.len() as int + 1);
-//                          assert(tree@.index(idx) == right@.index(right_idx));
-                          // assert(sequences_ordered_at_interface(seq![*value as int], right@)); // TODO(utal): How about *value as int is just value@? And then maybe even auto_view that? How cool would that be?
-//                          assert(sequences_ordered_at_interface(seq![*value as int], right@));
-//                          assert(sequence_is_sorted(right@));
-//                          if 0 < right_idx {
-//                            assert(right@.index(0) <= right@.index(right_idx));
-//                          }
-//                          assert((*value as int) <= right@.index(right_idx));
-//                          assert(tree@.index(idx) != needle);
-//                        }
-//                    });
+                    //                    assert_forall_by(|idx: nat| {
+                    //                        requires(idx < tree@.len());
+                    //                        ensures(tree@.index(idx) != needle);
+                    //                        if idx < left@.len() {
+                    //                          assert(tree@.index(idx) != needle);
+                    //                        } else if idx==left@.len() {
+                    //                          assert(tree@.index(idx) != needle);
+                    //                        } else {
+                    //                          assert(tree@.index(idx) == right@.index(idx + left@.len() + 1));    // TODO(utaal): surprising complaint "expected struct `builtin::int`, found struct `builtin::nat`"
+                    //                          #[verifier::spec] let right_idx: int = idx - (left@.len() as int + 1);
+                    //                          assert(tree@.index(idx) == right@.index(right_idx));
+                    // assert(sequences_ordered_at_interface(seq![*value as int], right@)); // TODO(utal): How about *value as int is just value@? And then maybe even auto_view that? How cool would that be?
+                    //                          assert(sequences_ordered_at_interface(seq![*value as int], right@));
+                    //                          assert(sequence_is_sorted(right@));
+                    //                          if 0 < right_idx {
+                    //                            assert(right@.index(0) <= right@.index(right_idx));
+                    //                          }
+                    //                          assert((*value as int) <= right@.index(right_idx));
+                    //                          assert(tree@.index(idx) != needle);
+                    //                        }
+                    //                    });
                 }
-//                assert(ret == tree@.contains(needle));
+                //                assert(ret == tree@.contains(needle));
+
                 ret
             } else {
                 let ret = find_in_binary_tree(right, needle);
                 proof {
                     if ret {
                         let idx = choose|idx: int| 0 <= idx < right@.len() && right@[idx] == needle;
-                        assert(tree@[left@.len() + 1 + idx] == needle);   // trigger
+                        assert(tree@[left@.len() + 1 + idx] == needle);  // trigger
                     } else {
                         sorted_tree_means_sorted_sequence(**left);
                     }
                 }
-//                assert(ret == tree@.contains(needle));    // TODO(jonh): symmetric case incomplete
+                //                assert(ret == tree@.contains(needle));    // TODO(jonh): symmetric case incomplete
                 ret
             }
-        }
+        },
     }
 }
 
-fn main() {}
+fn main() {
+}
 
 } // verus!

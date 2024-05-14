@@ -1,10 +1,11 @@
-use builtin_macros::*;
 use builtin::*;
+use builtin_macros::*;
 
 verus! {
 
 pub fn foo(a: u64) -> u64
-    requires a < 100
+    requires
+        a < 100,
 {
     a + 1
 }

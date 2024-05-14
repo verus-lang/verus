@@ -1,10 +1,10 @@
 #[allow(unused_imports)]
 use builtin::*;
-use vstd::{*, pervasive::*};
+use vstd::cell::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::ptr::*;
-use vstd::cell::*;
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;
 
@@ -194,4 +194,4 @@ tokenized_state_machine!(RwLock {
     }
 });
 
-fn main() { }
+fn main() {}

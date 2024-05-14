@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
-use vstd::{*, pervasive::*};
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;
 
@@ -97,17 +97,17 @@ tokenized_state_machine!(
 
         #[inductive(foo)]
         fn foo_inductive(pre: Self, post: Self, n: int) { }
-       
+
         #[inductive(initialize)]
         fn initialize_inductive(post: Self, cond: bool) { }
-     
+
         #[inductive(add)]
         fn add_inductive(pre: Self, post: Self, n: int) { }
-     
+
         #[inductive(add2)]
         fn add2_inductive(pre: Self, post: Self, n: int) { }
 
     }
 );
 
-fn main() { }
+fn main() {}

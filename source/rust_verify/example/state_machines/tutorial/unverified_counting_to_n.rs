@@ -1,8 +1,6 @@
 // rust_verify/tests/example.rs ignore --- ordinary rust, not verus
-
 // ANCHOR: full
 // Ordinary Rust code, not Verus
-
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread::spawn;
@@ -20,7 +18,7 @@ fn do_count(num_threads: u32) {
 
     let mut handles = Vec::new();
 
-    for _i in 0 .. num_threads {
+    for _i in 0..num_threads {
         let handle = {
             let shared_atomic = shared_atomic.clone();
             spawn(move || {
@@ -34,8 +32,10 @@ fn do_count(num_threads: u32) {
 
     for handle in handles.into_iter() {
         match handle.join() {
-            Result::Ok(()) => { }
-            _ => { return; }
+            Result::Ok(()) => {}
+            _ => {
+                return;
+            }
         };
     }
 
@@ -46,6 +46,6 @@ fn do_count(num_threads: u32) {
 }
 
 fn main() {
-  do_count(20);
+    do_count(20);
 }
 // ANCHOR_END: full

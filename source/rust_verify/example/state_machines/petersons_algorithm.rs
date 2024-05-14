@@ -11,7 +11,7 @@ pub enum ThreadState {
     Critical,
 }
 
-tokenized_state_machine!{ Petersons<T> {
+tokenized_state_machine! { Petersons<T> {
     fields {
         #[sharding(variable)] pub flag_0: bool,
         #[sharding(variable)] pub flag_1: bool,
@@ -140,36 +140,36 @@ tokenized_state_machine!{ Petersons<T> {
 
     #[inductive(initialize)]
     fn initialize_inductive(post: Self, t: T) { }
-   
+
     #[inductive(t0_set_flag)]
     fn t0_set_flag_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t0_set_turn)]
     fn t0_set_turn_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t0_enter_via_flag)]
     fn t0_enter_via_flag_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t0_enter_via_turn)]
     fn t0_enter_via_turn_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t0_done)]
     fn t0_done_inductive(pre: Self, post: Self, t: T) { }
 
     #[inductive(t1_set_flag)]
     fn t1_set_flag_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t1_set_turn)]
     fn t1_set_turn_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t1_enter_via_flag)]
     fn t1_enter_via_flag_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t1_enter_via_turn)]
     fn t1_enter_via_turn_inductive(pre: Self, post: Self) { }
-   
+
     #[inductive(t1_done)]
     fn t1_done_inductive(pre: Self, post: Self, t: T) { }
 }}
 
-fn main() { }
+fn main() {}

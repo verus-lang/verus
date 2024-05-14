@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{prelude::*, pervasive::*, seq::*, modes::*};
+use vstd::{modes::*, pervasive::*, prelude::*, seq::*};
 
 verus! {
 
@@ -14,7 +14,8 @@ trait T<A> {
         requires
             self.req(*a),
         ensures
-            self.ens(*a, ra);
+            self.ens(*a, ra),
+    ;
 }
 
 struct B {
@@ -65,7 +66,6 @@ fn p<A, Z: T<A>>(a: &A, z: &Z) -> (rz: A)
 fn test() -> bool {
     let i = I { x: 30 };
     print_u64(p(&70, &i));
-
     let b = B { x: false };
     b.f(&true) && p(&true, &b)
 }

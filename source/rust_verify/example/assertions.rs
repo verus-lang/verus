@@ -1,18 +1,18 @@
 // rust_verify/tests/example.rs expect-failures
-
-use builtin_macros::*;
 use builtin::*;
+use builtin_macros::*;
 use vstd::*;
 
 verus! {
 
-fn main() {}
+fn main() {
+}
 
 fn test(b: bool) {
     assert(b);
 }
 
-fn has_expectations(b:bool) {
+fn has_expectations(b: bool) {
     requires(b);
 }
 
@@ -24,7 +24,6 @@ fn fails_post()
     ensures
         false,
 {
-
     let x = 5;
     let y = 7;
 }

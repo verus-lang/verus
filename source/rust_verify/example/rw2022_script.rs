@@ -2,18 +2,22 @@ fn main() {}
 
 // ## 11 -- 10-program.rs
 
-#[allow(unused_imports)] use { builtin_macros::*, builtin::*, vstd::*, prelude::*, seq::* };
+#[allow(unused_imports)]
+use {builtin::*, builtin_macros::*, prelude::*, seq::*, vstd::*};
 
 verus! {
 
 // ## A -- A-program.rs
-
 fn max(a: u64, b: u64) -> (ret: u64)
     ensures
         ret == a || ret == b,
         ret >= a && ret >= b,
 {
-    if a >= b { a } else { b }
+    if a >= b {
+        a
+    } else {
+        b
+    }
 }
 
 fn max_test2() {
@@ -24,7 +28,6 @@ fn max_test2() {
 }
 
 // ## B -- B-program.rs
-
 fn main_1() {
     let x = 3;
     let y = 4;
@@ -32,17 +35,14 @@ fn main_1() {
 }
 
 // ## B -- B-program.rs.smt sat
-
 // ## C -- C-prime.rs
-
 spec fn divides(factor: nat, candidate: nat) -> bool {
     candidate % factor == 0
 }
 
 spec fn is_prime(candidate: nat) -> bool {
     &&& 1 < candidate
-    &&& forall|factor: nat| 1 < factor && factor < candidate ==>
-        !divides(factor, candidate)
+    &&& forall|factor: nat| 1 < factor && factor < candidate ==> !divides(factor, candidate)
 }
 
 fn test_prime(candidate: u64) -> (result: bool)
@@ -78,12 +78,16 @@ fn assertions() {
 }
 
 // ## D -- D-fibo.rs
-
 spec fn fibo(n: nat) -> nat
-    decreases n
+    decreases n,
 {
-    if n == 0 { 0 } else if n == 1 { 1 }
-    else { fibo((n - 2) as nat) + fibo((n - 1) as nat) }
+    if n == 0 {
+        0
+    } else if n == 1 {
+        1
+    } else {
+        fibo((n - 2) as nat) + fibo((n - 1) as nat)
+    }
 }
 
 proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
@@ -91,23 +95,21 @@ proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
         i <= j,
     ensures
         fibo(i) <= fibo(j),
-    decreases j - i
+    decreases j - i,
 {
-  // ----
-
-   if i < 2 && j < 2 {
-   } else if i == j {
-   } else if i == j - 1 {
-       reveal_with_fuel(fibo, 2);
-       lemma_fibo_is_monotonic(i, (j - 1) as nat);
-   } else {
-       lemma_fibo_is_monotonic(i, (j - 1) as nat);
-       lemma_fibo_is_monotonic(i, (j - 2) as nat);
-   }
+    // ----
+    if i < 2 && j < 2 {
+    } else if i == j {
+    } else if i == j - 1 {
+        reveal_with_fuel(fibo, 2);
+        lemma_fibo_is_monotonic(i, (j - 1) as nat);
+    } else {
+        lemma_fibo_is_monotonic(i, (j - 1) as nat);
+        lemma_fibo_is_monotonic(i, (j - 2) as nat);
+    }
 }
 
 // ## D/2 -- D-fibo.rs
-
 spec fn fibo_fits_u64(n: nat) -> bool {
     fibo(n) <= 0xffff_ffff_ffff_ffff
 }
@@ -118,8 +120,7 @@ exec fn fibo_impl(n: u64) -> (result: u64)
     ensures
         result == fibo(n as nat),
 {
-  // ----
-
+    // ----
     if n == 0 {
         return 0;
     }
@@ -146,7 +147,6 @@ exec fn fibo_impl(n: u64) -> (result: u64)
 }
 
 // ## E -- E-reverse.rs -- spec variables
-
 /* See vectors.rs
 fn reverse(v: &mut Vec<u64>) {
     ensures([
@@ -177,16 +177,13 @@ fn reverse(v: &mut Vec<u64>) {
 */
 
 // F -- F-linear-proof
-
 // cell::RefCell::Cell<X>
-
 // G -- G-bitvector.rs
-
 fn mod8_bw(x: u32) -> (ret: u32)
     ensures
         ret == x % 8,
 {
-    assert(x & 7 == x % 8) by(bit_vector);
+    assert(x & 7 == x % 8) by (bit_vector);
     x & 7
 }
 

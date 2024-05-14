@@ -1,12 +1,12 @@
-use vstd::prelude::*;
 use vstd::calc_macro::*;
+use vstd::prelude::*;
 
 verus! {
 
-fn main() {}
+fn main() {
+}
 
-proof fn calc_example_simple()
-{
+proof fn calc_example_simple() {
     // ANCHOR: simple
     let a: int = 2;
     calc! {
@@ -18,8 +18,7 @@ proof fn calc_example_simple()
     // ANCHOR_END: simple
 }
 
-proof fn calc_example_transitive_relations()
-{
+proof fn calc_example_transitive_relations() {
     // ANCHOR: transitive
     let x: int = 2;
     let y: int = 5;
@@ -27,10 +26,10 @@ proof fn calc_example_transitive_relations()
         (<=)
         x; (==) {}
         5 - 3; (<) {}
-        5int; {} // Notice that no intermediate relation
-                 // is specified here, so `calc!` will
-                 // consider the top-level relation
-                 // `R`; here `<=`.
+        5int; {}  // Notice that no intermediate relation
+        // is specified here, so `calc!` will
+        // consider the top-level relation
+        // `R`; here `<=`.
         y;
     }
     // ANCHOR_END: transitive

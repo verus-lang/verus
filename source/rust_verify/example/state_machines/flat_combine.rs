@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
-use vstd::multiset::*;
 use vstd::map::*;
-use vstd::seq::*;
+use vstd::multiset::*;
 use vstd::prelude::*;
+use vstd::seq::*;
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;
 
@@ -29,18 +29,17 @@ pub struct Response {
 #[is_variant]
 pub enum Client {
     Idle,
-    Waiting {rid: int},
+    Waiting { rid: int },
 }
 
 #[is_variant]
 pub enum Combiner {
-    Collecting {elems: Seq<Option<int>>},
-    Responding {elems: Seq<Option<int>>, idx: nat},
+    Collecting { elems: Seq<Option<int>> },
+    Responding { elems: Seq<Option<int>>, idx: nat },
 }
 
 } // verus!
-
-tokenized_state_machine!{
+tokenized_state_machine! {
     FlatCombiner {
         fields {
             #[sharding(constant)]
@@ -230,7 +229,7 @@ tokenized_state_machine!{
                 }
             });*/
         }
-            
+
         transition!{
             client_recv(j: nat) {
                 require(0 <= j && j < pre.num_clients);
@@ -458,4 +457,4 @@ tokenized_state_machine!{
     }
 }
 
-fn main() { }
+fn main() {}
