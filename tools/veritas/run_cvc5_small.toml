@@ -5,6 +5,14 @@ verus_extra_args = ["-V", "cvc5"]
 verus_verify_vstd = false
 
 [[project]]
+name = "ironkv"
+git_url = "https://github.com/verus-lang/verified-ironkv.git"
+refspec = "main"
+crate_root = "ironsht/src/lib.rs"
+extra_args = ["--crate-type=dylib"]
+
+
+[[project]]
 name = "node-replication"
 git_url = "https://github.com/achreto/verified-node-replication.git"
 refspec = "main"

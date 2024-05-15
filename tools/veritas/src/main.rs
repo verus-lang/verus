@@ -569,6 +569,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 .env("VERUS_CVC5_PATH", verus_workdir.join("source/cvc5"))
                 .arg(&project.crate_root)
                 .args(project.extra_args.as_ref().map(|ea| &ea[..]).unwrap_or(&[]))
+                .args(run_configuration.verus_extra_args.as_ref().map(|ea| &ea[..]).unwrap_or(&[]))
                 .arg("--output-json")
                 .arg("--time")
                 .arg("--no-report-long-running"),
