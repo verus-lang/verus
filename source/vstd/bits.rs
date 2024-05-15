@@ -437,7 +437,7 @@ macro_rules! lemma_low_bits_mask_is_mod {
                         {
                             $and_split_low_bit(x as $uN, low_bits_mask(n) as $uN);
                         }
-                    x & (low_bits_mask(n) as $uN)
+                    x & (low_bits_mask(n) as $uN);
                 }
             }
         }
