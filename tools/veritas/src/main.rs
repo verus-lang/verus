@@ -566,6 +566,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::inherit())
                 .current_dir(proj_workdir)
+                .env("VERUS_CVC5_PATH", verus_workdir.join("source/cvc5"))
                 .arg(&project.crate_root)
                 .args(project.extra_args.as_ref().map(|ea| &ea[..]).unwrap_or(&[]))
                 .arg("--output-json")
