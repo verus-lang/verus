@@ -119,6 +119,31 @@ pub struct CellId {
 
 impl<V> PointsTo<V> {
     pub spec fn view(self) -> PointsToData<V>;
+
+    #[verifier::inline]
+    pub open spec fn id(&self) -> CellId {
+        self.view().pcell
+    }
+
+    #[verifier::inline]
+    pub open spec fn opt_value(&self) -> Option<V> {
+        self.view().value
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_init(&self) -> bool {
+        self.view().value.is_some()
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_uninit(&self) -> bool {
+        self.view().value.is_none()
+    }
+
+    #[verifier::inline]
+    pub open spec fn value(&self) -> V {
+        self.view().value.unwrap()
+    }
 }
 
 impl<V> PCell<V> {
