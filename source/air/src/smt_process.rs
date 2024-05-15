@@ -126,8 +126,9 @@ impl SmtProcess {
                     ))
                 );
                 eprintln!(
-                    "help: {} needs to be in the PATH, or the environment variable {} must be set to the path of the z3 executable",
-                    solver_info.executable_name, solver_info.env_path_var
+                    "help: {name} needs to be in the PATH, or the environment variable {var} must be set to the path of the {name} executable",
+                    name = solver_info.executable_name,
+                    var = solver_info.env_path_var
                 );
                 std::process::exit(128);
             }
