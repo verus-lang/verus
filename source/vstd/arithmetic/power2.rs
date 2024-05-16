@@ -21,16 +21,9 @@ verus! {
 use crate::arithmetic::power::{
     pow,
     lemma_pow_positive,
-    group_pow_properties,
     lemma_pow_adds,
     lemma_pow_strictly_increases,
 };
-#[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
-#[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::general_internals::is_le;
-#[cfg(verus_keep_ghost)]
-use crate::calc_macro::*;
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
@@ -51,28 +44,18 @@ pub open spec fn pow2(e: nat) -> nat
 
 /// Proof that 2 to the power of any natural number (specifically,
 /// `e`) is positive
-pub proof fn lemma_pow2_pos(e: nat)
+pub broadcast proof fn lemma_pow2_pos(e: nat)
     ensures
-        pow2(e) > 0,
+        #[trigger] pow2(e) > 0,
 {
     reveal(pow2);
     lemma_pow_positive(2, e);
 }
 
-/// Proof that 2 to the power of any natural number is positive
-pub proof fn lemma_pow2_pos_auto()
-    ensures
-        forall|e: nat| #[trigger] pow2(e) > 0,
-{
-    assert forall|e: nat| #[trigger] pow2(e) > 0 by {
-        lemma_pow2_pos(e);
-    }
-}
-
 /// Proof that `pow2(e)` is equivalent to `pow(2, e)`
-pub proof fn lemma_pow2(e: nat)
+pub broadcast proof fn lemma_pow2(e: nat)
     ensures
-        pow2(e) == pow(2, e) as int,
+        #[trigger] pow2(e) == pow(2, e) as int,
     decreases e,
 {
     reveal(pow);
@@ -82,41 +65,21 @@ pub proof fn lemma_pow2(e: nat)
     }
 }
 
-/// Proof that `pow2(e)` is equivalent to `pow(2, e)` for all `e`
-pub proof fn lemma_pow2_auto()
-    ensures
-        forall|e: nat| #[trigger] pow2(e) == pow(2, e),
-{
-    assert forall|e: nat| #[trigger] pow2(e) == pow(2, e) by {
-        lemma_pow2(e);
-    }
-}
-
-/// Proof relating 2^e to 2^(e-1) for a specific e.
-pub proof fn lemma_pow2_unfold(e: nat)
+/// Proof relating 2^e to 2^(e-1).
+pub broadcast proof fn lemma_pow2_unfold(e: nat)
     requires
         e > 0,
     ensures
-        pow2(e) == 2 * pow2((e - 1) as nat),
+        #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
 {
     lemma_pow2(e);
     lemma_pow2((e - 1) as nat);
 }
 
-/// Proof relating 2^e to 2^(e-1) for all e.
-pub proof fn lemma_pow2_unfold_auto()
-    ensures
-        forall|e: nat| e > 0 ==> #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
-{
-    assert forall|e: nat| e > 0 implies #[trigger] pow2(e) == 2 * pow2((e - 1) as nat) by {
-        lemma_pow2_unfold(e);
-    }
-}
-
 /// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2`.
-pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow2_adds(e1: nat, e2: nat)
     ensures
-        pow2(e1 + e2) == pow2(e1) * pow2(e2),
+        #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2),
 {
     lemma_pow2(e1);
     lemma_pow2(e2);
@@ -124,36 +87,16 @@ pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
     lemma_pow_adds(2, e1, e2);
 }
 
-/// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2` for all exponents `e1`, `e2`.
-pub proof fn lemma_pow2_adds_auto()
-    ensures
-        forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2),
-{
-    assert forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2) by {
-        lemma_pow2_adds(e1, e2);
-    }
-}
-
 /// Proof that if `e1 < e2` then `2^e1 < 2^e2` for given `e1`, `e2`.
-pub proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     requires
         e1 < e2,
     ensures
-        pow2(e1) < pow2(e2),
+        #[trigger] pow2(e1) < #[trigger] pow2(e2),
 {
     lemma_pow2(e1);
     lemma_pow2(e2);
     lemma_pow_strictly_increases(2, e1, e2);
-}
-
-/// Proof that if `e1 < e2` then `2^e1 < 2^e2` for all `e1`, `e2`.
-pub proof fn lemma_pow2_strictly_increases_auto()
-    ensures
-        forall|e1: nat, e2: nat| e1 < e2 ==> #[trigger] pow2(e1) < #[trigger] pow2(e2),
-{
-    assert forall|e1: nat, e2: nat| e1 < e2 implies #[trigger] pow2(e1) < #[trigger] pow2(e2) by {
-        lemma_pow2_strictly_increases(e1, e2);
-    }
 }
 
 /// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64
