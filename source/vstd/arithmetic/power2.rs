@@ -87,7 +87,7 @@ pub broadcast proof fn lemma_pow2_adds(e1: nat, e2: nat)
     lemma_pow_adds(2, e1, e2);
 }
 
-/// Proof that if `e1 < e2` then `2^e1 < 2^e2` for given `e1`, `e2`.
+/// Proof that if `e1 < e2` then `2^e1 < 2^e2`.
 pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     requires
         e1 < e2,
