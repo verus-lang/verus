@@ -29,7 +29,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-// Proofs that shift right is equivalent to division by power of 2.
+  // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
@@ -81,14 +81,14 @@ lemma_shr_is_div!(lemma_u32_shr_is_div, u32);
 lemma_shr_is_div!(lemma_u16_shr_is_div, u16);
 lemma_shr_is_div!(lemma_u8_shr_is_div, u8);
 
-// Proofs that a given power of 2 fits in an unsigned type.
+// Proofs of when a power of 2 fits in an unsigned type.
 macro_rules! lemma_pow2_no_overflow {
     ($name:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
         #[doc = "Proof that 2^n does not overflow "]
         #[doc = stringify!($uN)]
-        #[doc = " for a given exponent n."]
+        #[doc = " for an exponent n."]
         pub broadcast proof fn $name(n: nat)
             requires
                 0 <= n < <$uN>::BITS,
@@ -175,8 +175,7 @@ pub open spec fn low_bits_mask(n: nat) -> nat {
     (pow2(n) - 1) as nat
 }
 
-/// Proof relating the n-bit mask to a function of the (n-1)-bit mask, for given
-/// n.
+/// Proof relating the n-bit mask to a function of the (n-1)-bit mask.
 pub broadcast proof fn lemma_low_bits_mask_unfold(n: nat)
     requires
         n > 0,
@@ -197,7 +196,7 @@ pub broadcast proof fn lemma_low_bits_mask_unfold(n: nat)
     }
 }
 
-/// Proof that low_bits_mask(n) is odd, for given n.
+/// Proof that low_bits_mask(n) is odd.
 pub broadcast proof fn lemma_low_bits_mask_is_odd(n: nat)
     requires
         n > 0,
@@ -216,8 +215,7 @@ pub broadcast proof fn lemma_low_bits_mask_is_odd(n: nat)
     }
 }
 
-/// Proof that for given n, dividing the low n bit mask by 2 gives the low n-1
-/// bit mask.
+/// Proof that dividing the low n bit mask by 2 gives the low n-1 bit mask.
 pub broadcast proof fn lemma_low_bits_mask_div2(n: nat)
     requires
         n > 0,
@@ -307,12 +305,12 @@ pub proof fn lemma_low_bits_mask_values()
 }
 
 } // verus!
-// Proofs that and with mask is equivalent to modulo with power of two.
+  // Proofs that and with mask is equivalent to modulo with power of two.
 macro_rules! lemma_low_bits_mask_is_mod {
     ($name:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
-        #[doc = "Proof that for given natural n and x of type "]
+        #[doc = "Proof that for natural n and x of type "]
         #[doc = stringify!($uN)]
         #[doc = ", and with the low n-bit mask is equivalent to modulo 2^n."]
         pub broadcast proof fn $name(x: $uN, n: nat)
