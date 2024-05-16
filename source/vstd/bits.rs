@@ -29,7 +29,7 @@ use crate::arithmetic::mul::{
 use crate::calc_macro::*;
 
 } // verus!
-  // Proofs that shift right is equivalent to division by power of 2.
+// Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
@@ -305,7 +305,7 @@ pub proof fn lemma_low_bits_mask_values()
 }
 
 } // verus!
-  // Proofs that and with mask is equivalent to modulo with power of two.
+// Proofs that and with mask is equivalent to modulo with power of two.
 macro_rules! lemma_low_bits_mask_is_mod {
     ($name:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
