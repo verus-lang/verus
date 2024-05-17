@@ -31,17 +31,17 @@ use crate::calc_macro::*;
 } // verus!
 // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
-    ($name:ident, $name_auto:ident, $uN:ty) => {
+    ($name:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
-        #[doc = "Proof that for given x and n of type "]
+        #[doc = "Proof that for x and n of type "]
         #[doc = stringify!($uN)]
         #[doc = ", shifting x right by n is equivalent to division of x by 2^n."]
-        pub proof fn $name(x: $uN, shift: $uN)
+        pub broadcast proof fn $name(x: $uN, shift: $uN)
             requires
                 0 <= shift < <$uN>::BITS,
             ensures
-                x >> shift == x as nat / pow2(shift as nat),
+                #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
             decreases shift,
         {
             reveal(pow2);
@@ -72,81 +72,55 @@ macro_rules! lemma_shr_is_div {
                 }
             }
         }
-
-        #[doc = "Proof that for all x and n of type "]
-        #[doc = stringify!($uN)]
-        #[doc = ", shifting x right by n is equivalent to division of x by 2^n."]
-        pub proof fn $name_auto()
-            ensures
-                forall|x: $uN, shift: $uN|
-                    0 <= shift < <$uN>::BITS ==> #[trigger] (x >> shift) == x as nat / pow2(shift as nat),
-        {
-            assert forall|x: $uN, shift: $uN| 0 <= shift < <$uN>::BITS implies #[trigger] (x >> shift) == x as nat
-                / pow2(shift as nat) by {
-                $name(x, shift);
-            }
-        }
         }
     };
 }
 
-lemma_shr_is_div!(lemma_u64_shr_is_div, lemma_u64_shr_is_div_auto, u64);
-lemma_shr_is_div!(lemma_u32_shr_is_div, lemma_u32_shr_is_div_auto, u32);
-lemma_shr_is_div!(lemma_u16_shr_is_div, lemma_u16_shr_is_div_auto, u16);
-lemma_shr_is_div!(lemma_u8_shr_is_div, lemma_u8_shr_is_div_auto, u8);
+lemma_shr_is_div!(lemma_u64_shr_is_div, u64);
+lemma_shr_is_div!(lemma_u32_shr_is_div, u32);
+lemma_shr_is_div!(lemma_u16_shr_is_div, u16);
+lemma_shr_is_div!(lemma_u8_shr_is_div, u8);
 
-// Proofs that a given power of 2 fits in an unsigned type.
+// Proofs of when a power of 2 fits in an unsigned type.
 macro_rules! lemma_pow2_no_overflow {
-    ($name:ident, $name_auto:ident, $uN:ty) => {
+    ($name:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
         #[doc = "Proof that 2^n does not overflow "]
         #[doc = stringify!($uN)]
-        #[doc = " for a given exponent n."]
-        pub proof fn $name(n: nat)
+        #[doc = " for an exponent n."]
+        pub broadcast proof fn $name(n: nat)
             requires
                 0 <= n < <$uN>::BITS,
             ensures
-                pow2(n) <= <$uN>::MAX,
+                #[trigger] pow2(n) <= <$uN>::MAX,
         {
             lemma_pow2_strictly_increases(n, <$uN>::BITS as nat);
             lemma2_to64();
         }
-
-        #[doc = "Proof that 2^n does not overflow "]
-        #[doc = stringify!($uN)]
-        #[doc = " for all exponents in bounds."]
-        pub proof fn $name_auto()
-            ensures
-                forall|n: nat| 0 <= n < <$uN>::BITS ==> #[trigger] pow2(n) <= <$uN>::MAX,
-        {
-            assert forall|n: nat| 0 <= n < <$uN>::BITS implies #[trigger] pow2(n) <= <$uN>::MAX by {
-                $name(n);
-            }
-        }
         }
     };
 }
 
-lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, lemma_u64_pow2_no_overflow_auto, u64);
-lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, lemma_u32_pow2_no_overflow_auto, u32);
-lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, lemma_u16_pow2_no_overflow_auto, u16);
-lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, lemma_u8_pow2_no_overflow_auto, u8);
+lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, u64);
+lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, u32);
+lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, u16);
+lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, u8);
 
 // Proofs that shift left is equivalent to multiplication by power of 2.
 macro_rules! lemma_shl_is_mul {
-    ($name:ident, $name_auto:ident, $no_overflow:ident, $uN:ty) => {
+    ($name:ident, $no_overflow:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
-        #[doc = "Proof that for given x and n of type "]
+        #[doc = "Proof that for x and n of type "]
         #[doc = stringify!($uN)]
         #[doc = ", shifting x left by n is equivalent to multiplication of x by 2^n (provided no overflow)."]
-        pub proof fn $name(x: $uN, shift: $uN)
+        pub broadcast proof fn $name(x: $uN, shift: $uN)
             requires
                 0 <= shift < <$uN>::BITS,
                 x * pow2(shift as nat) <= <$uN>::MAX,
             ensures
-                x << shift == x * pow2(shift as nat),
+                #[trigger] (x << shift) == x * pow2(shift as nat),
             decreases shift,
         {
             $no_overflow(shift as nat);
@@ -185,30 +159,14 @@ macro_rules! lemma_shl_is_mul {
                 }
             }
         }
-
-        #[doc = "Proof that for all x and n of type "]
-        #[doc = stringify!($uN)]
-        #[doc = ", shifting x left by n is equivalent to multiplication of x by 2^n (provided no overflow)."]
-        pub proof fn $name_auto()
-            ensures
-                forall|x: $uN, shift: $uN|
-                    0 <= shift < <$uN>::BITS && x * pow2(shift as nat) <= <$uN>::MAX ==> #[trigger] (x << shift)
-                        == x * pow2(shift as nat),
-        {
-            assert forall|x: $uN, shift: $uN|
-                0 <= shift < <$uN>::BITS && x * pow2(shift as nat) <= <$uN>::MAX implies #[trigger] (x << shift)
-                == x * pow2(shift as nat) by {
-                $name(x, shift);
-            }
-        }
         }
     };
 }
 
-lemma_shl_is_mul!(lemma_u64_shl_is_mul, lemma_u64_shl_is_mul_auto, lemma_u64_pow2_no_overflow, u64);
-lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_shl_is_mul_auto, lemma_u32_pow2_no_overflow, u32);
-lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_shl_is_mul_auto, lemma_u16_pow2_no_overflow, u16);
-lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_shl_is_mul_auto, lemma_u8_pow2_no_overflow, u8);
+lemma_shl_is_mul!(lemma_u64_shl_is_mul, lemma_u64_pow2_no_overflow, u64);
+lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_pow2_no_overflow, u32);
+lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_pow2_no_overflow, u16);
+lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_pow2_no_overflow, u8);
 
 verus! {
 
@@ -217,13 +175,12 @@ pub open spec fn low_bits_mask(n: nat) -> nat {
     (pow2(n) - 1) as nat
 }
 
-/// Proof relating the n-bit mask to a function of the (n-1)-bit mask, for given
-/// n.
-pub proof fn lemma_low_bits_mask_unfold(n: nat)
+/// Proof relating the n-bit mask to a function of the (n-1)-bit mask.
+pub broadcast proof fn lemma_low_bits_mask_unfold(n: nat)
     requires
         n > 0,
     ensures
-        low_bits_mask(n) == 2 * low_bits_mask((n - 1) as nat) + 1,
+        #[trigger] low_bits_mask(n) == 2 * low_bits_mask((n - 1) as nat) + 1,
 {
     calc! {
         (==)
@@ -239,27 +196,12 @@ pub proof fn lemma_low_bits_mask_unfold(n: nat)
     }
 }
 
-/// Proof relating the n-bit mask to a function of the (n-1)-bit mask, for all
-/// n.
-pub proof fn lemma_low_bits_mask_unfold_auto()
-    ensures
-        forall|n: nat|
-            #![trigger low_bits_mask(n)]
-            n > 0 ==> low_bits_mask(n) == 2 * low_bits_mask((n - 1) as nat) + 1,
-{
-    assert forall|n: nat| n > 0 implies #[trigger] low_bits_mask(n) == 2 * low_bits_mask(
-        (n - 1) as nat,
-    ) + 1 by {
-        lemma_low_bits_mask_unfold(n);
-    }
-}
-
-/// Proof that low_bits_mask(n) is odd, for given n.
-pub proof fn lemma_low_bits_mask_is_odd(n: nat)
+/// Proof that low_bits_mask(n) is odd.
+pub broadcast proof fn lemma_low_bits_mask_is_odd(n: nat)
     requires
         n > 0,
     ensures
-        low_bits_mask(n) % 2 == 1,
+        #[trigger] (low_bits_mask(n) % 2) == 1,
 {
     calc! {
         (==)
@@ -273,40 +215,14 @@ pub proof fn lemma_low_bits_mask_is_odd(n: nat)
     }
 }
 
-/// Proof that low_bits_mask(n) is odd, for all n.
-pub proof fn lemma_low_bits_mask_is_odd_auto()
-    ensures
-        forall|n: nat| n > 0 ==> #[trigger] (low_bits_mask(n) % 2) == 1,
-{
-    assert forall|n: nat| n > 0 implies #[trigger] (low_bits_mask(n) % 2) == 1 by {
-        lemma_low_bits_mask_is_odd(n);
-    }
-}
-
-/// Proof that for given n, dividing the low n bit mask by 2 gives the low n-1
-/// bit mask.
-pub proof fn lemma_low_bits_mask_div2(n: nat)
+/// Proof that dividing the low n bit mask by 2 gives the low n-1 bit mask.
+pub broadcast proof fn lemma_low_bits_mask_div2(n: nat)
     requires
         n > 0,
     ensures
-        low_bits_mask(n) / 2 == low_bits_mask((n - 1) as nat),
+        #[trigger] (low_bits_mask(n) / 2) == low_bits_mask((n - 1) as nat),
 {
     lemma_low_bits_mask_unfold(n);
-}
-
-/// Proof that for all n, dividing the low n bit mask by 2 gives the low n-1
-/// bit mask.
-pub proof fn lemma_low_bits_mask_div2_auto()
-    ensures
-        forall|n: nat|
-            #![trigger low_bits_mask(n)]
-            n > 0 ==> low_bits_mask(n) / 2 == low_bits_mask((n - 1) as nat),
-{
-    assert forall|n: nat| n > 0 implies #[trigger] low_bits_mask(n) / 2 == low_bits_mask(
-        (n - 1) as nat,
-    ) by {
-        lemma_low_bits_mask_div2(n);
-    }
 }
 
 /// Proof establishing the concrete values of all masks of bit sizes from 0 to
@@ -391,17 +307,17 @@ pub proof fn lemma_low_bits_mask_values()
 } // verus!
 // Proofs that and with mask is equivalent to modulo with power of two.
 macro_rules! lemma_low_bits_mask_is_mod {
-    ($name:ident, $name_auto:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
+    ($name:ident, $and_split_low_bit:ident, $no_overflow:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
-        #[doc = "Proof that for given natural n and x of type "]
+        #[doc = "Proof that for natural n and x of type "]
         #[doc = stringify!($uN)]
         #[doc = ", and with the low n-bit mask is equivalent to modulo 2^n."]
-        pub proof fn $name(x: $uN, n: nat)
+        pub broadcast proof fn $name(x: $uN, n: nat)
             requires
                 n < <$uN>::BITS,
             ensures
-                x & (low_bits_mask(n) as $uN) == x % (pow2(n) as $uN),
+                #[trigger] (x & (low_bits_mask(n) as $uN)) == x % (pow2(n) as $uN),
             decreases n,
         {
             // Bounds.
@@ -446,18 +362,6 @@ macro_rules! lemma_low_bits_mask_is_mod {
             }
         }
 
-        #[doc = "Proof that for all natural n and x of type "]
-        #[doc = stringify!($uN)]
-        #[doc = ", and with the low n-bit mask is equivalent to modulo 2^n."]
-        pub proof fn $name_auto()
-            ensures
-                forall|x: $uN, n: nat| n < <$uN>::BITS ==> #[trigger] (x & (low_bits_mask(n) as $uN)) == (x % (pow2(n) as $uN)),
-        {
-            assert forall|x: $uN, n: nat| n < <$uN>::BITS implies #[trigger] (x & (low_bits_mask(n) as $uN)) == (x % (pow2(n) as $uN)) by {
-                $name(x, n);
-            }
-        }
-
         // Helper lemma breaking a bitwise-and operation into the low bit and the rest.
         proof fn $and_split_low_bit(x: $uN, m: $uN)
             by (bit_vector)
@@ -471,28 +375,24 @@ macro_rules! lemma_low_bits_mask_is_mod {
 
 lemma_low_bits_mask_is_mod!(
     lemma_u64_low_bits_mask_is_mod,
-    lemma_u64_low_bits_mask_is_mod_auto,
     lemma_u64_and_split_low_bit,
     lemma_u64_pow2_no_overflow,
     u64
 );
 lemma_low_bits_mask_is_mod!(
     lemma_u32_low_bits_mask_is_mod,
-    lemma_u32_low_bits_mask_is_mod_auto,
     lemma_u32_and_split_low_bit,
     lemma_u32_pow2_no_overflow,
     u32
 );
 lemma_low_bits_mask_is_mod!(
     lemma_u16_low_bits_mask_is_mod,
-    lemma_u16_low_bits_mask_is_mod_auto,
     lemma_u16_and_split_low_bit,
     lemma_u16_pow2_no_overflow,
     u16
 );
 lemma_low_bits_mask_is_mod!(
     lemma_u8_low_bits_mask_is_mod,
-    lemma_u8_low_bits_mask_is_mod_auto,
     lemma_u8_and_split_low_bit,
     lemma_u8_pow2_no_overflow,
     u8
