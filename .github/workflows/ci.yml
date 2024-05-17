@@ -53,7 +53,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y singular
-      - name: build verus and run tests
+      - name: build and test
         working-directory: ./source
         run: |
           . ../tools/activate
