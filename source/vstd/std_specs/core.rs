@@ -9,7 +9,7 @@ pub trait ExInteger {
 
 #[verifier::external_trait_specification]
 pub trait ExSpecOrd<Rhs> {
-    type ExternalTraitSpecificationFor: builtin::SpecOrd<Rhs>;
+    type ExternalTraitSpecificationFor: SpecOrd<Rhs>;
 }
 
 #[verifier::external_trait_specification]
