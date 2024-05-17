@@ -2,7 +2,7 @@ use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, Ghost
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
-use crate::verus_items::{RustItem, VerusItem, VerusItems, VstdItem};
+use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems, VstdItem};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
@@ -189,11 +189,6 @@ impl State {
     }
 
     fn datatype_name<'tcx>(&mut self, path: &Path) -> Id {
-        if let Some(krate) = &path.krate {
-            if krate.to_string() == "builtin" && path.segments.len() == 1 {
-                return Id::new(IdKind::Builtin, 0, path.segments[0].to_string());
-            }
-        }
         let f = || path.segments.last().expect("path").to_string();
         Self::id(&mut self.rename_count, &mut self.datatype_to_name, IdKind::Datatype, path, f)
     }
@@ -223,8 +218,7 @@ impl State {
 
     fn reach_datatype(&mut self, ctxt: &Context, id: DefId) {
         if !self.reached.contains(&(None, id)) {
-            let crate_name = ctxt.tcx.crate_name(ctxt.tcx.def_path(id).krate).to_string();
-            if crate_name != "builtin" {
+            if !matches!(ctxt.verus_items.id_to_name.get(&id), Some(VerusItem::BuiltinType(_))) {
                 self.reached.insert((None, id));
                 self.datatype_worklist.push(id);
             }
@@ -434,26 +428,36 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
             state.reach_datatype(ctxt, did);
+
             let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, did);
 
             let rust_item = verus_items::get_rust_item(ctxt.tcx, did);
             let (_, args) = adt_args(rust_item, args);
 
             let (typ_args, _) = erase_generic_args(ctxt, state, args, false);
-            let datatype_name = match rust_item {
-                Some(RustItem::Box) => {
-                    assert!(typ_args.len() == 1);
-                    Id::new(IdKind::Builtin, 0, "Box".to_owned())
-                }
-                Some(RustItem::Rc) => {
-                    assert!(typ_args.len() == 1);
-                    Id::new(IdKind::Builtin, 0, "Rc".to_owned())
-                }
-                Some(RustItem::Arc) => {
-                    assert!(typ_args.len() == 1);
-                    Id::new(IdKind::Builtin, 0, "Arc".to_owned())
-                }
-                _ => state.datatype_name(&path),
+            let datatype_name = match ctxt.verus_items.id_to_name.get(&did) {
+                Some(VerusItem::BuiltinType(t)) => match t {
+                    BuiltinTypeItem::Int => Id::new(IdKind::Builtin, 0, "int".to_owned()),
+                    BuiltinTypeItem::Nat => Id::new(IdKind::Builtin, 0, "nat".to_owned()),
+                    BuiltinTypeItem::FnSpec => Id::new(IdKind::Builtin, 0, "FnSpec".to_owned()),
+                    BuiltinTypeItem::Ghost => Id::new(IdKind::Builtin, 0, "Ghost".to_owned()),
+                    BuiltinTypeItem::Tracked => Id::new(IdKind::Builtin, 0, "Tracked".to_owned()),
+                },
+                _ => match rust_item {
+                    Some(RustItem::Box) => {
+                        assert!(typ_args.len() == 1);
+                        Id::new(IdKind::Builtin, 0, "Box".to_owned())
+                    }
+                    Some(RustItem::Rc) => {
+                        assert!(typ_args.len() == 1);
+                        Id::new(IdKind::Builtin, 0, "Rc".to_owned())
+                    }
+                    Some(RustItem::Arc) => {
+                        assert!(typ_args.len() == 1);
+                        Id::new(IdKind::Builtin, 0, "Arc".to_owned())
+                    }
+                    _ => state.datatype_name(&path),
+                },
             };
             Box::new(TypX::Datatype(datatype_name, Vec::new(), typ_args))
         }

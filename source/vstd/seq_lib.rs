@@ -1,19 +1,17 @@
 #[allow(unused_imports)]
-use crate::multiset::Multiset;
+use super::multiset::Multiset;
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use crate::relations::*;
+use super::prelude::*;
 #[allow(unused_imports)]
-use crate::seq::*;
+use super::relations::*;
 #[allow(unused_imports)]
-use crate::set::Set;
+use super::seq::*;
+#[allow(unused_imports)]
+use super::set::Set;
 #[cfg(verus_keep_ghost)]
-use crate::set_lib::lemma_set_properties;
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::set_lib::lemma_set_properties;
 
 verus! {
 
@@ -704,7 +702,7 @@ impl<A> Seq<A> {
             forall|x: A| self.to_multiset().contains(x) ==> self.to_multiset().count(x) == 1,
         decreases self.len(),
     {
-        broadcast use crate::multiset::group_multiset_axioms;
+        broadcast use super::multiset::group_multiset_axioms;
 
         if self.len() == 0 {
             assert(forall|x: A|
@@ -797,7 +795,7 @@ impl<A> Seq<A> {
             self.len() == self.to_set().len(),
         decreases self.len(),
     {
-        broadcast use crate::set::group_set_axioms;
+        broadcast use super::set::group_set_axioms;
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -819,7 +817,7 @@ impl<A> Seq<A> {
             self.to_set().len() <= self.len(),
         decreases self.len(),
     {
-        broadcast use crate::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
 
         lemma_seq_properties::<A>();
         lemma_set_properties::<A>();
@@ -836,7 +834,7 @@ impl<A> Seq<A> {
         ensures
             self.to_set().len() == 0 <==> self.len() == 0,
     {
-        broadcast use crate::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
         assert(!(self.len() == 0) ==> !(self.to_set().len() == 0)) by {
@@ -856,7 +854,7 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         decreases self.len(),
     {
-        broadcast use crate::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
 
         lemma_seq_properties::<A>();
         if self.len() == 0 {
@@ -1308,7 +1306,7 @@ proof fn to_multiset_build<A>(s: Seq<A>, a: A)
         s.push(a).to_multiset() =~= s.to_multiset().insert(a),
     decreases s.len(),
 {
-    broadcast use crate::multiset::group_multiset_axioms;
+    broadcast use super::multiset::group_multiset_axioms;
 
     if s.len() == 0 {
         assert(s.to_multiset() =~= Multiset::<A>::empty());
@@ -1329,7 +1327,7 @@ proof fn to_multiset_len<A>(s: Seq<A>)
         s.len() == s.to_multiset().len(),
     decreases s.len(),
 {
-    broadcast use crate::multiset::group_multiset_axioms;
+    broadcast use super::multiset::group_multiset_axioms;
 
     if s.len() == 0 {
         assert(s.to_multiset() =~= Multiset::<A>::empty());
@@ -1347,7 +1345,7 @@ proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
         s.contains(a) <==> s.to_multiset().count(a) > 0,
     decreases s.len(),
 {
-    broadcast use crate::multiset::group_multiset_axioms;
+    broadcast use super::multiset::group_multiset_axioms;
 
     if s.len() != 0 {
         // ==>
@@ -1411,7 +1409,7 @@ proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
         seq_to_set_rec(seq).finite(),
     decreases seq.len(),
 {
-    broadcast use crate::set::group_set_axioms;
+    broadcast use super::set::group_set_axioms;
 
     if seq.len() > 0 {
         let sub_seq = seq.drop_last();
@@ -1427,7 +1425,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
         forall|a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a),
     decreases seq.len(),
 {
-    broadcast use crate::set::group_set_axioms;
+    broadcast use super::set::group_set_axioms;
 
     if seq.len() > 0 {
         assert(forall|a| #[trigger]
@@ -1453,7 +1451,7 @@ proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures
         seq.to_set() == seq_to_set_rec(seq),
 {
-    broadcast use crate::set::group_set_axioms;
+    broadcast use super::set::group_set_axioms;
 
     assert(forall|n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
         seq_to_set_rec_contains(seq);
@@ -1467,7 +1465,7 @@ pub broadcast proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
     ensures
         #[trigger] seq.to_set().finite(),
 {
-    broadcast use crate::set::group_set_axioms;
+    broadcast use super::set::group_set_axioms;
 
     assert(seq.to_set().finite()) by {
         seq_to_set_equal_rec(seq);
@@ -1533,7 +1531,7 @@ pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     ensures
         (a + b).to_multiset() =~= (b + a).to_multiset(),
 {
-    broadcast use crate::multiset::group_multiset_axioms;
+    broadcast use super::multiset::group_multiset_axioms;
 
     lemma_multiset_commutative(a, b);
     lemma_multiset_commutative(b, a);
@@ -1546,7 +1544,7 @@ pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
         (a + b).to_multiset() =~= a.to_multiset().add(b.to_multiset()),
     decreases a.len(),
 {
-    broadcast use crate::multiset::group_multiset_axioms;
+    broadcast use super::multiset::group_multiset_axioms;
 
     if a.len() == 0 {
         assert(a + b =~= b);
@@ -1567,7 +1565,7 @@ pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: spec_fn(A, A) -> 
         x =~= y,
     decreases x.len(), y.len(),
 {
-    broadcast use crate::multiset::group_multiset_axioms;
+    broadcast use super::multiset::group_multiset_axioms;
 
     x.to_multiset_ensures();
     y.to_multiset_ensures();
@@ -2013,7 +2011,7 @@ pub proof fn lemma_seq_properties<A>()
 }
 
 #[doc(hidden)]
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
     s
 }
@@ -2065,7 +2063,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
@@ -2073,25 +2071,31 @@ macro_rules! assert_seqs_equal {
 #[doc(hidden)]
 macro_rules! assert_seqs_equal_internal {
     (::builtin::spec_eq($s1:expr, $s2:expr)) => {
-        assert_seqs_equal_internal!($s1, $s2)
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
     (::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
-        assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
+    };
+    (crate::builtin::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (crate::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
-        assert_seqs_equal_internal!($s1, $s2, idx => { })
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, idx => { })
     };
     ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
-        #[verifier::spec] let s1 = $crate::seq_lib::check_argument_is_seq($s1);
-        #[verifier::spec] let s2 = $crate::seq_lib::check_argument_is_seq($s2);
-        ::builtin::assert_by(::builtin::equal(s1, s2), {
-            ::builtin::assert_(s1.len() == s2.len());
-            ::builtin::assert_forall_by(|$idx : ::builtin::int| {
-                ::builtin::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
-                ::builtin::ensures(::builtin::equal(s1.index($idx), s2.index($idx)));
+        #[verifier::spec] let s1 = $crate::vstd::seq_lib::check_argument_is_seq($s1);
+        #[verifier::spec] let s2 = $crate::vstd::seq_lib::check_argument_is_seq($s2);
+        $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(s1, s2), {
+            $crate::vstd::prelude::assert_(s1.len() == s2.len());
+            $crate::vstd::prelude::assert_forall_by(|$idx : $crate::vstd::prelude::int| {
+                $crate::vstd::prelude::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
+                $crate::vstd::prelude::ensures($crate::vstd::prelude::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });
-            ::builtin::assert_(::builtin::ext_equal(s1, s2));
+            $crate::vstd::prelude::assert_($crate::vstd::prelude::ext_equal(s1, s2));
         });
     }
 }

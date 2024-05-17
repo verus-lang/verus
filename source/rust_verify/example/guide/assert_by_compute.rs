@@ -1,27 +1,30 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 #[allow(unused_imports)]
 use vstd::seq::*;
 
-fn main() {
-}
+fn main() {}
 
 verus! {
 
 // ANCHOR: pow_concrete
 // Naive definition of exponentiation
 spec fn pow(base: nat, exp: nat) -> nat
-    decreases exp
+    decreases exp,
 {
-    if exp == 0 { 1 } else { base * pow(base, (exp - 1) as nat) }
+    if exp == 0 {
+        1
+    } else {
+        base * pow(base, (exp - 1) as nat)
+    }
 }
 
 proof fn concrete_pow() {
-    assert(pow(2, 8) == 256) by (compute); // Assertion 1
-    assert(pow(2, 9) == 512); // Assertion 2
-    assert(pow(2, 8) == 256) by (compute_only); // Assertion 3
+    assert(pow(2, 8) == 256) by (compute);  // Assertion 1
+    assert(pow(2, 9) == 512);  // Assertion 2
+    assert(pow(2, 8) == 256) by (compute_only);  // Assertion 3
 }
 // ANCHOR_END: pow_concrete
 

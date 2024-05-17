@@ -1,11 +1,10 @@
 #![allow(unused_imports)]
-use builtin_macros::*;
 use builtin::*;
-use vstd::{*, prelude::*, seq::*, modes::*};
+use builtin_macros::*;
+use vstd::{modes::*, prelude::*, seq::*, *};
 
 #[verifier::external]
-fn main() {
-}
+fn main() {}
 
 verus! {
 
@@ -55,8 +54,8 @@ fn test_my_funs(x: u32, y: u32)
     // my_proof_fun(x, y); // not allowed in exec code
     // let u = my_spec_fun(x, y); // not allowed exec code
     proof {
-        let u = my_spec_fun(x as int, y as int); // allowed in proof code
-        my_proof_fun(u / 2, y as int); // allowed in proof code
+        let u = my_spec_fun(x as int, y as int);  // allowed in proof code
+        my_proof_fun(u / 2, y as int);  // allowed in proof code
     }
 }
 
@@ -66,12 +65,14 @@ pub open spec fn my_pub_spec_fun1(x: int, y: int) -> int {
     // function and body visible to all
     x / 2 + y / 2
 }
+
 /* TODO
 pub open(crate) spec fn my_pub_spec_fun2(x: u32, y: u32) -> u32 {
     // function visible to all, body visible to crate
     x / 2 + y / 2
 }
 */
+
 // TODO(main_new) pub(crate) is not being handled correctly
 // pub(crate) open spec fn my_pub_spec_fun3(x: int, y: int) -> int {
 //     // function and body visible to crate
@@ -81,6 +82,7 @@ pub closed spec fn my_pub_spec_fun4(x: int, y: int) -> int {
     // function visible to all, body visible to module
     x / 2 + y / 2
 }
+
 pub(crate) closed spec fn my_pub_spec_fun5(x: int, y: int) -> int {
     // function visible to crate, body visible to module
     x / 2 + y / 2
@@ -92,7 +94,7 @@ fn test_rec(x: u64, y: u64)
     requires
         0 < x < 100,
         y < 100 - x,
-    decreases x
+    decreases x,
 {
     if x > 1 {
         test_rec(x - 1, y + 1);
@@ -102,7 +104,7 @@ fn test_rec(x: u64, y: u64)
 /// Multiple decreases clauses are ordered lexicographically, so that later clauses may
 /// increase when earlier clauses decrease.
 spec fn test_rec2(x: int, y: int) -> int
-    decreases x, y
+    decreases x, y,
 {
     if y > 0 {
         1 + test_rec2(x, y - 1)
@@ -120,14 +122,15 @@ spec fn test_rec2(x: int, y: int) -> int
 ///   - recommends .. "when" specifies a proof function that proves the
 ///     recommendations of the functions invoked in the body
 spec fn add0(a: nat, b: nat) -> nat
-    recommends a > 0
+    recommends
+        a > 0,
     via add0_recommends
 {
     a + b
 }
 
 spec fn dec0(a: int) -> int
-    decreases a
+    decreases a,
     when a > 0
     via dec0_decreases
 {
@@ -158,17 +161,17 @@ proof fn dec0_decreases(a: int) {
 ///   - variables in spec code are always ghost
 /// For example:
 fn test_my_funs2(
-    a: u32, // exec variable
-    b: u32, // exec variable
+    a: u32,  // exec variable
+    b: u32,  // exec variable
 )
     requires
         a < 100,
         b < 100,
 {
-    let s = a + b; // s is an exec variable
+    let s = a + b;  // s is an exec variable
     proof {
-        let u = a + b; // u is a ghost variable
-        my_proof_fun(u / 2, b as int); // my_proof_fun(x, y) takes ghost parameters x and y
+        let u = a + b;  // u is a ghost variable
+        my_proof_fun(u / 2, b as int);  // my_proof_fun(x, y) takes ghost parameters x and y
     }
 }
 
@@ -181,26 +184,30 @@ spec fn f1(i: int) -> int {
 
 fn assert_by_test() {
     assert(f1(3) > 3) by {
-        reveal(f1); // reveal f1's definition just inside this block
+        reveal(f1);  // reveal f1's definition just inside this block
     }
     assert(f1(3) > 3);
 }
 
 /// "assert by" can also invoke specialized provers for bit-vector reasoning or nonlinear arithmetic.
 fn assert_by_provers(x: u32) {
-    assert(x ^ x == 0u32) by(bit_vector);
-    assert(2 <= x && x < 10 ==> x * x > x) by(nonlinear_arith);
+    assert(x ^ x == 0u32) by (bit_vector);
+    assert(2 <= x && x < 10 ==> x * x > x) by (nonlinear_arith);
 }
 
 /// "assert by" provers can also appear on function signatures to select a specific prover
 /// for the function body.
 proof fn lemma_mul_upper_bound(x: int, x_bound: int, y: int, y_bound: int)
     by (nonlinear_arith)
-    requires x <= x_bound, y <= y_bound, 0 <= x, 0 <= y,
-    ensures x * y <= x_bound * y_bound,
+    requires
+        x <= x_bound,
+        y <= y_bound,
+        0 <= x,
+        0 <= y,
+    ensures
+        x * y <= x_bound * y_bound,
 {
 }
-
 
 /// "assert by" can use nonlinear_arith with proof code,
 /// where "requires" clauses selectively make facts available to the proof code.
@@ -210,7 +217,7 @@ proof fn test5_bound_checking(x: u32, y: u32, z: u32)
         y <= 0xffff,
         z <= 0xffff,
 {
-    assert(x * z == mul(x, z)) by(nonlinear_arith)
+    assert(x * z == mul(x, z)) by (nonlinear_arith)
         requires
             x <= 0xffff,
             z <= 0xffff,
@@ -234,7 +241,6 @@ fn test_assert_forall_by() {
     }
     assert(f1(1) + f1(2) == 5);
     assert(f1(3) + f1(4) == 9);
-
     // to prove forall|...| P ==> Q, write assert forall|...| P implies Q by {...}
     assert forall|x: int| x < 10 implies f1(x) < 11 by {
         assert(x < 10);
@@ -251,7 +257,6 @@ fn test_choose() {
         let x_witness = choose|x: int| f1(x) == 10;
         assert(f1(x_witness) == 10);
     }
-
     assume(exists|x: int, y: int| f1(x) + f1(y) == 30);
     proof {
         let (x_witness, y_witness): (int, int) = choose|x: int, y: int| f1(x) + f1(y) == 30;
@@ -265,11 +270,11 @@ fn test_single_trigger1() {
     // Use [my_spec_fun(x, y)] as the trigger
     assume(forall|x: int, y: int| f1(x) < 100 && f1(y) < 100 ==> #[trigger] my_spec_fun(x, y) >= x);
 }
+
 fn test_single_trigger2() {
     // Use [f1(x), f1(y)] as the trigger
-    assume(forall|x: int, y: int|
-        #[trigger] f1(x) < 100 && #[trigger] f1(y) < 100 ==> my_spec_fun(x, y) >= x
-    );
+    assume(forall|x: int, y: int| #[trigger]
+        f1(x) < 100 && #[trigger] f1(y) < 100 ==> my_spec_fun(x, y) >= x);
 }
 
 /// To manually specify multiple triggers, use #![trigger]:
@@ -278,8 +283,7 @@ fn test_multiple_triggers() {
     assume(forall|x: int, y: int|
         #![trigger my_spec_fun(x, y)]
         #![trigger f1(x), f1(y)]
-        f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(x, y) >= x
-    );
+        f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(x, y) >= x);
 }
 
 /// Verus can often automatically choose a trigger if no manual trigger is given.
@@ -307,16 +311,17 @@ spec fn simple_conjuncts(x: int, y: int) -> bool {
     &&& x < 100
     &&& y < 100
 }
+
 spec fn complex_conjuncts(x: int, y: int) -> bool {
     let b = x < y;
     &&& b
     &&& if false {
-            &&& b ==> b
-            &&& !b ==> !b
-        } else {
-            ||| b ==> b
-            ||| !b
-        }
+        &&& b ==> b
+        &&& !b ==> !b
+    } else {
+        ||| b ==> b
+        ||| !b
+    }
     &&& false ==> true
 }
 
@@ -328,17 +333,14 @@ pub(crate) proof fn binary_ops<A>(a: A, x: int) {
     assert(false ==> true);
     assert(true && false ==> false && false);
     assert(!(true && (false ==> false) && false));
-
     assert(false ==> false ==> false);
     assert(false ==> (false ==> false));
     assert(!((false ==> false) ==> false));
-
     assert(false <== false <== false);
     assert(!(false <== (false <== false)));
     assert((false <== false) <== false);
     assert(2 + 2 !== 3);
     assert(a == a);
-
     assert(false <==> true && false);
 }
 
@@ -361,7 +363,7 @@ fn test_views() {
     v.push(10);
     v.push(20);
     proof {
-        let s: Seq<u8> = v@; // v@ is equivalent to v.view()
+        let s: Seq<u8> = v@;  // v@ is equivalent to v.view()
         assert(s[0] == 10);
         assert(s[1] == 20);
     }
@@ -369,10 +371,7 @@ fn test_views() {
 
 /// struct and enum declarations may be declared exec (default), tracked, or ghost,
 /// and fields may be declared exec (default), tracked or ghost.
-tracked struct TrackedAndGhost<T, G>(
-    tracked T,
-    ghost G,
-);
+tracked struct TrackedAndGhost<T, G>(tracked T, ghost G);
 
 /// Proof code may manipulate tracked variables directly.
 /// Declarations of tracked variables must be explicitly marked as "tracked".
@@ -383,7 +382,7 @@ proof fn test_tracked(
     tracked w: int,
     tracked x: int,
     tracked y: int,
-    z: int
+    z: int,
 ) -> tracked TrackedAndGhost<(int, int), int> {
     consume(w);
     let tracked tag: TrackedAndGhost<(int, int), int> = TrackedAndGhost((x, y), z);
@@ -401,7 +400,7 @@ fn test_ghost(x: u32, y: u32)
     let ghost mut v = u + 1;
     assert(v == x + y + 1);
     proof {
-        v = v + 1; // proof code may assign to ghost mut variables
+        v = v + 1;  // proof code may assign to ghost mut variables
     }
     let ghost w = {
         let temp = v + 1;
@@ -427,18 +426,21 @@ fn test_ghost_wrappers(x: u32, y: Ghost<u32>)
     let mut v: Ghost<int> = Ghost(u@ + 1);
     assert(v@ == x + y@ + 1);
     proof {
-        v@ = v@ + 1; // proof code may assign to the view of exec variables of type Ghost/Tracked
+        v@ = v@ + 1;  // proof code may assign to the view of exec variables of type Ghost/Tracked
     }
-    let w: Ghost<int> = Ghost({
-        // proof block that returns a ghost value
-        let temp = v@ + 1;
-        temp + 1
-    });
+    let w: Ghost<int> = Ghost(
+        {
+            // proof block that returns a ghost value
+            let temp = v@ + 1;
+            temp + 1
+        },
+    );
     assert(w@ == x + y@ + 4);
 }
 
 fn test_consume(t: Tracked<int>)
-    requires t@ <= 7
+    requires
+        t@ <= 7,
 {
     proof {
         let tracked x = t.get();
@@ -448,7 +450,10 @@ fn test_consume(t: Tracked<int>)
 }
 
 /// Ghost(...) and Tracked(...) patterns can unwrap Ghost<...> and Tracked<...> values:
-fn test_ghost_unwrap(x: u32, Ghost(y): Ghost<u32>) // unwrap so that y has typ u32, not Ghost<u32>
+fn test_ghost_unwrap(
+    x: u32,
+    Ghost(y): Ghost<u32>,
+)  // unwrap so that y has typ u32, not Ghost<u32>
     requires
         x < 100,
         y < 100,
@@ -458,13 +463,15 @@ fn test_ghost_unwrap(x: u32, Ghost(y): Ghost<u32>) // unwrap so that y has typ u
     let Ghost(mut v): Ghost<int> = Ghost(u + 1);
     assert(v == x + y + 1);
     proof {
-        v = v + 1; // assign directly to ghost mut v
+        v = v + 1;  // assign directly to ghost mut v
     }
-    let Ghost(w): Ghost<int> = Ghost({
-        // proof block that returns a ghost value
-        let temp = v + 1;
-        temp + 1
-    });
+    let Ghost(w): Ghost<int> = Ghost(
+        {
+            // proof block that returns a ghost value
+            let temp = v + 1;
+            temp + 1
+        },
+    );
     assert(w == x + y + 4);
 }
 
@@ -476,10 +483,8 @@ struct S {}
 fn test_ghost_tuple_match(t: (Tracked<S>, Tracked<S>, Ghost<int>, Ghost<int>)) -> Tracked<S> {
     let ghost g: (int, int) = (10, 20);
     assert(g.0 + g.1 == 30);
-
     let ghost (g1, g2) = g;
     assert(g1 + g2 == 30);
-
     // b1, b2: Tracked<S> and g3, g4: Ghost<int>
     let (Tracked(b1), Tracked(b2), Ghost(g3), Ghost(g4)) = t;
     Tracked(b2)
@@ -524,7 +529,8 @@ spec fn my_uninterpreted_fun1(i: int, j: int) -> int;
 spec fn my_uninterpreted_fun2(i: int, j: int) -> int
     recommends
         0 <= i < 10,
-        0 <= j < 10;
+        0 <= j < 10,
+;
 
 /// Trait functions may have specifications
 trait T {
@@ -534,7 +540,8 @@ trait T {
             0 <= j < 10,
         ensures
             i <= r,
-            j <= r;
+            j <= r,
+    ;
 }
 
 enum ThisOrThat {
@@ -545,7 +552,7 @@ enum ThisOrThat {
 proof fn uses_is(t: ThisOrThat) {
     match t {
         ThisOrThat::This(..) => assert(t is This),
-        ThisOrThat::That {..} => assert(t is That),
+        ThisOrThat::That { .. } => assert(t is That),
     }
 }
 
@@ -559,20 +566,22 @@ proof fn uses_arrow_matches_1(t: ThisOrThat)
 }
 
 proof fn uses_arrow_matches_2(t: ThisOrThat)
-    requires t matches ThisOrThat::That { v: a } && a == 3,
+    requires
+        t matches ThisOrThat::That { v: a } && a == 3,
 {
     assert(t is That && t->v == 3);
 }
 
 #[verifier::external_body]
-struct Collection { }
+struct Collection {}
 
 impl Collection {
     pub spec fn spec_has(&self, v: nat) -> bool;
 }
 
 proof fn uses_spec_has(c: Collection)
-    requires c has 3,
+    requires
+        c has 3,
 {
     assert(c has 3);
     assert(c has 3 == c has 3);

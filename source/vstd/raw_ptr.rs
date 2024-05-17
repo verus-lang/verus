@@ -1,8 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::prelude::*;
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
@@ -72,7 +70,7 @@ pub ghost struct PtrData {
     pub metadata: Metadata,
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 pub tracked struct PointsTo<T> {
     phantom: core::marker::PhantomData<T>,
@@ -234,6 +232,7 @@ pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> 
 }
 
 #[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_ptr_to_thin_ptr")]
 #[verifier::when_used_as_spec(spec_cast_ptr_to_thin_ptr)]
 pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U)
     ensures
@@ -249,6 +248,7 @@ pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [
 }
 
 #[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr")]
 #[verifier::when_used_as_spec(spec_cast_array_ptr_to_slice_ptr)]
 pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (result: *mut [T])
     ensures
@@ -262,7 +262,7 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
 /// core::ptr::write
 /// (This does _not_ drop the contents)
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v: T)
     requires
         old(perm).ptr() == ptr,
@@ -280,7 +280,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 /// core::ptr::read
 /// (TODO this should work differently if T is Copy)
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
     requires
         old(perm).ptr() == ptr,
@@ -296,7 +296,7 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
 
 /// equivalent to &*X
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
     requires
         perm.ptr() == ptr,
@@ -310,7 +310,7 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
 /* coming soon
 /// equivalent to &mut *X
 #[inline(always)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,

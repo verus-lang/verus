@@ -1,9 +1,8 @@
 #![allow(unused_imports)]
-use crate::seq::*;
-use crate::slice::SliceAdditionalSpecFns;
-use crate::view::*;
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
+use super::seq::*;
+use super::slice::SliceAdditionalSpecFns;
+use super::view::*;
 
 verus! {
 
@@ -35,7 +34,7 @@ pub trait ArrayAdditionalExecFns<T> {
 }
 
 impl<T, const N: usize> ArrayAdditionalSpecFns<T> for [T; N] {
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
     }
@@ -53,7 +52,7 @@ impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
     }
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_index_get")]
 pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &T)
     requires
@@ -89,7 +88,7 @@ pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
 
 // Referenced by Verus' internal encoding for array -> slice coercion
 #[doc(hidden)]
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::when_used_as_spec(spec_array_as_slice)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_as_slice")]
 pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
@@ -99,7 +98,7 @@ pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ar
 }
 
-#[verifier(external_fn_specification)]
+#[verifier::external_fn_specification]
 pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ensures
         ar@ == out@,

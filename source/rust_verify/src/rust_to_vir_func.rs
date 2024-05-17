@@ -962,6 +962,8 @@ pub(crate) fn check_item_fn<'tcx>(
         publish
     };
     let autospec = vattrs.autospec.map(|method_name| {
+        let this_path =
+            crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(ctxt.tcx, id);
         let path = autospec_fun(&this_path, method_name.clone());
         Arc::new(FunX { path })
     });
@@ -969,7 +971,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
             sig.span,
-            "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith",
+            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
         );
     }
     let fattrs = FunctionAttrsX {

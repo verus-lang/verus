@@ -1299,7 +1299,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         } {
             return err_span(
                 expr.span,
-                "the attribute #[verifier(truncate)] is only allowed on casts (you may need parentheses around the cast)",
+                "the attribute #[verifier::truncate] is only allowed on casts (you may need parentheses around the cast)",
             );
         }
     }

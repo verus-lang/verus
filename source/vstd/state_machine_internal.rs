@@ -2,22 +2,20 @@
 #![allow(unused_imports)]
 #![doc(hidden)]
 
-use crate::map::*;
-use crate::pervasive::*;
-use crate::prelude::*;
-use crate::seq::*;
-use builtin::*;
-use builtin_macros::*;
+use super::map::*;
+use super::pervasive::*;
+use super::prelude::*;
+use super::seq::*;
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(T))]
 pub struct SyncSendIfSyncSend<T> {
-    _sync_send: builtin::SyncSendIfSyncSend<T>,
+    _sync_send: super::prelude::SyncSendIfSyncSend<T>,
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
 pub struct NoCopy {
-    _no_copy: builtin::NoCopy,
+    _no_copy: super::prelude::NoCopy,
 }
 
 #[cfg(verus_keep_ghost)]

@@ -1,10 +1,8 @@
-#[allow(unused_imports)]
-use crate::pervasive::*;
-use crate::set::*;
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+#![allow(unused_imports)]
+
+use super::pervasive::*;
+use super::prelude::*;
+use super::set::*;
 use core::marker;
 
 verus! {
@@ -29,7 +27,7 @@ verus! {
 ///  * By manipulating an existing map with [`Map::insert`] or [`Map::remove`].
 ///
 /// To prove that two maps are equal, it is usually easiest to use the extensionality operator `=~=`.
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(K)]
 #[verifier::accept_recursive_types(V)]
@@ -64,7 +62,7 @@ impl<K, V> Map<K, V> {
     ;
 
     /// `[]` operator, synonymous with `index`
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_index(self, key: K) -> V
         recommends
             self.dom().contains(key),
@@ -102,7 +100,7 @@ impl<K, V> Map<K, V> {
         self =~= m2
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v == Map::<K, V>::empty(),
@@ -110,7 +108,7 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
             *self == Map::insert(*old(self), key, value),
@@ -119,7 +117,7 @@ impl<K, V> Map<K, V> {
     }
 
     /// todo fill in documentation
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
             old(self).dom().contains(key),
@@ -130,7 +128,7 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn tracked_borrow(tracked &self, key: K) -> (tracked v: &V)
         requires
             self.dom().contains(key),
@@ -140,7 +138,7 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn tracked_map_keys<J>(
         tracked old_map: Map<K, V>,
         key_map: Map<J, K>,
@@ -163,7 +161,7 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
         K,
         V,
@@ -177,7 +175,7 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn tracked_union_prefer_right(tracked &mut self, right: Self)
         ensures
             *self == old(self).union_prefer_right(right),
@@ -335,7 +333,7 @@ macro_rules! map {
 }
 
 #[doc(hidden)]
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn check_argument_is_map<K, V>(m: Map<K, V>) -> Map<K, V> {
     m
 }
@@ -454,10 +452,10 @@ impl<K, V> Map<K, V> {
     {
         #[verifier::proof]
         let mut tmp = Self::tracked_empty();
-        crate::modes::tracked_swap(&mut tmp, self);
+        super::modes::tracked_swap(&mut tmp, self);
         #[verifier::proof]
         let mut tmp = Self::tracked_map_keys(tmp, key_map);
-        crate::modes::tracked_swap(&mut tmp, self);
+        super::modes::tracked_swap(&mut tmp, self);
     }
 }
 

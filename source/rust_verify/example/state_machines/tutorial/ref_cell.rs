@@ -3,19 +3,17 @@
 // ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
-use vstd::prelude::*;
-use vstd::multiset::*;
-use vstd::cell::*;
-use vstd::cell;
-use vstd::invariant::*;
 use state_machines_macros::tokenized_state_machine;
+use vstd::cell;
+use vstd::cell::*;
+use vstd::invariant::*;
+use vstd::multiset::*;
 use vstd::pervasive::*;
+use vstd::prelude::*;
 
-
-verus!{
+verus! {
 
 //// TODO move this to vstd
-
 // Module to keep Dupe definitions private
 mod DupeMod {
     use vstd::prelude::*;
@@ -52,6 +50,7 @@ mod DupeMod {
          #[inductive(initialize_one)]
          fn initialize_one_inductive(post: Self, t: T) { }
     });
+
 }
 
 use DupeMod::*;
@@ -63,9 +62,7 @@ use DupeMod::*;
 /// There's no actual reference counter (since it's a ghost object
 /// and is never garbage-collected) but it has the same API:
 /// It is cloneable, and the contents are borrowable read-only.
-
 // TODO make it Copy
-
 pub tracked struct Shareable<T> {
     tracked inst: Dupe::Instance<T>,
 }
@@ -80,34 +77,37 @@ impl<T> Shareable<T> {
     }
 
     pub proof fn new(tracked t: T) -> (tracked s: Self)
-        ensures s.wf() && s@ == t,
+        ensures
+            s.wf() && s@ == t,
     {
-        let tracked inst = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
-        Shareable {
-            inst,
-        }
+        let tracked inst = Dupe::Instance::initialize_one(  /* spec */
+        t, Option::Some(t));
+        Shareable { inst }
     }
 
     pub proof fn clone(tracked &self) -> (tracked other: Self)
-        requires self.wf(),
-        ensures other.wf() && self@ == other@,
+        requires
+            self.wf(),
+        ensures
+            other.wf() && self@ == other@,
     {
         Shareable { inst: self.inst.clone() }
     }
 
     pub proof fn borrow(tracked &self) -> (tracked t: &T)
-        requires self.wf(),
-        ensures *t == self@,
+        requires
+            self.wf(),
+        ensures
+            *t == self@,
     {
         self.inst.borrow()
     }
 }
 
 //////////////////////////////////////////////////////////////////////////////
-
 pub enum BorrowFlag {
     MutBorrow,
-    ReadBorrow(nat), // 0 if there are no borrows
+    ReadBorrow(nat),  // 0 if there are no borrows
 }
 
 type Perm<S> = cell::PointsTo<S>;
@@ -173,7 +173,7 @@ tokenized_state_machine!(RefCounter<S> {
 
     #[inductive(initialize_empty)]
     fn initialize_empty_inductive(post: Self, loc: CellId) { }
-    
+
     transition!{
         do_deposit(x: Perm<S>) {
             require(x@.pcell == pre.pcell_loc && x@.value.is_Some());
@@ -288,18 +288,15 @@ struct_with_invariants!{
 }
 
 pub struct Ref<'a, S> {
-    ref_cell: &'a RefCell<S>, 
-    
+    ref_cell: &'a RefCell<S>,
     reader: Tracked<RefCounter::reader<S>>,
 }
 
 impl<'a, S> Ref<'a, S> {
     pub closed spec fn wf(&self) -> bool {
-        self.ref_cell.wf()
-          && self.reader@@.instance == self.ref_cell.inst@
-          && self.reader@@.count == 1
-          && self.reader@@.key@.pcell == self.ref_cell.value_cell.id()
-          && self.reader@@.key@.value.is_Some()
+        self.ref_cell.wf() && self.reader@@.instance == self.ref_cell.inst@ && self.reader@@.count
+            == 1 && self.reader@@.key@.pcell == self.ref_cell.value_cell.id()
+            && self.reader@@.key@.value.is_Some()
     }
 
     pub closed spec fn value(&self) -> S {
@@ -308,19 +305,15 @@ impl<'a, S> Ref<'a, S> {
 }
 
 pub struct RefMut<'a, S> {
-    ref_cell: &'a RefCell<S>, 
-    
+    ref_cell: &'a RefCell<S>,
     writer: Tracked<RefCounter::writer<S>>,
     perm: Tracked<Perm<S>>,
 }
 
 impl<'a, S> RefMut<'a, S> {
     pub closed spec fn wf(&self) -> bool {
-        self.ref_cell.wf()
-          && self.writer@@.instance == self.ref_cell.inst@
-
-          && self.perm@@.pcell == self.ref_cell.value_cell.id()
-          && self.perm@@.value.is_Some()
+        self.ref_cell.wf() && self.writer@@.instance == self.ref_cell.inst@ && self.perm@@.pcell
+            == self.ref_cell.value_cell.id() && self.perm@@.value.is_Some()
     }
 
     pub closed spec fn value(&self) -> S {
@@ -335,32 +328,29 @@ impl<S> RefCell<S> {
     {
         let (rc_cell, Tracked(rc_perm)) = PCell::new(0);
         let (value_cell, Tracked(value_perm)) = PCell::new(s);
-
-        let tracked (Tracked(inst), Tracked(flag), _, Tracked(writer)) =
-            RefCounter::Instance::<S>::initialize_empty(value_cell.id(), None);
+        let tracked (Tracked(inst), Tracked(flag), _, Tracked(writer)) = RefCounter::Instance::<
+            S,
+        >::initialize_empty(value_cell.id(), None);
         proof {
             inst.do_deposit(value_perm, &mut flag, value_perm, writer.tracked_unwrap());
         }
         let tracked_inst = Tracked(inst);
-        let tracked inv = LocalInvariant::new((tracked_inst, rc_cell),
-            GhostStuff { rc_perm, flag_token: flag }, 0);
-
-        RefCell::<S> {
-            rc_cell,
-            value_cell,
-            inst: tracked_inst,
-            inv: Tracked(Shareable::new(inv)),
-        }
+        let tracked inv = LocalInvariant::new(
+            (tracked_inst, rc_cell),
+            GhostStuff { rc_perm, flag_token: flag },
+            0,
+        );
+        RefCell::<S> { rc_cell, value_cell, inst: tracked_inst, inv: Tracked(Shareable::new(inv)) }
     }
 
     fn try_borrow<'a>(&'a self) -> (opt_ref: Option<Ref<'a, S>>)
         requires
-            self.wf()
+            self.wf(),
         ensures
             match opt_ref {
                 Some(read_ref) => read_ref.wf(),
                 None => true,
-            }
+            },
     {
         let return_value;
         open_local_invariant!(self.inv.borrow().borrow() => g => {
@@ -384,18 +374,17 @@ impl<S> RefCell<S> {
 
             proof { g = GhostStuff { rc_perm, flag_token }; }
         });
-
         return_value
     }
 
     fn try_borrow_mut<'a>(&'a self) -> (opt_ref_mut: Option<RefMut<'a, S>>)
         requires
-            self.wf()
+            self.wf(),
         ensures
             match opt_ref_mut {
                 Some(write_ref) => write_ref.wf(),
                 None => true,
-            }
+            },
     {
         let return_value;
         open_local_invariant!(self.inv.borrow().borrow() => g => {
@@ -420,29 +409,29 @@ impl<S> RefCell<S> {
 
             proof { g = GhostStuff { rc_perm, flag_token }; }
         });
-
         return_value
     }
 }
 
 impl<'a, S> Ref<'a, S> {
     fn borrow<'b>(&'b self) -> (s: &'b S)
-        requires self.wf(),
-        ensures *s == self.value(),
+        requires
+            self.wf(),
+        ensures
+            *s == self.value(),
     {
-        self.ref_cell.value_cell.borrow(Tracked(
-            self.ref_cell.inst.borrow().reader_guard(
-                self.reader@@.key,
-                self.reader.borrow()
-            )
-        ))
+        self.ref_cell.value_cell.borrow(
+            Tracked(
+                self.ref_cell.inst.borrow().reader_guard(self.reader@@.key, self.reader.borrow()),
+            ),
+        )
     }
 
     fn dispose(self)
-        requires self.wf(),
+        requires
+            self.wf(),
     {
         let Ref { ref_cell, reader: Tracked(reader) } = self;
-
         open_local_invariant!(ref_cell.inv.borrow().borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, flag_token: mut flag_token } = g;
 
@@ -461,8 +450,10 @@ impl<'a, S> Ref<'a, S> {
 
 impl<'a, S> RefMut<'a, S> {
     fn replace(&mut self, in_s: S) -> (out_s: S)
-        requires old(self).wf(),
-        ensures self.wf(),
+        requires
+            old(self).wf(),
+        ensures
+            self.wf(),
             out_s == old(self).value(),
             in_s == self.value(),
     {
@@ -470,10 +461,10 @@ impl<'a, S> RefMut<'a, S> {
     }
 
     fn dispose(self)
-        requires self.wf(),
+        requires
+            self.wf(),
     {
         let RefMut { ref_cell, writer: Tracked(writer), perm: Tracked(perm) } = self;
-
         open_local_invariant!(ref_cell.inv.borrow().borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, flag_token: mut flag_token } = g;
 
@@ -491,29 +482,42 @@ impl<'a, S> RefMut<'a, S> {
 
 fn main() {
     let rf = RefCell::new(5);
-
-    let read_ref1 = match rf.try_borrow() { Some(x) => x, None => { return; } };
-    let read_ref2 = match rf.try_borrow() { Some(x) => x, None => { return; } };
-
+    let read_ref1 = match rf.try_borrow() {
+        Some(x) => x,
+        None => {
+            return ;
+        },
+    };
+    let read_ref2 = match rf.try_borrow() {
+        Some(x) => x,
+        None => {
+            return ;
+        },
+    };
     let x = *read_ref1.borrow();
     let y = *read_ref2.borrow();
     print_u64(x);
     print_u64(y);
-
     read_ref1.dispose();
     read_ref2.dispose();
-
-    let mut write_ref = match rf.try_borrow_mut() { Some(x) => x, None => { return; } };
-
+    let mut write_ref = match rf.try_borrow_mut() {
+        Some(x) => x,
+        None => {
+            return ;
+        },
+    };
     let t = write_ref.replace(20);
     print_u64(t);
-
     write_ref.dispose();
-
-    let read_ref3 = match rf.try_borrow() { Some(x) => x, None => { return; } };
+    let read_ref3 = match rf.try_borrow() {
+        Some(x) => x,
+        None => {
+            return ;
+        },
+    };
     let z = *read_ref3.borrow();
     print_u64(z);
     read_ref3.dispose();
 }
 
-}
+} // verus!

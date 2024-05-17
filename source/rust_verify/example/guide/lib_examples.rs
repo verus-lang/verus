@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use vstd::{seq::*, set::*, map::*, prelude::*};
+use vstd::{map::*, prelude::*, seq::*, set::*};
 
 verus! {
 
@@ -27,10 +27,12 @@ proof fn test_map1() {
     assert(m[20] == 200);
     assert(m[30] == 300);
 }
-// ANCHOR_END: macro
 
+// ANCHOR_END: macro
+#[verusfmt::skip]
 mod m0 {
 use vstd::{seq::*, prelude::*};
+
 // ANCHOR: new0
 proof fn test_seq2() {
     let s: Seq<int> = Seq::new(5, |i: int| 10 * i);
@@ -62,17 +64,11 @@ proof fn test_set2() {
 }
 
 proof fn test_map2() {
-    let m: Map<int, int> = Map::new(
-        |i: int| 0 <= i <= 40 && i % 10 == 0,
-        |i: int| 10 * i,
-    );
+    let m: Map<int, int> = Map::new(|i: int| 0 <= i <= 40 && i % 10 == 0, |i: int| 10 * i);
     assert(m[20] == 200);
     assert(m[30] == 300);
 
-    let m_infinite: Map<int, int> = Map::new(
-        |i: int| i % 10 == 0,
-        |i: int| 10 * i,
-    );
+    let m_infinite: Map<int, int> = Map::new(|i: int| i % 10 == 0, |i: int| 10 * i);
     assert(m_infinite[20] == 200);
     assert(m_infinite[30] == 300);
     assert(m_infinite[90] == 900);
@@ -98,8 +94,8 @@ proof fn test_eq() {
     let s3: Seq<int> = Seq::new(5, |i: int| 10 * i);
     assert(s1 =~= s2);
     assert(s1 =~= s3);
-    assert(s1 === s2); // succeeds
-    assert(s1 === s3); // succeeds
+    assert(s1 === s2);  // succeeds
+    assert(s1 === s3);  // succeeds
 }
 // ANCHOR_END: test_eq
 
@@ -187,8 +183,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
     ensures
         s1.intersect(s2).len() <= s1.len(),
-    decreases
-        s1.len(),
+    decreases s1.len(),
 {
     if s1.is_empty() {
         assert(s1.intersect(s2).len() == 0) by {
@@ -202,6 +197,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
             assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
         }
         // simplifying ".remove(a).len()" yields s1.intersect(s2).len() <= s1.len())
+
     }
 }
 // ANCHOR_END: lemma_len_intersect_commented

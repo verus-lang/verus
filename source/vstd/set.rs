@@ -1,13 +1,11 @@
 use core::marker;
 
 #[allow(unused_imports)]
-use crate::map::*;
+use super::map::*;
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
@@ -30,7 +28,7 @@ verus! {
 ///
 /// To prove that two sequences are equal, it is usually easiest to use the extensionality
 /// operator `=~=`.
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(A)]
 pub struct Set<A> {
@@ -71,7 +69,7 @@ impl<A> Set<A> {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_le(self, s2: Set<A>) -> bool {
         self.subset_of(s2)
     }
@@ -88,7 +86,7 @@ impl<A> Set<A> {
     pub spec fn union(self, s2: Set<A>) -> Set<A>;
 
     /// `+` operator, synonymous with `union`
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_add(self, s2: Set<A>) -> Set<A> {
         self.union(s2)
     }
@@ -97,7 +95,7 @@ impl<A> Set<A> {
     pub spec fn intersect(self, s2: Set<A>) -> Set<A>;
 
     /// `*` operator, synonymous with `intersect`
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_mul(self, s2: Set<A>) -> Set<A> {
         self.intersect(s2)
     }
@@ -107,7 +105,7 @@ impl<A> Set<A> {
 
     /// Set complement (within the space of all possible elements in `A`).
     /// `-` operator, synonymous with `difference`
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_sub(self, s2: Set<A>) -> Set<A> {
         self.difference(s2)
     }
@@ -447,7 +445,7 @@ pub broadcast group group_set_axioms {
 #[macro_export]
 macro_rules! set_internal {
     [$($elem:expr),* $(,)?] => {
-        $crate::set::Set::empty()
+        $crate::vstd::set::Set::empty()
             $(.insert($elem))*
     };
 }
@@ -455,7 +453,7 @@ macro_rules! set_internal {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::set::set_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
     };
 }
 

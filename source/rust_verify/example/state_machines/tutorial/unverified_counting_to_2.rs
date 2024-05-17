@@ -37,13 +37,17 @@ fn main() {
     // Wait on both threads. Exit if an unexpected condition occurs.
 
     match handle1.join() {
-        Result::Ok(()) => { }
-        _ => { return; }
+        Result::Ok(()) => {}
+        _ => {
+            return;
+        }
     };
 
     match handle2.join() {
-        Result::Ok(()) => { }
-        _ => { return; }
+        Result::Ok(()) => {}
+        _ => {
+            return;
+        }
     };
 
     // Load the value, and assert that it should now be 2.

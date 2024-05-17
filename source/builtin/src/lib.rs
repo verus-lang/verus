@@ -1314,6 +1314,7 @@ pub fn is_smaller_than_recursive_function_field<A, B>(_: A, _: B) -> bool {
 }
 
 #[macro_export]
+#[cfg(not(verus_verify_core))]
 macro_rules! decreases_to_internal {
     ($($x:expr),* $(,)? => $($y:expr),* $(,)?) => {
         $crate::is_smaller_than_lexicographic(($($y,)*), ($($x,)*))
@@ -1331,11 +1332,33 @@ macro_rules! decreases_to_internal {
 ///   while is_smaller_than/is_smaller_than_lexicographic is not a function call
 ///   and is not a useful trigger.)
 #[macro_export]
+#[cfg(not(verus_verify_core))]
 macro_rules! decreases_to {
     ($($x:tt)*) => {
         ::builtin_macros::verus_proof_macro_exprs!($crate::decreases_to_internal!($($x)*))
     };
 }
+
+#[macro_export]
+#[cfg(verus_verify_core)]
+macro_rules! decreases_to_internal {
+    ($($x:expr),* $(,)? => $($y:expr),* $(,)?) => {
+        $crate::builtin::is_smaller_than_lexicographic(($($y,)*), ($($x,)*))
+    }
+}
+
+#[macro_export]
+#[cfg(verus_verify_core)]
+macro_rules! decreases_to {
+    ($($x:tt)*) => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::builtin::decreases_to_internal!($($x)*))
+    };
+}
+
+#[cfg(verus_verify_core)]
+pub use decreases_to;
+#[cfg(verus_verify_core)]
+pub use decreases_to_internal;
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]

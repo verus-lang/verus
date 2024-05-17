@@ -12,20 +12,21 @@
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::super::prelude::*;
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::general_internals::{is_le, lemma_induction_helper};
-use crate::arithmetic::internals::mul_internals_nonlinear as MulINL;
+use super::super::super::arithmetic::internals::general_internals::{
+    is_le, lemma_induction_helper,
+};
+use super::super::super::arithmetic::internals::mul_internals_nonlinear as MulINL;
 #[cfg(verus_keep_ghost)]
-use crate::math::{add as add1, sub as sub1};
+use super::super::super::math::{add as add1, sub as sub1};
 
 verus! {
 
 /// This function performs multiplication recursively. It's only valid
 /// when `x` is non-negative.
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn mul_pos(x: int, y: int) -> int
     recommends
         x >= 0,
@@ -102,7 +103,7 @@ proof fn lemma_mul_successor()
 
 /// Proof that multiplication distributes over addition and over
 /// subtraction
-#[verifier(spinoff_prover)]
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_mul_distributes_plus(x: int, y: int, z: int)
     ensures
         #[trigger] ((x + y) * z) == (x * z + y * z),
@@ -122,7 +123,7 @@ pub broadcast proof fn lemma_mul_distributes_plus(x: int, y: int, z: int)
     }
 }
 
-#[verifier(spinoff_prover)]
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_mul_distributes_minus(x: int, y: int, z: int)
     ensures
         #[trigger] ((x - y) * z) == (x * z - y * z),

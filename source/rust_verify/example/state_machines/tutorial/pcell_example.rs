@@ -2,11 +2,11 @@
 
 use builtin::*;
 use builtin_macros::*;
-use vstd::{pervasive::*, cell::*};
 use vstd::modes::*;
 use vstd::prelude::*;
+use vstd::{cell::*, pervasive::*};
 
-verus!{
+verus! {
 
 // ANCHOR: example
 fn main() {
@@ -29,13 +29,13 @@ fn main() {
     // We can write a value to the pcell (thus initializing it).
     // This only requires an `&` reference to the PCell, but it does
     // mutate the `perm` token.
-    pcell.put(Tracked(&mut perm), 5); 
+    pcell.put(Tracked(&mut perm), 5);
 
     // Having written the value, this is reflected in the token:
     assert(perm@ === pcell_opt![ pcell.id() => Option::Some(5) ]);
 
     // We can take the value back out:
-    let x = pcell.take(Tracked(&mut perm)); 
+    let x = pcell.take(Tracked(&mut perm));
 
     // Which leaves it uninitialized again:
     assert(x == 5);
@@ -43,8 +43,7 @@ fn main() {
 }
 // ANCHOR_END: example
 
-}
-
+} // verus!
 /*
 // After erasure, this looks more like:
 

@@ -1,14 +1,12 @@
 //! Provides specifications for spec closures as relations.
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use crate::seq::*;
+use super::prelude::*;
 #[allow(unused_imports)]
-use crate::set::Set;
+use super::seq::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::set::Set;
 
 verus! {
 

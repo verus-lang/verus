@@ -336,7 +336,7 @@ fn check_one_expr(
             if function.x.attrs.nonlinear {
                 return Err(error(
                     &expr.span,
-                    "assert_by_query not allowed in #[verifier(nonlinear)] functions",
+                    "assert_by_query not allowed in #[verifier::nonlinear] functions",
                 ));
             }
 

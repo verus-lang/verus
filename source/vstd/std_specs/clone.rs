@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use super::super::prelude::*;
 use core::clone::Clone;
 
 verus! {
@@ -11,7 +11,7 @@ pub trait ExClone: Sized {
 }
 
 /*
-#[verifier(external_fn_specification)]
+#[verifier::external_fn_specification]
 pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)
 {
     a.clone_from(b)

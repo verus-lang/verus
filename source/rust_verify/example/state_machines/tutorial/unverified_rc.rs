@@ -48,16 +48,13 @@ impl<T> Rc<T> {
             // If the counter hits 0, drop the `T` and deallocate the memory.
             if count == 0 {
                 std::ptr::drop_in_place(&mut (*self.ptr).t);
-                std::alloc::dealloc(self.ptr as *mut u8,
-                    std::alloc::Layout::for_value(&*self.ptr));
+                std::alloc::dealloc(self.ptr as *mut u8, std::alloc::Layout::for_value(&*self.ptr));
             }
         }
     }
 
     fn borrow(&self) -> &T {
-        unsafe {
-            &(*self.ptr).t
-        }
+        unsafe { &(*self.ptr).t }
     }
 }
 
@@ -78,12 +75,16 @@ fn main() {
     let x1 = nil.borrow();
     let x2 = nil_clone.borrow();
     match x1 {
-        Sequence::Nil => { }
-        Sequence::Cons(_, _) => { assert!(false); }
+        Sequence::Nil => {}
+        Sequence::Cons(_, _) => {
+            assert!(false);
+        }
     }
     match x2 {
-        Sequence::Nil => { }
-        Sequence::Cons(_, _) => { assert!(false); }
+        Sequence::Nil => {}
+        Sequence::Cons(_, _) => {
+            assert!(false);
+        }
     }
 
     nil.drop();

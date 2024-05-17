@@ -160,6 +160,7 @@ version = "0.1.0"
 name = "builtin_macros"
 version = "0.1.0"
 dependencies = [
+ "lazy_static",
  "prettyplease_verus",
  "proc-macro2",
  "quote",
