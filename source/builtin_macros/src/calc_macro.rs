@@ -1,7 +1,7 @@
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
+use quote::quote;
 use quote::ToTokens;
-use quote::{quote, quote_spanned};
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_macro_input;
 use syn_verus::spanned::Spanned;
@@ -31,13 +31,13 @@ pub fn calc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             block: block.clone(),
         }));
         output_steps
-            .push(quote_spanned! (block.span() => ::builtin::assert_by(#op_expr, { #block })));
+            .push(quote_spanned_builtin! (builtin, block.span() => #builtin::assert_by(#op_expr, { #block })));
     }
     let combined_block = quote! {
         #(#output_steps);*
     };
     let top_level = input.reln.op.to_expr(&input.steps[0].0, &input.last);
-    quote!(::builtin::assert_by(#top_level, { #combined_block });).into()
+    quote_builtin!(builtin => #builtin::assert_by(#top_level, { #combined_block });).into()
 }
 
 #[derive(Debug)]
@@ -177,13 +177,15 @@ impl RelationOp {
         let right = rewrite_expr_to_token_stream(right);
 
         match self {
-            Eq => quote! { ::builtin::equal(#left, #right) },
+            Eq => quote_builtin! { builtin => #builtin::equal(#left, #right) },
             Lt => quote! { #left < #right },
             Leq => quote! { #left <= #right },
             Gt => quote! { #left > #right },
             Geq => quote! { #left >= #right },
-            Implies => quote! { ::builtin::imply(#left, #right) },
-            Iff => quote! { ::builtin::imply(#left, #right) && ::builtin::imply(#right, #left) },
+            Implies => quote_builtin! { builtin => #builtin::imply(#left, #right) },
+            Iff => {
+                quote_builtin! { builtin => #builtin::imply(#left, #right) && #builtin::imply(#right, #left) }
+            }
         }
     }
 }

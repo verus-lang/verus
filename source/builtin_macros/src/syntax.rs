@@ -155,11 +155,21 @@ macro_rules! quote_verbatim {
 }
 
 macro_rules! quote_spanned_builtin {
-    ($b:ident, $span:expr=> $($tt:tt)*) => {
+    ($b:ident, $span:expr => $($tt:tt)*) => {
         {
             let sp = $span;
             let $b = crate::syntax::Builtin(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_builtin {
+    ($b:ident => $($tt:tt)*) => {
+        {
+            let sp = ::proc_macro2::Span::call_site();
+            let $b = crate::syntax::Builtin(sp);
+            ::quote::quote!{ $($tt)* }
         }
     }
 }

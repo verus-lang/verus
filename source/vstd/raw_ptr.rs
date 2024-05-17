@@ -1,8 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::prelude::*;
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
@@ -232,6 +230,7 @@ pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> 
 }
 
 #[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_ptr_to_thin_ptr")]
 #[verifier::when_used_as_spec(spec_cast_ptr_to_thin_ptr)]
 pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U)
     ensures
@@ -247,6 +246,7 @@ pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [
 }
 
 #[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr")]
 #[verifier::when_used_as_spec(spec_cast_array_ptr_to_slice_ptr)]
 pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (result: *mut [T])
     ensures

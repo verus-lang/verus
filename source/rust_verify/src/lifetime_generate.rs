@@ -457,7 +457,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                         Id::new(IdKind::Builtin, 0, "Arc".to_owned())
                     }
                     _ => state.datatype_name(&path),
-                }
+                },
             };
             Box::new(TypX::Datatype(datatype_name, Vec::new(), typ_args))
         }

@@ -650,6 +650,7 @@ test_verify_one_file_with_options! {
         #![allow(unused_attributes)]
         #![allow(unused_variables)]
 
+        #![feature(strict_provenance)]
         #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
         #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
         #![cfg_attr(verus_keep_ghost, feature(step_trait))]
@@ -699,6 +700,11 @@ test_verify_one_file_with_options! {
                 requires x@.len() > 0
             {
                 x[0]
+            }
+
+            fn test_ptr_stuff(a: *mut u8, b: *mut [u8; 2]) {
+                let t = a as *mut u16;
+                let s = b as *mut [u8];
             }
 
             }

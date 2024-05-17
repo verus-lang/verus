@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
+use super::prelude::*;
 use super::seq::*;
 use super::slice::SliceAdditionalSpecFns;
 use super::view::*;
-use super::prelude::*;
 
 verus! {
 
