@@ -1,11 +1,10 @@
 //! Properties of bitwise operators.
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power2::{
+use super::arithmetic::power2::{
     pow2,
     lemma_pow2_unfold,
     lemma_pow2_adds,
@@ -14,19 +13,19 @@ use crate::arithmetic::power2::{
     lemma_pow2_strictly_increases,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::div_mod::{
+use super::arithmetic::div_mod::{
     lemma_div_denominator,
     lemma_mod_breakdown,
     lemma_mod_multiples_vanish,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::mul::{
+use super::arithmetic::mul::{
     lemma_mul_inequality,
     lemma_mul_is_commutative,
     lemma_mul_is_associative,
 };
 #[cfg(verus_keep_ghost)]
-use crate::calc_macro::*;
+use super::calc_macro::*;
 
 } // verus!
 // Proofs that shift right is equivalent to division by power of 2.

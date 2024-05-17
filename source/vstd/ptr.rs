@@ -3,16 +3,16 @@
 use alloc::alloc::Layout;
 use core::{marker, mem, mem::MaybeUninit};
 
-use crate::layout::*;
-use crate::modes::*;
-use crate::pervasive::*;
-use crate::prelude::*;
-use crate::*;
+use super::layout::*;
+use super::modes::*;
+use super::pervasive::*;
+use super::prelude::*;
+use super::*;
 use builtin::*;
 use builtin_macros::*;
 
 #[cfg(verus_keep_ghost)]
-use crate::set_lib::set_int_range;
+use super::set_lib::set_int_range;
 
 verus! {
 

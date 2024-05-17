@@ -1,9 +1,8 @@
 #![allow(unused_imports)]
-use crate::seq::*;
-use crate::slice::SliceAdditionalSpecFns;
-use crate::view::*;
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
+use super::seq::*;
+use super::slice::SliceAdditionalSpecFns;
+use super::view::*;
 
 verus! {
 

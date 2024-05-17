@@ -46,20 +46,33 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                     };
                                     let ExprKind::Path(rustc_hir::QPath::Resolved(
                                         None,
-                                        callee_res_path,
+                                        _callee_res_path,
                                     )) = callee.kind
                                     else {
                                         emit_invalid_error();
                                         return;
                                     };
-                                    // we'd normally use verus_items, but they are not available here
-                                    if !tcx.is_diagnostic_item(
+
+                                    // We'd normally use verus_items, but they are not available here.
+                                    // In fact, we can't even use 'is_diagnostic_item'; I have observed
+                                    // that trying to call 'is_diagnostic_item' here for an item
+                                    // *in the current crate* causes rustc to hang indefinitely.
+                                    // (Furthermore, when embedding 'builtin' as a module rather than
+                                    // a crate, it is *expected* that the item is in the current crate.)
+
+                                    // REVIEW What should we replace this check with?
+
+                                    /*if !tcx.is_diagnostic_item(
                                         rustc_span::symbol::Symbol::intern(
                                             "verus::builtin::reveal_hide_internal_path",
                                         ),
                                         callee_res_path.res.def_id(),
-                                    ) || args.len() != 1
-                                    {
+                                    ) {
+                                        emit_invalid_error();
+                                        return;
+                                    }*/
+
+                                    if args.len() != 1 {
                                         emit_invalid_error();
                                         return;
                                     }

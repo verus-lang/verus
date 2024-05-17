@@ -1,17 +1,15 @@
-use crate::map::Map;
+use super::map::Map;
 #[allow(unused_imports)]
-use crate::pervasive::*;
-use crate::set::*;
+use super::pervasive::*;
+#[allow(unused_imports)]
+use super::prelude::*;
+use super::set::*;
 #[cfg(verus_keep_ghost)]
-use crate::set_lib::*;
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::set_lib::*;
 
 verus! {
 
-broadcast use crate::map::group_map_axioms, crate::set::group_set_axioms;
+broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
 
 impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.

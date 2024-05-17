@@ -1,11 +1,9 @@
 use core::marker;
 
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
@@ -359,7 +357,7 @@ pub broadcast group group_seq_axioms {
 #[macro_export]
 macro_rules! seq_internal {
     [$($elem:expr),* $(,)?] => {
-        $crate::seq::Seq::empty()
+        $crate::vstd::seq::Seq::empty()
             $(.push($elem))*
     }
 }
@@ -379,7 +377,7 @@ macro_rules! seq_internal {
 #[macro_export]
 macro_rules! seq {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::seq::seq_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::seq::seq_internal!($($tail)*))
     };
 }
 

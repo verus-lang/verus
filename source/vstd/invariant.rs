@@ -1,9 +1,7 @@
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 // TODO:
 //  * utility for conveniently creating unique namespaces
@@ -122,8 +120,8 @@ pub trait InvariantPredicate<K, V> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct AtomicInvariant<K, V, Pred> {
-    dummy: builtin::SyncSendIfSend<V>,
-    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
+    dummy: super::prelude::SyncSendIfSend<V>,
+    dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 /// A `LocalInvariant` is a ghost object that provides "interior mutability"
@@ -163,8 +161,8 @@ pub struct AtomicInvariant<K, V, Pred> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct LocalInvariant<K, V, Pred> {
-    dummy: builtin::SendIfSend<V>,
-    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
+    dummy: super::prelude::SendIfSend<V>,
+    dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 macro_rules! declare_invariant_impl {
@@ -399,9 +397,9 @@ pub fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) {
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
         #[cfg(verus_keep_ghost_body)]
-        let credit = $crate::invariant::create_open_invariant_credit();
+        let credit = $crate::vstd::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
+            $crate::vstd::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
         )
     };
 }
@@ -409,7 +407,7 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_atomic_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
     };
 }
 
@@ -418,13 +416,13 @@ macro_rules! open_atomic_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }
@@ -434,13 +432,13 @@ macro_rules! open_atomic_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_in_proof($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }
@@ -553,16 +551,16 @@ pub use open_atomic_invariant_internal;
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
         #[cfg(verus_keep_ghost_body)]
-        let credit = $crate::invariant::create_open_invariant_credit();
+        let credit = $crate::vstd::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
+            $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
     };
 }
 
 #[macro_export]
 macro_rules! open_local_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_local_invariant_in_proof_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_local_invariant_in_proof_internal!($($tail)*))
     };
 }
 
@@ -571,12 +569,12 @@ macro_rules! open_local_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
             #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }
@@ -586,12 +584,12 @@ macro_rules! open_local_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_in_proof($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }

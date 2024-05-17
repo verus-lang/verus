@@ -1,8 +1,7 @@
 #![allow(unused_imports)]
-use crate::seq::*;
-use crate::view::*;
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
+use super::seq::*;
+use super::view::*;
 
 #[cfg(verus_keep_ghost)]
 #[cfg(feature = "alloc")]

@@ -4,11 +4,9 @@
 #[cfg(feature = "alloc")]
 use alloc::string::{self, ToString};
 
+use super::prelude::*;
 use super::seq::Seq;
-use crate::prelude::*;
-use crate::view::*;
-use builtin::*;
-use builtin_macros::verus;
+use super::view::*;
 
 verus! {
 
@@ -156,21 +154,21 @@ impl<'a> StrSlice<'a> {
 
 pub broadcast proof fn axiom_str_literal_is_ascii<'a>(s: StrSlice<'a>)
     ensures
-        #[trigger] s.is_ascii() == builtin::strslice_is_ascii(s),
+        #[trigger] s.is_ascii() == strslice_is_ascii(s),
 {
     admit();
 }
 
 pub broadcast proof fn axiom_str_literal_len<'a>(s: StrSlice<'a>)
     ensures
-        #[trigger] s@.len() == builtin::strslice_len(s),
+        #[trigger] s@.len() == strslice_len(s),
 {
     admit();
 }
 
 pub broadcast proof fn axiom_str_literal_get_char<'a>(s: StrSlice<'a>, i: int)
     ensures
-        #[trigger] s@.index(i) == builtin::strslice_get_char(s, i),
+        #[trigger] s@.index(i) == strslice_get_char(s, i),
 {
     admit();
 }

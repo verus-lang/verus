@@ -12,13 +12,12 @@
 //! SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::prelude::*;
 
 verus! {
 
-use crate::arithmetic::internals::mul_internals_nonlinear as MulINL;
-use crate::arithmetic::internals::mul_internals::*;
+use super::super::arithmetic::internals::mul_internals_nonlinear as MulINL;
+use super::super::arithmetic::internals::mul_internals::*;
 
 /// Proof that multiplication using `*` is equivalent to
 /// multiplication using a recursive definition. Specifically,

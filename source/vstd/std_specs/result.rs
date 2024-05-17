@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use crate::prelude::*;
+use super::super::prelude::*;
 
 use core::option::Option;
 use core::option::Option::None;
@@ -29,22 +29,22 @@ pub trait ResultAdditionalSpecFns<T, E> {
 impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
     #[verifier::inline]
     open spec fn is_Ok(&self) -> bool {
-        builtin::is_variant(self, "Ok")
+        is_variant(self, "Ok")
     }
 
     #[verifier::inline]
     open spec fn get_Ok_0(&self) -> T {
-        builtin::get_variant_field(self, "Ok", "0")
+        get_variant_field(self, "Ok", "0")
     }
 
     #[verifier::inline]
     open spec fn is_Err(&self) -> bool {
-        builtin::is_variant(self, "Err")
+        is_variant(self, "Err")
     }
 
     #[verifier::inline]
     open spec fn get_Err_0(&self) -> E {
-        builtin::get_variant_field(self, "Err", "0")
+        get_variant_field(self, "Err", "0")
     }
 }
 
@@ -52,7 +52,7 @@ impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
 // is_ok
 #[verifier::inline]
 pub open spec fn is_ok<T, E>(result: &Result<T, E>) -> bool {
-    builtin::is_variant(result, "Ok")
+    is_variant(result, "Ok")
 }
 
 #[verifier::external_fn_specification]
@@ -67,7 +67,7 @@ pub fn ex_result_is_ok<T, E>(result: &Result<T, E>) -> (b: bool)
 // is_err
 #[verifier::inline]
 pub open spec fn is_err<T, E>(result: &Result<T, E>) -> bool {
-    builtin::is_variant(result, "Err")
+    is_variant(result, "Err")
 }
 
 #[verifier::external_fn_specification]

@@ -5,10 +5,9 @@ use core::sync::atomic::{
     AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 
-use crate::modes::*;
-use crate::pervasive::*;
-use builtin::*;
-use builtin_macros::*;
+use super::modes::*;
+use super::pervasive::*;
+use super::prelude::*;
 
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {

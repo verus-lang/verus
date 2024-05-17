@@ -12,25 +12,24 @@
 //! SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::prelude::*;
 
 verus! {
 
-use crate::calc_macro::*;
+use super::super::calc_macro::*;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::div_mod::{
+use super::div_mod::{
     lemma_div_pos_is_pos,
     lemma_div_decreases,
     lemma_div_is_ordered,
     lemma_div_multiples_vanish,
 };
 #[cfg(verus_keep_ghost)]
-use crate::math::{div as div1};
+use super::super::math::{div as div1};
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::mul::{lemma_mul_increases, lemma_mul_is_commutative};
+use super::super::arithmetic::mul::{lemma_mul_increases, lemma_mul_is_commutative};
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power::{pow, lemma_pow_positive};
+use super::super::arithmetic::power::{pow, lemma_pow_positive};
 
 /// This function recursively defines the integer logarithm. It's only
 /// meaningful when the base of the logarithm `base` is greater than 1,

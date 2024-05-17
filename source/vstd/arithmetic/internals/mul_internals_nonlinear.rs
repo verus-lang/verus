@@ -18,8 +18,7 @@
 */
 // may be try to use singular?
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::super::prelude::*;
 
 verus! {
 

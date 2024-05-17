@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use crate::prelude::*;
+use super::super::prelude::*;
 
 use core::option::Option;
 use core::option::Option::None;
@@ -42,27 +42,27 @@ pub trait OptionAdditionalFns<T>: Sized {
 impl<T> OptionAdditionalFns<T> for Option<T> {
     #[verifier::inline]
     open spec fn is_Some(&self) -> bool {
-        builtin::is_variant(self, "Some")
+        is_variant(self, "Some")
     }
 
     #[verifier::inline]
     open spec fn get_Some_0(&self) -> T {
-        builtin::get_variant_field(self, "Some", "0")
+        get_variant_field(self, "Some", "0")
     }
 
     #[verifier::inline]
     open spec fn is_None(&self) -> bool {
-        builtin::is_variant(self, "None")
+        is_variant(self, "None")
     }
 
     #[verifier::inline]
     open spec fn arrow_Some_0(&self) -> T {
-        builtin::get_variant_field(self, "Some", "0")
+        get_variant_field(self, "Some", "0")
     }
 
     #[verifier::inline]
     open spec fn arrow_0(&self) -> T {
-        builtin::get_variant_field(self, "Some", "0")
+        get_variant_field(self, "Some", "0")
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
@@ -84,7 +84,7 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
 // is_some
 #[verifier::inline]
 pub open spec fn is_some<T>(option: &Option<T>) -> bool {
-    builtin::is_variant(option, "Some")
+    is_variant(option, "Some")
 }
 
 #[verifier::external_fn_specification]
@@ -99,7 +99,7 @@ pub fn ex_option_is_some<T>(option: &Option<T>) -> (b: bool)
 // is_none
 #[verifier::inline]
 pub open spec fn is_none<T>(option: &Option<T>) -> bool {
-    builtin::is_variant(option, "None")
+    is_variant(option, "None")
 }
 
 #[verifier::external_fn_specification]

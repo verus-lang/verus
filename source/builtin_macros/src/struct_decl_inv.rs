@@ -735,8 +735,8 @@ fn output_invariant(
                     let j = Member::Unnamed(Index { index: i as u32, span: dep.span() });
                     quote_spanned! { dep.span() => .#j }
                 };
-                e_stream_conjuncts.push(quote_spanned! { dep.span() =>
-                    ::builtin::equal(#specifically_expr.constant()#field_access, self.#dep)
+                e_stream_conjuncts.push(quote_spanned_builtin! { builtin, dep.span() =>
+                    #builtin::equal(#specifically_expr.constant()#field_access, self.#dep)
                 });
             }
             for (i, quant) in quants.iter().enumerate() {
@@ -748,8 +748,8 @@ fn output_invariant(
                     quote_spanned! { quant.span() => .#j }
                 };
                 let quant_pat = &quant.pat;
-                e_stream_conjuncts.push(quote_spanned! { quant.span() =>
-                    ::builtin::equal(#specifically_expr.constant()#field_access, #quant_pat)
+                e_stream_conjuncts.push(quote_spanned_builtin! { builtin, quant.span() =>
+                    #builtin::equal(#specifically_expr.constant()#field_access, #quant_pat)
                 });
             }
 
@@ -760,17 +760,17 @@ fn output_invariant(
                 }
 
                 if let Some(cond) = condition {
-                    e_stream = quote_spanned! { span =>
-                        ::builtin::imply(
+                    e_stream = quote_spanned_builtin! { builtin, span =>
+                        #builtin::imply(
                             #cond,
                             #e_stream
                         )
                     }
                 }
                 if quants.len() > 0 {
-                    e_stream = quote_spanned! { span =>
-                        ::builtin::forall(|#(#quants),*|
-                            ::builtin::with_triggers(
+                    e_stream = quote_spanned_builtin! { builtin, span =>
+                        #builtin::forall(|#(#quants),*|
+                            #builtin::with_triggers(
                                 ((#specifically_expr,),),
                                 #e_stream
                             )

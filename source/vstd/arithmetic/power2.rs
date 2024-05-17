@@ -12,13 +12,12 @@
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::prelude::*;
 
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power::{
+use super::power::{
     pow,
     lemma_pow_positive,
     group_pow_properties,
@@ -26,11 +25,11 @@ use crate::arithmetic::power::{
     lemma_pow_strictly_increases,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
+use super::internals::mul_internals::lemma_mul_induction_auto;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::general_internals::is_le;
+use super::internals::general_internals::is_le;
 #[cfg(verus_keep_ghost)]
-use crate::calc_macro::*;
+use super::super::calc_macro::*;
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
