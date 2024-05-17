@@ -305,8 +305,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     }
 
     // trait bounds aren't part of the type signature - we have to check those separately
-    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1_early);
-    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs2_early);
+    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1_early, false);
+    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs2_early, true);
     let in_trait = external_fn_specification_via_external_trait.is_some();
     remove_ignored_trait_bounds_from_predicates(
         ctxt.tcx,
@@ -1318,6 +1318,7 @@ fn all_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: rustc_span::def_id::DefId,
     substs: GenericArgsRef<'tcx>,
+    preliminarily_try_to_process_and_eliminate_trait_aliases: bool,
 ) -> Vec<Clause<'tcx>> {
     let substs = if let Some(index) = tcx.generics_of(id).host_effect_index {
         let b = rustc_middle::ty::Const::from_bool(tcx, true);
@@ -1327,9 +1328,41 @@ fn all_predicates<'tcx>(
     } else {
         substs
     };
+    let mut trait_alias_clauses: Vec<Clause<'tcx>> = Vec::new();
     let preds = tcx.predicates_of(id);
+    if preliminarily_try_to_process_and_eliminate_trait_aliases {
+        // raw_ptr.rs uses external_fn_specification for functions with core::ptr::Thin bounds,
+        // where core::ptr::Thin is a trait alias (an experimental Rust feature)
+        // to core::ptr::Pointee<Metadata = ()>
+        // We don't support trait aliases yet.
+        // However, to get this case to work, we attempt to expand away trait aliases unto
+        // their underlying traits here.
+        // This is not fully general and probably doesn't yet work for parameterized trait aliases.
+        for (p, _) in preds.predicates {
+            match p.kind().skip_binder() {
+                rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
+                    if tcx.trait_is_alias(tp.trait_ref.def_id) {
+                        let preds = tcx.predicates_of(tp.trait_ref.def_id);
+                        trait_alias_clauses
+                            .extend(preds.instantiate(tcx, substs).into_iter().map(|(p, _)| p));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     let preds = preds.instantiate(tcx, substs);
-    preds.predicates
+    let mut clauses = preds.predicates;
+    if preliminarily_try_to_process_and_eliminate_trait_aliases {
+        clauses.retain(|clause| match clause.kind().skip_binder() {
+            rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
+                !tcx.trait_is_alias(tp.trait_ref.def_id)
+            }
+            _ => true,
+        });
+    }
+    clauses.extend(trait_alias_clauses);
+    clauses
 }
 
 pub(crate) fn get_external_def_id<'tcx>(

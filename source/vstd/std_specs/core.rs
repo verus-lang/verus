@@ -38,6 +38,18 @@ pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExHash {
+    type ExternalTraitSpecificationFor: core::hash::Hash;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExPtrPointee {
+    type ExternalTraitSpecificationFor: core::ptr::Pointee;
+
+    type Metadata: Copy + Send + Sync + Ord + core::hash::Hash + Unpin;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExIterator {
     type ExternalTraitSpecificationFor: core::iter::Iterator;
 }

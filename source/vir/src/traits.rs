@@ -32,6 +32,7 @@ pub fn demote_external_traits(
             let trait_path = match &**bound {
                 crate::ast::GenericBoundX::Trait(path, _) => path,
                 crate::ast::GenericBoundX::TypEquality(path, _, _, _) => path,
+                crate::ast::GenericBoundX::ConstTyp(..) => continue,
             };
             let our_trait = traits.contains(trait_path);
             if !our_trait {
@@ -39,7 +40,7 @@ pub fn demote_external_traits(
                     &warning(
                         &function.span,
                         format!(
-                            "cannot use external trait {} as a bound with declaring the trait \
+                            "cannot use external trait {} as a bound without declaring the trait \
                             (use #[verifier::external_trait_specification] to declare the trait); \
                             this is a warning for now but will eventually be an error",
                             crate::ast_util::path_as_friendly_rust_name(trait_path)
