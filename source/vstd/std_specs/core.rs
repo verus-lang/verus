@@ -4,7 +4,7 @@ verus! {
 
 #[verifier::external_trait_specification]
 pub trait ExInteger {
-    type ExternalTraitSpecificationFor: builtin::Integer;
+    type ExternalTraitSpecificationFor: Integer;
 }
 
 #[verifier::external_trait_specification]
