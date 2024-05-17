@@ -5,10 +5,6 @@ use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
 
-#[cfg(not(feature = "std"))]
-macro_rules! println {
-    ($($arg:tt)*) => {};
-}
 verus! {
 
 // TODO: remove this
@@ -178,6 +174,7 @@ pub fn unreached<A>() -> A
     panic!("unreached_external")
 }
 
+#[cfg(feature = "std")]
 #[verifier::external_body]  /* vattr */
 pub fn print_u64(i: u64) {
     println!("{}", i);
