@@ -1,0 +1,15 @@
+[package]
+name = "cargo-verus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cargo_metadata = "0.18.1"
+rustc_tools_util = "0.3.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10.8"
+hex = "0.4.3"
+
+[build-dependencies]
+rustc_tools_util = "0.3.0"

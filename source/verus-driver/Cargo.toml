@@ -1,0 +1,21 @@
+[package]
+name = "verus-driver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust_verify = { path = "../rust_verify" }
+rustc_tools_util = "0.3.0"
+clap = { version = "4.5.4", features = ["derive"] }
+sha2 = "0.10.8"
+hex = "0.4.3"
+glob = "0.3.1"
+
+[build-dependencies]
+rustc_tools_util = "0.3.0"
+
+[features]
+singular = ["rust_verify/singular"]
+
+[package.metadata.rust-analyzer]
+rustc_private = true

@@ -2541,19 +2541,18 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
 }
 
 // TODO: move the callbacks into a different file, like driver.rs
-pub(crate) struct VerifierCallbacksEraseMacro {
-    pub(crate) verifier: Verifier,
+pub struct VerifierCallbacksEraseMacro {
+    pub verifier: Verifier,
     /// start time of the rustc compilation
-    pub(crate) rust_start_time: Instant,
+    pub rust_start_time: Instant,
     /// time when entered the `after_expansion` callback
-    pub(crate) rust_end_time: Option<Instant>,
+    pub rust_end_time: Option<Instant>,
     /// start time of lifetime analysys
-    pub(crate) lifetime_start_time: Option<Instant>,
+    pub lifetime_start_time: Option<Instant>,
     /// end time of lifetime analysys
-    pub(crate) lifetime_end_time: Option<Instant>,
-    pub(crate) rustc_args: Vec<String>,
-    pub(crate) file_loader:
-        Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
+    pub lifetime_end_time: Option<Instant>,
+    pub rustc_args: Vec<String>,
+    pub file_loader: Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
 }
 
 pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<

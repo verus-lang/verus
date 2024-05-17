@@ -1,0 +1,12 @@
+[package]
+name = "verus-sysroot-dummy"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../vstd" }
+builtin = { path = "../builtin" }
+builtin_macros = { path = "../builtin_macros" }
+
+[package.metadata.verus]
+verify = true
