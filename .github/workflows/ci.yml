@@ -34,6 +34,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -D warnings
     strategy:
       matrix:
         features: ['', 'singular', 'record-history', 'no-std', 'no-alloc']
