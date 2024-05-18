@@ -1,8 +1,8 @@
 # IDE Support for Verus
 
-Verus currently has IDE support for VS Code, and Emacs. Here, we describe the steps for using Verus with both these editors.
+Verus currently has IDE support for VS Code, Neovim, and Emacs. Here, we describe the steps for using Verus with all these editors.
 
-For VS Code, we require verus-analyzer, our Verus-specific fork of rust-analyzer. For Emacs, we have stand-alone support for Verus.
+For VS Code and Neovim, we require verus-analyzer, our Verus-specific fork of rust-analyzer. For Emacs, we have stand-alone support for Verus.
 
 We describe the steps to get started with [VS Code](#quickstart-vs-code) and [Emacs](#quickstart-emacs) below.
 
@@ -10,7 +10,7 @@ We describe the steps to get started with [VS Code](#quickstart-vs-code) and [Em
 The steps below walk you through compiling a Verus-specific version of rust-analyzer and using it in VS Code. It provides Verus syntax support and several IDE functionalities.
 
 For more details and latest updates, please check out the [README for verus-analyzer](https://github.com/verus-lang/verus-analyzer)
-### 1. Compile binary
+### 1. Compile binary <a name="compile"></a>
 
 1. Clone the repository: `git clone https://github.com/verus-lang/verus-analyzer.git`  
 2. `cd verus-analyzer`
@@ -38,7 +38,7 @@ Suppose you have a new project with `cargo new`. After you open this project in 
 ```
 
 
-#### 2.2. Adding settings variables
+#### 2.2. Adding settings variables <a name="setting"></a>
 We will modify the "settings" section of the `.code-workspace` file. To be specific, we will add two entries in the "settings" section of the file. These are `rust-analyzer.server.path` and `rust-analyzer.checkOnSave`.
 
 - `rust-analyzer.server.path` should be set to the path of the verus-analyzer binary produced in step 1 above (e.g., the full path to `./dist/rust-analyzer-x86_64-apple-darwin`)
@@ -56,6 +56,29 @@ When you modify and save this file, VS Code will ask you if you want to reload t
 
 By opening this workspace, the rust-analyzer plugin will use the custom binary. If you open your project without that workspace setting(e.g., open this project by "open folder"), it will use the original rust-analyzer binary.
 
+
+## Quickstart Neovim
+
+Compile binary by following [Quickstart VS Code's first step](#compile).
+
+Refer to [rust-analyzer-neovim-guide](https://rust-analyzer.github.io/manual.html#vimneovim) and [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) for the initial configuration of LSP and rust-analyzer in Neovim.
+
+Add the below setting in `$HOME/.config/nvim/init.vim` (configure settings variables like [VS Code's setting](#setting)). 
+```
+local lspconfig = require'lspconfig'
+lspconfig.rust_analyzer.setup({
+    capabilities=capabilities,
+    on_attach=on_attach,
+    settings = {
+      ["rust-analyzer"] = {
+        server = {
+          path = "ABSOLUTE-PATH-TO-THE-VERUS-ANALYZER-BINARY",
+        },
+        checkOnSave = false,
+      },
+    }
+})
+```
 
 
 ## Quickstart Emacs
