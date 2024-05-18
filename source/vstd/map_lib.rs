@@ -76,7 +76,7 @@ impl<K, V> Map<K, V> {
 
     /// Deprecated synonym for `submap_of`
     #[verifier::inline]
-    #[deprecated = "use m1.submap_of(m2) or m1 <= m2 instead"]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use m1.submap_of(m2) or m1 <= m2 instead")]
     pub open spec fn le(self, m2: Self) -> bool {
         self.submap_of(m2)
     }

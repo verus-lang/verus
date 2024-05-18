@@ -95,7 +95,7 @@ impl<K, V> Map<K, V> {
     /// To prove that two maps are equal via extensionality, it may be easier
     /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_maps_equal!`] macro, rather than using `.ext_equal` directly.
-    #[deprecated = "use =~= or =~~= instead"]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
     pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
         self =~= m2
     }

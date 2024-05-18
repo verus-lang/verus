@@ -62,7 +62,7 @@ impl<V> Multiset<V> {
     /// must be finite, or else this multiset is arbitrary.
     pub open spec fn from_map(m: Map<V, nat>) -> Self;
 
-    #[deprecated = "use from_map instead"]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use from_map instead")]
     pub open spec fn new(m: Map<V, nat>) -> Self {
         Self::from_map(m)
     }
@@ -123,7 +123,7 @@ impl<V> Multiset<V> {
     }
 
     #[verifier::inline]
-    #[deprecated = "use m1.subset_of(m2) or m1 <= m2 instead"]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use m1.subset_of(m2) or m1 <= m2 instead")]
     pub open spec fn le(self, m2: Self) -> bool {
         self.subset_of(m2)
     }
@@ -142,7 +142,7 @@ impl<V> Multiset<V> {
     /// To prove that two maps are equal via extensionality, it may be easier
     /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_multisets_equal!`] macro, rather than using `ext_equal` directly.
-    #[deprecated = "use =~= or =~~= instead"]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
     pub open spec fn ext_equal(self, m2: Self) -> bool {
         self =~= m2
     }

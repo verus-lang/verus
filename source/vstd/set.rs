@@ -59,7 +59,7 @@ impl<A> Set<A> {
     /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro,
     /// rather than using `.ext_equal` directly.
-    #[deprecated = "use =~= or =~~= instead"]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
     pub open spec fn ext_equal(self, s2: Set<A>) -> bool {
         self =~= s2
     }

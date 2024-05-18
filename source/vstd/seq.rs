@@ -105,7 +105,7 @@ impl<A> Seq<A> {
     /// to use the general-purpose `=~=` or `=~~=` or
     /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
     /// rather than using `.ext_equal` directly.
-    #[deprecated = "use =~= or =~~= instead"]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::ext_equal"]
     pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
         self =~= s2
