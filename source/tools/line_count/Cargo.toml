@@ -11,7 +11,7 @@ prettyplease_verus = { path = "../../../dependencies/prettyplease" }
 getopts = "*"
 toml = "0.8"
 serde = { version = "1.0", features = ["std", "derive", "rc"] }
-proc-macro2 = { version = "1.0.39", default-features = false }
+proc-macro2 = { version = "1.0.39", default-features = false, features = ["span-locations"] }
 tabled = "0.14.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 regex = "1.10"
