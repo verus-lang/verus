@@ -12,7 +12,8 @@ use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    GenericArgKind, GenericArgsRef, TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt,
+    ConstKind, GenericArgKind, GenericArgsRef, ParamConst, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypeVisitableExt, ValTree,
 };
 use rustc_middle::ty::{ImplPolarity, TraitPredicate};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
@@ -317,9 +318,7 @@ where
 
     fn fold_const(&mut self, ct: rustc_middle::ty::Const<'tcx>) -> rustc_middle::ty::Const<'tcx> {
         match ct.kind() {
-            rustc_middle::ty::ConstKind::Bound(debruijn, bound_const)
-                if debruijn == self.current_index =>
-            {
+            ConstKind::Bound(debruijn, bound_const) if debruijn == self.current_index => {
                 let ct = self.delegate.replace_const(bound_const, ct.ty());
                 debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::fold::shift_vars(self.tcx, ct, self.current_index.as_u32())
@@ -977,10 +976,6 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     span: Option<Span>,
     cnst: &rustc_middle::ty::Const<'tcx>,
 ) -> Result<Typ, VirErr> {
-    // use rustc_middle::mir::interpret::{ConstValue, Scalar};
-    use rustc_middle::ty::ConstKind;
-    use rustc_middle::ty::ValTree;
-
     let cnst_kind = match cnst.kind() {
         ConstKind::Unevaluated(unevaluated) => {
             let valtree = cnst.eval(tcx, tcx.param_env(unevaluated.def), span);
@@ -1195,6 +1190,7 @@ pub(crate) fn process_predicate_bounds<'tcx, 'a>(
     param_env_src: DefId,
     verus_items: &crate::verus_items::VerusItems,
     predicates: impl Iterator<Item = &'a (Clause<'tcx>, Span)>,
+    generics: &'tcx rustc_middle::ty::Generics,
 ) -> Result<Vec<vir::ast::GenericBound>, VirErr>
 where
     'tcx: 'a,
@@ -1297,10 +1293,19 @@ where
                 }
             }
             ClauseKind::ConstArgHasType(cnst, ty) => {
-                let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
-                let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
-                let bound = GenericBoundX::ConstTyp(t1, t2);
-                bounds.push(Arc::new(bound));
+                let is_host = match cnst.kind() {
+                    ConstKind::Param(ParamConst { index, name: _ }) => {
+                        generics.host_effect_index == Some(index as usize)
+                    }
+                    _ => false,
+                };
+
+                if !is_host {
+                    let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
+                    let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
+                    let bound = GenericBoundX::ConstTyp(t1, t2);
+                    bounds.push(Arc::new(bound));
+                }
             }
             _ => {
                 return err_span(*span, "Verus does not yet support this type of bound");
@@ -1397,7 +1402,8 @@ fn check_generics_bounds_main<'tcx>(
 
     // Process all trait bounds.
     let predicates = tcx.predicates_of(def_id);
-    let bounds = process_predicate_bounds(tcx, def_id, verus_items, predicates.predicates.iter())?;
+    let bounds =
+        process_predicate_bounds(tcx, def_id, verus_items, predicates.predicates.iter(), generics)?;
 
     // In traits, the first type param is Self. This is handled specially,
     // so we skip it here.

@@ -144,6 +144,7 @@ pub(crate) fn translate_trait<'tcx>(
                     trait_def_id,
                     &ctxt.verus_items,
                     bounds.iter(),
+                    ctxt.tcx.generics_of(trait_def_id),
                 )?;
                 assoc_typs_bounds.extend(vir_bounds);
             }
