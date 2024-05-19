@@ -106,10 +106,35 @@ pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ar.as_slice()
 }
 
+pub spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
+
+#[verifier::external_body]
+pub broadcast proof fn axiom_spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T)
+    ensures
+        #![trigger spec_array_fill_for_copy_type::<T, N>(t)]
+        forall|i: int|
+            0 <= i < N ==> spec_array_fill_for_copy_type::<T, N>(t).view()[i] == t,
+{
+}
+
+// The 'array fill' [t; N] where t is a Copy type
+// (Does not necessarily apply when t is a non-Copy const)
+#[doc(hidden)]
+#[verifier::external_body]
+#[verifier::when_used_as_spec(spec_array_fill_for_copy_type)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_fill_for_copy_types")]
+pub fn array_fill_for_copy_types<T: Copy, const N: usize>(t: T) -> (res: [T; N])
+    ensures
+        res == spec_array_fill_for_copy_type::<T, N>(t),
+{
+    [t;N]
+}
+
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_array_axioms {
     array_len_matches_n,
     axiom_spec_array_as_slice,
+    axiom_spec_array_fill_for_copy_type,
 }
 
 } // verus!

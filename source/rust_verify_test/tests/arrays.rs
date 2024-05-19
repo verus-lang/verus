@@ -150,6 +150,93 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_array_repeat verus_code! {
+        use vstd::prelude::*;
+
+        fn test1() {
+            let x: [u8; 6] = [11; 6];
+            assert(x.view().len() == 6);
+            assert(x.view()[0] == 11);
+            assert(x.view()[1] == 11);
+            assert(x.view()[2] == 11);
+            assert(x.view()[3] == 11);
+            assert(x.view()[4] == 11);
+            assert(x.view()[5] == 11);
+        }
+
+        fn test2<T: Copy>(a: T) {
+            let x: [T; 3] = [a; 3];
+            assert(x.view().len() == 3);
+            assert(x.view()[0] == a);
+            assert(x.view()[1] == a);
+            assert(x.view()[2] == a);
+        }
+
+        fn test3<T: Copy, const N: usize>(a: T, i: usize) {
+            let x: [T; N] = [a; N];
+            assert(x.view().len() == N);
+
+            assume(0 <= i < N);
+            assert(x.view()[i as int] == a);
+        }
+
+        proof fn test4<T: Copy, const N: usize>(a: T, i: usize) {
+            let x: [T; N] = [a; N];
+            assert(x.view().len() == N);
+
+            assume(0 <= i < N);
+            assert(x.view()[i as int] == a);
+        }
+
+        fn test5() {
+            let x: [u8; 6] = [11; 6];
+            assert(x.view().len() == 7); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_array_repeat_tracked verus_code! {
+        tracked struct X { }
+
+        proof fn array_repeat_tracked<const N: usize>(tracked x: X) {
+            let tracked ar = [x; N];
+        }
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound `X: std::marker::Copy` is not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_array_repeat_tracked_copy verus_code! {
+        use vstd::*;
+        proof fn array_repeat_tracked<T: Copy, const N: usize>(tracked x: T) {
+            let tracked ar = [x; N];
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] test_array_repeat_non_copy_const verus_code! {
+        use vstd::prelude::*;
+
+        struct X { u: u8 }
+
+        const fn some_x() -> X { X { u: 0 } }
+
+        exec const C: X = some_x();
+
+        fn stuff() {
+            // This is currently unsupported, but if it were supported,
+            // this would need to fail because X is not marked Copy.
+            // (Imagine if X were a cell type or something like that, whose representation
+            // is some ghost 'cell ID'. The cell ID would change every time the constant
+            // is used.)
+            let ar = [C; 13];
+            assert(ar@[0] == ar@[1]); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: array-fill expresion with non-copy type")
+}
+
+test_verify_one_file! {
     #[test] test_array_to_slice verus_code! {
         use vstd::prelude::*;
 
