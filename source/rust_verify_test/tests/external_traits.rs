@@ -279,6 +279,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait4 verus_code! {
+        #[verifier::external_trait_specification]
+        pub trait ExIntoIterator {
+            type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExPartialEq<Rhs: ?Sized> {
+            type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExEq: PartialEq {
+            type ExternalTraitSpecificationFor: core::cmp::Eq;
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
+            type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExOrd: Eq + PartialOrd {
+            type ExternalTraitSpecificationFor: Ord;
+        }
+
+        #[verifier::external_type_specification]
+        pub struct ExOrdering(core::cmp::Ordering);
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        #[verifier::reject_recursive_types_in_ground_variants(I)]
+        pub struct ExPeekable<I: Iterator>(core::iter::Peekable<I>);
+
+        #[verifier::external_trait_specification]
+        pub trait ExIterator {
+            type ExternalTraitSpecificationFor: core::iter::Iterator;
+            type Item;
+            fn count(self) -> usize where Self: Sized;
+            fn cmp<I>(self, other: I) -> core::cmp::Ordering where Self: core::iter::Iterator, I: core::iter::IntoIterator<Item = <Self as core::iter::Iterator>::Item>, <Self as core::iter::Iterator>::Item: Ord, Self: Sized;
+            fn peekable(self) -> core::iter::Peekable<Self> where Self: Sized, Self: core::iter::Iterator;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_defaults verus_code! {
         #[verifier::external]
         trait T {

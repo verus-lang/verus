@@ -161,14 +161,14 @@ pub(crate) fn translate_trait<'tcx>(
         remove_ignored_trait_bounds_from_predicates(
             tcx,
             true,
-            ex_trait_ref_for.def_id,
+            &[ex_trait_ref_for.def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds1,
         );
         remove_ignored_trait_bounds_from_predicates(
             tcx,
             true,
-            trait_def_id,
+            &[ex_trait_ref_for.def_id, trait_def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds2,
         );

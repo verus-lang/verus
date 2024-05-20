@@ -33,8 +33,18 @@ pub trait ExPartialEq<Rhs: ?Sized> {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExEq: PartialEq {
+    type ExternalTraitSpecificationFor: core::cmp::Eq;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
     type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExOrd: Eq + PartialOrd {
+    type ExternalTraitSpecificationFor: Ord;
 }
 
 #[verifier::external_trait_specification]

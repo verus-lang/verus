@@ -311,14 +311,14 @@ pub(crate) fn handle_external_fn<'tcx>(
     remove_ignored_trait_bounds_from_predicates(
         ctxt.tcx,
         in_trait,
-        ctxt.tcx.parent(id),
+        &[ctxt.tcx.parent(external_id), ctxt.tcx.parent(id)],
         None,
         &mut proxy_preds,
     );
     remove_ignored_trait_bounds_from_predicates(
         ctxt.tcx,
         in_trait,
-        ctxt.tcx.parent(external_id),
+        &[ctxt.tcx.parent(external_id)],
         None,
         &mut external_preds,
     );
@@ -1241,7 +1241,7 @@ fn is_mut_ty<'tcx>(
 pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
     in_trait: bool,
-    trait_id: DefId,
+    trait_ids: &[DefId],
     ex_trait_assoc: Option<rustc_middle::ty::GenericArg<'tcx>>,
     preds: &mut Vec<Clause<'tcx>>,
 ) {
@@ -1249,7 +1249,8 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
-            if in_trait && trait_id == tp.trait_ref.def_id && tp.trait_ref.args.len() >= 1 {
+            if in_trait && trait_ids.contains(&tp.trait_ref.def_id) && tp.trait_ref.args.len() >= 1
+            {
                 if let GenericArgKind::Type(ty) = tp.trait_ref.args[0].unpack() {
                     match ty.kind() {
                         // ignore Self: T bound for trait T
