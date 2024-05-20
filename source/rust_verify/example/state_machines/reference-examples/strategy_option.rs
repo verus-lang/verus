@@ -3,7 +3,7 @@
 use builtin::*;
 use builtin_macros::*;
 use vstd::modes::*;
-use vstd::option::*;
+use vstd::std_specs::option::*;
 use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;
