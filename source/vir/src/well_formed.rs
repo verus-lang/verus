@@ -980,7 +980,7 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
     err
 }
 
-pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait) -> Message {
+pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait, msg: &str) -> Message {
     let add_label = |err: Message, tr: &Trait| match &tr.x.proxy {
         Some(proxy) => err.primary_label(
             &proxy.span,
@@ -990,7 +990,7 @@ pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait) -> Message {
     };
 
     let err = crate::messages::error_bare(format!(
-        "duplicate specification for `{:}`",
+        "{msg} `{:}`",
         crate::ast_util::path_as_friendly_rust_name(&tr1.x.name)
     ));
     let err = add_label(err, tr1);
@@ -1048,7 +1048,7 @@ pub fn check_crate(
     for tr in krate.traits.iter() {
         match traits.get(&tr.x.name) {
             Some(other_tr) => {
-                return Err(trait_conflict_error(tr, other_tr));
+                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"));
             }
             None => {}
         }

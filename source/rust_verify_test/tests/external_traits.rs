@@ -134,16 +134,19 @@ test_verify_one_file! {
     #[test] test_trait_dup verus_code! {
         #[verifier::external]
         trait T {
+            fn f();
         }
         #[verifier::external_trait_specification]
         trait Ex1 {
             type ExternalTraitSpecificationFor: T;
+            fn f();
         }
         #[verifier::external_trait_specification]
         trait Ex2 {
             type ExternalTraitSpecificationFor: T;
+            fn f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate method")
 }
 
 test_verify_one_file! {
@@ -314,14 +317,28 @@ test_verify_one_file! {
         pub struct ExPeekable<I: Iterator>(core::iter::Peekable<I>);
 
         #[verifier::external_trait_specification]
-        pub trait ExIterator {
+        pub trait ExIterator1 {
             type ExternalTraitSpecificationFor: core::iter::Iterator;
             type Item;
             fn count(self) -> usize where Self: Sized;
             fn cmp<I>(self, other: I) -> core::cmp::Ordering where Self: core::iter::Iterator, I: core::iter::IntoIterator<Item = <Self as core::iter::Iterator>::Item>, <Self as core::iter::Iterator>::Item: Ord, Self: Sized;
-            fn peekable(self) -> core::iter::Peekable<Self> where Self: Sized, Self: core::iter::Iterator;
         }
-    } => Ok(())
+
+        #[verifier::external_trait_specification]
+        pub trait ExIterator2 {
+            type ExternalTraitSpecificationFor: core::iter::Iterator;
+            type Item;
+            fn peekable(self) -> core::iter::Peekable<Self> where Self: Sized, Self: core::iter::Iterator requires false;
+        }
+
+        fn test2<A: Iterator>(a: A) {
+            let x = a.count();
+        }
+
+        fn test3<A: Iterator>(a: A) {
+            let y = a.peekable(); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {

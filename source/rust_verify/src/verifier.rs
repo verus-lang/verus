@@ -2439,6 +2439,8 @@ impl Verifier {
         // - well_formed::check_crate
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+        let vir_crate =
+            vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 

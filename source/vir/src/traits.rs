@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBounds,
-    Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped, Trait, TraitImpl, Typ, TypX, Typs,
-    VirErr, Visibility, WellKnownItem,
+    Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped, Trait, TraitImpl, TraitX, Typ,
+    TypX, Typs, VirErr, Visibility, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -253,7 +253,11 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
     let mut method_impls: HashSet<(&Path, &Fun)> = HashSet::new();
     for tr in &krate.traits {
         if trait_map.contains_key(&tr.x.name) {
-            return Err(crate::well_formed::trait_conflict_error(&trait_map[&tr.x.name], tr));
+            return Err(crate::well_formed::trait_conflict_error(
+                &trait_map[&tr.x.name],
+                tr,
+                "duplicate specification for",
+            ));
         }
         trait_map.insert(tr.x.name.clone(), tr);
         assert!(!default_methods.contains_key(&tr.x.name));
@@ -673,4 +677,92 @@ pub fn check_no_dupe_impls(krate: &Krate) -> Result<(), VirErr> {
         }
     }
     Ok(())
+}
+
+// Allow multiple external_trait_specification to specify different members of the same trait,
+// so that we don't have to specify all of the default members of a trait at once (e.g. Iterator).
+// We merge partial specifications together here.
+pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
+    use crate::ast_util::generic_bounds_equal;
+    use crate::well_formed::trait_conflict_error;
+    let mut kratex = (*krate).clone();
+    let mut traits: Vec<Trait> = Vec::new();
+    let mut prev_trait_index: HashMap<Path, usize> = HashMap::new();
+    for t in &kratex.traits {
+        if t.x.proxy.is_some() {
+            if let Some(index) = prev_trait_index.get(&t.x.name) {
+                let prev = &traits[*index];
+                // merge t into prev
+                let TraitX {
+                    name,
+                    proxy,
+                    visibility,
+                    typ_params,
+                    typ_bounds,
+                    assoc_typs,
+                    assoc_typs_bounds,
+                    mut methods,
+                } = prev.x.clone();
+                assert!(name == t.x.name);
+                if visibility != t.x.visibility {
+                    return Err(trait_conflict_error(prev, t, "mismatched visibilities"));
+                }
+                if typ_params != t.x.typ_params {
+                    return Err(trait_conflict_error(prev, t, "mismatched type parameters"));
+                }
+                let mut assoc_typs = (*assoc_typs).clone();
+                for assoc_typ in t.x.assoc_typs.iter() {
+                    if !assoc_typs.contains(assoc_typ) {
+                        assoc_typs.push(assoc_typ.clone());
+                    }
+                }
+                let assoc_typs = Arc::new(assoc_typs);
+                let mut typ_bounds = (*typ_bounds).clone();
+                for b in t.x.typ_bounds.iter() {
+                    if !typ_bounds.iter().any(|b2| generic_bounds_equal(b, b2)) {
+                        typ_bounds.push(b.clone());
+                    }
+                }
+                let typ_bounds = Arc::new(typ_bounds);
+                let mut assoc_typs_bounds = (*assoc_typs_bounds).clone();
+                for b in t.x.assoc_typs_bounds.iter() {
+                    if !assoc_typs_bounds.iter().any(|b2| generic_bounds_equal(b, b2)) {
+                        assoc_typs_bounds.push(b.clone());
+                    }
+                }
+                let assoc_typs_bounds = Arc::new(assoc_typs_bounds);
+                for m in t.x.methods.iter() {
+                    if methods.iter().any(|m2| m == m2) {
+                        return Err(trait_conflict_error(
+                            prev,
+                            t,
+                            &format!(
+                                "duplicate method {}",
+                                crate::ast_util::fun_as_friendly_rust_name(m)
+                            ),
+                        ));
+                    }
+                }
+                methods = Arc::new(methods.iter().chain(t.x.methods.iter()).cloned().collect());
+                let prevx = TraitX {
+                    name,
+                    proxy,
+                    visibility,
+                    typ_params,
+                    typ_bounds,
+                    assoc_typs,
+                    assoc_typs_bounds,
+                    methods,
+                };
+                traits[*index] = prev.new_x(prevx);
+            } else {
+                prev_trait_index.insert(t.x.name.clone(), traits.len());
+                traits.push(t.clone());
+            }
+        } else {
+            traits.push(t.clone());
+        }
+    }
+    kratex.traits = traits;
+    Ok(Arc::new(kratex))
 }
