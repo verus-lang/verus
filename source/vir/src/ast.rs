@@ -648,8 +648,10 @@ pub type ImplPaths = Arc<Vec<ImplPath>>;
 pub enum CallTargetKind {
     /// Statically known function
     Static,
-    /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
-    Method(Option<(Fun, Typs, ImplPaths)>),
+    /// Dynamically dispatched function
+    Dynamic,
+    /// Dynamically dispatched function with known resolved target
+    DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]

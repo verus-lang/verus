@@ -537,14 +537,17 @@ pub(crate) fn expand_call_graph(
         match &expr.x {
             ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
                 assert!(*autospec == AutospecUsage::Final);
-                let (callee, ts, impl_paths) =
-                    if let CallTargetKind::Method(Some((x_resolved, ts_resolved, x_impl_paths))) =
-                        kind
-                    {
-                        (x_resolved.clone(), ts_resolved.clone(), x_impl_paths.clone())
-                    } else {
-                        (x.clone(), ts.clone(), impl_paths.clone())
-                    };
+                let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
+                    resolved: x_resolved,
+                    typs: ts_resolved,
+                    impl_paths: x_impl_paths,
+                    ..
+                } = kind
+                {
+                    (x_resolved.clone(), ts_resolved.clone(), x_impl_paths.clone())
+                } else {
+                    (x.clone(), ts.clone(), impl_paths.clone())
+                };
 
                 let (callee, impl_paths) = crate::traits::redirect_calls_in_default_methods(
                     func_map,

@@ -15,6 +15,75 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+fn get_trait(fun: &Fun) -> Path {
+    fun.path.pop_segment()
+}
+
+fn demote_one_expr(
+    traits: &HashSet<Path>,
+    internal_traits: &HashSet<Path>,
+    funs: &HashSet<Fun>,
+    expr: &Expr,
+) -> Result<Expr, VirErr> {
+    match &expr.x {
+        ExprX::Call(
+            CallTarget::Fun(
+                CallTargetKind::DynamicResolved {
+                    resolved: resolved_fun,
+                    typs: resolved_typs,
+                    impl_paths,
+                    is_trait_default: _,
+                },
+                fun,
+                _typs,
+                _impl_paths,
+                autospec_usage,
+            ),
+            args,
+        ) if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
+            let ct = CallTarget::Fun(
+                CallTargetKind::Static,
+                resolved_fun.clone(),
+                resolved_typs.clone(),
+                impl_paths.clone(),
+                *autospec_usage,
+            );
+            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+        }
+        ExprX::Call(
+            CallTarget::Fun(
+                CallTargetKind::DynamicResolved {
+                    resolved: resolved_fun,
+                    typs: _,
+                    impl_paths: _,
+                    is_trait_default: true,
+                },
+                fun,
+                typs,
+                impl_paths,
+                autospec_usage,
+            ),
+            args,
+        ) if traits.contains(&get_trait(fun))
+            && !internal_traits.contains(&get_trait(fun))
+            && funs.contains(fun)
+            && !funs.contains(resolved_fun) =>
+        {
+            // Calls to external trait default functions are considered to be calls
+            // to the trait declaration (since we have a spec for the declaration)
+            let ct = CallTarget::Fun(
+                CallTargetKind::Dynamic,
+                fun.clone(),
+                typs.clone(),
+                impl_paths.clone(),
+                *autospec_usage,
+            );
+            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+        }
+        _ => Ok(expr.clone()),
+    }
+}
+
 // We consider methods for external traits to be static.
 pub fn demote_external_traits(
     diagnostics: &impl air::messages::Diagnostics,
@@ -24,6 +93,8 @@ pub fn demote_external_traits(
     check_no_dupe_impls(krate)?;
 
     let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
+    let internal_traits: HashSet<Path> =
+        krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
     let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
 
     let mut kratex = (**krate).clone();
@@ -105,7 +176,7 @@ pub fn demote_external_traits(
             &function,
             &mut map,
             &mut (),
-            &|_state, _, expr| demote_one_expr(&traits, &funs, expr),
+            &|_state, _, expr| demote_one_expr(&traits, &internal_traits, &funs, expr),
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
         )?;
@@ -392,40 +463,6 @@ fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
         ));
     }
     Ok(())
-}
-
-fn get_trait(fun: &Fun) -> Path {
-    fun.path.pop_segment()
-}
-
-fn demote_one_expr(
-    traits: &HashSet<Path>,
-    funs: &HashSet<Fun>,
-    expr: &Expr,
-) -> Result<Expr, VirErr> {
-    match &expr.x {
-        ExprX::Call(
-            CallTarget::Fun(
-                CallTargetKind::Method(Some((resolved_fun, resolved_typs, impl_paths))),
-                fun,
-                _typs,
-                _impl_paths,
-                autospec_usage,
-            ),
-            args,
-        ) if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
-            let kind = CallTargetKind::Static;
-            let ct = CallTarget::Fun(
-                kind,
-                resolved_fun.clone(),
-                resolved_typs.clone(),
-                impl_paths.clone(),
-                *autospec_usage,
-            );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
-        }
-        _ => Ok(expr.clone()),
-    }
 }
 
 pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBounds) -> Vec<Expr> {

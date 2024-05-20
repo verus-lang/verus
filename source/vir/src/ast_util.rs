@@ -506,8 +506,10 @@ impl crate::ast::CallTargetKind {
     pub(crate) fn resolved(&self) -> Option<(Fun, Typs)> {
         match self {
             crate::ast::CallTargetKind::Static => None,
-            crate::ast::CallTargetKind::Method(None) => None,
-            crate::ast::CallTargetKind::Method(Some((f, ts, _))) => Some((f.clone(), ts.clone())),
+            crate::ast::CallTargetKind::Dynamic => None,
+            crate::ast::CallTargetKind::DynamicResolved { resolved, typs, .. } => {
+                Some((resolved.clone(), typs.clone()))
+            }
         }
     }
 }

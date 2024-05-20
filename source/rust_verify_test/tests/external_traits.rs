@@ -277,3 +277,32 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_trait_defaults verus_code! {
+        #[verifier::external]
+        trait T {
+            fn d(u: u32) -> u32 { u }
+            fn f(u: u32) -> u32;
+        }
+
+        #[verifier::external]
+        impl T for bool {
+            fn f(u: u32) -> u32 { u }
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn d(u: u32) -> (r: u32) requires u >= 100;
+            fn f(u: u32) -> (r: u32) requires u >= 100;
+        }
+        impl T for u8 {
+            fn f(u: u32) -> u32 { u }
+        }
+        fn test() {
+            <bool as T>::d(100);
+            <u8 as T>::d(99); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

@@ -191,8 +191,8 @@ fn check_one_expr(
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             match kind {
                 CallTargetKind::Static => {}
-                CallTargetKind::Method(None) => {}
-                CallTargetKind::Method(Some((resolved_fun, _, _))) => {
+                CallTargetKind::Dynamic => {}
+                CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
                     check_path_and_get_function(
                         ctxt,
                         resolved_fun,
