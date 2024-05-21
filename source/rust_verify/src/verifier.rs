@@ -1072,6 +1072,7 @@ impl Verifier {
         context_counter: usize,
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
+        spinoff_reason: &str,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
@@ -1085,6 +1086,8 @@ impl Verifier {
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
+        air_context.blank_line();
+        air_context.comment(&format!("query spun off because: {}", spinoff_reason));
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -1391,6 +1394,15 @@ impl Verifier {
                             };
 
                             let mut query_air_context = if do_spinoff {
+                                let spinoff_reason = if cmds.prover_choice == vir::def::ProverChoice::Nonlinear {
+                                    "nonlinear"
+                                } else if cmds.prover_choice == vir::def::ProverChoice::BitVector {
+                                    "bitvector"
+                                } else if *profile_rerun {
+                                    "profile_rerun"
+                                } else {
+                                    "spinoff_all"
+                                };
                                 spinoff_z3_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
@@ -1407,6 +1419,7 @@ impl Verifier {
                                     spinoff_context_counter,
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
+                                    spinoff_reason,
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
