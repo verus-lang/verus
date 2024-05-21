@@ -1394,7 +1394,9 @@ impl Verifier {
                             };
 
                             let mut query_air_context = if do_spinoff {
-                                let spinoff_reason = if cmds.prover_choice == vir::def::ProverChoice::Nonlinear {
+                                let spinoff_reason = if cmds.prover_choice
+                                    == vir::def::ProverChoice::Nonlinear
+                                {
                                     "nonlinear"
                                 } else if cmds.prover_choice == vir::def::ProverChoice::BitVector {
                                     "bitvector"
