@@ -2394,7 +2394,6 @@ impl Verifier {
             arch_word_bits: None,
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
-            no_span: self.air_no_span.clone().unwrap(),
         });
         let multi_crate = self.args.export.is_some() || import_len > 0 || self.args.use_crate_name;
         crate::rust_to_vir_base::MULTI_CRATE
@@ -2440,6 +2439,8 @@ impl Verifier {
         // - well_formed::check_crate
         vir_crates.push(vir_crate);
         let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+        let vir_crate =
+            vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
@@ -2454,9 +2455,11 @@ impl Verifier {
         }
         let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
-        let vir_crate = vir::traits::demote_foreign_traits(&path_to_well_known_item, &vir_crate)
-            .map_err(map_err_diagnostics)?;
-        let vir_crate = vir::traits::inherit_default_bodies(&vir_crate);
+        let vir_crate =
+            vir::traits::demote_external_traits(diagnostics, &path_to_well_known_item, &vir_crate)
+                .map_err(map_err_diagnostics)?;
+        let vir_crate =
+            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(

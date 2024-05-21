@@ -232,6 +232,8 @@ fn check_item<'tcx>(
                 None,
                 generics,
                 CheckItemFnEither::BodyId(body_id),
+                None,
+                None,
                 external_fn_specification_trait_method_impls,
             )?;
         }
@@ -514,6 +516,8 @@ fn check_item<'tcx>(
                                     Some((&impll.generics, impl_def_id)),
                                     &impl_item.generics,
                                     CheckItemFnEither::BodyId(body_id),
+                                    None,
+                                    None,
                                     external_fn_specification_trait_method_impls,
                                 )?;
                             }
@@ -656,6 +660,12 @@ fn check_item<'tcx>(
         ItemKind::Macro(_, _) => {}
         ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, _bounds, trait_items) => {
             if vattrs.is_external(&ctxt.cmd_line_args) {
+                if vattrs.external_trait_specification.is_some() {
+                    return err_span(
+                        item.span,
+                        "a trait cannot be marked both `external_trait_specification` and `external`",
+                    );
+                }
                 return Ok(());
             }
 
@@ -669,6 +679,7 @@ fn check_item<'tcx>(
                 &module_path(),
                 trait_generics,
                 trait_items,
+                &vattrs,
                 external_fn_specification_trait_method_impls,
             )?;
         }
@@ -1040,12 +1051,6 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModu
     vir.external_fns = erasure_info.external_functions.clone();
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
 
-    let crate_name = ctxt.tcx.crate_name(
-        ctxt.tcx.def_path(ctxt.krate.owners.iter_enumerated().next().unwrap().0.to_def_id()).krate,
-    );
-    if crate_name.as_str() == "vstd" {
-        crate::std_traits::add_std_traits(&mut vir, ctxt.no_span.clone());
-    }
     collect_external_trait_impls(ctxt, &mut vir, &external_fn_specification_trait_method_impls)?;
 
     Ok((Arc::new(vir), item_to_module))

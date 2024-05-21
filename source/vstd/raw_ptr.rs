@@ -189,15 +189,17 @@ pub broadcast proof fn ptrs_mut_eq<T>(a: *mut T)
 
 //////////////////////////////////////
 // Null ptrs
+// NOTE: trait aliases are not yet supported,
+// so we use Pointee<Metadata = ()> instead of core::ptr::Thin here
 #[verifier::inline]
-pub open spec fn ptr_null<T: ?Sized + core::ptr::Thin>() -> *const T {
+pub open spec fn ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *const T {
     ptr_from_data(PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::Thin })
 }
 
 #[cfg(verus_keep_ghost)]
 #[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(ptr_null)]
-pub fn ex_ptr_null<T: ?Sized + core::ptr::Thin>() -> (res: *const T)
+pub fn ex_ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> (res: *const T)
     ensures
         res == ptr_null::<T>(),
 {
@@ -205,14 +207,14 @@ pub fn ex_ptr_null<T: ?Sized + core::ptr::Thin>() -> (res: *const T)
 }
 
 #[verifier::inline]
-pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Thin>() -> *mut T {
+pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *mut T {
     ptr_mut_from_data(PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::Thin })
 }
 
 #[cfg(verus_keep_ghost)]
 #[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(ptr_null_mut)]
-pub fn ex_ptr_null_mut<T: ?Sized + core::ptr::Thin>() -> (res: *mut T)
+pub fn ex_ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> (res: *mut T)
     ensures
         res == ptr_null_mut::<T>(),
 {

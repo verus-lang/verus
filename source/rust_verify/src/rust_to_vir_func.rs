@@ -170,6 +170,7 @@ fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result
 pub(crate) fn handle_external_fn<'tcx>(
     ctxt: &Context<'tcx>,
     id: DefId,
+    kind: FunctionKind,
     visibility: vir::ast::Visibility,
     sig: &'tcx FnSig<'tcx>,
     // (impl generics, impl def_id)
@@ -177,6 +178,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
+    external_fn_specification_via_external_trait: Option<DefId>,
     external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
@@ -203,23 +205,26 @@ pub(crate) fn handle_external_fn<'tcx>(
         );
     }
 
-    if self_generics.is_some() {
+    if self_generics.is_some() && external_fn_specification_via_external_trait.is_none() {
         return err_span(sig.span, "`external_fn_specification` attribute not supported here");
     }
 
-    let body_id = match body_id {
-        CheckItemFnEither::BodyId(body_id) => body_id,
-        _ => {
-            return err_span(
-                sig.span,
-                "external_fn_specification not supported for trait functions",
-            );
-        }
-    };
-
-    let body = find_body(ctxt, body_id);
     let (external_id, kind) =
-        get_external_def_id(ctxt.tcx, &ctxt.verus_items, id, body_id, body, sig)?;
+        if let Some(external_id) = external_fn_specification_via_external_trait {
+            (external_id, kind)
+        } else {
+            let body_id = match body_id {
+                CheckItemFnEither::BodyId(body_id) => body_id,
+                _ => {
+                    return err_span(
+                        sig.span,
+                        "external_fn_specification not supported for trait functions",
+                    );
+                }
+            };
+            let body = find_body(ctxt, body_id);
+            get_external_def_id(ctxt.tcx, &ctxt.verus_items, id, body_id, body, sig)?
+        };
     let external_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_id);
 
     if external_path.krate == Some(Arc::new("builtin".to_string()))
@@ -300,10 +305,23 @@ pub(crate) fn handle_external_fn<'tcx>(
     }
 
     // trait bounds aren't part of the type signature - we have to check those separately
-    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1_early);
-    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs2_early);
-    remove_ignored_trait_bounds_from_predicates(ctxt.tcx, &mut proxy_preds);
-    remove_ignored_trait_bounds_from_predicates(ctxt.tcx, &mut external_preds);
+    let mut proxy_preds = all_predicates(ctxt.tcx, id, substs1_early, false);
+    let mut external_preds = all_predicates(ctxt.tcx, external_id, substs2_early, true);
+    let in_trait = external_fn_specification_via_external_trait.is_some();
+    remove_ignored_trait_bounds_from_predicates(
+        ctxt.tcx,
+        in_trait,
+        &[ctxt.tcx.parent(external_id), ctxt.tcx.parent(id)],
+        None,
+        &mut proxy_preds,
+    );
+    remove_ignored_trait_bounds_from_predicates(
+        ctxt.tcx,
+        in_trait,
+        &[ctxt.tcx.parent(external_id)],
+        None,
+        &mut external_preds,
+    );
     if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
         let err = err_span_bare(
             sig.span,
@@ -499,6 +517,8 @@ pub(crate) fn check_item_fn<'tcx>(
     self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics,
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
+    external_trait: Option<DefId>,
+    external_fn_specification_via_external_trait: Option<DefId>,
     external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
@@ -512,7 +532,9 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
-    let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification {
+    let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification
+        || external_fn_specification_via_external_trait.is_some()
+    {
         if is_verus_spec {
             return err_span(
                 sig.span,
@@ -530,12 +552,14 @@ pub(crate) fn check_item_fn<'tcx>(
         let (external_path, external_item_visibility, kind, has_self_param) = handle_external_fn(
             ctxt,
             id,
+            kind,
             visibility,
             sig,
             self_generics,
             &body_id,
             mode,
             &vattrs,
+            external_fn_specification_via_external_trait,
             external_fn_specification_trait_method_impls,
         )?;
 
@@ -886,8 +910,20 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         typ_params.extend_from_slice(&sig_typ_params[..]);
         typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
+        let typ_params = Arc::new(typ_params);
+        let mut typ_bounds = Arc::new(typ_bounds);
 
-        (Arc::new(typ_params), Arc::new(typ_bounds))
+        if let Some(to_trait_id) = external_trait {
+            let from_trait_id = ctxt.tcx.parent(id);
+            let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
+            let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
+            typ_bounds = crate::rust_to_vir_trait::rewrite_external_bounds(
+                &from_path,
+                &to_path,
+                &typ_bounds,
+            );
+        }
+        (typ_params, typ_bounds)
     };
 
     let body = if vattrs.external_body || vattrs.external_fn_specification || header.no_method_body
@@ -1202,16 +1238,39 @@ fn is_mut_ty<'tcx>(
     }
 }
 
-fn remove_ignored_trait_bounds_from_predicates<'tcx>(
+pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
+    in_trait: bool,
+    trait_ids: &[DefId],
+    ex_trait_assoc: Option<rustc_middle::ty::GenericArg<'tcx>>,
     preds: &mut Vec<Clause<'tcx>>,
 ) {
     use rustc_middle::ty;
     use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
-            let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
-            rust_item != Some(crate::verus_items::RustItem::Destruct)
+            if in_trait && trait_ids.contains(&tp.trait_ref.def_id) && tp.trait_ref.args.len() >= 1
+            {
+                if let GenericArgKind::Type(ty) = tp.trait_ref.args[0].unpack() {
+                    match ty.kind() {
+                        // ignore Self: T bound for trait T
+                        ty::TyKind::Param(param)
+                            if param.name == rustc_span::symbol::kw::SelfUpper =>
+                        {
+                            false
+                        }
+                        ty::TyKind::Alias(_, _) if Some(tp.trait_ref.args[0]) == ex_trait_assoc => {
+                            false
+                        }
+                        _ => true,
+                    }
+                } else {
+                    true
+                }
+            } else {
+                let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
+                rust_item != Some(crate::verus_items::RustItem::Destruct)
+            }
         }
         rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, ty) => {
             match (cnst.kind(), ty.kind()) {
@@ -1262,6 +1321,7 @@ fn all_predicates<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: rustc_span::def_id::DefId,
     substs: GenericArgsRef<'tcx>,
+    preliminarily_try_to_process_and_eliminate_trait_aliases: bool,
 ) -> Vec<Clause<'tcx>> {
     let substs = if let Some(index) = tcx.generics_of(id).host_effect_index {
         let b = rustc_middle::ty::Const::from_bool(tcx, true);
@@ -1271,9 +1331,41 @@ fn all_predicates<'tcx>(
     } else {
         substs
     };
+    let mut trait_alias_clauses: Vec<Clause<'tcx>> = Vec::new();
     let preds = tcx.predicates_of(id);
+    if preliminarily_try_to_process_and_eliminate_trait_aliases {
+        // raw_ptr.rs uses external_fn_specification for functions with core::ptr::Thin bounds,
+        // where core::ptr::Thin is a trait alias (an experimental Rust feature)
+        // to core::ptr::Pointee<Metadata = ()>
+        // We don't support trait aliases yet.
+        // However, to get this case to work, we attempt to expand away trait aliases unto
+        // their underlying traits here.
+        // This is not fully general and probably doesn't yet work for parameterized trait aliases.
+        for (p, _) in preds.predicates {
+            match p.kind().skip_binder() {
+                rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
+                    if tcx.trait_is_alias(tp.trait_ref.def_id) {
+                        let preds = tcx.predicates_of(tp.trait_ref.def_id);
+                        trait_alias_clauses
+                            .extend(preds.instantiate(tcx, substs).into_iter().map(|(p, _)| p));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     let preds = preds.instantiate(tcx, substs);
-    preds.predicates
+    let mut clauses = preds.predicates;
+    if preliminarily_try_to_process_and_eliminate_trait_aliases {
+        clauses.retain(|clause| match clause.kind().skip_binder() {
+            rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
+                !tcx.trait_is_alias(tp.trait_ref.def_id)
+            }
+            _ => true,
+        });
+    }
+    clauses.extend(trait_alias_clauses);
+    clauses
 }
 
 pub(crate) fn get_external_def_id<'tcx>(
@@ -1369,10 +1461,10 @@ pub(crate) fn get_external_def_id<'tcx>(
         } else {
             // This is the actual, generic trait method.
             // Be conservative with this feature for now.
-            let rust_item = crate::verus_items::get_rust_item(tcx, external_id);
-            if rust_item == Some(crate::verus_items::RustItem::Clone) {
-                return Ok((external_id, FunctionKind::TraitMethodDecl { trait_path }));
-            }
+            // let rust_item = crate::verus_items::get_rust_item(tcx, external_id);
+            // if rust_item == Some(crate::verus_items::RustItem::Clone) {
+            //     return Ok((external_id, FunctionKind::TraitMethodDecl { trait_path }));
+            // }
 
             return err_span(
                 sig.span,

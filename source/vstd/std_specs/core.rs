@@ -2,6 +2,78 @@ use super::super::prelude::*;
 
 verus! {
 
+#[verifier::external_trait_specification]
+pub trait ExInteger {
+    type ExternalTraitSpecificationFor: Integer;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExSpecOrd<Rhs> {
+    type ExternalTraitSpecificationFor: SpecOrd<Rhs>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExAllocator {
+    type ExternalTraitSpecificationFor: core::alloc::Allocator;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExDebug {
+    type ExternalTraitSpecificationFor: core::fmt::Debug;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFrom<T>: Sized {
+    type ExternalTraitSpecificationFor: core::convert::From<T>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExPartialEq<Rhs: ?Sized> {
+    type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExEq: PartialEq {
+    type ExternalTraitSpecificationFor: core::cmp::Eq;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
+    type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExOrd: Eq + PartialOrd {
+    type ExternalTraitSpecificationFor: Ord;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExHash {
+    type ExternalTraitSpecificationFor: core::hash::Hash;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExPtrPointee {
+    type ExternalTraitSpecificationFor: core::ptr::Pointee;
+
+    type Metadata: Copy + Send + Sync + Ord + core::hash::Hash + Unpin;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIterator {
+    type ExternalTraitSpecificationFor: core::iter::Iterator;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIntoIterator {
+    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIterStep: Clone + PartialOrd + Sized {
+    type ExternalTraitSpecificationFor: core::iter::Step;
+}
+
 #[verifier::external_fn_specification]
 pub fn ex_swap<T>(a: &mut T, b: &mut T)
     ensures

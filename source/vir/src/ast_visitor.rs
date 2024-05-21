@@ -744,10 +744,20 @@ where
                 CallTarget::Fun(kind, x, typs, impl_paths, autospec_usage) => {
                     use crate::ast::CallTargetKind;
                     let kind = match kind {
-                        CallTargetKind::Static | CallTargetKind::Method(None) => kind.clone(),
-                        CallTargetKind::Method(Some((f, ts, ips))) => {
-                            let ts = map_typs_visitor_env(ts, env, ft)?;
-                            CallTargetKind::Method(Some((f.clone(), ts, ips.clone())))
+                        CallTargetKind::Static | CallTargetKind::Dynamic => kind.clone(),
+                        CallTargetKind::DynamicResolved {
+                            resolved,
+                            typs,
+                            impl_paths,
+                            is_trait_default,
+                        } => {
+                            let typs = map_typs_visitor_env(typs, env, ft)?;
+                            CallTargetKind::DynamicResolved {
+                                resolved: resolved.clone(),
+                                typs,
+                                impl_paths: impl_paths.clone(),
+                                is_trait_default: *is_trait_default,
+                            }
                         }
                     };
                     CallTarget::Fun(

@@ -648,8 +648,10 @@ pub type ImplPaths = Arc<Vec<ImplPath>>;
 pub enum CallTargetKind {
     /// Statically known function
     Static,
-    /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
-    Method(Option<(Fun, Typs, ImplPaths)>),
+    /// Dynamically dispatched function
+    Dynamic,
+    /// Dynamically dispatched function with known resolved target
+    DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -1140,6 +1142,7 @@ pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
     pub name: Path,
+    pub proxy: Option<Spanned<Path>>,
     pub visibility: Visibility,
     // REVIEW: typ_params does not yet explicitly include Self (right now, Self is implicit)
     pub typ_params: TypPositives,

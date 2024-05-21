@@ -305,7 +305,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(*autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
-                        if let crate::ast::CallTargetKind::Method(Some((resolved, _, _))) = kind {
+                        if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
                         }
                     }
