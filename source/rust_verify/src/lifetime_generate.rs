@@ -1322,6 +1322,21 @@ fn erase_expr<'tcx>(
                 mk_exp(ExpX::Array(args))
             }
         }
+        ExprKind::Repeat(e, _array_len) => {
+            let exp = erase_expr(ctxt, state, expect_spec, e);
+            if expect_spec {
+                erase_spec_exps(ctxt, state, expr, vec![exp])
+            } else {
+                let array_ty = erase_ty(ctxt, state, &ctxt.types().expr_ty(expr));
+                let len_ty = match *array_ty {
+                    TypX::Array(_, len_ty) => len_ty.clone(),
+                    _ => {
+                        panic!("ExprKind::Repeat case expected TypX::Array");
+                    }
+                };
+                mk_exp(ExpX::ArrayRepeat(exp.expect("expr"), len_ty))
+            }
+        }
         ExprKind::Cast(source, _) => {
             let source = erase_expr(ctxt, state, expect_spec, source);
             erase_spec_exps(ctxt, state, expr, vec![source])

@@ -413,6 +413,13 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
             state.write("]");
         }
+        ExpX::ArrayRepeat(e, t) => {
+            state.write("[");
+            emit_exp(state, e);
+            state.write("; ");
+            state.write(t.to_string());
+            state.write("]");
+        }
         ExpX::DatatypeTuple(x, v, typ_args, es) => {
             state.write(x.to_string());
             if let Some(v) = v {

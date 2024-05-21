@@ -307,8 +307,13 @@ pub(crate) fn translate_trait<'tcx>(
 
                 let bounds = tcx.item_bounds(trait_item.owner_id.def_id.to_def_id()).skip_binder();
                 let bounds = bounds.iter().map(|p| (p, *span)).collect::<Vec<_>>();
-                let vir_bounds =
-                    process_predicate_bounds(tcx, trait_def_id, &ctxt.verus_items, bounds.iter())?;
+                let vir_bounds = process_predicate_bounds(
+                    tcx,
+                    trait_def_id,
+                    &ctxt.verus_items,
+                    bounds.iter(),
+                    tcx.generics_of(trait_def_id),
+                )?;
                 assoc_typs_bounds.extend(vir_bounds);
 
                 if let Some(ex_trait_ref_for) = ex_trait_ref_for {

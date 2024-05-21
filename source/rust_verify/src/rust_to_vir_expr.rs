@@ -1550,6 +1550,50 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 exprs.iter().map(|e| expr_to_vir(bctx, e, modifier)).collect();
             mk_expr(ExprX::ArrayLiteral(Arc::new(args?)))
         }
+        ExprKind::Repeat(e, _array_len) => {
+            if bctx.ctxt.no_vstd {
+                return err_span(expr.span, "Array literals are not supported with --no-vstd");
+            }
+            let ty = bctx.types.expr_ty_adjusted(e);
+            let is_copy =
+                ty.is_copy_modulo_regions(bctx.ctxt.tcx, bctx.ctxt.tcx.param_env(bctx.fun_id));
+            if is_copy {
+                let arg_vir = expr_to_vir(bctx, e, modifier)?;
+                let fun = vir::fun!("vstd" => "array", "array_fill_for_copy_types");
+                let array_vir_typ = mid_ty_to_vir(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    expr.span,
+                    &bctx.types.expr_ty(expr),
+                    false,
+                )?;
+                let typ_args = match &*array_vir_typ {
+                    TypX::Primitive(Primitive::Array, typs) => typs.clone(),
+                    _ => {
+                        return err_span(
+                            expr.span,
+                            "Verus internal error: expected Primitive::Array",
+                        );
+                    }
+                };
+                let autospec_usage =
+                    if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                let call_target = CallTarget::Fun(
+                    vir::ast::CallTargetKind::Static,
+                    fun,
+                    typ_args,
+                    Arc::new(vec![]),
+                    autospec_usage,
+                );
+                let args = Arc::new(vec![arg_vir.clone()]);
+                mk_expr(ExprX::Call(call_target, args))
+            } else {
+                // Could be a const. In this case the array needs to be translated like:
+                //    forall |i| array[i] satisfies post-condition of const
+                unsupported_err!(expr.span, format!("array-fill expresion with non-copy type"))
+            }
+        }
         ExprKind::Lit(lit) => match lit.node {
             LitKind::Bool(b) => {
                 let c = vir::ast::Constant::Bool(b);
@@ -2169,7 +2213,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
         ExprKind::DropTemps(..) => unsupported_err!(expr.span, format!("drop-temps expressions")),
         ExprKind::Let(..) => unsupported_err!(expr.span, format!("let expressions")),
-        ExprKind::Repeat(..) => unsupported_err!(expr.span, format!("repeat expressions")),
         ExprKind::Yield(..) => unsupported_err!(expr.span, format!("yield expressions")),
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
         ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),

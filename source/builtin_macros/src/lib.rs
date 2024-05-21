@@ -7,7 +7,8 @@
     feature(proc_macro_diagnostic)
 )]
 
-use lazy_static::lazy_static;
+#[cfg(verus_keep_ghost)]
+use std::sync::OnceLock;
 use synstructure::{decl_attribute, decl_derive};
 
 #[macro_use]
@@ -135,8 +136,9 @@ pub(crate) fn cfg_erase() -> EraseGhost {
 }
 
 #[cfg(verus_keep_ghost)]
-lazy_static! {
-    static ref CFG_VERIFY_CORE: bool = {
+pub(crate) fn cfg_verify_core() -> bool {
+    static CFG_VERIFY_CORE: OnceLock<bool> = OnceLock::new();
+    *CFG_VERIFY_CORE.get_or_init(|| {
         let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_verify_core) }.into();
         let bool_ts = match ts.expand_expr() {
             Ok(name) => name.to_string(),
@@ -151,12 +153,7 @@ lazy_static! {
                 panic!("cfg_verify_core call failed")
             }
         }
-    };
-}
-
-#[cfg(verus_keep_ghost)]
-pub(crate) fn cfg_verify_core() -> bool {
-    *CFG_VERIFY_CORE
+    })
 }
 
 // Because 'expand_expr' is unstable, we need a different impl when `not(verus_keep_ghost)`.
