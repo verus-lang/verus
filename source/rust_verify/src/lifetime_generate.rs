@@ -96,6 +96,7 @@ pub(crate) struct State {
     remaining_typs_needed_for_each_impl: HashMap<DefId, (Id, Vec<DefId>)>,
     enclosing_fun_id: Option<DefId>,
     enclosing_trait_ids: Vec<DefId>,
+    inside_trait_assoc_type: u32,
 }
 
 impl State {
@@ -122,6 +123,7 @@ impl State {
             remaining_typs_needed_for_each_impl: HashMap::new(),
             enclosing_fun_id: None,
             enclosing_trait_ids: Vec::new(),
+            inside_trait_assoc_type: 0,
         }
     }
 
@@ -401,7 +403,11 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             Box::new(TypX::Primitive(ty.to_string()))
         }
         TyKind::Param(p) if p.name == kw::SelfUpper => {
-            Box::new(TypX::TypParam(state.typ_param("Self", None)))
+            if state.inside_trait_assoc_type > 0 {
+                Box::new(TypX::TraitSelf)
+            } else {
+                Box::new(TypX::TypParam(state.typ_param("Self", None)))
+            }
         }
         TyKind::Param(p) => {
             let name = p.name.as_str();
@@ -1757,6 +1763,8 @@ fn erase_mir_predicates<'a, 'tcx>(
                 let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
                 let bound = if Some(id) == ctxt.tcx.lang_items().copy_trait() {
                     Some(Bound::Copy)
+                } else if Some(id) == ctxt.tcx.lang_items().sized_trait() {
+                    Some(Bound::Sized)
                 } else if state.trait_decl_set.contains(&trait_path) {
                     let substs = pred.trait_ref.args;
                     let (trait_typ_args, _) = erase_generic_args(ctxt, state, substs, true);
@@ -2099,6 +2107,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
 
     let mut assoc_typs: Vec<(Id, Vec<GenericBound>)> = Vec::new();
     let assoc_items = ctxt.tcx.associated_items(trait_id);
+    state.inside_trait_assoc_type += 1;
     for assoc_item in assoc_items.in_definition_order() {
         match assoc_item.kind {
             rustc_middle::ty::AssocKind::Const => {}
@@ -2161,6 +2170,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             erase_impl_assocs(ctxt, state, impl_id);
         }
     }
+    state.inside_trait_assoc_type -= 1;
 
     assert!(state.enclosing_trait_ids.pop().is_some());
 }

@@ -28,6 +28,9 @@ impl Id {
     pub(crate) fn to_string(&self) -> String {
         crate::lifetime_emit::encode_id(self.kind, self.rename_count, &self.raw_id)
     }
+    pub(crate) fn is_typ_param(&self) -> bool {
+        self.kind == IdKind::TypParam
+    }
 }
 
 pub(crate) type Typ = Box<TypX>;
@@ -35,6 +38,8 @@ pub(crate) type Typ = Box<TypX>;
 pub(crate) enum TypX {
     Primitive(String),
     TypParam(Id),
+    // inside trait declarations, Self is special:
+    TraitSelf,
     Never,
     Ref(Typ, Option<Id>, Mutability),
     Phantom(Typ),
@@ -136,6 +141,7 @@ pub(crate) enum ClosureKind {
 pub(crate) enum Bound {
     Copy,
     Clone,
+    Sized,
     Id(Id),
     // use TypX::Datatype to represent Trait bound
     Trait(Typ),
