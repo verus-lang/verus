@@ -1,3 +1,4 @@
+use crate::config::Vstd;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
 use rustc_errors::ErrorGuaranteed;
 use std::time::{Duration, Instant};
@@ -120,9 +121,13 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
+    vstd: Vstd,
 ) -> Result<(), ErrorGuaranteed> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
+    if vstd == Vstd::IsCore {
+        rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
+    }
     let allow = &[
         "unused_imports",
         "unused_variables",
@@ -215,13 +220,12 @@ use lib_exe_names::{LIB_DL, LIB_PRE};
 pub struct VerusExterns<'a> {
     path: &'a std::path::PathBuf,
     has_vstd: bool,
+    has_builtin: bool,
 }
 
 impl<'a> VerusExterns<'a> {
     pub fn to_args(&self) -> impl Iterator<Item = String> {
         let mut args = vec![
-            format!("--extern"),
-            format!("builtin={}", self.path.join(format!("libbuiltin.rlib")).to_str().unwrap()),
             format!("--extern"),
             format!(
                 "builtin_macros={}",
@@ -238,6 +242,13 @@ impl<'a> VerusExterns<'a> {
             format!("-L"),
             format!("dependency={}", self.path.to_str().unwrap()),
         ];
+        if self.has_builtin {
+            args.push(format!("--extern"));
+            args.push(format!(
+                "builtin={}",
+                self.path.join(format!("libbuiltin.rlib")).to_str().unwrap()
+            ));
+        }
         if self.has_vstd {
             args.push(format!("--extern"));
             args.push(format!(
@@ -269,7 +280,11 @@ where
     }
     if !build_test_mode {
         if let Some(VerusRoot { path: verusroot, in_vargo }) = verus_root {
-            let externs = VerusExterns { path: &verusroot, has_vstd: !verifier.args.no_vstd };
+            let externs = VerusExterns {
+                path: &verusroot,
+                has_vstd: verifier.args.vstd == Vstd::Imported,
+                has_builtin: verifier.args.vstd != Vstd::IsCore,
+            };
             rustc_args.extend(externs.to_args());
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
                 panic!("we are in vargo, but VERUS_Z3_PATH is not set; this is a bug");
@@ -281,6 +296,9 @@ where
     let mut rustc_args_verify = rustc_args.clone();
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
+    if verifier.args.vstd == Vstd::IsCore {
+        rustc_args_verify.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
+    }
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,
@@ -345,7 +363,12 @@ where
     let compile_status = if !verifier.args.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
-        run_with_erase_macro_compile(rustc_args, Box::new(file_loader), verifier.args.compile)
+        run_with_erase_macro_compile(
+            rustc_args,
+            Box::new(file_loader),
+            verifier.args.compile,
+            verifier.args.vstd,
+        )
     };
 
     let time2 = Instant::now();

@@ -268,18 +268,17 @@ test_both! {
     inv_lifetime inv_lifetime_local verus_code! {
         use vstd::invariant::*;
 
-        proof fn throw_away<A, B: InvariantPredicate<A, u8>>(tracked i: AtomicInvariant<A, u8, B>) {
-        }
-
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>)
           requires
             i.inv(0),
         {
           open_atomic_invariant!(&i => inner => {
-            proof { throw_away(i); }
+            proof {
+              i.into_inner(); // FAILS
+            }
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `i` because it is borrowed")
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_both! {
@@ -505,8 +504,8 @@ test_verify_one_file! {
           requires i.namespace() == 1,
           opens_invariants [ 1int ]
         {
-            open_local_invariant!(&i => inner => { // FAILS
-                test_inside_open();
+            open_local_invariant!(&i => inner => {
+                test_inside_open(); // FAILS
             });
         }
 
@@ -716,6 +715,40 @@ test_verify_one_file! {
             proof fn stuff_open_none(b: int, a: int) {
                 open_me(a); // FAILS
             }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] local_invariant_non_termination_into_inner_issue1102 verus_code!{
+        use vstd::invariant::*;
+
+        #[verifier::external_body]
+        tracked struct X { }
+
+        #[verifier::external_body]
+        proof fn no_dupes(tracked x: X, tracked y: X)
+            ensures false
+        {
+        }
+
+        struct Pred { }
+        impl InvariantPredicate<(), X> for Pred {
+            open spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        #[allow(unreachable_code)]
+        fn stuff(tracked inv: LocalInvariant<(), X, Pred>)
+        {
+            open_local_invariant!(&inv => x1 => {
+                let tracked x2 = inv.into_inner(); // FAILS
+                proof {
+                    no_dupes(x1, x2);
+                    assert(false);
+                }
+
+                loop { }
+            });
         }
     } => Err(err) => assert_fails(err, 1)
 }

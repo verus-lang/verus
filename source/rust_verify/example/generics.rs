@@ -3,7 +3,8 @@ use builtin_macros::*;
 
 verus! {
 
-fn main() {}
+fn main() {
+}
 
 spec fn f<A>(a1: A, a2: A) -> bool {
     true
@@ -57,13 +58,13 @@ proof fn s_prop2<C>(x: S<C>, y: S<C>) {
     assert(s_property(x) == s_property(y));
 }
 
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn g<A>(a: A) -> A {
     a
 }
 
 proof fn test_g1(u: u8) {
-    reveal(g::<u8>); // REVIEW: should reveal quantify over all A?
+    reveal(g::<u8>);  // REVIEW: should reveal quantify over all A?
     assert(g(u) == u);
 }
 

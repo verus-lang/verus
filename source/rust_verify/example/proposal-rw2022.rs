@@ -1,14 +1,19 @@
-use builtin_macros::*;
 use builtin::*;
-use vstd::{*, prelude::*};
+use builtin_macros::*;
+use vstd::{prelude::*, *};
 
 verus! {
 
 spec fn fibo(n: nat) -> nat
-    decreases n
+    decreases n,
 {
-    if n == 0 { 0 } else if n == 1 { 1 }
-    else { fibo((n - 2) as nat) + fibo((n - 1) as nat) }
+    if n == 0 {
+        0
+    } else if n == 1 {
+        1
+    } else {
+        fibo((n - 2) as nat) + fibo((n - 1) as nat)
+    }
 }
 
 proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
@@ -16,7 +21,7 @@ proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
         i <= j,
     ensures
         fibo(i) <= fibo(j),
-    decreases j - i
+    decreases j - i,
 {
     if i < 2 && j < 2 {
     } else if i == j {
@@ -64,6 +69,7 @@ exec fn fibo_impl(n: u64) -> (result: u64)
     cur
 }
 
-fn main() {}
+fn main() {
+}
 
 } // verus!

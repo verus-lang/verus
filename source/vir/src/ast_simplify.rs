@@ -323,7 +323,8 @@ fn simplify_one_expr(
         ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
-            let is_trait_impl = matches!(kind, CallTargetKind::Method(..));
+            let is_trait_impl =
+                matches!(kind, CallTargetKind::Dynamic | CallTargetKind::DynamicResolved { .. });
             let args = if typs.len() == 0 && args.len() == 0 && !is_trait_impl {
                 // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
                 let typ = Arc::new(TypX::Int(IntRange::Int));

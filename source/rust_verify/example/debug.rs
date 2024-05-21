@@ -1,11 +1,11 @@
 // rust_verify/tests/example.rs expect-failures
-
 use builtin::*;
 use builtin_macros::*;
 
 verus! {
 
-fn main() {}
+fn main() {
+}
 
 /*
 fn test_params(i: int, n: nat, u: u8) {
@@ -26,7 +26,7 @@ spec fn add_one(i: int) -> int {
 }
 
 fn very_simple(z: int) {
-    let mut x = z;      // 1_mutation
+    let mut x = z;  // 1_mutation
     assert(add_one(x) < 3);
 }
 
@@ -50,9 +50,8 @@ fn very_simple(z: int) {
 //         y = 7;      // 8_mutation
 //         f = 34;    // 9_mutation
 //     } // 10_join
-//     assert(x + y > 5); 
+//     assert(x + y > 5);
 // }
-
 /*
 fn test_loop() {
     let mut i: u64 = 10;
@@ -78,5 +77,4 @@ fn test_loop() {
     assert(true);   // 7_while_end
 }
 */
-
 } // verus!

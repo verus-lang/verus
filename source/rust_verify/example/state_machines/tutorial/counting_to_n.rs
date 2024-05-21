@@ -1,15 +1,15 @@
 #![allow(unused_imports)]
 
 // ANCHOR: full
-use vstd::{*, prelude::*, pervasive::*};
-use vstd::{atomic_ghost::*};
-use vstd::{modes::*};
-use vstd::{thread::*};
 use state_machines_macros::tokenized_state_machine;
-use vstd::prelude::*;
 use std::sync::Arc;
+use vstd::atomic_ghost::*;
+use vstd::modes::*;
+use vstd::prelude::*;
+use vstd::thread::*;
+use vstd::{pervasive::*, prelude::*, *};
 
-verus!{
+verus! {
 
 // ANCHOR: fields
 tokenized_state_machine!{
@@ -109,26 +109,22 @@ struct_with_invariants!{
 }
 
 fn do_count(num_threads: u32) {
-    // Initialize protocol 
-
-    let tracked (Tracked(instance),
+    // Initialize protocol
+    let tracked (
+        Tracked(instance),
         Tracked(counter_token),
         Tracked(unstamped_tokens),
-        Tracked(stamped_tokens)) = X::Instance::initialize(num_threads as nat);
-
+        Tracked(stamped_tokens),
+    ) = X::Instance::initialize(num_threads as nat);
     // Initialize the counter
-
     let tracked_instance = Tracked(instance.clone());
     let atomic = AtomicU32::new(Ghost(tracked_instance), 0, Tracked(counter_token));
-
     let global = Global { atomic, instance: tracked_instance };
     let global_arc = Arc::new(global);
 
     // ANCHOR: loop_spawn
     // Spawn threads
-
     let mut join_handles: Vec<JoinHandle<Tracked<X::stamped_tickets>>> = Vec::new();
-
     let mut i = 0;
     while i < num_threads
         invariant
@@ -137,50 +133,47 @@ fn do_count(num_threads: u32) {
             unstamped_tokens@.count + i as int == num_threads as int,
             unstamped_tokens@.instance === instance,
             join_handles@.len() == i as int,
-            forall |j: int, ret| 0 <= j && j < i ==>
-                join_handles@.index(j).predicate(ret) ==>
-                    ret@@.instance === instance && ret@@.count == 1,
+            forall|j: int, ret|
+                0 <= j && j < i ==> join_handles@.index(j).predicate(ret) ==> ret@@.instance
+                    === instance && ret@@.count == 1,
             (*global_arc).wf(),
             (*global_arc).instance@ === instance,
     {
         let tracked unstamped_token;
         proof {
-            let tracked (Tracked(unstamped_token0), Tracked(rest)) = unstamped_tokens.split(1 as nat);
+            let tracked (Tracked(unstamped_token0), Tracked(rest)) = unstamped_tokens.split(
+                1 as nat,
+            );
             unstamped_tokens = rest;
             unstamped_token = unstamped_token0;
         }
-
         let global_arc = global_arc.clone();
-
-        let join_handle = spawn(move || -> (new_token: Tracked<X::stamped_tickets>)
-            ensures
-                new_token@@.instance == instance,
-                new_token@@.count == 1nat,
-        {
-            let tracked unstamped_token = unstamped_token;
-            let globals = &*global_arc;
-
-            let tracked stamped_token;
-
-            let _ = atomic_with_ghost!(
-                &global_arc.atomic => fetch_add(1);
-                update prev -> next;
-                returning ret;
-                ghost c => {
-                    stamped_token =
-                        global_arc.instance.borrow().tr_inc(&mut c, unstamped_token);
-                }
-            );
-
-            Tracked(stamped_token)
-        });
-
+        let join_handle = spawn(
+            (move || -> (new_token: Tracked<X::stamped_tickets>)
+                ensures
+                    new_token@@.instance == instance,
+                    new_token@@.count == 1nat,
+                {
+                    let tracked unstamped_token = unstamped_token;
+                    let globals = &*global_arc;
+                    let tracked stamped_token;
+                    let _ =
+                        atomic_with_ghost!(
+                            &global_arc.atomic => fetch_add(1);
+                            update prev -> next;
+                            returning ret;
+                            ghost c => {
+                                stamped_token =
+                                    global_arc.instance.borrow().tr_inc(&mut c, unstamped_token);
+                            }
+                        );
+                    Tracked(stamped_token)
+                }),
+        );
         join_handles.push(join_handle);
-
         i = i + 1;
     }
     // ANCHOR_END: loop_spawn
-
     // ANCHOR: loop_join
     // Join threads
 
@@ -192,35 +185,35 @@ fn do_count(num_threads: u32) {
             stamped_tokens@.count == i as int,
             stamped_tokens@.instance === instance,
             join_handles@.len() as int + i as int == num_threads,
-            forall |j: int, ret| 0 <= j && j < join_handles@.len() ==>
-                #[trigger] join_handles@.index(j).predicate(ret) ==>
-                    ret@@.instance === instance && ret@@.count == 1,
+            forall|j: int, ret|
+                0 <= j && j < join_handles@.len() ==> #[trigger] join_handles@.index(j).predicate(
+                    ret,
+                ) ==> ret@@.instance === instance && ret@@.count == 1,
             (*global_arc).wf(),
             (*global_arc).instance@ === instance,
     {
-
         let join_handle = join_handles.pop().unwrap();
-
         match join_handle.join() {
             Result::Ok(token) => {
                 proof {
                     stamped_tokens = stamped_tokens.join(token.get());
                 }
-            }
-            _ => { return; }
+            },
+            _ => {
+                return ;
+            },
         };
-
         i = i + 1;
     }
     // ANCHOR_END: loop_join
 
     let global = &*global_arc;
-    let x = atomic_with_ghost!(&global.atomic => load();
+    let x =
+        atomic_with_ghost!(&global.atomic => load();
         ghost c => {
             instance.finalize(&c, &stamped_tokens);
         }
     );
-
     assert(x == num_threads);
 }
 
@@ -228,5 +221,5 @@ fn main() {
     do_count(20);
 }
 
-}
+} // verus!
 // ANCHOR_END: full

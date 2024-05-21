@@ -1,21 +1,19 @@
 // rust_verify/tests/example.rs ignore --- old experimental example
-
 #![allow(unused_imports)]
 
-use vstd::pervasive::*;
-use vstd::option::*;
-use vstd::map::*;
-use vstd::modes::*;
-use vstd::multiset::*;
 use builtin::*;
 use builtin_macros::*;
 use state_machines_macros::*;
+use vstd::map::*;
+use vstd::modes::*;
+use vstd::multiset::*;
+use vstd::option::*;
+use vstd::pervasive::*;
 
-verus!{
+verus! {
 
 // Create the "authoritative-fragmentary" API for manipulating heap-like things
 // (In this case, a disk.)
-
 tokenized_state_machine!{ AuthFrag<#[verifier::reject_recursive_types] K, V> {
     fields {
         #[sharding(variable)]
@@ -54,18 +52,18 @@ tokenized_state_machine!{ AuthFrag<#[verifier::reject_recursive_types] K, V> {
         }
     }
 
-       
+
     #[inductive(initialize)]
     fn init_inductive(post: Self, m: Map<K, V>) { }
-   
+
     #[inductive(update_key)]
     fn update_key_inductive(pre: Self, post: Self, key: K, new_value: V) {
         assert_maps_equal!(post.fragments, post.auth);
     }
 }}
-
 // We want to show refinement between 2 systems.
 // First system: a disk represented by a map from indices to blocks
+
 
 #[is_variant]
 pub enum Block {
@@ -99,8 +97,8 @@ state_machine!{ DiskSM {
         }
     }
 }}
-
 // state machine 2: tree
+
 
 #[is_variant]
 pub enum Tree {
@@ -128,52 +126,50 @@ state_machine!{ TreeSM {
         }
     }
 }}
-
 // We create the relationship with some intermediary ghost state:
 //
 // DiskSM::State   -->   DiskInterp   -->   LinearTree   -->   TreeSM::State
 //   (spec)                (tracked)          (tracked)           (spec)
-
 // We will devise an explicit function DiskSM::State -> DiskInterp
 // and an explicit relation LinearTree -> TreeSM::State
 //
 // However, the relationship between DiskInterp and LinearTree will be implicit
 // via ghost rules.
-
-
 // First define an "interpretation" of the disk state as a linear (tracked) object DiskInterp
 // This object uses the "auth" token
 
+
 type DiskInterp = AuthFrag::auth<nat, Block>;
 
-spec fn state_interp_fn(inst: AuthFrag::Instance<nat, Block>, state: DiskSM::State)
-    -> DiskInterp
-{
-  AuthFrag![ inst => auth => state.disk ]
+spec fn state_interp_fn(inst: AuthFrag::Instance<nat, Block>, state: DiskSM::State) -> DiskInterp {
+    AuthFrag![ inst => auth => state.disk ]
 }
 
 // Define the LinearTree type
 // This object uses the "fragment" tokens. This forces it to be related to the Disk.
-
 pub enum LinearTree {
     Leaf(tracked AuthFrag::fragments<nat, Block>),
     Node(tracked AuthFrag::fragments<nat, Block>, Box<LinearTree>, Box<LinearTree>),
 }
 
 // Define the relation between LinearTree and TreeSM::State
-
-spec fn tree_relation_rec(inst: AuthFrag::Instance<nat, Block>, lt: LinearTree, tree: Tree, addr: nat) -> bool
-  decreases lt,
+spec fn tree_relation_rec(
+    inst: AuthFrag::Instance<nat, Block>,
+    lt: LinearTree,
+    tree: Tree,
+    addr: nat,
+) -> bool
+    decreases lt,
 {
     match lt {
         LinearTree::Leaf(frag) => {
             match tree {
                 Tree::Leaf(val) => {
                     frag === AuthFrag![ inst => fragments => addr => Block::Leaf(val) ]
-                }
+                },
                 Tree::Node(_, _) => false,
             }
-        }
+        },
         LinearTree::Node(frag, lt_left, lt_right) => {
             match tree {
                 Tree::Leaf(val) => false,
@@ -183,20 +179,23 @@ spec fn tree_relation_rec(inst: AuthFrag::Instance<nat, Block>, lt: LinearTree, 
                     &&& frag.value.is_Node()
                     &&& tree_relation_rec(inst, *lt_left, *tree_left, frag.value.get_Node_0())
                     &&& tree_relation_rec(inst, *lt_right, *tree_right, frag.value.get_Node_1())
-                }
+                },
             }
-        }
+        },
     }
 }
 
-spec fn tree_relation(inst: AuthFrag::Instance<nat, Block>, lt: LinearTree, tree: TreeSM::State) -> bool {
-    tree_relation_rec(inst, lt, tree.tree, 0) // root is at 0
-}
+spec fn tree_relation(
+    inst: AuthFrag::Instance<nat, Block>,
+    lt: LinearTree,
+    tree: TreeSM::State,
+) -> bool {
+    tree_relation_rec(inst, lt, tree.tree, 0)  // root is at 0
 
 }
 
+} // verus!
 // refinement proof
-
 // TODO this should return proof, but having trouble with mode-checking
 #[verifier::proof]
 fn take_step(
@@ -208,20 +207,22 @@ fn take_step(
     #[verifier::proof] interp1: AuthFrag::auth<nat, Block>,
     #[verifier::proof] lt1: LinearTree,
     tree1_state: TreeSM::State,
-) -> (Tracked<AuthFrag::auth<nat, Block>>, Tracked<LinearTree>, Gho<TreeSM::State>)
-{
-  requires([
-      DiskSM::State::update_child(state1, state2, is_left, new_val),
-      equal(interp1, state_interp_fn(inst, state1)),
-      tree_relation(inst, lt1, tree1_state)
-  ]);
-  ensures(|ret: (Tracked<AuthFrag::auth<nat, Block>>, Tracked<LinearTree>, Gho<TreeSM::State>)| {
-      let (Tracked(interp2), Tracked(lt2), Gho(tree2)) = ret;
-      equal(interp2, state_interp_fn(inst, state2))
-      && TreeSM::State::update_child(tree1_state, tree2, is_left, new_val)
-      && tree_relation(inst, lt2, tree2)
-  });
-    #[verifier::proof] let mut interp = interp1;
+) -> (Tracked<AuthFrag::auth<nat, Block>>, Tracked<LinearTree>, Gho<TreeSM::State>) {
+    requires([
+        DiskSM::State::update_child(state1, state2, is_left, new_val),
+        equal(interp1, state_interp_fn(inst, state1)),
+        tree_relation(inst, lt1, tree1_state),
+    ]);
+    ensures(
+        |ret: (Tracked<AuthFrag::auth<nat, Block>>, Tracked<LinearTree>, Gho<TreeSM::State>)| {
+            let (Tracked(interp2), Tracked(lt2), Gho(tree2)) = ret;
+            equal(interp2, state_interp_fn(inst, state2))
+                && TreeSM::State::update_child(tree1_state, tree2, is_left, new_val)
+                && tree_relation(inst, lt2, tree2)
+        },
+    );
+    #[verifier::proof]
+    let mut interp = interp1;
 
     let tree1 = tree1_state.tree;
 
@@ -241,25 +242,27 @@ fn take_step(
                             lt_leaf_fragment.key,
                             Block::Leaf(new_val),
                             &mut interp,
-                            lt_leaf_fragment);
+                            lt_leaf_fragment,
+                        );
                         let lt2 = LinearTree::Node(
                             lt_root_fragment,
                             Box::new(LinearTree::Leaf(lt_leaf_fragment_new)),
-                            lt_right
+                            lt_right,
                         );
                         let interp2 = interp;
                         let tree2 = TreeSM::State {
-                            tree: Tree::Node(
-                                Box::new(Tree::Leaf(new_val)),
-                                tree1.get_Node_1()
-                            )
+                            tree: Tree::Node(Box::new(Tree::Leaf(new_val)), tree1.get_Node_1()),
                         };
-
 
                         assert(equal(interp2, state_interp_fn(inst, state2)));
                         assert(TreeSM::State::update_child(tree1_state, tree2, is_left, new_val));
 
-                        assert(tree_relation_rec(inst, LinearTree::Leaf(lt_leaf_fragment_new), Tree::Leaf(new_val), left_address));
+                        assert(tree_relation_rec(
+                            inst,
+                            LinearTree::Leaf(lt_leaf_fragment_new),
+                            Tree::Leaf(new_val),
+                            left_address,
+                        ));
                         assert(tree_relation_rec(inst, lt2, tree2.tree, 0));
 
                         assert(tree_relation(inst, lt2, tree2));
@@ -287,7 +290,5 @@ fn take_step(
         }
     }
 }
-    
 
-fn main() { }
-
+fn main() {}

@@ -1,14 +1,23 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 
 verus! {
 
 // ANCHOR: fun_modes
-spec fn f1(x: int) -> int { x / 2 }
-proof fn f2(x: int) -> int { x / 2 }
-exec fn f3(x: u64) -> u64 { x / 2 } // "exec" is optional, and is usually omitted
+spec fn f1(x: int) -> int {
+    x / 2
+}
+
+proof fn f2(x: int) -> int {
+    x / 2
+}
+
+// "exec" is optional, and is usually omitted
+exec fn f3(x: u64) -> u64 {
+    x / 2
+}
 // ANCHOR_END: fun_modes
 
 /*
@@ -65,8 +74,8 @@ fn test() {
     let m = compute_min3(10, 20, 30);
     assert(m == 10);
 }
-// ANCHOR_END: spec_fun3
 
+// ANCHOR_END: spec_fun3
 /*
 // ANCHOR: spec_fun_mod1
 mod M1 {
@@ -201,8 +210,8 @@ mod M2 {
             lemma_min(10, 20);
             lemma_min(100, 200);
         }
-        assert(min(10, 20) == 10); // succeeds
-        assert(min(100, 200) == 100); // succeeds
+        assert(min(10, 20) == 10);  // succeeds
+        assert(min(100, 200) == 100);  // succeeds
     }
 }
 // ANCHOR_END: spec_fun_proof_block2
@@ -278,13 +287,14 @@ mod M2 {
 
 // ANCHOR: recommends1
 spec fn f(i: nat) -> nat
-    recommends i > 0
+    recommends
+        i > 0,
 {
     (i - 1) as nat
 }
 
 proof fn test1() {
-    assert(f(0) == f(0)); // succeeds
+    assert(f(0) == f(0));  // succeeds
 }
 // ANCHOR_END: recommends1
 
@@ -298,13 +308,15 @@ proof fn test2() {
 
 // ANCHOR: recommends3
 spec fn caller1() -> nat {
-    f(0) // no note, warning, or error generated
+    f(0)  // no note, warning, or error generated
+
 }
 // ANCHOR_END: recommends3
 
 // ANCHOR: recommends4
 spec(checked) fn caller2() -> nat {
-    f(0) // generates a warning because of "(checked)"
+    f(0)  // generates a warning because of "(checked)"
+
 }
 // ANCHOR_END: recommends4
 
@@ -325,6 +337,7 @@ mod MA {
     pub struct S {
         private_field: u8,
     }
+
 }
 
 mod MB {
@@ -356,16 +369,15 @@ spec fn spec_add_one(x: int) -> int {
     x + SPEC_ONE
 }
 
-
 const ONE: u8 = 1;
 
 fn add_one(x: u8) -> (ret: u8)
     requires
         x < 0xff,
     ensures
-        ret == x + ONE // use "ONE" in spec code
+        ret == x + ONE,  // use "ONE" in spec code
 {
-    x + ONE // use "ONE" in exec code
+    x + ONE  // use "ONE" in exec code
 }
 // ANCHOR_END: const1
 

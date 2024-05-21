@@ -1,11 +1,11 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
-use vstd::{atomic_ghost::*};
+use vstd::atomic_ghost::*;
 use vstd::prelude::*;
+use vstd::{pervasive::*, *};
 
-verus!{
+verus! {
 
 struct_with_invariants!{
     struct Lock<T> {
@@ -20,15 +20,16 @@ struct_with_invariants!{
 }
 
 fn take<T>(lock: &Lock<T>) -> (t: Tracked<T>)
-    requires lock.well_formed(),
+    requires
+        lock.well_formed(),
 {
-    loop 
-        invariant lock.well_formed(),
+    loop
+        invariant
+            lock.well_formed(),
     {
-
         let tracked ghost_value: Option<T>;
-
-        let result = atomic_with_ghost!(
+        let result =
+            atomic_with_ghost!(
             &lock.field => compare_exchange(true, false);
             update prev -> next;
             ghost g => {
@@ -40,17 +41,19 @@ fn take<T>(lock: &Lock<T>) -> (t: Tracked<T>)
                 }
             }
         );
-
         if let Result::Ok(_) = result {
-            return Tracked(match ghost_value {
-                Option::Some(s) => s,
-                _ => { proof_from_false() },
-            });
+            return Tracked(
+                match ghost_value {
+                    Option::Some(s) => s,
+                    _ => { proof_from_false() },
+                },
+            );
         }
     }
 }
 
-struct VEqualG { }
+struct VEqualG {}
+
 impl AtomicInvariantPredicate<(), u64, u64> for VEqualG {
     closed spec fn atomic_inv(k: (), v: u64, g: u64) -> bool {
         v == g
@@ -58,7 +61,8 @@ impl AtomicInvariantPredicate<(), u64, u64> for VEqualG {
 }
 
 proof fn proof_int(x: u64) -> (tracked y: u64)
-    ensures x == y
+    ensures
+        x == y,
 {
     assume(false);
     proof_from_false()
@@ -131,4 +135,4 @@ pub fn main() {
     */
 }
 
-}
+} // verus!

@@ -290,6 +290,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
                         path
                     }
+                    crate::ast::GenericBoundX::ConstTyp(_, _) => {
+                        continue;
+                    }
                 };
                 if function.x.mode == crate::ast::Mode::Spec || function.x.attrs.broadcast_forall {
                     reach_bound_trait(ctxt, state, path);
@@ -302,7 +305,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(*autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
-                        if let crate::ast::CallTargetKind::Method(Some((resolved, _, _))) = kind {
+                        if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
                         }
                     }
@@ -667,6 +670,10 @@ pub fn prune_krate_for_module(
                         bound_types.push(typ_to_reached_type(t));
                     }
                     bound_types.push(typ_to_reached_type(typ));
+                }
+                crate::ast::GenericBoundX::ConstTyp(t, s) => {
+                    bound_types.push(typ_to_reached_type(t));
+                    bound_types.push(typ_to_reached_type(s));
                 }
             }
         }

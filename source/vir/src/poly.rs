@@ -427,6 +427,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => expr.clone(),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => expr.clone(),
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
@@ -639,7 +640,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 .map(|es| Arc::new(es.iter().map(|e| poly_expr(ctx, state, e)).collect()));
             let triggers = Arc::new(triggers.collect());
             let body = poly_expr(ctx, state, body);
-            mk_expr(ExprX::WithTriggers { triggers, body })
+            mk_expr_typ(&body.clone().typ, ExprX::WithTriggers { triggers, body })
         }
         ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
             if op.is_some() {

@@ -1,20 +1,19 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 
 verus! {
 
 // ANCHOR: eq1
 fn equal1(x: u8, y: u8) {
-    let eq1 = x == y; // means x.eq(y) in Rust
-    let eq2 = y == x; // means y.eq(x) in Rust
-    assert(eq1 ==> eq2); // succeeds
+    let eq1 = x == y;  // means x.eq(y) in Rust
+    let eq2 = y == x;  // means y.eq(x) in Rust
+    assert(eq1 ==> eq2);  // succeeds
 }
 // ANCHOR_END: eq1
 
 /*
-
 // ANCHOR: eq2
 fn equal2<A: Eq>(x: A, y: A) {
     let eq1 = x == y; // means x.eq(y) in Rust

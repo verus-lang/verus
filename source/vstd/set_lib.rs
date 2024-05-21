@@ -1,20 +1,18 @@
 #[allow(unused_imports)]
-use crate::multiset::Multiset;
+use super::multiset::Multiset;
 #[allow(unused_imports)]
-use crate::pervasive::*;
-use crate::prelude::Seq;
+use super::pervasive::*;
+use super::prelude::Seq;
 #[allow(unused_imports)]
-use crate::relations::*;
+use super::prelude::*;
 #[allow(unused_imports)]
-use crate::set::*;
+use super::relations::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::set::*;
 
 verus! {
 
-broadcast use crate::set::group_set_axioms;
+broadcast use super::set::group_set_axioms;
 
 impl<A> Set<A> {
     /// Is `true` if called by a "full" set, i.e., a set containing every element of type `A`.
@@ -859,7 +857,7 @@ pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
 }
 
 #[doc(hidden)]
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> {
     s
 }
@@ -880,7 +878,7 @@ pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> {
 #[macro_export]
 macro_rules! assert_sets_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::set_lib::assert_sets_equal_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::set_lib::assert_sets_equal_internal!($($tail)*))
     };
 }
 
@@ -888,27 +886,33 @@ macro_rules! assert_sets_equal {
 #[doc(hidden)]
 macro_rules! assert_sets_equal_internal {
     (::builtin::spec_eq($s1:expr, $s2:expr)) => {
-        assert_sets_equal_internal!($s1, $s2)
+        $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2)
     };
     (::builtin::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
-        assert_sets_equal_internal!($s1, $s2, $elem $( : $t )? => $bblock)
+        $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2, $elem $( : $t )? => $bblock)
+    };
+    (crate::builtin::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2)
+    };
+    (crate::builtin::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
+        $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2, $elem $( : $t )? => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
-        assert_sets_equal_internal!($s1, $s2, elem => { })
+        $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2, elem => { })
     };
     ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
-        #[verifier::spec] let s1 = $crate::set_lib::check_argument_is_set($s1);
-        #[verifier::spec] let s2 = $crate::set_lib::check_argument_is_set($s2);
-        ::builtin::assert_by(::builtin::equal(s1, s2), {
-            ::builtin::assert_forall_by(|$elem $( : $t )?| {
-                ::builtin::ensures(
-                    ::builtin::imply(s1.contains($elem), s2.contains($elem))
+        #[verifier::spec] let s1 = $crate::vstd::set_lib::check_argument_is_set($s1);
+        #[verifier::spec] let s2 = $crate::vstd::set_lib::check_argument_is_set($s2);
+        $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(s1, s2), {
+            $crate::vstd::prelude::assert_forall_by(|$elem $( : $t )?| {
+                $crate::vstd::prelude::ensures(
+                    $crate::vstd::prelude::imply(s1.contains($elem), s2.contains($elem))
                     &&
-                    ::builtin::imply(s2.contains($elem), s1.contains($elem))
+                    $crate::vstd::prelude::imply(s2.contains($elem), s1.contains($elem))
                 );
                 { $bblock }
             });
-            ::builtin::assert_(::builtin::ext_equal(s1, s2));
+            $crate::vstd::prelude::assert_($crate::vstd::prelude::ext_equal(s1, s2));
         });
     }
 }

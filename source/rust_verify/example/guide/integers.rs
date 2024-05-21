@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 
 verus! {
 
@@ -75,7 +75,7 @@ fn test_sum(x: u8, y: u8) {
 // ANCHOR: test_sum2
 fn test_sum2(x: u8, y: u8) {
     assert({
-        let sum2: int = x + y; // in ghost code, + returns int and does not overflow
+        let sum2: int = x + y;  // in ghost code, + returns int and does not overflow
         0 <= sum2 < 511
     });
 }
@@ -84,16 +84,16 @@ fn test_sum2(x: u8, y: u8) {
 // ANCHOR: test_sum3
 fn test_sum3(x: u8, y: u8)
     requires
-        x + y < 256, // make sure "let sum1: u8 = x + y" can't overflow
+        x + y < 256,  // make sure "let sum1: u8 = x + y" can't overflow
 {
-    let sum1: u8 = x + y; // succeeds
+    let sum1: u8 = x + y;  // succeeds
 }
 // ANCHOR_END: test_sum3
 
 // ANCHOR: test_sum_mixed
 fn test_sum_mixed(x: u8, y: u16) {
-    assert(x + y >= y); // x + y has type int, so the assertion succeeds
-    assert(x - y <= x); // x - y has type int, so the assertion succeeds
+    assert(x + y >= y);  // x + y has type int, so the assertion succeeds
+    assert(x - y <= x);  // x - y has type int, so the assertion succeeds
 }
 // ANCHOR_END: test_sum_mixed
 

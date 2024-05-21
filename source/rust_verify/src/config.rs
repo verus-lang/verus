@@ -51,6 +51,19 @@ pub struct LogArgs {
     pub log_call_graph: bool,
 }
 
+/// Describes the relationship between this crate and vstd.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Vstd {
+    /// The current crate is vstd.
+    IsVstd,
+    /// There is no vstd (only builtin). Really only used for testing.
+    NoVstd,
+    /// Imports the vstd crate like usual.
+    Imported,
+    /// Embed vstd and builtin as modules, necessary for verifying the `core` library.
+    IsCore,
+}
+
 #[derive(Debug)]
 pub struct ArgsX {
     pub export: Option<String>,
@@ -81,7 +94,7 @@ pub struct ArgsX {
     pub capture_profiles: bool,
     pub spinoff_all: bool,
     pub use_internal_profiler: bool,
-    pub no_vstd: bool,
+    pub vstd: Vstd,
     pub compile: bool,
     pub solver_version_check: bool,
     pub version: bool,
@@ -123,7 +136,7 @@ impl ArgsX {
             capture_profiles: Default::default(),
             spinoff_all: Default::default(),
             use_internal_profiler: Default::default(),
-            no_vstd: Default::default(),
+            vstd: Vstd::Imported,
             compile: Default::default(),
             solver_version_check: Default::default(),
             version: Default::default(),
@@ -184,7 +197,7 @@ pub fn enable_default_features_and_verus_attr(
 pub fn parse_args_with_imports(
     program: &String,
     args: impl Iterator<Item = String>,
-    vstd: Option<(String, String)>,
+    vstd_import: Option<(String, String)>,
 ) -> (Args, Vec<String>) {
     const OPT_EXPORT: &str = "export";
     const OPT_IMPORT: &str = "import";
@@ -202,6 +215,8 @@ pub fn parse_args_with_imports(
     const OPT_SMT_OPTION: &str = "smt-option";
     const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
     const OPT_NO_VSTD: &str = "no-vstd";
+    const OPT_IS_VSTD: &str = "is-vstd";
+    const OPT_IS_CORE: &str = "is-core";
     const OPT_EXPAND_ERRORS: &str = "expand-errors";
 
     const OPT_LOG_DIR: &str = "log-dir";
@@ -330,6 +345,12 @@ pub fn parse_args_with_imports(
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
     opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
     opts.optflag("", OPT_NO_VSTD, "Do not load or link against the vstd library");
+    opts.optflag("", OPT_IS_VSTD, "Indicates the crate being verified is vstd");
+    opts.optflag(
+        "",
+        OPT_IS_CORE,
+        "Indicates the crate being verified is core (requires a specialized setup)",
+    );
     opts.optflag(
         "",
         OPT_EXPAND_ERRORS,
@@ -439,12 +460,26 @@ pub fn parse_args_with_imports(
     };
 
     let no_vstd = matches.opt_present(OPT_NO_VSTD);
+    let is_vstd = matches.opt_present(OPT_IS_VSTD);
+    let is_core = matches.opt_present(OPT_IS_CORE);
+    if is_vstd && is_core {
+        error("contradictory options --is-core and --is-vstd".to_string());
+    }
+    let vstd = if is_vstd {
+        Vstd::IsVstd
+    } else if is_core {
+        Vstd::IsCore
+    } else if no_vstd {
+        Vstd::NoVstd
+    } else {
+        Vstd::Imported
+    };
 
     let mut import =
         matches.opt_strs(OPT_IMPORT).iter().map(split_pair_eq).collect::<Vec<(String, String)>>();
-    if let Some(vstd) = vstd {
-        if !no_vstd {
-            import.push(vstd);
+    if let Some(vstd_import) = vstd_import {
+        if vstd == Vstd::Imported {
+            import.push(vstd_import);
         }
     }
 
@@ -594,7 +629,7 @@ pub fn parse_args_with_imports(
         spinoff_all: extended.get(EXTENDED_SPINOFF_ALL).is_some(),
         use_internal_profiler: extended.get(EXTENDED_USE_INTERNAL_PROFILER).is_some(),
         compile: matches.opt_present(OPT_COMPILE),
-        no_vstd,
+        vstd,
         solver_version_check: !extended.get(EXTENDED_NO_SOLVER_VERSION_CHECK).is_some(),
         version: matches.opt_present(OPT_VERSION),
         num_threads: matches

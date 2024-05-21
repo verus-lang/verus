@@ -12,13 +12,12 @@
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::prelude::*;
 
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::power::{
+use super::power::{
     pow,
     lemma_pow_positive,
     group_pow_properties,
@@ -26,14 +25,16 @@ use crate::arithmetic::power::{
     lemma_pow_strictly_increases,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::lemma_mul_induction_auto;
+use super::internals::mul_internals::lemma_mul_induction_auto;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::general_internals::is_le;
+use super::internals::general_internals::is_le;
+#[cfg(verus_keep_ghost)]
+use super::super::calc_macro::*;
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
 /// repeatedly recursively unfolding it.
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn pow2(e: nat) -> nat
     decreases
             e  // ensures pow2(e) > 0
@@ -90,6 +91,27 @@ pub proof fn lemma_pow2_auto()
     }
 }
 
+/// Proof relating 2^e to 2^(e-1) for a specific e.
+pub proof fn lemma_pow2_unfold(e: nat)
+    requires
+        e > 0,
+    ensures
+        pow2(e) == 2 * pow2((e - 1) as nat),
+{
+    lemma_pow2(e);
+    lemma_pow2((e - 1) as nat);
+}
+
+/// Proof relating 2^e to 2^(e-1) for all e.
+pub proof fn lemma_pow2_unfold_auto()
+    ensures
+        forall|e: nat| e > 0 ==> #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
+{
+    assert forall|e: nat| e > 0 implies #[trigger] pow2(e) == 2 * pow2((e - 1) as nat) by {
+        lemma_pow2_unfold(e);
+    }
+}
+
 /// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2`.
 pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
     ensures
@@ -130,34 +152,6 @@ pub proof fn lemma_pow2_strictly_increases_auto()
 {
     assert forall|e1: nat, e2: nat| e1 < e2 implies #[trigger] pow2(e1) < #[trigger] pow2(e2) by {
         lemma_pow2_strictly_increases(e1, e2);
-    }
-}
-
-/// Proof that, for the given positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
-pub proof fn lemma_pow2_mask_div2(e: nat)
-    requires
-        0 < e,
-    ensures
-        (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
-{
-    let f = |e: int| 0 < e ==> (pow2(e as nat) - 1) / 2 == pow2((e - 1) as nat) - 1;
-    assert forall|i: int| #[trigger] is_le(0, i) && f(i) implies f(i + 1) by {
-        broadcast use group_pow_properties;
-
-        lemma_pow2_auto();
-    };
-    lemma_mul_induction_auto(e as int, f);
-}
-
-/// Proof that, for any positive number `e`, `(2^e - 1) / 2 == 2^(e - 1) - 1`
-pub proof fn lemma_pow2_mask_div2_auto()
-    ensures
-        forall|e: nat| #![trigger pow2(e)] 0 < e ==> (pow2(e) - 1) / 2 == pow2((e - 1) as nat) - 1,
-{
-    reveal(pow2);
-    assert forall|e: nat| 0 < e implies (#[trigger] (pow2(e)) - 1) / 2 == pow2((e - 1) as nat)
-        - 1 by {
-        lemma_pow2_mask_div2(e);
     }
 }
 

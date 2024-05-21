@@ -1,14 +1,12 @@
 //! Conversions to/from bytes
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
-
-use crate::pervasive::*;
-use crate::seq::*;
-use crate::seq_lib::*;
-use crate::slice::*;
-use crate::view::*;
+use super::pervasive::*;
+use super::prelude::*;
+use super::seq::*;
+use super::seq_lib::*;
+use super::slice::*;
+use super::view::*;
 
 verus! {
 
@@ -77,7 +75,7 @@ pub proof fn lemma_auto_spec_u16_to_from_le_bytes()
     }
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u16_from_le_bytes(s: &[u8]) -> (x: u16)
     requires
         s@.len() == 2,
@@ -89,7 +87,7 @@ pub exec fn u16_from_le_bytes(s: &[u8]) -> (x: u16)
 }
 
 #[cfg(feature = "alloc")]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u16_to_le_bytes(x: u16) -> (s: alloc::vec::Vec<u8>)
     ensures
         s@ == spec_u16_to_le_bytes(x),
@@ -172,7 +170,7 @@ pub proof fn lemma_auto_spec_u32_to_from_le_bytes()
     }
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u32_from_le_bytes(s: &[u8]) -> (x: u32)
     requires
         s@.len() == 4,
@@ -184,7 +182,7 @@ pub exec fn u32_from_le_bytes(s: &[u8]) -> (x: u32)
 }
 
 #[cfg(feature = "alloc")]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u32_to_le_bytes(x: u32) -> (s: alloc::vec::Vec<u8>)
     ensures
         s@ == spec_u32_to_le_bytes(x),
@@ -302,7 +300,7 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
     }
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u64_from_le_bytes(s: &[u8]) -> (x: u64)
     requires
         s@.len() == 8,
@@ -314,7 +312,7 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x: u64)
 }
 
 #[cfg(feature = "alloc")]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u64_to_le_bytes(x: u64) -> (s: alloc::vec::Vec<u8>)
     ensures
         s@ == spec_u64_to_le_bytes(x),
@@ -489,7 +487,7 @@ pub proof fn lemma_auto_spec_u128_to_from_le_bytes()
     }
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u128_from_le_bytes(s: &[u8]) -> (x: u128)
     requires
         s@.len() == 16,
@@ -501,7 +499,7 @@ pub exec fn u128_from_le_bytes(s: &[u8]) -> (x: u128)
 }
 
 #[cfg(feature = "alloc")]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub exec fn u128_to_le_bytes(x: u128) -> (s: alloc::vec::Vec<u8>)
     ensures
         s@ == spec_u128_to_le_bytes(x),

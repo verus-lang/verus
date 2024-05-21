@@ -186,7 +186,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
-        let mut resolved = None;
+        let mut target_kind = vir::ast::CallTargetKind::Dynamic;
         let param_env = tcx.param_env(bctx.fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
         let inst = rustc_middle::ty::Instance::resolve(tcx, param_env, f, normalized_substs);
@@ -199,10 +199,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
                 let mut self_trait_impl_path = None;
                 let mut remove_self_trait_bound = None;
+                let mut is_trait_default = false;
                 if let Some(trait_id) = tcx.trait_of_item(did) {
                     // We resolved to the trait method itself, which means this must be
                     // a default method implementation in the trait.
                     // Redirect this to the appropriate per-instance copy of the default method.
+                    is_trait_default = true;
                     remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
                 }
                 let impl_paths = get_impl_paths(bctx, did, &inst.args, remove_self_trait_bound);
@@ -217,10 +219,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         );
                     }
                 }
-                resolved = Some((f, typs, impl_paths));
+                target_kind = vir::ast::CallTargetKind::DynamicResolved {
+                    resolved: f,
+                    typs,
+                    impl_paths,
+                    is_trait_default,
+                };
             }
         }
-        vir::ast::CallTargetKind::Method(resolved)
+        target_kind
     };
 
     record_call(bctx, expr, ResolvedCall::Call(record_name, autospec_usage));
@@ -878,7 +885,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     if expr_vattrs.spinoff_prover {
                         return err_span(
                             expr.span,
-                            "#[verifier(spinoff_prover)] is implied for assert by nonlinear_arith and assert by bit_vector",
+                            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith and assert by bit_vector",
                         );
                     }
                     mk_expr(ExprX::AssertQuery {

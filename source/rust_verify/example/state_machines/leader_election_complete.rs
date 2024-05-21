@@ -2,30 +2,37 @@
 
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
 use vstd::seq::*;
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::state_machine;
 
-verus!{
+verus! {
 
 pub open spec fn ids_distinct(ids: Seq<int>) -> bool {
-    forall |i: int, j: int|
-        i != j && 0 <= i && i < ids.len() && 0 <= j && j < ids.len()
-          ==> ids.index(i) != ids.index(j)
+    forall|i: int, j: int|
+        i != j && 0 <= i && i < ids.len() && 0 <= j && j < ids.len() ==> ids.index(i) != ids.index(
+            j,
+        )
 }
 
-pub open spec fn between(start: int, node: int, end: int) -> bool
-{
-  if start < end { start < node && node < end } else { node < end || start < node }
+pub open spec fn between(start: int, node: int, end: int) -> bool {
+    if start < end {
+        start < node && node < end
+    } else {
+        node < end || start < node
+    }
 }
 
 pub open spec fn max(a: int, b: int) -> int {
-    if a > b { a } else { b }
+    if a > b {
+        a
+    } else {
+        b
+    }
 }
 
-}
-
+} // verus!
 state_machine!(
     X {
         fields {
@@ -115,7 +122,7 @@ state_machine!(
                   if dstidx == end {
                     // maybe this chord just sprung into existence
                     if post.highest_heard.index(end) == pre.highest_heard.index(end) {
-                      // no change -- 
+                      // no change --
                       assert(pre.highest_heard =~= post.highest_heard);
                       assert(equal(pre.highest_heard, post.highest_heard));
                       assert(equal(pre, post));
@@ -172,4 +179,4 @@ state_machine!(
     }
 );
 
-fn main() { }
+fn main() {}
