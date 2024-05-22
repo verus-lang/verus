@@ -250,6 +250,8 @@ pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
+    /// Functions that failed to verify
+    pub func_fails: HashSet<Fun>,
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
@@ -369,6 +371,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args,
             user_filter: None,
             erasure_hints: None,
@@ -403,6 +406,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
@@ -433,6 +437,7 @@ impl Verifier {
     pub fn merge(&mut self, other: Self) {
         self.count_verified += other.count_verified;
         self.count_errors += other.count_errors;
+        self.func_fails.extend(other.func_fails);
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_times.extend(other.bucket_times);
@@ -730,6 +735,7 @@ impl Verifier {
                 ValidityResult::Canceled => {
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                     }
                     if self.expand_flag {
@@ -755,6 +761,7 @@ impl Verifier {
                         if air_model.is_none() {
                             // singular_invalid case
                             self.count_errors += 1;
+                            self.func_fails.insert(context.fun.clone());
                             reporter.report_as(&error, level);
                             break;
                         }
@@ -763,6 +770,7 @@ impl Verifier {
 
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                         if let Some(hint) = hint_upon_failure.take() {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
