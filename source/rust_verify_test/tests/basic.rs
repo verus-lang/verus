@@ -659,6 +659,8 @@ test_verify_one_file_with_options! {
             verus_keep_ghost,
             feature(fn_traits),
         )]
+        #![cfg_attr(verus_keep_ghost, feature(const_trait_impl))]
+        #![cfg_attr(verus_keep_ghost, feature(effects))]
 
         #[verifier::external]
         #[path="../../../../builtin/src/lib.rs"]

@@ -754,48 +754,63 @@ pub unsafe trait Integer: Copy {
     const CONST_DEFAULT: Self;
 }
 unsafe impl Integer for u8 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for u16 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for u32 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for u64 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for u128 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for usize {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for i8 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for i16 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for i32 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for i64 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for i128 {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for isize {
+    #[verifier::external]
     const CONST_DEFAULT: Self = 0;
 }
 unsafe impl Integer for int {
+    #[verifier::external]
     const CONST_DEFAULT: Self = int;
 }
 unsafe impl Integer for nat {
+    #[verifier::external]
     const CONST_DEFAULT: Self = nat;
 }
 unsafe impl Integer for char {
+    #[verifier::external]
     const CONST_DEFAULT: Self = ' ';
 }
 
@@ -803,6 +818,7 @@ pub unsafe trait Boolean: Copy {
     const CONST_DEFAULT: Self;
 }
 unsafe impl Boolean for bool {
+    #[verifier::external]
     const CONST_DEFAULT: Self = false;
 }
 
