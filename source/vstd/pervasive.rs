@@ -5,8 +5,11 @@ use super::prelude::*;
 
 #[cfg(not(feature = "std"))]
 macro_rules! println {
-    ($($arg:tt)*) => {};
+    ($($arg:expr),*) => {
+        $(let _ = $arg;)* // suppress unused variable warning
+    };
 }
+
 verus! {
 
 // TODO: remove this
