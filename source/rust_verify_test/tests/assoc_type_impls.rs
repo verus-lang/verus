@@ -393,6 +393,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assoc_equality_lifetime verus_code! {
+        // https://github.com/verus-lang/verus/issues/1130
+        trait T<J, K> {
+            type X;
+            fn f() -> Self::X;
+        }
+
+        fn test<A, J, K, B: T<J, K, X = A>>(a: A, b: B) -> (A, A) {
+            (a, B::f())
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {

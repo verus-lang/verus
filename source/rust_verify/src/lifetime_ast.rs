@@ -143,8 +143,7 @@ pub(crate) enum Bound {
     Clone,
     Sized,
     Id(Id),
-    // use TypX::Datatype to represent Trait bound
-    Trait(Typ),
+    Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Typ)> },
     Fn(ClosureKind, Typ, Typ),
 }
 

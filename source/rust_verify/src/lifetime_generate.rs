@@ -1729,6 +1729,28 @@ fn erase_mir_generics<'tcx>(
     );
 }
 
+fn erase_mir_bound<'a, 'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &'a mut State,
+    id: DefId,
+    args: &[rustc_middle::ty::GenericArg<'tcx>],
+) -> Option<Bound> {
+    let tcx = ctxt.tcx;
+    erase_trait(ctxt, state, id);
+    let trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, id);
+    if Some(id) == tcx.lang_items().copy_trait() {
+        Some(Bound::Copy)
+    } else if Some(id) == tcx.lang_items().sized_trait() {
+        Some(Bound::Sized)
+    } else if state.trait_decl_set.contains(&trait_path) {
+        let (args, _) = erase_generic_args(ctxt, state, args, true);
+        let trait_path = state.trait_name(&trait_path);
+        Some(Bound::Trait { trait_path, args, equality: None })
+    } else {
+        None
+    }
+}
+
 fn erase_mir_predicates<'a, 'tcx>(
     ctxt: &Context<'tcx>,
     state: &'a mut State,
@@ -1737,6 +1759,7 @@ fn erase_mir_predicates<'a, 'tcx>(
 ) where
     'tcx: 'a,
 {
+    let tcx = ctxt.tcx;
     let mut fn_traits: Vec<(Typ, Vec<Id>, ClosureKind)> = Vec::new();
     let mut fn_projections: HashMap<Typ, (Typ, Typ)> = HashMap::new();
     for pred in mir_predicates {
@@ -1759,32 +1782,18 @@ fn erase_mir_predicates<'a, 'tcx>(
             (ClauseKind::Trait(pred), bound_vars) => {
                 let typ = erase_ty(ctxt, state, &pred.trait_ref.args[0].expect_ty());
                 let id = pred.trait_ref.def_id;
-                erase_trait(ctxt, state, id);
-                let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-                let bound = if Some(id) == ctxt.tcx.lang_items().copy_trait() {
-                    Some(Bound::Copy)
-                } else if Some(id) == ctxt.tcx.lang_items().sized_trait() {
-                    Some(Bound::Sized)
-                } else if state.trait_decl_set.contains(&trait_path) {
-                    let substs = pred.trait_ref.args;
-                    let (trait_typ_args, _) = erase_generic_args(ctxt, state, substs, true);
-                    let trait_path = state.trait_name(&trait_path);
-                    let datatype = Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
-                    Some(Bound::Trait(datatype))
-                } else {
-                    None
-                };
+                let bound = erase_mir_bound(ctxt, state, id, pred.trait_ref.args);
                 if let Some(bound) = bound {
                     assert!(bound_vars.is_empty());
                     let generic_bound =
                         GenericBound { typ: typ.clone(), bound_vars: vec![], bound };
                     generic_bounds.push(generic_bound);
                 }
-                let kind = if Some(id) == ctxt.tcx.lang_items().fn_trait() {
+                let kind = if Some(id) == tcx.lang_items().fn_trait() {
                     Some(ClosureKind::Fn)
-                } else if Some(id) == ctxt.tcx.lang_items().fn_mut_trait() {
+                } else if Some(id) == tcx.lang_items().fn_mut_trait() {
                     Some(ClosureKind::FnMut)
-                } else if Some(id) == ctxt.tcx.lang_items().fn_once_trait() {
+                } else if Some(id) == tcx.lang_items().fn_once_trait() {
                     Some(ClosureKind::FnOnce)
                 } else {
                     None
@@ -1803,7 +1812,7 @@ fn erase_mir_predicates<'a, 'tcx>(
                 }
             }
             (ClauseKind::Projection(pred), bound_vars) => {
-                if Some(pred.projection_ty.def_id) == ctxt.tcx.lang_items().fn_once_output() {
+                if Some(pred.projection_ty.def_id) == tcx.lang_items().fn_once_output() {
                     assert!(pred.projection_ty.args.len() == 2);
                     let typ = erase_ty(ctxt, state, &pred.projection_ty.args[0].expect_ty());
                     let mut fn_params = match pred.projection_ty.args[1].unpack() {
@@ -1817,6 +1826,27 @@ fn erase_mir_predicates<'a, 'tcx>(
                     fn_projections.insert(typ, (fn_params, fn_ret)).map(|_| panic!("{:?}", pred));
                 } else {
                     assert!(bound_vars.is_empty());
+                    let typ0 = erase_ty(ctxt, state, &pred.projection_ty.args[0].expect_ty());
+                    let typ_eq = if let Some(ty) = pred.term.ty() {
+                        erase_ty(ctxt, state, &ty)
+                    } else {
+                        panic!("should have been disallowed by rust_verify_base.rs");
+                    };
+                    let trait_def_id = pred.projection_ty.trait_def_id(tcx);
+                    let item_def_id = pred.projection_ty.def_id;
+                    let assoc_item = tcx.associated_item(item_def_id);
+                    let mut bound =
+                        erase_mir_bound(ctxt, state, trait_def_id, pred.projection_ty.args)
+                            .expect("bound");
+                    if let Bound::Trait { trait_path: _, args: _, equality } = &mut bound {
+                        assert!(equality.is_none());
+                        let name = state.typ_param(assoc_item.name.to_ident_string(), None);
+                        *equality = Some((name, typ_eq));
+                    } else {
+                        panic!("unexpected bound")
+                    }
+                    let generic_bound = GenericBound { typ: typ0, bound_vars: vec![], bound };
+                    generic_bounds.push(generic_bound);
                 }
             }
             (ClauseKind::ConstArgHasType(..), &[]) => {}

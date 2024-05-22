@@ -53,6 +53,33 @@ fn lifetime_string(lifetime: &Option<Id>) -> String {
     }
 }
 
+fn typ_args_to_string(
+    path: &Id,
+    lifetimes: &Vec<Id>,
+    args: &Vec<Typ>,
+    equality: &Option<(Id, Typ)>,
+) -> String {
+    let mut buf = path.to_string();
+    if (lifetimes.len() + args.len()) > 0 {
+        buf.push('<');
+        for lifetime in lifetimes {
+            buf += &lifetime.to_string();
+            buf += ", ";
+        }
+        for arg in args {
+            buf += &arg.to_string();
+            buf += ", ";
+        }
+        if let Some((x, t)) = equality {
+            buf += &x.to_string();
+            buf += " = ";
+            buf += &t.to_string();
+        }
+        buf.push('>');
+    }
+    buf
+}
+
 impl ToString for TypX {
     fn to_string(&self) -> String {
         match self {
@@ -79,20 +106,7 @@ impl ToString for TypX {
                 buf
             }
             TypX::Datatype(path, lifetimes, args) => {
-                let mut buf = path.to_string();
-                if (lifetimes.len() + args.len()) > 0 {
-                    buf.push('<');
-                    for lifetime in lifetimes {
-                        buf += &lifetime.to_string();
-                        buf += ", ";
-                    }
-                    for arg in args {
-                        buf += &arg.to_string();
-                        buf += ", ";
-                    }
-                    buf.push('>');
-                }
-                buf
+                typ_args_to_string(path, lifetimes, args, &None)
             }
             TypX::Projection { self_typ, trait_as_datatype: tr, name } => {
                 format!("<{} as {}>::{}", self_typ.to_string(), tr.to_string(), name.to_string())
@@ -732,8 +746,8 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> Str
         Bound::Id(x) => {
             buf += &x.to_string();
         }
-        Bound::Trait(x) => {
-            buf += &x.to_string();
+        Bound::Trait { trait_path, args, equality } => {
+            buf += &typ_args_to_string(trait_path, &vec![], args, equality);
         }
         Bound::Fn(kind, params, ret) => {
             buf += match kind {
