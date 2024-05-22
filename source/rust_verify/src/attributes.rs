@@ -288,6 +288,9 @@ pub(crate) enum Attr {
     ExternalFnSpecification,
     // In order to apply a specification to a datatype externally
     ExternalTypeSpecification,
+    // In order to apply a specification to a trait externally
+    // (the string is the name of the associated type pointing to the specified trait)
+    ExternalTraitSpecification(String),
     // Marks a variable that's spec or ghost mode in exec code
     UnwrappedBinding,
     // Marks the auxiliary function constructed by reveal/hide
@@ -520,6 +523,14 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "external_type_specification" => {
                     v.push(Attr::ExternalTypeSpecification)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "external_trait_specification" => v.push(
+                    Attr::ExternalTraitSpecification("ExternalTraitSpecificationFor".to_string()),
+                ),
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "external_trait_specification" =>
+                {
+                    v.push(Attr::ExternalTraitSpecification(r.clone()))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => {
@@ -811,6 +822,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
+    pub(crate) external_trait_specification: Option<String>,
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
@@ -832,6 +844,7 @@ impl VerifierAttrs {
                 || self.external_body
                 || self.external_fn_specification
                 || self.external_type_specification
+                || self.external_trait_specification.is_some()
                 || self.verify
                 || self.sets_mode)
     }
@@ -913,6 +926,7 @@ pub(crate) fn get_verifier_attrs(
         truncate: false,
         external_fn_specification: false,
         external_type_specification: false,
+        external_trait_specification: None,
         unwrapped_binding: false,
         sets_mode: false,
         internal_reveal_fn: false,
@@ -934,6 +948,9 @@ pub(crate) fn get_verifier_attrs(
             Attr::Verify => vs.verify = true,
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::ExternalTypeSpecification => vs.external_type_specification = true,
+            Attr::ExternalTraitSpecification(assoc) => {
+                vs.external_trait_specification = Some(assoc.clone())
+            }
             Attr::Opaque => vs.opaque = true,
             Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,

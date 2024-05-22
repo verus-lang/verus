@@ -290,7 +290,7 @@ test_verify_one_file! {
 
             spec fn b(&self) -> Self::X;
         }
-    } => Err(err) => assert_vir_error_msg(err, "projection type")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -378,7 +378,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] view_ref_unsized verus_code! {
+        // https://github.com/verus-lang/verus/issues/1104
+        use vstd::prelude::*;
+        fn id<T: View>(t: T) -> T {
+            t
+        }
+        fn test() {
+            let bytes: [u8; 4] = [0, 0, 0, 0];
+            let byte_slice: &[u8] = bytes.as_slice();
+            id(byte_slice);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_equality_lifetime verus_code! {
+        // https://github.com/verus-lang/verus/issues/1130
+        trait T<J, K> {
+            type X;
+            fn f() -> Self::X;
+        }
+
+        fn test<A, J, K, B: T<J, K, X = A>>(a: A, b: B) -> (A, A) {
+            (a, B::f())
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
+        use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {
         }
     } => Ok(())

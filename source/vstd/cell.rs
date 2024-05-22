@@ -3,21 +3,21 @@ use core::marker;
 use core::{mem, mem::MaybeUninit};
 
 #[allow(unused_imports)]
-use crate::invariant::*;
+use super::invariant::*;
 #[allow(unused_imports)]
-use crate::modes::*;
+use super::modes::*;
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use crate::prelude::*;
+use super::prelude::*;
 #[allow(unused_imports)]
-use crate::set::*;
+use super::set::*;
 #[allow(unused_imports)]
-use crate::*;
+use super::*;
 
 verus! {
 
-broadcast use crate::map::group_map_axioms, crate::set::group_set_axioms;
+broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
@@ -56,7 +56,7 @@ broadcast use crate::map::group_map_axioms, crate::set::group_set_axioms;
 ///
 /// ### Example (TODO)
 
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PCell<V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
@@ -64,12 +64,12 @@ pub struct PCell<V> {
 
 // PCell is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
 // (It doesn't matter if you move the bytes to another thread if you can't access them.)
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<T> Sync for PCell<T> {
 
 }
 
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<T> Send for PCell<T> {
 
 }
@@ -77,7 +77,7 @@ unsafe impl<T> Send for PCell<T> {
 // PointsTo<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
 // (Note: this depends on the current behavior that #[verifier::spec] fields are still counted for marker traits)
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub tracked struct PointsTo<V> {
     phantom: marker::PhantomData<V>,
@@ -93,7 +93,7 @@ pub ghost struct PointsToData<V> {
 #[macro_export]
 macro_rules! pcell_opt_internal {
     [$pcell:expr => $val:expr] => {
-        $crate::cell::PointsToData {
+        $crate::vstd::cell::PointsToData {
             pcell: $pcell,
             value: $val,
         }
@@ -104,7 +104,7 @@ macro_rules! pcell_opt_internal {
 macro_rules! pcell_opt {
     [$($tail:tt)*] => {
         ::builtin_macros::verus_proof_macro_exprs!(
-            $crate::cell::pcell_opt_internal!($($tail)*)
+            $crate::vstd::cell::pcell_opt_internal!($($tail)*)
         )
     }
 }
@@ -112,13 +112,38 @@ macro_rules! pcell_opt {
 pub use pcell_opt_internal;
 pub use pcell_opt;
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub struct CellId {
     id: int,
 }
 
 impl<V> PointsTo<V> {
     pub spec fn view(self) -> PointsToData<V>;
+
+    #[verifier::inline]
+    pub open spec fn id(&self) -> CellId {
+        self.view().pcell
+    }
+
+    #[verifier::inline]
+    pub open spec fn opt_value(&self) -> Option<V> {
+        self.view().value
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_init(&self) -> bool {
+        self.view().value.is_some()
+    }
+
+    #[verifier::inline]
+    pub open spec fn is_uninit(&self) -> bool {
+        self.view().value.is_none()
+    }
+
+    #[verifier::inline]
+    pub open spec fn value(&self) -> V {
+        self.view().value.unwrap()
+    }
 }
 
 impl<V> PCell<V> {
@@ -127,7 +152,7 @@ impl<V> PCell<V> {
 
     /// Return an empty ("uninitialized") cell.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@@ === pcell_opt![ pt.0.id() => Option::None ],
@@ -137,7 +162,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             (pt.1@@ === PointsToData { pcell: pt.0.id(), value: Option::Some(v) }),
@@ -147,7 +172,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm)@ === pcell_opt![ self.id() => Option::None ],
@@ -161,7 +186,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
             self.id() === old(perm)@.pcell,
@@ -180,7 +205,7 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pcell,
@@ -202,7 +227,7 @@ impl<V> PCell<V> {
     // that `self` actually contains the data in its interior, so it needs
     // to outlive the returned borrow.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             self.id() === perm@.pcell,
@@ -243,7 +268,7 @@ impl<V> PCell<V> {
 
 impl<V: Copy> PCell<V> {
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
             self.id() === old(perm)@.pcell,
@@ -307,7 +332,7 @@ impl<T> InvCell<T> {
             self.inv(old_val),
     {
         let r;
-        crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
+        open_local_invariant!(self.perm_inv.borrow() => perm => {
             r = self.pcell.replace(Tracked(&mut perm), val);
         });
         r
@@ -322,7 +347,7 @@ impl<T: Copy> InvCell<T> {
             self.inv(val),
     {
         let r;
-        crate::open_local_invariant!(self.perm_inv.borrow() => perm => {
+        open_local_invariant!(self.perm_inv.borrow() => perm => {
             r = *self.pcell.borrow(Tracked(&perm));
         });
         r

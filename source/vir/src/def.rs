@@ -68,6 +68,7 @@ const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
 const ARRAY_TYPE: &str = "array%";
+const PTR_TYPE: &str = "ptr_mut%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
@@ -112,8 +113,10 @@ pub const I_HI: &str = "iHi";
 pub const U_CLIP: &str = "uClip";
 pub const I_CLIP: &str = "iClip";
 pub const NAT_CLIP: &str = "nClip";
+pub const CHAR_CLIP: &str = "charClip";
 pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
+pub const CHAR_INV: &str = "charInv";
 pub const ARCH_SIZE: &str = "SZ";
 pub const ADD: &str = "Add";
 pub const SUB: &str = "Sub";
@@ -128,12 +131,10 @@ pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
 pub const BOX_STRSLICE: &str = "S";
-pub const BOX_CHAR: &str = "C";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
 pub const UNBOX_STRSLICE: &str = "%S";
-pub const UNBOX_CHAR: &str = "%C";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
@@ -154,8 +155,10 @@ pub const DECORATE_ARC: &str = "ARC";
 pub const DECORATE_GHOST: &str = "GHOST";
 pub const DECORATE_TRACKED: &str = "TRACKED";
 pub const DECORATE_NEVER: &str = "NEVER";
+pub const DECORATE_CONST_PTR: &str = "CONST_PTR";
 pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
+pub const TYPE_ID_PTR: &str = "PTR";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -200,10 +203,6 @@ pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
 pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
-
-pub const CHAR: &str = "Char";
-pub const CHAR_FROM_UNICODE: &str = "char%from_unicode";
-pub const CHAR_TO_UNICODE: &str = "char%to_unicode";
 
 pub const VERUSLIB: &str = "vstd";
 pub const VERUSLIB_PREFIX: &str = "vstd::";
@@ -363,6 +362,11 @@ pub fn slice_type() -> Path {
 
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn ptr_type() -> Path {
+    let ident = Arc::new(PTR_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 

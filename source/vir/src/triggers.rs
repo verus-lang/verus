@@ -81,7 +81,7 @@ pub(crate) fn predict_native_quant_vars(
             };
             match &expr.x {
                 ExprX::Unary(op, arg) => match op {
-                    UnaryOp::Clip { .. } | UnaryOp::CharToInt => check_arg(arg),
+                    UnaryOp::Clip { .. } => check_arg(arg),
                     _ => {}
                 },
                 ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), arg) => check_arg(arg),
@@ -154,7 +154,6 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
             | UnaryOp::BitNot
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
-            | UnaryOp::CharToInt
             | UnaryOp::CastToInteger
             | UnaryOp::InferSpecForLoopIter { .. } => Ok(()),
         },
@@ -251,6 +250,9 @@ fn check_trigger_expr(
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => {
                 Err(error(&exp.span, "triggers cannot contain trait bounds"))
             }
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => {
+                Err(error(&exp.span, "triggers cannot contain const type bounds"))
+            }
             ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
                 Err(error(&exp.span, "triggers cannot contain loop spec inference"))
             }
@@ -258,9 +260,7 @@ fn check_trigger_expr(
                 UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot => {
                     check_trigger_expr_arg(state, true, arg)
                 }
-                UnaryOp::Clip { .. } | UnaryOp::CharToInt => {
-                    check_trigger_expr_arg(state, false, arg)
-                }
+                UnaryOp::Clip { .. } => check_trigger_expr_arg(state, false, arg),
                 UnaryOp::Trigger(_)
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }

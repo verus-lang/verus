@@ -119,7 +119,7 @@ error: assertion failed
    |     assert(u == v); // FAILS, because u has type u8 and therefore cannot be equal to 257
    |            ^^^^^^ assertion failed
 
-note: recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)
+note: recommendation not met: value may be out of range of the target type (use `#[verifier::truncate]` on the cast to silence this warning)
    |
    |     let u: u8 = v as u8;
    |                 ^

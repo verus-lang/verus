@@ -337,5 +337,31 @@ test_verify_one_file! {
             assert(g2);
             assert(c2@ == v2@); // FAILS
         }
+
+        fn test_slice_deep_view(a1: &[Vec<u8>], a2: &[Vec<u8>])
+            requires
+                a1.len() == 1,
+                a2.len() == 1,
+                a1[0].len() == 1,
+                a2[0].len() == 1,
+                a1[0][0] == 10,
+                a2[0][0] == 10,
+            ensures
+                a1.deep_view() == a2.deep_view(),
+        {
+            assert(a1.deep_view() =~~= a2.deep_view()); // TODO: get rid of this?
+        }
+
+        fn test_array_deep_view(a1: &[Vec<u8>; 1], a2: &[Vec<u8>; 1])
+            requires
+                a1[0].len() == 1,
+                a2[0].len() == 1,
+                a1[0][0] == 10,
+                a2[0][0] == 10,
+            ensures
+                a1.deep_view() == a2.deep_view(),
+        {
+            assert(a1.deep_view() =~~= a2.deep_view()); // TODO: get rid of this?
+        }
     } => Err(err) => assert_fails(err, 2)
 }

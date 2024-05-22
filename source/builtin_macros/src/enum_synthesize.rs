@@ -175,7 +175,7 @@ pub(crate) fn visit_item_enum_synthesize(
                 assert!(!variants.is_empty());
                 if variants.len() == 1 {
                     let variant_ident = variants[0].to_string();
-                    quote_spanned! { enum_.span() =>
+                    quote_spanned_builtin! { builtin, enum_.span() =>
                         #[cfg(verus_keep_ghost)]
                         #[allow(non_snake_case)]
                         #[verus::internal(verus_macro)]
@@ -183,7 +183,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verifier::inline]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
-                            ::builtin::get_variant_field(self, #variant_ident, #field_str)
+                            #builtin::get_variant_field(self, #variant_ident, #field_str)
                         }
                     }
                 } else {
@@ -230,7 +230,7 @@ pub(crate) fn visit_item_enum_synthesize(
                 };
 
                 let variant_ident = variant.to_string();
-                quote_spanned! { enum_.span() =>
+                quote_spanned_builtin! { builtin, enum_.span() =>
                     #[cfg(verus_keep_ghost)]
                     #[allow(non_snake_case)]
                     #[verus::internal(verus_macro)]
@@ -238,7 +238,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     #[verifier::inline]
                     #publish
                     #vis fn #method_ident(self) -> #ty_ {
-                        ::builtin::get_variant_field(self, #variant_ident, #field_str)
+                        #builtin::get_variant_field(self, #variant_ident, #field_str)
                     }
                 }
             })

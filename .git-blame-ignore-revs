@@ -6,3 +6,5 @@ c5965bbf6f4a0493bb26b4b0df0ebb62af609f81
 # Format vstd with `verusfmt` version 0.2.7
 #   now using source/rustfmt.toml settings
 c86127ac23fa8e7ad82bf9df44e77df3b886ff72
+# Format `calc!` statements
+eb89e2b8672ed2723e225529f8ca752aa67e0209

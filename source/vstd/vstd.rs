@@ -11,6 +11,8 @@
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
+#![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
+#![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -36,6 +38,7 @@ pub mod pcm_lib;
 pub mod pervasive;
 #[cfg(feature = "alloc")]
 pub mod ptr;
+pub mod raw_ptr;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
@@ -71,11 +74,13 @@ pub broadcast group group_vstd_default {
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::vec::group_vec_axioms,
+    slice::group_slice_axioms,
     array::group_array_axioms,
     multiset::group_multiset_axioms,
     string::group_string_axioms,
     ptr::group_ptr_axioms,
     std_specs::range::group_range_axioms,
+    raw_ptr::group_raw_ptr_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -88,10 +93,17 @@ pub broadcast group group_vstd_default {
     set_lib::group_set_lib_axioms,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
+    slice::group_slice_axioms,
     array::group_array_axioms,
     multiset::group_multiset_axioms,
     string::group_string_axioms,
     std_specs::range::group_range_axioms,
+    raw_ptr::group_raw_ptr_axioms,
 }
 
 } // verus!
+// This allows us to use `$crate::vstd` or `crate::vstd` to refer to vstd
+// both in verus_verify_core mode (vstd is a module) and out (vstd is a crate)
+#[cfg(not(verus_verify_core))]
+#[doc(hidden)]
+pub use crate as vstd;

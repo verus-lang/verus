@@ -95,7 +95,6 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
-    Char,
     StrSlice,
     Datatype(Path, MonoTyps),
     Decorate(crate::ast::TypDecoration, MonoTyp),
@@ -124,7 +123,6 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
-        TypX::Char => Some(Arc::new(MonoTypX::Char)),
         TypX::StrSlice => Some(Arc::new(MonoTypX::StrSlice)),
         TypX::Datatype(path, typs, _impl_paths) => {
             let monotyps = monotyps_as_mono(typs)?;
@@ -151,7 +149,6 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     match &**monotyp {
         MonoTypX::Bool => Arc::new(TypX::Bool),
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
-        MonoTypX::Char => Arc::new(TypX::Char),
         MonoTypX::StrSlice => Arc::new(TypX::StrSlice),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
@@ -167,12 +164,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::Lambda(..)
-        | TypX::StrSlice
-        | TypX::Char
-        | TypX::FnDef(..) => false,
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::FnDef(..) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -198,12 +190,9 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::Lambda(..)
-        | TypX::StrSlice
-        | TypX::Char
-        | TypX::FnDef(..) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::FnDef(..) => {
+            typ.clone()
+        }
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -236,12 +225,9 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
 
 pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::Lambda(..)
-        | TypX::StrSlice
-        | TypX::Char
-        | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::StrSlice | TypX::FnDef(..) => {
+            Arc::new(TypX::Boxed(typ.clone()))
+        }
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -263,7 +249,6 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
         | TypX::Datatype(..)
         | TypX::Primitive(_, _)
         | TypX::StrSlice
-        | TypX::Char
         | TypX::FnDef(..) => expr.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -296,7 +281,6 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &crate::sst::Exp) -> crate::s
         | TypX::Datatype(..)
         | TypX::Primitive(_, _)
         | TypX::StrSlice
-        | TypX::Char
         | TypX::FnDef(..) => exp.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -443,6 +427,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => expr.clone(),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => expr.clone(),
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => expr.clone(),
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
@@ -451,8 +436,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 | UnaryOp::Clip { .. }
                 | UnaryOp::BitNot
                 | UnaryOp::StrLen
-                | UnaryOp::StrIsAscii
-                | UnaryOp::CharToInt => {
+                | UnaryOp::StrIsAscii => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
@@ -656,7 +640,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 .map(|es| Arc::new(es.iter().map(|e| poly_expr(ctx, state, e)).collect()));
             let triggers = Arc::new(triggers.collect());
             let body = poly_expr(ctx, state, body);
-            mk_expr(ExprX::WithTriggers { triggers, body })
+            mk_expr_typ(&body.clone().typ, ExprX::WithTriggers { triggers, body })
         }
         ExprX::Assign { init_not_mut, lhs: e1, rhs: e2, op } => {
             if op.is_some() {

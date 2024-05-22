@@ -7,15 +7,20 @@
     feature(proc_macro_diagnostic)
 )]
 
+#[cfg(verus_keep_ghost)]
+use std::sync::OnceLock;
 use synstructure::{decl_attribute, decl_derive};
+
+#[macro_use]
+mod syntax;
 mod atomic_ghost;
+mod calc_macro;
 mod enum_synthesize;
 mod fndecl;
 mod is_variant;
 mod rustdoc;
 mod struct_decl_inv;
 mod structural;
-mod syntax;
 mod topological_sort;
 
 decl_derive!([Structural] => structural::derive_structural);
@@ -130,6 +135,33 @@ pub(crate) fn cfg_erase() -> EraseGhost {
     EraseGhost::EraseAll
 }
 
+#[cfg(verus_keep_ghost)]
+pub(crate) fn cfg_verify_core() -> bool {
+    static CFG_VERIFY_CORE: OnceLock<bool> = OnceLock::new();
+    *CFG_VERIFY_CORE.get_or_init(|| {
+        let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_verify_core) }.into();
+        let bool_ts = match ts.expand_expr() {
+            Ok(name) => name.to_string(),
+            _ => {
+                panic!("cfg_verify_core call failed")
+            }
+        };
+        match bool_ts.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => {
+                panic!("cfg_verify_core call failed")
+            }
+        }
+    })
+}
+
+// Because 'expand_expr' is unstable, we need a different impl when `not(verus_keep_ghost)`.
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn cfg_verify_core() -> bool {
+    false
+}
+
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
 /// then returns f!(exprs'),
 /// where exprs is a sequence of expressions separated by ",", ";", and/or "=>".
@@ -176,4 +208,9 @@ pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::Tok
 #[proc_macro]
 pub fn atomic_with_ghost_helper(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     atomic_ghost::atomic_ghost(input)
+}
+
+#[proc_macro]
+pub fn calc_proc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    calc_macro::calc_macro(input)
 }

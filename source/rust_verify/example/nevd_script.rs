@@ -2,19 +2,24 @@ fn main() {}
 
 // ## 11 -- 10-program.rs
 
-#[allow(unused_imports)] use { builtin_macros::*, builtin::*, vstd::*, prelude::*, seq::*, };
+#[allow(unused_imports)]
+use {builtin::*, builtin_macros::*, prelude::*, seq::*, vstd::*};
 
 verus! {
 
 // ## A -- A-program.rs
-
 fn max(a: u64, b: u64) -> (ret: u64)
     ensures
         ret == a || ret == b,
         ret >= a && ret >= b,
 {
     //-   if a >= b { b } else { a }
-    /*+*/ if a >= b { a } else { b }
+    /*+*/
+    if a >= b {
+        a
+    } else {
+        b
+    }
 }
 
 // ;; Function-Def crate::max
@@ -57,30 +62,35 @@ fn max(a: u64, b: u64) -> (ret: u64)
 //  (check-sat)
 //  (set-option :rlimit 0)
 // (pop)
-
 // ## B -- B-fibo.rs
-
 spec fn fibo(n: nat) -> nat
-    decreases n
+    decreases n,
 {
-    if n == 0 { 0 } else if n == 1 { 1 }
-    else { fibo((n - 2) as nat) + fibo((n - 1) as nat) }
+    if n == 0 {
+        0
+    } else if n == 1 {
+        1
+    } else {
+        fibo((n - 2) as nat) + fibo((n - 1) as nat)
+    }
 }
 
 proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
-    requires i <= j,
-    ensures fibo(i) <= fibo(j),
-    decreases j - i
+    requires
+        i <= j,
+    ensures
+        fibo(i) <= fibo(j),
+    decreases j - i,
 {
-   if i < 2 && j < 2 {
-   } else if i == j {
-   } else if i == j - 1 {
-       reveal_with_fuel(fibo, 2);
-       lemma_fibo_is_monotonic(i, (j - 1) as nat);
-   } else {
-       lemma_fibo_is_monotonic(i, (j - 1) as nat);
-       lemma_fibo_is_monotonic(i, (j - 2) as nat);
-   }
+    if i < 2 && j < 2 {
+    } else if i == j {
+    } else if i == j - 1 {
+        reveal_with_fuel(fibo, 2);
+        lemma_fibo_is_monotonic(i, (j - 1) as nat);
+    } else {
+        lemma_fibo_is_monotonic(i, (j - 1) as nat);
+        lemma_fibo_is_monotonic(i, (j - 2) as nat);
+    }
 }
 
 spec fn fibo_fits_u64(n: nat) -> bool {
@@ -88,8 +98,10 @@ spec fn fibo_fits_u64(n: nat) -> bool {
 }
 
 exec fn fibo_impl(n: u64) -> (result: u64)
-    requires fibo_fits_u64(n as nat),
-    ensures result == fibo(n as nat),
+    requires
+        fibo_fits_u64(n as nat),
+    ensures
+        result == fibo(n as nat),
 {
     if n == 0 {
         return 0;
@@ -106,7 +118,9 @@ exec fn fibo_impl(n: u64) -> (result: u64)
             prev == fibo((i - 1) as nat),
     {
         i = i + 1;
-        proof { lemma_fibo_is_monotonic(i as nat, n as nat); }
+        proof {
+            lemma_fibo_is_monotonic(i as nat, n as nat);
+        }
         let new_cur = cur + prev;
         prev = cur;
         cur = new_cur;
@@ -115,25 +129,29 @@ exec fn fibo_impl(n: u64) -> (result: u64)
 }
 
 // ## C -- C-linearity.rs
-
 //-  exec fn f(v: Vec<u64>) -> (Vec<u64>, Vec<u64>) {
 //-      let v1 = v;
 //-      let v2 = v;
 //-      (v1, v2)
 //-  }
+/*+*/
 
-/*+*/ exec fn f(v: Vec<u64>) {
-/*+*/     let v1: Ghost<Vec<u64>> = Ghost(v);
-/*+*/     let v2: Ghost<Vec<u64>> = Ghost(v);
-/*+*/     assert(v1@.len() == v2@.len());
-/*+*/ }
+exec fn f(v: Vec<u64>) {
+    /*+*/
+    let v1: Ghost<Vec<u64>> = Ghost(v);
+    /*+*/
+    let v2: Ghost<Vec<u64>> = Ghost(v);
+    /*+*/
+    assert(v1@.len() == v2@.len());
+    /*+*/
+}
 
 exec fn g(v1: &mut Vec<u64>, v2: &mut Vec<u64>)
     requires
         old(v1)@.len() == 2,
         old(v2)@.len() == 3,
     ensures
-        v1@.len() == v2@.len()
+        v1@.len() == v2@.len(),
 {
     v1.push(42);
     v1.push(43);
@@ -152,9 +170,7 @@ exec fn g(v1: &mut Vec<u64>, v2: &mut Vec<u64>)
 //     let v2a.push(52);
 //     (v1b, v2a)
 // }
-
 // ## E -- E-reverse.rs -- spec variables
-
 /* See vectors.rs
 fn reverse(v: &mut Vec<u64>) {
     ensures([
@@ -185,16 +201,13 @@ fn reverse(v: &mut Vec<u64>) {
 */
 
 // F -- F-linear-proof
-
 // cell::RefCell::Cell<X>
-
 // G -- G-bitvector.rs
-
 fn mod8_bw(x: u32) -> (ret: u32)
     ensures
         ret == x % 8,
 {
-    assert(x & 7 == x % 8) by(bit_vector);
+    assert(x & 7 == x % 8) by (bit_vector);
     x & 7
 }
 

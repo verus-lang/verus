@@ -1,8 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::prelude::*;
-use builtin::*;
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
@@ -55,7 +53,7 @@ pub spec fn align_of<V>() -> nat;
 // Therefore, we are NOT creating an axiom that `size_of` fits in usize.
 // However, we still give the guarantee that if you call `core::mem::size_of`
 // at runtime, then the resulting usize is correct.
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn size_of_as_usize<V>() -> usize
     recommends
         size_of::<V>() as usize as int == size_of::<V>(),
@@ -63,7 +61,7 @@ pub open spec fn size_of_as_usize<V>() -> usize
     size_of::<V>() as usize
 }
 
-#[verifier(inline)]
+#[verifier::inline]
 pub open spec fn align_of_as_usize<V>() -> usize
     recommends
         align_of::<V>() as usize as int == align_of::<V>(),
@@ -93,7 +91,7 @@ pub fn ex_align_of<V>() -> (u: usize)
 
 // This is marked as exec, again, in order to force `V` to be a real exec type.
 // Of course, it's still a no-op.
-#[verifier(external_body)]
+#[verifier::external_body]
 #[inline(always)]
 pub exec fn layout_for_type_is_valid<V>()
     ensures

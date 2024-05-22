@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        features: ['', 'singular', 'record-history']
+        features: ['', 'singular', 'record-history', 'no-std', 'no-alloc']
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -52,29 +52,44 @@ jobs:
         if: matrix.features == 'singular'
         run: |
           sudo apt-get update
-          sudo apt-get install -y singular 
-      - name: cargo test
+          sudo apt-get install -y singular
+      - name: build and test
         working-directory: ./source
         run: |
           . ../tools/activate
           vargo clean
 
-          if [ "${{ matrix.features }}" == "singular" ]; then
-            vargo build --features singular
-            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p air --features singular
-            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test integer_ring
-            VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test examples -- example_integer_ring
-          elif [ "${{ matrix.features }}" == "record-history" ]; then
-            vargo build --features record-history
-            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features record-history --test basic
-          else
-            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
-            VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
-            cd vstd
-            unset -f cargo
-            cargo build
-            cd ..
-          fi
+          case "${{ matrix.features }}" in
+            "singular")
+              vargo build --features singular
+              VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p air --features singular
+              VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test integer_ring
+              VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test examples -- example_integer_ring
+              ;;
+            "record-history")
+              vargo build --features record-history
+              VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features record-history --test basic
+              ;;
+            "no-std")
+              vargo build --vstd-no-std
+              cd vstd
+              unset -f cargo
+              cargo build --no-default-features --features alloc
+              ;;
+            "no-alloc")
+              vargo build --vstd-no-std --vstd-no-alloc
+              cd vstd
+              unset -f cargo
+              cargo build --no-default-features
+              ;;
+            *)
+              VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
+              VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
+              cd vstd
+              unset -f cargo
+              cargo build
+              ;;
+          esac
       - name: build docs
         if: matrix.features == ''
         working-directory: ./source

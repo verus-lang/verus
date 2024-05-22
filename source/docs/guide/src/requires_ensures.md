@@ -173,7 +173,7 @@ since Verus lets us chain multiple inequalities together in a single expression
 (equivalently, we could have also written `-16 <= x1 && x1 < 16`).
 Second, we've added a function `print_two_digit_number` to print the result of `octuple`.
 Unlike `main` and `octuple`, we ask Verus not to verify `print_two_digit_number`.
-We do this by marking it `#[verifier(external_body)]`,
+We do this by marking it `#[verifier::external_body]`,
 so that Verus pays attention to the function's preconditions and postconditions but ignores
 the function's body.
 This is common in projects using Verus:
@@ -181,7 +181,7 @@ you may want to verify some of it (perhaps the program's core algorithms),
 but leave other aspects, such as input-output operations, unverified.
 More generally, since verifying all the software in the world is still infeasible,
 there will be some boundary between verified code and unverified code,
-and `#[verifier(external_body)]` can be used to mark this boundary.
+and `#[verifier::external_body]` can be used to mark this boundary.
 
 We can now compile the program above using the `--compile` option to Verus:
 

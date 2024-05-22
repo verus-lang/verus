@@ -3,16 +3,16 @@
 // ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
+use state_machines_macros::tokenized_state_machine;
+use vstd::cell::*;
+use vstd::invariant::*;
+use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::ptr::*;
-use vstd::cell::*;
-use vstd::modes::*;
-use vstd::invariant::*;
-use state_machines_macros::tokenized_state_machine;
+use vstd::{pervasive::*, *};
 
-verus!{
+verus! {
 
 tokenized_state_machine!(Dupe<T> {
     fields {
@@ -60,24 +60,28 @@ impl<T> Duplicable<T> {
     }
 
     pub proof fn new(tracked t: T) -> (tracked s: Self)
-        ensures s.wf() && s@ == t,
+        ensures
+            s.wf() && s@ == t,
     {
-        let tracked inst = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
-        Duplicable {
-            inst,
-        }
+        let tracked inst = Dupe::Instance::initialize_one(  /* spec */
+        t, Option::Some(t));
+        Duplicable { inst }
     }
 
     pub proof fn clone(tracked &self) -> (tracked other: Self)
-        requires self.wf(),
-        ensures other.wf() && self@ == other@,
+        requires
+            self.wf(),
+        ensures
+            other.wf() && self@ == other@,
     {
         Duplicable { inst: self.inst.clone() }
     }
 
     pub proof fn borrow(tracked &self) -> (tracked t: &T)
-        requires self.wf(),
-        ensures *t == self@,
+        requires
+            self.wf(),
+        ensures
+            *t == self@,
     {
         self.inst.borrow()
     }
@@ -129,7 +133,7 @@ tokenized_state_machine!(RefCounter<Perm> {
 
     #[inductive(initialize_empty)]
     fn initialize_empty_inductive(post: Self) { }
-    
+
     transition!{
         do_deposit(x: Perm) {
             require(pre.counter == 0);
@@ -264,29 +268,27 @@ impl<S> MyRc<S> {
     {
         let (rc_cell, Tracked(rc_perm)) = PCell::new(1);
         let inner_rc = InnerRc::<S> { rc_cell, s };
-
         let (ptr, Tracked(ptr_perm), Tracked(dealloc_perm)) = PPtr::new(inner_rc);
-
-        let tracked (Tracked(inst), Tracked(mut rc_token), _) = RefCounter::Instance::initialize_empty(Option::None);
-        let tracked reader = inst.do_deposit((ptr_perm, dealloc_perm), &mut rc_token, (ptr_perm, dealloc_perm));
+        let tracked (Tracked(inst), Tracked(mut rc_token), _) =
+            RefCounter::Instance::initialize_empty(Option::None);
+        let tracked reader = inst.do_deposit(
+            (ptr_perm, dealloc_perm),
+            &mut rc_token,
+            (ptr_perm, dealloc_perm),
+        );
         let tracked g = GhostStuff::<S> { rc_perm, rc_token };
-
         let tr_inst = Tracked(inst);
         let gh_cell = Ghost(rc_cell);
-
         let tracked inv = LocalInvariant::new((tr_inst, gh_cell), g, 0);
         let tracked inv = Duplicable::new(inv);
-
-        MyRc {
-            inst: tr_inst, inv: Tracked(inv), reader: Tracked(reader),
-            ptr,
-            rc_cell: gh_cell,
-        }
+        MyRc { inst: tr_inst, inv: Tracked(inv), reader: Tracked(reader), ptr, rc_cell: gh_cell }
     }
 
     fn borrow<'b>(&'b self) -> (s: &'b S)
-        requires self.wf(),
-        ensures *s == self@,
+        requires
+            self.wf(),
+        ensures
+            *s == self@,
     {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
@@ -295,15 +297,15 @@ impl<S> MyRc<S> {
     }
 
     fn clone(&self) -> (s: Self)
-        requires self.wf(),
-        ensures s.wf() && s@ == self@,
+        requires
+            self.wf(),
+        ensures
+            s.wf() && s@ == self@,
     {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
-
         let tracked perm = inst.reader_guard(reader@.key, &reader);
         let inner_rc_ref = self.ptr.borrow(Tracked(&perm.0));
-
         let tracked new_reader;
         open_local_invariant!(self.inv.borrow().borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
@@ -321,10 +323,9 @@ impl<S> MyRc<S> {
                     &mut rc_token,
                     &reader);
             }
-                
+
             proof { g = GhostStuff { rc_perm, rc_token }; }
         });
-
         MyRc {
             inst: Tracked(self.inst.borrow().clone()),
             inv: Tracked(self.inv.borrow().clone()),
@@ -335,16 +336,18 @@ impl<S> MyRc<S> {
     }
 
     fn dispose(self)
-        requires self.wf(),
+        requires
+            self.wf(),
     {
-        let MyRc { inst: Tracked(inst), inv: Tracked(inv), reader: Tracked(reader), ptr, rc_cell: _ } = self;
-
-        let tracked perm = inst.reader_guard(
-            reader@.key,
-            &reader);
-
+        let MyRc {
+            inst: Tracked(inst),
+            inv: Tracked(inv),
+            reader: Tracked(reader),
+            ptr,
+            rc_cell: _,
+        } = self;
+        let tracked perm = inst.reader_guard(reader@.key, &reader);
         let inner_rc_ref = &ptr.borrow(Tracked(&perm.0));
-
         open_local_invariant!(inv.borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
@@ -393,5 +396,5 @@ fn main() {
     let a67 = MyRc::new(Sequence::Cons(6, a7.clone()));
 }
 
-}
+} // verus!
 // ANCHOR_END: full

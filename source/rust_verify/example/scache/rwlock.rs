@@ -1,21 +1,21 @@
 // rust_verify/tests/example.rs ignore
 #![allow(unused_imports)]
-use vstd::{*, prelude::*, pervasive::*};
-use vstd::vec::*;
+use vstd::atomic_ghost::*;
+use vstd::map::*;
 use vstd::modes::*;
 use vstd::multiset::*;
-use vstd::map::*;
-use vstd::seq::*;
 use vstd::option::*;
-use vstd::atomic_ghost::*;
+use vstd::seq::*;
+use vstd::vec::*;
+use vstd::{pervasive::*, prelude::*, *};
 
+use option::Option::{None, Some};
 use state_machines_macros::tokenized_state_machine;
-use option::Option::{Some, None};
 
-verus!{
+verus! {
 
 pub struct StoredType {
-    placeholder: int
+    placeholder: int,
 }
 
 pub enum Flag {
@@ -35,36 +35,35 @@ pub enum Flag {
 // Threads are clumped together, each accessing one bucket or
 // another. More buckets -> less contention among threads sharing that bucket.
 pub type BucketId = nat;
-// TODO(chris): can't 4 as nat! (issue #344)
-pub spec const RC_WIDTH: BucketId = 4;  // How many refcounting buckets we use.
 
+// TODO(chris): can't 4 as nat! (issue #344)
+pub spec const RC_WIDTH: BucketId = 4;
+  // How many refcounting buckets we use.
 #[is_variant]
 pub enum SharedState {
-   Pending{bucket: BucketId},   // inc refcount
-                                         // None means the shared lock is being acquired for
-                                         // writeback.
-
-   Pending2{bucket: BucketId},  // !free & !writelocked
-
-   Obtained{bucket: BucketId, value: StoredType}, // !reading
+    Pending { bucket: BucketId },  // inc refcount
+    // None means the shared lock is being acquired for
+    // writeback.
+    Pending2 { bucket: BucketId },  // !free & !writelocked
+    Obtained { bucket: BucketId, value: StoredType },  // !reading
 }
 
 impl SharedState {
     pub open spec fn get_bucket(self) -> BucketId {
         match self {
-            SharedState::Pending{bucket} => bucket,
-            SharedState::Pending2{bucket} => bucket,
-            SharedState::Obtained{bucket, value: _} => bucket,
+            SharedState::Pending { bucket } => bucket,
+            SharedState::Pending2 { bucket } => bucket,
+            SharedState::Obtained { bucket, value: _ } => bucket,
         }
     }
 }
 
 #[is_variant]
 pub enum ExcState {
-    Claim{bucket: Option<BucketId>, value: StoredType},
-    PendingAwaitWriteback{bucket: Option<BucketId>, value: StoredType},
-    Pending{bucket: Option<BucketId>, visited_count: BucketId, clean: bool, value: StoredType},
-    Obtained{bucket: Option<BucketId>, clean: bool},
+    Claim { bucket: Option<BucketId>, value: StoredType },
+    PendingAwaitWriteback { bucket: Option<BucketId>, value: StoredType },
+    Pending { bucket: Option<BucketId>, visited_count: BucketId, clean: bool, value: StoredType },
+    Obtained { bucket: Option<BucketId>, clean: bool },
 }
 
 impl ExcState {
@@ -72,22 +71,22 @@ impl ExcState {
     // verus! or is_variant should throw us a bone here.
     pub open spec fn get_bucket(self) -> Option<BucketId> {
         match self {
-            ExcState::Claim{bucket, value: _} => bucket,
-            ExcState::PendingAwaitWriteback{bucket, value: _} => bucket,
-            ExcState::Pending{bucket, visited_count: _, clean: _, value: _} => bucket,
-            ExcState::Obtained{bucket, clean: _} => bucket
+            ExcState::Claim { bucket, value: _ } => bucket,
+            ExcState::PendingAwaitWriteback { bucket, value: _ } => bucket,
+            ExcState::Pending { bucket, visited_count: _, clean: _, value: _ } => bucket,
+            ExcState::Obtained { bucket, clean: _ } => bucket,
         }
     }
+    //    pub open spec fn get_clean(self) -> bool
+    //        recommends self.is_Pending() || self.is_Obtained()
+    //    {
+    //        match self {
+    //            ExcState::Pending{bucket: _, visited_count: _, clean, value: _} => clean,
+    //            ExcState::Obtained{bucket: _, clean} => clean,
+    //            _ => false  // nonsense; recommends violated
+    //        }
+    //    }
 
-//    pub open spec fn get_clean(self) -> bool
-//        recommends self.is_Pending() || self.is_Obtained()
-//    {
-//        match self {
-//            ExcState::Pending{bucket: _, visited_count: _, clean, value: _} => clean,
-//            ExcState::Obtained{bucket: _, clean} => clean,
-//            _ => false  // nonsense; recommends violated
-//        }
-//    }
 }
 
 // bucket is associated with the thread trying to acquire
@@ -96,17 +95,16 @@ impl ExcState {
 #[is_variant]
 pub enum LoadingState {
     Pending,  // set status bit to ExcLock | Loading,
-    PendingCounted{bucket: Option<BucketId>},  // inc refcount
-    Obtained{bucket: Option<BucketId>},         // clear ExcLock bit
+    PendingCounted { bucket: Option<BucketId> },  // inc refcount
+    Obtained { bucket: Option<BucketId> },  // clear ExcLock bit
 }
 
 pub struct WritebackState {
-    pub value: StoredType
+    pub value: StoredType,
 }
 
 } // verus!
-
-tokenized_state_machine!{
+tokenized_state_machine! {
 
 RwLock {
     fields {
@@ -315,7 +313,7 @@ RwLock {
 //            update flag = if clean { Flag::ExcLockClean } else { Flag::ExcLockDirty };
 //            // disk load routine will replace stored garbage with disk contents, but that's what's
 //            // there now, so we have to maintain the lock invariant connecting ghost value to real.
-//            withdraw storage -= Some(stored_garbage); 
+//            withdraw storage -= Some(stored_garbage);
 //        }
 //    }
 
@@ -448,7 +446,7 @@ RwLock {
             Some(bucketId) => bucketId < RC_WIDTH,
             None => true
         }
-    } 
+    }
 
     #[invariant]
     pub spec fn storage_some_invariant(&self) -> bool {
@@ -724,7 +722,7 @@ RwLock {
             assert_multisets_equal!(filtered, Multiset::empty());
         }
     }
-   
+
     #[inductive(take_writeback)]
     fn take_writeback_inductive(pre: Self, post: Self) {
         assert forall |bucket: BucketId| bucket < RC_WIDTH
@@ -735,7 +733,7 @@ RwLock {
             assert(pre.shared_state_valid(ss)); // triggertown
         }
     }
-   
+
     #[inductive(release_writeback)]
     fn release_writeback_inductive(pre: Self, post: Self) {
         assert forall |bucket: BucketId| bucket < RC_WIDTH
@@ -746,7 +744,7 @@ RwLock {
             assert(pre.shared_state_valid(ss)); // triggertown
         }
     }
-   
+
     #[inductive(bucketless_claim)]
     fn bucketless_claim_inductive(pre: Self, post: Self) {
         assert forall |bucket: BucketId| bucket < RC_WIDTH
@@ -757,7 +755,7 @@ RwLock {
             assert(pre.shared_state_valid(ss)); // triggertown
         }
     }
-   
+
     #[inductive(shared_to_claim)]
     fn shared_to_claim_inductive(pre: Self, post: Self, shared_state: SharedState) {
         assert forall |bucket: BucketId| bucket < RC_WIDTH
@@ -782,7 +780,7 @@ RwLock {
             assert(pre.shared_state_valid(ss));
         }
     }
-   
+
     #[inductive(claim_to_pending)]
     fn claim_to_pending_inductive(pre: Self, post: Self) {
         Self::ref_count_invariant_lemma(pre, post);
@@ -791,7 +789,7 @@ RwLock {
             assert(pre.shared_state_valid(ss));
         }
     }
-   
+
     #[inductive(take_exc_lock_finish_writeback)]
     fn take_exc_lock_finish_writeback_inductive(pre: Self, post: Self, clean: bool) {
         Self::ref_count_invariant_lemma(pre, post);
@@ -916,7 +914,7 @@ RwLock {
             assert(pre.shared_state_valid(ss));
         }
     }
-    
+
 //    #[inductive(load_pending_to_exc)]
 //    fn load_pending_to_exc_inductive(pre: Self, post: Self, clean: bool, stored_garbage: StoredType) {
 //        Self::ref_count_invariant_lemma(pre, post);
@@ -934,7 +932,7 @@ RwLock {
 //////        assert(post.storage.is_Some() == !withdrawn);
 ////        assert(post.storage_some_invariant());
 //    }
-    
+
     #[inductive(obtain_loading_no_refcount)]
     fn obtain_loading_no_refcount_inductive(pre: Self, post: Self) {
         Self::ref_count_invariant_lemma(pre, post);
@@ -1063,7 +1061,7 @@ RwLock {
             assert(pre.shared_state_valid(ss));
         }
     }
-    
+
     #[inductive(shared_dec_count_pending2)]
     fn shared_dec_count_pending2_inductive(pre: Self, post: Self, bucket: BucketId) {
         let new_ss = SharedState::Pending2{bucket};
@@ -1111,7 +1109,7 @@ RwLock {
             assert(pre.shared_state_valid(ss));
         }
     }
-    
+
     #[inductive(shared_check_exc)]
     fn shared_check_exc_inductive(pre: Self, post: Self, bucket: BucketId, value: StoredType) {
         let checked_bucket = bucket;
@@ -1174,9 +1172,9 @@ RwLock {
             }
         }
     }
-    
+
 }
 
 } //tokenized_state_machine
 
-fn main() { }
+fn main() {}

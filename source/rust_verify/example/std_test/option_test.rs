@@ -1,14 +1,13 @@
-use std::option::Option::{Some, None};
+use std::option::Option::{None, Some};
 
-use vstd::prelude::*;
 use vstd::pervasive::runtime_assert;
+use vstd::prelude::*;
 
 verus! {
 
 fn is_some_test() {
     let a: Option<i32> = None;
     let b = Some(2);
-
     runtime_assert(!a.is_some());
     runtime_assert(b.is_some());
 }
@@ -16,7 +15,6 @@ fn is_some_test() {
 fn is_none_test() {
     let a: Option<i32> = None;
     let b = Some(2);
-
     runtime_assert(a.is_none());
     runtime_assert(!b.is_none());
 }

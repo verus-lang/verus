@@ -269,6 +269,7 @@ pub fn run_verus(
 
     let mut verus_args = Vec::new();
     let mut external_by_default = false;
+    let mut is_core = false;
     verus_args.push("--internal-test-mode".to_string());
 
     for option in options.iter() {
@@ -289,6 +290,9 @@ pub fn run_verus(
         } else if *option == "-V allow-inline-air" {
             verus_args.push("-V".to_string());
             verus_args.push("allow-inline-air".to_string());
+        } else if *option == "--is-core" {
+            verus_args.push("--is-core".to_string());
+            is_core = true;
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -324,7 +328,7 @@ pub fn run_verus(
     verus_args.push(entry_file.to_str().unwrap().to_string());
     verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
 
-    if import_vstd {
+    if import_vstd && !is_core {
         let lib_vstd_vir_path = verus_target_path.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
         let lib_vstd_path = verus_target_path.join("libvstd.rlib");
@@ -374,6 +378,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_imports)]
     #![allow(unused_macros)]
     #![feature(exclusive_range_pattern)]
+    #![feature(strict_provenance)]
 
     use builtin::*;
     use builtin_macros::*;
@@ -439,6 +444,8 @@ macro_rules! test_verify_one_file {
 
 pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     if let Some(e) = err.iter().find(|e| e.label == Some("at this exit".to_string())) {
+        return e;
+    } else if let Some(e) = err.iter().find(|e| e.label == Some("at this call-site".to_string())) {
         return e;
     } else if let Some(e) =
         err.iter().find(|e| e.label == Some("might not be allowed at this call-site".to_string()))
@@ -516,6 +523,16 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
     assert!(err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
     assert!(err.errors[0].message.contains(expected_msg));
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.len() >= 1);
+    let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
+    for e in &err.errors {
+        assert!(e.code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+        assert!(e.message.contains(expected_msg));
+    }
 }
 
 #[allow(dead_code)]

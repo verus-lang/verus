@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
 use state_machines_macros::state_machine;
+use vstd::{pervasive::*, *};
 
 // ANCHOR: main
-state_machine!{
+state_machine! {
     X {
         fields {
             pub num_threads: nat,
@@ -58,4 +58,4 @@ state_machine!{
     }
 }
 
-fn main() { }
+fn main() {}

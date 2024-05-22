@@ -12,30 +12,29 @@
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use super::super::super::prelude::*;
 
 verus! {
 
-use crate::arithmetic::internals::general_internals::*;
-use crate::arithmetic::mul::*;
+use super::super::super::arithmetic::internals::general_internals::*;
+use super::super::super::arithmetic::mul::*;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals::group_mul_properties_internal;
+use super::mul_internals::group_mul_properties_internal;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mul_internals_nonlinear;
+use super::super::super::arithmetic::internals::mul_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::mod_internals_nonlinear::{
+use super::super::super::arithmetic::internals::mod_internals_nonlinear::{
     lemma_fundamental_div_mod,
     lemma_mod_range,
     lemma_small_mod,
 };
 #[cfg(verus_keep_ghost)]
-use crate::arithmetic::internals::div_internals_nonlinear;
+use super::super::super::arithmetic::internals::div_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
-use crate::math::{add as add1, sub as sub1};
+use super::super::super::math::{add as add1, sub as sub1};
 
 /// This function performs the modulus operation recursively.
-#[verifier(opaque)]
+#[verifier::opaque]
 pub open spec fn mod_recursive(x: int, d: int) -> int
     recommends
         d > 0,

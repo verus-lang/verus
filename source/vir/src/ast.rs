@@ -140,6 +140,10 @@ pub enum IntRange {
     USize,
     /// Rust's isize type
     ISize,
+    /// Rust's 'char' type, representing a Unicode Scalar Value:
+    /// The range 0 to 0x10FFFF, inclusive, MINUS the range 0xD800 to 0xDFFF.
+    /// Or another way: [0, 0xD800) union [0xE000, 0x10FFFF]. See unicode.rs.
+    Char,
 }
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
@@ -174,6 +178,11 @@ pub enum TypDecoration {
     Tracked,
     /// !, represented as Never<()>
     Never,
+    /// This is applied to `*mut T` to turn it into `*const T`
+    /// (This is _not_ applied to `T` on its own.)
+    /// This is done because `*mut T` is represented identically `*const T`,
+    /// but neither are represented identically to T.
+    ConstPtr,
 }
 
 #[derive(
@@ -192,6 +201,7 @@ pub enum TypDecoration {
 pub enum Primitive {
     Array,
     Slice,
+    Ptr, // Mut ptr, unless Const decoration is applied
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.
@@ -204,8 +214,6 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
-    /// UTF-8 character type
-    Char,
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
     /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
@@ -284,6 +292,8 @@ pub enum NullaryOpr {
     TraitBound(Path, Typs),
     /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
     TypEqualityBound(Path, Typs, Ident, Typ),
+    /// predicate representing const type bound, e.g., `const X: usize`
+    ConstTypBound(Typ, Typ),
     /// A failed InferSpecForLoopIter subexpression
     NoInferSpecForLoopIter,
 }
@@ -316,8 +326,6 @@ pub enum UnaryOp {
     StrLen,
     /// Used only for handling builtin::strslice_is_ascii
     StrIsAscii,
-    /// Used only for handling casts from chars to ints
-    CharToInt,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
     /// Evaluate to Some(spec) if successful, None otherwise.
@@ -640,8 +648,10 @@ pub type ImplPaths = Arc<Vec<ImplPath>>;
 pub enum CallTargetKind {
     /// Statically known function
     Static,
-    /// Dynamically dispatched method.  Optionally specify the statically resolved target if known.
-    Method(Option<(Fun, Typs, ImplPaths)>),
+    /// Dynamically dispatched function
+    Dynamic,
+    /// Dynamically dispatched function with known resolved target
+    DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -852,6 +862,8 @@ pub enum GenericBoundX {
     /// An equality bound for associated type X of trait T(t1, ..., tn),
     /// written in Rust as T<t1, ..., tn, X = typ>
     TypEquality(Path, Typs, Ident, Typ),
+    /// Const param has type (e.g., const X: usize)
+    ConstTyp(Typ, Typ),
 }
 
 /// When instantiating type S<A> with A = T in a recursive type definition,
@@ -1130,6 +1142,7 @@ pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
     pub name: Path,
+    pub proxy: Option<Spanned<Path>>,
     pub visibility: Visibility,
     // REVIEW: typ_params does not yet explicitly include Self (right now, Self is implicit)
     pub typ_params: TypPositives,

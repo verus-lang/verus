@@ -1,9 +1,10 @@
-use builtin_macros::*;
 use builtin::*;
+use builtin_macros::*;
 
 verus! {
 
-fn main() {}
+fn main() {
+}
 
 spec fn add1_int(i: int) -> int {
     i + 1
@@ -13,13 +14,14 @@ spec fn add1_nat(i: nat) -> nat {
     i + 1
 }
 
-#[verifier(opaque)]
+#[verifier::opaque]
 spec fn add1_nat_opaque(i: nat) -> nat {
     i + 1
 }
 
-proof fn test0() -> (n:nat)
-    ensures true
+proof fn test0() -> (n: nat)
+    ensures
+        true,
 {
     100
 }
@@ -44,7 +46,6 @@ proof fn test1(i: int, n: nat, u: u8) {
 }
 
 } // verus!
-
 /*
 fn typing(u: u64, i: int, n: nat) -> int {
     let u2 = i as u64;

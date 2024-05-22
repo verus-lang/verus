@@ -283,7 +283,10 @@ pub(crate) enum VstdItem {
     ArrayIndex,
     ArrayIndexGet,
     ArrayAsSlice,
+    ArrayFillForCopyTypes,
     SliceIndexGet,
+    CastPtrToThinPtr,
+    CastArrayPtrToSlicePtr,
     VecIndex,
 }
 
@@ -482,7 +485,10 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::array::array_index", VerusItem::Vstd(VstdItem::ArrayIndex, Some(Arc::new("array::array_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),
+        ("verus::vstd::array::array_fill_for_copy_types", VerusItem::Vstd(VstdItem::ArrayFillForCopyTypes, Some(Arc::new("array::array_fill_for_copy_types".to_owned())))),
         ("verus::vstd::slice::slice_index_get", VerusItem::Vstd(VstdItem::SliceIndexGet, Some(Arc::new("slice::slice_index_get".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_ptr_to_thin_ptr", VerusItem::Vstd(VstdItem::CastPtrToThinPtr, Some(Arc::new("raw_ptr::cast_ptr_to_thin_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastArrayPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_array_ptr_to_slice_ptr".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),

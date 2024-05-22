@@ -15,6 +15,7 @@ use crate::context::GlobalCtx;
 use crate::func_to_air::{SstInfo, SstMap};
 use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
+use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
@@ -936,7 +937,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
-                        | CharToInt
                         | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
@@ -990,9 +990,22 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     Ok(SpannedTyped::new(&e.span, &exp.typ, e.x.clone()))
                                 }
                             };
+                            let apply_unicode_scalar_range = |state: &mut State| {
+                                if !valid_unicode_scalar_bigint(i) {
+                                    let msg =
+                                        "Computation clipped an integer that was out of range";
+                                    state.msgs.push(warning(&exp.span, msg));
+                                    ok.clone()
+                                } else {
+                                    // Use the type of clip, not the inner expression,
+                                    // to reflect the type change imposed by clip
+                                    Ok(SpannedTyped::new(&e.span, &exp.typ, e.x.clone()))
+                                }
+                            };
                             match range {
                                 IntRange::Int => ok,
                                 IntRange::Nat => apply_range(BigInt::zero(), i.clone()),
+                                IntRange::Char => apply_unicode_scalar_range(state),
                                 IntRange::U(n) => {
                                     let u = apply_range(
                                         BigInt::zero(),
@@ -1052,7 +1065,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
-                        | CharToInt
                         | InferSpecForLoopIter { .. } => ok,
                     }
                 }

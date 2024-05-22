@@ -1,17 +1,17 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
+use vstd::atomic_ghost::*;
+use vstd::map::*;
 use vstd::modes::*;
 use vstd::multiset::*;
-use vstd::map::*;
-use vstd::seq::*;
 use vstd::prelude::*;
-use vstd::atomic_ghost::*;
+use vstd::seq::*;
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;
 
-verus!{
+verus! {
 
 tokenized_state_machine!{
     DistRwLock<T> {
@@ -159,7 +159,7 @@ tokenized_state_machine!{
         pub fn shared_pending_in_range(&self) -> bool {
             forall |r| self.shared_pending.count(r) > 0 ==> (0 <= r < self.rc_width)
         }
-        
+
         #[invariant]
         pub fn shared_guard_in_range(&self) -> bool {
             forall |x| self.shared_guard.count(x) > 0 ==> (0 <= x.0 < self.rc_width)
@@ -200,12 +200,12 @@ tokenized_state_machine!{
             }
             assert(post.shared_counts_agree());
         }
-       
+
         #[inductive(exc_start)]
         fn exc_start_inductive(pre: Self, post: Self) {
-            
+
         }
-       
+
         #[inductive(exc_check_count)]
         fn exc_check_count_inductive(pre: Self, post: Self) {
             let prev_r = pre.exc_pending.get_Some_0();
@@ -215,19 +215,19 @@ tokenized_state_machine!{
                 assert(Self::filter_r(post.shared_guard, prev_r).count(x) > 0);
             }
         }
-       
+
         #[inductive(exc_finish)]
         fn exc_finish_inductive(pre: Self, post: Self) {
         }
-       
+
         #[inductive(exc_release)]
         fn exc_release_inductive(pre: Self, post: Self, t: T) {
-            
+
         }
-       
+
         #[inductive(shared_start)]
         fn shared_start_inductive(pre: Self, post: Self, r: int) { }
-       
+
         #[inductive(shared_finish)]
         fn shared_finish_inductive(pre: Self, post: Self, r: int) {
             let t = pre.storage.get_Some_0();
@@ -261,7 +261,7 @@ tokenized_state_machine!{
                 }
             }
         }
-       
+
         #[inductive(shared_release)]
         fn shared_release_inductive(pre: Self, post: Self, val: (int, T)) {
             let r = val.0;
@@ -323,105 +323,110 @@ struct_with_invariants!{
 }
 
 impl<T> RwLock<T> {
-    #[verifier(spinoff_prover)] 
+    #[verifier::spinoff_prover]
     fn new(rc_width: usize, t: T) -> (s: Self)
-        requires 0 < rc_width,
-        ensures s.wf(),
+        requires
+            0 < rc_width,
+        ensures
+            s.wf(),
     {
         let tracked inst;
         let tracked exc_locked_token;
         let tracked mut ref_counts_tokens;
         proof {
-            let tracked (Tracked(inst0), Tracked(exc_locked_token0), Tracked(ref_counts_tokens0), _, _, _, _) =
-                DistRwLock::Instance::initialize(rc_width as int, t, Option::Some(t));
+            let tracked (
+                Tracked(inst0),
+                Tracked(exc_locked_token0),
+                Tracked(ref_counts_tokens0),
+                _,
+                _,
+                _,
+                _,
+            ) = DistRwLock::Instance::initialize(rc_width as int, t, Option::Some(t));
             inst = inst0;
             exc_locked_token = exc_locked_token0;
             ref_counts_tokens = ref_counts_tokens0;
         }
-
         let tracked_inst: Tracked<DistRwLock::Instance<T>> = Tracked(inst.clone());
-        let exc_locked_atomic = AtomicBool::new(Ghost(tracked_inst), false, Tracked(exc_locked_token));
-
-        let mut v: Vec<AtomicU64<(Tracked<DistRwLock::Instance<T>>, int), DistRwLock::ref_counts<T>, _>>
-            = Vec::new();
+        let exc_locked_atomic = AtomicBool::new(
+            Ghost(tracked_inst),
+            false,
+            Tracked(exc_locked_token),
+        );
+        let mut v: Vec<
+            AtomicU64<(Tracked<DistRwLock::Instance<T>>, int), DistRwLock::ref_counts<T>, _>,
+        > = Vec::new();
         let mut i: usize = 0;
-
-        assert forall |j: int|
-            i <= j && j < rc_width implies
-            #[trigger] ref_counts_tokens.dom().contains(j)
-                  && equal(ref_counts_tokens.index(j)@.instance, inst)
-                  && equal(ref_counts_tokens.index(j)@.key, j)
-                  && equal(ref_counts_tokens.index(j)@.value, 0)
-        by {
+        assert forall|j: int|
+            i <= j && j < rc_width implies #[trigger] ref_counts_tokens.dom().contains(j) && equal(
+            ref_counts_tokens.index(j)@.instance,
+            inst,
+        ) && equal(ref_counts_tokens.index(j)@.key, j) && equal(
+            ref_counts_tokens.index(j)@.value,
+            0,
+        ) by {
             assert(ref_counts_tokens.dom().contains(j));
             assert(equal(ref_counts_tokens.index(j)@.instance, inst));
             assert(equal(ref_counts_tokens.index(j)@.key, j));
             assert(equal(ref_counts_tokens.index(j)@.value, 0));
         }
-
-        assert(forall |j: int|
-          #![trigger( ref_counts_tokens.dom().contains(j) )]
-          #![trigger( ref_counts_tokens.index(j) )]
-            i <= j && j < rc_width ==> (
-            ref_counts_tokens.dom().contains(j)
-            && equal(ref_counts_tokens.index(j)@.instance, inst)
-            && equal(ref_counts_tokens.index(j)@.key, j)
-            && equal(ref_counts_tokens.index(j)@.value, 0)
-        ));
-
+        assert(forall|j: int|
+            #![trigger( ref_counts_tokens.dom().contains(j) )]
+            #![trigger( ref_counts_tokens.index(j) )]
+            i <= j && j < rc_width ==> (ref_counts_tokens.dom().contains(j) && equal(
+                ref_counts_tokens.index(j)@.instance,
+                inst,
+            ) && equal(ref_counts_tokens.index(j)@.key, j) && equal(
+                ref_counts_tokens.index(j)@.value,
+                0,
+            )));
         while i < rc_width
             invariant
                 i <= rc_width,
                 v@.len() == i as int,
-                forall|j: int| 0 <= j && j < i ==>
-                    v@.index(j).well_formed()
-                      && equal(v@.index(j).constant(), (tracked_inst, j)),
+                forall|j: int|
+                    0 <= j && j < i ==> v@.index(j).well_formed() && equal(
+                        v@.index(j).constant(),
+                        (tracked_inst, j),
+                    ),
                 tracked_inst@ == inst,
-                forall |j: int|
+                forall|j: int|
                     #![trigger( ref_counts_tokens.dom().contains(j) )]
                     #![trigger( ref_counts_tokens.index(j) )]
-                    i <= j && j < rc_width ==> (
-                        ref_counts_tokens.dom().contains(j)
-                        && equal(ref_counts_tokens.index(j)@.instance, inst)
-                        && equal(ref_counts_tokens.index(j)@.key, j)
-                        && equal(ref_counts_tokens.index(j)@.value, 0)
-                    ),
+                    i <= j && j < rc_width ==> (ref_counts_tokens.dom().contains(j) && equal(
+                        ref_counts_tokens.index(j)@.instance,
+                        inst,
+                    ) && equal(ref_counts_tokens.index(j)@.key, j) && equal(
+                        ref_counts_tokens.index(j)@.value,
+                        0,
+                    )),
         {
             assert(ref_counts_tokens.dom().contains(i as int));
-
             let tracked ref_count_token = ref_counts_tokens.tracked_remove(i as int);
-
-            let rc_atomic = AtomicU64::new(Ghost((tracked_inst, i as int)), 0, Tracked(ref_count_token));
+            let rc_atomic = AtomicU64::new(
+                Ghost((tracked_inst, i as int)),
+                0,
+                Tracked(ref_count_token),
+            );
             v.push(rc_atomic);
-
             i = i + 1;
-
-            assert forall |j: int|
-                i <= j && j < rc_width implies
-                #[trigger] ref_counts_tokens.dom().contains(j)
-                      && equal(ref_counts_tokens.index(j)@.instance, inst)
-                      && equal(ref_counts_tokens.index(j)@.key, j)
-                      && equal(ref_counts_tokens.index(j)@.value, 0)
-            by {
+            assert forall|j: int|
+                i <= j && j < rc_width implies #[trigger] ref_counts_tokens.dom().contains(j)
+                && equal(ref_counts_tokens.index(j)@.instance, inst) && equal(
+                ref_counts_tokens.index(j)@.key,
+                j,
+            ) && equal(ref_counts_tokens.index(j)@.value, 0) by {
                 assert(ref_counts_tokens.dom().contains(j));
                 assert(equal(ref_counts_tokens.index(j)@.instance, inst));
                 assert(equal(ref_counts_tokens.index(j)@.key, j));
                 assert(equal(ref_counts_tokens.index(j)@.value, 0));
             }
         }
-
-        let s = RwLock {
-            inst: Tracked(inst),
-            exc_locked: exc_locked_atomic,
-            ref_counts: v,
-        };
-
+        let s = RwLock { inst: Tracked(inst), exc_locked: exc_locked_atomic, ref_counts: v };
         assert(s.inst@.rc_width() == s.ref_counts@.len());
-
         s
     }
 }
 
-}
-
-fn main() { }
+} // verus!
+fn main() {}

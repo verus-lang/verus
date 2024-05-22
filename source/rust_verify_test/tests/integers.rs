@@ -355,6 +355,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_regression_979_1 verus_code! {
+        use vstd::prelude::*;
         pub trait Obligations<T> {
             spec fn reveal_(t: T) -> T
                 ;
@@ -381,6 +382,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_regression_979_2 verus_code! {
+        use vstd::prelude::*;
         pub trait Obligations<T> {
             spec fn reveal_(t: T) -> T
                 ;
@@ -413,6 +415,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_1 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as int + 3
         }
@@ -425,6 +428,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_2 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as int + 3
         }
@@ -437,6 +441,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_3 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as u64 + 3
         }
@@ -445,6 +450,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_sealed_1 verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl Integer for S {}
     } => Err(err) => assert_rust_error_msg(err, "the trait `builtin::Integer` requires an `unsafe impl` declaration")
@@ -452,6 +458,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_sealed_2 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> nat {
             t as nat + 3
         }

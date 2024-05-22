@@ -1,7 +1,5 @@
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 // TODO: get rid of fun_ext*
 
@@ -14,8 +12,8 @@ verus! {
 /// DEPRECATED: use f1 =~= f2 or f1 =~~= f2 instead.
 /// Axiom of function extensionality: two functions are equal if they are
 /// equal on all inputs.
-#[verifier(external_body)]
-#[deprecated = "use f1 =~= f2 or f1 =~~= f2 instead"]
+#[verifier::external_body]
+#[cfg_attr(not(verus_verify_core), deprecated = "use f1 =~= f2 or f1 =~~= f2 instead")]
 pub proof fn fun_ext<A, B>(f1: spec_fn(A) -> B, f2: spec_fn(A) -> B)
     requires
         forall|x: A| #![trigger f1(x)] f1(x) == f2(x),
@@ -33,8 +31,8 @@ macro_rules! gen_fun_ext_n {
         verus! {
           /// DEPRECATED: use f1 =~= f2 or f1 =~~= f2 instead.
           /// See [`fun_ext`]
-          #[verifier(external_body)]
-          #[deprecated = "use f1 =~= f2 or f1 =~~= f2 instead"]
+          #[verifier::external_body]
+          #[cfg_attr(not(verus_verify_core), deprecated = "use f1 =~= f2 or f1 =~~= f2 instead")]
           pub proof fn $fun_ext<$($I),*, $O>(f1: spec_fn($($I),*,) -> $O, f2: spec_fn($($I),*,) -> $O)
             requires forall |$($x: $I),*| #![trigger f1($($x),*)] f1($($x),*) == f2($($x),*)
             ensures f1 == f2

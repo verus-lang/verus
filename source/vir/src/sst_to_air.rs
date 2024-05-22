@@ -16,11 +16,11 @@ use crate::def::{
     prefix_lambda_type, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_unbox,
     snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
     unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
-    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, CHAR_FROM_UNICODE, CHAR_TO_UNICODE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
-    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
+    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
+    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
+    SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
@@ -58,7 +58,7 @@ pub(crate) fn path_to_air_ident(path: &Path) -> Ident {
 pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) -> Expr {
     let mut args = exprs;
     match range {
-        IntRange::Int | IntRange::Nat => {}
+        IntRange::Int | IntRange::Nat | IntRange::Char => {}
         IntRange::U(range) | IntRange::I(range) => {
             let bits = Constant::Nat(Arc::new(range.to_string()));
             args.insert(0, Arc::new(ExprX::Const(bits)));
@@ -74,6 +74,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
     match name {
         Primitive::Array => crate::def::array_type(),
         Primitive::Slice => crate::def::slice_type(),
+        Primitive::Ptr => crate::def::ptr_type(),
     }
 }
 
@@ -81,6 +82,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
     str_ident(match name {
         Primitive::Array => crate::def::TYPE_ID_ARRAY,
         Primitive::Slice => crate::def::TYPE_ID_SLICE,
+        Primitive::Ptr => crate::def::TYPE_ID_PTR,
     })
 }
 
@@ -90,12 +92,12 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
         MonoTypX::Int(range) => match range {
             IntRange::Int => str_ident("int"),
             IntRange::Nat => str_ident("nat"),
+            IntRange::Char => str_ident("char"),
             IntRange::U(n) => Arc::new(format!("u{}", n)),
             IntRange::I(n) => Arc::new(format!("i{}", n)),
             IntRange::USize => str_ident("usize"),
             IntRange::ISize => str_ident("isize"),
         },
-        MonoTypX::Char => str_ident("char"),
         MonoTypX::Datatype(path, typs) => {
             return crate::def::monotyp_apply(path, &typs.iter().map(monotyp_to_path).collect());
         }
@@ -136,16 +138,17 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
-        TypX::Primitive(Primitive::Array | Primitive::Slice, _) => match typ_as_mono(typ) {
-            None => panic!("should be boxed"),
-            Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
-        },
+        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
+            match typ_as_mono(typ) {
+                None => panic!("should be boxed"),
+                Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
+            }
+        }
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
         TypX::StrSlice => str_typ(crate::def::STRSLICE),
-        TypX::Char => str_typ(crate::def::CHAR),
     }
 }
 
@@ -153,6 +156,7 @@ pub fn range_to_id(range: &IntRange) -> Expr {
     match range {
         IntRange::Int => str_var(crate::def::TYPE_ID_INT),
         IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
+        IntRange::Char => str_var(crate::def::TYPE_ID_CHAR),
         IntRange::U(_) | IntRange::USize => {
             apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
         }
@@ -172,6 +176,7 @@ fn decoration_str(d: TypDecoration) -> &'static str {
         TypDecoration::Ghost => crate::def::DECORATE_GHOST,
         TypDecoration::Tracked => crate::def::DECORATE_TRACKED,
         TypDecoration::Never => crate::def::DECORATE_NEVER,
+        TypDecoration::ConstPtr => crate::def::DECORATE_CONST_PTR,
     }
 }
 
@@ -184,7 +189,6 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id(range_to_id(range)),
-        MonoTypX::Char => mk_id(str_var(crate::def::TYPE_ID_CHAR)),
         MonoTypX::StrSlice => mk_id(str_var(crate::def::TYPE_ID_STRSLICE)),
         MonoTypX::Datatype(path, typs) => {
             let f_name = crate::def::prefix_type_id(path);
@@ -243,7 +247,6 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id(range_to_id(range)),
-        TypX::Char => mk_id(str_var(crate::def::TYPE_ID_CHAR)),
         TypX::StrSlice => mk_id(str_var(crate::def::TYPE_ID_STRSLICE)),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Lambda(typs, typ) => mk_id(fun_id(typs, typ)),
@@ -348,6 +351,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             let f_name = match range {
                 IntRange::Int => panic!("internal error: Int"),
                 IntRange::Nat => panic!("internal error: Int"),
+                IntRange::Char => crate::def::CHAR_INV,
                 IntRange::U(_) | IntRange::USize => crate::def::U_INV,
                 IntRange::I(_) | IntRange::ISize => crate::def::I_INV,
             };
@@ -376,9 +380,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Boxed(_) => Some(expr_has_typ(expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(expr, typ)),
-        TypX::Bool | TypX::StrSlice | TypX::Char | TypX::AnonymousClosure(..) | TypX::TypeId => {
-            None
-        }
+        TypX::Bool | TypX::StrSlice | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Tuple(_) | TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
@@ -438,7 +440,6 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
         TypX::StrSlice => Some(str_ident(crate::def::BOX_STRSLICE)),
-        TypX::Char => Some(str_ident(crate::def::BOX_CHAR)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -471,7 +472,6 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
         TypX::StrSlice => Some(str_ident(crate::def::UNBOX_STRSLICE)),
-        TypX::Char => Some(str_ident(crate::def::UNBOX_CHAR)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -585,12 +585,9 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
         crate::ast::Constant::Int(i) => big_int_to_expr(i),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
-        crate::ast::Constant::Char(c) => Arc::new(ExprX::Apply(
-            str_ident(CHAR_FROM_UNICODE),
-            Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat(Arc::new(
-                char_to_unicode_repr(*c).to_string(),
-            ))))]),
-        )),
+        crate::ast::Constant::Char(c) => {
+            Arc::new(ExprX::Const(Constant::Nat(Arc::new(char_to_unicode_repr(*c).to_string()))))
+        }
     }
 }
 
@@ -787,6 +784,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p, ts, x, t)) => {
             crate::traits::typ_equality_bound_to_air(ctx, p, ts, x, t)
         }
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2)) => {
+            crate::traits::const_typ_bound_to_air(ctx, t1, t2)
+        }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
             panic!("internal error: NoInferSpecForLoopIter")
         }
@@ -821,6 +821,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),
                     IntRange::Nat => crate::def::NAT_CLIP,
+                    IntRange::Char => crate::def::CHAR_CLIP,
                     IntRange::U(_) | IntRange::USize => crate::def::U_CLIP,
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
                 };
@@ -831,10 +832,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::MustBeFinalized => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
-            }
-            UnaryOp::CharToInt => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                Arc::new(ExprX::Apply(str_ident(CHAR_TO_UNICODE), Arc::new(vec![expr])))
             }
             UnaryOp::InferSpecForLoopIter { .. } => {
                 // loop_inference failed to promote to Some, so demote to None
@@ -2357,9 +2354,8 @@ fn string_len_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
 
 fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
     let index_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new(index.to_string()))));
-    let value_expr =
+    let char_expr =
         Arc::new(ExprX::Const(Constant::Nat(Arc::new((char_to_unicode_repr(value)).to_string()))));
-    let char_expr = str_apply(&str_ident(CHAR_FROM_UNICODE), &vec![value_expr]);
     let lhs = str_apply(&str_ident(STRSLICE_GET_CHAR), &vec![cnst.clone(), index_expr]);
     Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, lhs, char_expr))
 }

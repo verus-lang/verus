@@ -53,11 +53,39 @@ fn lifetime_string(lifetime: &Option<Id>) -> String {
     }
 }
 
+fn typ_args_to_string(
+    path: &Id,
+    lifetimes: &Vec<Id>,
+    args: &Vec<Typ>,
+    equality: &Option<(Id, Typ)>,
+) -> String {
+    let mut buf = path.to_string();
+    if (lifetimes.len() + args.len()) > 0 {
+        buf.push('<');
+        for lifetime in lifetimes {
+            buf += &lifetime.to_string();
+            buf += ", ";
+        }
+        for arg in args {
+            buf += &arg.to_string();
+            buf += ", ";
+        }
+        if let Some((x, t)) = equality {
+            buf += &x.to_string();
+            buf += " = ";
+            buf += &t.to_string();
+        }
+        buf.push('>');
+    }
+    buf
+}
+
 impl ToString for TypX {
     fn to_string(&self) -> String {
         match self {
             TypX::Primitive(s) => s.clone(),
             TypX::TypParam(id) => id.to_string(),
+            TypX::TraitSelf => "Self".to_string(),
             TypX::Never => "!".to_string(),
             TypX::Ref(t, lifetime, Mutability::Not) => {
                 "&".to_string() + &lifetime_string(lifetime) + &t.to_string()
@@ -78,26 +106,20 @@ impl ToString for TypX {
                 buf
             }
             TypX::Datatype(path, lifetimes, args) => {
-                let mut buf = path.to_string();
-                if (lifetimes.len() + args.len()) > 0 {
-                    buf.push('<');
-                    for lifetime in lifetimes {
-                        buf += &lifetime.to_string();
-                        buf += ", ";
-                    }
-                    for arg in args {
-                        buf += &arg.to_string();
-                        buf += ", ";
-                    }
-                    buf.push('>');
-                }
-                buf
+                typ_args_to_string(path, lifetimes, args, &None)
             }
             TypX::Projection { self_typ, trait_as_datatype: tr, name } => {
                 format!("<{} as {}>::{}", self_typ.to_string(), tr.to_string(), name.to_string())
             }
             TypX::Closure => "_".to_string(),
             TypX::FnDef => "_".to_string(),
+            TypX::RawPtr(t, mutbl) => {
+                let p = match mutbl {
+                    rustc_middle::ty::Mutability::Not => "*const ",
+                    rustc_middle::ty::Mutability::Mut => "*mut ",
+                };
+                format!("{}{}", p, t.to_string())
+            }
         }
     }
 }
@@ -406,6 +428,13 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
             state.write("]");
         }
+        ExpX::ArrayRepeat(e, t) => {
+            state.write("[");
+            emit_exp(state, e);
+            state.write("; ");
+            state.write(t.to_string());
+            state.write("]");
+        }
         ExpX::DatatypeTuple(x, v, typ_args, es) => {
             state.write(x.to_string());
             if let Some(v) = v {
@@ -688,7 +717,7 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     }
 }
 
-fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
+fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> String {
     let mut buf = String::new();
     if !bare {
         buf += &bound.typ.to_string();
@@ -709,11 +738,16 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
         Bound::Clone => {
             buf += "Clone";
         }
+        Bound::Sized => {
+            if emit_sized {
+                buf += "Sized";
+            }
+        }
         Bound::Id(x) => {
             buf += &x.to_string();
         }
-        Bound::Trait(x) => {
-            buf += &x.to_string();
+        Bound::Trait { trait_path, args, equality } => {
+            buf += &typ_args_to_string(trait_path, &vec![], args, equality);
         }
         Bound::Fn(kind, params, ret) => {
             buf += match kind {
@@ -729,12 +763,75 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
     buf
 }
 
-fn emit_generic_bounds(state: &mut EmitState, bounds: &Vec<GenericBound>) {
-    if bounds.len() > 0 {
-        state.write(" where ");
-        for bound in bounds.iter() {
-            state.write(emit_generic_bound(bound, false));
-            state.write(", ");
+// Return (bare bounds ": U", where bounds "where ...")
+fn simplify_assoc_typ_bounds(
+    trait_name: &Id,
+    assoc_name: &Id,
+    bounds: Vec<GenericBound>,
+) -> (Vec<GenericBound>, Vec<GenericBound>) {
+    // When rustc sees "trait T { type X: U; }",
+    // it converts it into "trait T { type X where <Self as T>::X: U; }".
+    // However, if we emit "where <Self as T>::X: U" directly,
+    // rustc seems to lose track of the bound, as described in this issue:
+    // https://github.com/rust-lang/rust/issues/113195
+    // Therefore, we need to convert the bound back to the simpler bare "X: U" syntax.
+    // (Also note that "type X: for<'a> U<'a>" becomes "type X where for<'a> <Self as T>::X: U<'a>")
+    let mut bares: Vec<GenericBound> = Vec::new();
+    let mut wheres: Vec<GenericBound> = Vec::new();
+    for bound in bounds {
+        let is_bare = match &*bound.typ {
+            TypX::Projection { self_typ, trait_as_datatype, name } if name == assoc_name => {
+                match (&**self_typ, &**trait_as_datatype) {
+                    (TypX::TraitSelf, TypX::Datatype(id, _, _)) if id == trait_name => true,
+                    _ => false,
+                }
+            }
+            _ => false,
+        };
+        if is_bare {
+            bares.push(bound);
+        } else {
+            wheres.push(bound);
+        }
+    }
+    (bares, wheres)
+}
+
+fn emit_generic_bounds(
+    state: &mut EmitState,
+    params: &Vec<GenericParam>,
+    bounds: &Vec<GenericBound>,
+    emit_sized: bool,
+) {
+    use std::collections::HashSet;
+    let mut printed_where = false;
+    let print_where = |state: &mut EmitState, printed_where: &mut bool| {
+        if !*printed_where {
+            *printed_where = true;
+            state.write(" where ");
+        }
+    };
+    let mut sized: HashSet<Id> = HashSet::new();
+    for bound in bounds.iter() {
+        print_where(state, &mut printed_where);
+        state.write(emit_generic_bound(bound, false, emit_sized));
+        state.write(", ");
+        if !emit_sized && bound.bound == Bound::Sized {
+            if let TypX::TypParam(x) = &*bound.typ {
+                sized.insert(x.clone());
+            }
+        }
+    }
+    if !emit_sized {
+        for param in params {
+            print_where(state, &mut printed_where);
+            if param.const_typ.is_none()
+                && param.name.is_typ_param()
+                && !sized.contains(&param.name)
+            {
+                state.write(param.name.to_string());
+                state.write(" : ?Sized, ");
+            }
         }
     }
 }
@@ -773,7 +870,7 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
         }
     }
     state.end_span(f.sig_span);
-    emit_generic_bounds(state, &f.generic_bounds);
+    emit_generic_bounds(state, &f.generic_params, &f.generic_bounds, false);
     match &*f.body {
         (_, ExpX::Block(..)) => {
             emit_exp(state, &f.body);
@@ -843,7 +940,7 @@ fn emit_copy_clone(
     state.write(format!(" {bound_name} for "));
     state.write(d.name.to_string());
     emit_generic_params(state, &generic_args);
-    emit_generic_bounds(state, &generic_bounds);
+    emit_generic_bounds(state, &vec![], &generic_bounds, false);
     state.write(" ");
     state.write(body);
 }
@@ -854,18 +951,25 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     state.write("trait ");
     state.write(&t.name.to_string());
     emit_generic_params(state, &t.generic_params);
-    emit_generic_bounds(state, &t.generic_bounds);
+    emit_generic_bounds(state, &t.generic_params, &t.generic_bounds, true);
     state.write(" {");
     state.push_indent();
     for (a, bounds) in &t.assoc_typs {
+        let (bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
         state.newline();
         state.write("type ");
         state.write(a.to_string());
-        if bounds.len() > 0 {
+        let sized = bares.iter().any(|b| b.bound == Bound::Sized);
+        let unsize = if sized { vec![] } else { vec!["?Sized".to_string()] };
+        if bounds.len() + unsize.len() > 0 {
             state.write(" : ");
-            let bounds_strs: Vec<_> =
-                bounds.iter().map(|bound| emit_generic_bound(bound, true)).collect();
+            let bounds_strs: Vec<_> = bares
+                .iter()
+                .map(|bound| emit_generic_bound(bound, true, false))
+                .chain(unsize.into_iter())
+                .collect();
             state.write(bounds_strs.join("+"));
+            emit_generic_bounds(state, &vec![], &wheres, false);
         }
         state.write(";");
     }
@@ -887,7 +991,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     let suffix_where = match &*d.datatype {
         Datatype::Struct(Fields::Pos(..)) => d.generic_bounds.len() > 0,
         _ => {
-            emit_generic_bounds(state, &d.generic_bounds);
+            emit_generic_bounds(state, &d.generic_params, &d.generic_bounds, false);
             false
         }
     };
@@ -896,7 +1000,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
             let suffix = if suffix_where { "" } else { ";" };
             emit_fields(state, fields, suffix);
             if suffix_where {
-                emit_generic_bounds(state, &d.generic_bounds);
+                emit_generic_bounds(state, &d.generic_params, &d.generic_bounds, false);
                 state.write(";");
             }
         }
@@ -934,7 +1038,7 @@ pub(crate) fn emit_assoc_type_impl(
     state.write(&trait_as_datatype.to_string());
     state.write(" for ");
     state.write(&self_typ.to_string());
-    emit_generic_bounds(state, &generic_bounds);
+    emit_generic_bounds(state, &generic_params, &generic_bounds, false);
     state.write(" {");
     state.push_indent();
     for fn_ in fns {

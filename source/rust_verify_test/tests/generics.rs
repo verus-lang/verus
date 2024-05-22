@@ -51,3 +51,41 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] const_generics_int_ranges verus_code! {
+        proof fn test<const N : u8>() {
+            assert (0 <= N);
+            assert (N <= 255);
+        }
+
+        proof fn test2<const N : u8>() {
+            assert (N < 255); // FAILS
+        }
+
+        proof fn test3<const N : usize>() {
+            assert (0 <= N);
+            assert (N <= usize::MAX);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] const_generics_broadcast verus_code! {
+        pub open spec fn stuff(t: int) -> bool { true }
+
+        // This incorrectly errors about missing triggers, but what we really want here is to
+        // make sure is that the assert fails.
+
+        #[verifier::external_body]
+        pub broadcast proof fn broadcaster<const X: u8>()
+            ensures #[trigger] stuff(X as int) ==> 0 <= X < 255
+        {
+        }
+
+        fn moo(z: u16) {
+            assert(stuff(z as int));
+            assert(z < 255);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trigger does not cover variable X")
+}

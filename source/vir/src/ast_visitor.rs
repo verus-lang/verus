@@ -56,7 +56,6 @@ where
                 TypX::Bool
                 | TypX::Int(_)
                 | TypX::StrSlice
-                | TypX::Char
                 | TypX::TypParam(_)
                 | TypX::TypeId
                 | TypX::ConstInt(_)
@@ -118,7 +117,6 @@ where
         TypX::Bool
         | TypX::Int(_)
         | TypX::StrSlice
-        | TypX::Char
         | TypX::TypParam(_)
         | TypX::TypeId
         | TypX::ConstInt(_)
@@ -746,10 +744,20 @@ where
                 CallTarget::Fun(kind, x, typs, impl_paths, autospec_usage) => {
                     use crate::ast::CallTargetKind;
                     let kind = match kind {
-                        CallTargetKind::Static | CallTargetKind::Method(None) => kind.clone(),
-                        CallTargetKind::Method(Some((f, ts, ips))) => {
-                            let ts = map_typs_visitor_env(ts, env, ft)?;
-                            CallTargetKind::Method(Some((f.clone(), ts, ips.clone())))
+                        CallTargetKind::Static | CallTargetKind::Dynamic => kind.clone(),
+                        CallTargetKind::DynamicResolved {
+                            resolved,
+                            typs,
+                            impl_paths,
+                            is_trait_default,
+                        } => {
+                            let typs = map_typs_visitor_env(typs, env, ft)?;
+                            CallTargetKind::DynamicResolved {
+                                resolved: resolved.clone(),
+                                typs,
+                                impl_paths: impl_paths.clone(),
+                                is_trait_default: *is_trait_default,
+                            }
                         }
                     };
                     CallTarget::Fun(
@@ -813,6 +821,11 @@ where
             let ts = map_typs_visitor_env(ts, env, ft)?;
             let t = map_typ_visitor_env(t, env, ft)?;
             ExprX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p.clone(), ts, x.clone(), t))
+        }
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2)) => {
+            let t1 = map_typ_visitor_env(t1, env, ft)?;
+            let t2 = map_typ_visitor_env(t2, env, ft)?;
+            ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2))
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
             ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter)
@@ -1160,6 +1173,11 @@ where
             let ts = map_typs_visitor_env(ts, env, ft)?;
             let t = map_typ_visitor_env(t, env, ft)?;
             Ok(Arc::new(GenericBoundX::TypEquality(trait_path.clone(), ts, name.clone(), t)))
+        }
+        GenericBoundX::ConstTyp(t, s) => {
+            let t = map_typ_visitor_env(t, env, ft)?;
+            let s = map_typ_visitor_env(s, env, ft)?;
+            Ok(Arc::new(GenericBoundX::ConstTyp(t, s)))
         }
     }
 }

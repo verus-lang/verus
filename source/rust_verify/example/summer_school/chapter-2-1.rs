@@ -1,15 +1,16 @@
 #[allow(unused_imports)]
-use vstd::*;
-use vstd::prelude::*;
+use prelude::*;
 #[allow(unused_imports)]
 use seq::*;
+use vstd::prelude::*;
 #[allow(unused_imports)]
-use prelude::*;
+use vstd::*;
 
 verus! {
 
 spec fn divides(factor: nat, candidate: nat) -> bool
-    recommends 1 <= factor
+    recommends
+        1 <= factor,
 {
     candidate % factor == 0
 }
@@ -26,7 +27,6 @@ fn main() {
     assert(is_prime(3));
     assert(divides(2, 6));
     assert(!is_prime(6));
-
     // TODO(chris): Dafny gets these positive assertions without proof; Verus won't try anything
     // past is_prime(3) (which only instantiates the forall once). I'm guessing the intuition is
     // that, if we have a literal sitting here, might as well do all the math by hand, because it's
@@ -38,10 +38,9 @@ fn main() {
             assert(!divides(3, candidate));
             assert(!divides(4, candidate));
             assert(!divides(5, candidate));
-            assert(!divides(6, candidate)); // trigger
+            assert(!divides(6, candidate));  // trigger
         }
     }
-
     assert(is_prime(7));
     assert(divides(3, 9));
     assert(!is_prime(9));

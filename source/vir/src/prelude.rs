@@ -26,8 +26,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let u_clip = str_to_node(U_CLIP);
     let i_clip = str_to_node(I_CLIP);
     let nat_clip = str_to_node(NAT_CLIP);
+    let char_clip = str_to_node(CHAR_CLIP);
     let u_inv = str_to_node(U_INV);
     let i_inv = str_to_node(I_INV);
+    let char_inv = str_to_node(CHAR_INV);
     let arch_size = str_to_node(ARCH_SIZE);
     #[allow(non_snake_case)]
     let Add = str_to_node(ADD);
@@ -66,8 +68,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let box_strslice = str_to_node(BOX_STRSLICE);
     let unbox_strslice = str_to_node(UNBOX_STRSLICE);
 
-    let box_char = str_to_node(BOX_CHAR);
-    let unbox_char = str_to_node(UNBOX_CHAR);
+    let char_lo_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MIN));
+    let char_hi_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MAX));
+    let char_lo_2 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_2_MIN));
+    let char_hi_2 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_2_MAX));
 
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
@@ -87,6 +91,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let decorate_ghost = str_to_node(DECORATE_GHOST);
     let decorate_tracked = str_to_node(DECORATE_TRACKED);
     let decorate_never = str_to_node(DECORATE_NEVER);
+    let decorate_const_ptr = str_to_node(DECORATE_CONST_PTR);
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
@@ -102,8 +107,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let singular_mod = str_to_node(SINGULAR_MOD);
 
     let strslice = str_to_node(STRSLICE);
-    #[allow(non_snake_case)]
-    let Char = str_to_node(CHAR);
 
     let strslice_is_ascii = str_to_node(STRSLICE_IS_ASCII);
     let strslice_len = str_to_node(STRSLICE_LEN);
@@ -112,11 +115,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let new_strlit = str_to_node(STRSLICE_NEW_STRLIT);
     let from_strlit = str_to_node(STRSLICE_FROM_STRLIT);
 
-    let from_unicode = str_to_node(CHAR_FROM_UNICODE);
-    let to_unicode = str_to_node(CHAR_TO_UNICODE);
-
     let type_id_array = str_to_node(TYPE_ID_ARRAY);
     let type_id_slice = str_to_node(TYPE_ID_SLICE);
+    let type_id_ptr = str_to_node(TYPE_ID_PTR);
 
     nodes_vec!(
         // Fuel
@@ -136,16 +137,11 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             ))
         ))
 
-        // Chars
-        (declare-sort [Char] 0)
-        (declare-fun [from_unicode] (Int) [Char])
-        (declare-fun [to_unicode] ([Char]) Int)
-
         // Strings
         (declare-sort [strslice] 0)
         (declare-fun [strslice_is_ascii] ([strslice]) Bool)
         (declare-fun [strslice_len] ([strslice]) Int)
-        (declare-fun [strslice_get_char] ([strslice] Int) [Char])
+        (declare-fun [strslice_get_char] ([strslice] Int) Int)
         (declare-fun [new_strlit] (Int) [strslice])
         (declare-fun [from_strlit] ([strslice]) Int)
 
@@ -163,8 +159,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [unbox_fndef] ([Poly]) [FnDef])
         (declare-fun [box_strslice] ([strslice]) [Poly])
         (declare-fun [unbox_strslice] ([Poly]) [strslice])
-        (declare-fun [box_char] ([Char]) [Poly])
-        (declare-fun [unbox_char] ([Poly]) [Char])
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
@@ -184,8 +178,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_ghost] ([decoration]) [decoration])
         (declare-fun [decorate_tracked] ([decoration]) [decoration])
         (declare-fun [decorate_never] ([decoration]) [decoration])
+        (declare-fun [decorate_const_ptr] ([decoration]) [decoration])
         (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
         (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
+        (declare-fun [type_id_ptr] ([decoration] [typ]) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
         (declare-fun [mk_fun] (Fun) Fun)
@@ -277,6 +273,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_box_unbox_sint
             :skolemid skolem_prelude_box_unbox_sint
         )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_char])
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x [type_id_char]))
+            :qid prelude_box_unbox_char
+            :skolemid skolem_prelude_box_unbox_char
+        )))
 
         // String literals
         (axiom (forall ((x Int)) (!
@@ -350,6 +355,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [nat_clip] (Int) Int)
         (declare-fun [u_clip] (Int Int) Int)
         (declare-fun [i_clip] (Int Int) Int)
+        (declare-fun [char_clip] (Int) Int)
         (axiom (forall ((i Int)) (!
             (and
                 (<= 0 ([nat_clip] i))
@@ -383,9 +389,29 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_i_clip
             :skolemid skolem_prelude_i_clip
         )))
+        (axiom (forall ((i Int)) (!
+            (and
+                (or
+                    (and (<= [char_lo_1] ([char_clip] i)) (<= ([char_clip] i) [char_hi_1]))
+                    (and (<= [char_lo_2] ([char_clip] i)) (<= ([char_clip] i) [char_hi_2]))
+                )
+                (=>
+                    (or
+                        (and (<= [char_lo_1] i) (<= i [char_hi_1]))
+                        (and (<= [char_lo_2] i) (<= i [char_hi_2]))
+                    )
+                    (= i ([char_clip] i))
+                )
+            )
+            :pattern (([char_clip] i))
+            :qid prelude_char_clip
+            :skolemid skolem_prelude_char_clip
+        )))
+
         // type invariants inv(num_bits, value)
         (declare-fun [u_inv] (Int Int) Bool)
         (declare-fun [i_inv] (Int Int) Bool)
+        (declare-fun [char_inv] (Int) Bool)
         (axiom (forall ((bits Int) (i Int)) (!
             (= ([u_inv] bits i)
                 (and (<= 0 i) (< i ([u_hi] bits))
@@ -401,6 +427,17 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([i_inv] bits i))
             :qid prelude_i_inv
             :skolemid skolem_prelude_i_inv
+        )))
+        (axiom (forall ((i Int)) (!
+            (= ([char_inv] i)
+                (or
+                    (and (<= [char_lo_1] i) (<= i [char_hi_1]))
+                    (and (<= [char_lo_2] i) (<= i [char_hi_2]))
+                )
+            )
+            :pattern (([char_inv] i))
+            :qid prelude_char_inv
+            :skolemid skolem_prelude_char_inv
         )))
         (axiom (forall ((x Int)) (!
             ([has_type] ([box_int] x) [type_id_int])
@@ -434,6 +471,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([has_type] ([box_int] x) ([type_id_sint] bits)))
             :qid prelude_has_type_sint
             :skolemid skolem_prelude_has_type_sint
+        )))
+        (axiom (forall ((x Int)) (!
+            (=>
+                ([char_inv] x)
+                ([has_type] ([box_int] x) [type_id_char])
+            )
+            :pattern (([has_type] ([box_int] x) [type_id_char]))
+            :qid prelude_has_type_char
+            :skolemid skolem_prelude_has_type_char
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -553,50 +599,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([EucMod] x y))
             :qid prelude_mod_unsigned_in_bounds
             :skolemid skolem_prelude_mod_unsigned_in_bounds
-        )))
-
-        // Chars
-        (axiom (forall ((x [Poly])) (!
-            (=>
-                ([has_type] x [type_id_char])
-                (= x ([box_char] ([unbox_char] x)))
-            )
-            :pattern (([has_type] x [type_id_char]))
-            :qid prelude_box_unbox_char
-            :skolemid skolem_prelude_box_unbox_char
-        )))
-        (axiom (forall ((x [Char])) (!
-            (= x ([unbox_char] ([box_char] x)))
-            :pattern (([box_char] x))
-            :qid prelude_unbox_box_char
-            :skolemid skolem_prelude_unbox_box_char
-        )))
-        (axiom (forall ((x [Char])) (!
-            ([has_type] ([box_char] x) [type_id_char])
-            :pattern ((has_type ([box_char] x) [type_id_char]))
-            :qid prelude_has_type_char
-            :skolemid skolem_prelude_has_type_char
-        )))
-        (axiom (forall ((x Int)) (!
-            (=>
-                (and
-                    (<= 0 x)
-                    (< x ([u_hi] 32))
-                )
-                (= x ([to_unicode] ([from_unicode] x)))
-            )
-            :pattern (([from_unicode] x))
-            :qid prelude_char_injective
-            :skolemid skolem_prelude_char_injective
-        )))
-        (axiom (forall ((c [Char])) (!
-            (and
-                (<= 0 ([to_unicode] c))
-                (< ([to_unicode] c) ([u_hi] 32))
-            )
-            :pattern (([to_unicode] c))
-            :qid prelude_to_unicode_bounds
-            :skolemid skolem_prelude_to_unicode_bounds
         )))
 
         // Decreases
