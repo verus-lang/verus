@@ -109,7 +109,7 @@ impl SmtProcess {
                     "--no-cbqi",           // Recommended by Andrew Reynolds (@ajreynol)
                     "--user-pat=strict",   // Recommended by Andrew Reynolds (@ajreynol)
                     "--rlimit",
-                    "10000000", // ~= 30s
+                    "1666666", // ~= 5s
                 ],
             })
             .stdin(std::process::Stdio::piped())
