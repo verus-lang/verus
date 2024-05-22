@@ -142,6 +142,8 @@ pub(crate) enum Bound {
     Copy,
     Clone,
     Sized,
+    Thin,
+    Pointee,
     Id(Id),
     Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Typ)> },
     Fn(ClosureKind, Typ, Typ),

@@ -1742,6 +1742,14 @@ fn erase_mir_bound<'a, 'tcx>(
         Some(Bound::Copy)
     } else if Some(id) == tcx.lang_items().sized_trait() {
         Some(Bound::Sized)
+    } else if Some(id) == tcx.lang_items().pointee_trait() {
+        // The Rust documentation says Pointee "is automatically implemented for every type",
+        // so it's a special case here
+        Some(Bound::Pointee)
+    } else if vir::ast_util::path_as_friendly_rust_name(&trait_path) == "core::ptr::metadata::Thin"
+    {
+        // "Thin" is a trait alias for Pointee (special case since we don't support trait aliases)
+        Some(Bound::Thin)
     } else if state.trait_decl_set.contains(&trait_path) {
         let (args, _) = erase_generic_args(ctxt, state, args, true);
         let trait_path = state.trait_name(&trait_path);
@@ -1842,6 +1850,8 @@ fn erase_mir_predicates<'a, 'tcx>(
                         assert!(equality.is_none());
                         let name = state.typ_param(assoc_item.name.to_ident_string(), None);
                         *equality = Some((name, typ_eq));
+                    } else if matches!(&bound, Bound::Pointee | Bound::Thin) {
+                        // keep as is
                     } else {
                         panic!("unexpected bound")
                     }
@@ -2158,8 +2168,31 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             }
         }
     }
-    // We only need traits with associated type declarations.
-    if assoc_typs.len() > 0 {
+
+    // We only need traits with associated type declarations,
+    // or traits that extend traits with associated type declarations.
+    // First, check our own trait bounds to catch anything we might be extending
+    // that has associated types.
+    // (Note 1: this is an overapproximation, since we only really need bounds on Self,
+    // but it's unlikely to matter much.)
+    // (Note 2: if we allow cycles between a trait and its supertraits, we'll need a more
+    // sophisticated algorithm.)
+    let mut supertrait_may_have_assoc_types = false;
+    for (pred, _) in ctxt.tcx.predicates_of(trait_id).predicates.iter() {
+        match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
+            (ClauseKind::Trait(pred), _bound_vars) => {
+                let id = pred.trait_ref.def_id;
+                erase_trait(ctxt, state, id);
+                let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+                if state.trait_decl_set.contains(&trait_path) {
+                    supertrait_may_have_assoc_types = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if supertrait_may_have_assoc_types || assoc_typs.len() > 0 {
         let name = state.trait_name(&path);
         let mut lifetimes: Vec<GenericParam> = Vec::new();
         let mut typ_params: Vec<GenericParam> = Vec::new();

@@ -743,6 +743,12 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> Str
                 buf += "Sized";
             }
         }
+        Bound::Pointee => {
+            buf += "Pointee";
+        }
+        Bound::Thin => {
+            buf += "Thin";
+        }
         Bound::Id(x) => {
             buf += &x.to_string();
         }
