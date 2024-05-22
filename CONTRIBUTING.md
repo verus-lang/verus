@@ -147,6 +147,11 @@ in the following example:
 use crate::arithmetic::internals::general_internals::is_le;
 ```
 
+### Common Conventions
+Inside `vstd`:
+- We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
+- We try to make lemmas associated functions when possible, e.g., `my_map.lemma_remove_keys_len(keys)`, not `lemma_remove_keys_len(my_map, keys)`.
+
 ## Other tips
 
 You can use `--vstd-no-verify` to skip verification of the `vstd` library. This is pretty useful if you're building or running tests a lot. Note that it will still _build_ `vstd`—it just skips the SMT step. For example:
