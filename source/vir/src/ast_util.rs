@@ -383,6 +383,13 @@ pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<
     }
 }
 
+pub fn is_visible_to_or_true(target_visibility: &Visibility, source_module: &Option<Path>) -> bool {
+    match (&target_visibility.restricted_to, source_module) {
+        (_, None) => true,
+        (_, Some(source_module)) => is_visible_to(target_visibility, source_module),
+    }
+}
+
 impl Visibility {
     pub(crate) fn is_private_to(&self, module: &Option<Path>) -> bool {
         module.is_some() && module == &self.restricted_to

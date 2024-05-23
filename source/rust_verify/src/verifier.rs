@@ -1699,10 +1699,11 @@ impl Verifier {
         }
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
-            vir::prune::prune_krate_for_module(
+            vir::prune::prune_krate_for_module_or_krate(
                 &krate,
                 &Arc::new(self.crate_name.clone().expect("crate_name")),
-                bucket_id.module(),
+                None,
+                Some(bucket_id.module().clone()),
                 bucket_id.function(),
             );
         let module = pruned_krate
@@ -2438,7 +2439,15 @@ impl Verifier {
         // - GlobalCtx::new
         // - well_formed::check_crate
         vir_crates.push(vir_crate);
-        let vir_crate = vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+        let unpruned_crate =
+            vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+        let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+            &unpruned_crate,
+            &Arc::new(crate_name.clone()),
+            Some(&current_vir_crate),
+            None,
+            None,
+        );
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
@@ -2464,6 +2473,7 @@ impl Verifier {
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
+            unpruned_crate,
             &mut ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
         );

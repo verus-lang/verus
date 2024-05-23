@@ -9,7 +9,7 @@ use crate::ast::{
     FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt, Trait,
     TraitX, Typ, TypX,
 };
-use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
+use crate::ast_util::{is_visible_to, is_visible_to_of_owner, is_visible_to_or_true};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{array_index_fun, fn_inv_name, fn_namespace_name, Spanned};
@@ -51,7 +51,7 @@ struct TraitImpl {
 }
 
 struct Ctxt {
-    module: Path,
+    module: Option<Path>,
     function_map: HashMap<Fun, Function>,
     reveal_group_map: HashMap<Fun, RevealGroup>,
     datatype_map: HashMap<Path, Datatype>,
@@ -94,9 +94,9 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
     match &**typ {
         TypX::Bool => ReachedType::Bool,
         TypX::Int(range) => ReachedType::Int(*range),
-        TypX::Tuple(_) => panic!("unexpected TypX::Tuple"),
+        TypX::Tuple(_) => ReachedType::None,
         TypX::Lambda(ts, _) => ReachedType::Lambda(ts.len()),
-        TypX::AnonymousClosure(..) => panic!("unexpected TypX::AnonymousClosure"),
+        TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(path, _, _) => ReachedType::Datatype(path.clone()),
         TypX::FnDef(..) => ReachedType::None,
         TypX::Decorate(_, t) => typ_to_reached_type(t),
@@ -112,9 +112,14 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
 }
 
 fn record_datatype(ctxt: &Ctxt, state: &mut State, typ: &Typ, path: &Path) {
+    let module = if let Some(module) = &ctxt.module {
+        module
+    } else {
+        return;
+    };
     if let Some(d) = ctxt.datatype_map.get(path) {
-        let is_vis = is_visible_to(&d.x.visibility, &ctxt.module);
-        let is_transparent = is_datatype_transparent(&ctxt.module, &d);
+        let is_vis = is_visible_to(&d.x.visibility, module);
+        let is_transparent = is_datatype_transparent(module, &d);
         if is_vis && !is_transparent {
             if let Some(monotyp) = crate::poly::typ_as_mono(typ) {
                 state.mono_abstract_datatypes.insert(monotyp);
@@ -213,7 +218,8 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
-        TypX::Tuple(_) | TypX::AnonymousClosure(..) | TypX::Air(_) => {
+        TypX::Tuple(_) | TypX::AnonymousClosure(..) => {}
+        TypX::Air(_) => {
             panic!("unexpected TypX")
         }
         TypX::Decorate(_, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
@@ -276,6 +282,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         };
         if let Some(f) = state.worklist_functions.pop() {
             let function = &ctxt.function_map[&f];
+            if ctxt.module.is_none() {
+                if let Some(autospec) = &function.x.attrs.autospec {
+                    reach_function(ctxt, state, autospec);
+                }
+            }
             if let Some(module_path) = &function.x.owning_module {
                 reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
             }
@@ -301,9 +312,13 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
                 // note: the visitor automatically reaches e.typ
                 match &e.x {
+                    ExprX::ConstVar(name, _) => {
+                        assert!(ctxt.module.is_none());
+                        reach_function(ctxt, state, name);
+                    }
                     ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _) => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
-                        assert!(*autospec == AutospecUsage::Final);
+                        assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
@@ -482,34 +497,103 @@ fn overapproximate_revealed_functions(
     }
 }
 
-pub fn prune_krate_for_module(
+// module is none: prune to keep what's reachable from current_crate
+// module is some and fun is none: prune to keep what's reachable from module
+// module is some and fun is some: prune to keep what's reachable from fun
+pub fn prune_krate_for_module_or_krate(
     krate: &Krate,
     crate_name: &Ident,
-    module: &Path,
+    current_crate: Option<&Krate>,
+    module: Option<Path>,
     fun: Option<&Fun>,
 ) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>, Vec<Fun>) {
-    let is_root = |function: &Function| match fun {
-        Some(f) => &function.x.name == f,
-        None => match &function.x.owning_module {
-            Some(m) => m == module,
-            None => false,
-        },
-    };
+    assert!(module.is_some() != current_crate.is_some());
+
+    let mut root_modules: HashSet<Path> = HashSet::new();
+    let mut root_functions: HashSet<Fun> = HashSet::new();
+    if let Some(module) = &module {
+        root_modules.insert(module.clone());
+        if let Some(fun) = fun {
+            root_functions.insert(fun.clone());
+        } else {
+            for f in &krate.functions {
+                match &f.x.owning_module {
+                    Some(m) if m == module => {
+                        root_functions.insert(f.x.name.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    } else if let Some(current_crate) = current_crate {
+        for m in &current_crate.modules {
+            root_modules.insert(m.x.path.clone());
+        }
+        for f in &current_crate.functions {
+            root_functions.insert(f.x.name.clone());
+        }
+    } else {
+        unreachable!();
+    }
+    let is_root_module = |module_path: &Path| root_modules.contains(module_path);
+    let is_root_function = |function: &Function| root_functions.contains(&function.x.name);
 
     let mut state: State = Default::default();
-    state.reached_modules.insert(module.clone());
-    state.worklist_modules.push(module.clone());
+    if let Some(current_crate) = current_crate {
+        // Make sure we keep all of current_crate,
+        // so that all of current_crate is sent to the well-formedness checks.
+        let KrateX {
+            functions,
+            reveal_groups,
+            datatypes,
+            assoc_type_impls,
+            traits: _no_pruning_of_traits,
+            trait_impls,
+            modules,
+            external_fns: _no_pruning_of_external_fns,
+            external_types: _no_pruning_of_external_types,
+            path_as_rust_names: _no_pruning_of_past_as_rust_names,
+            arch: _no_pruning_of_arch,
+        } = &**current_crate;
+        for f in functions {
+            reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+        }
+        for f in reveal_groups {
+            reach(&mut state.reached_functions, &mut state.worklist_reveal_groups, &f.x.name);
+        }
+        for d in datatypes {
+            let t = ReachedType::Datatype(d.x.path.clone());
+            reach(&mut state.reached_types, &mut state.worklist_types, &t);
+        }
+        for a in assoc_type_impls {
+            reach(
+                &mut state.reached_assoc_type_impls,
+                &mut state.worklist_assoc_type_impls,
+                &a.x.prune_name(),
+            );
+        }
+        for i in trait_impls {
+            reach(&mut state.reached_trait_impls, &mut state.worklist_trait_impls, &i.x.impl_path);
+        }
+        for m in modules {
+            reach(&mut state.reached_modules, &mut state.worklist_modules, &m.x.path);
+        }
+    }
+
+    let mut root_modules_reveal: Vec<Fun> = Vec::new();
+    for m in &krate.modules {
+        if is_root_module(&m.x.path) {
+            reach(&mut state.reached_modules, &mut state.worklist_modules, &m.x.path);
+            if let Some(reveals) = &m.x.reveals {
+                root_modules_reveal.extend(reveals.x.clone());
+            }
+        }
+    }
 
     // Collect all functions that our module reveals:
-    let this_module_reveals = krate
-        .modules
-        .iter()
-        .find(|m| &m.x.path == module)
-        .map(|m| m.x.reveals.clone())
-        .expect("module declaration for current module");
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     for f in &krate.functions {
-        if is_root(f) {
+        if is_root_function(f) {
             if let Some(body) = &f.x.body {
                 crate::ast_visitor::expr_visitor_check::<(), _>(
                     body,
@@ -527,9 +611,15 @@ pub fn prune_krate_for_module(
             }
         }
     }
-    for f in this_module_reveals.iter().flat_map(|o| o.x.iter()) {
+    let reveal_group_set: HashSet<Fun> =
+        krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+    for f in &root_modules_reveal {
         revealed_functions.insert(f.clone());
-        state.reached_functions.insert(f.clone());
+        if reveal_group_set.contains(f) {
+            reach(&mut state.reached_functions, &mut state.worklist_reveal_groups, f);
+        } else {
+            reach(&mut state.reached_functions, &mut state.worklist_functions, f);
+        }
     }
     for group in &krate.reveal_groups {
         if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported {
@@ -547,21 +637,21 @@ pub fn prune_krate_for_module(
     let mut datatypes: Vec<Datatype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.reveal_groups {
-        if is_visible_to(&f.x.visibility, module) {
+        if is_visible_to_or_true(&f.x.visibility, &module) {
             reveal_groups.push(f.clone());
             if revealed_functions.contains(&f.x.name) {
-                state.reached_functions.insert(f.x.name.clone());
-                state.worklist_reveal_groups.push(f.x.name.clone());
+                reach(&mut state.reached_functions, &mut state.worklist_reveal_groups, &f.x.name);
             }
         }
     }
     overapproximate_revealed_functions(&mut revealed_functions, &reveal_groups);
     for f in &krate.functions {
-        if is_root(f) {
-            // our function
+        if module.is_none() || is_root_function(f) {
             functions.push(f.clone());
-            state.reached_functions.insert(f.x.name.clone());
-            state.worklist_functions.push(f.x.name.clone());
+            if is_root_function(f) {
+                // our function
+                reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+            }
             continue;
         }
         // Remove body if any of the following are true:
@@ -569,9 +659,14 @@ pub fn prune_krate_for_module(
         // - function is abstract
         // - function is opaque and not revealed
         // - function is exec or proof
+        // (when optimizing for modules, after well-formedness checks)
         let vis = f.x.visibility.clone();
-        let is_vis = is_visible_to(&vis, module);
-        let within_module = is_visible_to_of_owner(&f.x.owning_module, module);
+        let is_vis = is_visible_to_or_true(&vis, &module);
+        let within_module = if let Some(module) = &module {
+            is_visible_to_of_owner(&f.x.owning_module, module)
+        } else {
+            true
+        };
         let is_non_opaque =
             if within_module { f.x.fuel > 0 } else { f.x.fuel > 0 && f.x.publish == Some(true) };
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
@@ -594,16 +689,16 @@ pub fn prune_krate_for_module(
     }
     for d in &krate.datatypes {
         match &d.x.owning_module {
-            Some(path) if path == module => {
+            Some(path) if is_root_module(path) => {
                 // our datatype
                 let t = ReachedType::Datatype(d.x.path.clone());
-                state.reached_types.insert(t.clone());
-                state.worklist_types.push(t);
+                reach(&mut state.reached_types, &mut state.worklist_types, &t);
             }
             _ => {}
         }
-        let is_vis = is_visible_to(&d.x.visibility, module);
-        let is_transparent = is_datatype_transparent(module, &d);
+        let is_vis = is_visible_to_or_true(&d.x.visibility, &module);
+        let is_transparent =
+            if let Some(module) = &module { is_datatype_transparent(module, &d) } else { true };
         if is_vis {
             if is_transparent {
                 datatypes.push(d.clone());
@@ -613,6 +708,9 @@ pub fn prune_krate_for_module(
                 datatypes.push(Spanned::new(d.span.clone(), datatype));
             }
         }
+    }
+    if module.is_none() {
+        // Make sure to keep our own crate's declarations for well-formedness checks
     }
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
@@ -627,7 +725,9 @@ pub fn prune_krate_for_module(
     let mut all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
-        if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &f.x.kind {
+        if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. }
+        | FunctionKind::ForeignTraitMethodImpl { method, trait_typ_args, .. } = &f.x.kind
+        {
             let self_typ = &trait_typ_args[0];
             let key = (typ_to_reached_type(self_typ), method.clone());
             if !method_map.contains_key(&key) {
@@ -693,7 +793,7 @@ pub fn prune_krate_for_module(
             }
             typ_to_trait_impls.get_mut(&t).unwrap().push(imp.x.impl_path.clone());
         }
-        assert!(!trait_impl_map.contains_key(&imp.x.impl_path));
+        assert!(module.is_none() || !trait_impl_map.contains_key(&imp.x.impl_path));
         trait_impl_map.insert(imp.x.impl_path.clone(), trait_impl);
     }
 
@@ -739,12 +839,14 @@ pub fn prune_krate_for_module(
         .map(|mm| {
             mm.map_x(|m| ModuleX {
                 path: m.path.clone(),
-                reveals: if &m.path == module { m.reveals.clone() } else { None },
+                reveals: if is_root_module(&m.path) { m.reveals.clone() } else { None },
             })
         })
         .collect();
 
-    debug_assert!(modules.iter().filter(|m| m.x.reveals.is_some()).count() <= 1);
+    debug_assert!(
+        module.is_none() || modules.iter().filter(|m| m.x.reveals.is_some()).count() <= 1
+    );
 
     let kratex = KrateX {
         functions: functions
