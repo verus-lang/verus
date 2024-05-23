@@ -9,7 +9,7 @@ use crate::ast::{
     FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt, Trait,
     TraitX, Typ, TypX,
 };
-use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
+use crate::ast_util::{is_visible_to, is_visible_to_of_owner, is_visible_to_or_true};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{array_index_fun, fn_inv_name, fn_namespace_name, Spanned};
@@ -88,17 +88,6 @@ struct State {
     mono_abstract_datatypes: HashSet<MonoTyp>,
     lambda_types: HashSet<usize>,
     fndef_types: HashSet<Fun>,
-}
-
-pub fn is_visible_to_opt(
-    target_visibility: &crate::ast::Visibility,
-    source_module: &Option<Path>,
-) -> bool {
-    if let Some(source_module) = source_module {
-        is_visible_to(target_visibility, source_module)
-    } else {
-        true
-    }
 }
 
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
@@ -648,7 +637,7 @@ pub fn prune_krate_for_module_or_krate(
     let mut datatypes: Vec<Datatype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.reveal_groups {
-        if is_visible_to_opt(&f.x.visibility, &module) {
+        if is_visible_to_or_true(&f.x.visibility, &module) {
             reveal_groups.push(f.clone());
             if revealed_functions.contains(&f.x.name) {
                 reach(&mut state.reached_functions, &mut state.worklist_reveal_groups, &f.x.name);
@@ -672,7 +661,7 @@ pub fn prune_krate_for_module_or_krate(
         // - function is exec or proof
         // (when optimizing for modules, after well-formedness checks)
         let vis = f.x.visibility.clone();
-        let is_vis = is_visible_to_opt(&vis, &module);
+        let is_vis = is_visible_to_or_true(&vis, &module);
         let within_module = if let Some(module) = &module {
             is_visible_to_of_owner(&f.x.owning_module, module)
         } else {
@@ -707,7 +696,7 @@ pub fn prune_krate_for_module_or_krate(
             }
             _ => {}
         }
-        let is_vis = is_visible_to_opt(&d.x.visibility, &module);
+        let is_vis = is_visible_to_or_true(&d.x.visibility, &module);
         let is_transparent =
             if let Some(module) = &module { is_datatype_transparent(module, &d) } else { true };
         if is_vis {
