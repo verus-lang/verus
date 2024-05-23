@@ -521,6 +521,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "doubly-linked-xor"
+version = "0.1.0"
+dependencies = [
+ "builtin",
+ "builtin_macros",
+ "vstd",
+]
+
+[[package]]
+name = "doubly-linked-xor-test"
+version = "0.1.0"
+dependencies = [
+ "builtin",
+ "builtin_macros",
+ "doubly-linked-xor",
+ "vstd",
+]
+
+[[package]]
+name = "doubly-linked-xor-test-using-verus-sysroot"
+version = "0.1.0"
+dependencies = [
+ "doubly-linked-xor",
+]
+
+[[package]]
 name = "dtoa"
 version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

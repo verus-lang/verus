@@ -1,0 +1,11 @@
+[package]
+name = "doubly-linked-xor-test-using-verus-sysroot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+doubly-linked-xor = { path = "../doubly-linked-xor" }
+
+[package.metadata.verus]
+verify = true
+imports = ["doubly_linked_xor"]

@@ -20,6 +20,9 @@ members = [
   "tools/internals_interface",
   "tools/line_count",
   "tools/qi-graph",
+  "cargo-verus-illustration/doubly-linked-xor",
+  "cargo-verus-illustration/doubly-linked-xor-test",
+  "cargo-verus-illustration/doubly-linked-xor-test-using-verus-sysroot",
 ]
 
 # do not modify the following two lines

@@ -1,0 +1,14 @@
+[package]
+name = "doubly-linked-xor-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../vstd" }
+builtin = { path = "../../builtin" }
+builtin_macros = { path = "../../builtin_macros" }
+doubly-linked-xor = { path = "../doubly-linked-xor", features = ["explicit-verus-deps"] }
+
+[package.metadata.verus]
+verify = true
+imports = ["doubly_linked_xor"]
