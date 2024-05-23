@@ -1,7 +1,5 @@
 #![allow(unused_imports)]
-use crate::prelude::*;
-use builtin::*;
-use builtin_macros::*;
+use super::super::prelude::*;
 
 macro_rules! num_specs {
     ($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr) => {

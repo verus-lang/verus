@@ -1,8 +1,7 @@
 //! The [`calc`] macro provides support for reasoning about a structured proof calculation.
 #![allow(unused_imports)]
-use crate::pervasive::*;
-use builtin::*;
-use builtin_macros::*;
+use super::pervasive::*;
+use super::prelude::*;
 
 verus! {
 

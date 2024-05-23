@@ -1,9 +1,7 @@
 #[allow(unused_imports)]
-use crate::pervasive::*;
+use super::pervasive::*;
 #[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 // TODO:
 //  * utility for conveniently creating unique namespaces
@@ -122,8 +120,8 @@ pub trait InvariantPredicate<K, V> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct AtomicInvariant<K, V, Pred> {
-    dummy: builtin::SyncSendIfSend<V>,
-    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
+    dummy: super::prelude::SyncSendIfSend<V>,
+    dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 /// A `LocalInvariant` is a ghost object that provides "interior mutability"
@@ -163,8 +161,8 @@ pub struct AtomicInvariant<K, V, Pred> {
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct LocalInvariant<K, V, Pred> {
-    dummy: builtin::SendIfSend<V>,
-    dummy1: builtin::AlwaysSyncSend<(K, Pred, *mut V)>,
+    dummy: super::prelude::SendIfSend<V>,
+    dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
 macro_rules! declare_invariant_impl {
@@ -236,7 +234,26 @@ pub struct InvariantBlockGuard;
 
 // In the "Logical Paradoxes" section of the Iris 4.1 Reference
 // (`https://plv.mpi-sws.org/iris/appendix-4.1.pdf`), they show that
-// opening invariants carries the risk of unsoundness. One solution to
+// opening invariants carries the risk of unsoundness.
+//
+// The paradox is similar to "Landin's knot", a short program that implements
+// an infinite loop by combining two features: higher-order closures
+// and mutable state:
+//
+//    let r := new_ref();
+//    r := () -> {
+//        let f = !r;
+//        f();
+//    };
+//    let f = !r;
+//    f();
+//
+// Invariants effectively serve as "mutable state"
+// Therefore, in order to implement certain higher-order features
+// like "proof closures" or "dyn", we need to make sure we have an
+// answer to this paradox.
+//
+// One solution to
 // this, described in the paper "Later Credits: Resourceful Reasoning
 // for the Later Modality" by Spies et al. (available at
 // `https://plv.mpi-sws.org/later-credits/paper-later-credits.pdf`) is
@@ -299,30 +316,13 @@ pub fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>)
 //   });
 //
 //  where `inner` will have type `X`.
-//
-//  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
-//  last the entire block.
-//
-//  TODO: there's an issue with with plan; for a LocalInvariant, the body might be
-//  nonterminating, in which case the call to open_invariant_end will be ignored by
-//  Rust's borrowck, and as a result, the lifetime doesn't get extended properly.
-//  To fix this, I gave `into_inner` a specification that it opens the relevant
-//  name, thus preventing any problems the same way we prevent re-entrancy.
-//  However, this means guard no longer serves any purpose. Therefore, we should either:
-//
-//    - Commit to using the 'guard' object to extend the lifetime, which means
-//      figuring out to make this system work in the non-terminating case, or
-//
-//    - Commit to using the opens_invariants specification on into_inner to prevent
-//      unsoundness, in which case we should be able to remove the 'guard' object
-//      entirely.
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
     _inv: &'a AtomicInvariant<K, V, Pred>,
-) -> (&'a InvariantBlockGuard, V) {
+) -> (InvariantBlockGuard, V) {
     unimplemented!();
 }
 
@@ -332,7 +332,7 @@ pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
 #[verifier::external] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
     _inv: &'a LocalInvariant<K, V, Pred>,
-) -> (&'a InvariantBlockGuard, V) {
+) -> (InvariantBlockGuard, V) {
     unimplemented!();
 }
 
@@ -340,7 +340,7 @@ pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_invariant_end"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
-pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
+pub fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) {
     unimplemented!();
 }
 
@@ -397,9 +397,9 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
         #[cfg(verus_keep_ghost_body)]
-        let credit = $crate::invariant::create_open_invariant_credit();
+        let credit = $crate::vstd::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
+            $crate::vstd::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
         )
     };
 }
@@ -407,7 +407,7 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_atomic_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
     };
 }
 
@@ -416,13 +416,13 @@ macro_rules! open_atomic_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }
@@ -432,13 +432,13 @@ macro_rules! open_atomic_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_in_proof($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }
@@ -551,16 +551,16 @@ pub use open_atomic_invariant_internal;
 macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
         #[cfg(verus_keep_ghost_body)]
-        let credit = $crate::invariant::create_open_invariant_credit();
+        let credit = $crate::vstd::invariant::create_open_invariant_credit();
         ::builtin_macros::verus_exec_inv_macro_exprs!(
-            $crate::invariant::open_local_invariant_internal!(credit => $($tail)*))
+            $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
     };
 }
 
 #[macro_export]
 macro_rules! open_local_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::invariant::open_local_invariant_in_proof_internal!($($tail)*))
+        ::builtin_macros::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_local_invariant_in_proof_internal!($($tail)*))
     };
 }
 
@@ -569,12 +569,12 @@ macro_rules! open_local_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
             #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }
@@ -584,12 +584,12 @@ macro_rules! open_local_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::spend_open_invariant_credit_in_proof($credit_expr);
+            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
             #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
-            $crate::invariant::open_invariant_end(guard, $iident);
+            $crate::vstd::invariant::open_invariant_end(guard, $iident);
         }
     }
 }

@@ -22,6 +22,37 @@ const COMMON: &str = code_str! {
 };
 
 #[macro_export]
+macro_rules! check_not_copy {
+    ($name:ident, $name2:ident, $tparams:expr, $t:expr) => {
+        test_verify_one_file! {
+            #[test] $name COMMON.to_string() + &"
+                fn test1<X>(x: X) { }
+                fn test2$tparams(t: $t) {
+                    test1(t);
+                    test1(t);
+                }
+                ".replace("$tparams", $tparams)
+                .replace("$t", $t)
+            => Err(e) => assert_rust_error_msg(e, "use of moved value")
+        }
+
+        test_verify_one_file! {
+            #[test] $name2 COMMON.to_string() + &"
+                ::builtin_macros::verus!{
+                proof fn test1<X>(tracked x: X) { }
+                proof fn test2$tparams(tracked t: $t) {
+                    test1(t);
+                    test1(t);
+                }
+                }
+                ".replace("$tparams", $tparams)
+                .replace("$t", $t)
+            => Err(e) => assert_vir_error_msg(e, "use of moved value")
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! check_send_sync {
     ($name:ident, $tparams:expr, $t:expr) => {
         test_verify_one_file! {
@@ -199,6 +230,13 @@ check_covariant!(
     "vstd::raw_ptr::PointsTo<$P>"
 );
 
+check_not_copy!(
+    raw_ptr_points_copy,
+    raw_ptr_points_copy2,
+    "<T: Copy>",
+    "vstd::raw_ptr::PointsTo<T>"
+);
+
 // PPtr
 
 check_send_sync!(ptr_points_to_send_sync, "<T: Send + Sync>", "vstd::ptr::PointsTo<T>");
@@ -225,6 +263,8 @@ check_covariant!(
     "",
     "vstd::cell::PointsTo<$P>"
 );
+
+check_not_copy!(pcell_points_copy, pcell_points_copy2, "<T: Copy>", "vstd::cell::PointsTo<T>");
 
 // LocalInvariant
 
@@ -255,6 +295,16 @@ check_invariant!(
     "vstd::invariant::LocalInvariant<(), $P, Pred2>"
 );
 
+// I think it might be ok to have
+// impl<T: Copy> Copy for LocalInvariant<_, T, _>
+// But I need to think about it
+check_not_copy!(
+    local_points_copy,
+    local_points_copy2,
+    "<T: Copy>",
+    "vstd::invariant::LocalInvariant<(), T, Pred<(), T>>"
+);
+
 // AtomicInvariant
 
 check_send_sync!(
@@ -281,4 +331,11 @@ check_invariant!(
     atomic_invariant2,
     "",
     "vstd::invariant::AtomicInvariant<(), $P, Pred2>"
+);
+
+check_not_copy!(
+    atomic_points_copy,
+    atomic_points_copy2,
+    "<T: Copy>",
+    "vstd::invariant::AtomicInvariant<(), T, Pred<(), T>>"
 );

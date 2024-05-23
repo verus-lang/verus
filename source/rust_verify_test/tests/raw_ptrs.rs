@@ -112,7 +112,72 @@ test_verify_one_file! {
             assume(pt.ptr() == x);
             let _ = ptr_ref(x, Tracked(&pt)); // FAILS
         }
-    } => Err(err) => assert_fails(err, 7)
+
+        fn cast_test(x: *mut u8) {
+            let y = x as *mut u16;
+            assert(y@.addr == x@.addr);
+            assert(y@.provenance == x@.provenance);
+            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+        }
+
+        fn cast_test2(x: *mut [u8]) {
+            let y = x as *mut u16;
+            assert(y@.addr == x@.addr);
+            assert(y@.provenance == x@.provenance);
+            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+        }
+
+        fn cast_test3(x: *mut [u64; 16]) {
+            let y = x as *mut [u64];
+            assert(y@.addr == x@.addr);
+            assert(y@.provenance == x@.provenance);
+            assert(y@.metadata == vstd::raw_ptr::Metadata::Length(16));
+        }
+
+        proof fn cast_proof_test(x: *mut u8) {
+            let y = x as *mut u16;
+            assert(y@.addr == x@.addr);
+            assert(y@.provenance == x@.provenance);
+            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+        }
+
+        proof fn cast_proof_test2(x: *mut [u8]) {
+            let y = x as *mut u16;
+            assert(y@.addr == x@.addr);
+            assert(y@.provenance == x@.provenance);
+            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+        }
+
+        proof fn cast_proof_test3(x: *mut [u64; 16]) {
+            let y = x as *mut [u64];
+            assert(y@.addr == x@.addr);
+            assert(y@.provenance == x@.provenance);
+            assert(y@.metadata == vstd::raw_ptr::Metadata::Length(16));
+        }
+
+        fn test_strict_provenance(a: *mut u64) {
+            let ad = a.addr();
+            assert(ad == a@.addr);
+
+            let b = a.with_addr(7);
+            assert(b@.addr == 7);
+            assert(b@.provenance == a@.provenance);
+            assert(b@.metadata == a@.metadata);
+
+            assert(a == b); // FAILS
+        }
+
+        fn test_strict_provenance_const(a: *const u64) {
+            let ad = a.addr();
+            assert(ad == a@.addr);
+
+            let b = a.with_addr(7);
+            assert(b@.addr == 7);
+            assert(b@.provenance == a@.provenance);
+            assert(b@.metadata == a@.metadata);
+        }
+
+    } => Err(err) => assert_fails(err, 8)
 }
 
 test_verify_one_file! {
@@ -178,14 +243,6 @@ test_verify_one_file! {
     #[test] not_supported_int_to_ptr_cast verus_code! {
         fn test(x: *mut u8) {
             let y = x as usize;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast")
-}
-
-test_verify_one_file! {
-    #[test] not_supported_ptr_to_ptr_cast verus_code! {
-        fn test(x: *mut u32) {
-            let y = x as *mut u8;
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast")
 }

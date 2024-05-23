@@ -1,11 +1,11 @@
-use vstd::{prelude::*};
+use vstd::prelude::*;
 
 verus! {
 
 fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
     requires
-        forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
-        exists|i:int| 0 <= i < v.len() && k == v[i],
+        forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        exists|i: int| 0 <= i < v.len() && k == v[i],
     ensures
         r < v.len(),
         k == v[r as int],
@@ -15,10 +15,9 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
     while i1 != i2
         invariant
             i2 < v.len(),
-            exists|i:int| i1 <= i <= i2 && k == v[i],
-            forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
-        decreases
-            i2 - i1,
+            exists|i: int| i1 <= i <= i2 && k == v[i],
+            forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        decreases i2 - i1,
     {
         let ix = i1 + (i2 - i1) / 2;
         if v[ix] < k {
@@ -54,8 +53,8 @@ fn reverse(v: &mut Vec<u64>)
 #[verifier::loop_isolation(false)]
 fn binary_search_no_spinoff(v: &Vec<u64>, k: u64) -> (r: usize)
     requires
-        forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
-        exists|i:int| 0 <= i < v.len() && k == v[i],
+        forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        exists|i: int| 0 <= i < v.len() && k == v[i],
     ensures
         r < v.len(),
         k == v[r as int],
@@ -65,19 +64,16 @@ fn binary_search_no_spinoff(v: &Vec<u64>, k: u64) -> (r: usize)
     while i1 != i2
         invariant
             i2 < v.len(),
-            exists|i:int| i1 <= i <= i2 && k == v[i],
-        decreases
-            i2 - i1,
+            exists|i: int| i1 <= i <= i2 && k == v[i],
+        decreases i2 - i1,
     {
         let ghost d = i2 - i1;
-
         let ix = i1 + (i2 - i1) / 2;
         if v[ix] < k {
             i1 = ix + 1;
         } else {
             i2 = ix;
         }
-
         assert(i2 - i1 < d);
     }
     i1
@@ -115,11 +111,9 @@ fn pusher() -> Vec<u64> {
     let ghost goal = Seq::new(5, |i: int| i as u64);
     assert(v@ =~= goal);
     assert(v[2] == 2);
-
     v.pop();
     v.push(4);
     assert(v@ =~= goal);
-
     v
 }
 
@@ -132,7 +126,6 @@ fn pop_test(t: Vec<u64>)
 {
     let mut t = t;
     let x = t.pop().unwrap();
-
     assert(uninterp_fn(x));
     assert(forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]));
 }
@@ -144,14 +137,10 @@ fn push_test(t: Vec<u64>, y: u64)
 {
     let mut t = t;
     t.push(y);
-
-    assert(
-        forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i])
-    );
+    assert(forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]));
 }
 
 } // verus!
-
 fn main() {
     let mut v = vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
     println!("{}", binary_search(&v, 70));

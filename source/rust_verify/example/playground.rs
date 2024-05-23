@@ -1,5 +1,5 @@
-use builtin_macros::*;
 use builtin::*;
+use builtin_macros::*;
 
 verus! {
 
@@ -36,7 +36,7 @@ fn foo(s: S<u32>) {
 //     ensures forall|x: nat, y: nat| x > 2318 && y < 100 ==> f(x, y),
 // {
 // }
-
-fn main() {}
+fn main() {
+}
 
 } // verus!

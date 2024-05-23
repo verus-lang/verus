@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use builtin::*;
-use vstd::{*, pervasive::*};
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::state_machine;
 
@@ -39,4 +39,4 @@ state_machine!(
     }
 );
 
-fn main() { }
+fn main() {}

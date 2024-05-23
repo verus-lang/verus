@@ -3,16 +3,16 @@
 use alloc::alloc::Layout;
 use core::{marker, mem, mem::MaybeUninit};
 
-use crate::layout::*;
-use crate::modes::*;
-use crate::pervasive::*;
-use crate::prelude::*;
-use crate::*;
+use super::layout::*;
+use super::modes::*;
+use super::pervasive::*;
+use super::prelude::*;
+use super::*;
 use builtin::*;
 use builtin_macros::*;
 
 #[cfg(verus_keep_ghost)]
-use crate::set_lib::set_int_range;
+use super::set_lib::set_int_range;
 
 verus! {
 
@@ -131,7 +131,7 @@ verus! {
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 // TODO just replace this with `*mut V`
 #[repr(C)]
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PPtr<V> {
     pub uptr: *mut V,
@@ -139,12 +139,12 @@ pub struct PPtr<V> {
 
 // PPtr is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
 // It doesn't matter if you send the pointer to another thread if you can't access it.
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<T> Sync for PPtr<T> {
 
 }
 
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<T> Send for PPtr<T> {
 
 }
@@ -157,7 +157,7 @@ unsafe impl<T> Send for PPtr<T> {
 /// `View` object, [`PointsToData`].
 ///
 /// See the [`PPtr`] documentation for more details.
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub tracked struct PointsTo<V> {
     phantom: marker::PhantomData<V>,
@@ -188,13 +188,13 @@ pub broadcast group group_ptr_axioms {
 }
 
 /// Points to uninitialized memory.
-#[verifier(external_body)]
+#[verifier::external_body]
 pub tracked struct PointsToRaw {
     no_copy: NoCopy,
 }
 
-#[verifier(external_body)]
-#[verifier(reject_recursive_types_in_ground_variants(V))]
+#[verifier::external_body]
+#[verifier::reject_recursive_types_in_ground_variants(V)]
 pub tracked struct Dealloc<V> {
     phantom: marker::PhantomData<V>,
     no_copy: NoCopy,
@@ -204,7 +204,7 @@ pub ghost struct DeallocData {
     pub pptr: int,
 }
 
-#[verifier(external_body)]
+#[verifier::external_body]
 pub tracked struct DeallocRaw {
     no_copy: NoCopy,
 }
@@ -222,7 +222,7 @@ impl<V> PointsTo<V> {
     /// (Note that null pointers _do_ exist and are representable by `PPtr`;
     /// however, it is not possible to obtain a `PointsTo` token for
     /// any such a pointer.)
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn is_nonnull(tracked &self)
         ensures
             self@.pptr != 0,
@@ -230,7 +230,7 @@ impl<V> PointsTo<V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn leak_contents(tracked &mut self)
         ensures
             self@.pptr == old(self)@.pptr && self@.value.is_None(),
@@ -240,7 +240,7 @@ impl<V> PointsTo<V> {
 }
 
 impl<V> PointsTo<V> {
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         requires
             self@.value.is_None(),
@@ -251,7 +251,7 @@ impl<V> PointsTo<V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn borrow_raw(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
         requires
             self@.value.is_None(),
@@ -274,12 +274,12 @@ impl PointsToRaw {
         set_int_range(start, start + len) =~= self@.dom()
     }
 
-    #[verifier(inline)]
+    #[verifier::inline]
     pub open spec fn spec_index(self, i: int) -> u8 {
         self@[i]
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn is_nonnull(tracked &self)
         ensures
             !self@.dom().contains(0),
@@ -287,7 +287,7 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn is_in_bounds(tracked &self)
         ensures
             forall|i: int| self@.dom().contains(i) ==> 0 < i <= usize::MAX,
@@ -295,7 +295,7 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn empty() -> (tracked points_to_raw: Self)
         ensures
             points_to_raw@ == Map::<int, u8>::empty(),
@@ -303,7 +303,7 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn into_typed<V>(tracked self, start: int) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
@@ -316,7 +316,7 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn borrow_typed<V>(tracked &self, start: int) -> (tracked points_to: &PointsTo<V>)
         requires
             is_sized::<V>(),
@@ -329,7 +329,7 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
         ensures
             self@.dom().disjoint(other@.dom()),
@@ -338,7 +338,18 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    pub proof fn insert(tracked &mut self, tracked other: Self)
+        ensures
+            old(self)@.dom().disjoint(other@.dom()),
+            self@ == old(self)@.union_prefer_right(other@),
+    {
+        let tracked mut tmp = Self::empty();
+        tracked_swap(&mut tmp, self);
+        tmp = tmp.join(other);
+        tracked_swap(&mut tmp, self);
+    }
+
+    #[verifier::external_body]
     pub proof fn borrow_join<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined:
         &'a Self)
         ensures
@@ -350,7 +361,7 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
         requires
             range.subset_of(self@.dom()),
@@ -361,7 +372,21 @@ impl PointsToRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    pub proof fn take(tracked &mut self, range: Set<int>) -> (tracked res: Self)
+        requires
+            range.subset_of(old(self)@.dom()),
+        ensures
+            res@ == old(self)@.restrict(range),
+            self@ == old(self)@.remove_keys(range),
+    {
+        let tracked mut tmp = Self::empty();
+        tracked_swap(&mut tmp, self);
+        let tracked (l, mut r) = tmp.split(range);
+        tracked_swap(&mut r, self);
+        l
+    }
+
+    #[verifier::external_body]
     pub proof fn borrow_subset(tracked &self, range: Set<int>) -> (tracked res: &Self)
         requires
             range.subset_of(self@.dom()),
@@ -377,7 +402,7 @@ impl<V> Dealloc<V> {
 }
 
 impl<V> Dealloc<V> {
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn is_nonnull(tracked &self)
         ensures
             self@.pptr != 0,
@@ -385,7 +410,7 @@ impl<V> Dealloc<V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn into_raw(tracked self) -> (tracked dealloc_raw: DeallocRaw)
         ensures
             dealloc_raw@.pptr === self@.pptr,
@@ -396,7 +421,7 @@ impl<V> Dealloc<V> {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn borrow_raw(tracked &self) -> (tracked dealloc_raw: &DeallocRaw)
         ensures
             dealloc_raw@.pptr === self@.pptr,
@@ -411,7 +436,7 @@ impl<V> Dealloc<V> {
 impl DeallocRaw {
     pub spec fn view(self) -> DeallocRawData;
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn is_nonnull(tracked &self)
         ensures
             self@.pptr != 0,
@@ -419,7 +444,7 @@ impl DeallocRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn into_typed<V>(tracked self) -> (tracked dealloc: Dealloc<V>)
         requires
             is_sized::<V>(),
@@ -431,7 +456,7 @@ impl DeallocRaw {
         unimplemented!();
     }
 
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn borrow_typed<V>(tracked &self) -> (tracked dealloc: &Dealloc<V>)
         requires
             is_sized::<V>(),
@@ -445,7 +470,7 @@ impl DeallocRaw {
 }
 
 impl<A> Clone for PPtr<A> {
-    #[verifier(external_body)]
+    #[verifier::external_body]
     fn clone(&self) -> (s: Self)
         ensures
             s == *self,
@@ -461,7 +486,7 @@ impl<A> Copy for PPtr<A> {
 impl<V> PPtr<V> {
     /// Cast a pointer to an integer.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn to_usize(&self) -> (u: usize)
         ensures
             u as int == self.id(),
@@ -484,7 +509,7 @@ impl<V> PPtr<V> {
     /// In Verus, casting to a pointer is likewise always possible,
     /// while dereferencing it is only allowed when the right preconditions are met.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn from_usize(u: usize) -> (p: Self)
         ensures
             p.id() == u as int,
@@ -495,7 +520,7 @@ impl<V> PPtr<V> {
 
     /// Allocates heap memory for type `V`, leaving it uninitialized.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn empty() -> (pt: (PPtr<V>, Tracked<PointsTo<V>>, Tracked<Dealloc<V>>))
         ensures
             pt.1@@ === (PointsToData { pptr: pt.0.id(), value: None }),
@@ -510,7 +535,7 @@ impl<V> PPtr<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn alloc(size: usize, align: usize) -> (pt: (
         PPtr<V>,
         Tracked<PointsToRaw>,
@@ -540,7 +565,7 @@ impl<V> PPtr<V> {
     /// In the ghost perspective, this updates `perm.value`
     /// from `None` to `Some(v)`.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             self.id() === old(perm)@.pptr,
@@ -566,7 +591,7 @@ impl<V> PPtr<V> {
     /// from `Some(v)` to `None`,
     /// while returning the `v` as an `exec` value.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
             self.id() === old(perm)@.pptr,
@@ -585,7 +610,7 @@ impl<V> PPtr<V> {
     /// Swaps the `in_v: V` passed in as an argument with the value in memory.
     /// Requires the memory to be initialized, and leaves it initialized with the new value.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pptr,
@@ -609,7 +634,7 @@ impl<V> PPtr<V> {
     // Note that `self` is just a pointer, so it doesn't need to outlive
     // the returned borrow.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn borrow<'a>(&self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             self.id() === perm@.pptr,
@@ -629,7 +654,7 @@ impl<V> PPtr<V> {
     /// This consumes `perm`, since it will no longer be safe to access
     /// that memory location.
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn dispose(
         &self,
         Tracked(perm): Tracked<PointsTo<V>>,
@@ -652,7 +677,7 @@ impl<V> PPtr<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn dealloc(
         &self,
         size: usize,

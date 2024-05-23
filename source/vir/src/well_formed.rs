@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun,
-    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr,
-    VirErrAs,
+    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, Trait, TypX, UnaryOp, UnaryOpr,
+    VirErr, VirErrAs,
 };
 use crate::ast_util::{
     fun_as_friendly_rust_name, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
@@ -192,8 +192,8 @@ fn check_one_expr(
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             match kind {
                 CallTargetKind::Static => {}
-                CallTargetKind::Method(None) => {}
-                CallTargetKind::Method(Some((resolved_fun, _, _))) => {
+                CallTargetKind::Dynamic => {}
+                CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
                     check_path_and_get_function(
                         ctxt,
                         resolved_fun,
@@ -337,7 +337,7 @@ fn check_one_expr(
             if function.x.attrs.nonlinear {
                 return Err(error(
                     &expr.span,
-                    "assert_by_query not allowed in #[verifier(nonlinear)] functions",
+                    "assert_by_query not allowed in #[verifier::nonlinear] functions",
                 ));
             }
 
@@ -981,6 +981,24 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
     err
 }
 
+pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait, msg: &str) -> Message {
+    let add_label = |err: Message, tr: &Trait| match &tr.x.proxy {
+        Some(proxy) => err.primary_label(
+            &proxy.span,
+            "specification declared via `external_trait_specification`",
+        ),
+        None => err.primary_label(&tr.span, "declared here (and not marked as `external`)"),
+    };
+
+    let err = crate::messages::error_bare(format!(
+        "{msg} `{:}`",
+        crate::ast_util::path_as_friendly_rust_name(&tr1.x.name)
+    ));
+    let err = add_label(err, tr1);
+    let err = add_label(err, tr2);
+    err
+}
+
 // Pre-merge check.
 // TODO: We should probably be doing all the checks on the just the pre-merged crate declarations,
 // even if we need to perform lookups from the merged crate.
@@ -1027,6 +1045,16 @@ pub fn check_crate(
             None => {}
         }
         dts.insert(datatype.x.path.clone(), datatype.clone());
+    }
+    let mut traits: HashMap<Path, Trait> = HashMap::new();
+    for tr in krate.traits.iter() {
+        match traits.get(&tr.x.name) {
+            Some(other_tr) => {
+                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"));
+            }
+            None => {}
+        }
+        traits.insert(tr.x.name.clone(), tr.clone());
     }
     let reveal_groups: HashSet<Fun> =
         krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();

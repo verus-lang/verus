@@ -378,7 +378,61 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] view_ref_unsized verus_code! {
+        // https://github.com/verus-lang/verus/issues/1104
+        use vstd::prelude::*;
+        fn id<T: View>(t: T) -> T {
+            t
+        }
+        fn test() {
+            let bytes: [u8; 4] = [0, 0, 0, 0];
+            let byte_slice: &[u8] = bytes.as_slice();
+            id(byte_slice);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_equality_lifetime verus_code! {
+        // https://github.com/verus-lang/verus/issues/1130
+        trait T<J, K> {
+            type X;
+            fn f() -> Self::X;
+        }
+
+        fn test<A, J, K, B: T<J, K, X = A>>(a: A, b: B) -> (A, A) {
+            (a, B::f())
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] supertrait_assoc_type_lifetime verus_code! {
+        // https://github.com/verus-lang/verus/issues/1132
+        enum E<A, B> {
+            Ok(A),
+            Err(B),
+        }
+
+        trait T {
+            type X;
+            spec fn foo(&self) -> E<Self::X, ()>;
+        }
+
+        trait U: T {}
+
+        proof fn test<A: U>(x: (A, )) {
+            match x.0.foo() {
+                E::Ok(_) => {}
+                E::Err(_) => {}
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
+        use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {
         }
     } => Ok(())

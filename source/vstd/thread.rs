@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::pervasive::*;
+use super::pervasive::*;
 use builtin::*;
 use builtin_macros::*;
 use core::marker;
@@ -11,7 +11,7 @@ verus! {
 /// (Wrapper around [`std::thread::JoinHandle`](https://doc.rust-lang.org/std/thread/struct.JoinHandle.html).)
 ///
 /// See the documentation of [`spawn()`](spawn) for more details.
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::reject_recursive_types(Ret)]
 pub struct JoinHandle<Ret> {
     handle: std::thread::JoinHandle<Ret>,
@@ -23,7 +23,7 @@ impl<Ret> JoinHandle<Ret> {
     pub spec fn predicate(&self, ret: Ret) -> bool;
 
     /// Wait for a thread to complete.
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn join(self) -> (r_result: Result<Ret, ()>)
         ensures
             match r_result {
@@ -103,7 +103,7 @@ impl<Ret> JoinHandle<Ret> {
 ///     }
 /// }
 /// ```
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn spawn<F, Ret>(f: F) -> (handle: JoinHandle<Ret>) where
     F: FnOnce() -> Ret,
     F: Send + 'static,
@@ -139,14 +139,14 @@ pub fn spawn<F, Ret>(f: F) -> (handle: JoinHandle<Ret>) where
 // will never be reused. There's also an `as_u64()` method, but it's unstable,
 // and right now it's not clear if it's going to have the same guarantee.
 // Regardless, it seems best to stick with Rust's opaque type here.
-#[verifier(external_body)]
+#[verifier::external_body]
 pub struct ThreadId {
     thread_id: std::thread::ThreadId,
 }
 
 /// Proof object that guarantees the owning thread has the given ThreadId.
 #[cfg(verus_keep_ghost)]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub tracked struct IsThread {}
 
 #[cfg(verus_keep_ghost)]
@@ -161,7 +161,7 @@ impl !Send for IsThread {
 
 // TODO: remove this when !Sync, !Send are supported by stable Rust
 #[cfg(not(verus_keep_ghost))]
-#[verifier(external_body)]
+#[verifier::external_body]
 pub tracked struct IsThread {
     _no_send_sync: core::marker::PhantomData<*const ()>,
 }
@@ -171,7 +171,7 @@ impl IsThread {
 
     /// Guarantees that any two `IsThread` objects on the same thread
     /// will have the same ID.
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn agrees(tracked self, tracked other: IsThread)
         ensures
             self@ == other@,
@@ -180,7 +180,7 @@ impl IsThread {
     }
 }
 
-#[verifier(external)]
+#[verifier::external]
 impl Clone for IsThread {
     #[cfg(verus_keep_ghost)]
     fn clone(&self) -> Self {
@@ -199,7 +199,7 @@ impl Copy for IsThread {
 
 /// Gets the current thread ID using Rust's [`Thread::id()`](https://doc.rust-lang.org/std/thread/struct.Thread.html#method.id)
 /// under the hood. Also returns a ghost object representing proof of being on this thread.
-#[verifier(external_body)]
+#[verifier::external_body]
 pub fn thread_id() -> (res: (ThreadId, Tracked<IsThread>))
     ensures
         res.1@@ == res.0,
@@ -210,7 +210,7 @@ pub fn thread_id() -> (res: (ThreadId, Tracked<IsThread>))
 }
 
 /// Returns _just_ the ghost object, without physically obtaining the thread ID.
-#[verifier(external_body)]
+#[verifier::external_body]
 pub proof fn ghost_thread_id() -> (tracked res: IsThread) {
     unimplemented!();
 }
@@ -218,18 +218,18 @@ pub proof fn ghost_thread_id() -> (tracked res: IsThread) {
 /// Tracked object that makes any tracked object `Send` or `Sync`.
 /// Requires the client to prove that they are the correct thread in order to
 /// access the underlying object.
-#[verifier(external_body)]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 tracked struct ThreadShareable<V> {
     phantom: marker::PhantomData<V>,
 }
 
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<V> Sync for ThreadShareable<V> {
 
 }
 
-#[verifier(external)]
+#[verifier::external]
 unsafe impl<V> Send for ThreadShareable<V> {
 
 }
@@ -240,7 +240,7 @@ impl<V> ThreadShareable<V> {
     pub spec fn id(&self) -> ThreadId;
 
     /// Recover the inner value provide we are on the same thread.
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn into(tracked self, tracked is_thread: IsThread) -> (tracked res: V)
         requires
             self.id() == is_thread@,
@@ -251,7 +251,7 @@ impl<V> ThreadShareable<V> {
     }
 
     /// Borrow the inner value provide we are on the same thread.
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn borrow(tracked &self, tracked is_thread: IsThread) -> (tracked res: &V)
         requires
             self.id() == is_thread@,
@@ -266,7 +266,7 @@ impl<V: Send> ThreadShareable<V> {
     /// Recover the inner value.
     /// Unlike `into`, this has no thread requirement, but it does
     /// require the inner type to be `Send`.
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn send_into(tracked self) -> (tracked res: V)
         ensures
             res == self@,
@@ -279,7 +279,7 @@ impl<V: Sync> ThreadShareable<V> {
     /// Borrow the inner value.
     /// Unlike `borrow`, this has no thread requirement, but it does
     /// require the inner type to be `Sync`.
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub proof fn sync_borrow(tracked &self) -> (tracked res: &V)
         ensures
             *res == self@,

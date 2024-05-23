@@ -1,4 +1,9 @@
+#[cfg(not(verus_verify_core))]
 pub use builtin::*;
+
+#[cfg(verus_verify_core)]
+pub use crate::builtin::*;
+
 pub use builtin_macros::*;
 
 pub use super::map::map;

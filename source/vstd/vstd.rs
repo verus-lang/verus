@@ -12,6 +12,7 @@
 #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
+#![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -101,3 +102,8 @@ pub broadcast group group_vstd_default {
 }
 
 } // verus!
+// This allows us to use `$crate::vstd` or `crate::vstd` to refer to vstd
+// both in verus_verify_core mode (vstd is a module) and out (vstd is a crate)
+#[cfg(not(verus_verify_core))]
+#[doc(hidden)]
+pub use crate as vstd;

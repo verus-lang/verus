@@ -84,7 +84,7 @@ value of the arguments passed to the function.  Experiments showed this typicall
 hurts performance, since it entails traversing the (large) AST nodes representing
 the arguments.  However, some examples need such caching to succceed (e.g., computing
 with the naive definition of Fibonacci).  Such functions can be annotated with
-`#[verifier(memoize)]`, which will cause their results to be cached during computation.
+`#[verifier::memoize]`, which will cause their results to be cached during computation.
 
 ## Current Limitations
 

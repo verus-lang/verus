@@ -1,7 +1,4 @@
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+use super::prelude::*;
 
 verus! {
 
@@ -22,7 +19,7 @@ pub trait DeepView {
     spec fn deep_view(&self) -> Self::V;
 }
 
-impl<A: View> View for &A {
+impl<A: View + ?Sized> View for &A {
     type V = A::V;
 
     #[verifier::inline]
@@ -31,7 +28,7 @@ impl<A: View> View for &A {
     }
 }
 
-impl<A: DeepView> DeepView for &A {
+impl<A: DeepView + ?Sized> DeepView for &A {
     type V = A::V;
 
     #[verifier::inline]
@@ -41,7 +38,7 @@ impl<A: DeepView> DeepView for &A {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: View> View for alloc::boxed::Box<A> {
+impl<A: View + ?Sized> View for alloc::boxed::Box<A> {
     type V = A::V;
 
     #[verifier::inline]
@@ -51,7 +48,7 @@ impl<A: View> View for alloc::boxed::Box<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: DeepView> DeepView for alloc::boxed::Box<A> {
+impl<A: DeepView + ?Sized> DeepView for alloc::boxed::Box<A> {
     type V = A::V;
 
     #[verifier::inline]

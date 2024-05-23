@@ -1,27 +1,28 @@
 // rust_verify/tests/example.rs expand-errors
-
 #![allow(unused_imports)]
 
-use builtin_macros::*;
 use builtin::*;
-use vstd::*;
-use vstd::modes::*;
+use builtin_macros::*;
 use vstd::map::*;
-use vstd::seq::*;
+use vstd::modes::*;
 use vstd::prelude::*;
+use vstd::seq::*;
+use vstd::*;
 
-verus!{
+verus! {
 
 spec fn e() -> bool;
+
 spec fn f() -> bool;
+
 spec fn g() -> bool;
+
 spec fn h() -> bool;
 
 spec fn k(i: int) -> bool;
 
 spec fn z() -> bool {
-    (e() ==> h())
-      && (forall |i: int| k(i))
+    (e() ==> h()) && (forall|i: int| k(i))
 }
 
 spec fn stuff() -> bool {
@@ -29,39 +30,47 @@ spec fn stuff() -> bool {
 }
 
 proof fn test()
-    requires f(),
+    requires
+        f(),
 {
     assert(stuff());
 }
 
 proof fn test_ret()
-    ensures z(),
+    ensures
+        z(),
 {
 }
 
 pub spec fn ai(i: int) -> bool;
+
 pub spec fn bi(i: int) -> bool;
+
 pub spec fn ci(i: int) -> bool;
 
 pub open spec fn all_a() -> bool {
-    forall |i: int| ai(i)
+    forall|i: int| ai(i)
 }
+
 pub open spec fn all_b() -> bool {
-    forall |i: int| bi(i)
+    forall|i: int| bi(i)
 }
+
 pub open spec fn all_c() -> bool {
-    forall |i: int| ci(i)
+    forall|i: int| ci(i)
 }
 
 pub proof fn test2(j: int)
-    requires forall |i: int| ai(i),
-        forall |i: int| (#[trigger] ai(i)) ==> bi(i)
+    requires
+        forall|i: int| ai(i),
+        forall|i: int| (#[trigger] ai(i)) ==> bi(i),
 {
     assert(ai(j) && bi(j) && ci(j));
 }
 
 pub proof fn test_let(j: int)
-    requires ai(j + 1)
+    requires
+        ai(j + 1),
 {
     assert({
         let k = j + 3;
@@ -71,7 +80,8 @@ pub proof fn test_let(j: int)
 }
 
 pub proof fn test_match(m: Option<int>)
-    requires m.is_some(),
+    requires
+        m.is_some(),
 {
     assert(match m {
         Some(x) => x == 5,
@@ -79,17 +89,13 @@ pub proof fn test_match(m: Option<int>)
     });
 }
 
-pub proof fn test_match3(foo: Foo)
-{
+pub proof fn test_match3(foo: Foo) {
     assert(match foo {
         Foo::Bar => false,
         Foo::Qux(z) => z == 0,
         Foo::Duck(w, y) => w == y,
     });
 }
-
-
-
 
 pub proof fn test3(a: bool, b: bool) {
     assert(a <==> b);
@@ -138,7 +144,9 @@ pub proof fn test11(a: u64, b: u64) {
 }
 
 #[verifier::external_body]
-pub struct OpaqueDT { u: u64 }
+pub struct OpaqueDT {
+    u: u64,
+}
 
 pub proof fn test12(a: OpaqueDT, b: OpaqueDT) {
     assert(a == b);
@@ -174,11 +182,14 @@ pub proof fn test18(b: u64, c: u64, e: u64, f: u64) {
     assert(Foo::Duck(b, c) == Foo::Duck(e, f));
 }
 
-
 #[verifier::opaque]
-spec fn some_opaque() -> bool { false }
+spec fn some_opaque() -> bool {
+    false
+}
 
-spec fn some_non_opaque() -> bool { false }
+spec fn some_non_opaque() -> bool {
+    false
+}
 
 proof fn test_opaque1() {
     assert(some_opaque());
@@ -208,12 +219,12 @@ spec fn recursive_function(i: int, base: bool) -> bool
 
 proof fn test_rec() {
     reveal_with_fuel(recursive_function, 3);
-    assert(recursive_function(3, true)); // should fail with "reached fuel limit for recursion"
+    assert(recursive_function(3, true));  // should fail with "reached fuel limit for recursion"
 }
 
 proof fn test_rec2() {
     reveal_with_fuel(recursive_function, 4);
-    assert(recursive_function(3, true)); // should pass
+    assert(recursive_function(3, true));  // should pass
 }
 
 proof fn test_rec3() {
@@ -221,6 +232,7 @@ proof fn test_rec3() {
     assert(recursive_function(3, false));
 }
 
-fn main() { }
-
+fn main() {
 }
+
+} // verus!

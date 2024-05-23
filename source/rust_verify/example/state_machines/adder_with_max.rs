@@ -1,15 +1,15 @@
 #[allow(unused_imports)]
 use builtin::*;
-use vstd::{*, pervasive::*};
+use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;
 
-tokenized_state_machine!{
+tokenized_state_machine! {
     AdderWithMax {
         fields {
             #[sharding(constant)]
             pub maximum: int,
-            
+
             #[sharding(variable)]
             pub number: int,
 
@@ -64,4 +64,4 @@ tokenized_state_machine!{
     }
 }
 
-fn main() { }
+fn main() {}

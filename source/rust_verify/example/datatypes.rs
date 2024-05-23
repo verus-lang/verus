@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, prelude::*, seq::*, modes::*};
+use vstd::{modes::*, prelude::*, seq::*, *};
 
 verus! {
 
@@ -11,7 +11,7 @@ enum List<A> {
 }
 
 spec fn len<A>(list: &List<A>) -> nat
-    decreases list
+    decreases list,
 {
     match list {
         List::Nil => 0,
@@ -37,27 +37,29 @@ fn get_len<A>(list: &List<A>) -> (r: u64)
         match iter {
             List::Nil => {
                 done = true;
-            }
+            },
             List::Cons(_, tl) => {
                 iter = tl;
                 proof {
                     reveal_with_fuel(len, 2);
                 }
                 n = n + 1;
-            }
+            },
         }
     }
     n
 }
 
 fn mk_range(start: u32, length: u32) -> (r: List<u32>)
-    requires 
+    requires
         start + length <= 0xffff_ffff,
-    ensures len::<u32>(&r) == length,
+    ensures
+        len::<u32>(&r) == length,
     decreases length,
 {
-    if length == 0 {List::Nil}
-    else {
+    if length == 0 {
+        List::Nil
+    } else {
         List::Cons(start, Box::new(mk_range(start + 1, length - 1)))
     }
 }
@@ -74,13 +76,23 @@ fn main() {
     assert(i == 104);
     let mut j: u64 = 0;
     match x {
-        List::Nil => { j = 1; }
-        List::Cons(n, _) => { j = n; }
+        List::Nil => {
+            j = 1;
+        },
+        List::Cons(n, _) => {
+            j = n;
+        },
     }
     assert(j == 100);
     let k: u32 = match List::Cons(100u64, Box::new(List::Nil)) {
-        List::Nil => { j = 11; 6 }
-        List::Cons(n, _) => { j = n + 1; 7 }
+        List::Nil => {
+            j = 11;
+            6
+        },
+        List::Cons(n, _) => {
+            j = n + 1;
+            7
+        },
     };
     assert(j == 101);
     assert(k == 7);

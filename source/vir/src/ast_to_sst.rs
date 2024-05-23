@@ -1292,7 +1292,7 @@ pub(crate) fn expr_to_stm_opt(
                 let has_type = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
                 let error = crate::messages::error(
                     &expr.span,
-                    "recommendation not met: value may be out of range of the target type (use `#[verifier(truncate)]` on the cast to silence this warning)",
+                    "recommendation not met: value may be out of range of the target type (use `#[verifier::truncate]` on the cast to silence this warning)",
                 );
                 let assert = StmX::Assert(state.next_assert_id(), Some(error), has_type);
                 let assert = Spanned::new(expr.span.clone(), assert);

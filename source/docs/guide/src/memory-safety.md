@@ -45,7 +45,7 @@ On the other hand, consider this (possible) implementation of `index` for Verus'
 
 ```rust,ignore
 impl<A> Vec<A> {
-    #[verifier(external_body)]
+    #[verifier::external_body]
     pub fn index(&self, i: usize) -> (r: &A)
         requires
             i < self.len(),

@@ -201,6 +201,7 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 
 const PRELUDE: &str = "\
 #![feature(box_patterns)]
+#![feature(ptr_metadata)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -216,6 +217,8 @@ const PRELUDE: &str = "\
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::ptr::Pointee;
+use std::ptr::Thin;
 fn op<A, B>(a: A) -> B { panic!() }
 fn static_ref<T>(t: T) -> &'static T { panic!() }
 fn tracked_new<T>(t: T) -> Tracked<T> { panic!() }
@@ -239,9 +242,9 @@ impl<A: Copy> Copy for Tracked<A> { }
 #[derive(Clone, Copy)] struct nat;
 struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }
 struct InvariantBlockGuard;
-fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
-fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (&'a InvariantBlockGuard, V) { panic!(); }
-fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) { panic!() }
+fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
+fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
+fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
 ";
 

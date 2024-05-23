@@ -1,13 +1,13 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 
 verus! {
 
 // ANCHOR: spec
 spec fn triangle(n: nat) -> nat
-    decreases n
+    decreases n,
 {
     if n == 0 {
         0
@@ -15,8 +15,8 @@ spec fn triangle(n: nat) -> nat
         n + triangle((n - 1) as nat)
     }
 }
-// ANCHOR_END: spec
 
+// ANCHOR_END: spec
 /*
 // ANCHOR: bogus
 spec fn bogus(i: int) -> int {
@@ -55,7 +55,7 @@ fn test_triangle_step_by_step() {
     assert(triangle(7) == 28);
     assert(triangle(8) == 36);
     assert(triangle(9) == 45);
-    assert(triangle(10) == 55); // succeeds
+    assert(triangle(10) == 55);  // succeeds
 }
 // ANCHOR_END: step_by_step
 
@@ -157,14 +157,14 @@ proof fn triangle_is_monotonic(i: nat, j: nat)
         i <= j,
     ensures
         triangle(i) <= triangle(j),
-    decreases j
+    decreases j,
 {
     if i < j {
         triangle_is_monotonic(i, (j - 1) as nat);
     }
 }
-// ANCHOR_END: mono
 
+// ANCHOR_END: mono
 /*
 // ANCHOR: circular
 proof fn circular_reasoning()
@@ -246,6 +246,7 @@ fn loop_triangle_return(n: u32) -> (sum: u32)
 }
 // ANCHOR_END: loop_return
 
+#[verusfmt::skip]
 // ANCHOR: loop_break
 fn loop_triangle_break(n: u32) -> (sum: u32)
     ensures
@@ -276,7 +277,7 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
 
 // ANCHOR: ackermann
 spec fn ackermann(m: nat, n: nat) -> nat
-    decreases m, n
+    decreases m, n,
 {
     if m == 0 {
         n + 1
@@ -303,7 +304,7 @@ spec fn abs(i: int) -> int {
 }
 
 spec fn is_even(i: int) -> bool
-    decreases abs(i)
+    decreases abs(i),
 {
     if i == 0 {
         true
@@ -315,7 +316,7 @@ spec fn is_even(i: int) -> bool
 }
 
 spec fn is_odd(i: int) -> bool
-    decreases abs(i)
+    decreases abs(i),
 {
     if i == 0 {
         false
@@ -330,7 +331,7 @@ proof fn even_odd_mod2(i: int)
     ensures
         is_even(i) <==> i % 2 == 0,
         is_odd(i) <==> i % 2 == 1,
-    decreases abs(i)
+    decreases abs(i),
 {
     if i < 0 {
         even_odd_mod2(i + 1);
@@ -355,8 +356,10 @@ fn test_odd() {
 }
 // ANCHOR_END: even
 
+#[verusfmt::skip]
 mod M {
 use builtin::*;
+
 spec fn abs(i: int) -> int {
     if i < 0 {
         -i
@@ -364,9 +367,10 @@ spec fn abs(i: int) -> int {
         i
     }
 }
+
 // ANCHOR: even2
 spec fn is_even(i: int) -> bool
-    decreases abs(i), 0int
+    decreases abs(i), 0int,
 {
     if i == 0 {
         true
@@ -378,7 +382,7 @@ spec fn is_even(i: int) -> bool
 }
 
 spec fn is_odd(i: int) -> bool
-    decreases abs(i), 1int
+    decreases abs(i), 1int,
 {
     !is_even(i)
 }
@@ -387,7 +391,7 @@ proof fn even_odd_mod2(i: int)
     ensures
         is_even(i) <==> i % 2 == 0,
         is_odd(i) <==> i % 2 == 1,
-    decreases abs(i)
+    decreases abs(i),
 {
     reveal_with_fuel(is_odd, 2);
     if i < 0 {

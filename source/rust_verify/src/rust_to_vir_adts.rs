@@ -458,63 +458,7 @@ pub(crate) fn check_item_external<'tcx>(
         );
     }
 
-    // Check that the generics match (important because we do the substitution to get
-    // the types from the external definition)
-
-    if substs_ref.len() != generics.params.len() {
-        return err_span(span, "expected generics to match");
-    }
-    for (generic_arg, generic_param) in substs_ref.iter().zip(generics.params.iter()) {
-        // So if we have like
-        //    struct ProxyName<X, 'a>(External<X, 'a>);
-        // We need to check the <X, 'a> line up
-        // The 'generic_param' (hir) is from ProxyName<X, 'a>
-        // and the 'generic_arg' (middle) is from the External<X, 'a>
-        let param_name = match generic_param.name {
-            rustc_hir::ParamName::Plain(ident) => ident.as_str().to_string(),
-            _ => {
-                return err_span(span, "expected generics to match");
-            }
-        };
-        use rustc_hir::GenericParamKind;
-        use rustc_hir::LifetimeParamKind;
-        use rustc_middle::ty::GenericArgKind;
-
-        match (generic_arg.unpack(), &generic_param.kind) {
-            (
-                GenericArgKind::Lifetime(region),
-                GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
-            ) => {
-                // I guess this check doesn't really matter since we ignore lifetimes anyway
-                match region.get_name() {
-                    Some(name) if name.as_str() == param_name => { /* okay */ }
-                    _ => {
-                        return err_span(span, "expected generics to match");
-                    }
-                }
-            }
-            (
-                GenericArgKind::Type(ty),
-                GenericParamKind::Type { default: None, synthetic: false },
-            ) => {
-                match ty.kind() {
-                    TyKind::Param(param) if param.name.as_str() == param_name => { /* okay */ }
-                    _ => {
-                        return err_span(span, "expected generics to match");
-                    }
-                }
-            }
-            (GenericArgKind::Const(_), GenericParamKind::Const { .. }) => {
-                return err_span(
-                    span,
-                    "external_type_specification: Const params not yet supported",
-                );
-            }
-            _ => {
-                return err_span(span, "expected generics to match");
-            }
-        }
-    }
+    crate::rust_to_vir_base::check_item_external_generics(generics, substs_ref, false, span)?;
 
     // Check that there are no trait bounds. This is unusual for datatypes, anyway,
     // except for Sized, which is often implicit, so we allow it.

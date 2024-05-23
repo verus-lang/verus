@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
-use builtin_macros::*;
-#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
+use builtin_macros::*;
 
 verus! {
 
-#[verifier(external_body)]
+#[verifier::external_body]
 fn print_two_digit_number(i: i8)
     requires
         -99 <= i < 100,

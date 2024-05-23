@@ -3,15 +3,15 @@
 // ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
-use vstd::{*, pervasive::*};
-use vstd::{atomic_ghost::*};
-use vstd::{modes::*};
-use vstd::{thread::*};
 use state_machines_macros::tokenized_state_machine;
-use vstd::prelude::*;
 use std::sync::Arc;
+use vstd::atomic_ghost::*;
+use vstd::modes::*;
+use vstd::prelude::*;
+use vstd::thread::*;
+use vstd::{pervasive::*, *};
 
-verus!{
+verus! {
 
 tokenized_state_machine!(
     X {
@@ -26,12 +26,12 @@ tokenized_state_machine!(
             pub inc_b: bool,
         }
 
-        // ANCHOR: inv 
+        // ANCHOR: inv
         #[invariant]
         pub fn main_inv(&self) -> bool {
             self.counter == (if self.inc_a { 1 as int } else { 0 }) + (if self.inc_b { 1 as int } else { 0 })
         }
-        // ANCHOR_END: inv 
+        // ANCHOR_END: inv
 
         init!{
             initialize() {
@@ -83,7 +83,6 @@ tokenized_state_machine!(
     }
 );
 
-
 // ANCHOR: global_struct
 struct_with_invariants!{
     pub struct Global {
@@ -107,83 +106,91 @@ struct_with_invariants!{
 }
 // ANCHOR_END: global_struct
 
-fn main() {
-    // Initialize protocol 
 
-    let tracked (Tracked(instance),
+fn main() {
+    // Initialize protocol
+    let tracked (
+        Tracked(instance),
         Tracked(counter_token),
         Tracked(inc_a_token),
-        Tracked(inc_b_token)) = X::Instance::initialize();
-
+        Tracked(inc_b_token),
+    ) = X::Instance::initialize();
     // Initialize the counter
-
     let tr_instance: Tracked<X::Instance> = Tracked(instance.clone());
     let atomic = AtomicU32::new(Ghost(tr_instance), 0, Tracked(counter_token));
-
     let global = Global { atomic, instance: Tracked(instance.clone()) };
     let global_arc = Arc::new(global);
 
     // Spawn threads
 
     // Thread 1
-
     let global_arc1 = global_arc.clone();
-    let join_handle1 = spawn(move || -> (new_token: Tracked<X::inc_a>)
-        ensures new_token@@.instance == instance
-          && new_token@@.value == true
-    {
-        // `inc_a_token` is moved into the closure
-        let tracked mut token = inc_a_token;
-        let globals = &*global_arc1;
-
-        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
-            ghost c => {
-                globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
-            }
-        );
-
-        Tracked(token)
-    });
+    let join_handle1 = spawn(
+        (move || -> (new_token: Tracked<X::inc_a>)
+            ensures
+                new_token@@.instance == instance && new_token@@.value == true,
+            {
+                // `inc_a_token` is moved into the closure
+                let tracked mut token = inc_a_token;
+                let globals = &*global_arc1;
+                let _ =
+                    atomic_with_ghost!(&globals.atomic => fetch_add(1);
+                        ghost c => {
+                            globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
+                        }
+                    );
+                Tracked(token)
+            }),
+    );
 
     // Thread 2
-
     let global_arc2 = global_arc.clone();
-    let join_handle2 = spawn(move || -> (new_token: Tracked<X::inc_b>)
-        ensures new_token@@.instance == instance
-          && new_token@@.value == true
-    {
-        // `inc_b_token` is moved into the closure
-        let tracked mut token = inc_b_token;
-        let globals = &*global_arc2;
-
-        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
-            ghost c => {
-                globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
-            }
-        );
-
-        Tracked(token)
-    });
+    let join_handle2 = spawn(
+        (move || -> (new_token: Tracked<X::inc_b>)
+            ensures
+                new_token@@.instance == instance && new_token@@.value == true,
+            {
+                // `inc_b_token` is moved into the closure
+                let tracked mut token = inc_b_token;
+                let globals = &*global_arc2;
+                let _ =
+                    atomic_with_ghost!(&globals.atomic => fetch_add(1);
+                        ghost c => {
+                            globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
+                        }
+                    );
+                Tracked(token)
+            }),
+    );
 
     // Join threads
-
     let tracked inc_a_token;
     match join_handle1.join() {
-        Result::Ok(token) => { proof { inc_a_token = token.get(); } }
-        _ => { return; }
+        Result::Ok(token) => {
+            proof {
+                inc_a_token = token.get();
+            }
+        },
+        _ => {
+            return ;
+        },
     };
-
     let tracked inc_b_token;
     match join_handle2.join() {
-        Result::Ok(token) => { proof { inc_b_token = token.get(); } }
-        _ => { return; }
+        Result::Ok(token) => {
+            proof {
+                inc_b_token = token.get();
+            }
+        },
+        _ => {
+            return ;
+        },
     };
 
     // Join threads, load the atomic again
-
     let global = &*global_arc;
-    
-    let x = atomic_with_ghost!(&global.atomic => load();
+    let x =
+        atomic_with_ghost!(&global.atomic => load();
         ghost c => {
             instance.finalize(&c, &inc_a_token, &inc_b_token);
         }
@@ -192,5 +199,5 @@ fn main() {
     assert(x == 2);
 }
 
-}
+} // verus!
 // ANCHOR_END: full

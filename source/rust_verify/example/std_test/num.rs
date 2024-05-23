@@ -1,10 +1,10 @@
 #![allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::prelude::*;
 use vstd::pervasive::runtime_assert;
+use vstd::prelude::*;
 
-verus!{
+verus! {
 
 fn test_u32_checked_add() {
     runtime_assert(u32::MAX.checked_add(1).is_none());
@@ -111,44 +111,36 @@ fn test_i32_checked_div() {
     let neg_ten: i32 = -10;
     let lhs: i32 = -97;
     runtime_assert(1i32.checked_div(0).is_none());
-
-    runtime_assert(i32::MIN.checked_div(1).unwrap() == i32::MIN); 
+    runtime_assert(i32::MIN.checked_div(1).unwrap() == i32::MIN);
     runtime_assert(i32::MAX.checked_div(1).unwrap() == i32::MAX);
     runtime_assert(i32::MIN.checked_div(-1).is_none());
     runtime_assert(i32::MAX.checked_div(-1).unwrap() == i32::MIN + 1);
-
     runtime_assert(10i32.checked_div(-5).unwrap() == -2);
     runtime_assert(10i32.checked_div(5).unwrap() == 2);
     runtime_assert(neg_ten.checked_div(-5).unwrap() == 2);
     runtime_assert(neg_ten.checked_div(5).unwrap() == -2);
-
     runtime_assert(97i32.checked_div(-7).unwrap() == -13);
     runtime_assert(97i32.checked_div(7).unwrap() == 13);
     runtime_assert(lhs.checked_div(-7).unwrap() == 13);
     runtime_assert(lhs.checked_div(7).unwrap() == -13);
-
     let lhs: i32 = -47;
     runtime_assert(47i32.checked_div(-7).unwrap() == -6);
     runtime_assert(47i32.checked_div(7).unwrap() == 6);
     runtime_assert(lhs.checked_div(-7).unwrap() == 6);
     runtime_assert(lhs.checked_div(7).unwrap() == -6);
-
     runtime_assert(47i32.checked_div(-2).unwrap() == -23);
     runtime_assert(47i32.checked_div(2).unwrap() == 23);
     runtime_assert(lhs.checked_div(-2).unwrap() == 23);
     runtime_assert(lhs.checked_div(2).unwrap() == -23);
-
     let lhs: i32 = -73;
     runtime_assert(73i32.checked_div(-5).unwrap() == -14);
     runtime_assert(73i32.checked_div(5).unwrap() == 14);
     runtime_assert(lhs.checked_div(-5).unwrap() == 14);
     runtime_assert(lhs.checked_div(5).unwrap() == -14);
-
     runtime_assert(73i32.checked_div(-47).unwrap() == -1);
     runtime_assert(73i32.checked_div(47).unwrap() == 1);
     runtime_assert(lhs.checked_div(-47).unwrap() == 1);
     runtime_assert(lhs.checked_div(47).unwrap() == -1);
-
 }
 
 fn test_i32_checked_div_euclid() {
@@ -159,29 +151,24 @@ fn test_i32_checked_div_euclid() {
     runtime_assert(i32::MAX.checked_div_euclid(1).unwrap() == i32::MAX);
     runtime_assert(i32::MIN.checked_div_euclid(1).unwrap() == i32::MIN);
     runtime_assert((i32::MIN + 1).checked_div_euclid(-1).unwrap() == i32::MAX);
-
     runtime_assert(97i32.checked_div_euclid(-7).unwrap() == -13);
     runtime_assert(97i32.checked_div_euclid(7).unwrap() == 13);
     runtime_assert(lhs.checked_div_euclid(-7).unwrap() == 14);
     runtime_assert(lhs.checked_div_euclid(7).unwrap() == -14);
-
     let lhs: i32 = -47;
     runtime_assert(47i32.checked_div_euclid(-7).unwrap() == -6);
     runtime_assert(47i32.checked_div_euclid(7).unwrap() == 6);
     runtime_assert(lhs.checked_div_euclid(-7).unwrap() == 7);
     runtime_assert(lhs.checked_div_euclid(7).unwrap() == -7);
-
     runtime_assert(47i32.checked_div_euclid(-2).unwrap() == -23);
     runtime_assert(47i32.checked_div_euclid(2).unwrap() == 23);
     runtime_assert(lhs.checked_div_euclid(-2).unwrap() == 24);
     runtime_assert(lhs.checked_div_euclid(2).unwrap() == -24);
-
     let lhs: i32 = -73;
     runtime_assert(73i32.checked_div_euclid(-5).unwrap() == -14);
     runtime_assert(73i32.checked_div_euclid(5).unwrap() == 14);
     runtime_assert(lhs.checked_div_euclid(-5).unwrap() == 15);
     runtime_assert(lhs.checked_div_euclid(5).unwrap() == -15);
-
     runtime_assert(73i32.checked_div_euclid(-47).unwrap() == -1);
     runtime_assert(73i32.checked_div_euclid(47).unwrap() == 1);
     runtime_assert(lhs.checked_div_euclid(-47).unwrap() == 2);
@@ -192,29 +179,24 @@ fn test_i32_checked_rem() {
     let lhs: i32 = -97;
     runtime_assert(1i32.checked_rem(0).is_none());
     runtime_assert(lhs.checked_rem(1).unwrap() == 0);
- 
     runtime_assert(97i32.checked_rem(7).unwrap() == 6);
-    runtime_assert(97i32.checked_rem(-7).unwrap() == 6); 
-    runtime_assert(lhs.checked_rem(7).unwrap() == -6); 
+    runtime_assert(97i32.checked_rem(-7).unwrap() == 6);
+    runtime_assert(lhs.checked_rem(7).unwrap() == -6);
     runtime_assert(lhs.checked_rem(-7).unwrap() == -6);
-
     let lhs: i32 = -47;
     runtime_assert(47i32.checked_rem(-7).unwrap() == 5);
     runtime_assert(47i32.checked_rem(7).unwrap() == 5);
     runtime_assert(lhs.checked_rem(-7).unwrap() == -5);
     runtime_assert(lhs.checked_rem(7).unwrap() == -5);
-
     runtime_assert(47i32.checked_rem(-2).unwrap() == 1);
     runtime_assert(47i32.checked_rem(2).unwrap() == 1);
     runtime_assert(lhs.checked_rem(-2).unwrap() == -1);
     runtime_assert(lhs.checked_rem(2).unwrap() == -1);
-
     let lhs: i32 = -73;
     runtime_assert(73i32.checked_rem(-5).unwrap() == 3);
     runtime_assert(73i32.checked_rem(5).unwrap() == 3);
     runtime_assert(lhs.checked_rem(-5).unwrap() == -3);
     runtime_assert(lhs.checked_rem(5).unwrap() == -3);
-
     runtime_assert(73i32.checked_rem(-47).unwrap() == 26);
     runtime_assert(73i32.checked_rem(47).unwrap() == 26);
     runtime_assert(lhs.checked_rem(-47).unwrap() == -26);
@@ -225,36 +207,31 @@ fn test_i32_checked_rem_euclid() {
     let lhs: i32 = -97;
     runtime_assert(1i32.checked_rem_euclid(0).is_none());
     runtime_assert(lhs.checked_rem_euclid(1).unwrap() == 0);
-
     runtime_assert(lhs.checked_rem_euclid(7).unwrap() == 1);
     runtime_assert(lhs.checked_rem_euclid(-7).unwrap() == 1);
     runtime_assert(97i32.checked_rem_euclid(7).unwrap() == 6);
     runtime_assert(97i32.checked_rem_euclid(-7).unwrap() == 6);
-
     let lhs: i32 = -47;
     runtime_assert(47i32.checked_rem_euclid(-7).unwrap() == 5);
     runtime_assert(47i32.checked_rem_euclid(7).unwrap() == 5);
     runtime_assert(lhs.checked_rem_euclid(-7).unwrap() == 2);
     runtime_assert(lhs.checked_rem_euclid(7).unwrap() == 2);
-
     runtime_assert(47i32.checked_rem_euclid(-2).unwrap() == 1);
     runtime_assert(47i32.checked_rem_euclid(2).unwrap() == 1);
     runtime_assert(lhs.checked_rem_euclid(-2).unwrap() == 1);
     runtime_assert(lhs.checked_rem_euclid(2).unwrap() == 1);
-
     let lhs: i32 = -73;
     runtime_assert(73i32.checked_rem_euclid(-5).unwrap() == 3);
     runtime_assert(73i32.checked_rem_euclid(5).unwrap() == 3);
     runtime_assert(lhs.checked_rem_euclid(-5).unwrap() == 2);
     runtime_assert(lhs.checked_rem_euclid(5).unwrap() == 2);
-
     runtime_assert(73i32.checked_rem_euclid(-47).unwrap() == 26);
     runtime_assert(73i32.checked_rem_euclid(47).unwrap() == 26);
     runtime_assert(lhs.checked_rem_euclid(-47).unwrap() == 21);
     runtime_assert(lhs.checked_rem_euclid(47).unwrap() == 21);
-
 }
 
-fn main() {}
-
+fn main() {
 }
+
+} // verus!

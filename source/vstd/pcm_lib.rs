@@ -1,19 +1,13 @@
-#[allow(unused_imports)]
-use crate::map::*;
-#[allow(unused_imports)]
-use crate::modes::*;
-#[allow(unused_imports)]
-use crate::pcm::*;
-#[allow(unused_imports)]
-use crate::seq::*;
-#[allow(unused_imports)]
-use builtin::*;
-#[allow(unused_imports)]
-use builtin_macros::*;
+#![allow(unused_imports)]
+use super::map::*;
+use super::modes::*;
+use super::pcm::*;
+use super::prelude::*;
+use super::seq::*;
 
 verus! {
 
-broadcast use crate::group_vstd_default;
+broadcast use super::group_vstd_default;
 /// Combines a list of values into one value using P::op().
 
 pub open spec fn combine_values<P: PCM>(values: Seq<P>) -> P

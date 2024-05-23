@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use super::super::prelude::*;
 use builtin::*;
 
 use alloc::vec::Vec;
@@ -9,14 +9,14 @@ use core::option::Option::None;
 
 verus! {
 
-#[verifier(external_type_specification)]
-#[verifier(external_body)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 #[verifier::reject_recursive_types(A)]
 pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 
-#[verifier(external_type_specification)]
-#[verifier(external_body)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
 pub struct ExGlobal(alloc::alloc::Global);
 
 impl<T, A: Allocator> View for Vec<T, A> {
@@ -42,7 +42,7 @@ pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
 }
 
 impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
-    #[verifier(inline)]
+    #[verifier::inline]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
     }
