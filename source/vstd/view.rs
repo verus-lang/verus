@@ -97,6 +97,26 @@ impl<A: DeepView> DeepView for alloc::sync::Arc<A> {
     }
 }
 
+// Note: the view for Vec is declared here, not in std_specs/vec.rs,
+// because "pub mod std_specs" is marked #[cfg(verus_keep_ghost)]
+// and we want to keep the View impl regardless of verus_keep_ghost.
+#[cfg(feature = "alloc")]
+impl<T, A: core::alloc::Allocator> View for Vec<T, A> {
+    type V = Seq<T>;
+
+    spec fn view(&self) -> Seq<T>;
+}
+
+#[cfg(feature = "alloc")]
+impl<T: DeepView, A: core::alloc::Allocator> DeepView for Vec<T, A> {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
 macro_rules! declare_identity_view {
     ($t:ty) => {
         #[cfg_attr(verus_keep_ghost, verifier::verify)]
