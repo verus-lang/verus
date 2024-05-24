@@ -1,6 +1,7 @@
 //! Helper utilities used by the `state_machine_macros` codegen.
 #![allow(unused_imports)]
 #![doc(hidden)]
+#![cfg_attr(rustfmt, rustfmt::skip)]
 
 use super::map::*;
 use super::pervasive::*;

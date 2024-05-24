@@ -1,3 +1,5 @@
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 #[cfg(not(verus_verify_core))]
 pub use builtin::*;
 

@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+#![cfg_attr(rustfmt, rustfmt::skip)]
 
 use alloc::alloc::Layout;
 use core::{marker, mem, mem::MaybeUninit};

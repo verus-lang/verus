@@ -1,3 +1,5 @@
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 use super::super::prelude::*;
 use super::super::view::View;
 use core::ops::Range;

@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 use super::super::prelude::*;
 
 macro_rules! num_specs {

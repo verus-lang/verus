@@ -1,3 +1,5 @@
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 //! Provides specifications for spec closures as relations.
 #[allow(unused_imports)]
 use super::pervasive::*;

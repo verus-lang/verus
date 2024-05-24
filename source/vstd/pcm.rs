@@ -1,3 +1,5 @@
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 use super::prelude::*;
 use super::set::*;
 
