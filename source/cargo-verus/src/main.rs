@@ -9,12 +9,18 @@
 //
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command};
+use std::str;
 
 use cargo_metadata::{Metadata, MetadataCommand};
+use semver::{Version, VersionReq};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+
+fn verus_driver_version_req() -> VersionReq {
+    VersionReq::parse("=0.1.0").unwrap()
+}
 
 pub fn main() {
     // Choose offset into args according to whether we are being run as `cargo-verus` or `cargo verus`.
@@ -122,25 +128,13 @@ impl VerusCmd {
         })
     }
 
-    fn verus_driver_path() -> PathBuf {
-        let mut path = env::current_exe()
-            .expect("current executable path invalid")
-            .with_file_name("verus-driver");
-
-        if cfg!(windows) {
-            path.set_extension("exe");
-        }
-
-        path
-    }
-
     fn into_std_cmd(self) -> Command {
         let common_verus_driver_args =
             pack_verus_driver_args_for_env(self.common_verus_driver_args.iter());
 
         let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
-        cmd.env("RUSTC_WRAPPER", Self::verus_driver_path())
+        cmd.env("RUSTC_WRAPPER", checked_verus_driver_path())
             .arg(self.cargo_subcommand.to_arg().to_owned())
             .args(&self.cargo_args);
 
@@ -313,6 +307,49 @@ fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -
     args.map(|arg| ["__VERUS_DRIVER_ARGS_SEP__".to_owned(), arg.as_ref().to_owned()])
         .flatten()
         .collect()
+}
+
+fn checked_verus_driver_path() -> PathBuf {
+    let path = unchecked_verus_driver_path();
+    let version = get_verus_driver_version(&path);
+    let version_req = verus_driver_version_req();
+    if !version_req.matches(&version) {
+        panic!("verus-driver version {version} must match {version_req}");
+    }
+    path
+}
+
+fn unchecked_verus_driver_path() -> PathBuf {
+    let mut path =
+        env::current_exe().expect("current executable path invalid").with_file_name("verus-driver");
+
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+
+    path
+}
+
+fn get_verus_driver_version(path: &Path) -> Version {
+    let mut cmd = Command::new(path);
+    cmd.arg("-V");
+    let output =
+        cmd.output().unwrap_or_else(|err| panic!("reading output of {cmd:?} failed with {err}"));
+    if !output.status.success() {
+        panic!("{cmd:?} failed with {}", output.status)
+    }
+    let stdout = str::from_utf8(&output.stdout)
+        .unwrap_or_else(|err| panic!("{cmd:?} did not produce valid utf-8: {err}"));
+    let mut parts = stdout.splitn(3, " ");
+    (|| {
+        if parts.next()? != "verus-driver" {
+            return None;
+        }
+        let version = Version::parse(parts.next()?).ok()?;
+        let _ = parts.next()?;
+        Some(version)
+    })()
+    .unwrap_or_else(|| panic!("{cmd:?} did not produce valid output"))
 }
 
 #[must_use]

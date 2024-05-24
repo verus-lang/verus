@@ -281,6 +281,7 @@ dependencies = [
  "cargo_metadata",
  "hex",
  "rustc_tools_util",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
