@@ -12,8 +12,8 @@ use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    def::Res, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
-    MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
+    Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner, Param,
+    Unsafety,
 };
 use rustc_middle::ty::{
     BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region, TyCtxt,
@@ -112,59 +112,6 @@ pub(crate) fn find_body_krate<'tcx>(
 
 pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     find_body_krate(ctxt.krate, body_id)
-}
-
-fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
-    let (decl, span) = match sig {
-        FnSig { decl, span, .. } => (decl, span),
-    };
-
-    let sig_span = span;
-    let expected_input_num = 1;
-
-    if decl.inputs.len() != expected_input_num {
-        return err_span(*sig_span, format!("Expected one argument to new_strlit"));
-    }
-
-    let (kind, span) = match &decl.inputs[0].kind {
-        TyKind::Ref(_, MutTy { ty, mutbl: _ }) => (&ty.kind, ty.span),
-        _ => {
-            dbg!(&decl.inputs[0]);
-            return err_span(decl.inputs[0].span, format!("expected a str"));
-        }
-    };
-
-    let (res, span) = match kind {
-        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => return err_span(span, format!("expected str")),
-    };
-
-    if res != Res::PrimTy(PrimTy::Str) {
-        return err_span(span, format!("expected a str"));
-    }
-
-    let (kind, span) = match decl.output {
-        FnRetTy::Return(Ty { hir_id: _, kind, span }) => (kind, span),
-        _ => return err_span(*sig_span, format!("expected a return type of StrSlice")),
-    };
-
-    let (res, span) = match kind {
-        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => return err_span(*span, format!("expected a StrSlice")),
-    };
-
-    let id = match res {
-        Res::Def(_, id) => id,
-        _ => return err_span(span, format!("")),
-    };
-
-    if !matches!(
-        ctx.verus_items.id_to_name.get(&id),
-        Some(&crate::verus_items::VerusItem::Vstd(crate::verus_items::VstdItem::StrSlice, _))
-    ) {
-        return err_span(span, format!("expected a StrSlice"));
-    }
-    Ok(())
 }
 
 pub(crate) fn handle_external_fn<'tcx>(
@@ -524,10 +471,6 @@ pub(crate) fn check_item_fn<'tcx>(
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
-    let is_new_strlit = ctxt.verus_items.id_to_name.get(&id)
-        == Some(&crate::verus_items::VerusItem::CompilableOpr(
-            crate::verus_items::CompilableOprItem::NewStrLit,
-        ));
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
@@ -539,13 +482,6 @@ pub(crate) fn check_item_fn<'tcx>(
             return err_span(
                 sig.span,
                 "`external_fn_specification` attribute not supported with VERUS_SPEC",
-            );
-        }
-
-        if is_new_strlit {
-            return err_span(
-                sig.span,
-                "`external_fn_specification` attribute not supported with new_strlit",
             );
         }
 
@@ -608,23 +544,6 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
         }
     };
-
-    if is_new_strlit {
-        check_new_strlit(&ctxt, sig)?;
-    }
-
-    if is_new_strlit {
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        unsupported_err_unless!(
-            vattrs.external_body,
-            sig.span,
-            "StrSlice::new must be external_body"
-        );
-
-        erasure_info.ignored_functions.push((id, sig.span.data()));
-        erasure_info.external_functions.push(name);
-        return Ok(None);
-    }
 
     let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,

@@ -2,7 +2,7 @@ use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, Ghost
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
-use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems, VstdItem};
+use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
 use rustc_ast::{BorrowKind, IsAuto, Mutability};
@@ -813,7 +813,7 @@ fn erase_call<'tcx>(
                 ArcNew => Some((false, "arc_new")),
                 BoxNew => Some((false, "box_new")),
                 GhostExec => None,
-                IntIntrinsic | Implies | NewStrLit => None,
+                IntIntrinsic | Implies => None,
             };
             if let Some((true, method)) = builtin_method {
                 assert!(receiver.is_some());
@@ -2463,13 +2463,6 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     if let Some(RustItem::Rc | RustItem::Arc) = rust_item {
-        return;
-    }
-
-    let verus_item = ctxt.verus_items.id_to_name.get(&id);
-
-    if let Some(VerusItem::Vstd(VstdItem::StrSlice, _)) = verus_item {
-        erase_abstract_datatype(ctxt, state, span, id);
         return;
     }
 

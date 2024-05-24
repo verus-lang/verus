@@ -6,7 +6,6 @@ use crate::rust_to_vir_base::{
 };
 use crate::unsupported_err_unless;
 use crate::util::err_span;
-use crate::verus_items::{VerusItem, VstdItem};
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
@@ -132,19 +131,6 @@ pub fn check_item_struct<'tcx>(
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
-
-    let is_strslice_struct = matches!(
-        ctxt.verus_items.id_to_name.get(&id.owner_id.to_def_id()),
-        Some(&VerusItem::Vstd(VstdItem::StrSlice, _))
-    );
-
-    if is_strslice_struct {
-        if vattrs.external_type_specification {
-            return err_span(span, "external_type_specification not supported with strslice");
-        }
-
-        return Ok(());
-    }
 
     if vattrs.external_type_specification {
         return check_item_external(
