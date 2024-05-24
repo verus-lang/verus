@@ -3,7 +3,7 @@ use super::super::prelude::*;
 verus! {
 
 #[verifier::external_trait_specification]
-pub trait ExInteger {
+pub trait ExInteger: Copy {
     type ExternalTraitSpecificationFor: Integer;
 }
 
