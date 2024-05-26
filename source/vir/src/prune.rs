@@ -91,6 +91,7 @@ struct State {
 }
 
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
+    use crate::ast::Primitive;
     match &**typ {
         TypX::Bool => ReachedType::Bool,
         TypX::Int(range) => ReachedType::Int(*range),
@@ -106,8 +107,10 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
-        TypX::StrSlice => ReachedType::StrSlice,
-        TypX::Primitive(_, _) => ReachedType::Primitive,
+        TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
+        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
+            ReachedType::Primitive
+        }
     }
 }
 
@@ -210,12 +213,7 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
 // shallowly reach typ (the AST visitor takes care of recursing through typ)
 fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::Lambda(..)
-        | TypX::Datatype(..)
-        | TypX::StrSlice
-        | TypX::Primitive(..) => {
+        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::Tuple(_) | TypX::AnonymousClosure(..) => {}
@@ -374,8 +372,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     state.lambda_types.insert(*arity);
                 }
                 ReachedType::StrSlice => {
-                    let path = crate::def::strslice_defn_path(&ctxt.vstd_crate_name);
-                    let module_path = path.pop_segment();
+                    let module_path = crate::def::strslice_module_path(&ctxt.vstd_crate_name);
                     reach(&mut state.reached_modules, &mut state.worklist_modules, &module_path);
                 }
                 _ => {}

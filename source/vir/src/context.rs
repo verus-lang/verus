@@ -177,13 +177,14 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::StrSlice | TypX::AnonymousClosure(..) => {}
+                        TypX::Bool | TypX::AnonymousClosure(..) => {}
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::Primitive(Primitive::Array, _) => {
                             roots.insert(container_path.clone());
                         }
                         TypX::Primitive(Primitive::Slice, _) => {}
+                        TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Ptr, _) => {}
                     }
                 }

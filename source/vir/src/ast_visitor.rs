@@ -55,7 +55,6 @@ where
             match &**typ {
                 TypX::Bool
                 | TypX::Int(_)
-                | TypX::StrSlice
                 | TypX::TypParam(_)
                 | TypX::TypeId
                 | TypX::ConstInt(_)
@@ -116,7 +115,6 @@ where
     match &**typ {
         TypX::Bool
         | TypX::Int(_)
-        | TypX::StrSlice
         | TypX::TypParam(_)
         | TypX::TypeId
         | TypX::ConstInt(_)

@@ -67,6 +67,7 @@ const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
+const STRSLICE_TYPE: &str = "strslice%";
 const ARRAY_TYPE: &str = "array%";
 const PTR_TYPE: &str = "ptr_mut%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -130,16 +131,13 @@ pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
-pub const BOX_STRSLICE: &str = "S";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
-pub const UNBOX_STRSLICE: &str = "%S";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
-pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_CHAR: &str = "CHAR";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
@@ -158,6 +156,7 @@ pub const DECORATE_NEVER: &str = "NEVER";
 pub const DECORATE_CONST_PTR: &str = "CONST_PTR";
 pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
+pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
@@ -196,7 +195,6 @@ pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
-pub const STRSLICE: &str = "StrSlice";
 pub const STRSLICE_IS_ASCII: &str = "str%strslice_is_ascii";
 pub const STRSLICE_LEN: &str = "str%strslice_len";
 pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
@@ -357,6 +355,11 @@ pub fn rename_rec_param(ident: &VarIdent, n: usize) -> VarIdent {
 
 pub fn slice_type() -> Path {
     let ident = Arc::new(SLICE_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn strslice_type() -> Path {
+    let ident = Arc::new(STRSLICE_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
@@ -734,10 +737,10 @@ pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fu
     })
 }
 
-pub fn strslice_defn_path(vstd_crate_name: &Ident) -> Path {
+pub fn strslice_module_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![Arc::new("string".to_string()), Arc::new(STRSLICE.to_string())]),
+        segments: Arc::new(vec![Arc::new("string".to_string())]),
     })
 }
 
