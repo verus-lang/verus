@@ -114,7 +114,7 @@ on Windows:
 .\target-verus\release\verus.exe rust_verify\example\doubly_linked_xor.rs --compile
 .\doubly_linked_xor.exe
 ```
-To verify an entire crate, simply point Verus at your `src/main.rs` file for an executable project, or `src/main.rs` for a library project. You'll need to add `--crate-type=lib` for the latter.
+To verify an entire crate, simply point Verus at your `src/main.rs` file for an executable project, or `src/lib.rs` for a library project. You'll need to add `--crate-type=lib` for the latter.
 
 Now you're ready to write some Verus! Check out [our guide](https://verus-lang.github.io/verus/guide/getting_started.html) if you haven't yet.
 
