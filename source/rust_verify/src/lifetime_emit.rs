@@ -1030,12 +1030,8 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     }
 }
 
-pub(crate) fn emit_assoc_type_impl(
-    state: &mut EmitState,
-    a: &AssocTypeImpl,
-    fns: &Vec<AssocTypeImplType>,
-) {
-    let AssocTypeImpl { trait_as_datatype, self_typ, generic_params, generic_bounds } = a;
+pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
+    let TraitImpl { trait_as_datatype, self_typ, generic_params, generic_bounds, assoc_typs } = t;
     state.newline();
     state.newline();
     state.write("impl");
@@ -1047,8 +1043,7 @@ pub(crate) fn emit_assoc_type_impl(
     emit_generic_bounds(state, &generic_params, &generic_bounds, false);
     state.write(" {");
     state.push_indent();
-    for fn_ in fns {
-        let AssocTypeImplType { name, typ } = fn_;
+    for (name, typ) in assoc_typs {
         state.newline();
         state.write("type ");
         state.write(&name.to_string());

@@ -431,6 +431,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] supertrait_assoc_type_lifetime2 verus_code! {
+        // https://github.com/verus-lang/verus/issues/1144
+        pub trait T {
+            type X;
+        }
+
+        pub trait U: T {
+        }
+
+        impl T for u8 {
+            type X = u8;
+        }
+
+        impl U for u8 {
+        }
+
+        pub struct Q<A: U>(pub A);
+
+        fn test1() -> Q<u8> {
+            Q::<u8>(0)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {

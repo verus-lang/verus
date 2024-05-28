@@ -85,7 +85,7 @@ pub(crate) struct State {
     pub(crate) trait_decl_set: HashSet<Path>,
     pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
-    pub(crate) assoc_type_impls: HashMap<AssocTypeImpl, Vec<AssocTypeImplType>>,
+    pub(crate) trait_impls: Vec<TraitImpl>,
     pub(crate) fun_decls: Vec<FunDecl>,
     // For an impl "bounds ==> trait T(...t...)", point some or all of t to impl:
     // (We add each impl for T to this when we process T)
@@ -117,7 +117,7 @@ impl State {
             trait_decl_set: HashSet::new(),
             trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
-            assoc_type_impls: HashMap::new(),
+            trait_impls: Vec::new(),
             fun_decls: Vec::new(),
             typs_used_in_trait_impls_reverse_map: HashMap::new(),
             remaining_typs_needed_for_each_impl: HashMap::new(),
@@ -2085,49 +2085,50 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
     }
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
+    let mut trait_typ_args: Vec<Typ> = Vec::new();
+    for ty in trait_ref.skip_binder().args.types().skip(1) {
+        trait_typ_args.push(erase_ty(ctxt, state, &ty));
+    }
+    let mut lifetimes: Vec<GenericParam> = Vec::new();
+    let mut typ_params: Vec<GenericParam> = Vec::new();
+    let mut generic_bounds: Vec<GenericBound> = Vec::new();
+    erase_mir_generics(
+        ctxt,
+        state,
+        impl_id,
+        false,
+        &mut lifetimes,
+        &mut typ_params,
+        &mut generic_bounds,
+    );
+    let mut trait_lifetime_args: Vec<Id> = Vec::new();
+    for region in trait_ref.skip_binder().args.regions() {
+        if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
+            trait_lifetime_args.push(id);
+        }
+    }
+    let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+    let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
+    let self_typ = erase_ty(ctxt, state, &self_ty);
+    let trait_as_datatype =
+        Box::new(TypX::Datatype(name.clone(), trait_lifetime_args, trait_typ_args));
+
+    let mut assoc_typs: Vec<(Id, Typ)> = Vec::new();
     for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
         match assoc_item.kind {
             rustc_middle::ty::AssocKind::Type => {
-                let impl_name = state.typ_param(&assoc_item.name.to_string(), None);
-
-                let mut trait_typ_args: Vec<Typ> = Vec::new();
-                for ty in trait_ref.skip_binder().args.types().skip(1) {
-                    trait_typ_args.push(erase_ty(ctxt, state, &ty));
-                }
-                let mut lifetimes: Vec<GenericParam> = Vec::new();
-                let mut typ_params: Vec<GenericParam> = Vec::new();
-                let mut generic_bounds: Vec<GenericBound> = Vec::new();
-                erase_mir_generics(
-                    ctxt,
-                    state,
-                    impl_id,
-                    false,
-                    &mut lifetimes,
-                    &mut typ_params,
-                    &mut generic_bounds,
-                );
-                let mut trait_lifetime_args: Vec<Id> = Vec::new();
-                for region in trait_ref.skip_binder().args.regions() {
-                    if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
-                        trait_lifetime_args.push(id);
-                    }
-                }
-
-                let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
-                let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
-                let self_typ = erase_ty(ctxt, state, &self_ty);
                 let ty = ctxt.tcx.type_of(assoc_item.def_id).skip_binder();
                 let typ = erase_ty(ctxt, state, &ty);
-                let trait_as_datatype =
-                    Box::new(TypX::Datatype(name.clone(), trait_lifetime_args, trait_typ_args));
-                let assoc =
-                    AssocTypeImpl { generic_params, generic_bounds, self_typ, trait_as_datatype };
-                let assoc_type = AssocTypeImplType { name: impl_name, typ };
-                state.assoc_type_impls.entry(assoc).or_insert(Vec::new()).push(assoc_type);
+                let impl_name = state.typ_param(&assoc_item.name.to_string(), None);
+                assoc_typs.push((impl_name, typ));
             }
             _ => (),
         }
     }
+
+    let trait_impl =
+        TraitImpl { generic_params, generic_bounds, self_typ, trait_as_datatype, assoc_typs };
+    state.trait_impls.push(trait_impl);
 }
 
 fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
