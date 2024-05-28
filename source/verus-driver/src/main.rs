@@ -71,10 +71,10 @@ pub fn main() {
             return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
         }
 
-        if orig_args.iter().any(|a| a == "--version" || a == "-V") {
-            let version_info = rustc_tools_util::get_version_info!();
-            println!("{version_info}");
-            exit(0);
+        if args_contains_long_or_short(orig_args.iter(), Some("help"), Some('h'))
+            || args_contains_long_or_short(orig_args.iter(), Some("version"), Some('V'))
+        {
+            return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
         }
 
         // Setting RUSTC_WRAPPER causes Cargo to pass 'rustc' as the first argument.
@@ -85,13 +85,6 @@ pub fn main() {
         if wrapper_mode {
             // we still want to be able to invoke it normally though
             orig_args.remove(1);
-        }
-
-        if !wrapper_mode
-            && (orig_args.iter().any(|a| a == "--help" || a == "-h") || orig_args.len() == 1)
-        {
-            display_help();
-            exit(0);
         }
 
         let this_invocation_is_cargo_probing =
@@ -176,10 +169,6 @@ pub fn main() {
 
         let orig_rustc_args = all_args;
 
-        let orig_rustc_opts = probe_config(&orig_rustc_args, |config| config.opts.clone()).unwrap();
-
-        let mut rustc_args = orig_rustc_args;
-
         // HACK: clap expects exe in first arg
         verus_driver_inner_args.insert(0, "dummy".to_owned());
 
@@ -191,6 +180,21 @@ pub fn main() {
                 "failed to parse verus driver inner args from {verus_driver_inner_args:?}: {err}"
             )
         });
+
+        if parsed_verus_driver_inner_args.help {
+            display_help();
+            exit(0);
+        }
+
+        if parsed_verus_driver_inner_args.version {
+            let version_info = rustc_tools_util::get_version_info!();
+            println!("{version_info}");
+            exit(0);
+        }
+
+        let orig_rustc_opts = probe_config(&orig_rustc_args, |config| config.opts.clone()).unwrap();
+
+        let mut rustc_args = orig_rustc_args;
 
         {
             let is_primary_package = dep_tracker.get_env("CARGO_PRIMARY_PACKAGE").is_some();
@@ -336,6 +340,27 @@ fn unpack_verus_driver_args_for_env(val: &str) -> Vec<String> {
     val.split("__VERUS_DRIVER_ARGS_SEP__").skip(1).map(ToOwned::to_owned).collect()
 }
 
+fn args_contains_long_or_short(
+    mut args: impl Iterator<Item = impl AsRef<str>>,
+    long: Option<&str>,
+    short: Option<char>,
+) -> bool {
+    args.any(|arg| {
+        let arg = arg.as_ref();
+        if let Some(long) = long {
+            if arg.strip_prefix("--") == Some(long) {
+                return true;
+            }
+        }
+        if let Some(short) = short {
+            if arg.starts_with("-") && !arg.starts_with("--") && arg.contains(short) {
+                return true;
+            }
+        }
+        false
+    })
+}
+
 fn extract_inner_args(
     tag: &str,
     args: &mut Vec<String>,
@@ -363,7 +388,12 @@ fn extract_inner_args(
 }
 
 #[derive(Debug, Parser)]
+#[clap(disable_help_flag = true)]
 struct VerusDriverInnerArgs {
+    #[arg(short = 'V', long)]
+    version: bool,
+    #[arg(short, long)]
+    help: bool,
     #[arg(long)]
     compile_when_primary_package: bool,
     #[arg(long)]
