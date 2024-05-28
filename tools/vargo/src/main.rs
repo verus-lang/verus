@@ -449,17 +449,19 @@ fn run() -> Result<(), String> {
         .map(|p| args_bucket.remove(p))
         .is_some();
 
-    match util::version_info(&repo_root) {
+    let verus_version = match util::version_info(&repo_root) {
         Ok(version_info) => {
-            std::env::set_var("VARGO_BUILD_VERSION", version_info.version);
-            std::env::set_var("VARGO_BUILD_SHA", version_info.sha);
+            std::env::set_var("VARGO_BUILD_VERSION", &version_info.version);
+            std::env::set_var("VARGO_BUILD_SHA", &version_info.sha);
+            Some(version_info)
         }
         Err(err) => {
             warn(
                 format!("could not obtain version info from git, this will result in a binary with an unknown version: {}", err).as_str()
-            )
+            );
+            None
         }
-    }
+    };
 
     std::env::set_var(
         "VARGO_BUILD_PROFILE",
@@ -1026,12 +1028,33 @@ fn run() -> Result<(), String> {
             let mut dependencies_mtime = None;
             let mut dependency_missing = false;
 
-            for from_f_name in [
-                format!("libbuiltin.rlib"),
-                format!("{}builtin_macros.{}", LIB_PRE, LIB_DL),
-                format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
-                format!("rust_verify{}", EXE),
-                format!("verus{}", EXE),
+            let mut macos_prepare_script = format!(
+                r#"
+#!/bin/bash
+set -e
+set -x
+
+"#
+            );
+            let mut linux_prepare_script = format!(
+                r#"
+#!/bin/bash
+set -e
+set -x
+
+"#
+            );
+            use std::fmt::Write;
+
+            for (from_f_name, is_exe) in [
+                (format!("libbuiltin.rlib"), false),
+                (format!("{}builtin_macros.{}", LIB_PRE, LIB_DL), false),
+                (
+                    format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
+                    false,
+                ),
+                (format!("rust_verify{}", EXE), true),
+                (format!("verus{}", EXE), true),
             ]
             .into_iter()
             {
@@ -1061,6 +1084,23 @@ fn run() -> Result<(), String> {
 
                     std::fs::copy(&from_f, &to_f)
                         .map_err(|x| format!("could not copy file ({})", x))?;
+
+                    if is_exe {
+                        writeln!(
+                            &mut macos_prepare_script,
+                            "xattr -d com.apple.quarantine {}",
+                            from_f_name
+                        )
+                        .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+
+                        writeln!(&mut macos_prepare_script, "chmod +x {}", from_f_name).map_err(
+                            |x| format!("could not write to macos prepare script ({})", x),
+                        )?;
+
+                        writeln!(&mut linux_prepare_script, "chmod +x {}", from_f_name).map_err(
+                            |x| format!("could not write to macos prepare script ({})", x),
+                        )?;
+                    }
                 } else {
                     dependency_missing = true;
                 }
@@ -1077,6 +1117,30 @@ fn run() -> Result<(), String> {
                 }
                 std::fs::copy(&from_f, &to_f)
                     .map_err(|x| format!("could not copy file ({})", x))?;
+
+                let dest_file_name = to_f
+                    .file_name()
+                    .ok_or(format!("could not get file name for z3"))?;
+                writeln!(
+                    &mut macos_prepare_script,
+                    "xattr -d com.apple.quarantine {}",
+                    dest_file_name.to_string_lossy()
+                )
+                .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+
+                writeln!(
+                    &mut macos_prepare_script,
+                    "chmod +x {}",
+                    dest_file_name.to_string_lossy()
+                )
+                .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+
+                writeln!(
+                    &mut linux_prepare_script,
+                    "chmod +x {}",
+                    dest_file_name.to_string_lossy()
+                )
+                .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
             }
 
             let fingerprint_path = target_verus_dir.join(".vstd-fingerprint");
@@ -1184,6 +1248,41 @@ fn run() -> Result<(), String> {
                         info("vstd fresh");
                     }
                 }
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                let macos_prepare_script_path =
+                    target_verus_dir.join("set_permissions_and_allow_gatekeeper.sh");
+                std::fs::write(&macos_prepare_script_path, macos_prepare_script)
+                    .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+                std::fs::set_permissions(
+                    &macos_prepare_script_path,
+                    <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
+                )
+                .map_err(|x| {
+                    format!("could not set permissions on macos prepare script ({})", x)
+                })?;
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                let linux_prepare_script_path = target_verus_dir.join("set_permissions.sh");
+                std::fs::write(&linux_prepare_script_path, linux_prepare_script)
+                    .map_err(|x| format!("could not write to linux prepare script ({})", x))?;
+                std::fs::set_permissions(
+                    &linux_prepare_script_path,
+                    <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
+                )
+                .map_err(|x| {
+                    format!("could not set permissions on linux prepare script ({})", x)
+                })?;
+            }
+
+            if let Some(version_info) = verus_version {
+                let version_info_path = target_verus_dir.join("version.txt");
+                std::fs::write(&version_info_path, version_info.version)
+                    .map_err(|x| format!("could not write to version file ({})", x))?;
             }
 
             let verus_root_path = target_verus_dir.join(VERUS_ROOT_FILE);
