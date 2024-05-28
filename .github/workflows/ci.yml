@@ -12,7 +12,7 @@ on:
 
 jobs:
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -32,27 +32,26 @@ jobs:
         run: |
           cargo fmt -- --check
 
-  test:
-    runs-on: ubuntu-latest
+  test-and-release-macos:
+    runs-on: macos-14
     strategy:
       matrix:
-        features: ['', 'singular', 'record-history', 'no-std', 'no-alloc']
+        features: ['', 'record-history', 'no-std', 'no-alloc', 'singular']
     steps:
       - name: checkout
         uses: actions/checkout@v4
       - name: get z3
         working-directory: ./source
         run: |
-          ../.github/workflows/get-z3.sh
+          ./tools/get-z3.sh
           echo z3 version `./z3 --version`
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      - name: setup singular
+      - name: download singular
         if: matrix.features == 'singular'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y singular
+          curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-4-0_M1.dmg
       - name: build and test
         working-directory: ./source
         run: |
@@ -61,10 +60,11 @@ jobs:
 
           case "${{ matrix.features }}" in
             "singular")
-              vargo build --features singular
-              VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p air --features singular
-              VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test integer_ring
-              VERUS_Z3_PATH="$(pwd)/z3" VERUS_SINGULAR_PATH="/usr/bin/Singular" vargo test -p rust_verify_test --features singular --test examples -- example_integer_ring
+              hdiutil attach ../Singular-4-4-0_M1.dmg
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test examples -- example_integer_ring
               ;;
             "record-history")
               vargo build --features record-history
@@ -90,19 +90,33 @@ jobs:
               cargo build
               ;;
           esac
+      - name: build verus release
+        if: matrix.features == ''
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build --release
+          ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+      - name: upload verus release artifact
+        uses: actions/upload-artifact@v4
+        if: matrix.features == ''
+        with:
+            name: verus-arm64-macos
+            path: source/target-verus/release
       - name: build docs
         if: matrix.features == ''
         working-directory: ./source
         run: |
           ./tools/docs.sh
-      - name: upload artifact
+      - name: upload verusdoc artifact
         uses: actions/upload-artifact@v4
         if: matrix.features == ''
         with:
           name: verusdoc
           path: source/doc
 
-  smoke-test-windows:
+  smoke-test-and-release-windows:
     runs-on: windows-latest
     steps:
       - name: checkout
@@ -121,7 +135,7 @@ jobs:
           .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --default-toolchain=none
           del rustup-init.exe
         shell: powershell
-      - name: cargo test
+      - name: build and test
         working-directory: .\source
         run: |
           ../tools/activate.ps1
@@ -130,3 +144,113 @@ jobs:
           $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test basic
           $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo test -p rust_verify_test --test layout
         shell: powershell
+      - name: build verus release
+        working-directory: .\source
+        run: |
+          ../tools/activate.ps1
+          $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo build --release
+          # $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; ./target-verus/release/verus.exe --version --output-json > ./target-verus/release/version.json
+        shell: powershell
+      - name: upload verus release artifact
+        uses: actions/upload-artifact@v4
+        with:
+            name: verus-x86-win
+            path: source/target-verus/release
+
+  smoke-test-and-release-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo z3 version `./z3 --version`
+      - name: setup rust
+        run: |
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: build and test
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build
+          VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --test basic
+      - name: build verus release
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build --release
+          # TODO ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+      - name: upload verus release artifact
+        uses: actions/upload-artifact@v4
+        with:
+            name: verus-x86-linux
+            path: source/target-verus/release
+
+  release:
+    needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: create release tag
+        shell: bash
+        run: |
+          echo "TAG_NAME=release/rolling/$(cat ./verus-x86-linux/version.txt)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=$(cat ./verus-x86-linux/version.txt)" >> $GITHUB_ENV
+          echo $RELEASE_NAME $TAG_NAME
+
+      - name: zip artifacts
+        run: |
+          zip -r verus-x86-linux.zip ./verus-x86-linux
+          zip -r verus-arm64-macos.zip ./verus-arm64-macos
+          zip -r verus-x86-win.zip ./verus-x86-win
+
+      - name: create release
+        id: create_release
+        uses: viperproject/create-nightly-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          release_name: Rolling Release ${{ env.RELEASE_NAME }}
+          keep_num: 2
+
+      - name: upload release for x86-linux
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./verus-x86-linux.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-x86-linux.zip
+          asset_content_type: application/zip
+
+      - name: upload release for arm64-macos
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./verus-arm64-macos.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-arm64-macos.zip
+          asset_content_type: application/zip
+
+      - name: upload release for x86-win
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./verus-x86-win.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-x86-win.zip
+          asset_content_type: application/zip
+          body: |
+            Rolling release from Continuous Integration
+
+            <!-- Automatically created nightly release: This release can safely be deleted by the nightly-release action -->
