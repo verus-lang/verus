@@ -340,13 +340,12 @@ fn get_verus_driver_version(path: &Path) -> Version {
     }
     let stdout = str::from_utf8(&output.stdout)
         .unwrap_or_else(|err| panic!("{cmd:?} did not produce valid utf-8: {err}"));
-    let mut parts = stdout.splitn(3, " ");
+    let mut parts = stdout.split_whitespace();
     (|| {
         if parts.next()? != "verus-driver" {
             return None;
         }
         let version = Version::parse(parts.next()?).ok()?;
-        let _ = parts.next()?;
         Some(version)
     })()
     .unwrap_or_else(|| panic!("{cmd:?} did not produce valid output"))
