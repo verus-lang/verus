@@ -104,33 +104,38 @@ pub fn main() {
             }
         }
 
-        let package_id = get_package_id_from_env(&mut dep_tracker);
+        let via_cargo = dep_tracker.compare_env("__VERUS_DRIVER_VIA_CARGO__", "1");
 
-        if let Some(package_id) = &package_id {
-            let verify_package =
-                dep_tracker.get_env(&format!("__VERUS_DRIVER_VERIFY_{package_id}")).as_deref()
-                    == Some("1");
+        let package_id = if via_cargo { get_package_id_from_env(&mut dep_tracker) } else { None };
 
-            let is_build_script = dep_tracker
-                .get_env("CARGO_CRATE_NAME")
-                .map(|name| name.starts_with("build_script_"))
-                .unwrap_or(false);
+        if via_cargo {
+            let verify_crate = if let Some(package_id) = &package_id {
+                let verify_package =
+                    dep_tracker.compare_env(&format!("__VERUS_DRIVER_VERIFY_{package_id}"), "1");
 
-            let verify_crate = verify_package && !is_build_script;
+                let is_build_script = dep_tracker
+                    .get_env("CARGO_CRATE_NAME")
+                    .map(|name| name.starts_with("build_script_"))
+                    .unwrap_or(false);
+
+                verify_package && !is_build_script
+            } else {
+                false
+            };
 
             if !verify_crate {
-                let is_builtin = dep_tracker
-                    .get_env(&format!("__VERUS_DRIVER_IS_BUILTIN_{package_id}"))
-                    .as_deref()
-                    == Some("1");
-                let is_builtin_macros = dep_tracker
-                    .get_env(&format!("__VERUS_DRIVER_IS_BUILTIN_MACROS_{package_id}"))
-                    .as_deref()
-                    == Some("1");
+                if let Some(package_id) = &package_id {
+                    let is_builtin = dep_tracker
+                        .compare_env(&format!("__VERUS_DRIVER_IS_BUILTIN_{package_id}"), "1");
+                    let is_builtin_macros = dep_tracker.compare_env(
+                        &format!("__VERUS_DRIVER_IS_BUILTIN_MACROS_{package_id}"),
+                        "1",
+                    );
 
-                if is_builtin || is_builtin_macros {
-                    set_rustc_bootstrap();
-                    extend_rustc_args_for_builtin_and_builtin_macros(&mut orig_args);
+                    if is_builtin || is_builtin_macros {
+                        set_rustc_bootstrap();
+                        extend_rustc_args_for_builtin_and_builtin_macros(&mut orig_args);
+                    }
                 }
 
                 return RunCompiler::new(
@@ -147,13 +152,16 @@ pub fn main() {
 
         let mut all_args = orig_args.clone();
 
-        if let Some(package_id) = &package_id {
-            if let Some(val) = dep_tracker.get_env("__VERUS_DRIVER_ARGS__") {
-                all_args.extend(unpack_verus_driver_args_for_env(&val));
-            }
-            if let Some(val) = dep_tracker.get_env(&format!("__VERUS_DRIVER_ARGS_FOR_{package_id}"))
-            {
-                all_args.extend(unpack_verus_driver_args_for_env(&val));
+        if via_cargo {
+            if let Some(package_id) = &package_id {
+                if let Some(val) = dep_tracker.get_env("__VERUS_DRIVER_ARGS__") {
+                    all_args.extend(unpack_verus_driver_args_for_env(&val));
+                }
+                if let Some(val) =
+                    dep_tracker.get_env(&format!("__VERUS_DRIVER_ARGS_FOR_{package_id}"))
+                {
+                    all_args.extend(unpack_verus_driver_args_for_env(&val));
+                }
             }
         }
 
@@ -196,7 +204,7 @@ pub fn main() {
 
         let mut rustc_args = orig_rustc_args;
 
-        {
+        if via_cargo {
             let is_primary_package = dep_tracker.get_env("CARGO_PRIMARY_PACKAGE").is_some();
 
             let compile = if is_primary_package {

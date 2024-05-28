@@ -135,6 +135,7 @@ impl VerusCmd {
         let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
         cmd.env("RUSTC_WRAPPER", checked_verus_driver_path())
+            .env("__VERUS_DRIVER_VIA_CARGO__", "1")
             .arg(self.cargo_subcommand.to_arg().to_owned())
             .args(&self.cargo_args);
 

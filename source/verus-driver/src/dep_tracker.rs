@@ -23,6 +23,10 @@ impl DepTracker {
         val
     }
 
+    pub(crate) fn compare_env(&mut self, var: &str, val: &str) -> bool {
+        self.get_env(var).as_deref() == Some(val)
+    }
+
     pub(crate) fn mark_file(&mut self, path: PathBuf) {
         self.files.insert(path);
     }
