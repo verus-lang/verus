@@ -135,9 +135,13 @@ impl VerusCmd {
         let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
         cmd.env("RUSTC_WRAPPER", checked_verus_driver_path())
-            .env("__VERUS_DRIVER_VIA_CARGO__", "1")
             .arg(self.cargo_subcommand.to_arg().to_owned())
             .args(&self.cargo_args);
+
+        cmd.env("__VERUS_DRIVER_VIA_CARGO__", "1");
+
+        // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
+        cmd.env("__CARGO_DEFAULT_LIB_METADATA", "verus");
 
         if !common_verus_driver_args.is_empty() {
             cmd.env("__VERUS_DRIVER_ARGS__", common_verus_driver_args);
