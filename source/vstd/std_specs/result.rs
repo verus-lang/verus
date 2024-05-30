@@ -146,6 +146,20 @@ pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_r
     result.map(op)
 }
 
+#[verifier::external_fn_specification]
+pub fn map_err<T, E, F, O: FnOnce(E) -> F>(result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
+    requires 
+        result.is_err() ==> op.requires((result.get_Err_0(),)), 
+    ensures 
+        result.is_err() ==> mapped_result.is_err() && op.ensures(
+            (result.get_Err_0(),),
+            mapped_result.get_Err_0(),
+        ),
+        result.is_ok() ==> mapped_result == Result::<T, F>::Ok(result.get_Ok_0()),
+{
+    result.map_err(op)
+}
+
 // ok
 #[verifier::inline]
 pub open spec fn ok<T, E>(result: Result<T, E>) -> Option<T> {
