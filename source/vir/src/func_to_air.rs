@@ -1214,6 +1214,7 @@ pub fn func_sst_to_air(
         ctx,
         &function.span,
         &function.x.typ_params,
+        &function.x.typ_bounds,
         &function.x.params,
         function_sst,
         &function.x.attrs.hidden,

@@ -1268,6 +1268,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verify_loop verus_code! {
+        trait T {
+            spec fn f() -> bool;
+        }
+
+        spec fn g<A: T>(i: int) -> int decreases i { 7 }
+
+        fn test<A: T>(b: bool) {
+            assert(1 + 1 == 2);
+            assert(<A as T>::f() == <A as T>::f());
+            assert(g::<A>(5) == 7);
+            while b {
+                assert(2 + 2 == 4);
+                assert(<A as T>::f() == <A as T>::f());
+                assert(g::<A>(5) == 7);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_multiple verus_code! {
         trait T1 {
             fn f1(&self, u: u64)
