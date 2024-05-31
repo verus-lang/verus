@@ -146,11 +146,13 @@ pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_r
     result.map(op)
 }
 
+// map_err
 #[verifier::external_fn_specification]
+#[verusfmt::skip]
 pub fn map_err<T, E, F, O: FnOnce(E) -> F>(result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
-    requires 
-        result.is_err() ==> op.requires((result.get_Err_0(),)), 
-    ensures 
+    requires
+        result.is_err() ==> op.requires((result.get_Err_0(),)),
+    ensures
         result.is_err() ==> mapped_result.is_err() && op.ensures(
             (result.get_Err_0(),),
             mapped_result.get_Err_0(),
