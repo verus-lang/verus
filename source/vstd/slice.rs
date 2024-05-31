@@ -89,6 +89,16 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i..j]
 }
 
+#[verifier::external_fn_specification]
+pub exec fn slice_copy_from_slice<T: Copy>(dst: &mut [T], src: &[T])
+    requires
+        src@.len() == old(dst)@.len(),
+    ensures
+        dst@ == src@,
+{
+    dst.copy_from_slice(src)
+}
+
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_slice_axioms {
     axiom_spec_len,

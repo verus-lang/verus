@@ -248,6 +248,14 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
     vec.truncate(len)
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_vec_extend_from_slice<T: Clone, A: Allocator>(vec: &mut Vec<T, A>, slice: &[T])
+    ensures
+        vec@ == old(vec)@ + slice@,
+{
+    vec.extend_from_slice(slice)
+}
+
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
