@@ -313,10 +313,9 @@ pub(crate) fn smt_check_assertion<'ctx>(
         let smt_output = context.get_smt_process().send_commands(smt_data);
 
         if smt_output.iter().any(|line| line.contains("model is not available")) {
-            // when model not available, cancel to avoid rerun
             // when we don't use incremental solving, sometime the model is not available when the z3 result is unknown
-            context.state = ContextState::Canceled;
-            return ValidityResult::Canceled;
+            context.state = ContextState::FoundInvalid(infos, None);
+            return ValidityResult::Invalid(None, None, None);
         };
 
         let model = crate::parser::Parser::new(context.message_interface.clone())
@@ -368,8 +367,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
         let error = discovered_error.error;
         let e = context.message_interface.append_labels(&error, &discovered_additional_info);
-        context.state = ContextState::FoundInvalid(infos, air_model.clone());
-        ValidityResult::Invalid(Some(air_model), e, discovered_assert_id.unwrap())
+        context.state = ContextState::FoundInvalid(infos, Some(air_model.clone()));
+        ValidityResult::Invalid(Some(air_model), Some(e), discovered_assert_id.unwrap())
     }
 }
 

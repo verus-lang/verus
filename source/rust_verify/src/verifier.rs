@@ -753,19 +753,30 @@ impl Verifier {
                     timed_out = true;
                     break;
                 }
-                ValidityResult::Invalid(air_model, error, assert_id_opt) => {
+                ValidityResult::Invalid(None, error, _)
+                | ValidityResult::Invalid(_, error @ None, _) => {
+                    if is_first_check && level == Some(MessageLevel::Error) {
+                        self.count_errors += 1;
+                        invalidity = true;
+                    }
+                    if self.expand_flag {
+                        invalidity = true;
+                    }
+                    if let Some(level) = level {
+                        if let Some(error) = error {
+                            // singular_invalid case
+                            reporter.report_as(&error, level);
+                        } else {
+                            // bitvector case
+                            reporter.report(&message(level, &context.desc, &context.span).to_any());
+                        }
+                    }
+                    break;
+                }
+                ValidityResult::Invalid(Some(air_model), Some(error), assert_id_opt) => {
                     if let Some(assert_id) = assert_id_opt {
                         failed_assert_ids.push(assert_id.clone());
                     }
-                    if let Some(level) = level {
-                        if air_model.is_none() {
-                            // singular_invalid case
-                            self.count_errors += 1;
-                            reporter.report_as(&error, level);
-                            break;
-                        }
-                    }
-                    let air_model = air_model.unwrap();
 
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
