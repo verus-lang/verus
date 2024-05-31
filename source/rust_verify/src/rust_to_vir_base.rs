@@ -1,5 +1,6 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
+use crate::rust_to_vir::ExternalInfo;
 use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -644,6 +645,136 @@ pub(crate) fn mid_ty_simplify<'tcx>(
         }
         _ => ty.to_owned(),
     }
+}
+
+// Return true if we support the type and therefore can use a trait impl that mentions it
+// (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
+// dropping the results of trait_impl_to_vir, which is ok.)
+pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    type_walker: rustc_middle::ty::walk::TypeWalker<'tcx>,
+    external_info: &ExternalInfo,
+) -> bool {
+    let mut all_types_supported = true;
+    for arg in type_walker {
+        if let rustc_middle::ty::GenericArgKind::Type(t) = arg.unpack() {
+            let supported = match t.kind() {
+                TyKind::Bool => true,
+                TyKind::Uint(_) | TyKind::Int(_) => true,
+                TyKind::Char => true,
+                TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
+                TyKind::Param(_) => true,
+                TyKind::Never => true,
+                TyKind::Tuple(_) => true,
+                TyKind::Slice(_) => true,
+                TyKind::RawPtr(_) => true,
+                TyKind::Array(..) => true,
+                TyKind::Closure(..) => true,
+                TyKind::FnDef(..) => true,
+                TyKind::Str => true,
+
+                TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => false,
+                TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => false,
+                TyKind::Float(..) => false,
+                TyKind::Foreign(..) => false,
+                TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
+                TyKind::FnPtr(..) => false,
+                TyKind::Dynamic(..) => false,
+                TyKind::Coroutine(..) => false,
+                TyKind::CoroutineWitness(..) => false,
+                TyKind::Bound(..) => false,
+                TyKind::Placeholder(..) => false,
+                TyKind::Infer(..) => false,
+                TyKind::Error(..) => false,
+
+                TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
+                    external_info.type_ids.contains(&adt_def_data.did)
+                }
+                TyKind::Alias(
+                    rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
+                    t,
+                ) => {
+                    let trait_def = tcx.generics_of(t.def_id).parent;
+                    let t_args: Vec<_> =
+                        t.args.iter().filter(|x| x.as_region().is_none()).collect();
+                    t_args.iter().find(|x| x.as_type().is_none()).is_none()
+                        && trait_def.is_some()
+                        && t_args.len() >= 1
+                }
+            };
+            all_types_supported = all_types_supported && supported;
+        }
+    }
+    all_types_supported
+}
+
+// Return true if we support the generics and therefore can use a trait impl that mentions it
+// (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
+// dropping the results of trait_impl_to_vir, which is ok.)
+pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+    external_info: &ExternalInfo,
+) -> bool {
+    let generics = tcx.generics_of(def_id);
+    for param in generics.params.iter() {
+        if !param.pure_wrt_drop {
+            return false;
+        }
+        match &param.kind {
+            GenericParamDefKind::Lifetime { .. } => {} // ignore
+            GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {}
+            GenericParamDefKind::Type { has_default: true, .. } => {
+                return false;
+            }
+            GenericParamDefKind::Const { .. } => {}
+        }
+    }
+    let predicates = tcx.predicates_of(def_id);
+    for (predicate, _span) in predicates.predicates.iter() {
+        match predicate.kind().skip_binder() {
+            ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {}
+            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
+                let trait_def_id = trait_ref.def_id;
+                if Some(trait_def_id) == tcx.lang_items().fn_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
+                {
+                    continue;
+                }
+                if !external_info.trait_id_set.contains(&trait_def_id) {
+                    return false;
+                }
+                for arg in trait_ref.args.types() {
+                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                        return false;
+                    }
+                }
+            }
+            ClauseKind::Projection(pred) => {
+                if Some(pred.projection_ty.def_id) == tcx.lang_items().fn_once_output() {
+                    continue;
+                }
+                if pred.term.ty().is_none() {
+                    return false;
+                }
+                let trait_def_id = pred.projection_ty.trait_def_id(tcx);
+                if !external_info.trait_id_set.contains(&trait_def_id) {
+                    return false;
+                }
+                for arg in pred.projection_ty.args.types() {
+                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                        return false;
+                    }
+                }
+            }
+            ClauseKind::ConstArgHasType(..) => {}
+            _ => {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 // returns VIR Typ and whether Ghost/Tracked was erased from around the outside of the VIR Typ

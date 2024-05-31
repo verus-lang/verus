@@ -1,5 +1,6 @@
 use crate::attributes::{get_mode, VerifierAttrs};
 use crate::context::Context;
+use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
     mk_visibility_from_vis,
@@ -117,7 +118,7 @@ fn get_ctor_print_style(variant_def: &rustc_middle::ty::VariantDef) -> CtorPrint
     }
 }
 
-pub fn check_item_struct<'tcx>(
+pub(crate) fn check_item_struct<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     module_path: &Path,
@@ -128,6 +129,7 @@ pub fn check_item_struct<'tcx>(
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_struct());
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
@@ -144,8 +146,10 @@ pub fn check_item_struct<'tcx>(
             &vattrs,
             generics,
             adt_def,
+            external_info,
         );
     }
+    external_info.type_ids.insert(adt_def.did());
 
     let def_id = id.owner_id.to_def_id();
     let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
@@ -213,7 +217,7 @@ pub fn get_mid_variant_def_by_name<'tcx>(
     panic!("get_mid_variant_def_by_name failed to find variant");
 }
 
-pub fn check_item_enum<'tcx>(
+pub(crate) fn check_item_enum<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     module_path: &Path,
@@ -224,8 +228,10 @@ pub fn check_item_enum<'tcx>(
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
+    external_info.type_ids.insert(adt_def.did());
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
@@ -287,7 +293,7 @@ pub fn check_item_enum<'tcx>(
     Ok(())
 }
 
-pub fn check_item_union<'tcx>(
+pub(crate) fn check_item_union<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     module_path: &Path,
@@ -298,8 +304,10 @@ pub fn check_item_union<'tcx>(
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_union());
+    external_info.type_ids.insert(adt_def.did());
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
@@ -396,6 +404,7 @@ pub(crate) fn check_item_external<'tcx>(
     vattrs: &VerifierAttrs,
     generics: &'tcx Generics<'tcx>,
     proxy_adt_def: rustc_middle::ty::AdtDef<'tcx>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     // Like with functions, we disallow external_type_specification and external together
     // (This check is done in rust_to_vir)
@@ -443,6 +452,7 @@ pub(crate) fn check_item_external<'tcx>(
             "external_type_specification: the external type needs to be a struct or enum",
         );
     }
+    external_info.type_ids.insert(external_adt_def.did());
 
     crate::rust_to_vir_base::check_item_external_generics(generics, substs_ref, false, span)?;
 

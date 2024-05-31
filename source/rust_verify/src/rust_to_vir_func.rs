@@ -2,6 +2,7 @@ use crate::attributes::{
     get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
 };
 use crate::context::{BodyCtxt, Context};
+use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
@@ -126,7 +127,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     mode: Mode,
     vattrs: &VerifierAttrs,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
@@ -291,7 +292,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     let has_self_parameter = has_self_parameter(ctxt, external_id);
 
     if matches!(kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
-        external_fn_specification_trait_method_impls.push((external_id, sig.span));
+        external_info.external_fn_specification_trait_method_impls.push((external_id, sig.span));
     }
 
     Ok((external_path, external_item_visibility, kind, has_self_parameter))
@@ -507,7 +508,7 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
     external_trait: Option<DefId>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
@@ -537,7 +538,7 @@ pub(crate) fn check_item_fn<'tcx>(
             mode,
             &vattrs,
             external_fn_specification_via_external_trait,
-            external_fn_specification_trait_method_impls,
+            external_info,
         )?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
