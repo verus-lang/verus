@@ -250,6 +250,8 @@ pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
+    /// Functions that failed to verify
+    pub func_fails: HashSet<Fun>,
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
@@ -373,6 +375,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args,
             user_filter: None,
             erasure_hints: None,
@@ -407,6 +410,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
@@ -437,6 +441,7 @@ impl Verifier {
     pub fn merge(&mut self, other: Self) {
         self.count_verified += other.count_verified;
         self.count_errors += other.count_errors;
+        self.func_fails.extend(other.func_fails);
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_times.extend(other.bucket_times);
@@ -736,6 +741,7 @@ impl Verifier {
                 ValidityResult::Canceled => {
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                     }
                     if self.expand_flag {
@@ -761,6 +767,7 @@ impl Verifier {
                         if air_model.is_none() {
                             // singular_invalid case
                             self.count_errors += 1;
+                            self.func_fails.insert(context.fun.clone());
                             reporter.report_as(&error, level);
                             break;
                         }
@@ -769,6 +776,7 @@ impl Verifier {
 
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                         if let Some(hint) = hint_upon_failure.take() {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
@@ -988,7 +996,8 @@ impl Verifier {
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(message_interface.clone());
+        let mut air_context =
+            air::context::Context::new(message_interface.clone(), self.args.solver());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1078,6 +1087,7 @@ impl Verifier {
         context_counter: usize,
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
+        spinoff_reason: &str,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
@@ -1085,12 +1095,14 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver() },
             profile_file_name,
         )?;
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
+        air_context.blank_line();
+        air_context.comment(&format!("query spun off because: {}", spinoff_reason));
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -1185,11 +1197,15 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver() },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
-            air_context.set_expected_solver_version(crate::consts::EXPECTED_Z3_VERSION.to_string());
+            air_context.set_expected_solver_version(if self.args.cvc5 {
+                crate::consts::EXPECTED_CVC5_VERSION.to_string()
+            } else {
+                crate::consts::EXPECTED_Z3_VERSION.to_string()
+            });
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
@@ -1393,6 +1409,17 @@ impl Verifier {
                             };
 
                             let mut query_air_context = if do_spinoff {
+                                let spinoff_reason = if cmds.prover_choice
+                                    == vir::def::ProverChoice::Nonlinear
+                                {
+                                    "nonlinear"
+                                } else if cmds.prover_choice == vir::def::ProverChoice::BitVector {
+                                    "bitvector"
+                                } else if *profile_rerun {
+                                    "profile_rerun"
+                                } else {
+                                    "spinoff_all"
+                                };
                                 spinoff_z3_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
@@ -1409,6 +1436,7 @@ impl Verifier {
                                     spinoff_context_counter,
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
+                                    spinoff_reason,
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
@@ -1792,6 +1820,7 @@ impl Verifier {
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
+            self.args.solver(),
             false,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
