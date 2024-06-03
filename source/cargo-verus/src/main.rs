@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::str;
 
-use cargo_metadata::{Metadata, MetadataCommand};
+use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -148,22 +148,16 @@ impl VerusCmd {
             cmd.env("__VERUS_DRIVER_ARGS__", common_verus_driver_args);
         }
 
-        let mut metadata = self.metadata();
-        sort_and_check_metadata(&mut metadata);
+        let metadata = self.metadata();
+        let metadata_index = MetadataIndex::new(&metadata);
 
-        let verus_metadata_by_package = metadata
-            .packages
-            .iter()
-            .map(|package| (&package.id, get_verus_metadata(&package)))
-            .collect::<BTreeMap<_, _>>();
+        for entry in metadata_index.entries() {
+            let package = entry.package();
 
-        for (package, resolve_node) in
-            metadata.packages.iter().zip(metadata.resolve.as_ref().unwrap().nodes.iter())
-        {
             let package_id =
                 mk_package_id(&package.name, package.version.to_string(), &package.manifest_path);
 
-            let verus_metadata = &verus_metadata_by_package[&package.id];
+            let verus_metadata = entry.verus_metadata();
 
             // The is_builtin, is_builtin_macro, and verify fields are passed as env vars as they
             // are relevant for crates which are skipped by Verus. In such cases, the driver avoids
@@ -195,10 +189,12 @@ impl VerusCmd {
                     verus_driver_args_for_package.push("--verus-arg=--no-vstd".to_owned());
                 }
 
-                for dep in &resolve_node.deps {
-                    if verus_metadata_by_package[&dep.pkg].verify {
-                        verus_driver_args_for_package
-                            .push(format!("--verus-driver-arg=--import-dep-if-present={}", dep.name));
+                for dep in entry.deps() {
+                    if metadata_index.get(&dep.pkg).verus_metadata().verify {
+                        verus_driver_args_for_package.push(format!(
+                            "--verus-driver-arg=--import-dep-if-present={}",
+                            dep.name
+                        ));
                     }
                 }
 
@@ -262,19 +258,6 @@ fn filter_args(
     acc
 }
 
-fn sort_and_check_metadata(meta: &mut Metadata) {
-    assert!(meta.resolve.is_some());
-    meta.packages.sort_by(|p1, p2| p1.id.cmp(&p2.id));
-    meta.resolve.as_mut().unwrap().nodes.sort_by(|n1, n2| n1.id.cmp(&n2.id));
-    let ids_in_packages = meta.packages.iter().map(|package| &package.id);
-    let ids_in_resolve = meta.resolve.as_ref().unwrap().nodes.iter().map(|node| &node.id);
-    assert!(ids_in_packages.eq(ids_in_resolve));
-    for node in &mut meta.resolve.as_mut().unwrap().nodes {
-        node.deps.sort_by(|d1, d2| d1.name.cmp(&d2.name));
-        assert!(node.deps.windows(2).all(|window| window[0].name != window[1].name));
-    }
-}
-
 #[derive(Debug, Default, Deserialize)]
 struct VerusMetadata {
     #[serde(default)]
@@ -305,6 +288,69 @@ fn get_verus_metadata(package: &cargo_metadata::Package) -> VerusMetadata {
             })
         })
         .unwrap_or_default()
+}
+
+struct MetadataIndex<'a> {
+    entries: BTreeMap<&'a PackageId, MetadataIndexEntry<'a>>,
+}
+
+struct MetadataIndexEntry<'a> {
+    package: &'a Package,
+    verus_metadata: VerusMetadata,
+    deps: BTreeMap<&'a str, &'a cargo_metadata::NodeDep>,
+}
+
+impl<'a> MetadataIndex<'a> {
+    fn new(metadata: &'a Metadata) -> Self {
+        assert!(metadata.resolve.is_some());
+        let mut deps_by_package = BTreeMap::new();
+        for node in &metadata.resolve.as_ref().unwrap().nodes {
+            let mut deps = BTreeMap::new();
+            for dep in &node.deps {
+                assert!(deps.insert(dep.name.as_str(), dep).is_none());
+            }
+            assert!(deps_by_package.insert(&node.id, deps).is_none());
+        }
+        let mut entries = BTreeMap::new();
+        for package in &metadata.packages {
+            assert!(
+                entries
+                    .insert(
+                        &package.id,
+                        MetadataIndexEntry {
+                            package,
+                            verus_metadata: get_verus_metadata(package),
+                            deps: deps_by_package.remove(&package.id).unwrap(),
+                        }
+                    )
+                    .is_none()
+            );
+        }
+        assert!(deps_by_package.is_empty());
+        Self { entries }
+    }
+
+    fn get(&self, id: &PackageId) -> &MetadataIndexEntry<'a> {
+        self.entries.get(id).unwrap()
+    }
+
+    fn entries(&self) -> impl Iterator<Item = &MetadataIndexEntry<'a>> {
+        self.entries.values()
+    }
+}
+
+impl<'a> MetadataIndexEntry<'a> {
+    fn package(&self) -> &'a Package {
+        self.package
+    }
+
+    fn verus_metadata(&self) -> &VerusMetadata {
+        &self.verus_metadata
+    }
+
+    fn deps(&self) -> impl Iterator<Item = &&'a cargo_metadata::NodeDep> {
+        self.deps.values()
+    }
 }
 
 fn mk_package_id(
