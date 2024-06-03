@@ -222,8 +222,14 @@ pub fn main() {
 
         for (key, entry) in orig_rustc_opts.externs.iter() {
             if let Some(files) = entry.files() {
-                externs
-                    .insert(key.clone(), files.map(|path| path.canonicalized()).cloned().collect());
+                assert!(
+                    externs
+                        .insert(
+                            key.clone(),
+                            files.map(|path| path.canonicalized()).cloned().collect()
+                        )
+                        .is_none()
+                );
             }
         }
 
@@ -237,47 +243,46 @@ pub fn main() {
             .verus_sysroot
             .or_else(|| dep_tracker.get_env("VERUS_SYSROOT"))
         {
-            let target_triple = &orig_rustc_opts.target_triple;
-
             let mut add_extern = |key: &str, pattern: String| {
-                let mut paths = glob::glob(pattern.as_str()).unwrap();
-                let path = paths.next().unwrap().unwrap();
-                assert!(paths.next().is_none());
-                rustc_args.push("--extern".to_owned());
-                rustc_args.push(format!("{key}={}", path.display()));
-                externs.insert(key.to_owned(), vec![path]);
+                let path = {
+                    let mut paths = glob::glob(pattern.as_str()).unwrap();
+                    let path = paths.next().unwrap().unwrap();
+                    assert!(paths.next().is_none());
+                    path
+                };
+                rustc_args.push(format!("--extern={key}={}", path.display()));
+                assert!(externs.insert(key.to_owned(), vec![path]).is_none());
             };
 
-            add_extern(
-                "builtin_macros",
-                format!("{verus_sysroot}/lib/rustlib/lib/libbuiltin_macros-*.so"),
-            );
-            add_extern(
-                "builtin",
-                format!("{verus_sysroot}/lib/rustlib/{target_triple}/lib/libbuiltin-*.rlib"),
-            );
-            add_extern(
-                "vstd",
-                format!("{verus_sysroot}/lib/rustlib/{target_triple}/lib/libvstd-*.rlib"),
-            );
+            let host_lib_dir = format!("{verus_sysroot}/lib/rustlib/lib");
+            let target_lib_dir =
+                format!("{verus_sysroot}/lib/rustlib/{}/lib", orig_rustc_opts.target_triple);
 
-            rustc_args.push("-L".to_owned());
-            rustc_args.push(format!("dependency={verus_sysroot}/lib/rustlib/lib"));
-            rustc_args.push("-L".to_owned());
-            rustc_args.push(format!("dependency={verus_sysroot}/lib/rustlib/{target_triple}/lib"));
+            add_extern("builtin_macros", format!("{host_lib_dir}/libbuiltin_macros-*.so"));
+            add_extern("builtin", format!("{target_lib_dir}/libbuiltin-*.rlib"));
+            add_extern("vstd", format!("{target_lib_dir}/libvstd-*.rlib"));
+
+            rustc_args.push(format!("-Ldependency={host_lib_dir}"));
+            rustc_args.push(format!("-Ldependency={target_lib_dir}"));
 
             import_deps_if_present.insert("vstd".to_owned());
         }
 
-        for key in import_deps_if_present.iter() {
-            if let Some(paths) = externs.get(key) {
-                assert_eq!(paths.len(), 1);
-                let path = &paths[0];
-                assert!(["rlib", "rmeta"].contains(&path.extension().unwrap().to_str().unwrap()));
-                let vir_path = path.with_extension("vir");
-                verus_inner_args
-                    .extend(["--import".to_owned(), format!("{key}={}", vir_path.display())]);
-                dep_tracker.mark_file(vir_path);
+        for (key, paths) in &externs {
+            if import_deps_if_present.remove(key) {
+                let mut found = false;
+                for path in paths {
+                    let vir_path = path.with_extension("vir");
+                    if vir_path.exists() {
+                        verus_inner_args.push(format!("--import={key}={}", vir_path.display()));
+                        dep_tracker.mark_file(vir_path);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    panic!("could not find .vir file for '{key}'");
+                }
             }
         }
 

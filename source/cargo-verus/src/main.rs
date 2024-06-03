@@ -165,14 +165,10 @@ impl VerusCmd {
 
             let verus_metadata = &verus_metadata_by_package[&package.id];
 
-            // The verify, is_builtin, and is_builtin_macro fields are passed as env vars as they
+            // The is_builtin, is_builtin_macro, and verify fields are passed as env vars as they
             // are relevant for crates which are skipped by Verus. In such cases, the driver avoids
             // depending on __VERUS_DRIVER_ARGS__ to prevent unecessary rebuilds when its value
             // changes.
-
-            if verus_metadata.verify {
-                cmd.env(format!("__VERUS_DRIVER_VERIFY_{package_id}"), "1");
-            }
 
             if verus_metadata.is_builtin {
                 cmd.env(format!("__VERUS_DRIVER_IS_BUILTIN_{package_id}"), "1");
@@ -182,33 +178,36 @@ impl VerusCmd {
                 cmd.env(format!("__VERUS_DRIVER_IS_BUILTIN_MACROS_{package_id}"), "1");
             }
 
-            let mut verus_driver_args_for_package = vec![];
+            if verus_metadata.verify {
+                cmd.env(format!("__VERUS_DRIVER_VERIFY_{package_id}"), "1");
 
-            if verus_metadata.no_vstd {
-                verus_driver_args_for_package.push("--verus-arg=--no-vstd".to_owned());
-            }
+                let mut verus_driver_args_for_package = vec![];
 
-            if verus_metadata.is_vstd {
-                verus_driver_args_for_package.push("--verus-arg=--is-vstd".to_owned());
-            }
-
-            if verus_metadata.is_core {
-                verus_driver_args_for_package.push("--verus-arg=--is-core".to_owned());
-            }
-
-            for dep in &resolve_node.deps {
-                let verus_metadata_for_dep = &verus_metadata_by_package[&dep.pkg];
-                if verus_metadata_for_dep.verify {
-                    verus_driver_args_for_package
-                        .push(format!("--verus-driver-arg=--import-dep-if-present={}", dep.name));
+                if verus_metadata.is_core {
+                    verus_driver_args_for_package.push("--verus-arg=--is-core".to_owned());
                 }
-            }
 
-            if !verus_driver_args_for_package.is_empty() {
-                cmd.env(
-                    format!("__VERUS_DRIVER_ARGS_FOR_{package_id}"),
-                    pack_verus_driver_args_for_env(verus_driver_args_for_package.iter()),
-                );
+                if verus_metadata.is_vstd {
+                    verus_driver_args_for_package.push("--verus-arg=--is-vstd".to_owned());
+                }
+
+                if verus_metadata.no_vstd {
+                    verus_driver_args_for_package.push("--verus-arg=--no-vstd".to_owned());
+                }
+
+                for dep in &resolve_node.deps {
+                    if verus_metadata_by_package[&dep.pkg].verify {
+                        verus_driver_args_for_package
+                            .push(format!("--verus-driver-arg=--import-dep-if-present={}", dep.name));
+                    }
+                }
+
+                if !verus_driver_args_for_package.is_empty() {
+                    cmd.env(
+                        format!("__VERUS_DRIVER_ARGS_FOR_{package_id}"),
+                        pack_verus_driver_args_for_env(verus_driver_args_for_package.iter()),
+                    );
+                }
             }
         }
 
@@ -284,12 +283,12 @@ struct VerusMetadata {
     no_vstd: bool,
     #[serde(rename = "is-vstd", default)]
     is_vstd: bool,
+    #[serde(rename = "is-core", default)]
+    is_core: bool,
     #[serde(rename = "is-builtin", default)]
     is_builtin: bool,
     #[serde(rename = "is-builtin-macros", default)]
     is_builtin_macros: bool,
-    #[serde(rename = "is-core", default)]
-    is_core: bool,
 }
 
 fn get_verus_metadata(package: &cargo_metadata::Package) -> VerusMetadata {
