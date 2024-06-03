@@ -13,6 +13,7 @@ use std::io::Read;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use rustc_driver::{Callbacks, RunCompiler};
@@ -48,7 +49,7 @@ pub fn main() {
             handler.note(format!("Verus version: {version_info}"));
         })
     } else {
-        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))
+        Arc::new(AtomicBool::new(false))
     };
 
     exit(rustc_driver::catch_with_exit_code(move || {
@@ -218,6 +219,12 @@ pub fn main() {
             }
         }
 
+        let mut import_deps_if_present = parsed_verus_driver_inner_args
+            .import_dep_if_present
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+
         let mut externs = BTreeMap::<String, Vec<PathBuf>>::new();
 
         for (key, entry) in orig_rustc_opts.externs.iter() {
@@ -232,12 +239,6 @@ pub fn main() {
                 );
             }
         }
-
-        let mut import_deps_if_present = parsed_verus_driver_inner_args
-            .import_dep_if_present
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<_>>();
 
         if let Some(verus_sysroot) = parsed_verus_driver_inner_args
             .verus_sysroot

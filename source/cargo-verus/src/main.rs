@@ -54,6 +54,17 @@ fn show_version() {
     println!("{version_info}");
 }
 
+fn process(args: &[String]) -> Result<(), i32> {
+    let cmd = VerusCmd::new(args);
+
+    let mut cmd = cmd.into_std_cmd();
+
+    let exit_status =
+        cmd.spawn().expect("could not run cargo").wait().expect("failed to wait for cargo?");
+
+    if exit_status.success() { Ok(()) } else { Err(exit_status.code().unwrap_or(-1)) }
+}
+
 struct VerusCmd {
     cargo_subcommand: CargoSubcommand,
     cargo_args: Vec<String>,
@@ -130,19 +141,19 @@ impl VerusCmd {
     }
 
     fn into_std_cmd(self) -> Command {
-        let common_verus_driver_args =
-            pack_verus_driver_args_for_env(self.common_verus_driver_args.iter());
-
         let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
-        cmd.env("RUSTC_WRAPPER", checked_verus_driver_path())
-            .arg(self.cargo_subcommand.to_arg().to_owned())
-            .args(&self.cargo_args);
+        cmd.arg(self.cargo_subcommand.to_arg().to_owned()).args(&self.cargo_args);
+
+        cmd.env("RUSTC_WRAPPER", checked_verus_driver_path());
 
         cmd.env("__VERUS_DRIVER_VIA_CARGO__", "1");
 
         // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
         cmd.env("__CARGO_DEFAULT_LIB_METADATA", "verus");
+
+        let common_verus_driver_args =
+            pack_verus_driver_args_for_env(self.common_verus_driver_args.iter());
 
         if !common_verus_driver_args.is_empty() {
             cmd.env("__VERUS_DRIVER_ARGS__", common_verus_driver_args);
@@ -209,17 +220,6 @@ impl VerusCmd {
 
         cmd
     }
-}
-
-fn process(args: &[String]) -> Result<(), i32> {
-    let cmd = VerusCmd::new(args);
-
-    let mut cmd = cmd.into_std_cmd();
-
-    let exit_status =
-        cmd.spawn().expect("could not run cargo").wait().expect("failed to wait for cargo?");
-
-    if exit_status.success() { Ok(()) } else { Err(exit_status.code().unwrap_or(-1)) }
 }
 
 fn filter_args(
