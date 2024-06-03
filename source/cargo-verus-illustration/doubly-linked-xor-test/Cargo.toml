@@ -11,4 +11,3 @@ doubly-linked-xor = { path = "../doubly-linked-xor", features = ["explicit-verus
 
 [package.metadata.verus]
 verify = true
-imports = ["doubly_linked_xor"]

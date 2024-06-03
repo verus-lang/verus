@@ -8,6 +8,7 @@
 // https://github.com/rust-lang/rust-clippy/blob/master/src/main.rs
 //
 
+use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
@@ -147,11 +148,22 @@ impl VerusCmd {
             cmd.env("__VERUS_DRIVER_ARGS__", common_verus_driver_args);
         }
 
-        for package in self.metadata().packages.iter() {
+        let mut metadata = self.metadata();
+        sort_and_check_metadata(&mut metadata);
+
+        let verus_metadata_by_package = metadata
+            .packages
+            .iter()
+            .map(|package| (&package.id, get_verus_metadata(&package)))
+            .collect::<BTreeMap<_, _>>();
+
+        for (package, resolve_node) in
+            metadata.packages.iter().zip(metadata.resolve.as_ref().unwrap().nodes.iter())
+        {
             let package_id =
                 mk_package_id(&package.name, package.version.to_string(), &package.manifest_path);
 
-            let mut verus_metadata = get_verus_metadata(package);
+            let verus_metadata = &verus_metadata_by_package[&package.id];
 
             // The verify, is_builtin, and is_builtin_macro fields are passed as env vars as they
             // are relevant for crates which are skipped by Verus. In such cases, the driver avoids
@@ -184,22 +196,12 @@ impl VerusCmd {
                 verus_driver_args_for_package.push("--verus-arg=--is-core".to_owned());
             }
 
-            // TODO
-            // Do we want this implicit behavior? Or should we always require imports = ["vstd"] instead?
-            // Also, should this be implemented here or in verus-driver?
-            if !verus_metadata.is_vstd && !verus_metadata.no_vstd {
-                let key = "vstd".to_owned();
-                if verus_metadata.imports.contains(&key) {
-                    panic!(
-                        "package.metadata.verus.no-vstd implies package.metadata.verus.imports = [\"vstd\"]"
-                    );
+            for dep in &resolve_node.deps {
+                let verus_metadata_for_dep = &verus_metadata_by_package[&dep.pkg];
+                if verus_metadata_for_dep.verify {
+                    verus_driver_args_for_package
+                        .push(format!("--verus-driver-arg=--import-dep-if-present={}", dep.name));
                 }
-                verus_metadata.imports.push(key);
-            }
-
-            for import in verus_metadata.imports.iter() {
-                verus_driver_args_for_package
-                    .push(format!("--verus-driver-arg=--find-import={import}"));
             }
 
             if !verus_driver_args_for_package.is_empty() {
@@ -261,6 +263,19 @@ fn filter_args(
     acc
 }
 
+fn sort_and_check_metadata(meta: &mut Metadata) {
+    assert!(meta.resolve.is_some());
+    meta.packages.sort_by(|p1, p2| p1.id.cmp(&p2.id));
+    meta.resolve.as_mut().unwrap().nodes.sort_by(|n1, n2| n1.id.cmp(&n2.id));
+    let ids_in_packages = meta.packages.iter().map(|package| &package.id);
+    let ids_in_resolve = meta.resolve.as_ref().unwrap().nodes.iter().map(|node| &node.id);
+    assert!(ids_in_packages.eq(ids_in_resolve));
+    for node in &mut meta.resolve.as_mut().unwrap().nodes {
+        node.deps.sort_by(|d1, d2| d1.name.cmp(&d2.name));
+        assert!(node.deps.windows(2).all(|window| window[0].name != window[1].name));
+    }
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct VerusMetadata {
     #[serde(default)]
@@ -275,8 +290,6 @@ struct VerusMetadata {
     is_builtin_macros: bool,
     #[serde(rename = "is-core", default)]
     is_core: bool,
-    #[serde(default)]
-    imports: Vec<String>,
 }
 
 fn get_verus_metadata(package: &cargo_metadata::Package) -> VerusMetadata {

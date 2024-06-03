@@ -7,7 +7,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::io::Read;
 use std::mem;
@@ -220,6 +220,19 @@ pub fn main() {
 
         let mut externs = BTreeMap::<String, Vec<PathBuf>>::new();
 
+        for (key, entry) in orig_rustc_opts.externs.iter() {
+            if let Some(files) = entry.files() {
+                externs
+                    .insert(key.clone(), files.map(|path| path.canonicalized()).cloned().collect());
+            }
+        }
+
+        let mut import_deps_if_present = parsed_verus_driver_inner_args
+            .import_dep_if_present
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+
         if let Some(verus_sysroot) = parsed_verus_driver_inner_args
             .verus_sysroot
             .or_else(|| dep_tracker.get_env("VERUS_SYSROOT"))
@@ -252,26 +265,20 @@ pub fn main() {
             rustc_args.push(format!("dependency={verus_sysroot}/lib/rustlib/lib"));
             rustc_args.push("-L".to_owned());
             rustc_args.push(format!("dependency={verus_sysroot}/lib/rustlib/{target_triple}/lib"));
+
+            import_deps_if_present.insert("vstd".to_owned());
         }
 
-        for (key, entry) in orig_rustc_opts.externs.iter() {
-            if let Some(files) = entry.files() {
-                externs
-                    .insert(key.clone(), files.map(|path| path.canonicalized()).cloned().collect());
+        for key in import_deps_if_present.iter() {
+            if let Some(paths) = externs.get(key) {
+                assert_eq!(paths.len(), 1);
+                let path = &paths[0];
+                assert!(["rlib", "rmeta"].contains(&path.extension().unwrap().to_str().unwrap()));
+                let vir_path = path.with_extension("vir");
+                verus_inner_args
+                    .extend(["--import".to_owned(), format!("{key}={}", vir_path.display())]);
+                dep_tracker.mark_file(vir_path);
             }
-        }
-
-        for key in &parsed_verus_driver_inner_args.find_import {
-            let paths = externs
-                .get(key)
-                .unwrap_or_else(|| panic!("missing --extern corresponding to --import {key:?}"));
-            assert_eq!(paths.len(), 1);
-            let path = &paths[0];
-            assert!(["rlib", "rmeta"].contains(&path.extension().unwrap().to_str().unwrap()));
-            let vir_path = path.with_extension("vir");
-            verus_inner_args
-                .extend(["--import".to_owned(), format!("{key}={}", vir_path.display())]);
-            dep_tracker.mark_file(vir_path);
         }
 
         let vir_path = {
@@ -407,7 +414,7 @@ struct VerusDriverInnerArgs {
     #[arg(long)]
     compile_when_not_primary_package: bool,
     #[arg(long)]
-    find_import: Vec<String>,
+    import_dep_if_present: Vec<String>,
     #[arg(long)]
     verus_sysroot: Option<String>,
 }

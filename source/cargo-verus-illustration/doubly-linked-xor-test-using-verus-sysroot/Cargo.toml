@@ -8,4 +8,3 @@ doubly-linked-xor = { path = "../doubly-linked-xor" }
 
 [package.metadata.verus]
 verify = true
-imports = ["doubly_linked_xor"]
