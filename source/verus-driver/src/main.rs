@@ -58,9 +58,11 @@ pub fn main() {
         if orig_args.get(1).map(String::as_str) == Some(verifier::LIFETIME_DRIVER_ARG) {
             orig_args.remove(1);
             let mut buffer = String::new();
-            std::io::stdin().read_to_string(&mut buffer).expect("failed to read stdin");
+            std::io::stdin().read_to_string(&mut buffer).unwrap_or_else(|err| {
+                early_dcx.early_error(format!("failed to read stdin: {err:?}"))
+            });
             verifier::lifetime_rustc_driver(&orig_args, buffer);
-            exit(0);
+            return Ok(());
         }
 
         // Make "verus-driver --rustc" work like a subcommand that passes further args to "rustc"
@@ -179,29 +181,28 @@ pub fn main() {
         let orig_rustc_args = all_args;
 
         // HACK: clap expects exe in first arg
-        verus_driver_inner_args.insert(0, "dummy".to_owned());
+        verus_driver_inner_args.insert(0, "verus-driver-inner".to_owned());
 
-        let parsed_verus_driver_inner_args = VerusDriverInnerArgs::try_parse_from(
-            &verus_driver_inner_args,
-        )
-        .unwrap_or_else(|err| {
-            panic!(
+        let parsed_verus_driver_inner_args =
+            VerusDriverInnerArgs::try_parse_from(&verus_driver_inner_args).unwrap_or_else(|err| {
+                early_dcx.early_error(format!(
                 "failed to parse verus driver inner args from {verus_driver_inner_args:?}: {err}"
-            )
-        });
+            ))
+            });
 
         if parsed_verus_driver_inner_args.help {
             display_help();
-            exit(0);
+            return Ok(());
         }
 
         if parsed_verus_driver_inner_args.version {
             let version_info = rustc_tools_util::get_version_info!();
             println!("{version_info}");
-            exit(0);
+            return Ok(());
         }
 
-        let orig_rustc_opts = probe_config(&orig_rustc_args, |config| config.opts.clone()).unwrap();
+        let orig_rustc_opts = probe_config(&orig_rustc_args, |config| config.opts.clone())
+            .unwrap_or_else(|_| early_dcx.early_error("failed to parse rustc args"));
 
         let mut rustc_args = orig_rustc_args;
 
@@ -246,9 +247,24 @@ pub fn main() {
         {
             let mut add_extern = |key: &str, pattern: String| {
                 let path = {
+                    let report_missing_or_corrupt = || {
+                        early_dcx
+                            .early_error("verus sysroot appears to be either missing or corrupt");
+                    };
                     let mut paths = glob::glob(pattern.as_str()).unwrap();
-                    let path = paths.next().unwrap().unwrap();
-                    assert!(paths.next().is_none());
+                    let path = paths
+                        .next()
+                        .unwrap_or_else(|| {
+                            report_missing_or_corrupt();
+                            unreachable!()
+                        })
+                        .unwrap_or_else(|err| {
+                            early_dcx
+                                .early_error(format!("failed to traverse verus sysroot: {err:?}"))
+                        });
+                    if paths.next().is_some() {
+                        report_missing_or_corrupt();
+                    }
                     path
                 };
                 rustc_args.push(format!("--extern={key}={}", path.display()));
@@ -282,7 +298,7 @@ pub fn main() {
                     }
                 }
                 if !found {
-                    panic!("could not find .vir file for '{key}'");
+                    early_dcx.early_error(format!("could not find .vir file for '{key}'"));
                 }
             }
         }
@@ -327,7 +343,13 @@ pub fn main() {
                 .run()
         };
 
-        verifier::run(verus_inner_args.into_iter(), &rustc_args, mk_file_loader, compiler_runner)
+        verifier::run(
+            &early_dcx,
+            verus_inner_args.into_iter(),
+            &rustc_args,
+            mk_file_loader,
+            compiler_runner,
+        )
     }))
 }
 

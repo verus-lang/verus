@@ -17,7 +17,9 @@ impl DepTracker {
         let val = match env::var(var) {
             Ok(s) => Some(s),
             Err(VarError::NotPresent) => None,
-            Err(VarError::NotUnicode(_)) => panic!(), // TODO
+            Err(VarError::NotUnicode(invalid)) => panic!(
+                "the value of environment variable {var:?} is not value unicode: {invalid:?}"
+            ),
         };
         self.env.insert(var.to_owned(), val.clone());
         val
@@ -55,8 +57,7 @@ impl<T: AsRef<DepTracker> + Clone + Send + 'static> ConfigCallback for DepTracke
             }
             for path in dep_tracker.as_ref().files.iter() {
                 psess.file_depinfo.get_mut().insert(Symbol::intern(
-                    path.to_str()
-                        .unwrap_or_else(|| panic!("{} is not valid unicode", path.display())),
+                    path.to_str().unwrap_or_else(|| panic!("path {path:?} is not valid unicode")),
                 ));
             }
         }));

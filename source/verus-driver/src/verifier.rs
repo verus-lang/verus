@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use rustc_driver::Callbacks;
+use rustc_session::EarlyDiagCtxt;
 use rustc_span::source_map::FileLoader;
 use rustc_span::ErrorGuaranteed;
 
@@ -31,6 +32,7 @@ where
 }
 
 pub(crate) fn run<'a, T, U, V>(
+    early_dcx: &EarlyDiagCtxt,
     verus_inner_args: impl Iterator<Item = String>,
     rustc_args: &[String],
     mk_file_loader: U,
@@ -41,7 +43,8 @@ where
     U: Fn() -> T,
     V: CompilerRunner,
 {
-    let program_name_for_config = "TODO";
+    // HACK
+    let program_name_for_config = "verus-inner";
 
     let (parsed_verus_inner_args, unparsed) = rust_verify::config::parse_args_with_imports(
         &program_name_for_config.to_owned(),
@@ -49,14 +52,14 @@ where
         None,
     );
 
-    assert!(
-        unparsed.len() == 1 && unparsed[0] == program_name_for_config,
-        "leftovers after parsing --verus-arg=<..> args: {:?}",
-        unparsed
-    );
+    if unparsed.len() != 1 || unparsed[0] != program_name_for_config {
+        early_dcx
+            .early_error(format!("leftovers after parsing --verus-arg=<..> args: {:?}", unparsed));
+    }
 
-    // TODO
-    assert!(!parsed_verus_inner_args.version);
+    if parsed_verus_inner_args.version {
+        early_dcx.early_error("--verus-inner-arg=--version is not supported");
+    }
 
     let is_core = parsed_verus_inner_args.vstd == rust_verify::config::Vstd::IsCore;
 
@@ -80,18 +83,18 @@ where
     let VerifierCallbacksEraseMacro { verifier, .. } = verifier_callbacks;
 
     if !verifier.args.output_json && !verifier.encountered_vir_error {
-        eprint!(
+        let mut s = format!(
             "verification results:: {} verified, {} errors",
             verifier.count_verified, verifier.count_errors,
         );
         if !is_verifying_entire_crate(&verifier) {
-            eprint!(" (partial verification with `--verify-*`)");
+            s.push_str(" (partial verification with `--verify-*`)");
         }
-        eprintln!();
+        early_dcx.early_note(s);
     }
 
     if status.is_err() || verifier.encountered_vir_error {
-        panic!("verification failed");
+        early_dcx.early_error("verification failed");
     }
 
     if !verifier.args.compile && verifier.args.no_lifetime {
