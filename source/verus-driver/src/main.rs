@@ -426,8 +426,7 @@ fn display_help() {
 
 #[must_use]
 fn help_message() -> &'static str {
-    "TODO
-
+    "\
 Usage:
     verus-driver [OPTIONS] INPUT
 
@@ -435,5 +434,6 @@ Common options:
     -h, --help               Print this message
     -V, --version            Print version info and exit
     --rustc                  Pass all arguments to rustc
+    ...
 "
 }
