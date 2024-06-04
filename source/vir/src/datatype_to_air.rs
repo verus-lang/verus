@@ -14,7 +14,9 @@ use crate::def::{
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
-use crate::sst_to_air::{datatype_id, expr_has_type, path_to_air_ident, typ_invariant, typ_to_air};
+use crate::sst_to_air::{
+    datatype_id, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant, typ_to_air,
+};
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{
@@ -77,9 +79,9 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
-        TypX::StrSlice => false,
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
+        TypX::Primitive(crate::ast::Primitive::StrSlice, _) => false,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::FnDef(..) => false,
     }
@@ -696,6 +698,21 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
 
+    let strslice_monotyp = Arc::new(crate::poly::MonoTypX::Primitive(
+        crate::ast::Primitive::StrSlice,
+        Arc::new(vec![]),
+    ));
+    let strslice_commands = if ctx.mono_types.contains(&strslice_monotyp) {
+        let strslice_name = path_to_air_ident(&monotyp_to_path(&strslice_monotyp));
+        let nodes = crate::prelude::strslice_functions(strslice_name.as_str());
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed strslice functions");
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
+
     let mut commands: Vec<Command> = Vec::new();
     commands.append(&mut opaque_sort_commands);
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
@@ -705,5 +722,6 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut token_commands);
     commands.append(&mut box_commands);
     commands.append(&mut axiom_commands);
+    commands.extend(strslice_commands);
     Arc::new(commands)
 }

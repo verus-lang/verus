@@ -93,7 +93,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::TypeId, TypX::TypeId) => true,
         (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
-        (TypX::StrSlice, TypX::StrSlice) => true,
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
@@ -112,7 +111,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::TypeId, _) => false,
         (TypX::ConstInt(_), _) => false,
         (TypX::Air(_), _) => false,
-        (TypX::StrSlice, _) => false,
         (TypX::FnDef(..), _) => false,
     }
 }
@@ -647,6 +645,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             match prim {
                 crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
                 crate::ast::Primitive::Slice => format!("[{typs_str}]"),
+                crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
                 crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
             }
         }
@@ -703,7 +702,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
         TypX::Air(_) => panic!("unexpected air type here"),
-        TypX::StrSlice => format!("StrSlice"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
             path_as_friendly_rust_name(&f.path),

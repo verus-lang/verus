@@ -828,6 +828,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typs = Arc::new(vec![typ]);
             (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
         }
+        TyKind::Str => (Arc::new(TypX::Primitive(Primitive::StrSlice, Arc::new(vec![]))), false),
         TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty, mutbl }) => {
             let typ = t_rec(ty)?.0;
             let typs = Arc::new(vec![typ]);
@@ -1038,8 +1039,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
             (Arc::new(typx), false)
         }
-        TyKind::Str => (Arc::new(TypX::StrSlice), false),
-
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {

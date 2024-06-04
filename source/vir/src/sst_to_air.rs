@@ -74,6 +74,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
     match name {
         Primitive::Array => crate::def::array_type(),
         Primitive::Slice => crate::def::slice_type(),
+        Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
     }
 }
@@ -82,6 +83,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
     str_ident(match name {
         Primitive::Array => crate::def::TYPE_ID_ARRAY,
         Primitive::Slice => crate::def::TYPE_ID_SLICE,
+        Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
     })
 }
@@ -107,7 +109,6 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
                 &typs.iter().map(monotyp_to_path).collect(),
             );
         }
-        MonoTypX::StrSlice => str_ident("StrSlice"),
         MonoTypX::Decorate(_, typ) => {
             return monotyp_to_path(typ);
         }
@@ -138,17 +139,17 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
-        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
-            match typ_as_mono(typ) {
-                None => panic!("should be boxed"),
-                Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
-            }
-        }
+        TypX::Primitive(
+            Primitive::Array | Primitive::Slice | Primitive::StrSlice | Primitive::Ptr,
+            _,
+        ) => match typ_as_mono(typ) {
+            None => panic!("should be boxed"),
+            Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
+        },
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
-        TypX::StrSlice => str_typ(crate::def::STRSLICE),
     }
 }
 
@@ -189,7 +190,6 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id(range_to_id(range)),
-        MonoTypX::StrSlice => mk_id(str_var(crate::def::TYPE_ID_STRSLICE)),
         MonoTypX::Datatype(path, typs) => {
             let f_name = crate::def::prefix_type_id(path);
             let mut args: Vec<Expr> = Vec::new();
@@ -247,7 +247,6 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id(range_to_id(range)),
-        TypX::StrSlice => mk_id(str_var(crate::def::TYPE_ID_STRSLICE)),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Lambda(typs, typ) => mk_id(fun_id(typs, typ)),
         TypX::AnonymousClosure(..) => {
@@ -380,7 +379,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Boxed(_) => Some(expr_has_typ(expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(expr, typ)),
-        TypX::Bool | TypX::StrSlice | TypX::AnonymousClosure(..) | TypX::TypeId => None,
+        TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Tuple(_) | TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
@@ -439,7 +438,6 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
-        TypX::StrSlice => Some(str_ident(crate::def::BOX_STRSLICE)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -471,7 +469,6 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
-        TypX::StrSlice => Some(str_ident(crate::def::UNBOX_STRSLICE)),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
