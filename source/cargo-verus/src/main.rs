@@ -363,8 +363,7 @@ fn get_verus_driver_version(path: &Path) -> Version {
 
 #[must_use]
 pub fn help_message() -> &'static str {
-    "TODO
-
+    "\
 Usage:
     cargo verus [OPTIONS] [--] [<ARGS>...]
 
