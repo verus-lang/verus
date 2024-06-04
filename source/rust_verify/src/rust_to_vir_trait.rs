@@ -1,5 +1,6 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
+use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
 };
@@ -97,7 +98,7 @@ pub(crate) fn translate_trait<'tcx>(
     trait_generics: &'tcx Generics,
     trait_items: &'tcx [TraitItemRef],
     trait_vattrs: &VerifierAttrs,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let orig_trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
@@ -288,7 +289,7 @@ pub(crate) fn translate_trait<'tcx>(
                     body_id,
                     ex_trait_id_for,
                     ex_item_id_for,
-                    external_fn_specification_trait_method_impls,
+                    external_info,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -345,11 +346,15 @@ pub(crate) fn translate_trait<'tcx>(
     let mut methods = vir::headers::make_trait_decls(methods)?;
     vir.functions.append(&mut methods);
     let mut assoc_typs_bounds = Arc::new(assoc_typs_bounds);
-    if ex_trait_id_for.is_some() {
+    let target_trait_id = if let Some(target_trait_id) = ex_trait_id_for {
         typ_bounds = rewrite_external_bounds(&orig_trait_path, &trait_path, &typ_bounds);
         assoc_typs_bounds =
             rewrite_external_bounds(&orig_trait_path, &trait_path, &assoc_typs_bounds);
-    }
+        target_trait_id
+    } else {
+        trait_def_id
+    };
+    external_info.trait_ids.push(target_trait_id);
     let traitx = TraitX {
         name: trait_path,
         proxy: ex_trait_id_for.map(|_| (*ctxt.spanned_new(trait_span, orig_trait_path)).clone()),

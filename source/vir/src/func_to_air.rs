@@ -243,10 +243,13 @@ fn func_body_to_air(
     // Recursive function definitions, on the other hand, only hold conditionally for
     // type arguments and value arguments for which termination can be proved.
     // Collect the conditions on type arguments and value arguments in def_reqs.
-    if function.x.decrease.len() > 0 {
+    if function.x.decrease.len() > 0 || !matches!(function.x.kind, FunctionKind::Static) {
         // conditions on type arguments:
+        // (*always* needed in trait dispatch to make sure different implementations of the same
+        // trait don't conflict and contradict each other)
         def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds));
-
+    }
+    if function.x.decrease.len() > 0 {
         for param in function.x.params.iter() {
             let arg = ident_var(&param.x.name.lower());
             if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
@@ -1214,6 +1217,7 @@ pub fn func_sst_to_air(
         ctx,
         &function.span,
         &function.x.typ_params,
+        &function.x.typ_bounds,
         &function.x.params,
         function_sst,
         &function.x.attrs.hidden,

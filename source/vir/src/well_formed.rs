@@ -756,15 +756,6 @@ fn check_function(
         }
     }
 
-    if function.x.attrs.nonlinear {
-        if function.x.mode == Mode::Spec {
-            return Err(error(
-                &function.span,
-                "#[verifier(nonlinear) is only allowed on proof and exec functions",
-            ));
-        }
-    }
-
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
         return Err(error(
             &function.span,

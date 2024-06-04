@@ -2431,6 +2431,7 @@ pub(crate) fn body_stm_to_air(
     ctx: &Ctx,
     func_span: &Span,
     typ_params: &Idents,
+    typ_bounds: &crate::ast::GenericBounds,
     params: &Params,
     function_sst: &FunctionSst,
     hidden: &Vec<Fun>,
@@ -2510,6 +2511,13 @@ pub(crate) fn body_stm_to_air(
         }
     }
 
+    let mut local =
+        if !is_bit_vector_mode { local_shared.clone() } else { local_bv_shared.clone() };
+    for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
+        // The outer query already has this in reqs, but inner queries need it separately:
+        local_shared.push(Arc::new(DeclX::Axiom(e)));
+    }
+
     let mut state = State {
         local_shared,
         may_be_used_in_old,
@@ -2555,12 +2563,6 @@ pub(crate) fn body_stm_to_air(
         new_stmts.append(&mut stmts);
         stmts = new_stmts;
     }
-
-    let mut local = if !is_bit_vector_mode {
-        state.local_shared.clone()
-    } else {
-        state.local_bv_shared.clone()
-    };
 
     let assertion = one_stmt(stmts);
 

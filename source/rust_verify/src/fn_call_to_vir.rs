@@ -1596,7 +1596,7 @@ fn mk_is_smaller_than<'tcx>(
         let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
             let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
             let e1 = expr_to_vir(bctx, exp1, ExprModifier::REGULAR)?;
-            if vir::recursion::height_is_int(&e0.typ) {
+            if vir::recursion::height_is_int(&e0.typ) && vir::recursion::height_is_int(&e1.typ) {
                 if lt {
                     // 0 <= x < y
                     let zerox = ExprX::Const(vir::ast_util::const_int_from_u128(0));

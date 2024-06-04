@@ -39,7 +39,7 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Option<Model>, ArcDynMessage, Option<AssertId>),
+    Invalid(Option<Model>, Option<ArcDynMessage>, Option<AssertId>),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
@@ -50,7 +50,7 @@ pub(crate) enum ContextState {
     NotStarted,
     ReadyForQuery,
     FoundResult,
-    FoundInvalid(Vec<AssertionInfo>, Model),
+    FoundInvalid(Vec<AssertionInfo>, Option<Model>),
     Canceled,
     NoMoreQueriesAllowed,
 }
@@ -409,7 +409,7 @@ impl Context {
         only_check_earlier: bool,
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
-        if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
+        if let ContextState::FoundInvalid(infos, Some(air_model)) = self.state.clone() {
             let res = crate::smt_verify::smt_check_assertion(
                 self,
                 diagnostics,
@@ -421,7 +421,7 @@ impl Context {
             self.check_valid_used = true;
             res
         } else {
-            panic!("check_valid_again expected query to be ValidityResult::Invalid");
+            panic!("check_valid_again expected query to be ValidityResult::Invalid(_, Some(_))");
         }
     }
 

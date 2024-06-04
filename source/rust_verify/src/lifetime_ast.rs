@@ -171,19 +171,14 @@ pub(crate) struct TraitDecl {
     pub(crate) assoc_typs: Vec<(Id, Vec<GenericBound>)>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) struct AssocTypeImpl {
+#[derive(Debug)]
+pub(crate) struct TraitImpl {
     pub(crate) self_typ: Typ,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
     pub(crate) trait_as_datatype: Typ,
-}
-
-#[derive(Debug)]
-pub(crate) struct AssocTypeImplType {
-    pub(crate) name: Id,
-    pub(crate) typ: Typ,
+    pub(crate) assoc_typs: Vec<(Id, Typ)>,
 }
 
 #[derive(Debug)]

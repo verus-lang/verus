@@ -412,7 +412,7 @@ fn run() -> Result<(), String> {
                 }
                 Some(version?.as_str())
             })
-            .ok_or(format!("undexpected z3 version output ({})", stdout_str))?;
+            .ok_or(format!("unexpected z3 version output ({})", stdout_str))?;
         if version != consts::EXPECTED_Z3_VERSION {
             return Err(format!(
                 "Verus expects z3 version \"{}\", found version \"{}\"\n\

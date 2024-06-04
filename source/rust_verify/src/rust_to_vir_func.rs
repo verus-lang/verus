@@ -2,6 +2,7 @@ use crate::attributes::{
     get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
 };
 use crate::context::{BodyCtxt, Context};
+use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
@@ -126,7 +127,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     mode: Mode,
     vattrs: &VerifierAttrs,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
@@ -291,7 +292,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     let has_self_parameter = has_self_parameter(ctxt, external_id);
 
     if matches!(kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
-        external_fn_specification_trait_method_impls.push((external_id, sig.span));
+        external_info.external_fn_specification_trait_method_impls.push((external_id, sig.span));
     }
 
     Ok((external_path, external_item_visibility, kind, has_self_parameter))
@@ -450,6 +451,47 @@ fn create_reveal_group<'tcx>(
     err_span(span, "reveal_group must have body")
 }
 
+fn make_attributes(
+    vattrs: &crate::attributes::VerifierAttrs,
+    uses_ghost_blocks: bool,
+    hidden: Arc<Vec<Fun>>,
+    custom_req_err: Option<String>,
+    autospec: Option<Fun>,
+    print_zero_args: bool,
+    print_as_method: bool,
+    span: Span,
+) -> Result<vir::ast::FunctionAttrs, VirErr> {
+    if vattrs.nonlinear && vattrs.spinoff_prover {
+        return err_span(
+            span,
+            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
+        );
+    }
+    let fattrs = FunctionAttrsX {
+        uses_ghost_blocks,
+        inline: vattrs.inline,
+        hidden,
+        custom_req_err,
+        no_auto_trigger: vattrs.no_auto_trigger,
+        broadcast_forall: vattrs.broadcast_forall,
+        bit_vector: vattrs.bit_vector,
+        autospec,
+        atomic: vattrs.atomic,
+        integer_ring: vattrs.integer_ring,
+        is_decrease_by: vattrs.decreases_by,
+        check_recommends: vattrs.check_recommends,
+        nonlinear: vattrs.nonlinear,
+        spinoff_prover: vattrs.spinoff_prover,
+        memoize: vattrs.memoize,
+        rlimit: vattrs.rlimit,
+        print_zero_args,
+        print_as_method,
+        prophecy_dependent: vattrs.prophecy_dependent,
+        size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
+    };
+    Ok(Arc::new(fattrs))
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     functions: &mut Vec<vir::ast::Function>,
@@ -466,7 +508,7 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
     external_trait: Option<DefId>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
@@ -496,7 +538,7 @@ pub(crate) fn check_item_fn<'tcx>(
             mode,
             &vattrs,
             external_fn_specification_via_external_trait,
-            external_fn_specification_trait_method_impls,
+            external_info,
         )?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
@@ -880,7 +922,7 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         publish
     };
-    let autospec = vattrs.autospec.map(|method_name| {
+    let autospec = vattrs.autospec.clone().map(|method_name| {
         let this_path =
             crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(ctxt.tcx, id);
         let path = autospec_fun(&this_path, method_name.clone());
@@ -893,28 +935,16 @@ pub(crate) fn check_item_fn<'tcx>(
             "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
         );
     }
-    let fattrs = FunctionAttrsX {
-        uses_ghost_blocks: vattrs.verus_macro,
-        inline: vattrs.inline,
-        hidden: Arc::new(header.hidden),
-        custom_req_err: vattrs.custom_req_err,
-        no_auto_trigger: vattrs.no_auto_trigger,
-        broadcast_forall: vattrs.broadcast_forall,
-        bit_vector: vattrs.bit_vector,
+    let fattrs = make_attributes(
+        &vattrs,
+        vattrs.verus_macro,
+        Arc::new(header.hidden),
+        vattrs.custom_req_err.clone(),
         autospec,
-        atomic: vattrs.atomic,
-        integer_ring: vattrs.integer_ring,
-        is_decrease_by: vattrs.decreases_by,
-        check_recommends: vattrs.check_recommends,
-        nonlinear: vattrs.nonlinear,
-        spinoff_prover: vattrs.spinoff_prover,
-        memoize: vattrs.memoize,
-        rlimit: vattrs.rlimit,
-        print_zero_args: n_params == 0,
-        print_as_method: has_self_param,
-        prophecy_dependent: vattrs.prophecy_dependent,
-        size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
-    };
+        n_params == 0,
+        has_self_param,
+        sig.span,
+    )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
     if let Some(decrease_when) = &header.decrease_when {
@@ -966,7 +996,7 @@ pub(crate) fn check_item_fn<'tcx>(
         mask_spec: header.invariant_mask,
         item_kind: ItemKind::Function,
         publish,
-        attrs: Arc::new(fattrs),
+        attrs: fattrs,
         body: body_with_mut_redecls,
         extra_dependencies: header.extra_dependencies,
     };
@@ -1468,8 +1498,17 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         let path = autospec_fun(&path, method_name.clone());
         Arc::new(FunX { path })
     });
-    let mut fattrs: FunctionAttrsX = Default::default();
-    fattrs.autospec = autospec;
+    let fattrs = make_attributes(
+        &vattrs,
+        false,
+        Arc::new(vec![]),
+        vattrs.custom_req_err.clone(),
+        autospec,
+        false,
+        false,
+        span,
+    )?;
+
     let func = FunctionX {
         name: name.clone(),
         proxy: None,
@@ -1492,7 +1531,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         mask_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         publish: get_publish(&vattrs).0,
-        attrs: Arc::new(fattrs),
+        attrs: fattrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
     };

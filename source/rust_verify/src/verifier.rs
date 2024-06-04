@@ -319,6 +319,10 @@ pub fn module_name(module: &vir::ast::Path) -> String {
 mod util {
     pub(crate) struct PanicOnDropVec<T>(Option<Vec<T>>);
 
+    // For https://github.com/verus-lang/verus/issues/1044 :
+    pub(crate) static PANIC_ON_DROP_VEC: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(true);
+
     impl<T> PanicOnDropVec<T> {
         pub fn new(v: Vec<T>) -> Self {
             PanicOnDropVec(Some(v))
@@ -335,7 +339,7 @@ mod util {
 
     impl<T> Drop for PanicOnDropVec<T> {
         fn drop(&mut self) {
-            if self.0.is_some() {
+            if self.0.is_some() && PANIC_ON_DROP_VEC.load(std::sync::atomic::Ordering::SeqCst) {
                 panic!("dropped, expected call to `into_inner` instead");
             }
         }
@@ -514,6 +518,7 @@ impl Verifier {
         match result {
             ValidityResult::Valid => {}
             ValidityResult::TypeError(err) => {
+                util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                 panic!("internal error: ill-typed AIR code: {}", err)
             }
             _ => panic!("internal error: decls should not generate queries ({:?})", result),
@@ -725,6 +730,7 @@ impl Verifier {
                     break;
                 }
                 ValidityResult::TypeError(err) => {
+                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Canceled => {
@@ -747,19 +753,30 @@ impl Verifier {
                     timed_out = true;
                     break;
                 }
-                ValidityResult::Invalid(air_model, error, assert_id_opt) => {
+                ValidityResult::Invalid(None, error, _)
+                | ValidityResult::Invalid(_, error @ None, _) => {
+                    if is_first_check && level == Some(MessageLevel::Error) {
+                        self.count_errors += 1;
+                        invalidity = true;
+                    }
+                    if self.expand_flag {
+                        invalidity = true;
+                    }
+                    if let Some(level) = level {
+                        if let Some(error) = error {
+                            // singular_invalid case
+                            reporter.report_as(&error, level);
+                        } else {
+                            // bitvector case
+                            reporter.report(&message(level, &context.desc, &context.span).to_any());
+                        }
+                    }
+                    break;
+                }
+                ValidityResult::Invalid(Some(air_model), Some(error), assert_id_opt) => {
                     if let Some(assert_id) = assert_id_opt {
                         failed_assert_ids.push(assert_id.clone());
                     }
-                    if let Some(level) = level {
-                        if air_model.is_none() {
-                            // singular_invalid case
-                            self.count_errors += 1;
-                            reporter.report_as(&error, level);
-                            break;
-                        }
-                    }
-                    let air_model = air_model.unwrap();
 
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
@@ -826,6 +843,7 @@ impl Verifier {
                     bucket_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
+                    util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                     panic!("unexpected output from solver: {}", err);
                 }
             }
