@@ -11,9 +11,10 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command};
+use std::process::{Command, ExitCode};
 use std::str;
 
+use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
 use semver::{Version, VersionReq};
 use serde::Deserialize;
@@ -23,7 +24,7 @@ fn verus_driver_version_req() -> VersionReq {
     VersionReq::parse("=0.1.0").unwrap()
 }
 
-pub fn main() {
+pub fn main() -> Result<ExitCode> {
     // Choose offset into args according to whether we are being run as `cargo-verus` or `cargo verus`.
     // (See https://doc.rust-lang.org/cargo/reference/external-tools.html#custom-subcommands)
     let run_as_cargo_subcommand = matches!(env::args().nth(1).as_deref(), Some("verus"));
@@ -32,17 +33,15 @@ pub fn main() {
 
     if args.iter().any(|a| a == "--help" || a == "-h") {
         show_help();
-        return;
+        return Ok(ExitCode::SUCCESS);
     }
 
     if args.iter().any(|a| a == "--version" || a == "-V") {
         show_version();
-        return;
+        return Ok(ExitCode::SUCCESS);
     }
 
-    if let Err(code) = process(&args) {
-        process::exit(code);
-    }
+    process(&args)
 }
 
 fn show_help() {
@@ -54,15 +53,20 @@ fn show_version() {
     println!("{version_info}");
 }
 
-fn process(args: &[String]) -> Result<(), i32> {
+fn process(args: &[String]) -> Result<ExitCode> {
     let cmd = VerusCmd::new(args);
 
-    let mut cmd = cmd.into_std_cmd();
+    let mut cmd = cmd.into_std_cmd()?;
 
     let exit_status =
-        cmd.spawn().expect("could not run cargo").wait().expect("failed to wait for cargo?");
+        cmd.spawn().context("Failed to spawn cargo")?.wait().context("Failed to wait for cargo")?;
 
-    if exit_status.success() { Ok(()) } else { Err(exit_status.code().unwrap_or(-1)) }
+    match exit_status.code() {
+        Some(code) => u8::try_from(code)
+            .map(From::from)
+            .map_err(|_| anyhow!("Command {cmd:?} terminated with an odd exit code: {code}")),
+        None => bail!("Command {cmd:?} was terminated by a signal: {exit_status}"),
+    }
 }
 
 struct VerusCmd {
@@ -125,27 +129,26 @@ impl VerusCmd {
         Self { cargo_subcommand, cargo_args, common_verus_driver_args }
     }
 
-    fn metadata(&self) -> Metadata {
+    fn metadata(&self) -> Result<Metadata> {
         let standalone_flags = &["--frozen", "--locked", "--offline"];
 
         let flags_with_values = &["--config", "--manifest-path", "-Z"];
 
         let cargo_metadata_args =
-            filter_args(self.cargo_args.iter(), standalone_flags, flags_with_values);
+            filter_args(self.cargo_args.iter(), standalone_flags, flags_with_values)?;
 
         let mut cmd = MetadataCommand::new();
         cmd.other_options(cargo_metadata_args);
-        cmd.exec().unwrap_or_else(|err| {
-            panic!("cargo metadata command {:?} failed: {}", cmd, err);
-        })
+        let metadata = cmd.exec()?;
+        Ok(metadata)
     }
 
-    fn into_std_cmd(self) -> Command {
+    fn into_std_cmd(self) -> Result<Command> {
         let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
         cmd.arg(self.cargo_subcommand.to_arg().to_owned()).args(&self.cargo_args);
 
-        cmd.env("RUSTC_WRAPPER", checked_verus_driver_path());
+        cmd.env("RUSTC_WRAPPER", checked_verus_driver_path()?);
 
         cmd.env("__VERUS_DRIVER_VIA_CARGO__", "1");
 
@@ -159,8 +162,8 @@ impl VerusCmd {
             cmd.env("__VERUS_DRIVER_ARGS__", common_verus_driver_args);
         }
 
-        let metadata = self.metadata();
-        let metadata_index = MetadataIndex::new(&metadata);
+        let metadata = self.metadata()?;
+        let metadata_index = MetadataIndex::new(&metadata)?;
 
         for entry in metadata_index.entries() {
             let package = entry.package();
@@ -218,7 +221,7 @@ impl VerusCmd {
             }
         }
 
-        cmd
+        Ok(cmd)
     }
 }
 
@@ -226,7 +229,7 @@ fn filter_args(
     mut orig_args: impl Iterator<Item = impl AsRef<str>>,
     standalone_flags: &[impl AsRef<str>],
     flags_with_values: &[impl AsRef<str>],
-) -> Vec<String> {
+) -> Result<Vec<String>> {
     let mut acc = vec![];
     while let Some(arg) = orig_args.next() {
         if standalone_flags.iter().any(|flag| flag.as_ref() == arg.as_ref()) {
@@ -236,9 +239,7 @@ fn filter_args(
             acc.push(
                 orig_args
                     .next()
-                    .unwrap_or_else(|| {
-                        panic!("expected {} to be followed by a value", arg.as_ref())
-                    })
+                    .ok_or_else(|| anyhow!("Expected {} to be followed by a value", arg.as_ref()))?
                     .as_ref()
                     .to_owned(),
             );
@@ -255,7 +256,7 @@ fn filter_args(
             }
         }
     }
-    acc
+    Ok(acc)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -274,20 +275,17 @@ struct VerusMetadata {
     is_builtin_macros: bool,
 }
 
-fn get_verus_metadata(package: &cargo_metadata::Package) -> VerusMetadata {
-    package
-        .metadata
-        .as_object()
-        .and_then(|obj| obj.get("verus"))
-        .map(|v| {
-            serde_json::from_value::<VerusMetadata>(v.clone()).unwrap_or_else(|err| {
-                panic!(
-                    "failed to parse {}-{}.metadata.verus: {}",
-                    package.name, package.version, err
-                )
-            })
-        })
-        .unwrap_or_default()
+impl VerusMetadata {
+    fn parse_from_package(package: &cargo_metadata::Package) -> Result<VerusMetadata> {
+        match package.metadata.as_object().and_then(|obj| obj.get("verus")) {
+            Some(value) => {
+                serde_json::from_value::<VerusMetadata>(value.clone()).with_context(|| {
+                    format!("Failed to parse {}-{}.metadata.verus", package.name, package.version)
+                })
+            }
+            None => Ok(Default::default()),
+        }
+    }
 }
 
 struct MetadataIndex<'a> {
@@ -301,7 +299,7 @@ struct MetadataIndexEntry<'a> {
 }
 
 impl<'a> MetadataIndex<'a> {
-    fn new(metadata: &'a Metadata) -> Self {
+    fn new(metadata: &'a Metadata) -> Result<Self> {
         assert!(metadata.resolve.is_some());
         let mut deps_by_package = BTreeMap::new();
         for node in &metadata.resolve.as_ref().unwrap().nodes {
@@ -319,7 +317,7 @@ impl<'a> MetadataIndex<'a> {
                         &package.id,
                         MetadataIndexEntry {
                             package,
-                            verus_metadata: get_verus_metadata(package),
+                            verus_metadata: VerusMetadata::parse_from_package(package)?,
                             deps: deps_by_package.remove(&package.id).unwrap(),
                         }
                     )
@@ -327,7 +325,7 @@ impl<'a> MetadataIndex<'a> {
             );
         }
         assert!(deps_by_package.is_empty());
-        Self { entries }
+        Ok(Self { entries })
     }
 
     fn get(&self, id: &PackageId) -> &MetadataIndexEntry<'a> {
@@ -372,14 +370,14 @@ fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -
         .collect()
 }
 
-fn checked_verus_driver_path() -> PathBuf {
+fn checked_verus_driver_path() -> Result<PathBuf> {
     let path = unchecked_verus_driver_path();
-    let version = get_verus_driver_version(&path);
+    let version = get_verus_driver_version(&path)?;
     let version_req = verus_driver_version_req();
     if !version_req.matches(&version) {
-        panic!("verus-driver version {version} must match {version_req}");
+        bail!("verus-driver version {version} must match {version_req}");
     }
-    path
+    Ok(path)
 }
 
 fn unchecked_verus_driver_path() -> PathBuf {
@@ -393,30 +391,32 @@ fn unchecked_verus_driver_path() -> PathBuf {
     path
 }
 
-fn get_verus_driver_version(path: &Path) -> Version {
+fn get_verus_driver_version(path: &Path) -> Result<Version> {
     let mut cmd = Command::new(path);
     cmd.arg("--verus-driver-arg=--version");
     let output =
-        cmd.output().unwrap_or_else(|err| panic!("reading output of {cmd:?} failed with {err}"));
+        cmd.output().with_context(|| format!("Failed to read output of command {cmd:?}"))?;
     if !output.status.success() {
-        panic!(
-            "command {cmd:?} failed with {}\nstdout: {:?}\nstderr: {:?}",
+        bail!(
+            "Command {cmd:?} failed with {}\nstdout: {:?}\nstderr: {:?}",
             output.status,
             str::from_utf8(&output.stdout),
-            str::from_utf8(&output.stderr)
-        )
+            str::from_utf8(&output.stderr),
+        );
     }
     let stdout = str::from_utf8(&output.stdout)
-        .unwrap_or_else(|err| panic!("command {cmd:?} did not produce valid utf-8: {err}"));
+        .with_context(|| format!("Command {cmd:?} did not produce valid utf-8"))?;
+    parse_verus_driver_version_output(stdout)
+        .ok_or_else(|| anyhow!("Command {cmd:?} did not produce valid output: {:?}", stdout))
+}
+
+fn parse_verus_driver_version_output(stdout: &str) -> Option<Version> {
     let mut parts = stdout.split_whitespace();
-    (|| {
-        if parts.next()? != "verus-driver" {
-            return None;
-        }
-        let version = Version::parse(parts.next()?).ok()?;
-        Some(version)
-    })()
-    .unwrap_or_else(|| panic!("command {cmd:?} did not produce valid output"))
+    if parts.next()? != "verus-driver" {
+        return None;
+    }
+    let version = Version::parse(parts.next()?).ok()?;
+    Some(version)
 }
 
 #[must_use]
