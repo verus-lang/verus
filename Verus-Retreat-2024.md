@@ -21,6 +21,7 @@ Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innova
 - Benchmarking suite and CI
 - Paper planning
 - cvc5 integration
+- Termination checking for `exec`
 
 ## Program
 
