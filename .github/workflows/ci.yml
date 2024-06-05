@@ -10,6 +10,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: write
+
 jobs:
   fmt:
     runs-on: macos-14
