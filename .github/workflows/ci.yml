@@ -98,12 +98,14 @@ jobs:
           vargo clean
           vargo build --release
           ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+          cp -R ./target-verus/release ../verus-arm64-macos
+          cd ..; zip -r verus-arm64-macos.zip ./verus-arm64-macos
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
         if: matrix.features == ''
         with:
             name: verus-arm64-macos
-            path: source/target-verus/release
+            path: verus-arm64-macos.zip
       - name: build docs
         if: matrix.features == ''
         working-directory: ./source
@@ -149,13 +151,15 @@ jobs:
         run: |
           ../tools/activate.ps1
           $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; vargo build --release
-          # $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; ./target-verus/release/verus.exe --version --output-json > ./target-verus/release/version.json
+          # TODO: (currently fails misteriously) $env:VERUS_Z3_PATH = "$(Get-Location)/z3"; ./target-verus/release/verus.exe --version --output-json > ./target-verus/release/version.json
+          cp -R ./target-verus/release ../verus-x86-win
+          cd ..; Compress-Archive -Path .\verus-x86-win -DestinationPath .\verus-x86-win.zip
         shell: powershell
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
         with:
             name: verus-x86-win
-            path: source/target-verus/release
+            path: verus-x86-win.zip
 
   smoke-test-and-release-linux:
     runs-on: ubuntu-latest
@@ -184,11 +188,13 @@ jobs:
           vargo clean
           vargo build --release
           # TODO ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+          cp -R ./target-verus/release ../verus-x86-linux
+          cd ..; zip -r verus-x86-linux.zip ./verus-x86-linux
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
         with:
             name: verus-x86-linux
-            path: source/target-verus/release
+            path: verus-x86-linux.zip
 
   release:
     needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos]
@@ -201,15 +207,14 @@ jobs:
       - name: create release tag
         shell: bash
         run: |
-          echo "TAG_NAME=release/rolling/$(cat ./verus-x86-linux/version.txt)" >> $GITHUB_ENV
-          echo "RELEASE_NAME=$(cat ./verus-x86-linux/version.txt)" >> $GITHUB_ENV
+          cd verus-x86-linux; unzip verus-x86-linux.zip; cd ..
+          echo "TAG_NAME=release/rolling/$(cat ./verus-x86-linux/verus-x86-linux/version.txt)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=$(cat ./verus-x86-linux/verus-x86-linux/version.txt)" >> $GITHUB_ENV
           echo $RELEASE_NAME $TAG_NAME
 
-      - name: zip artifacts
+      - name: list artifacts
         run: |
-          zip -r verus-x86-linux.zip ./verus-x86-linux
-          zip -r verus-arm64-macos.zip ./verus-arm64-macos
-          zip -r verus-x86-win.zip ./verus-x86-win
+          ls -Al .
 
       - name: create release
         id: create_release
@@ -227,7 +232,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./verus-x86-linux.zip
+          asset_path: ./verus-x86-linux/verus-x86-linux.zip
           asset_name: verus-${{ env.RELEASE_NAME }}-x86-linux.zip
           asset_content_type: application/zip
 
@@ -237,7 +242,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./verus-arm64-macos.zip
+          asset_path: ./verus-arm64-macos/verus-arm64-macos.zip
           asset_name: verus-${{ env.RELEASE_NAME }}-arm64-macos.zip
           asset_content_type: application/zip
 
@@ -247,7 +252,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./verus-x86-win.zip
+          asset_path: ./verus-x86-win/verus-x86-win.zip
           asset_name: verus-${{ env.RELEASE_NAME }}-x86-win.zip
           asset_content_type: application/zip
           body: |
