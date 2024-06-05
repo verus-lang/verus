@@ -54,7 +54,7 @@ jobs:
       - name: add papers page
         run: |
           mkdir ./_site/research
-          cp source/docs/research.html ./_site/research/index.html
+          cp -R source/docs/research ./_site/research
 
       - name: upload artifact
         uses: actions/upload-pages-artifact@v1
