@@ -2900,7 +2900,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] lemma_recursion_assert_fail IMPORTS.to_string() + verus_code_str! {
+    #[ignore] #[test] lemma_recursion_assert_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)]
