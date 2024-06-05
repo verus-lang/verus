@@ -1036,14 +1036,6 @@ set -x
 
 "#
             );
-            let mut linux_prepare_script = format!(
-                r#"
-#!/bin/bash
-set -e
-set -x
-
-"#
-            );
             use std::fmt::Write;
 
             for (from_f_name, is_exe) in [
@@ -1092,14 +1084,6 @@ set -x
                             from_f_name
                         )
                         .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
-
-                        writeln!(&mut macos_prepare_script, "chmod +x {}", from_f_name).map_err(
-                            |x| format!("could not write to macos prepare script ({})", x),
-                        )?;
-
-                        writeln!(&mut linux_prepare_script, "chmod +x {}", from_f_name).map_err(
-                            |x| format!("could not write to macos prepare script ({})", x),
-                        )?;
                     }
                 } else {
                     dependency_missing = true;
@@ -1124,20 +1108,6 @@ set -x
                 writeln!(
                     &mut macos_prepare_script,
                     "xattr -d com.apple.quarantine {}",
-                    dest_file_name.to_string_lossy()
-                )
-                .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
-
-                writeln!(
-                    &mut macos_prepare_script,
-                    "chmod +x {}",
-                    dest_file_name.to_string_lossy()
-                )
-                .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
-
-                writeln!(
-                    &mut linux_prepare_script,
-                    "chmod +x {}",
                     dest_file_name.to_string_lossy()
                 )
                 .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
@@ -1262,20 +1232,6 @@ set -x
                 )
                 .map_err(|x| {
                     format!("could not set permissions on macos prepare script ({})", x)
-                })?;
-            }
-
-            #[cfg(target_os = "linux")]
-            {
-                let linux_prepare_script_path = target_verus_dir.join("set_permissions.sh");
-                std::fs::write(&linux_prepare_script_path, linux_prepare_script)
-                    .map_err(|x| format!("could not write to linux prepare script ({})", x))?;
-                std::fs::set_permissions(
-                    &linux_prepare_script_path,
-                    <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
-                )
-                .map_err(|x| {
-                    format!("could not set permissions on linux prepare script ({})", x)
                 })?;
             }
 

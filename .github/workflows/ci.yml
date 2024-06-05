@@ -225,6 +225,10 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           release_name: Rolling Release ${{ env.RELEASE_NAME }}
           keep_num: 2
+          body: |
+            Rolling release from Continuous Integration
+
+            <!-- Automatically created nightly release: This release can safely be deleted by the nightly-release action -->
 
       - name: upload release for x86-linux
         uses: actions/upload-release-asset@v1
@@ -255,7 +259,3 @@ jobs:
           asset_path: ./verus-x86-win/verus-x86-win.zip
           asset_name: verus-${{ env.RELEASE_NAME }}-x86-win.zip
           asset_content_type: application/zip
-          body: |
-            Rolling release from Continuous Integration
-
-            <!-- Automatically created nightly release: This release can safely be deleted by the nightly-release action -->
