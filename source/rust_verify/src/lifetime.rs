@@ -202,6 +202,7 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 const PRELUDE: &str = "\
 #![feature(box_patterns)]
 #![feature(ptr_metadata)]
+#![feature(never_type)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]

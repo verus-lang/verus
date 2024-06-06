@@ -399,9 +399,12 @@ fn collect_unreached_datatypes<'tcx>(
 
 fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ {
     match ty.kind() {
-        TyKind::Bool | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Char | TyKind::Str => {
-            Box::new(TypX::Primitive(ty.to_string()))
-        }
+        TyKind::Bool
+        | TyKind::Uint(_)
+        | TyKind::Int(_)
+        | TyKind::Char
+        | TyKind::Str
+        | TyKind::Float(_) => Box::new(TypX::Primitive(ty.to_string())),
         TyKind::Param(p) if p.name == kw::SelfUpper => {
             if state.inside_trait_assoc_type > 0 {
                 Box::new(TypX::TraitSelf)
@@ -2141,6 +2144,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             return;
         }
     }
+    if Some(trait_id) == ctxt.tcx.lang_items().copy_trait() {
+        return;
+    }
 
     state.enclosing_trait_ids.push(trait_id);
 
@@ -2170,30 +2176,32 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
         }
     }
 
-    // We only need traits with associated type declarations,
-    // or traits that extend traits with associated type declarations.
+    // We only need traits with associated type declarations or Copy,
+    // or traits that extend traits with associated type declarations or Copy.
     // First, check our own trait bounds to catch anything we might be extending
     // that has associated types.
     // (Note 1: this is an overapproximation, since we only really need bounds on Self,
     // but it's unlikely to matter much.)
     // (Note 2: if we allow cycles between a trait and its supertraits, we'll need a more
     // sophisticated algorithm.)
-    let mut supertrait_may_have_assoc_types = false;
+    let mut supertrait_may_have_assoc_types_or_copy = false;
     for (pred, _) in ctxt.tcx.predicates_of(trait_id).predicates.iter() {
         match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
             (ClauseKind::Trait(pred), _bound_vars) => {
                 let id = pred.trait_ref.def_id;
                 erase_trait(ctxt, state, id);
                 let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-                if state.trait_decl_set.contains(&trait_path) {
-                    supertrait_may_have_assoc_types = true;
+                if state.trait_decl_set.contains(&trait_path)
+                    || Some(id) == ctxt.tcx.lang_items().copy_trait()
+                {
+                    supertrait_may_have_assoc_types_or_copy = true;
                 }
             }
             _ => {}
         }
     }
 
-    if supertrait_may_have_assoc_types || assoc_typs.len() > 0 {
+    if supertrait_may_have_assoc_types_or_copy || assoc_typs.len() > 0 {
         let name = state.trait_name(&path);
         let mut lifetimes: Vec<GenericParam> = Vec::new();
         let mut typ_params: Vec<GenericParam> = Vec::new();

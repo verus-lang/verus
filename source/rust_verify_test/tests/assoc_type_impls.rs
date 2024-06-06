@@ -638,6 +638,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] supertrait_assoc_type_lifetime3 verus_code! {
+        // https://github.com/verus-lang/verus/issues/1155
+        trait T: Copy {}
+        trait U: T {}
+        trait V<A> { fn f(a: A) -> (A, A); }
+
+        struct S<A>(A);
+
+        impl<A: U> V<A> for S<A> {
+            fn f(a: A) -> (A, A) { (a, a) }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {
