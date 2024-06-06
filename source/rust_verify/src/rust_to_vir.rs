@@ -548,8 +548,7 @@ fn check_item<'tcx>(
                         }
                     }
                     AssocItemKind::Type => {
-                        if impl_item.generics.params.len() != 0
-                            || impl_item.generics.predicates.len() != 0
+                        if impl_item.generics.predicates.len() != 0
                             || impl_item.generics.has_where_clause_predicates
                         {
                             unsupported_err!(
@@ -583,9 +582,23 @@ fn check_item<'tcx>(
                                     )?;
 
                                 let ai = ctxt.tcx.associated_item(impl_item.owner_id.to_def_id());
-                                let bounds = ctxt.tcx.item_bounds(ai.trait_item_def_id.unwrap());
-                                let inst_bounds = bounds
-                                    .instantiate(ctxt.tcx, &trait_ref.instantiate_identity().args);
+                                let assoc_def_id = ai.trait_item_def_id.unwrap();
+                                let bounds = ctxt.tcx.item_bounds(assoc_def_id);
+                                let assoc_generics = ctxt.tcx.generics_of(assoc_def_id);
+                                let mut assoc_args: Vec<rustc_middle::ty::GenericArg> =
+                                    trait_ref.instantiate_identity().args.into_iter().collect();
+                                for p in &assoc_generics.params {
+                                    let e = rustc_middle::ty::EarlyParamRegion {
+                                        def_id: p.def_id,
+                                        index: assoc_generics
+                                            .param_def_id_to_index(ctxt.tcx, p.def_id)
+                                            .expect("param_def"),
+                                        name: p.name,
+                                    };
+                                    let r = rustc_middle::ty::Region::new_early_param(ctxt.tcx, e);
+                                    assoc_args.push(rustc_middle::ty::GenericArg::from(r));
+                                }
+                                let inst_bounds = bounds.instantiate(ctxt.tcx, &assoc_args);
                                 let param_env = ctxt.tcx.param_env(impl_item.owner_id.to_def_id());
                                 let inst_bounds =
                                     ctxt.tcx.normalize_erasing_regions(param_env, inst_bounds);

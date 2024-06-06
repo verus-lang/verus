@@ -508,9 +508,18 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             // If normalization isn't possible:
             let assoc_item = ctxt.tcx.associated_item(t.def_id);
             let name = state.typ_param(assoc_item.name.to_string(), None);
-            let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
+            let projection_generics = ctxt.tcx.generics_of(t.def_id);
+            let trait_def = projection_generics.parent;
             if let Some(trait_def) = trait_def {
-                let (trait_typ_args, self_typ) = erase_generic_args(ctxt, state, t.args, true);
+                let (mut trait_typ_args, self_typ) = erase_generic_args(ctxt, state, t.args, true);
+                let assoc_typ_args = trait_typ_args
+                    .split_off(trait_typ_args.len() - projection_generics.params.len())
+                    .into_iter()
+                    .map(|a| match *a {
+                        TypX::TypParam(x) => x,
+                        _ => panic!("expected lifetime param"),
+                    })
+                    .collect();
                 let self_typ = self_typ.expect("self_typ");
                 let trait_path_vir = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def);
                 erase_trait(ctxt, state, trait_def);
@@ -524,7 +533,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 let trait_path = state.trait_name(&trait_path_vir);
                 let trait_as_datatype =
                     Box::new(TypX::Datatype(trait_path, Vec::new(), trait_typ_args));
-                Box::new(TypX::Projection { self_typ, trait_as_datatype, name })
+                Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args })
             } else {
                 panic!("unexpected TyKind::Alias");
             }
@@ -1684,54 +1693,6 @@ fn lifetime_key<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> (String, Option<u3
     (path_name.data.get_opt_name().unwrap().to_string(), Some(path_name.disambiguator))
 }
 
-fn erase_mir_generics<'tcx>(
-    ctxt: &Context<'tcx>,
-    state: &mut State,
-    id: DefId,
-    id_is_fn: bool,
-    lifetimes: &mut Vec<GenericParam>,
-    typ_params: &mut Vec<GenericParam>,
-    generic_bounds: &mut Vec<GenericBound>,
-) {
-    let mir_generics = ctxt.tcx.generics_of(id);
-    let mir_predicates = ctxt.tcx.predicates_of(id);
-    if id_is_fn {
-        let mir_ty = ctxt.tcx.type_of(id).skip_binder();
-        if let TyKind::FnDef(..) = mir_ty.kind() {
-            for bv in mir_ty.fn_sig(ctxt.tcx).bound_vars().iter() {
-                if let BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) = bv {
-                    let name = state.lifetime(lifetime_key(ctxt, a));
-                    lifetimes.push(GenericParam { name, const_typ: None });
-                }
-            }
-        }
-    }
-    for gparam in &mir_generics.params {
-        match gparam.kind {
-            GenericParamDefKind::Lifetime => {
-                let name = state.lifetime((gparam.name.to_string(), None));
-                lifetimes.push(GenericParam { name, const_typ: None });
-            }
-            GenericParamDefKind::Type { .. } => {
-                let name = state.typ_param(gparam.name.to_string(), Some(gparam.index));
-                typ_params.push(GenericParam { name, const_typ: None });
-            }
-            GenericParamDefKind::Const { has_default: _, is_host_effect: false } => {
-                let name = state.typ_param(gparam.name.to_string(), None);
-                let t = erase_ty(ctxt, state, &ctxt.tcx.type_of(gparam.def_id).skip_binder());
-                typ_params.push(GenericParam { name, const_typ: Some(t) });
-            }
-            GenericParamDefKind::Const { is_host_effect: true, .. } => {}
-        }
-    }
-    erase_mir_predicates(
-        ctxt,
-        state,
-        mir_predicates.predicates.iter().map(|(c, _)| *c),
-        generic_bounds,
-    );
-}
-
 fn erase_mir_bound<'a, 'tcx>(
     ctxt: &Context<'tcx>,
     state: &'a mut State,
@@ -1873,6 +1834,54 @@ fn erase_mir_predicates<'a, 'tcx>(
         let generic_bound = GenericBound { typ, bound_vars, bound: Bound::Fn(kind, params, ret) };
         generic_bounds.push(generic_bound);
     }
+}
+
+fn erase_mir_generics<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    id: DefId,
+    id_is_fn: bool,
+    lifetimes: &mut Vec<GenericParam>,
+    typ_params: &mut Vec<GenericParam>,
+    generic_bounds: &mut Vec<GenericBound>,
+) {
+    let mir_generics = ctxt.tcx.generics_of(id);
+    let mir_predicates = ctxt.tcx.predicates_of(id);
+    if id_is_fn {
+        let mir_ty = ctxt.tcx.type_of(id).skip_binder();
+        if let TyKind::FnDef(..) = mir_ty.kind() {
+            for bv in mir_ty.fn_sig(ctxt.tcx).bound_vars().iter() {
+                if let BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) = bv {
+                    let name = state.lifetime(lifetime_key(ctxt, a));
+                    lifetimes.push(GenericParam { name, const_typ: None });
+                }
+            }
+        }
+    }
+    for gparam in &mir_generics.params {
+        match gparam.kind {
+            GenericParamDefKind::Lifetime => {
+                let name = state.lifetime((gparam.name.to_string(), None));
+                lifetimes.push(GenericParam { name, const_typ: None });
+            }
+            GenericParamDefKind::Type { .. } => {
+                let name = state.typ_param(gparam.name.to_string(), Some(gparam.index));
+                typ_params.push(GenericParam { name, const_typ: None });
+            }
+            GenericParamDefKind::Const { has_default: _, is_host_effect: false } => {
+                let name = state.typ_param(gparam.name.to_string(), None);
+                let t = erase_ty(ctxt, state, &ctxt.tcx.type_of(gparam.def_id).skip_binder());
+                typ_params.push(GenericParam { name, const_typ: Some(t) });
+            }
+            GenericParamDefKind::Const { is_host_effect: true, .. } => {}
+        }
+    }
+    erase_mir_predicates(
+        ctxt,
+        state,
+        mir_predicates.predicates.iter().map(|(c, _)| *c),
+        generic_bounds,
+    );
 }
 
 fn erase_fn_common<'tcx>(
@@ -2116,14 +2125,27 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
     let trait_as_datatype =
         Box::new(TypX::Datatype(name.clone(), trait_lifetime_args, trait_typ_args));
 
-    let mut assoc_typs: Vec<(Id, Typ)> = Vec::new();
+    let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
     for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
         match assoc_item.kind {
             rustc_middle::ty::AssocKind::Type => {
+                let mut lifetimes: Vec<GenericParam> = Vec::new();
+                let mut typ_params: Vec<GenericParam> = Vec::new();
+                let mut generic_bounds: Vec<GenericBound> = Vec::new();
+                erase_mir_generics(
+                    ctxt,
+                    state,
+                    assoc_item.def_id,
+                    false,
+                    &mut lifetimes,
+                    &mut typ_params,
+                    &mut generic_bounds,
+                );
+                assert!(typ_params.len() == 0);
                 let ty = ctxt.tcx.type_of(assoc_item.def_id).skip_binder();
                 let typ = erase_ty(ctxt, state, &ty);
                 let impl_name = state.typ_param(&assoc_item.name.to_string(), None);
-                assoc_typs.push((impl_name, typ));
+                assoc_typs.push((impl_name, lifetimes, typ));
             }
             _ => (),
         }
@@ -2152,7 +2174,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
 
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_id);
 
-    let mut assoc_typs: Vec<(Id, Vec<GenericBound>)> = Vec::new();
+    let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>)> = Vec::new();
     let assoc_items = ctxt.tcx.associated_items(trait_id);
     state.inside_trait_assoc_type += 1;
     for assoc_item in assoc_items.in_definition_order() {
@@ -2160,16 +2182,31 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             rustc_middle::ty::AssocKind::Const => {}
             rustc_middle::ty::AssocKind::Fn => {}
             rustc_middle::ty::AssocKind::Type => {
-                let mir_predicates = ctxt.tcx.item_bounds(assoc_item.def_id);
+                let mut lifetimes: Vec<GenericParam> = Vec::new();
+                let mut typ_params: Vec<GenericParam> = Vec::new();
                 let mut generic_bounds = Vec::new();
+                erase_mir_generics(
+                    ctxt,
+                    state,
+                    assoc_item.def_id,
+                    false,
+                    &mut lifetimes,
+                    &mut typ_params,
+                    &mut generic_bounds,
+                );
+                assert!(generic_bounds.len() == 0); // if this doesn't hold, need to review
+                let mut generic_bounds = Vec::new();
+                let mir_predicates = ctxt.tcx.item_bounds(assoc_item.def_id);
                 erase_mir_predicates(
                     ctxt,
                     state,
                     mir_predicates.skip_binder().iter(),
                     &mut generic_bounds,
                 );
+                assert!(typ_params.len() == 0);
                 assoc_typs.push((
                     state.typ_param(assoc_item.name.to_ident_string(), None),
+                    lifetimes,
                     generic_bounds,
                 ));
             }

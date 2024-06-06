@@ -52,6 +52,7 @@ pub(crate) enum TypX {
         // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
         trait_as_datatype: Typ,
         name: Id,
+        assoc_typ_args: Vec<Id>,
     },
     Closure,
     FnDef,
@@ -168,7 +169,7 @@ pub(crate) struct TraitDecl {
     pub(crate) name: Id,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
-    pub(crate) assoc_typs: Vec<(Id, Vec<GenericBound>)>,
+    pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>)>,
 }
 
 #[derive(Debug)]
@@ -178,7 +179,7 @@ pub(crate) struct TraitImpl {
     pub(crate) generic_bounds: Vec<GenericBound>,
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
     pub(crate) trait_as_datatype: Typ,
-    pub(crate) assoc_typs: Vec<(Id, Typ)>,
+    pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)>,
 }
 
 #[derive(Debug)]

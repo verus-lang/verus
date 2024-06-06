@@ -322,6 +322,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] trait_assoc_type_bound_inner_lifetimes verus_code! {
+        pub trait T<'x> {
+            type One<'a>;
+            type Two<'b, 'c>;
+
+            fn f<'a>(x: &<Self as T<'x>>::Two<'static, 'a>);
+            fn g<'a>(x: &'a bool);
+        }
+
+        impl<'x> T<'x> for bool {
+            type One<'a> = &'a bool;
+
+            type Two<'b, 'c> = bool;
+
+            fn f<'a>(x: &<Self as T<'x>>::Two<'static, 'a>) {}
+            fn g<'a>(x: &'a bool) {}
+        }
+
+        fn test<'a>(x: &'a bool, y: &'static bool) {
+            <bool as T<'a>>::g(x);
+            <bool as T<'a>>::g(y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] trait_typ_equality1 verus_code! {
         trait T {
             type X;
