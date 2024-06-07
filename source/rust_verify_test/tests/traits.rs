@@ -2420,6 +2420,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_specialize_dispatch_by_bound_defaults verus_code! {
+        trait T {
+            spec fn f() -> int { 3 }
+            proof fn test();
+        }
+
+        impl T for bool {
+            proof fn test() {
+                assert(Self::f() == 3);
+            }
+        }
+
+        trait U {}
+        impl<A: U> T for A {
+            proof fn test() {}
+        }
+
+        impl T for u8 {
+            spec fn f() -> int { 4 }
+            proof fn test() {}
+        }
+
+        proof fn test() {
+            assert(<u8 as T>::f() == 4);
+            assert(<u8 as T>::f() == 3); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_trait_inline verus_code! {
         pub trait T<A> { spec fn f(&self) -> int; }
         struct S { }
