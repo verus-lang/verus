@@ -191,6 +191,7 @@ pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 pub const QID_TRAIT_IMPL: &str = "trait_impl";
+pub const QID_ASSOC_TYPE_BOUND: &str = "assoc_type_bound";
 pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";

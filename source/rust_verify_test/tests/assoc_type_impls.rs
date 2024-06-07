@@ -348,6 +348,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] trait_assoc_type_bound_axiom verus_code! {
+        trait Q {}
+
+        trait T<M: Q> {
+            spec fn f() -> int;
+        }
+
+        struct S<A>(A);
+
+        impl<M: Q, A: T<M>> T<M> for S<A> {
+            spec fn f() -> int { 3 }
+        }
+
+        trait U<M: Q> {
+            type X: T<M>;
+        }
+
+        proof fn test2<M: Q, Z: U<M>>() {
+            assert(<S<Z::X> as T<M>>::f() == 3);
+            assert(<S<Z::X> as T<M>>::f() == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] trait_typ_equality1 verus_code! {
         trait T {
             type X;
