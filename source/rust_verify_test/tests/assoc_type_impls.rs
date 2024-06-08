@@ -555,6 +555,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] trait_typ_bound_prune_ok verus_code! {
+        pub trait T {
+            spec fn f();
+        }
+
+        pub trait U {
+            type X: T;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] trait_assoc_type_bound_mutual_bounds_0 verus_code! {
         trait A: B {
             spec fn a(&self) -> Self::AT;

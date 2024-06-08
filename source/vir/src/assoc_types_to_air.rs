@@ -55,6 +55,8 @@ pub fn assoc_type_trait_bounds_to_air(
             // forall Self, typ_params. typ_bounds ==> bound
             if let crate::ast::GenericBoundX::Trait(path, typ_args) = &**bound {
                 if let Some(tr_bound) = crate::traits::trait_bound_to_air(ctx, path, typ_args) {
+                    //let x = crate::ast_util::path_as_friendly_rust_name(&tr.x.name);
+                    //dbg!(x, &path, &typ_args);
                     let qname = format!(
                         "{}_{}",
                         crate::ast_util::path_as_friendly_rust_name(&tr.x.name),
