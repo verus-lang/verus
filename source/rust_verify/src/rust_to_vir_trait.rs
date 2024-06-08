@@ -13,8 +13,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, GenericBoundX, GenericBounds, Ident, KrateX, TraitX,
-    TypX, VirErr, Visibility,
+    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitX, TypX, VirErr,
+    Visibility,
 };
 use vir::def::{trait_self_type_param, VERUS_SPEC};
 
@@ -65,27 +65,6 @@ pub(crate) fn external_trait_specification_of<'tcx>(
         }
     }
     Ok(ex_trait_ref_for)
-}
-
-pub(crate) fn rewrite_external_bounds(
-    from_path: &vir::ast::Path,
-    to_path: &vir::ast::Path,
-    bounds: &GenericBounds,
-) -> GenericBounds {
-    let mut bs: Vec<GenericBound> = Vec::new();
-    for bound in bounds.iter() {
-        let b = match &**bound {
-            GenericBoundX::Trait(path, ts) if path == from_path => {
-                Arc::new(GenericBoundX::Trait(to_path.clone(), ts.clone()))
-            }
-            GenericBoundX::TypEquality(path, ts, x, t) if path == from_path => Arc::new(
-                GenericBoundX::TypEquality(to_path.clone(), ts.clone(), x.clone(), t.clone()),
-            ),
-            _ => bound.clone(),
-        };
-        bs.push(b);
-    }
-    Arc::new(bs)
 }
 
 pub(crate) fn translate_trait<'tcx>(
@@ -347,9 +326,10 @@ pub(crate) fn translate_trait<'tcx>(
     vir.functions.append(&mut methods);
     let mut assoc_typs_bounds = Arc::new(assoc_typs_bounds);
     let target_trait_id = if let Some(target_trait_id) = ex_trait_id_for {
-        typ_bounds = rewrite_external_bounds(&orig_trait_path, &trait_path, &typ_bounds);
+        typ_bounds =
+            vir::traits::rewrite_external_bounds(&orig_trait_path, &trait_path, &typ_bounds);
         assoc_typs_bounds =
-            rewrite_external_bounds(&orig_trait_path, &trait_path, &assoc_typs_bounds);
+            vir::traits::rewrite_external_bounds(&orig_trait_path, &trait_path, &assoc_typs_bounds);
         target_trait_id
     } else {
         trait_def_id

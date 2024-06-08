@@ -1,7 +1,7 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBounds,
-    Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped, Trait, TraitImpl, TraitX, Typ,
-    TypX, Typs, VirErr, Visibility, WellKnownItem,
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
+    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped,
+    Trait, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -101,9 +101,9 @@ pub fn demote_external_traits(
     for function in &mut kratex.functions {
         for bound in function.x.typ_bounds.iter() {
             let trait_path = match &**bound {
-                crate::ast::GenericBoundX::Trait(path, _) => path,
-                crate::ast::GenericBoundX::TypEquality(path, _, _, _) => path,
-                crate::ast::GenericBoundX::ConstTyp(..) => continue,
+                GenericBoundX::Trait(path, _) => path,
+                GenericBoundX::TypEquality(path, _, _, _) => path,
+                GenericBoundX::ConstTyp(..) => continue,
             };
             let our_trait = traits.contains(trait_path);
             if !our_trait {
@@ -183,6 +183,38 @@ pub fn demote_external_traits(
     }
 
     Ok(Arc::new(kratex))
+}
+
+pub fn rewrite_external_bounds(
+    from_path: &Path,
+    to_path: &Path,
+    bounds: &GenericBounds,
+) -> GenericBounds {
+    let mut bs: Vec<GenericBound> = Vec::new();
+    for bound in bounds.iter() {
+        let b = match &**bound {
+            GenericBoundX::Trait(path, ts) if path == from_path => {
+                Arc::new(GenericBoundX::Trait(to_path.clone(), ts.clone()))
+            }
+            GenericBoundX::TypEquality(path, ts, x, t) if path == from_path => Arc::new(
+                GenericBoundX::TypEquality(to_path.clone(), ts.clone(), x.clone(), t.clone()),
+            ),
+            _ => bound.clone(),
+        };
+        bs.push(b);
+    }
+    let ft = |_: &mut (), t: &Typ| match &**t {
+        TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
+            Ok(Arc::new(TypX::Projection {
+                trait_typ_args: trait_typ_args.clone(),
+                trait_path: to_path.clone(),
+                name: name.clone(),
+            }))
+        }
+        _ => Ok(t.clone()),
+    };
+    crate::ast_visitor::map_generic_bounds_visitor(&Arc::new(bs), &mut (), &ft)
+        .expect("rewrite_external_bounds")
 }
 
 /*
@@ -473,14 +505,14 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
     let mut bound_exprs: Vec<Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         let exprx = match &**bound {
-            crate::ast::GenericBoundX::Trait(path, typ_args) => {
+            GenericBoundX::Trait(path, typ_args) => {
                 if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
                 ExprX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
+            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
                 let op = crate::ast::NullaryOpr::TypEqualityBound(
                     path.clone(),
                     typ_args.clone(),
@@ -489,7 +521,7 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
                 );
                 ExprX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::ConstTyp(t1, t2) => {
+            GenericBoundX::ConstTyp(t1, t2) => {
                 let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
                 ExprX::NullaryOpr(op)
             }
@@ -507,14 +539,14 @@ pub(crate) fn trait_bounds_to_sst(
     let mut bound_exps: Vec<crate::sst::Exp> = Vec::new();
     for bound in typ_bounds.iter() {
         let expx = match &**bound {
-            crate::ast::GenericBoundX::Trait(path, typ_args) => {
+            GenericBoundX::Trait(path, typ_args) => {
                 if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
                 crate::sst::ExpX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
+            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
                 let op = crate::ast::NullaryOpr::TypEqualityBound(
                     path.clone(),
                     typ_args.clone(),
@@ -523,7 +555,7 @@ pub(crate) fn trait_bounds_to_sst(
                 );
                 crate::sst::ExpX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::ConstTyp(t1, t2) => {
+            GenericBoundX::ConstTyp(t1, t2) => {
                 let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
                 crate::sst::ExpX::NullaryOpr(op)
             }
@@ -584,15 +616,15 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
     let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         match &**bound {
-            crate::ast::GenericBoundX::Trait(path, typ_args) => {
+            GenericBoundX::Trait(path, typ_args) => {
                 if let Some(bound) = trait_bound_to_air(ctx, path, typ_args) {
                     bound_exprs.push(bound);
                 }
             }
-            crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
+            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
                 bound_exprs.push(typ_equality_bound_to_air(ctx, path, typ_args, name, typ));
             }
-            crate::ast::GenericBoundX::ConstTyp(c, t) => {
+            GenericBoundX::ConstTyp(c, t) => {
                 bound_exprs.push(const_typ_bound_to_air(ctx, c, t));
             }
         }

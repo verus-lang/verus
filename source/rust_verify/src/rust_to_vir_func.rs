@@ -878,11 +878,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let from_trait_id = ctxt.tcx.parent(id);
             let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
             let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
-            typ_bounds = crate::rust_to_vir_trait::rewrite_external_bounds(
-                &from_path,
-                &to_path,
-                &typ_bounds,
-            );
+            typ_bounds = vir::traits::rewrite_external_bounds(&from_path, &to_path, &typ_bounds);
         }
         (typ_params, typ_bounds)
     };
