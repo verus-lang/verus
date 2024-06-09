@@ -59,7 +59,7 @@ const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
-const PREFIX_LAMBDA_TYPE: &str = "fun%";
+const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
@@ -400,8 +400,8 @@ pub fn prefix_tuple_param(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_PARAM, i))
 }
 
-pub fn prefix_lambda_type(i: usize) -> Path {
-    let ident = Arc::new(format!("{}{}", PREFIX_LAMBDA_TYPE, i));
+pub fn prefix_spec_fn_type(i: usize) -> Path {
+    let ident = Arc::new(format!("{}{}", PREFIX_SPEC_FN_TYPE, i));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
@@ -425,7 +425,7 @@ pub fn trait_bound(trait_path: &Path) -> Ident {
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {
-    prefix_type_id(&prefix_lambda_type(i))
+    prefix_type_id(&prefix_spec_fn_type(i))
 }
 
 pub fn prefix_box(ident: &Path) -> Ident {

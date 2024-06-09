@@ -1423,7 +1423,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
                     let is_spec_fn = match &*undecorate_typ(&vir_fun.typ) {
-                        TypX::Lambda(..) => true,
+                        TypX::SpecFn(..) => true,
                         _ => false,
                     };
 
@@ -2189,7 +2189,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 typ_args,
                 // arbitrary impl_path
                 // REVIEW: why is this needed?
-                Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_lambda_type(0))]),
+                Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);

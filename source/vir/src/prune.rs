@@ -27,7 +27,7 @@ enum ReachedType {
     None,
     Bool,
     Int(crate::ast::IntRange),
-    Lambda(usize),
+    SpecFn(usize),
     Datatype(Path),
     StrSlice,
     Primitive,
@@ -87,7 +87,7 @@ struct State {
     worklist_assoc_type_impls: Vec<AssocTypeGroup>,
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
-    lambda_types: HashSet<usize>,
+    spec_fn_types: HashSet<usize>,
     fndef_types: HashSet<Fun>,
 }
 
@@ -97,7 +97,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Bool => ReachedType::Bool,
         TypX::Int(range) => ReachedType::Int(*range),
         TypX::Tuple(_) => ReachedType::None,
-        TypX::Lambda(ts, _) => ReachedType::Lambda(ts.len()),
+        TypX::SpecFn(ts, _) => ReachedType::SpecFn(ts.len()),
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(path, _, _) => ReachedType::Datatype(path.clone()),
         TypX::FnDef(..) => ReachedType::None,
@@ -214,7 +214,7 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
 // shallowly reach typ (the AST visitor takes care of recursing through typ)
 fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
+        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::Tuple(_) | TypX::AnonymousClosure(..) => {}
@@ -389,8 +389,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     }
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
                 }
-                ReachedType::Lambda(arity) => {
-                    state.lambda_types.insert(*arity);
+                ReachedType::SpecFn(arity) => {
+                    state.spec_fn_types.insert(*arity);
                 }
                 ReachedType::StrSlice => {
                     let module_path = crate::def::strslice_module_path(&ctxt.vstd_crate_name);
@@ -929,13 +929,13 @@ pub fn prune_krate_for_module_or_krate(
         path_as_rust_names: krate.path_as_rust_names.clone(),
         arch: krate.arch.clone(),
     };
-    let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
-    lambda_types.sort();
+    let mut spec_fn_types: Vec<usize> = state.spec_fn_types.into_iter().collect();
+    spec_fn_types.sort();
     let mut fndef_types: Vec<Fun> = state.fndef_types.into_iter().collect();
     fndef_types.sort();
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
     let State { reached_bound_traits, .. } = state;
-    (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits, fndef_types)
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, reached_bound_traits, fndef_types)
 }

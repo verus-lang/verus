@@ -24,7 +24,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
         | crate::ast::TypX::ConstInt(_)
         | crate::ast::TypX::Primitive(_, _) => Ok(typ.clone()),
 
-        crate::ast::TypX::Lambda(_, _)
+        crate::ast::TypX::SpecFn(_, _)
         | crate::ast::TypX::AnonymousClosure(_, _, _)
         | crate::ast::TypX::FnDef(..)
         | crate::ast::TypX::Decorate(_, _)

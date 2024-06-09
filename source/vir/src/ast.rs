@@ -219,9 +219,8 @@ pub enum TypX {
     Int(IntRange),
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
-    /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
-    /// (t1, ..., tn) -> t0.
-    Lambda(Typs, Typ),
+    /// `spec_fn` type (t1, ..., tn) -> t0.
+    SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
     AnonymousClosure(Typs, Typ, usize),
     /// Corresponds to Rust's FnDef type

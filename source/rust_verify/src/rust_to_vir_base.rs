@@ -921,7 +921,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             panic!("expected first type argument of spec_fn to be a tuple");
                         }
                     };
-                    return Ok((Arc::new(TypX::Lambda(param_typs, ret_typ)), false));
+                    return Ok((Arc::new(TypX::SpecFn(param_typs, ret_typ)), false));
                 }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
                 let impl_paths = get_impl_paths(tcx, verus_items, param_env_src, did, args, None);

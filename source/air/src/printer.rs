@@ -91,8 +91,8 @@ impl Printer {
         match &**typ {
             TypX::Bool => str_to_node("Bool"),
             TypX::Int => str_to_node("Int"),
-            TypX::Lambda if self.print_as_smt => str_to_node(crate::def::FUNCTION),
-            TypX::Lambda => str_to_node("Fun"),
+            TypX::Fun if self.print_as_smt => str_to_node(crate::def::FUNCTION),
+            TypX::Fun => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
             TypX::BitVec(size) => Node::List(vec![
                 str_to_node("_"),
@@ -133,7 +133,7 @@ impl Printer {
                 }
                 Node::List(nodes)
             }
-            ExprX::ApplyLambda(typ, expr0, exprs) => {
+            ExprX::ApplyFun(typ, expr0, exprs) => {
                 let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node("apply"));
                 nodes.push(self.typ_to_node(typ));

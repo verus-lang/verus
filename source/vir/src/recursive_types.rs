@@ -63,7 +63,7 @@ fn check_well_founded_typ(
             AcceptRecursiveType::RejectInGround => true,
             AcceptRecursiveType::Accept => false,
         },
-        TypX::Lambda(_, ret) => {
+        TypX::SpecFn(_, ret) => {
             // This supports decreases on fields of function type (e.g. for infinite maps)
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, ret)
         }
@@ -170,7 +170,7 @@ fn check_positive_uses(
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
-        TypX::Lambda(ts, tr) => {
+        TypX::SpecFn(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative
             let flip_polarity = match polarity {

@@ -1721,7 +1721,7 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let (pruned_krate, mono_abstract_datatypes, lambda_types, bound_traits, fndef_types) =
+        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, bound_traits, fndef_types) =
             vir::prune::prune_krate_for_module_or_krate(
                 &krate,
                 &Arc::new(self.crate_name.clone().expect("crate_name")),
@@ -1740,7 +1740,7 @@ impl Verifier {
             global_ctx,
             module,
             mono_abstract_datatypes,
-            lambda_types,
+            spec_fn_types,
             bound_traits,
             fndef_types,
             self.args.debugger,

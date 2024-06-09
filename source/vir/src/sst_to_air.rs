@@ -12,15 +12,14 @@ use crate::bitvector_to_air::{bv_exp_to_expr, BvExprCtxt};
 use crate::context::Ctx;
 use crate::def::{
     fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
-    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
-    prefix_lambda_type, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
-    unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
-    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI,
+    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_open_inv,
+    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
+    static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
+    variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
+    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
+    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
@@ -121,7 +120,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        TypX::Lambda(..) => Arc::new(air::ast::TypX::Lambda),
+        TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
@@ -248,7 +247,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id(range_to_id(range)),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        TypX::Lambda(typs, typ) => mk_id(fun_id(typs, typ)),
+        TypX::SpecFn(typs, typ) => mk_id(fun_id(typs, typ)),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
@@ -356,7 +355,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             };
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
-        TypX::Lambda(..) => {
+        TypX::SpecFn(..) => {
             Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
         TypX::Datatype(path, _, _) => {
@@ -420,7 +419,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::Tuple(_) => None,
-        TypX::Lambda(typs, _) => Some(prefix_box(&prefix_lambda_type(typs.len()))),
+        TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Datatype(..) => {
             if let Some(prefix) = datatype_box_prefix(ctx, typ) {
@@ -460,7 +459,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
         TypX::Tuple(_) => None,
-        TypX::Lambda(typs, _) => Some(prefix_unbox(&prefix_lambda_type(typs.len()))),
+        TypX::SpecFn(typs, _) => Some(prefix_unbox(&prefix_spec_fn_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Decorate(_, t) => return try_unbox(ctx, expr, t),
         TypX::Boxed(_) => None,
@@ -756,7 +755,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::CallLambda(typ, e0, args) => {
             let e0 = exp_to_expr(ctx, e0, expr_ctxt)?;
             let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt))?;
-            Arc::new(ExprX::ApplyLambda(typ_to_air(ctx, typ), e0, Arc::new(args)))
+            Arc::new(ExprX::ApplyFun(typ_to_air(ctx, typ), e0, Arc::new(args)))
         }
         ExpX::Ctor(path, variant, binders) => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);

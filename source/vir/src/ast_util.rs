@@ -61,7 +61,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
         (TypX::Tuple(t1), TypX::Tuple(t2)) => n_types_equal(t1, t2),
-        (TypX::Lambda(ts1, t1), TypX::Lambda(ts2, t2)) => {
+        (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
         (TypX::AnonymousClosure(ts1, t1, id1), TypX::AnonymousClosure(ts2, t2, id2)) => {
@@ -100,7 +100,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
         (TypX::Tuple(_), _) => false,
-        (TypX::Lambda(_, _), _) => false,
+        (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
@@ -630,7 +630,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
         TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
-        TypX::Lambda(atyps, rtyp) => format!(
+        TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)

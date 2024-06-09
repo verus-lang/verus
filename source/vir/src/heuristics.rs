@@ -7,7 +7,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Int(_) => false,
         TypX::Bool => false,
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        TypX::Lambda(_, _) => true,
+        TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }

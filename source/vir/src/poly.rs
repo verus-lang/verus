@@ -137,7 +137,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
-        TypX::Boxed(..) | TypX::TypParam(..) | TypX::Lambda(..) | TypX::FnDef(..) => None,
+        TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => None,
         TypX::ConstInt(_) => None,
         TypX::Projection { .. } => None,
     }
@@ -161,7 +161,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::FnDef(..) => false,
+        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -187,7 +187,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -220,7 +220,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
 
 pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Lambda(..) | TypX::FnDef(..) => {
+        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => {
             Arc::new(TypX::Boxed(typ.clone()))
         }
         TypX::AnonymousClosure(..) => {
@@ -240,7 +240,7 @@ pub(crate) fn coerce_expr_to_native(ctx: &Ctx, expr: &Expr) -> Expr {
     match &*crate::ast_util::undecorate_typ(&expr.typ) {
         TypX::Bool
         | TypX::Int(_)
-        | TypX::Lambda(..)
+        | TypX::SpecFn(..)
         | TypX::Datatype(..)
         | TypX::Primitive(_, _)
         | TypX::FnDef(..) => expr.clone(),
@@ -271,7 +271,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &crate::sst::Exp) -> crate::s
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Bool
         | TypX::Int(_)
-        | TypX::Lambda(..)
+        | TypX::SpecFn(..)
         | TypX::Datatype(..)
         | TypX::Primitive(_, _)
         | TypX::FnDef(..) => exp.clone(),
