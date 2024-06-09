@@ -233,6 +233,15 @@ impl Printer {
             ExprX::IfElse(expr1, expr2, expr3) => {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
             }
+            ExprX::Array(typ, exprs) => {
+                let mut nodes: Vec<Node> = Vec::new();
+                nodes.push(str_to_node("array"));
+                nodes.push(self.typ_to_node(typ));
+                for expr in exprs.iter() {
+                    nodes.push(self.expr_to_node(expr));
+                }
+                Node::List(nodes)
+            }
             ExprX::Bind(bind, expr) => {
                 let with_triggers = |expr: &Expr, triggers: &Triggers, qid: &Qid| {
                     if triggers.len() == 0 && qid.is_none() {

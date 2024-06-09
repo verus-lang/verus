@@ -354,6 +354,13 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 Ok(t2)
             }
         }
+        ExprX::Array(typ, exprs) => {
+            for e in exprs.iter() {
+                let tk = check_expr(typing, e)?;
+                expect_typ(&tk, &typ, "array element does not match array type")?;
+            }
+            Ok(Arc::new(TypX::Fun))
+        }
         ExprX::Bind(bind, e1) => {
             // For Let, get types of binder expressions
             let binders: Binders<Typ> = match &**bind {

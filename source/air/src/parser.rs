@@ -223,6 +223,11 @@ impl Parser {
                         let args = self.nodes_to_exprs(&nodes[3..])?;
                         return Ok(Arc::new(ExprX::ApplyFun(typ, f, args)));
                     }
+                    Node::Atom(s) if s.to_string() == "array" && nodes.len() >= 2 => {
+                        let typ = self.node_to_typ(&nodes[1])?;
+                        let args = self.nodes_to_exprs(&nodes[2..])?;
+                        return Ok(Arc::new(ExprX::Array(typ, args)));
+                    }
                     _ => {}
                 }
                 let args = self.nodes_to_exprs(&nodes[1..])?;
