@@ -767,6 +767,21 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::ExecFnByName(_fun) => {
             Arc::new(ExprX::Apply(str_ident(crate::def::FNDEF_SINGLETON), Arc::new(vec![])))
         }
+        ExpX::ArrayLiteral(es) => {
+            let mut exprs: Vec<Expr> = vec![];
+            for e in es.iter() {
+                exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
+            }
+            let typ = match &*exp.typ {
+                TypX::Boxed(t) => match &**t {
+                    TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                    _ => panic!("Failed to extract the array literal element type for {:?}", exp),
+                },
+                _ => panic!("Failed to extract the array literal element boxed type for {:?}", exp),
+            };
+
+            Arc::new(ExprX::Array(typ_to_air(ctx, &typ), Arc::new(exprs)))
+        }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
         }

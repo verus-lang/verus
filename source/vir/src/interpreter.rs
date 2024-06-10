@@ -532,8 +532,9 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         ExecFnByName(fun) => {
             dohash!(17, fun);
         }
+        ArrayLiteral(es) => dohash!(18; hash_exps(es)),
         FuelConst(i) => {
-            dohash!(18, i);
+            dohash!(19, i);
         }
     }
 }
@@ -1530,6 +1531,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 .collect();
             let new_bnds = new_bnds?;
             exp_new(Ctor(path.clone(), id.clone(), Arc::new(new_bnds)))
+        }
+        ArrayLiteral(exprs) => {
+            let new_exprs: Result<Vec<Exp>, VirErr> =
+                exprs.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let im_vec: Vector<Exp> = new_exprs?.into_iter().collect();
+            exp_new(Interp(InterpExp::Seq(im_vec)))
         }
         Interp(e) => match e {
             InterpExp::FreeVar(_) => ok,

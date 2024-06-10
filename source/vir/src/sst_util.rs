@@ -206,6 +206,13 @@ fn subst_exp_rec(
             free_vars.pop_scope();
             SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
         }
+        ExpX::ArrayLiteral(exprs) => {
+            let mut new_exprs: Vec<Exp> = Vec::new();
+            for e in exprs.iter() {
+                new_exprs.push(subst_exp_rec(typ_substs, substs, free_vars, e));
+            }
+            mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
+        }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
@@ -566,6 +573,11 @@ impl ExpX {
                 let args =
                     args.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", e.x.to_user_string(global), args), 99)
+            }
+            ArrayLiteral(es) => {
+                let v =
+                    es.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
+                (format!("[{}]", v), 99)
             }
             Interp(e) => {
                 use InterpExp::*;
