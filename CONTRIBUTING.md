@@ -147,6 +147,15 @@ in the following example:
 use crate::arithmetic::internals::general_internals::is_le;
 ```
 
+You may sometimes want to verify `vstd` outside of the `vargo` build process: To do so,
+build Verus first following the instructions above (with `vargo build --release`) and then
+run, from the project root:
+
+```
+cd source/vstd
+../target-verus/release/verus --crate-type=lib --no-vstd vstd.rs
+```
+
 ### Common Conventions
 Inside `vstd`:
 - We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
