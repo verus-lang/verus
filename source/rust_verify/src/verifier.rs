@@ -1246,10 +1246,16 @@ impl Verifier {
         );
 
         let trait_commands = vir::traits::traits_to_air(ctx, &krate);
+        let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
         let assoc_type_bounds_commands =
             vir::assoc_types_to_air::assoc_type_trait_bounds_to_air(ctx, &krate.traits)?;
         let trait_commands = Arc::new(
-            trait_commands.iter().chain(assoc_type_bounds_commands.iter()).cloned().collect(),
+            trait_commands
+                .iter()
+                .chain(trait_type_bounds_commands.iter())
+                .chain(assoc_type_bounds_commands.iter())
+                .cloned()
+                .collect(),
         );
         self.run_commands(
             bucket_id,

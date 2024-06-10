@@ -49,14 +49,17 @@ pub fn assoc_type_trait_bounds_to_air(
     ctx: &Ctx,
     traits: &Vec<Trait>,
 ) -> Result<Commands, crate::ast::VirErr> {
+    // forall typ_params. typ_bounds ==> assoc_typs_bounds
+    // Example:
+    //   trait T<A: U> { type X: Q }
+    // -->
+    //   forall Self, A. tr_bound%U(A) ==> tr_bound%Q(<Self as T<A>>::X)
     let mut commands: Vec<Command> = Vec::new();
     for tr in traits {
         for bound in tr.x.assoc_typs_bounds.iter() {
             // forall Self, typ_params. typ_bounds ==> bound
             if let crate::ast::GenericBoundX::Trait(path, typ_args) = &**bound {
                 if let Some(tr_bound) = crate::traits::trait_bound_to_air(ctx, path, typ_args) {
-                    //let x = crate::ast_util::path_as_friendly_rust_name(&tr.x.name);
-                    //dbg!(x, &path, &typ_args);
                     let qname = format!(
                         "{}_{}",
                         crate::ast_util::path_as_friendly_rust_name(&tr.x.name),

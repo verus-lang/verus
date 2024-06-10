@@ -657,6 +657,44 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
     Arc::new(commands)
 }
 
+pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
+    // forall typ_params. #[trigger] tr_bound%T(typ_params) ==> typ_bounds
+    // Example:
+    //   trait T<A: U> where Self: Q<A> {}
+    // -->
+    //   forall Self, A. tr_bound%T(Self, A) ==> tr_bound%U(A) && tr_bound%Q(Self, A)
+    let mut commands: Vec<Command> = Vec::new();
+    for tr in traits {
+        let mut typ_params: Vec<crate::ast::Ident> =
+            (*tr.x.typ_params).iter().map(|(x, _)| x.clone()).collect();
+        typ_params.insert(0, crate::def::trait_self_type_param());
+        let typ_args: Vec<Typ> =
+            typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+        if let Some(tr_bound) = trait_bound_to_air(ctx, &tr.x.name, &Arc::new(typ_args)) {
+            let typ_bounds = trait_bounds_to_air(ctx, &tr.x.typ_bounds);
+            let qname = format!(
+                "{}_{}",
+                crate::ast_util::path_as_friendly_rust_name(&tr.x.name),
+                crate::def::QID_TRAIT_TYPE_BOUNDS
+            );
+            let trigs = vec![tr_bound.clone()];
+            let bind = crate::func_to_air::func_bind_trig(
+                ctx,
+                qname,
+                &Arc::new(typ_params),
+                &Arc::new(vec![]),
+                &trigs,
+                false,
+            );
+            let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
+            let forall = mk_bind_expr(&bind, &imply);
+            let axiom = Arc::new(DeclX::Axiom(forall));
+            commands.push(Arc::new(CommandX::Global(axiom)));
+        }
+    }
+    Arc::new(commands)
+}
+
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
     assert!(ctx.bound_traits.contains(&imp.x.trait_path));
