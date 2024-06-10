@@ -671,7 +671,9 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
         let typ_args: Vec<Typ> =
             typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
         if let Some(tr_bound) = trait_bound_to_air(ctx, &tr.x.name, &Arc::new(typ_args)) {
-            let typ_bounds = trait_bounds_to_air(ctx, &tr.x.typ_bounds);
+            let all_bounds =
+                tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()).cloned().collect();
+            let typ_bounds = trait_bounds_to_air(ctx, &Arc::new(all_bounds));
             let qname = format!(
                 "{}_{}",
                 crate::ast_util::path_as_friendly_rust_name(&tr.x.name),
