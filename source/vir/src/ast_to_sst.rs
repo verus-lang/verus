@@ -16,7 +16,7 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_conjoin, sst_int_literal, sst_le,
+    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_new, sst_conjoin, sst_int_literal, sst_le,
     sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
@@ -1556,7 +1556,8 @@ pub(crate) fn expr_to_stm_opt(
                 };
                 exps.push(e0);
             }
-            let v = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
+            //let v = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
+            let v = sst_array_new(ctx, &expr.span, &expr.typ, &Arc::new(exps));
             Ok((stms, ReturnValue::Some(v)))
         }
         ExprX::ExecFnByName(fun) => {

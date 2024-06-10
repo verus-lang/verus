@@ -835,16 +835,16 @@ pub fn break_label(i: u64) -> Ident {
     Arc::new(format!("{}{}", PREFIX_BREAK_LABEL, i))
 }
 
-pub fn array_index_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: array_index_path(vstd_crate_name) })
+pub fn array_new_fun(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX { path: array_new_path(vstd_crate_name) })
 }
 
-pub fn array_index_path(vstd_crate_name: &Ident) -> Path {
+pub fn array_new_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
         segments: Arc::new(vec![
             Arc::new("array".to_string()),
-            Arc::new("array_index".to_string()),
+            Arc::new("array_new".to_string()),
         ]),
     })
 }

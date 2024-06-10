@@ -8,7 +8,7 @@ use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, InternalFun, Stm, Trig, Trigs, UniqueIdent};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -700,33 +700,31 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
     )
 }
 
-pub fn sst_array_index(ctx: &crate::context::Ctx, span: &Span, ar: &Exp, idx: &Exp) -> Exp {
-    let t = match &*ar.typ {
+pub fn sst_array_new(ctx: &crate::context::Ctx, span: &Span, typ: &Typ, exps: &Exps) -> Exp {
+    let t = match &**typ {
         TypX::Boxed(t) => t,
         _ => {
-            panic!("sst_array_index expected boxed Array type");
+            panic!("sst_array_new expected boxed Array type");
         }
     };
-    let (elem_ty, n_ty) = match &**t {
+    let (elem_ty, n_ty) = match &*t {
         TypX::Primitive(crate::ast::Primitive::Array, typs) => (&typs[0], &typs[1]),
         _ => {
-            panic!("sst_array_index expected boxed Array type");
+            panic!("sst_array_new expected boxed Array type");
         }
     };
-
-    let idx_boxed = SpannedTyped::new(
-        &idx.span,
-        &Arc::new(TypX::Boxed(idx.typ.clone())),
-        ExpX::UnaryOpr(UnaryOpr::Box(idx.typ.clone()), idx.clone()),
-    );
+    let len = sst_int_literal(span, exps.len() as i128);
+    // TODO: Box(len)?
+    let mut args = vec![len];
+    args.extend(exps.iter().cloned());
 
     SpannedTyped::new(
         span,
         elem_ty,
         ExpX::Call(
-            CallFun::Fun(crate::def::array_index_fun(&ctx.global.vstd_crate_name), None),
+            CallFun::Fun(crate::def::array_new_fun(&ctx.global.vstd_crate_name), None),
             Arc::new(vec![elem_ty.clone(), n_ty.clone()]),
-            Arc::new(vec![ar.clone(), idx_boxed]),
+            Arc::new(args),
         ),
     )
 }
