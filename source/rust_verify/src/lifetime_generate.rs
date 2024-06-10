@@ -569,11 +569,9 @@ fn erase_generic_args<'tcx>(
             }
             rustc_middle::ty::GenericArgKind::Lifetime(region) => {
                 let lifetime = erase_hir_region(ctxt, state, &region);
-                if let Some(lifetime) = lifetime {
-                    lifetimes.push(Box::new(TypX::TypParam(lifetime)));
-                } else {
-                    lifetimes.push(Box::new(TypX::Primitive("'_".to_string())));
-                }
+                let lifetime =
+                    lifetime.unwrap_or_else(|| Id::new(IdKind::Builtin, 0, "'_".to_string()));
+                lifetimes.push(Box::new(TypX::TypParam(lifetime)));
             }
             rustc_middle::ty::GenericArgKind::Const(cnst) => {
                 let t = erase_generic_const(ctxt, state, &cnst);
