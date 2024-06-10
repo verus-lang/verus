@@ -357,7 +357,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Array(typ, exprs) => {
             for e in exprs.iter() {
                 let tk = check_expr(typing, e)?;
-                expect_typ(&tk, &typ, "array element does not match array type")?;
+                expect_typ(&tk, &typ, &format!("array element does not match array type.  Got: {:?}; expected: {:?}", tk, typ))?;
             }
             Ok(Arc::new(TypX::Fun))
         }
