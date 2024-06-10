@@ -716,6 +716,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wildcard_assoc_type_lifetime verus_code! {
+        // https://github.com/verus-lang/verus/issues/1158
+        struct S<A>(A);
+
+        trait Foo {
+            type T<'a>;
+
+            fn foo<'a>(x: Self::T<'a>) -> S<Self::T<'a>> {
+                S(x)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {
