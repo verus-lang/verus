@@ -731,6 +731,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assoc_type_lifetime_for verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        pub trait Foo {
+            type T<'a>;
+        }
+
+        pub trait From<T> {}
+
+        pub trait Mapper<S: From<Self::U>> {
+            type U: From<S>;
+        }
+
+        pub struct MapFoo<F, M>(F, M);
+
+        impl<F, M> Foo for MapFoo<F, M> where
+            F: Foo,
+            for <'a>M: Mapper<F::T<'a>>,
+            for <'a>F::T<'a>: From<<M as Mapper<F::T<'a>>>::U>,
+            for <'a><M as Mapper<F::T<'a>>>::U: From<F::T<'a>>,
+        {
+            type T<'a> = <M as Mapper<F::T<'a>>>::U;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {
