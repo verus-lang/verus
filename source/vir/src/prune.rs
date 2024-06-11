@@ -27,7 +27,7 @@ enum ReachedType {
     None,
     Bool,
     Int(crate::ast::IntRange),
-    Lambda(usize),
+    SpecFn(usize),
     Datatype(Path),
     StrSlice,
     Primitive,
@@ -40,13 +40,13 @@ type TraitName = Path;
 type ImplName = Path;
 
 #[derive(Debug)]
-struct TraitImpl {
+struct ReachTraitImpl {
+    trait_impl: crate::ast::TraitImpl,
     // For an impl "...T'(...t'...)... ==> trait T(...t...)",
     // list all traits T' and types t' in the bounds:
     bound_traits: Vec<TraitName>,
     bound_types: Vec<ReachedType>,
-    // list T and all t:
-    trait_name: TraitName,
+    // list all t:
     trait_typ_args: Vec<ReachedType>,
 }
 
@@ -55,11 +55,12 @@ struct Ctxt {
     function_map: HashMap<Fun, Function>,
     reveal_group_map: HashMap<Fun, RevealGroup>,
     datatype_map: HashMap<Path, Datatype>,
+    trait_map: HashMap<Path, Trait>,
     // For an impl "bounds ==> trait T(...t...)", point T to impl:
     trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>>,
     // For an impl "bounds ==> trait T(...t...)", point t to impl:
     typ_to_trait_impls: HashMap<ReachedType, Vec<ImplName>>,
-    trait_impl_map: HashMap<ImplName, TraitImpl>,
+    trait_impl_map: HashMap<ImplName, ReachTraitImpl>,
     assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>>,
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
@@ -86,16 +87,17 @@ struct State {
     worklist_assoc_type_impls: Vec<AssocTypeGroup>,
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
-    lambda_types: HashSet<usize>,
+    spec_fn_types: HashSet<usize>,
     fndef_types: HashSet<Fun>,
 }
 
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
+    use crate::ast::Primitive;
     match &**typ {
         TypX::Bool => ReachedType::Bool,
         TypX::Int(range) => ReachedType::Int(*range),
         TypX::Tuple(_) => ReachedType::None,
-        TypX::Lambda(ts, _) => ReachedType::Lambda(ts.len()),
+        TypX::SpecFn(ts, _) => ReachedType::SpecFn(ts.len()),
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(path, _, _) => ReachedType::Datatype(path.clone()),
         TypX::FnDef(..) => ReachedType::None,
@@ -106,8 +108,10 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
-        TypX::StrSlice => ReachedType::StrSlice,
-        TypX::Primitive(_, _) => ReachedType::Primitive,
+        TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
+        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
+            ReachedType::Primitive
+        }
     }
 }
 
@@ -178,7 +182,7 @@ fn reach_trait_impl(ctxt: &Ctxt, state: &mut State, imp: &ImplName) {
                 return;
             }
         }
-        if state.reached_bound_traits.contains(&trait_impl.trait_name) {
+        if state.reached_bound_traits.contains(&trait_impl.trait_impl.x.trait_path) {
             reach(&mut state.reached_trait_impls, &mut state.worklist_trait_impls, imp);
         }
     }
@@ -210,12 +214,7 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
 // shallowly reach typ (the AST visitor takes care of recursing through typ)
 fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
-        TypX::Bool
-        | TypX::Int(_)
-        | TypX::Lambda(..)
-        | TypX::Datatype(..)
-        | TypX::StrSlice
-        | TypX::Primitive(..) => {
+        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::Tuple(_) | TypX::AnonymousClosure(..) => {}
@@ -265,19 +264,53 @@ fn reach_methods(ctxt: &Ctxt, state: &mut State, method_impls: Vec<Fun>) {
     }
 }
 
+fn traverse_typ(ctxt: &Ctxt, state: &mut State, t: &Typ) {
+    reach_typ(ctxt, state, t);
+    match &**t {
+        TypX::Datatype(path, _, _) => record_datatype(ctxt, state, t, path),
+        TypX::Primitive(_, _) => {
+            if let Some(monotyp) = crate::poly::typ_as_mono(t) {
+                state.mono_abstract_datatypes.insert(monotyp);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn traverse_generic_bounds(
+    ctxt: &Ctxt,
+    state: &mut State,
+    bounds: &crate::ast::GenericBounds,
+    traverse_typs: bool,
+) {
+    for bound in bounds.iter() {
+        // note: the types in the bounds are handled below in traverse_typs
+        let path = match &**bound {
+            crate::ast::GenericBoundX::Trait(path, _) => path,
+            crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
+                reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
+                path
+            }
+            crate::ast::GenericBoundX::ConstTyp(_, _) => {
+                continue;
+            }
+        };
+        reach_bound_trait(ctxt, state, path);
+    }
+    if traverse_typs {
+        let ft = |state: &mut State, t: &Typ| {
+            traverse_typ(ctxt, state, t);
+            Ok(t.clone())
+        };
+        let _ = crate::ast_visitor::map_generic_bounds_visitor(bounds, state, &ft)
+            .expect("traverse_typs");
+    }
+}
+
 fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
-            reach_typ(ctxt, state, t);
-            match &**t {
-                TypX::Datatype(path, _, _) => record_datatype(ctxt, state, t, path),
-                TypX::Primitive(_, _) => {
-                    if let Some(monotyp) = crate::poly::typ_as_mono(t) {
-                        state.mono_abstract_datatypes.insert(monotyp);
-                    }
-                }
-                _ => {}
-            }
+            traverse_typ(ctxt, state, t);
             Ok(t.clone())
         };
         if let Some(f) = state.worklist_functions.pop() {
@@ -293,22 +326,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
                 reach_function(ctxt, state, method);
             }
-            for bound in function.x.typ_bounds.iter() {
-                // note: the types in the bounds are handled below by map_function_visitor_env
-                let path = match &**bound {
-                    crate::ast::GenericBoundX::Trait(path, _) => path,
-                    crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
-                        reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
-                        path
-                    }
-                    crate::ast::GenericBoundX::ConstTyp(_, _) => {
-                        continue;
-                    }
-                };
-                if function.x.mode == crate::ast::Mode::Spec || function.x.attrs.broadcast_forall {
-                    reach_bound_trait(ctxt, state, path);
-                }
-            }
+            // note: the types in typ_bounds are handled below by map_function_visitor_env
+            traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
                 // note: the visitor automatically reaches e.typ
                 match &e.x {
@@ -370,12 +389,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     }
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
                 }
-                ReachedType::Lambda(arity) => {
-                    state.lambda_types.insert(*arity);
+                ReachedType::SpecFn(arity) => {
+                    state.spec_fn_types.insert(*arity);
                 }
                 ReachedType::StrSlice => {
-                    let path = crate::def::strslice_defn_path(&ctxt.vstd_crate_name);
-                    let module_path = path.pop_segment();
+                    let module_path = crate::def::strslice_module_path(&ctxt.vstd_crate_name);
                     reach(&mut state.reached_modules, &mut state.worklist_modules, &module_path);
                 }
                 _ => {}
@@ -400,6 +418,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     reach_trait_impl(ctxt, state, imp);
                 }
             }
+            if let Some(tr) = ctxt.trait_map.get(&b) {
+                // For assoc_type_trait_bounds_to_air, reach typ_bounds and assoc_typs_bounds
+                traverse_generic_bounds(ctxt, state, &tr.x.typ_bounds, true);
+                traverse_generic_bounds(ctxt, state, &tr.x.assoc_typs_bounds, true);
+            }
         }
         if let Some(i) = state.worklist_trait_impls.pop() {
             if let Some(trait_impl) = ctxt.trait_impl_map.get(&i) {
@@ -409,6 +432,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 for bound_type in &trait_impl.bound_types {
                     reach_type(ctxt, state, bound_type);
                 }
+                let ti = &trait_impl.trait_impl;
+                traverse_generic_bounds(ctxt, state, &ti.x.typ_bounds, false);
+                crate::ast_visitor::map_trait_impl_visitor_env(&ti, state, &ft).unwrap();
             }
         }
         if let Some(a) = state.worklist_assoc_type_decls.pop() {
@@ -416,11 +442,17 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             for t in typs {
                 reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
             }
+            // assoc_type_trait_bounds_to_air needs typ_bounds and assoc_typs_bounds, so reach them.
+            // We could be more precise and reach only the bounds relevant to a,
+            // but this is probably not worth the complexity.
+            // Instead, just have reach_bound_trait reach all of typ_bounds and assoc_typs_bounds.
+            reach_bound_trait(ctxt, state, &a.0);
             continue;
         }
         if let Some(assoc_group) = state.worklist_assoc_type_impls.pop() {
             if let Some(assoc_impls) = ctxt.assoc_type_impl_map.get(&assoc_group) {
                 for assoc_impl in assoc_impls {
+                    traverse_generic_bounds(ctxt, state, &assoc_impl.x.typ_bounds, false);
                     crate::ast_visitor::map_assoc_type_impl_visitor_env(&assoc_impl, state, &ft)
                         .unwrap();
                 }
@@ -547,7 +579,7 @@ pub fn prune_krate_for_module_or_krate(
             reveal_groups,
             datatypes,
             assoc_type_impls,
-            traits: _no_pruning_of_traits,
+            traits,
             trait_impls,
             modules,
             external_fns: _no_pruning_of_external_fns,
@@ -571,6 +603,9 @@ pub fn prune_krate_for_module_or_krate(
                 &mut state.worklist_assoc_type_impls,
                 &a.x.prune_name(),
             );
+        }
+        for tr in traits {
+            reach(&mut state.reached_bound_traits, &mut state.worklist_bound_traits, &tr.x.name);
         }
         for i in trait_impls {
             reach(&mut state.reached_trait_impls, &mut state.worklist_trait_impls, &i.x.impl_path);
@@ -709,17 +744,15 @@ pub fn prune_krate_for_module_or_krate(
             }
         }
     }
-    if module.is_none() {
-        // Make sure to keep our own crate's declarations for well-formedness checks
-    }
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut reveal_group_map: HashMap<Fun, RevealGroup> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
+    let mut trait_map: HashMap<Path, Trait> = HashMap::new();
     let mut assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>> = HashMap::new();
     let mut trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>> = HashMap::new();
     let mut typ_to_trait_impls: HashMap<ReachedType, Vec<ImplName>> = HashMap::new();
-    let mut trait_impl_map: HashMap<ImplName, TraitImpl> = HashMap::new();
+    let mut trait_impl_map: HashMap<ImplName, ReachTraitImpl> = HashMap::new();
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     let mut all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
@@ -752,6 +785,9 @@ pub fn prune_krate_for_module_or_krate(
     for d in &datatypes {
         datatype_map.insert(d.x.path.clone(), d.clone());
     }
+    for tr in krate.traits.iter() {
+        trait_map.insert(tr.x.name.clone(), tr.clone());
+    }
 
     for imp in krate.trait_impls.iter() {
         let mut bound_traits: Vec<TraitName> = Vec::new();
@@ -777,10 +813,10 @@ pub fn prune_krate_for_module_or_krate(
                 }
             }
         }
-        let trait_impl = TraitImpl {
+        let trait_impl = ReachTraitImpl {
+            trait_impl: imp.clone(),
             bound_traits,
             bound_types,
-            trait_name: imp.x.trait_path.clone(),
             trait_typ_args: imp.x.trait_typ_args.iter().map(typ_to_reached_type).collect(),
         };
         if !trait_to_trait_impls.contains_key(&imp.x.trait_path) {
@@ -810,6 +846,7 @@ pub fn prune_krate_for_module_or_krate(
         function_map,
         reveal_group_map,
         datatype_map,
+        trait_map,
         trait_to_trait_impls,
         typ_to_trait_impls,
         trait_impl_map,
@@ -830,7 +867,15 @@ pub fn prune_krate_for_module_or_krate(
             .cloned()
             .collect();
         let assoc_typs = Arc::new(assoc_typs);
-        traits.push(Spanned::new(tr.span.clone(), TraitX { assoc_typs, ..traitx }));
+        let assoc_typs_bounds = if state.reached_bound_traits.contains(&tr.x.name) {
+            traitx.assoc_typs_bounds
+        } else {
+            Arc::new(vec![])
+        };
+        traits.push(Spanned::new(
+            tr.span.clone(),
+            TraitX { assoc_typs, assoc_typs_bounds, ..traitx },
+        ));
     }
 
     let modules: Vec<Module> = krate
@@ -867,6 +912,10 @@ pub fn prune_krate_for_module_or_krate(
             .filter(|a| state.reached_assoc_type_impls.contains(&a.x.prune_name()))
             .cloned()
             .collect(),
+        // TODO: once we've explicitly declared all traits (internal and external) to Verus,
+        // we should consider filtering away unreached traits entirely,
+        // and getting rid of reached_bound_traits and reached_assoc_type_decls.
+        // That way, we'd guarantee that there are no unreached contents in any TraitX fields.
         traits,
         trait_impls: krate
             .trait_impls
@@ -880,13 +929,13 @@ pub fn prune_krate_for_module_or_krate(
         path_as_rust_names: krate.path_as_rust_names.clone(),
         arch: krate.arch.clone(),
     };
-    let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
-    lambda_types.sort();
+    let mut spec_fn_types: Vec<usize> = state.spec_fn_types.into_iter().collect();
+    spec_fn_types.sort();
     let mut fndef_types: Vec<Fun> = state.fndef_types.into_iter().collect();
     fndef_types.sort();
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
     let State { reached_bound_traits, .. } = state;
-    (Arc::new(kratex), mono_abstract_datatypes, lambda_types, reached_bound_traits, fndef_types)
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, reached_bound_traits, fndef_types)
 }

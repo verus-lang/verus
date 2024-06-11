@@ -243,10 +243,23 @@ fn func_body_to_air(
     // Recursive function definitions, on the other hand, only hold conditionally for
     // type arguments and value arguments for which termination can be proved.
     // Collect the conditions on type arguments and value arguments in def_reqs.
-    if function.x.decrease.len() > 0 {
+    let function_kind_needs_trait_bounds = match &function.x.kind {
+        FunctionKind::Static => false,
+        FunctionKind::TraitMethodDecl { .. } => {
+            // default method: trait bounds are applied to impls that inherit this,
+            // rather than applying trait bounds here
+            false
+        }
+        FunctionKind::TraitMethodImpl { .. } => true,
+        FunctionKind::ForeignTraitMethodImpl { .. } => true,
+    };
+    if function.x.decrease.len() > 0 || function_kind_needs_trait_bounds {
         // conditions on type arguments:
+        // (*always* needed in trait dispatch to make sure different implementations of the same
+        // trait don't conflict and contradict each other)
         def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds));
-
+    }
+    if function.x.decrease.len() > 0 {
         for param in function.x.params.iter() {
             let arg = ident_var(&param.x.name.lower());
             if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
@@ -849,6 +862,7 @@ pub fn func_axioms_to_air(
                 } = &function.x.kind
                 {
                     // Emit axiom that says our method equals the default method we inherit from
+                    // (if trait bounds are satisfied)
                     let mut args: Vec<Expr> =
                         trait_typ_args.iter().map(typ_to_ids).flatten().collect();
                     for p in function.x.params.iter() {
@@ -864,7 +878,7 @@ pub fn func_axioms_to_air(
                         &function.x.typ_params,
                         &trait_typ_args,
                         &pars,
-                        &vec![],
+                        &crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds),
                         body,
                     )?;
                     let def_axiom = Arc::new(DeclX::Axiom(e_forall));
@@ -1214,6 +1228,7 @@ pub fn func_sst_to_air(
         ctx,
         &function.span,
         &function.x.typ_params,
+        &function.x.typ_bounds,
         &function.x.params,
         function_sst,
         &function.x.attrs.hidden,

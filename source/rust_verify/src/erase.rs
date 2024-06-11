@@ -14,7 +14,6 @@ pub enum CompilableOperator {
     ArcNew,
     BoxNew,
     SmartPtrClone { is_method: bool },
-    NewStrLit,
     GhostExec,
     TrackedNew,
     TrackedExec,

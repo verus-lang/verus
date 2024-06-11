@@ -322,6 +322,251 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] trait_assoc_type_bound_inner_lifetimes verus_code! {
+        pub trait T<'x> {
+            type One<'a>;
+            type Two<'b, 'c>;
+
+            fn f<'a>(x: &<Self as T<'x>>::Two<'static, 'a>);
+            fn g<'a>(x: &'a bool);
+        }
+
+        impl<'x> T<'x> for bool {
+            type One<'a> = &'a bool;
+
+            type Two<'b, 'c> = bool;
+
+            fn f<'a>(x: &<Self as T<'x>>::Two<'static, 'a>) {}
+            fn g<'a>(x: &'a bool) {}
+        }
+
+        fn test<'a>(x: &'a bool, y: &'static bool) {
+            <bool as T<'a>>::g(x);
+            <bool as T<'a>>::g(y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_assoc_type_bound_axiom verus_code! {
+        trait Q {}
+
+        trait T<M: Q> {
+            spec fn f() -> int;
+        }
+
+        struct S<A>(A);
+
+        impl<M: Q, A: T<M>> T<M> for S<A> {
+            spec fn f() -> int { 3 }
+        }
+
+        trait U<M: Q> {
+            type X: T<M>;
+        }
+
+        proof fn test2<M: Q, Z: U<M>>() {
+            assert(<S<Z::X> as T<M>>::f() == 3);
+            assert(<S<Z::X> as T<M>>::f() == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality1 verus_code! {
+        trait T {
+            type X;
+            type Y: Copy;
+            spec fn f(x: &Self::X, y: &Self::Y) -> Self::X {
+                *x
+            }
+            fn g(x: &Self::X, y: &Self::Y) -> Self::Y {
+                *y
+            }
+        }
+
+        impl T for bool {
+            type X = u8;
+            type Y = u16;
+            spec fn f(x: &Self::X, y: &Self::Y) -> Self::X {
+                (*x + *y) as u8
+            }
+            fn g(x: &Self::X, y: &Self::Y) -> (r: Self::Y)
+                ensures r == *x as u16 + *y / 2
+            {
+                *x as u16 + *y / 2
+            }
+        }
+
+        spec fn s1<A: T<X = u8>>(y: A::Y) -> u8 {
+            A::f(&3u8, &y)
+        }
+
+        spec fn s2<A: T<X = u8>>(y: A::Y) -> u8 {
+            A::f(&3u8, &y) / 2
+        }
+
+        proof fn test1<A: T<X = u8>>(y: A::Y) {
+            assert(s1::<A>(y) == A::f(&3u8, &y));
+        }
+
+        fn test2() {
+            assert(s1::<bool>(7u16) == <bool as T>::f(&3u8, &7u16));
+            assert(s1::<bool>(7u16) == 10u8);
+            assert(s2::<bool>(7u16) == 5u8);
+            let r = <bool as T>::g(&3u8, &7u16);
+            assert(r == 6u8);
+            assert(r == 7u8); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality_struct verus_code! {
+        trait T {
+            type X;
+            type Y;
+        }
+
+        struct S<A: T<X = u8>> {
+            x: A::X,
+        }
+        impl T for bool {
+            type X = u8;
+            type Y = u16;
+        }
+        proof fn test() {
+            let s: S<bool> = S { x: 10u8 };
+            assert(s.x == 10);
+            assert(s.x == 11); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality_broadcast verus_code! {
+        trait T {
+            type X;
+            type Y;
+        }
+
+        spec fn p<A>(a: A) -> bool;
+        spec fn q<A, B>(a: A, b: B) -> bool { true }
+
+        #[verifier::external_body]
+        proof fn p_u8(u: u8)
+            ensures p(u)
+        {
+        }
+
+        broadcast proof fn b<A: T<X = u8>>(x: A::X, a: A)
+            ensures #[trigger] q(a, x) && p(x)
+        {
+            p_u8(x);
+        }
+
+        impl T for u16 {
+            type X = u8;
+            type Y = i8;
+        }
+
+        impl T for u32 {
+            type X = u64;
+            type Y = i64;
+        }
+
+        proof fn test() {
+            broadcast use b;
+            assert(q(5u16, 10u8));
+            assert(p(10u8));
+            assert(q(5u32, 11u8));
+            assert(p(11u8)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality_dispatch_spec verus_code! {
+        trait U { type X; }
+        impl U for char { type X = u8; }
+        impl U for bool { type X = u16; }
+
+        trait T { spec fn f() -> int; }
+        impl<A: U<X = u8>> T for A { spec fn f() -> int { 100 } }
+        impl T for bool { spec fn f() -> int { 200 } }
+
+        proof fn test() {
+            assert(<char as T>::f() == 100);
+            assert(<bool as T>::f() == 200);
+            assert(<char as T>::f() == 200); // FAILS
+            assert(<bool as T>::f() == 100);
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_equality_dispatch_proof verus_code! {
+        trait U { type X; }
+        impl U for char { type X = u8; }
+        impl U for bool { type X = u16; }
+
+        trait T { proof fn f() -> int; }
+        impl<A: U<X = u8>> T for A { proof fn f() -> (r: int) ensures r == 100 { 100 } }
+        impl T for bool { proof fn f() -> (r: int) ensures r == 200 { 200 } }
+
+        proof fn test() {
+            let x = <char as T>::f();
+            assert(x == 100);
+            let x = <bool as T>::f();
+            assert(x == 200);
+            let x = <char as T>::f();
+            assert(x == 200); // FAILS
+            let x = <bool as T>::f();
+            assert(x == 100);
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_bound_no_dispatch verus_code! {
+        trait R {}
+        impl R for u8 {}
+        trait T {
+            spec fn f() -> int;
+        }
+        trait U {
+            type X;
+        }
+        impl<A: U> T for A where A::X: R { spec fn f() -> int { 100 } }
+        impl U for char { type X = u8; }
+        impl U for bool { type X = u16; }
+        impl T for bool { spec fn f() -> int { 200 } }
+
+        proof fn test() {
+            assert(<char as T>::f() == 100);
+            assert(<bool as T>::f() == 200);
+            assert(<char as T>::f() == 200);
+            assert(<bool as T>::f() == 100);
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "conflicting implementations")
+}
+
+test_verify_one_file! {
+    #[test] trait_typ_bound_prune_ok verus_code! {
+        pub trait T {
+            spec fn f();
+        }
+
+        pub trait U {
+            type X: T;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] trait_assoc_type_bound_mutual_bounds_0 verus_code! {
         trait A: B {
             spec fn a(&self) -> Self::AT;
@@ -425,6 +670,61 @@ test_verify_one_file! {
             match x.0.foo() {
                 E::Ok(_) => {}
                 E::Err(_) => {}
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] supertrait_assoc_type_lifetime2 verus_code! {
+        // https://github.com/verus-lang/verus/issues/1144
+        pub trait T {
+            type X;
+        }
+
+        pub trait U: T {
+        }
+
+        impl T for u8 {
+            type X = u8;
+        }
+
+        impl U for u8 {
+        }
+
+        pub struct Q<A: U>(pub A);
+
+        fn test1() -> Q<u8> {
+            Q::<u8>(0)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] supertrait_assoc_type_lifetime3 verus_code! {
+        // https://github.com/verus-lang/verus/issues/1155
+        trait T: Copy {}
+        trait U: T {}
+        trait V<A> { fn f(a: A) -> (A, A); }
+
+        struct S<A>(A);
+
+        impl<A: U> V<A> for S<A> {
+            fn f(a: A) -> (A, A) { (a, a) }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] wildcard_assoc_type_lifetime verus_code! {
+        // https://github.com/verus-lang/verus/issues/1158
+        struct S<A>(A);
+
+        trait Foo {
+            type T<'a>;
+
+            fn foo<'a>(x: Self::T<'a>) -> S<Self::T<'a>> {
+                S(x)
             }
         }
     } => Ok(())

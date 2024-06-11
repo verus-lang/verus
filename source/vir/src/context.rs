@@ -75,7 +75,7 @@ pub struct Ctx {
     pub(crate) datatype_is_transparent: HashMap<Path, bool>,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_types: Vec<MonoTyp>,
-    pub(crate) lambda_types: Vec<usize>,
+    pub(crate) spec_fn_types: Vec<usize>,
     pub(crate) bound_traits: HashSet<Path>,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) fndef_type_set: HashSet<Fun>,
@@ -158,7 +158,7 @@ fn datatypes_invs(
                         TypX::Int(_) | TypX::TypParam(_) | TypX::Projection { .. } => {
                             roots.insert(container_path.clone());
                         }
-                        TypX::Lambda(..) => {
+                        TypX::SpecFn(..) => {
                             roots.insert(container_path.clone());
                         }
                         TypX::Datatype(field_path, _, _) => {
@@ -177,13 +177,14 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::StrSlice | TypX::AnonymousClosure(..) => {}
+                        TypX::Bool | TypX::AnonymousClosure(..) => {}
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::Primitive(Primitive::Array, _) => {
                             roots.insert(container_path.clone());
                         }
                         TypX::Primitive(Primitive::Slice, _) => {}
+                        TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Ptr, _) => {}
                     }
                 }
@@ -507,7 +508,7 @@ impl Ctx {
         global: GlobalCtx,
         module: Module,
         mono_types: Vec<MonoTyp>,
-        lambda_types: Vec<usize>,
+        spec_fn_types: Vec<usize>,
         bound_traits: HashSet<Path>,
         fndef_types: Vec<Fun>,
         debug: bool,
@@ -549,7 +550,7 @@ impl Ctx {
             datatype_is_transparent,
             datatypes_with_invariant,
             mono_types,
-            lambda_types,
+            spec_fn_types,
             bound_traits,
             fndef_types,
             fndef_type_set,

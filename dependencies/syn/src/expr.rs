@@ -1932,7 +1932,7 @@ pub(crate) mod parsing {
             input.parse().map(Expr::Assume)
         } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
             input.parse().map(Expr::AssertForall)
-        } else if input.peek(Token![assert]) {
+        } else if input.peek(Token![assert]) && !input.peek2(Token![!]) {
             input.parse().map(Expr::Assert)
         } else if input.peek(Token![reveal])
             || input.peek(Token![reveal_with_fuel])
@@ -2261,7 +2261,7 @@ pub(crate) mod parsing {
             Expr::Assume(input.parse()?)
         } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
             Expr::AssertForall(input.parse()?)
-        } else if input.peek(Token![assert]) {
+        } else if input.peek(Token![assert]) && !input.peek2(Token![!]) {
             Expr::Assert(input.parse()?)
         } else if input.peek(Token![reveal])
             || input.peek(Token![reveal_with_fuel])

@@ -1,0 +1,144 @@
+a.blog_link {
+  float: right;
+}
+div.container {
+  display: flex;
+  align-items: flex-start;
+}
+div.hero {
+  margin-left: 30px;
+  margin-right: 30px;
+}
+h1#title {
+  display: none;
+  margin-top: 20px;
+  text-shadow: #666 2px -2px 4px;
+  color: white;
+  text-align: center;
+}
+span.name-span {
+  font-weight: bold;
+  font-size: 1.6em;
+}
+@media screen and (min-width: 880px) {
+  div.hero > div.main {
+    width: 800px;
+  }
+  div.base_header {
+    width: 800px;
+  }
+}
+@media screen and (max-width: 879px) {
+  div.container {
+    flex-direction: column;
+  }
+  div.hero, div.posts {
+    margin-left: 30px;
+    margin-right: 30px;
+    align-self: stretch;
+    max-width: none;
+  }
+  div.base_header {
+  }
+}
+@media screen and (max-width: 660px) {
+  .main.header > img {
+    padding: 0;
+    padding-top: 20px;
+    padding-bottom: 10px;
+    float: none;
+  }
+}
+p {
+  padding: 0px;
+  margin: 5px 0px 0px 0px;
+}
+span.email {
+  color: #555;
+}
+p:first-child {
+  margin-top: 0px;
+  
+}
+div.relative {
+  position: relative;
+}
+.card.header > img {
+  float: right;
+  height: 240px;
+  padding-left: 20px;
+  margin-right: -10px;
+  margin-top: -15px;
+}
+.card-name {
+  margin-top: 0;
+}
+p.text, .text > p {
+  text-align: justify;
+  -webkit-hyphens: auto;
+  -ms-hyphens: auto;
+  hyphens: auto;
+}
+.excerpt {
+  margin-top: 6pt;
+  margin-bottom: 6pt;
+}
+div.attribution {
+  font-size: 0.75em;
+  border-bottom: none;
+}
+
+ul.blog > li.post > div.title {
+  font-weight: bold;
+}
+
+div.main.activity {
+  display: none;
+}
+
+div.main > h3 {
+  margin-top: 20px;
+  padding-bottom: 10px;
+}
+
+div.main > h3:first-child {
+  margin-top: 0px;
+}
+
+div.main > h3.small-h3 {
+  margin: 0;
+  padding: 0;
+  font-size: 100%;
+  line-height: 100%;
+}
+
+div.main > h2.no-h3 {
+  padding-bottom: 10px;
+}
+
+.publication-year {
+}
+
+li {
+  list-style-type: none;
+}
+
+ul.publication > li {
+  margin-top: 20px;
+}
+
+ul.publication > li:first-child {
+  margin-top: 0px;
+}
+
+.publication-location {
+  font-style: italic;
+}
+
+span.comment {
+  font-size: 80%;
+}
+
+.paper-title {
+  font-weight: bold;
+}

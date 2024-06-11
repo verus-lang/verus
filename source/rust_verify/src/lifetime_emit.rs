@@ -108,8 +108,13 @@ impl ToString for TypX {
             TypX::Datatype(path, lifetimes, args) => {
                 typ_args_to_string(path, lifetimes, args, &None)
             }
-            TypX::Projection { self_typ, trait_as_datatype: tr, name } => {
-                format!("<{} as {}>::{}", self_typ.to_string(), tr.to_string(), name.to_string())
+            TypX::Projection { self_typ, trait_as_datatype: tr, name, assoc_typ_args } => {
+                format!(
+                    "<{} as {}>::{}",
+                    self_typ.to_string(),
+                    tr.to_string(),
+                    typ_args_to_string(name, assoc_typ_args, &vec![], &None)
+                )
             }
             TypX::Closure => "_".to_string(),
             TypX::FnDef => "_".to_string(),
@@ -786,7 +791,7 @@ fn simplify_assoc_typ_bounds(
     let mut wheres: Vec<GenericBound> = Vec::new();
     for bound in bounds {
         let is_bare = match &*bound.typ {
-            TypX::Projection { self_typ, trait_as_datatype, name } if name == assoc_name => {
+            TypX::Projection { self_typ, trait_as_datatype, name, .. } if name == assoc_name => {
                 match (&**self_typ, &**trait_as_datatype) {
                     (TypX::TraitSelf, TypX::Datatype(id, _, _)) if id == trait_name => true,
                     _ => false,
@@ -960,11 +965,12 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     emit_generic_bounds(state, &t.generic_params, &t.generic_bounds, true);
     state.write(" {");
     state.push_indent();
-    for (a, bounds) in &t.assoc_typs {
+    for (a, params, bounds) in &t.assoc_typs {
         let (bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
         state.newline();
         state.write("type ");
         state.write(a.to_string());
+        emit_generic_params(state, &params);
         let sized = bares.iter().any(|b| b.bound == Bound::Sized);
         let unsize = if sized { vec![] } else { vec!["?Sized".to_string()] };
         if bounds.len() + unsize.len() > 0 {
@@ -1030,12 +1036,8 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     }
 }
 
-pub(crate) fn emit_assoc_type_impl(
-    state: &mut EmitState,
-    a: &AssocTypeImpl,
-    fns: &Vec<AssocTypeImplType>,
-) {
-    let AssocTypeImpl { trait_as_datatype, self_typ, generic_params, generic_bounds } = a;
+pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
+    let TraitImpl { trait_as_datatype, self_typ, generic_params, generic_bounds, assoc_typs } = t;
     state.newline();
     state.newline();
     state.write("impl");
@@ -1047,11 +1049,11 @@ pub(crate) fn emit_assoc_type_impl(
     emit_generic_bounds(state, &generic_params, &generic_bounds, false);
     state.write(" {");
     state.push_indent();
-    for fn_ in fns {
-        let AssocTypeImplType { name, typ } = fn_;
+    for (name, params, typ) in assoc_typs {
         state.newline();
         state.write("type ");
         state.write(&name.to_string());
+        emit_generic_params(state, params);
         state.write(" = ");
         state.write(&typ.to_string());
         state.write(";");

@@ -50,6 +50,10 @@ jobs:
           run_id: ${{ github.event.workflow_run.id }}
           workflow_conclusion: success
           path: ./_site/verusdoc
+      
+      - name: add papers page
+        run: |
+          cp -R source/docs/research ./_site/research
 
       - name: upload artifact
         uses: actions/upload-pages-artifact@v1

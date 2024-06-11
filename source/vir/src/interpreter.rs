@@ -254,7 +254,7 @@ impl SyntacticEquality for Typ {
             (Bool, Bool) => Some(true),
             (Int(l), Int(r)) => Some(l == r),
             (Tuple(typs_l), Tuple(typs_r)) => typs_l.syntactic_eq(typs_r),
-            (Lambda(formals_l, res_l), Lambda(formals_r, res_r)) => {
+            (SpecFn(formals_l, res_l), SpecFn(formals_r, res_r)) => {
                 Some(formals_l.syntactic_eq(formals_r)? && res_l.syntactic_eq(res_r)?)
             }
             (Datatype(path_l, typs_l, _), Datatype(path_r, typs_r, _)) => {

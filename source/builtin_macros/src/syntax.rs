@@ -76,6 +76,8 @@ struct Visitor {
     inside_type: u32,
     // inside_external_code > 0 means we're currently visiting an external or external_body body
     inside_external_code: u32,
+    // visiting a constant, for which we have to translate ghost code even when erasing
+    inside_const: bool,
     // Widen means we're a direct subexpression in an arithmetic expression that will widen the result.
     // (e.g. "x" or "3" in x + 3 or in x < (3), but not in f(x) + g(3)).
     // When we see a constant in inside_arith, we preemptively give it type "int" rather than
@@ -636,6 +638,7 @@ impl Visitor {
             FnMode::Exec(token) => (0, vec![mk_verus_attr(token.exec_token.span, quote! { exec })]),
         };
         self.inside_ghost = inside_ghost;
+        self.inside_const = true;
         *publish = Publish::Default;
         *mode = FnMode::Default;
         attrs.extend(publish_attrs);
@@ -1952,7 +1955,7 @@ impl VisitMut for Visitor {
         } else {
             None
         };
-        if !(is_inside_ghost && self.erase_ghost.erase()) {
+        if !(is_inside_ghost && self.erase_ghost.erase()) || self.inside_const {
             visit_expr_mut(self, expr);
         }
         if let Expr::Assign(assign) = expr {
@@ -3353,6 +3356,7 @@ pub(crate) fn rewrite_items(
         inside_ghost: 0,
         inside_type: 0,
         inside_external_code: 0,
+        inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3362,6 +3366,7 @@ pub(crate) fn rewrite_items(
     for mut item in &mut items.items {
         visitor.visit_item_mut(&mut item);
         visitor.inside_ghost = 0;
+        visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
     }
     visitor.visit_items_post(&mut items.items);
@@ -3385,6 +3390,7 @@ pub(crate) fn rewrite_expr(
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3402,6 +3408,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3515,6 +3522,7 @@ pub(crate) fn proof_macro_exprs(
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3544,6 +3552,7 @@ pub(crate) fn inv_macro_exprs(
         inside_ghost: 0,
         inside_type: 0,
         inside_external_code: 0,
+        inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
@@ -3579,6 +3588,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),

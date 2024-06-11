@@ -328,6 +328,7 @@ pub(crate) fn check_termination_commands(
         ctx,
         &function.span,
         &function.x.typ_params,
+        &function.x.typ_bounds,
         &function.x.params,
         &FunctionSst {
             post_condition: PostConditionSst {

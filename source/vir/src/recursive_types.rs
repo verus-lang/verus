@@ -54,9 +54,7 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_) | TypX::StrSlice | TypX::Primitive(_, _) => {
-            true
-        }
+        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_) | TypX::Primitive(_, _) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -65,7 +63,7 @@ fn check_well_founded_typ(
             AcceptRecursiveType::RejectInGround => true,
             AcceptRecursiveType::Accept => false,
         },
-        TypX::Lambda(_, ret) => {
+        TypX::SpecFn(_, ret) => {
             // This supports decreases on fields of function type (e.g. for infinite maps)
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, ret)
         }
@@ -172,8 +170,7 @@ fn check_positive_uses(
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
-        TypX::StrSlice => Ok(()),
-        TypX::Lambda(ts, tr) => {
+        TypX::SpecFn(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative
             let flip_polarity = match polarity {

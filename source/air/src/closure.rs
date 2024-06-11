@@ -13,7 +13,7 @@ use std::sync::Arc;
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub(crate) enum App {
     Apply(Ident),
-    ApplyLambda,
+    ApplyFun,
     Unary(UnaryOp),
     Binary(BinaryOp),
     Multi(MultiOp),
@@ -209,7 +209,7 @@ fn simplify_lambda(
     ctxt.typing.decls.pop_scope();
 
     let param_typs = Arc::new(vec_map(&**binders, |b| b.a.clone()));
-    let typ = Arc::new(TypX::Lambda);
+    let typ = Arc::new(TypX::Fun);
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
     let closure = ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone() };
     let closure = Arc::new(closure);
@@ -449,7 +449,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let (es, t) = enclose(state, App::Apply(x.clone()), es, ts);
             (typ, Arc::new(ExprX::Apply(x.clone(), Arc::new(es))), t)
         }
-        ExprX::ApplyLambda(typ, e0, args) => {
+        ExprX::ApplyFun(typ, e0, args) => {
             let mut es: Vec<&Expr> = vec![e0];
             for e in args.iter() {
                 es.push(e);
@@ -457,7 +457,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let (es, ts) = simplify_exprs_ref(ctxt, state, &es);
             let mut typs = vec_map(&ts, |(typ, _)| typ.clone());
             typs.remove(0);
-            let (es, t) = enclose(state, App::ApplyLambda, es, ts);
+            let (es, t) = enclose(state, App::ApplyFun, es, ts);
             let apply_fun = mk_apply(ctxt, state, Arc::new(typs), typ.clone());
             (typ.clone(), Arc::new(ExprX::Apply(apply_fun, Arc::new(es))), t)
         }

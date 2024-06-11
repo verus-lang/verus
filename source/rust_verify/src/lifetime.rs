@@ -202,6 +202,7 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 const PRELUDE: &str = "\
 #![feature(box_patterns)]
 #![feature(ptr_metadata)]
+#![feature(never_type)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -275,8 +276,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
-    for (a, fns) in gen_state.assoc_type_impls.iter() {
-        emit_assoc_type_impl(emit_state, a, fns);
+    for t in gen_state.trait_impls.iter() {
+        emit_trait_impl(emit_state, t);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);

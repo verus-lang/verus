@@ -345,7 +345,7 @@ fn encode_singular_queries(
             if let Err(info) = encoder.encode_requires_poly(expr) {
                 return Err(ValidityResult::Invalid(
                     None,
-                    err.clone().secondary_label(func_span, info),
+                    Some(err.clone().secondary_label(func_span, info)),
                     None,
                 ));
             }
@@ -361,7 +361,7 @@ fn encode_singular_queries(
             if let Err(info) = res {
                 return Err(ValidityResult::Invalid(
                     None,
-                    err.clone().secondary_label(func_span, info),
+                    Some(err.clone().secondary_label(func_span, info)),
                     None,
                 ));
             }
@@ -423,7 +423,7 @@ pub fn check_singular_valid(
                     .to_string(),
             )
             .primary_label(&err.spans[0], "Singular cannot prove this");
-            return ValidityResult::Invalid(None, err, None);
+            return ValidityResult::Invalid(None, Some(err), None);
         }
     }
 
