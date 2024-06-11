@@ -7,7 +7,8 @@ use super::view::*;
 verus! {
 
 /// Construct an array `a` of length `len` where entry `a[i]` is given by `f(i)`.
-pub open spec fn spec_array_new<T, const N: usize>(len: nat, f: impl Fn(int) -> T) -> [T; N];
+#[rustc_diagnostic_item = "verus::vstd::array::array_new"]
+pub open spec fn array_new<T, const N: usize>(f: impl Fn(int) -> T) -> [T; N];
 
 /*
 //#[verifier::external_body]
@@ -87,9 +88,9 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     admit();
 }
 
-pub broadcast proof fn axiom_array_new<T, const N: usize>(len: nat, f: impl Fn(int) -> T)
+pub broadcast proof fn axiom_array_new<T, const N: usize>(f: impl Fn(int) -> T)
     ensures
-       (#[trigger] <[T; N] as View>::view(&array_new(len, f))) == Seq::new(len, f), 
+       (#[trigger] <[T; N] as View>::view(&array_new(f))) == Seq::new(N as nat, f), 
 {
     admit();
 }

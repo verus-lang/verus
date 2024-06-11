@@ -1556,8 +1556,8 @@ pub(crate) fn expr_to_stm_opt(
                 };
                 exps.push(e0);
             }
-            //let v = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
-            let v = sst_array_new(ctx, &expr.span, &expr.typ, &Arc::new(exps));
+            let array_lit = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
+            let v = sst_array_new(ctx, &expr.span, expr.typ.clone(), array_lit);
             Ok((stms, ReturnValue::Some(v)))
         }
         ExprX::ExecFnByName(fun) => {
