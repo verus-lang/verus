@@ -782,8 +782,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             // Re-box the element type
             let typ = Arc::new(TypX::Boxed(typ));
             let array_lit = Arc::new(ExprX::Array(typ_to_air(ctx, &typ), Arc::new(exprs)));
-            //str_apply(crate::def::MK_FUN, &vec![array_lit])
-            array_lit
+            str_apply(crate::def::MK_FUN, &vec![array_lit])
+            //array_lit
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])

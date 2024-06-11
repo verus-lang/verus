@@ -8,7 +8,7 @@ verus! {
 
 /// Construct an array `a` of length `len` where entry `a[i]` is given by `f(i)`.
 #[rustc_diagnostic_item = "verus::vstd::array::array_new"]
-pub open spec fn array_new<T, const N: usize>(f: impl Fn(int) -> T) -> [T; N];
+pub open spec fn array_new<T, const N: usize>(f: spec_fn(int) -> T) -> [T; N];
 
 /*
 //#[verifier::external_body]
@@ -88,7 +88,7 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     admit();
 }
 
-pub broadcast proof fn axiom_array_new<T, const N: usize>(f: impl Fn(int) -> T)
+pub broadcast proof fn axiom_array_new<T, const N: usize>(f: spec_fn(int) -> T)
     ensures
        (#[trigger] <[T; N] as View>::view(&array_new(f))) == Seq::new(N as nat, f), 
 {

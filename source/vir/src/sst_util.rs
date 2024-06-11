@@ -727,7 +727,7 @@ pub fn sst_array_new(ctx: &crate::context::Ctx, span: &Span, typ: Typ, array_lit
         elem_ty,
         ExpX::Call(
             CallFun::Fun(crate::def::array_new_fun(&ctx.global.vstd_crate_name), None),
-            Arc::new(vec![elem_ty.clone(), n_ty.clone(), array_lit.typ.clone()]),
+            Arc::new(vec![elem_ty.clone(), n_ty.clone()]), //, array_lit.typ.clone()]),
             //Arc::new(vec![array_lit]),
             Arc::new(vec![array_lit_boxed]),
         ),
