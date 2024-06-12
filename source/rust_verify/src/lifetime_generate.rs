@@ -35,6 +35,13 @@ impl TypX {
     fn mk_bool() -> Typ {
         Box::new(TypX::Primitive("bool".to_string()))
     }
+
+    fn as_lifetime(self) -> Id {
+        match self {
+            TypX::TypParam(x) => x,
+            _ => panic!("expected lifetime param"),
+        }
+    }
 }
 
 struct Context<'tcx> {
@@ -97,6 +104,8 @@ pub(crate) struct State {
     enclosing_fun_id: Option<DefId>,
     enclosing_trait_ids: Vec<DefId>,
     inside_trait_assoc_type: u32,
+    // inner for<'a> can conflict with outer fn f<'a>, so rename the inner 'a
+    rename_bound_for: Vec<Id>,
 }
 
 impl State {
@@ -124,6 +133,7 @@ impl State {
             enclosing_fun_id: None,
             enclosing_trait_ids: Vec::new(),
             inside_trait_assoc_type: 0,
+            rename_bound_for: Vec::new(),
         }
     }
 
@@ -177,7 +187,17 @@ impl State {
     fn lifetime(&mut self, key: (String, Option<u32>)) -> Id {
         let (raw_id, _maybe_disambiguator) = &key;
         let f = || raw_id.replace("'", "");
-        Self::id(&mut self.rename_count, &mut self.lifetime_to_name, IdKind::Lifetime, &key, f)
+        let mut id = Self::id(
+            &mut self.rename_count,
+            &mut self.lifetime_to_name,
+            IdKind::Lifetime(false),
+            &key,
+            f,
+        );
+        if self.rename_bound_for.contains(&id) {
+            id.kind = IdKind::Lifetime(true);
+        }
+        id
     }
 
     fn fun_name<'tcx>(&mut self, fun: &Fun) -> Id {
@@ -515,13 +535,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 let (trait_typ_args, self_typ) =
                     erase_generic_args(ctxt, state, &t.args[..n], true);
                 let (assoc_typ_args, _) = erase_generic_args(ctxt, state, &t.args[n..], false);
-                let assoc_typ_args = assoc_typ_args
-                    .into_iter()
-                    .map(|a| match *a {
-                        TypX::TypParam(x) => x,
-                        _ => panic!("expected lifetime param"),
-                    })
-                    .collect();
+                let assoc_typ_args = assoc_typ_args.into_iter().map(|a| a.as_lifetime()).collect();
                 let self_typ = self_typ.expect("self_typ");
                 let trait_path_vir = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_def);
                 erase_trait(ctxt, state, trait_def);
@@ -1735,17 +1749,17 @@ fn erase_mir_predicates<'a, 'tcx>(
     let mut fn_traits: Vec<(Typ, Vec<Id>, ClosureKind)> = Vec::new();
     let mut fn_projections: HashMap<Typ, (Typ, Typ)> = HashMap::new();
     for pred in mir_predicates {
-        let bound_vars: Vec<_> = pred
-            .kind()
-            .bound_vars()
-            .iter()
-            .map(|v| match v {
-                BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) => {
-                    state.lifetime(lifetime_key(ctxt, a))
-                }
+        let mut bound_vars: Vec<Id> = Vec::new();
+        for x in pred.kind().bound_vars().iter() {
+            let a = match x {
+                BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) => a,
                 _ => panic!("expected region"),
-            })
-            .collect();
+            };
+            let id = state.lifetime(lifetime_key(ctxt, a));
+            state.rename_bound_for.push(id);
+            let id = state.lifetime(lifetime_key(ctxt, a));
+            bound_vars.push(id);
+        }
         match pred.kind().skip_binder() {
             ClauseKind::RegionOutlives(pred) => {
                 let x = erase_hir_region(ctxt, state, &pred.0).expect("bound");
@@ -1805,13 +1819,18 @@ fn erase_mir_predicates<'a, 'tcx>(
                     let trait_def_id = pred.projection_ty.trait_def_id(tcx);
                     let item_def_id = pred.projection_ty.def_id;
                     let assoc_item = tcx.associated_item(item_def_id);
+                    let projection_generics = ctxt.tcx.generics_of(item_def_id);
+                    let n = pred.projection_ty.args.len() - projection_generics.params.len();
                     let mut bound =
-                        erase_mir_bound(ctxt, state, trait_def_id, pred.projection_ty.args)
+                        erase_mir_bound(ctxt, state, trait_def_id, &pred.projection_ty.args[..n])
                             .expect("bound");
+                    let (x_args, _) =
+                        erase_generic_args(ctxt, state, &pred.projection_ty.args[n..], true);
+                    let x_args = x_args.into_iter().map(|a| a.as_lifetime()).collect();
                     if let Bound::Trait { trait_path: _, args: _, equality } = &mut bound {
                         assert!(equality.is_none());
                         let name = state.typ_param(assoc_item.name.to_ident_string(), None);
-                        *equality = Some((name, typ_eq));
+                        *equality = Some((name, x_args, typ_eq));
                     } else if matches!(&bound, Bound::Pointee | Bound::Thin) {
                         // keep as is
                     } else {
@@ -1825,6 +1844,9 @@ fn erase_mir_predicates<'a, 'tcx>(
             _ => {
                 panic!("unexpected bound")
             }
+        }
+        for _ in pred.kind().bound_vars().iter() {
+            state.rename_bound_for.pop();
         }
     }
     for (typ, bound_vars, kind) in fn_traits.into_iter() {
@@ -2854,5 +2876,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     while let Some(id) = state.datatype_worklist.pop() {
         erase_mir_datatype(&ctxt, &mut state, id);
     }
+    assert!(state.rename_bound_for.len() == 0);
     state
 }

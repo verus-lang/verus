@@ -8,7 +8,8 @@ pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> S
         IdKind::Datatype => format!("D{}_{}", rename_count, raw_id),
         IdKind::Variant => format!("C{}_{}", rename_count, raw_id),
         IdKind::TypParam => format!("A{}_{}", rename_count, raw_id),
-        IdKind::Lifetime => format!("'a{}_{}", rename_count, raw_id),
+        IdKind::Lifetime(false) => format!("'a{}_{}", rename_count, raw_id),
+        IdKind::Lifetime(true) => format!("'b{}_{}", rename_count, raw_id),
         IdKind::Fun => format!("f{}_{}", rename_count, raw_id),
         IdKind::Local => format!("x{}_{}", rename_count, raw_id),
         IdKind::Builtin => raw_id.clone(),
@@ -54,12 +55,15 @@ fn lifetime_string(lifetime: &Option<Id>) -> String {
 }
 
 fn typ_args_to_string(
-    path: &Id,
+    path: Option<&Id>,
     lifetimes: &Vec<Id>,
     args: &Vec<Typ>,
-    equality: &Option<(Id, Typ)>,
+    equality: &Option<(Id, Vec<Id>, Typ)>,
 ) -> String {
-    let mut buf = path.to_string();
+    let mut buf = String::new();
+    if let Some(path) = path {
+        buf += &path.to_string();
+    }
     if (lifetimes.len() + args.len()) > 0 {
         buf.push('<');
         for lifetime in lifetimes {
@@ -70,8 +74,9 @@ fn typ_args_to_string(
             buf += &arg.to_string();
             buf += ", ";
         }
-        if let Some((x, t)) = equality {
+        if let Some((x, x_args, t)) = equality {
             buf += &x.to_string();
+            buf += &typ_args_to_string(None, x_args, &vec![], &None);
             buf += " = ";
             buf += &t.to_string();
         }
@@ -106,14 +111,14 @@ impl ToString for TypX {
                 buf
             }
             TypX::Datatype(path, lifetimes, args) => {
-                typ_args_to_string(path, lifetimes, args, &None)
+                typ_args_to_string(Some(path), lifetimes, args, &None)
             }
             TypX::Projection { self_typ, trait_as_datatype: tr, name, assoc_typ_args } => {
                 format!(
                     "<{} as {}>::{}",
                     self_typ.to_string(),
                     tr.to_string(),
-                    typ_args_to_string(name, assoc_typ_args, &vec![], &None)
+                    typ_args_to_string(Some(name), assoc_typ_args, &vec![], &None)
                 )
             }
             TypX::Closure => "_".to_string(),
@@ -758,7 +763,7 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> Str
             buf += &x.to_string();
         }
         Bound::Trait { trait_path, args, equality } => {
-            buf += &typ_args_to_string(trait_path, &vec![], args, equality);
+            buf += &typ_args_to_string(Some(trait_path), &vec![], args, equality);
         }
         Bound::Fn(kind, params, ret) => {
             buf += match kind {

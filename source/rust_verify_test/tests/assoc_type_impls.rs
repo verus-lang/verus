@@ -757,6 +757,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assoc_type_lifetime_for_rename verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        pub trait Bar {
+            type U<'a>;
+        }
+
+        pub trait Foo<S>
+            where
+                S: for<'b> Bar<U<'b> = Self::T<'b>>,
+        {
+            type T<'c>;
+            fn foo_<'b>(&self, o: Self::T<'b>);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {
