@@ -40,7 +40,7 @@ This is a tentative program.
    * Vest: Verified parser/serializer combinators (Yi Cai)
    * Anvil: Liveness of Kubernetes clusters (Xudong Sun)
    * Persistent storage (Hayley LeBlanc)
-   * Atmosphere?
+   * Atmosphere microkernel (Xiangdong Chen and Zhaofeng Li)
 
 *Overview of new/upcoming features (~2 hours in the morning)*
 
