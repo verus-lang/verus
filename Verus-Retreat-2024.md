@@ -44,6 +44,7 @@ This is a tentative program.
 
 *Overview of new/upcoming features (~2 hours in the morning)*
 
+- Iterators (Chris)
 - Traits (Chris)
 - Prophecy variables (Andrea)
 - Brief advertisements for `verusfmt`, `cargo verus`
