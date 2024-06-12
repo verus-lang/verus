@@ -302,7 +302,7 @@ pub(crate) fn translate_trait<'tcx>(
                     let proxy_predicates = tcx.item_bounds(owner_id.to_def_id());
                     let preds1 = external_predicates.instantiate(tcx, ex_trait_ref_for.args);
                     let preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args);
-                    // TODO, but kiw priority, since this is just a check for trusted declarations:
+                    // TODO, but low priority, since this is just a check for trusted declarations:
                     // crate::rust_to_vir_func::predicates_match(tcx, true, &preds1.iter().collect(), &preds2.iter().collect())?;
                     // (would need to fix up the TyKind::Alias projections inside the clauses)
 

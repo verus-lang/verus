@@ -1402,6 +1402,7 @@ where
         trait_typ_args,
         trait_typ_arg_impls,
         owning_module,
+        auto_imported,
     } = &imp.x;
     let impx = TraitImplX {
         impl_path: impl_path.clone(),
@@ -1411,6 +1412,7 @@ where
         trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
         trait_typ_arg_impls: trait_typ_arg_impls.clone(),
         owning_module: owning_module.clone(),
+        auto_imported: *auto_imported,
     };
     Ok(Spanned::new(imp.span.clone(), impx))
 }

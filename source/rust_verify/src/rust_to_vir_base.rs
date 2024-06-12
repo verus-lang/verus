@@ -962,7 +962,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
             let norm = at.normalize(*ty);
             if norm.value != *ty {
-                return t_rec(&norm.value);
+                if let Ok(t) = t_rec(&norm.value) {
+                    return Ok(t);
+                }
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -1049,9 +1051,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
         TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
-        TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
-        TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
-        TyKind::Error(..) => unsupported_err!(span, "type inference placeholder error types"),
+        TyKind::Placeholder(..) => unsupported_err!(span, "type inference Placeholder types"),
+        TyKind::Infer(..) => unsupported_err!(span, "type inference Infer types"),
+        TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
     };
     Ok(t)
 }
@@ -1069,7 +1071,6 @@ pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
 }
 */
 
-// TODO: rename this back to mid_ty_to_vir
 pub(crate) fn mid_ty_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,

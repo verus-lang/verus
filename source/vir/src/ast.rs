@@ -1179,6 +1179,8 @@ pub struct TraitImplX {
     pub trait_typ_args: Typs,
     pub trait_typ_arg_impls: Arc<Spanned<ImplPaths>>,
     pub owning_module: Option<Path>,
+    // Not declared directly to Verus, but imported based on related traits and types:
+    pub auto_imported: bool,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]

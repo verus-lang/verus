@@ -115,6 +115,61 @@ pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx B
     find_body_krate(ctxt.krate, body_id)
 }
 
+fn compare_external_ty<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    param_env_src: DefId,
+    span: Span,
+    ty1: &rustc_middle::ty::Ty<'tcx>,
+    ty2: &rustc_middle::ty::Ty<'tcx>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
+) -> Result<bool, VirErr> {
+    if let Some((from_path, to_path)) = external_trait_from_to {
+        // TODO, but low priority, since this is just a check for trusted declarations:
+        // rewrite the original MIR Ty or write a comparison function that traverses two MIR Tys.
+        // For now, it's easier to just use less precise VIR types for the comparison:
+        let t1 = mid_ty_to_vir(tcx, verus_items, param_env_src, span, ty1, true)?;
+        let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, span, ty2, true)?;
+        let t1 = vir::traits::rewrite_external_typ(&from_path, &to_path, &t1);
+        Ok(vir::ast_util::types_equal(&t1, &t2))
+    } else {
+        Ok(ty1 == ty2)
+    }
+}
+
+fn compare_external_sig<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    param_env_src: DefId,
+    span: Span,
+    sig1: &rustc_middle::ty::FnSig<'tcx>,
+    sig2: &rustc_middle::ty::FnSig<'tcx>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
+) -> Result<bool, VirErr> {
+    use rustc_middle::ty::FnSig;
+    // Ignore abi for the sake of comparison
+    // Useful for rust-intrinsics
+    let FnSig { inputs_and_output: io1, c_variadic: c1, unsafety: u1, abi: _ } = sig1;
+    let FnSig { inputs_and_output: io2, c_variadic: c2, unsafety: u2, abi: _ } = sig2;
+    if io1.len() != io2.len() {
+        return Ok(false);
+    }
+    for (ty1, ty2) in io1.iter().zip(io2.iter()) {
+        if !compare_external_ty(
+            tcx,
+            verus_items,
+            param_env_src,
+            span,
+            &ty1,
+            &ty2,
+            external_trait_from_to,
+        )? {
+            return Ok(false);
+        }
+    }
+    Ok(c1 == c2 && u1 == u2)
+}
+
 pub(crate) fn handle_external_fn<'tcx>(
     ctxt: &Context<'tcx>,
     id: DefId,
@@ -126,6 +181,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
@@ -238,12 +294,16 @@ pub(crate) fn handle_external_fn<'tcx>(
     let poly_sig2 =
         ctxt.tcx.instantiate_bound_regions(poly_sig2, |br| substs2_late[usize::from(br.var)]).0;
 
-    // Ignore abi for the sake of comparison
-    // Useful for rust-intrinsics
-    let mut poly_sig1 = poly_sig1;
-    poly_sig1.abi = poly_sig2.abi;
-
-    if poly_sig1 != poly_sig2 {
+    let poly_sig_eq = compare_external_sig(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        id,
+        sig.span,
+        &poly_sig1,
+        &poly_sig2,
+        &external_trait_from_to,
+    )?;
+    if !poly_sig_eq {
         return err_span(
             sig.span,
             format!(
@@ -270,7 +330,11 @@ pub(crate) fn handle_external_fn<'tcx>(
         None,
         &mut external_preds,
     );
-    if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
+    // TODO, but low priority, since this is just a check for trusted declarations:
+    // predicates_match for external_trait case (would need to rename from_path -> to_path)
+    let preds_match = external_trait_from_to.is_some()
+        || predicates_match(ctxt.tcx, &proxy_preds, &external_preds);
+    if !preds_match {
         let err = err_span_bare(
             sig.span,
             "external_fn_specification trait bound mismatch")
@@ -517,6 +581,15 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
+    let external_trait_from_to = if let Some(to_trait_id) = external_trait {
+        let from_trait_id = ctxt.tcx.parent(id);
+        let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
+        let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
+        Some((from_path, to_path))
+    } else {
+        None
+    };
+
     let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification
         || external_fn_specification_via_external_trait.is_some()
     {
@@ -537,6 +610,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &body_id,
             mode,
             &vattrs,
+            &external_trait_from_to,
             external_fn_specification_via_external_trait,
             external_info,
         )?;
@@ -874,11 +948,8 @@ pub(crate) fn check_item_fn<'tcx>(
         let typ_params = Arc::new(typ_params);
         let mut typ_bounds = Arc::new(typ_bounds);
 
-        if let Some(to_trait_id) = external_trait {
-            let from_trait_id = ctxt.tcx.parent(id);
-            let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
-            let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
-            typ_bounds = vir::traits::rewrite_external_bounds(&from_path, &to_path, &typ_bounds);
+        if let Some((from_path, to_path)) = &external_trait_from_to {
+            typ_bounds = vir::traits::rewrite_external_bounds(from_path, to_path, &typ_bounds);
         }
         (typ_params, typ_bounds)
     };
@@ -1000,8 +1071,12 @@ pub(crate) fn check_item_fn<'tcx>(
     if vattrs.external_fn_specification {
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
     }
-
     let function = ctxt.spanned_new(sig.span, func);
+    let function = if let Some((from_path, to_path)) = &external_trait_from_to {
+        vir::traits::rewrite_external_function(from_path, to_path, &function)
+    } else {
+        function
+    };
     functions.push(function);
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
 }

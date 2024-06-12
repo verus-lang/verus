@@ -477,6 +477,7 @@ fn check_item<'tcx>(
                     impl_def_id,
                     Some(impll.generics),
                     module_path(),
+                    false,
                 )?;
                 vir.trait_impls.push(trait_impl);
                 let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
@@ -750,6 +751,7 @@ fn trait_impl_to_vir<'tcx>(
     impl_def_id: rustc_hir::def_id::DefId,
     hir_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
     module_path: Path,
+    auto_imported: bool,
 ) -> Result<(Path, Typs, TraitImpl), VirErr> {
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
     let trait_did = trait_ref.skip_binder().def_id;
@@ -786,6 +788,7 @@ fn trait_impl_to_vir<'tcx>(
         trait_typ_args: types.clone(),
         trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
         owning_module: Some(module_path),
+        auto_imported,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
     Ok((trait_path, types, trait_impl))
@@ -831,7 +834,7 @@ fn collect_external_trait_impls<'tcx>(
                 let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *impl_def_id);
                 let module_path = impl_path.pop_segment();
                 if let Ok((_trait_path, _types, trait_impl)) =
-                    trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path)
+                    trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, true)
                 {
                     krate.trait_impls.push(trait_impl);
                     collected_impls.insert(*impl_def_id);
@@ -912,7 +915,7 @@ fn collect_external_trait_impls<'tcx>(
         let module_path = impl_path.pop_segment();
 
         let (_trait_path, _types, trait_impl) =
-            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path)?;
+            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, false)?;
         krate.trait_impls.push(trait_impl);
     }
 
