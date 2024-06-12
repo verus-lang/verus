@@ -67,9 +67,13 @@ This is a tentative program.
 
 - Hike in Frick Park (~2 hours in the late afternoon)
 
+- Evening: Mini-golf outing
+
 ### Thursday, June 27th
 
 - Brainstorming next big steps for Verus (1-2 hours in the morning)
     - Verifying the Rust standard library (Travis)
 
 - cvc5 + SMT encoding
+
+- Evening: Board games!
