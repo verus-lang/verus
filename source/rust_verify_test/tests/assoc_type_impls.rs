@@ -793,6 +793,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assoc_type_lifetime_equality_syntax verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        trait T {
+            type X<'a>;
+            fn f<'a>(s: Self::X<'a>);
+        }
+
+        struct S<A>(A);
+
+        impl<A> S<A> where
+            for<'a> A: T<X<'a> = &'a [u8]>,
+        {
+            fn f<'a>(&self, s: &'a [u8]) {
+                A::f(s)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {

@@ -64,7 +64,7 @@ fn typ_args_to_string(
     if let Some(path) = path {
         buf += &path.to_string();
     }
-    if (lifetimes.len() + args.len()) > 0 {
+    if (lifetimes.len() + args.len()) > 0 || equality.is_some() {
         buf.push('<');
         for lifetime in lifetimes {
             buf += &lifetime.to_string();
