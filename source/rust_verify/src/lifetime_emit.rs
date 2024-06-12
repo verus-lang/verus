@@ -729,10 +729,6 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
 
 fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> String {
     let mut buf = String::new();
-    if !bare {
-        buf += &bound.typ.to_string();
-        buf += ": ";
-    }
     if !bound.bound_vars.is_empty() {
         buf += "for<";
         for b in bound.bound_vars.iter() {
@@ -740,6 +736,10 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> Str
             buf += ","
         }
         buf += "> ";
+    }
+    if !bare {
+        buf += &bound.typ.to_string();
+        buf += ": ";
     }
     match &bound.bound {
         Bound::Copy => {
