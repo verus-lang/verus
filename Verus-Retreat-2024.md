@@ -25,5 +25,50 @@ Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innova
 
 ## Program
 
-TBD
+This is a tentative program.
 
+
+### Tuesday, June 25th
+
+*Experience reports building systems in Verus (~2 hours)*
+- Each report should include:
+   - What was built/verified
+   - What Verus did well
+   - What problems did you encounter and/or which features would have been useful?
+- Systems:
+   * Owl: Cryptographic protocol implementations (Pratap Singh)
+   * Vest: Verified parser/serializer combinators (Yi Cai)
+   * Atmosphere?
+   * Anvil?
+   * Persistent storage?
+
+*Overview of new/upcoming features (~2 hours in the morning)*
+
+- Traits (Chris)
+- Prophecy variables (Andrea)
+- Brief advertisements for `verusfmt`, `cargo verus`
+
+*Feature request triage (1-2 hours in the afternoon)*
+
+- E.g., termination checking for `exec`
+
+*6:00 PM -- Collaboration Dinner at [Butterjoint](https://maps.app.goo.gl/wVz6SbFGEf9T58pQ7)*
+
+### Wednesday, June 26th
+
+- Documentation write-a-thon  (2-3 hours in the morning)
+
+- Setting up CI that includes other Verus projects (a-la crater) (Andrea)
+
+- Issue triage (1-2 hours in the afternoon)
+
+- Verus and AI (1 hour in the afternoon)
+
+- Hike in Frick Park (~2 hours in the late afternoon)
+
+### Thursday, June 27th
+
+- Brainstorming next big steps for Verus (1-2 hours in the morning)
+    - Verifying the Rust standard library (Travis)
+
+- cvc5 + SMT encoding
