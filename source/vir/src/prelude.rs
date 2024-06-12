@@ -634,15 +634,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
                 (=>
                     (forall ((i Int)) (!
                         (=> (and (<= 0 i) (< i N))
-                            ([has_type] (apply (Fn i)) T)
+                            ([has_type] (apply Poly Fn i) T)
                         )
-                        :pattern (([has_type] (apply (Fn i)) T))
+                        :pattern (([has_type] (apply Poly Fn i) T))
                         :qid prelude_has_type_array_elts
                         :skolemid skolem_prelude_has_type_array_elts
                     ))
-                    ([has_type] (array_new T N Fn) ([type_id_array] Tdcr T Ndcr INT))
+                    ([has_type] (array_new T N Fn) ([type_id_array] Tdcr T Ndcr ([type_id_const_int] N)))
                 )
-                :pattern (([has_type] (array_new T N Fn) ([type_id_array] Tdcr T Ndcr INT)))
+                :pattern (([has_type] (array_new T N Fn) ([type_id_array] Tdcr T Ndcr ([type_id_const_int] N))))
                 :qid prelude_has_type_array_new
                 :skolemid skolem_prelude_has_type_array_new
             ))
