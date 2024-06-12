@@ -6,24 +6,6 @@ use super::view::*;
 
 verus! {
 
-/// Construct an array `a` of length `len` where entry `a[i]` is given by `f(i)`.
-#[rustc_diagnostic_item = "verus::vstd::array::array_new"]
-pub open spec fn array_new<T, const N: usize>(f: spec_fn(int) -> T) -> [T; N];
-
-/*
-//#[verifier::external_body]
-//#[rustc_diagnostic_item = "verus::vstd::array::array_new"]
-#[verifier::external_body]
-#[verifier::when_used_as_spec(spec_array_new)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_new")]
-pub fn array_new<T, const N: usize>(len: nat, f: impl Fn(int) -> T) -> (arr: [T; N])
-    ensures
-       arr@ == Seq::new(len, f), 
-{
-    panic!("array_new should not be executed");
-} 
-*/
-
 impl<T, const N: usize> View for [T; N] {
     type V = Seq<T>;
 
@@ -84,13 +66,6 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
 pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] ar@.len()) == N,
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_array_new<T, const N: usize>(f: spec_fn(int) -> T)
-    ensures
-       (#[trigger] <[T; N] as View>::view(&array_new(f))) == Seq::new(N as nat, f), 
 {
     admit();
 }
@@ -158,7 +133,6 @@ pub fn array_fill_for_copy_types<T: Copy, const N: usize>(t: T) -> (res: [T; N])
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_array_axioms {
     array_len_matches_n,
-    axiom_array_new,
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
 }

@@ -506,6 +506,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Eq(_) | Ne => (false, false),
                 Bitwise(..) => (true, false),
                 StrGetChar { .. } => (true, false),
+                ArrayIndex { .. } => (true, false),
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);

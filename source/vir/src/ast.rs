@@ -465,6 +465,8 @@ pub enum BinaryOp {
     Bitwise(BitwiseOp, Mode),
     /// Used only for handling builtin::strslice_get_char
     StrGetChar,
+    /// Used only for handling builtin::array_index
+    ArrayIndex,
 }
 
 /// More complex binary operations (requires Clone rather than Copy)

@@ -217,6 +217,7 @@ pub(crate) fn bv_exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &BvExprCtxt) -> Re
                 BinaryOp::Or => unreachable!(),
                 BinaryOp::Xor => unreachable!(),
                 BinaryOp::StrGetChar => unreachable!(),
+                BinaryOp::ArrayIndex => unreachable!(),
             };
             return Ok(Arc::new(ExprX::Binary(bop, lh, rh)));
         }

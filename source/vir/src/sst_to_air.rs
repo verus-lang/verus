@@ -16,7 +16,7 @@ use crate::def::{
     prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
     static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
     variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
-    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    SnapPos, SpanKind, Spanned, ARCH_SIZE, ARRAY_INDEX, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
     FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
     STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
     SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
@@ -991,6 +991,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
+                BinaryOp::ArrayIndex => ExprX::Apply(
+                    str_ident(ARRAY_INDEX),
+                    Arc::new(vec![
+                        exp_to_expr(ctx, lhs, expr_ctxt)?,
+                        exp_to_expr(ctx, rhs, expr_ctxt)?,
+                    ]),
+                ),
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo, _) => {
@@ -1051,6 +1058,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         }
                         BinaryOp::Bitwise(..) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
+                        BinaryOp::ArrayIndex => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }

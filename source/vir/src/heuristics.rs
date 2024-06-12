@@ -90,7 +90,8 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             | BinaryOp::Xor
             | BinaryOp::Arith(..)
             | BinaryOp::Bitwise(..)
-            | BinaryOp::StrGetChar => exp.clone(),
+            | BinaryOp::StrGetChar 
+            | BinaryOp::ArrayIndex => exp.clone(),
         },
         ExpX::BinaryOpr(BinaryOpr::ExtEq(..), _, _) => exp.clone(),
         ExpX::If(e1, e2, e3) => {

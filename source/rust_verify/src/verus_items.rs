@@ -278,7 +278,6 @@ pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
     Invariant(InvariantItem),
     ExecNonstaticCall,
-    ArrayNew,
     ArrayIndex,
     ArrayIndexGet,
     ArrayAsSlice,
@@ -478,7 +477,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
-        ("verus::vstd::array::array_new", VerusItem::Vstd(VstdItem::ArrayNew, Some(Arc::new("array::array_new".to_owned())))),
+        // REVIEW
+        ("verus::builtin::array_index", VerusItem::Vstd(VstdItem::ArrayIndexGet, None)),
         ("verus::vstd::array::array_index", VerusItem::Vstd(VstdItem::ArrayIndex, Some(Arc::new("array::array_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),

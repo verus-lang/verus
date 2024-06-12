@@ -292,6 +292,7 @@ impl BinaryOp {
                 Shr | Shl => (26, 26, 27),
             },
             StrGetChar => (90, 90, 90),
+            ArrayIndex => (90, 90, 90),
         }
     }
 }
@@ -456,12 +457,15 @@ impl ExpX {
                         Shr => ">>",
                         Shl => "<<",
                     },
-                    StrGetChar => "ignored", // This is our only non-inline BinaryOp, so it needs special handling below
+                    StrGetChar => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
+                    ArrayIndex => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
                 };
                 if let BinaryOp::StrGetChar = op {
                     (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
+                } else if let ArrayIndex { .. } = op {
+                    (format!("array_index({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
@@ -722,16 +726,17 @@ pub fn sst_array_new(ctx: &crate::context::Ctx, span: &Span, typ: Typ, array_lit
         ExpX::UnaryOpr(UnaryOpr::Box(fn_ty), array_lit.clone()),
     );
 
-    SpannedTyped::new(
-        span,
-        elem_ty,
-        ExpX::Call(
-            CallFun::Fun(crate::def::array_new_fun(&ctx.global.vstd_crate_name), None),
-            Arc::new(vec![elem_ty.clone(), n_ty.clone()]), //, array_lit.typ.clone()]),
-            //Arc::new(vec![array_lit]),
-            Arc::new(vec![array_lit_boxed]),
-        ),
-    )
+    panic!();
+    // SpannedTyped::new(
+    //     span,
+    //     elem_ty,
+    //     ExpX::Call(
+    //         CallFun::Fun(crate::def::array_new_fun(&ctx.global.vstd_crate_name), None),
+    //         Arc::new(vec![elem_ty.clone(), n_ty.clone()]), //, array_lit.typ.clone()]),
+    //         //Arc::new(vec![array_lit]),
+    //         Arc::new(vec![array_lit_boxed]),
+    //     ),
+    // )
 }
 
 pub fn sst_has_type(span: &Span, e: &Exp, typ: &Typ) -> Exp {

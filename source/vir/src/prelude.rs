@@ -108,6 +108,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
 
+    let array_new = str_to_node(ARRAY_NEW);
+
     nodes_vec!(
         // Fuel
         (declare-sort [FuelId] 0)
@@ -624,6 +626,27 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
         (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
         (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
+
+        // array literals
+        (declare-fun [array_new] ([typ] Int Fun) [Poly])
+        (axiom 
+            (forall ((Tdcr [decoration]) (T [typ]) (Ndcr [decoration]) (N Int) (Fn Fun)) (!
+                (=>
+                    (forall ((i Int)) (!
+                        (=> (and (<= 0 i) (< i N))
+                            ([has_type] (apply (Fn i)) T)
+                        )
+                        :pattern (([has_type] (apply (Fn i)) T))
+                        :qid prelude_has_type_array_elts
+                        :skolemid skolem_prelude_has_type_array_elts
+                    ))
+                    ([has_type] (array_new T N Fn) ([type_id_array] Tdcr T Ndcr INT))
+                )
+                :pattern (([has_type] (array_new T N Fn) ([type_id_array] Tdcr T Ndcr INT)))
+                :qid prelude_has_type_array_new
+                :skolemid skolem_prelude_has_type_array_new
+            ))
+        )
     )
 }
 

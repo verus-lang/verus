@@ -297,7 +297,7 @@ fn check_trigger_expr(
                         "triggers cannot contain interior is_smaller_than expressions",
                     )),
                     Inequality(_) => Err(error(&exp.span, "triggers cannot contain inequalities")),
-                    StrGetChar | Bitwise(..) => {
+                    StrGetChar | ArrayIndex | Bitwise(..) => {
                         check_trigger_expr_arg(state, true, arg1)?;
                         check_trigger_expr_arg(state, true, arg2)
                     }
