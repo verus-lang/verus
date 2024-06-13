@@ -962,8 +962,18 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
             let norm = at.normalize(*ty);
             if norm.value != *ty {
-                if let Ok(t) = t_rec(&norm.value) {
-                    return Ok(t);
+                let mut has_infer = false;
+                for arg in norm.value.walk().into_iter() {
+                    if let GenericArgKind::Type(t) = arg.unpack() {
+                        if let TyKind::Infer(..) = t.kind() {
+                            // It's not clear why normalize returns Infer
+                            // but it's not what we want
+                            has_infer = true;
+                        }
+                    }
+                }
+                if !has_infer {
+                    return t_rec(&norm.value);
                 }
             }
             // If normalization isn't possible, return a projection type:
