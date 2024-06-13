@@ -30,6 +30,7 @@ enum ReachedType {
     SpecFn(usize),
     Datatype(Path),
     StrSlice,
+    Array,
     Primitive,
 }
 
@@ -109,9 +110,8 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
-        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
-            ReachedType::Primitive
-        }
+        TypX::Primitive(Primitive::Array, _) => ReachedType::Array,
+        TypX::Primitive(Primitive::Slice | Primitive::Ptr, _) => ReachedType::Primitive,
     }
 }
 
@@ -388,6 +388,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 ReachedType::SpecFn(arity) => {
                     state.spec_fn_types.insert(*arity);
+                }
+                ReachedType::Array => {
+                    state.spec_fn_types.insert(1);
                 }
                 ReachedType::StrSlice => {
                     let module_path = crate::def::strslice_module_path(&ctxt.vstd_crate_name);

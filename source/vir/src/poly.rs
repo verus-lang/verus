@@ -127,6 +127,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
         TypX::Decorate(d, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
+        TypX::Primitive(Primitive::Array, _) => None,
         TypX::Primitive(name, typs) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
@@ -162,6 +163,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => false,
+        TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -188,6 +190,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -511,7 +514,12 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
                 let e2 = coerce_expr_to_native(ctx, &e2);
-                mk_expr(ExprX::Binary(*op, e1, e2))
+                if *op == ArrayIndex {
+                    let typ = coerce_typ_to_poly(ctx, &expr.typ);
+                    mk_expr_typ(&typ, ExprX::Binary(*op, e1, e2))
+                } else {
+                    mk_expr(ExprX::Binary(*op, e1, e2))
+                }
             } else if poly {
                 let e1 = coerce_expr_to_poly(ctx, &e1);
                 let e2 = coerce_expr_to_poly(ctx, &e2);
