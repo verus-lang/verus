@@ -813,6 +813,50 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] assoc_type_lifetime_trait_impl_worklist verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        trait Foo
+        {
+            type R<'a>;
+            fn foo<'a>(&self, s: &'a [u8]) -> Self::R<'a>;
+        }
+
+        trait Bar<Other>
+        where
+            Self: Foo,
+            Other: Foo,
+        {
+            fn bar(&self, other: &Other);
+        }
+
+        impl<U1, U2, V1, V2> Bar<Pair<U2, V2>> for Pair<U1, V1>
+        where
+            U1: Foo,
+            U2: for<'a> Foo<R<'a> = ()>,
+            V1: Foo,
+            V2: Foo,
+        {
+            fn bar(&self, c: &Pair<U2, V2>) {
+            }
+        }
+
+
+        struct Pair<S, T>(S, T);
+
+        impl<S, T> Foo for Pair<S, T>
+        where
+            S: Foo,
+            T: Foo,
+        {
+            type R<'a> = T::R<'a>;
+            fn foo<'a>(&self, s: &'a [u8]) -> Self::R<'a> {
+                self.1.foo(s)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {

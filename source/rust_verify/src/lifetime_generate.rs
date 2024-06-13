@@ -80,6 +80,7 @@ pub(crate) struct State {
     rename_count: usize,
     reached: HashSet<(Option<Path>, DefId)>,
     datatype_worklist: Vec<DefId>,
+    impl_assocs_worklist: Vec<DefId>,
     imported_fun_worklist: Vec<DefId>,
     id_to_name: HashMap<(String, usize), Id>,
     field_to_name: HashMap<String, Id>,
@@ -114,6 +115,7 @@ impl State {
             rename_count: 0,
             reached: HashSet::new(),
             datatype_worklist: Vec::new(),
+            impl_assocs_worklist: Vec::new(),
             imported_fun_worklist: Vec::new(),
             id_to_name: HashMap::new(),
             field_to_name: HashMap::new(),
@@ -253,9 +255,16 @@ impl State {
                         // Remove ourself from what impl_id is waiting on
                         ts.retain(|t| *t != id);
                     }
-                    erase_impl_assocs(ctxt, self, impl_id);
+                    self.reach_impl_assoc(impl_id);
                 }
             }
+        }
+    }
+
+    fn reach_impl_assoc(&mut self, id: DefId) {
+        if !self.reached.contains(&(None, id)) {
+            self.reached.insert((None, id));
+            self.impl_assocs_worklist.push(id);
         }
     }
 
@@ -2296,7 +2305,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
                 .remaining_typs_needed_for_each_impl
                 .insert(impl_id, (name.clone(), datatypes))
                 .map(|_| panic!("already inserted"));
-            erase_impl_assocs(ctxt, state, impl_id);
+            state.reach_impl_assoc(impl_id);
         }
     }
     state.inside_trait_assoc_type -= 1;
@@ -2870,11 +2879,20 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             }
         }
     }
-    while let Some(id) = state.imported_fun_worklist.pop() {
-        import_fn(&mut ctxt, &mut state, id);
-    }
-    while let Some(id) = state.datatype_worklist.pop() {
-        erase_mir_datatype(&ctxt, &mut state, id);
+    loop {
+        if let Some(id) = state.imported_fun_worklist.pop() {
+            import_fn(&mut ctxt, &mut state, id);
+            continue;
+        }
+        if let Some(id) = state.datatype_worklist.pop() {
+            erase_mir_datatype(&ctxt, &mut state, id);
+            continue;
+        }
+        if let Some(id) = state.impl_assocs_worklist.pop() {
+            erase_impl_assocs(&ctxt, &mut state, id);
+            continue;
+        }
+        break;
     }
     assert!(state.rename_bound_for.len() == 0);
     state
