@@ -41,6 +41,7 @@ This is a tentative program.
    * Anvil: Liveness of Kubernetes clusters (Xudong Sun)
    * Persistent storage (Hayley LeBlanc)
    * Atmosphere microkernel (Xiangdong Chen and Zhaofeng Li)
+   * Concurrent page table implementation (Matthias Brun, Johanna Polzin)
 
 *Overview of new/upcoming features (~2 hours in the morning)*
 
@@ -61,7 +62,9 @@ This is a tentative program.
 
 - Setting up CI that includes other Verus projects (a-la crater) (Andrea)
 
-- Issue triage (1-2 hours in the afternoon)
+- State machine syntax brainstorming (Travis, Andrea, Jialin, Jon, Matthias, Johanna, ...)
+
+- Adopt an issue (1-2 hours in the afternoon)
 
 - Verus and AI (1 hour in the afternoon)
 
