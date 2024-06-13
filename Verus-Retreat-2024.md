@@ -45,8 +45,8 @@ This is a tentative program.
 *Overview of new/upcoming features (~2 hours in the morning)*
 
 - Iterators (Chris)
-- Traits (Chris)
-- Prophecy variables (Andrea)
+- Traits (Chris, Andrea)
+- Mutable reference encoding (Andrea)
 - Brief advertisements for `verusfmt`, `cargo verus`
 
 *Feature request triage (1-2 hours in the afternoon)*
