@@ -629,7 +629,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
         // array literals
         (declare-fun [array_new] ([typ] Int Fun) [Poly])
-        (axiom 
+        (axiom
             (forall ((Tdcr [decoration]) (T [typ]) (Ndcr [decoration]) (N Int) (Fn Fun)) (!
                 (=>
                     (forall ((i Int)) (!

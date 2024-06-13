@@ -1582,7 +1582,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let args = Arc::new(vec![len, array_lit]);
             mk_expr(ExprX::Call(call_target, args))
             */
-
         }
         ExprKind::Repeat(e, _array_len) => {
             if bctx.ctxt.no_vstd {

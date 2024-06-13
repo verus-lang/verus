@@ -16,8 +16,8 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_lit, sst_conjoin, sst_int_literal, sst_le,
-    sst_lt,
+    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_lit, sst_conjoin,
+    sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};

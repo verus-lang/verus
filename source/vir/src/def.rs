@@ -841,10 +841,7 @@ pub fn break_label(i: u64) -> Ident {
 pub fn array_new_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![
-            Arc::new("array".to_string()),
-            Arc::new("array_new".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
     })
 }
 
