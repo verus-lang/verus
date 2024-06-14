@@ -119,6 +119,7 @@ test_verify_one_file! {
         }
 
         fn test()
+            where MyStruct: Hash + Eq // needed to trigger broadcast axioms named `axiom_hash_map_*`
         {
             broadcast use vstd::std_specs::hash::group_hash_axioms;
             assume(vstd::std_specs::hash::does_type_have_deterministic_hash::<MyStruct>());
@@ -133,24 +134,17 @@ test_verify_one_file! {
             assert(m@.contains_key(s2));
 
             let b = m.contains_key(&s2);
-            // TODO: The following invocation of the broadcast axiom shouldn't be necessary.
-            proof { vstd::std_specs::hash::axiom_hash_map_contains_deref_key(m@, &s2); }
             assert(b);
 
             let v = m.get(&s2);
             match v {
-                Some(v) => assert(*v == 4) by {
-                    // TODO: The following invocation of the broadcast axiom shouldn't be necessary.
-                    vstd::std_specs::hash::axiom_hash_map_maps_deref_key_to_value(m@, &s2, *v);
-                },
+                Some(v) => assert(*v == 4),
                 None => assert(false),
             }
 
             m.clear();
             assert(!m@.contains_key(s2));
             let b = m.contains_key(&s2);
-            // TODO: The following invocation of the broadcast axiom shouldn't be necessary.
-            proof { vstd::std_specs::hash::axiom_hash_map_contains_deref_key(m@, &s2); }
             assert(!b);
         }
     } => Ok(())
