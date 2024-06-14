@@ -1,5 +1,4 @@
 use super::super::prelude::*;
-use builtin::*;
 
 use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
