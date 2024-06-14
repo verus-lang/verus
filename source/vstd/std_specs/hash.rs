@@ -1,11 +1,11 @@
 /// This code adds specifications for the standard-library type
 /// `std::collections::HashMap`.
-/// 
+///
 /// Most of the specification only applies if you use `HashMap<Key,
 /// Value>`. If you use some custom build hasher, e.g.,
 /// with`HashMap<Key, Value, CustomBuildHasher>`, the specification
 /// won't specify much.
-/// 
+///
 /// Likewise, the specification is only meaningful when you know that
 /// the `Key` has a deterministic hash. We have an axiom that all
 /// primitive types and `Box`es thereof have a deterministic hash. But
@@ -16,7 +16,7 @@
 /// In the future, we plan to devise a way for you to prove that it
 /// has a deterministic hash so you don't have to make such an
 /// assumption.
-/// 
+///
 /// To make most use of the specification, you should use `broadcast
 /// use vstd::std_specs::hash::group_hash_axioms;`. This will bring
 /// various useful axioms about the behavior of a `HashMap` into the
@@ -24,7 +24,6 @@
 /// these axioms in scope doesn't impact performance, we may put them
 /// into the global ambient context so you don't have to explicitly
 /// `broadcast use` them.
-
 use super::super::prelude::*;
 
 use core::hash::{BuildHasher, Hash, Hasher};
