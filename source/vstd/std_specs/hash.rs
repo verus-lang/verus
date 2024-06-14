@@ -249,14 +249,9 @@ pub fn ex_hash_map_insert<Key, Value, S>(m: &mut HashMap<Key, Value, S>, k: Key,
 // (2) `Key = Box<Q>`. (TODO: Include another axiom for the case `Key
 // = String, Q = str`.)
 
-pub spec fn map_contains_borrowed_key<Key, Value, Q>(m: Map<Key, Value>, k: &Q) -> bool
-    where
-        Key: Borrow<Q> + Hash + Eq,
-        Q: Hash + Eq + ?Sized;
+pub spec fn map_contains_borrowed_key<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q) -> bool;
 
 pub broadcast proof fn axiom_hash_map_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
-    where
-        Q: Hash + Eq,
     ensures
         #[trigger] map_contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k)
 {
@@ -264,8 +259,6 @@ pub broadcast proof fn axiom_hash_map_contains_deref_key<Q, Value>(m: Map<Q, Val
 }
 
 pub broadcast proof fn axiom_hash_map_contains_box<Q, Value>(m: Map<Box<Q>, Value>, q: &Q)
-    where
-        Q: Hash + Eq,
     ensures
         #[trigger] map_contains_borrowed_key::<Box<Q>, Value, Q>(m, q) <==> m.contains_key(Box::new(*q))
 {
@@ -304,14 +297,9 @@ pub fn ex_hash_map_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k:
 // Box<Q>`. (TODO: Include another axiom for the case `Key = String, Q
 // = str`.)
 
-pub spec fn map_maps_borrowed_key_to_value<Key, Value, Q>(m: Map<Key, Value>, k: &Q, v: Value) -> bool
-    where
-        Key: Borrow<Q> + Hash + Eq,
-        Q: Hash + Eq + ?Sized;
+pub spec fn map_maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q, v: Value) -> bool;
 
 pub broadcast proof fn axiom_hash_map_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
-    where
-        Q: Hash + Eq,
     ensures
         #[trigger] map_maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k) && m[*k] == v
 {
@@ -319,8 +307,6 @@ pub broadcast proof fn axiom_hash_map_maps_deref_key_to_value<Q, Value>(m: Map<Q
 }
 
 pub broadcast proof fn axiom_hash_map_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
-    where
-        Q: Hash + Eq,
     ensures
         #[trigger] map_maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
             let k = Box::new(*q);

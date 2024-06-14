@@ -119,7 +119,6 @@ test_verify_one_file! {
         }
 
         fn test()
-            where MyStruct: Hash + Eq // needed to trigger broadcast axioms named `axiom_hash_map_*`
         {
             broadcast use vstd::std_specs::hash::group_hash_axioms;
             assume(vstd::std_specs::hash::does_type_have_deterministic_hash::<MyStruct>());
