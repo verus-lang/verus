@@ -640,15 +640,15 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
 
     nodes_vec!(
         // array literals
-        (declare-fun [array_new] ([typ] Int Fun) [Poly])
-        (axiom (forall ((T [typ]) (N Int) (Fn Fun)) (!
-            (= ([array_new] T N Fn) ([box_array] Fn))
-            :pattern (([array_new] T N Fn))
+        (declare-fun [array_new] ([decoration] [typ] Int Fun) [Poly])
+        (axiom (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun)) (!
+            (= ([array_new] Tdcr T N Fn) ([box_array] Fn))
+            :pattern (([array_new] Tdcr T N Fn))
             :qid prelude_array_new
             :skolemid skolem_prelude_array_new
         )))
         (axiom
-            (forall ((T [typ]) (N Int) (Fn Fun)) (!
+            (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun)) (!
                 (=>
                     (forall ((i Int)) (!
                         (=> (and (<= 0 i) (< i N))
@@ -658,9 +658,9 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
                         :qid prelude_has_type_array_elts
                         :skolemid skolem_prelude_has_type_array_elts
                     ))
-                    ([has_type] ([array_new] T N Fn) ([type_id_array] $ T $ ([type_id_const_int] N)))
+                    ([has_type] ([array_new] Tdcr T N Fn) ([type_id_array] Tdcr T $ ([type_id_const_int] N)))
                 )
-                :pattern (([array_new] T N Fn))
+                :pattern (([array_new] Tdcr T N Fn))
                 :qid prelude_has_type_array_new
                 :skolemid skolem_prelude_has_type_array_new
             ))

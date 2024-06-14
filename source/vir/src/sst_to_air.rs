@@ -785,10 +785,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 },
                 _ => panic!("Failed to extract the array literal element boxed type for {:?}", exp),
             };
-            let typ = typ_to_id(&typ);
+            let mut args = typ_to_ids(&typ);
             let len = mk_nat(es.len());
             let array_lit = Arc::new(ExprX::Array(str_typ(POLY), Arc::new(exprs)));
-            str_apply(crate::def::ARRAY_NEW, &vec![typ, len, array_lit])
+            args.push(len);
+            args.push(array_lit);
+            str_apply(crate::def::ARRAY_NEW, &args)
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
