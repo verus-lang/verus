@@ -80,3 +80,7 @@ This is a tentative program.
 - cvc5 + SMT encoding
 
 - Evening: Board games!
+
+### Friday, June 28th (optional)
+
+- Internal issue triage
