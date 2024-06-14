@@ -100,6 +100,11 @@ pub broadcast proof fn axiom_primitive_types_have_deterministic_hash()
     admit();
 }
 
+#[verifier::external_trait_specification]
+pub trait ExHasher {
+    type ExternalTraitSpecificationFor: Hasher;
+}
+
 // Our model for the external trait `BuildHasher` is that for any two
 // `Hasher`s it builds, if they're both given the same write sequence
 // then their states will match and they'll produce the same digest

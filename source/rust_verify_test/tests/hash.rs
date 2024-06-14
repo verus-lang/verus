@@ -95,17 +95,29 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_hash_map_struct verus_code! {
-        use core::hash::Hash;
+        use core::hash::{Hash, Hasher};
         use std::collections::HashMap;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq, Hash)]
+        #[derive(PartialEq, Eq)]
         struct MyStruct
         {
-            i: u16,
-            j: i32,
+            pub i: u16,
+            pub j: i32,
         }
-        
+
+        impl Hash for MyStruct
+        {
+            #[verifier::external_body]
+            fn hash<H>(&self, state: &mut H)
+                where
+                    H: Hasher
+            {
+                self.i.hash(state);
+                self.j.hash(state);
+            }
+        }
+
         fn test()
         {
             broadcast use vstd::std_specs::hash::group_hash_axioms;
