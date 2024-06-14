@@ -89,6 +89,7 @@ struct State {
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
     spec_fn_types: HashSet<usize>,
+    uses_array: bool,
     fndef_types: HashSet<Fun>,
 }
 
@@ -390,7 +391,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     state.spec_fn_types.insert(*arity);
                 }
                 ReachedType::Array => {
-                    state.spec_fn_types.insert(1);
+                    state.uses_array = true;
                 }
                 ReachedType::StrSlice => {
                     let module_path = crate::def::strslice_module_path(&ctxt.vstd_crate_name);
@@ -538,7 +539,7 @@ pub fn prune_krate_for_module_or_krate(
     current_crate: Option<&Krate>,
     module: Option<Path>,
     fun: Option<&Fun>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, HashSet<Path>, Vec<Fun>) {
+) -> (Krate, Vec<MonoTyp>, Vec<usize>, bool, HashSet<Path>, Vec<Fun>) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -937,5 +938,12 @@ pub fn prune_krate_for_module_or_krate(
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
     let State { reached_bound_traits, .. } = state;
-    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, reached_bound_traits, fndef_types)
+    (
+        Arc::new(kratex),
+        mono_abstract_datatypes,
+        spec_fn_types,
+        state.uses_array,
+        reached_bound_traits,
+        fndef_types,
+    )
 }

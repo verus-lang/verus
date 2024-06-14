@@ -704,41 +704,6 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
     )
 }
 
-pub fn sst_array_lit(typ: Typ, array_lit: Exp) -> Exp {
-    // let t = match &*typ {
-    //     TypX::Boxed(t) => t,
-    //     _ => {
-    //         panic!("sst_array_new expected boxed Array type");
-    //     }
-    // };
-    // let (elem_ty, n_ty) = match &**t {
-    //     TypX::Primitive(crate::ast::Primitive::Array, typs) => (&typs[0], &typs[1]),
-    //     _ => {
-    //         panic!("sst_array_new expected boxed Array type");
-    //     }
-    // };
-    let arg_ty = Arc::new(TypX::Int(IntRange::Int));
-    let arg_tys = Arc::new(vec![arg_ty]);
-    let fn_ty = Arc::new(TypX::SpecFn(arg_tys, typ.clone()));
-    let array_lit_boxed = SpannedTyped::new(
-        &array_lit.span,
-        &Arc::new(TypX::Boxed(array_lit.typ.clone())),
-        ExpX::UnaryOpr(UnaryOpr::Box(fn_ty), array_lit.clone()),
-    );
-
-    array_lit_boxed
-    // SpannedTyped::new(
-    //     span,
-    //     elem_ty,
-    //     ExpX::Call(
-    //         CallFun::Fun(crate::def::array_new_fun(&ctx.global.vstd_crate_name), None),
-    //         Arc::new(vec![elem_ty.clone(), n_ty.clone()]), //, array_lit.typ.clone()]),
-    //         //Arc::new(vec![array_lit]),
-    //         Arc::new(vec![array_lit_boxed]),
-    //     ),
-    // )
-}
-
 pub fn sst_has_type(span: &Span, e: &Exp, typ: &Typ) -> Exp {
     SpannedTyped::new(
         span,
