@@ -258,9 +258,9 @@ pub broadcast proof fn axiom_hash_map_contains_deref_key<Q, Value>(m: Map<Q, Val
     admit();
 }
 
-pub broadcast proof fn axiom_hash_map_contains_box<Q, Value>(m: Map<Box<Q>, Value>, q: &Q)
+pub broadcast proof fn axiom_hash_map_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
     ensures
-        #[trigger] map_contains_borrowed_key::<Box<Q>, Value, Q>(m, q) <==> m.contains_key(Box::new(*q))
+        #[trigger] map_contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(Box::new(*k))
 {
     admit();
 }
