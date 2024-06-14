@@ -74,6 +74,14 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
     type ExternalTraitSpecificationFor: core::iter::Step;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExBorrow<Borrowed>
+    where
+        Borrowed: ?Sized,
+{
+    type ExternalTraitSpecificationFor: std::borrow::Borrow<Borrowed>;
+}
+
 #[verifier::external_fn_specification]
 pub fn ex_swap<T>(a: &mut T, b: &mut T)
     ensures
