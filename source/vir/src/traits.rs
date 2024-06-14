@@ -185,6 +185,24 @@ pub fn demote_external_traits(
     Ok(Arc::new(kratex))
 }
 
+pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
+    match &**typ {
+        TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
+            Arc::new(TypX::Projection {
+                trait_typ_args: trait_typ_args.clone(),
+                trait_path: to_path.clone(),
+                name: name.clone(),
+            })
+        }
+        _ => typ.clone(),
+    }
+}
+
+pub fn rewrite_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
+    let ft = |t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
+    crate::ast_visitor::map_typ_visitor(typ, &ft).expect("rewrite_external_typ")
+}
+
 pub fn rewrite_external_bounds(
     from_path: &Path,
     to_path: &Path,
@@ -203,18 +221,27 @@ pub fn rewrite_external_bounds(
         };
         bs.push(b);
     }
-    let ft = |_: &mut (), t: &Typ| match &**t {
-        TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
-            Ok(Arc::new(TypX::Projection {
-                trait_typ_args: trait_typ_args.clone(),
-                trait_path: to_path.clone(),
-                name: name.clone(),
-            }))
-        }
-        _ => Ok(t.clone()),
-    };
+    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
     crate::ast_visitor::map_generic_bounds_visitor(&Arc::new(bs), &mut (), &ft)
         .expect("rewrite_external_bounds")
+}
+
+pub fn rewrite_external_function(
+    from_path: &Path,
+    to_path: &Path,
+    function: &Function,
+) -> Function {
+    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    crate::ast_visitor::map_function_visitor_env(
+        function,
+        &mut map,
+        &mut (),
+        &|_state, _, expr| Ok(expr.clone()),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &ft,
+    )
+    .expect("rewrite_external_typ")
 }
 
 /*
@@ -835,6 +862,19 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
             traits.push(t.clone());
         }
     }
+
+    // Also remove any duplicate auto-imported trait impls:
+    let mut trait_impls: Vec<TraitImpl> = Vec::new();
+    let mut trait_impl_set: HashSet<Path> = HashSet::new();
+    for ti in &kratex.trait_impls {
+        if ti.x.auto_imported && trait_impl_set.contains(&ti.x.impl_path) {
+            continue;
+        }
+        trait_impls.push(ti.clone());
+        trait_impl_set.insert(ti.x.impl_path.clone());
+    }
+
     kratex.traits = traits;
+    kratex.trait_impls = trait_impls;
     Ok(Arc::new(kratex))
 }
