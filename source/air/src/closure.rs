@@ -191,13 +191,13 @@ fn simplify_closure_app(
 fn simplify_array(
     ctxt: &mut Context,
     state: &mut State,
-    elem_typ: &Typ,
     exprs: &Exprs,
 ) -> (Typ, Expr, Option<Term>) {
     let closure_state =
         ClosureState { typing_depth: ctxt.typing.decls.num_scopes(), holes: Vec::new() };
     let mut es: Vec<Expr> = Vec::new();
     let mut terms: Vec<Term> = Vec::new();
+    let mut typs: Vec<Typ> = Vec::new();
     state.closure_states.push(closure_state);
     for e in exprs.iter() {
         let (typ, e, t) = simplify_expr(ctxt, state, e);
@@ -205,6 +205,7 @@ fn simplify_array(
             enclose_force_hole(state.closure_states.last_mut().unwrap(), typ.clone(), e, t);
         es.push(e);
         terms.push(t);
+        typs.push(typ);
     }
     let closure_state = state.closure_states.pop().unwrap();
     let typ = Arc::new(TypX::Fun);
@@ -233,14 +234,17 @@ fn simplify_array(
             }
             let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
             let call_x = Arc::new(crate::def::TEMP.to_string());
-            let apply_fun =
-                mk_apply(ctxt, state, Arc::new(vec![Arc::new(TypX::Int)]), elem_typ.clone());
+            let apply_fun = if typs.len() > 0 {
+                Some(mk_apply(ctxt, state, Arc::new(vec![Arc::new(TypX::Int)]), typs[0].clone()))
+            } else {
+                None
+            };
             let mut conjuncts: Vec<Expr> = Vec::new();
             for (i, e) in es.iter().enumerate() {
                 // apply(f(captures), i) == ei
                 let expr_i = Arc::new(ExprX::Const(Constant::Nat(Arc::new(i.to_string()))));
                 let args = Arc::new(vec![Arc::new(ExprX::Var(call_x.clone())), expr_i]);
-                let apply = Arc::new(ExprX::Apply(apply_fun.clone(), args));
+                let apply = Arc::new(ExprX::Apply(apply_fun.clone().unwrap(), args));
                 let eq = Arc::new(ExprX::Binary(BinaryOp::Eq, apply.clone(), e.clone()));
                 conjuncts.push(eq);
             }
@@ -592,7 +596,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let (es, t) = enclose(state, App::IfElse, es, ts);
             (typ, Arc::new(ExprX::IfElse(es[0].clone(), es[1].clone(), es[2].clone())), t)
         }
-        ExprX::Array(typ, exprs) => simplify_array(ctxt, state, typ, exprs),
+        ExprX::Array(exprs) => simplify_array(ctxt, state, exprs),
         ExprX::Bind(bind, e1) => match &**bind {
             BindX::Let(binders) => {
                 let mut es: Vec<Expr> = Vec::new();

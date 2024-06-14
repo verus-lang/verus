@@ -354,17 +354,13 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 Ok(t2)
             }
         }
-        ExprX::Array(typ, exprs) => {
-            for e in exprs.iter() {
-                let tk = check_expr(typing, e)?;
-                expect_typ(
-                    &tk,
-                    &typ,
-                    &format!(
-                        "array element does not match array type.  Got: {:?}; expected: {:?}",
-                        tk, typ
-                    ),
-                )?;
+        ExprX::Array(exprs) => {
+            if exprs.len() > 0 {
+                let t0 = check_expr(typing, &exprs[0])?;
+                for e in &exprs[1..] {
+                    let tk = check_expr(typing, e)?;
+                    expect_typ(&tk, &t0, "arguments to array must all have same type")?;
+                }
             }
             Ok(Arc::new(TypX::Fun))
         }

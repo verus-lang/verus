@@ -787,7 +787,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             };
             let mut args = typ_to_ids(&typ);
             let len = mk_nat(es.len());
-            let array_lit = Arc::new(ExprX::Array(str_typ(POLY), Arc::new(exprs)));
+            let array_lit = Arc::new(ExprX::Array(Arc::new(exprs)));
             args.push(len);
             args.push(array_lit);
             str_apply(crate::def::ARRAY_NEW, &args)

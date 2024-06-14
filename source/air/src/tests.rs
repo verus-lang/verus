@@ -1429,7 +1429,7 @@ fn yes_array1() {
             (assert (=
                 20
                 (apply Int
-                    (array Int 10 20 30)
+                    (array 10 20 30)
                     1
                 )
             ))
@@ -1444,7 +1444,7 @@ fn untyped_array1() {
             (assert (=
                 10
                 (apply Int
-                    (array Bool 10 20 30)
+                    (array 10 true 30)
                     1
                 )
             ))
@@ -1459,7 +1459,7 @@ fn no_array1() {
             (assert (=
                 10
                 (apply Int
-                    (array Int 10 20 30)
+                    (array 10 20 30)
                     2
                 )
             ))
@@ -1476,7 +1476,7 @@ fn yes_array2() {
                 (apply Int
                     (apply Fun
                         (lambda ((x Int) (y Int))
-                            (array Int 10 20 (+ x y 1))
+                            (array 10 20 (+ x y 1))
                         )
                         2
                         3
@@ -1497,7 +1497,7 @@ fn no_array2() {
                 (apply Int
                     (apply Fun
                         (lambda ((x Int) (y Int))
-                            (array Int 10 20 (+ x y 1))
+                            (array 10 20 (+ x y 1))
                         )
                         2
                         3
@@ -1515,8 +1515,8 @@ fn yes_array3() {
         (check-valid
             (assert
                 (=
-                    (array Int (+ (- 10 (+ 2 2)) 5))
-                    (array Int (+ (- 10 4) 5))
+                    (array (+ (- 10 (+ 2 2)) 5))
+                    (array (+ (- 10 4) 5))
                 )
             )
         )
@@ -1529,10 +1529,19 @@ fn no_array3() {
         (check-valid
             (assert
                 (=
-                    (array Int (+ (- 10 (+ 2 3)) 5))
-                    (array Int (+ (- 10 4) 5))
+                    (array (+ (- 10 (+ 2 3)) 5))
+                    (array (+ (- 10 4) 5))
                 )
             )
+        )
+    )
+}
+
+#[test]
+fn yes_empty_array() {
+    yes!(
+        (check-valid
+            (assert (= (array) (array)))
         )
     )
 }
