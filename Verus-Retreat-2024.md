@@ -47,6 +47,7 @@ This is a tentative program.
 
 - Iterators (Chris)
 - Traits (Chris, Andrea)
+- Broadcast groups (Andrea)
 - Mutable reference encoding (Andrea)
 - Brief advertisements for `verusfmt`, `cargo verus`
 
