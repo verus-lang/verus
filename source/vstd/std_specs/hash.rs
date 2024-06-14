@@ -5,8 +5,8 @@ use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
 use core::option::Option::None;
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::collections::hash_map::{DefaultHasher, RandomState};
+use std::collections::HashMap;
 
 verus! {
 
@@ -15,13 +15,11 @@ verus! {
 // operations performed so far, where each write is modeled as having
 // written a sequence of bytes. There's also a specification for
 // how a view will be transformed by `finish` into a `u64`.
-
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExDefaultHasher(DefaultHasher);
 
-impl View for DefaultHasher
-{
+impl View for DefaultHasher {
     type V = Seq<Seq<u8>>;
 
     #[verifier::external_body]
@@ -32,8 +30,7 @@ pub trait DefaultHasherAdditionalSpecFns {
     spec fn spec_finish(s: Seq<Seq<u8>>) -> u64;
 }
 
-impl DefaultHasherAdditionalSpecFns for DefaultHasher
-{
+impl DefaultHasherAdditionalSpecFns for DefaultHasher {
     #[verifier::external_body]
     spec fn spec_finish(s: Seq<Seq<u8>>) -> u64;
 }
@@ -42,7 +39,7 @@ impl DefaultHasherAdditionalSpecFns for DefaultHasher
 #[verifier::external_fn_specification]
 pub fn ex_default_hasher_new() -> (result: DefaultHasher)
     ensures
-        result@ == Seq::<Seq<u8>>::empty()
+        result@ == Seq::<Seq<u8>>::empty(),
 {
     DefaultHasher::new()
 }
@@ -51,7 +48,7 @@ pub fn ex_default_hasher_new() -> (result: DefaultHasher)
 #[verifier::external_fn_specification]
 pub fn ex_default_hasher_write(state: &mut DefaultHasher, bytes: &[u8])
     ensures
-        state@ == old::<&mut _>(state)@.push(bytes@)
+        state@ == old::<&mut _>(state)@.push(bytes@),
 {
     state.write(bytes)
 }
@@ -113,13 +110,12 @@ pub trait ExHasher {
 // We don't expect that all types implementing the `BuildHasher` trait
 // will conform to our model, just the types T for which
 // `does_type_conform_to_build_hasher_model::<T>()` holds.
-
 #[verifier::external_trait_specification]
 pub trait ExBuildHasher {
     type ExternalTraitSpecificationFor: BuildHasher;
+
     type Hasher: Hasher;
 }
-
 
 #[verifier::external_body]
 pub spec fn does_type_conform_to_build_hasher_model<T: ?Sized>() -> bool;
@@ -127,7 +123,6 @@ pub spec fn does_type_conform_to_build_hasher_model<T: ?Sized>() -> bool;
 // A commonly used type of trait `BuildHasher` is `RandomState`. We
 // model that type here. In particular, we have an axiom that
 // `RandomState` conforms to our model of how `BuildHasher` behaves.
-
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExRandomState(RandomState);
@@ -140,7 +135,6 @@ pub broadcast proof fn axiom_random_state_conforms_to_build_hasher_model()
 }
 
 // We now specify the behavior of `HashMap`.
-
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::reject_recursive_types(Key)]
@@ -162,8 +156,7 @@ impl<Key, Value, S> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value,
     }
 }
 
-impl<Key, Value, S> View for HashMap<Key, Value, S>
-{
+impl<Key, Value, S> View for HashMap<Key, Value, S> {
     type V = Map<Key, Value>;
 
     #[verifier::external_body]
@@ -175,7 +168,7 @@ pub open spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) ->
 pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
     ensures
         does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
-        ==> #[trigger] spec_hash_map_len(m) == m@.len(),
+            ==> #[trigger] spec_hash_map_len(m) == m@.len(),
 {
     admit();
 }
@@ -198,7 +191,11 @@ pub fn ex_hash_map_new<Key, Value>() -> (m: HashMap<Key, Value, RandomState>)
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_hash_map_with_capacity<Key, Value>(capacity: usize) -> (m: HashMap<Key, Value, RandomState>)
+pub fn ex_hash_map_with_capacity<Key, Value>(capacity: usize) -> (m: HashMap<
+    Key,
+    Value,
+    RandomState,
+>)
     ensures
         m@ == Map::<Key, Value>::empty(),
 {
@@ -206,10 +203,10 @@ pub fn ex_hash_map_with_capacity<Key, Value>(capacity: usize) -> (m: HashMap<Key
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_hash_map_reserve<Key, Value, S>(m: &mut HashMap<Key, Value, S>, additional: usize)
-    where
-        Key: Eq + Hash,
-        S: BuildHasher,
+pub fn ex_hash_map_reserve<Key, Value, S>(m: &mut HashMap<Key, Value, S>, additional: usize) where
+    Key: Eq + Hash,
+    S: BuildHasher,
+
     ensures
         m@ == old(m)@,
 {
@@ -217,17 +214,18 @@ pub fn ex_hash_map_reserve<Key, Value, S>(m: &mut HashMap<Key, Value, S>, additi
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_hash_map_insert<Key, Value, S>(m: &mut HashMap<Key, Value, S>, k: Key, v: Value) -> (result: Option<Value>)
-    where
-        Key: Eq + Hash,
-        S: BuildHasher,
+pub fn ex_hash_map_insert<Key, Value, S>(
+    m: &mut HashMap<Key, Value, S>,
+    k: Key,
+    v: Value,
+) -> (result: Option<Value>) where Key: Eq + Hash, S: BuildHasher
     ensures
         m@ == old(m)@.insert(k, v),
-        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>() ==>
-             match result {
-                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
-                 None => !old(m)@.contains_key(k),
-             },
+        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
+            ==> match result {
+            Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
+            None => !old(m)@.contains_key(k),
+        },
 {
     m.insert(k, v)
 }
@@ -238,7 +236,6 @@ pub fn ex_hash_map_insert<Key, Value, S>(m: &mut HashMap<Key, Value, S>, k: Key,
 // instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
 // borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
 // respectively.
-
 // To deal with this, we have a specification function that opaquely
 // specifies what it means for a map to contain a borrowed key of type
 // `&Q`. And the postcondition of `contains_key` just says that its
@@ -248,32 +245,30 @@ pub fn ex_hash_map_insert<Key, Value, S>(m: &mut HashMap<Key, Value, S>, k: Key,
 // what this means in two important circumstances: (1) `Key = Q` and
 // (2) `Key = Box<Q>`. (TODO: Include another axiom for the case `Key
 // = String, Q = str`.)
-
 pub spec fn map_contains_borrowed_key<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q) -> bool;
 
 pub broadcast proof fn axiom_hash_map_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
     ensures
-        #[trigger] map_contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k)
+        #[trigger] map_contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k),
 {
     admit();
 }
 
 pub broadcast proof fn axiom_hash_map_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
     ensures
-        #[trigger] map_contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(Box::new(*k))
+        #[trigger] map_contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
+            Box::new(*k),
+        ),
 {
     admit();
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_hash_map_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k: &Q) -> (result: bool)
-    where
-        Key: Borrow<Q> + Hash + Eq,
-        Q: Hash + Eq + ?Sized,
-        S: BuildHasher,
+pub fn ex_hash_map_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k: &Q) -> (result:
+    bool) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
     ensures
         does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
-        ==> result == map_contains_borrowed_key(m@, k),
+            ==> result == map_contains_borrowed_key(m@, k),
 {
     m.contains_key(k)
 }
@@ -284,7 +279,6 @@ pub fn ex_hash_map_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k:
 // `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
 // as `&str`, so in those cases `Q` would be `u32` and `str`
 // respectively.
-
 // To deal with this, we have a specification function that opaquely
 // specifies what it means for a map to map a borrowed key of type
 // `&Q` to a certain value. And the postcondition of `get` says that
@@ -296,17 +290,29 @@ pub fn ex_hash_map_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k:
 // in two important circumstances: (1) `Key = Q` and (2) `Key =
 // Box<Q>`. (TODO: Include another axiom for the case `Key = String, Q
 // = str`.)
+pub spec fn map_maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
+    m: Map<Key, Value>,
+    k: &Q,
+    v: Value,
+) -> bool;
 
-pub spec fn map_maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q, v: Value) -> bool;
-
-pub broadcast proof fn axiom_hash_map_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
+pub broadcast proof fn axiom_hash_map_maps_deref_key_to_value<Q, Value>(
+    m: Map<Q, Value>,
+    k: &Q,
+    v: Value,
+)
     ensures
-        #[trigger] map_maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k) && m[*k] == v
+        #[trigger] map_maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k)
+            && m[*k] == v,
 {
     admit();
 }
 
-pub broadcast proof fn axiom_hash_map_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
+pub broadcast proof fn axiom_hash_map_maps_box_key_to_value<Q, Value>(
+    m: Map<Box<Q>, Value>,
+    q: &Q,
+    v: Value,
+)
     ensures
         #[trigger] map_maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
             let k = Box::new(*q);
@@ -318,17 +324,14 @@ pub broadcast proof fn axiom_hash_map_maps_box_key_to_value<Q, Value>(m: Map<Box
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_hash_map_get<'a, Key, Value, S, Q>(m: &'a HashMap<Key, Value, S>, k: &Q) -> (result: Option<&'a Value>)
-    where
-        Key: Borrow<Q> + Hash + Eq,
-        Q: Hash + Eq + ?Sized,
-        S: BuildHasher,
+pub fn ex_hash_map_get<'a, Key, Value, S, Q>(m: &'a HashMap<Key, Value, S>, k: &Q) -> (result:
+    Option<&'a Value>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
     ensures
-        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>() ==>
-            match result {
-                Some(v) => map_maps_borrowed_key_to_value(m@, k, *v),
-                None => !map_contains_borrowed_key(m@, k),
-            },
+        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
+            ==> match result {
+            Some(v) => map_maps_borrowed_key_to_value(m@, k, *v),
+            None => !map_contains_borrowed_key(m@, k),
+        },
 {
     m.get(k)
 }
@@ -352,4 +355,4 @@ pub broadcast group group_hash_axioms {
     axiom_spec_hash_map_len,
 }
 
-}
+} // verus!

@@ -40,13 +40,13 @@ test_verify_one_file! {
             m.insert(3, 4);
             m.insert(6, -8);
             assert(m@[3] == 4);
-            
+
             let b = m.contains_key(&3);
             assert(b);
-            
+
             let n = m.len();
             assert(n == 2);
-            
+
             let v = m.get(&6);
             match v {
                 Some(v) => assert(*v == -8),
@@ -65,7 +65,7 @@ test_verify_one_file! {
     #[test] test_hash_map_box verus_code! {
         use std::collections::HashMap;
         use vstd::prelude::*;
-        
+
         fn test()
         {
             broadcast use vstd::std_specs::hash::group_hash_axioms;
@@ -79,7 +79,7 @@ test_verify_one_file! {
 
             let b = m.contains_key(&3);
             assert(b);
-    
+
             let v = m.get(&6);
             match v {
                 Some(v) => assert(*v == -8),
@@ -127,7 +127,7 @@ test_verify_one_file! {
             assert(m@ == Map::<MyStruct, u32>::empty());
             let s1 = MyStruct{ i: 3, j: 7 };
             m.insert(s1, 4);
-            
+
             let s2 = MyStruct{ i: 3, j: 7 };
             assert(m@[s2] == 4);
             assert(m@.contains_key(s2));

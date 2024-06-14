@@ -75,10 +75,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExBorrow<Borrowed>
-    where
-        Borrowed: ?Sized,
-{
+pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
     type ExternalTraitSpecificationFor: std::borrow::Borrow<Borrowed>;
 }
 
