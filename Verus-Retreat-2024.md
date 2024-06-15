@@ -80,6 +80,9 @@ This is a tentative program.
 
 - cvc5 + SMT encoding
 
+- Feature design discussion
+  - Hash map specifications
+
 - Evening: Board games!
 
 ### Friday, June 28th (optional)
