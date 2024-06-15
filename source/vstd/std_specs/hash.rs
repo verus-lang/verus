@@ -26,10 +26,10 @@
 /// `broadcast use` them.
 use super::super::prelude::*;
 
+use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
 use core::option::Option::None;
-use std::borrow::Borrow;
 use std::collections::hash_map::{DefaultHasher, RandomState};
 use std::collections::HashMap;
 
