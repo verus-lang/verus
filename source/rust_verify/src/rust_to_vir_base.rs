@@ -717,17 +717,21 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
     external_info: &ExternalInfo,
 ) -> bool {
     let generics = tcx.generics_of(def_id);
-    for param in generics.params.iter() {
-        if !param.pure_wrt_drop {
-            return false;
+    for (i, param) in generics.params.iter().enumerate() {
+        if i == 0 && param.name == kw::SelfUpper {
+            continue;
         }
         match &param.kind {
-            GenericParamDefKind::Lifetime { .. } => {} // ignore
+            GenericParamDefKind::Lifetime { .. } => continue,
             GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {}
             GenericParamDefKind::Type { has_default: true, .. } => {
                 return false;
             }
+            GenericParamDefKind::Const { is_host_effect: true, .. } => continue,
             GenericParamDefKind::Const { .. } => {}
+        }
+        if !param.pure_wrt_drop {
+            return false;
         }
     }
     let predicates = tcx.predicates_of(def_id);
