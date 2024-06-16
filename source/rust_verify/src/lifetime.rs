@@ -335,6 +335,7 @@ struct Diagnostic {
     message: String,
     level: String,
     spans: Vec<DiagnosticSpan>,
+    rendered: Option<String>,
 }
 
 pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
@@ -414,6 +415,9 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
                 if debug {
                     dbg!(&msg);
                 }
+                use std::collections::HashSet;
+                let mut missing_span = diag.spans.len() == 0;
+                let mut missing_span_line_seqs: HashSet<(usize, usize)> = HashSet::new();
                 for dspan in &diag.spans {
                     if debug {
                         dbg!(&dspan);
@@ -424,7 +428,32 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
                         dspan.line_end - 1,
                         dspan.column_end - 1,
                     );
-                    msg = msg.primary_span(&spans.to_air_span(span));
+                    if let Some(span) = span {
+                        msg = msg.primary_span(&spans.to_air_span(span));
+                    } else {
+                        eprintln!(
+                            "note: could not find span associated with error message; printing raw error message instead"
+                        );
+                        missing_span = true;
+                        let mut l1 = dspan.line_start - 1;
+                        let mut l2 = dspan.line_end - 1;
+                        while l1 > 0 && !emit_state.lines[l1].start_of_decl {
+                            l1 -= 1;
+                        }
+                        while l2 + 1 < emit_state.lines.len() && !emit_state.lines[l2].start_of_decl
+                        {
+                            l2 += 1;
+                        }
+                        if !missing_span_line_seqs.contains(&(l1, l2)) {
+                            for i in l1..=l2 {
+                                eprintln!("{}", &emit_state.lines[i].text);
+                            }
+                            missing_span_line_seqs.insert((l1, l2));
+                        }
+                    }
+                }
+                if missing_span {
+                    eprintln!("{}", &diag.rendered.unwrap());
                 }
                 msgs.push(msg);
             }
