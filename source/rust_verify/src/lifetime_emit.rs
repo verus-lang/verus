@@ -35,6 +35,7 @@ pub(crate) fn encode_typ_name(rename_count: usize, id: &String) -> String {
 #[derive(Debug)]
 pub(crate) struct Line {
     pub(crate) text: String,
+    pub(crate) start_of_decl: bool,
     // For each line in buffer, map column in buffer to position in original code
     pub(crate) positions: Vec<(usize, BytePos)>,
 }
@@ -42,8 +43,8 @@ pub(crate) struct Line {
 pub(crate) const INDENT_SIZE: usize = 4;
 
 impl Line {
-    pub(crate) fn new(indent: usize) -> Self {
-        Line { text: " ".repeat(indent * INDENT_SIZE), positions: Vec::new() }
+    pub(crate) fn new(indent: usize, start_of_decl: bool) -> Self {
+        Line { text: " ".repeat(indent * INDENT_SIZE), start_of_decl, positions: Vec::new() }
     }
 }
 
@@ -142,25 +143,35 @@ pub(crate) struct EmitState {
 
 impl EmitState {
     pub(crate) fn new() -> Self {
-        EmitState { indent: 0, lines: vec![Line::new(0)] }
+        EmitState { indent: 0, lines: vec![Line::new(0, true)] }
     }
 
-    pub(crate) fn get_pos(&self, line: usize, column: usize) -> BytePos {
+    pub(crate) fn get_pos(&self, line: usize, column: usize) -> Option<BytePos> {
         let mut offset: usize = 0;
         let lines = &self.lines;
+        let mut neg_ok = true;
+        let mut pos_ok = true;
         let found_line = loop {
             // Try to find nearest line with position information
-            if offset <= line {
+            if offset <= line && neg_ok {
                 if lines[line - offset].positions.len() > 0 {
                     break line - offset;
                 }
-            } else if line + offset < lines.len() {
+                if lines[line - offset].start_of_decl {
+                    // reached boundary of current declaration
+                    neg_ok = false;
+                }
+            } else if line + offset < lines.len() && pos_ok {
                 if lines[line + offset].positions.len() > 0 {
                     break line + offset;
                 }
+                if lines[line + offset].start_of_decl {
+                    // reached boundary of current declaration
+                    pos_ok = false;
+                }
             } else {
                 // give up
-                return BytePos(0);
+                return None;
             }
             // try again
             offset += 1;
@@ -177,14 +188,14 @@ impl EmitState {
             }
             let (c, pos) = positions[i];
             let p = pos.0 as isize + column as isize - c as isize;
-            if p < 0 { BytePos(0) } else { BytePos(p as u32) }
+            if p < 0 { None } else { Some(BytePos(p as u32)) }
         } else if found_line < line {
             // last pos on found_line is closest
-            positions.last().expect("found_line").1
+            Some(positions.last().expect("found_line").1)
         } else {
             assert!(found_line > line);
             // first pos on found_line is closest
-            positions.first().expect("found_line").1
+            Some(positions.first().expect("found_line").1)
         }
     }
 
@@ -194,14 +205,18 @@ impl EmitState {
         column1: usize,
         line2: usize,
         column2: usize,
-    ) -> Span {
-        let pos1 = self.get_pos(line1, column1);
-        let pos2 = self.get_pos(line2, column2);
-        Span::with_root_ctxt(pos1, pos2)
+    ) -> Option<Span> {
+        let pos1 = self.get_pos(line1, column1)?;
+        let pos2 = self.get_pos(line2, column2)?;
+        Some(Span::with_root_ctxt(pos1, pos2))
+    }
+
+    pub(crate) fn newdecl(&mut self) {
+        self.lines.push(Line::new(self.indent, true));
     }
 
     pub(crate) fn newline(&mut self) {
-        self.lines.push(Line::new(self.indent));
+        self.lines.push(Line::new(self.indent, false));
     }
 
     pub(crate) fn ensure_newline(&mut self) {
@@ -853,7 +868,7 @@ fn emit_generic_bounds(
 }
 
 pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
-    state.newline();
+    state.newdecl();
     state.newline();
     state.begin_span(f.sig_span);
     state.write("fn ");
@@ -938,6 +953,7 @@ fn emit_copy_clone(
     // impl<A: Clone, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
     // impl<A: Copy, B> Copy for S<A, B> {}
     assert!(d.generic_params.len() == copy_bounds.len());
+    state.newdecl();
     state.newline();
     state.write("impl");
     let mut copy_generics: Vec<GenericParam> = Vec::new();
@@ -962,7 +978,7 @@ fn emit_copy_clone(
 }
 
 pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
-    state.newline();
+    state.newdecl();
     state.newline();
     state.write("trait ");
     state.write(&t.name.to_string());
@@ -995,6 +1011,7 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
 }
 
 pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
+    state.newdecl();
     state.newline();
     let d_keyword = match &*d.datatype {
         Datatype::Struct(..) => "struct ",
@@ -1043,7 +1060,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
 
 pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
     let TraitImpl { trait_as_datatype, self_typ, generic_params, generic_bounds, assoc_typs } = t;
-    state.newline();
+    state.newdecl();
     state.newline();
     state.write("impl");
     emit_generic_params(state, &generic_params);
