@@ -42,6 +42,7 @@ This is a tentative program.
    * Persistent storage (Hayley LeBlanc)
    * Atmosphere microkernel (Xiangdong Chen and Zhaofeng Li)
    * Concurrent page table implementation (Matthias Brun, Johanna Polzin)
+   * VeriSplinter (Jon Howell)
 
 *Overview of new/upcoming features (~2 hours in the morning)*
 
