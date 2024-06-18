@@ -121,7 +121,7 @@ test_verify_one_file! {
         fn test()
         {
             broadcast use vstd::std_specs::hash::group_hash_axioms;
-            assume(vstd::std_specs::hash::does_type_have_deterministic_hash::<MyStruct>());
+            assume(vstd::std_specs::hash::obeys_hash_table_key_model::<MyStruct>());
 
             let mut m = HashMap::<MyStruct, u32>::new();
             assert(m@ == Map::<MyStruct, u32>::empty());
@@ -147,4 +147,44 @@ test_verify_one_file! {
             assert(!b);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_map_struct_fails verus_code! {
+        use core::hash::{Hash, Hasher};
+        use std::collections::HashMap;
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        struct MyStruct
+        {
+            pub i: u16,
+            pub j: i32,
+        }
+
+        impl Hash for MyStruct
+        {
+            #[verifier::external_body]
+            fn hash<H>(&self, state: &mut H)
+                where
+                    H: Hasher
+            {
+                self.i.hash(state);
+                self.j.hash(state);
+            }
+        }
+
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            // Missing `assume(vstd::std_specs::hash::obeys_hash_table_key_model::<MyStruct>());`
+
+            let mut m = HashMap::<MyStruct, u32>::new();
+            let s1 = MyStruct{ i: 3, j: 7 };
+            m.insert(s1, 4);
+
+            let s2 = MyStruct{ i: 3, j: 7 };
+            assert(m@[s2] == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

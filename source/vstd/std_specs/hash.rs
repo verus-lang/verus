@@ -6,16 +6,16 @@
 /// with`HashMap<Key, Value, CustomBuildHasher>`, the specification
 /// won't specify much.
 ///
-/// Likewise, the specification is only meaningful when you know that
-/// the `Key` has a deterministic hash. We have an axiom that all
-/// primitive types and `Box`es thereof have a deterministic hash. But
-/// if you want to use some other key type `MyKey`, you need to
-/// explicitly state your assumption that it has a deterministic hash
-/// with
-/// `assume(vstd::std_specs::hash::does_type_have_deterministic_hash::<MyKey>());`.
+/// Likewise, the specification is only meaningful when the `Key`
+/// obeys our hash table model, i.e., (1) `Key::hash` is
+/// deterministic and (2) any two `Key`s satisfying `==` are
+/// identical. We have an axiom that all primitive types and `Box`es
+/// thereof obey this model. But if you want to use some other key
+/// type `MyKey`, you need to explicitly state your assumption that it
+/// does so with
+/// `assume(vstd::std_specs::hash::obeys_hash_table_key_model::<MyKey>());`.
 /// In the future, we plan to devise a way for you to prove that it
-/// has a deterministic hash so you don't have to make such an
-/// assumption.
+/// does so, so that you don't have to make such an assumption.
 ///
 /// To make most use of the specification, you should use `broadcast
 /// use vstd::std_specs::hash::group_hash_axioms;`. This will bring
@@ -87,37 +87,43 @@ pub fn ex_default_hasher_finish(state: &DefaultHasher) -> (result: u64)
     state.finish()
 }
 
-// Just because a type implements `Hash`, that doesn't mean it satisfies
-// our model of `Hash`. Our model of `Hash` is that it's deterministic:
-// If you hash the same element multiple times, each time it will hash
-// as the same sequence of bytes.
+// This function specifies whether a type obeys the requirements
+// to be a key in a hash table and have that hash table conform to our
+// hash-table model. The two requirements are (1) the hash function
+// has to be deterministic and (2) any two elements considered equal
+// by the executable `==` operator must be identical. Requirement (1)
+// isn't satisfied by having `Key` implement `Hash`, since this trait
+// doesn't mandate determinism.
 #[verifier::external_body]
-pub spec fn does_type_have_deterministic_hash<T: ?Sized>() -> bool;
+pub spec fn obeys_hash_table_key_model<Key: ?Sized>() -> bool;
 
-pub broadcast proof fn axiom_primitive_types_have_deterministic_hash()
+// This axiom states that any primitive type, or `Box` thereof,
+// obeys the requirements to be a key in a hash table that
+// conforms to our hash-table model.
+pub broadcast proof fn axiom_primitive_types_obey_hash_table_key_model()
     ensures
-        does_type_have_deterministic_hash::<bool>(),
-        does_type_have_deterministic_hash::<u8>(),
-        does_type_have_deterministic_hash::<u16>(),
-        does_type_have_deterministic_hash::<u32>(),
-        does_type_have_deterministic_hash::<u64>(),
-        does_type_have_deterministic_hash::<u128>(),
-        does_type_have_deterministic_hash::<i8>(),
-        does_type_have_deterministic_hash::<i16>(),
-        does_type_have_deterministic_hash::<i32>(),
-        does_type_have_deterministic_hash::<i64>(),
-        does_type_have_deterministic_hash::<i128>(),
-        does_type_have_deterministic_hash::<Box<bool>>(),
-        does_type_have_deterministic_hash::<Box<u8>>(),
-        does_type_have_deterministic_hash::<Box<u16>>(),
-        does_type_have_deterministic_hash::<Box<u32>>(),
-        does_type_have_deterministic_hash::<Box<u64>>(),
-        does_type_have_deterministic_hash::<Box<u128>>(),
-        does_type_have_deterministic_hash::<Box<i8>>(),
-        does_type_have_deterministic_hash::<Box<i16>>(),
-        does_type_have_deterministic_hash::<Box<i32>>(),
-        does_type_have_deterministic_hash::<Box<i64>>(),
-        does_type_have_deterministic_hash::<Box<i128>>(),
+        obeys_hash_table_key_model::<bool>(),
+        obeys_hash_table_key_model::<u8>(),
+        obeys_hash_table_key_model::<u16>(),
+        obeys_hash_table_key_model::<u32>(),
+        obeys_hash_table_key_model::<u64>(),
+        obeys_hash_table_key_model::<u128>(),
+        obeys_hash_table_key_model::<i8>(),
+        obeys_hash_table_key_model::<i16>(),
+        obeys_hash_table_key_model::<i32>(),
+        obeys_hash_table_key_model::<i64>(),
+        obeys_hash_table_key_model::<i128>(),
+        obeys_hash_table_key_model::<Box<bool>>(),
+        obeys_hash_table_key_model::<Box<u8>>(),
+        obeys_hash_table_key_model::<Box<u16>>(),
+        obeys_hash_table_key_model::<Box<u32>>(),
+        obeys_hash_table_key_model::<Box<u64>>(),
+        obeys_hash_table_key_model::<Box<u128>>(),
+        obeys_hash_table_key_model::<Box<i8>>(),
+        obeys_hash_table_key_model::<Box<i16>>(),
+        obeys_hash_table_key_model::<Box<i32>>(),
+        obeys_hash_table_key_model::<Box<i64>>(),
+        obeys_hash_table_key_model::<Box<i128>>(),
 {
     admit();
 }
@@ -134,7 +140,7 @@ pub trait ExHasher {
 //
 // We don't expect that all types implementing the `BuildHasher` trait
 // will conform to our model, just the types T for which
-// `does_type_conform_to_build_hasher_model::<T>()` holds.
+// `obeys_build_hasher_model::<T>()` holds.
 #[verifier::external_trait_specification]
 pub trait ExBuildHasher {
     type ExternalTraitSpecificationFor: BuildHasher;
@@ -143,7 +149,7 @@ pub trait ExBuildHasher {
 }
 
 #[verifier::external_body]
-pub spec fn does_type_conform_to_build_hasher_model<T: ?Sized>() -> bool;
+pub spec fn obeys_build_hasher_model<T: ?Sized>() -> bool;
 
 // A commonly used type of trait `BuildHasher` is `RandomState`. We
 // model that type here. In particular, we have an axiom that
@@ -152,9 +158,9 @@ pub spec fn does_type_conform_to_build_hasher_model<T: ?Sized>() -> bool;
 #[verifier::external_body]
 pub struct ExRandomState(RandomState);
 
-pub broadcast proof fn axiom_random_state_conforms_to_build_hasher_model()
+pub broadcast proof fn axiom_random_state_obeys_build_hasher_model()
     ensures
-        does_type_conform_to_build_hasher_model::<RandomState>(),
+        obeys_build_hasher_model::<RandomState>(),
 {
     admit();
 }
@@ -192,7 +198,7 @@ pub open spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) ->
 
 pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
     ensures
-        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
+        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>()
             ==> #[trigger] spec_hash_map_len(m) == m@.len(),
 {
     admit();
@@ -245,11 +251,12 @@ pub fn ex_hash_map_insert<Key, Value, S>(
     v: Value,
 ) -> (result: Option<Value>) where Key: Eq + Hash, S: BuildHasher
     ensures
-        m@ == old(m)@.insert(k, v),
-        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
-            ==> match result {
-            Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
-            None => !old(m)@.contains_key(k),
+        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>() ==> {
+            &&& m@ == old(m)@.insert(k, v)
+            &&& match result {
+                Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
+                None => !old(m)@.contains_key(k),
+            }
         },
 {
     m.insert(k, v)
@@ -270,18 +277,18 @@ pub fn ex_hash_map_insert<Key, Value, S>(
 // what this means in two important circumstances: (1) `Key = Q` and
 // (2) `Key = Box<Q>`. (TODO: Include another axiom for the case `Key
 // = String, Q = str`.)
-pub spec fn map_contains_borrowed_key<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q) -> bool;
+pub spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q) -> bool;
 
-pub broadcast proof fn axiom_hash_map_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
+pub broadcast proof fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
     ensures
-        #[trigger] map_contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k),
+        #[trigger] contains_borrowed_key::<Q, Value, Q>(m, k) <==> m.contains_key(*k),
 {
     admit();
 }
 
-pub broadcast proof fn axiom_hash_map_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
+pub broadcast proof fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q)
     ensures
-        #[trigger] map_contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
+        #[trigger] contains_borrowed_key::<Box<Q>, Value, Q>(m, k) <==> m.contains_key(
             Box::new(*k),
         ),
 {
@@ -289,11 +296,11 @@ pub broadcast proof fn axiom_hash_map_contains_box<Q, Value>(m: Map<Box<Q>, Valu
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_hash_map_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k: &Q) -> (result:
+pub fn ex_hash_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k: &Q) -> (result:
     bool) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
     ensures
-        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
-            ==> result == map_contains_borrowed_key(m@, k),
+        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>() ==> result
+            == contains_borrowed_key(m@, k),
 {
     m.contains_key(k)
 }
@@ -309,37 +316,29 @@ pub fn ex_hash_map_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k:
 // `&Q` to a certain value. And the postcondition of `get` says that
 // its result matches the output of that specification function. (It
 // also says that its result corresponds to the output of
-// `map_contains_borrowed_key`, discussed above.) But this isn't very
+// `contains_borrowed_key`, discussed above.) But this isn't very
 // helpful by itself, since there's no body to that specification
 // function. So we have special-case axioms that say what this means
 // in two important circumstances: (1) `Key = Q` and (2) `Key =
 // Box<Q>`. (TODO: Include another axiom for the case `Key = String, Q
 // = str`.)
-pub spec fn map_maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
+pub spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
     m: Map<Key, Value>,
     k: &Q,
     v: Value,
 ) -> bool;
 
-pub broadcast proof fn axiom_hash_map_maps_deref_key_to_value<Q, Value>(
-    m: Map<Q, Value>,
-    k: &Q,
-    v: Value,
-)
+pub broadcast proof fn axiom_maps_deref_key_to_value<Q, Value>(m: Map<Q, Value>, k: &Q, v: Value)
     ensures
-        #[trigger] map_maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k)
+        #[trigger] maps_borrowed_key_to_value::<Q, Value, Q>(m, k, v) <==> m.contains_key(*k)
             && m[*k] == v,
 {
     admit();
 }
 
-pub broadcast proof fn axiom_hash_map_maps_box_key_to_value<Q, Value>(
-    m: Map<Box<Q>, Value>,
-    q: &Q,
-    v: Value,
-)
+pub broadcast proof fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Value>, q: &Q, v: Value)
     ensures
-        #[trigger] map_maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
+        #[trigger] maps_borrowed_key_to_value::<Box<Q>, Value, Q>(m, q, v) <==> {
             let k = Box::new(*q);
             &&& m.contains_key(k)
             &&& m[k] == v
@@ -352,10 +351,9 @@ pub broadcast proof fn axiom_hash_map_maps_box_key_to_value<Q, Value>(
 pub fn ex_hash_map_get<'a, Key, Value, S, Q>(m: &'a HashMap<Key, Value, S>, k: &Q) -> (result:
     Option<&'a Value>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
     ensures
-        does_type_have_deterministic_hash::<Key>() && does_type_conform_to_build_hasher_model::<S>()
-            ==> match result {
-            Some(v) => map_maps_borrowed_key_to_value(m@, k, *v),
-            None => !map_contains_borrowed_key(m@, k),
+        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>() ==> match result {
+            Some(v) => maps_borrowed_key_to_value(m@, k, *v),
+            None => !contains_borrowed_key(m@, k),
         },
 {
     m.get(k)
@@ -371,12 +369,12 @@ pub fn ex_hash_map_clear<Key, Value, S>(m: &mut HashMap<Key, Value, S>)
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_hash_axioms {
-    axiom_hash_map_contains_deref_key,
-    axiom_hash_map_contains_box,
-    axiom_hash_map_maps_deref_key_to_value,
-    axiom_hash_map_maps_box_key_to_value,
-    axiom_primitive_types_have_deterministic_hash,
-    axiom_random_state_conforms_to_build_hasher_model,
+    axiom_contains_deref_key,
+    axiom_contains_box,
+    axiom_maps_deref_key_to_value,
+    axiom_maps_box_key_to_value,
+    axiom_primitive_types_obey_hash_table_key_model,
+    axiom_random_state_obeys_build_hasher_model,
     axiom_spec_hash_map_len,
 }
 
