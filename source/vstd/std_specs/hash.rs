@@ -13,7 +13,7 @@
 /// thereof obey this model. But if you want to use some other key
 /// type `MyKey`, you need to explicitly state your assumption that it
 /// does so with
-/// `assume(vstd::std_specs::hash::obeys_hash_table_key_model::<MyKey>());`.
+/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`.
 /// In the future, we plan to devise a way for you to prove that it
 /// does so, so that you don't have to make such an assumption.
 ///
@@ -95,35 +95,35 @@ pub fn ex_default_hasher_finish(state: &DefaultHasher) -> (result: u64)
 // isn't satisfied by having `Key` implement `Hash`, since this trait
 // doesn't mandate determinism.
 #[verifier::external_body]
-pub spec fn obeys_hash_table_key_model<Key: ?Sized>() -> bool;
+pub spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
 // This axiom states that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
 // conforms to our hash-table model.
 pub broadcast proof fn axiom_primitive_types_obey_hash_table_key_model()
     ensures
-        obeys_hash_table_key_model::<bool>(),
-        obeys_hash_table_key_model::<u8>(),
-        obeys_hash_table_key_model::<u16>(),
-        obeys_hash_table_key_model::<u32>(),
-        obeys_hash_table_key_model::<u64>(),
-        obeys_hash_table_key_model::<u128>(),
-        obeys_hash_table_key_model::<i8>(),
-        obeys_hash_table_key_model::<i16>(),
-        obeys_hash_table_key_model::<i32>(),
-        obeys_hash_table_key_model::<i64>(),
-        obeys_hash_table_key_model::<i128>(),
-        obeys_hash_table_key_model::<Box<bool>>(),
-        obeys_hash_table_key_model::<Box<u8>>(),
-        obeys_hash_table_key_model::<Box<u16>>(),
-        obeys_hash_table_key_model::<Box<u32>>(),
-        obeys_hash_table_key_model::<Box<u64>>(),
-        obeys_hash_table_key_model::<Box<u128>>(),
-        obeys_hash_table_key_model::<Box<i8>>(),
-        obeys_hash_table_key_model::<Box<i16>>(),
-        obeys_hash_table_key_model::<Box<i32>>(),
-        obeys_hash_table_key_model::<Box<i64>>(),
-        obeys_hash_table_key_model::<Box<i128>>(),
+        obeys_key_model::<bool>(),
+        obeys_key_model::<u8>(),
+        obeys_key_model::<u16>(),
+        obeys_key_model::<u32>(),
+        obeys_key_model::<u64>(),
+        obeys_key_model::<u128>(),
+        obeys_key_model::<i8>(),
+        obeys_key_model::<i16>(),
+        obeys_key_model::<i32>(),
+        obeys_key_model::<i64>(),
+        obeys_key_model::<i128>(),
+        obeys_key_model::<Box<bool>>(),
+        obeys_key_model::<Box<u8>>(),
+        obeys_key_model::<Box<u16>>(),
+        obeys_key_model::<Box<u32>>(),
+        obeys_key_model::<Box<u64>>(),
+        obeys_key_model::<Box<u128>>(),
+        obeys_key_model::<Box<i8>>(),
+        obeys_key_model::<Box<i16>>(),
+        obeys_key_model::<Box<i32>>(),
+        obeys_key_model::<Box<i64>>(),
+        obeys_key_model::<Box<i128>>(),
 {
     admit();
 }
@@ -140,7 +140,7 @@ pub trait ExHasher {
 //
 // We don't expect that all types implementing the `BuildHasher` trait
 // will conform to our model, just the types T for which
-// `obeys_build_hasher_model::<T>()` holds.
+// `builds_valid_hashers::<T>()` holds.
 #[verifier::external_trait_specification]
 pub trait ExBuildHasher {
     type ExternalTraitSpecificationFor: BuildHasher;
@@ -149,7 +149,7 @@ pub trait ExBuildHasher {
 }
 
 #[verifier::external_body]
-pub spec fn obeys_build_hasher_model<T: ?Sized>() -> bool;
+pub spec fn builds_valid_hashers<T: ?Sized>() -> bool;
 
 // A commonly used type of trait `BuildHasher` is `RandomState`. We
 // model that type here. In particular, we have an axiom that
@@ -158,9 +158,9 @@ pub spec fn obeys_build_hasher_model<T: ?Sized>() -> bool;
 #[verifier::external_body]
 pub struct ExRandomState(RandomState);
 
-pub broadcast proof fn axiom_random_state_obeys_build_hasher_model()
+pub broadcast proof fn axiom_random_state_builds_valid_hashers()
     ensures
-        obeys_build_hasher_model::<RandomState>(),
+        builds_valid_hashers::<RandomState>(),
 {
     admit();
 }
@@ -198,8 +198,8 @@ pub open spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) ->
 
 pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
     ensures
-        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>()
-            ==> #[trigger] spec_hash_map_len(m) == m@.len(),
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_map_len(m)
+            == m@.len(),
 {
     admit();
 }
@@ -251,7 +251,7 @@ pub fn ex_hash_map_insert<Key, Value, S>(
     v: Value,
 ) -> (result: Option<Value>) where Key: Eq + Hash, S: BuildHasher
     ensures
-        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>() ==> {
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& m@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
@@ -299,8 +299,10 @@ pub broadcast proof fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q
 pub fn ex_hash_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k: &Q) -> (result:
     bool) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
     ensures
-        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>() ==> result
-            == contains_borrowed_key(m@, k),
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
+            m@,
+            k,
+        ),
 {
     m.contains_key(k)
 }
@@ -351,7 +353,7 @@ pub broadcast proof fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Valu
 pub fn ex_hash_map_get<'a, Key, Value, S, Q>(m: &'a HashMap<Key, Value, S>, k: &Q) -> (result:
     Option<&'a Value>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
     ensures
-        obeys_hash_table_key_model::<Key>() && obeys_build_hasher_model::<S>() ==> match result {
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
             None => !contains_borrowed_key(m@, k),
         },
@@ -374,7 +376,7 @@ pub broadcast group group_hash_axioms {
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
     axiom_primitive_types_obey_hash_table_key_model,
-    axiom_random_state_obeys_build_hasher_model,
+    axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
 }
 

@@ -121,7 +121,7 @@ test_verify_one_file! {
         fn test()
         {
             broadcast use vstd::std_specs::hash::group_hash_axioms;
-            assume(vstd::std_specs::hash::obeys_hash_table_key_model::<MyStruct>());
+            assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
             let mut m = HashMap::<MyStruct, u32>::new();
             assert(m@ == Map::<MyStruct, u32>::empty());
@@ -177,7 +177,7 @@ test_verify_one_file! {
         fn test()
         {
             broadcast use vstd::std_specs::hash::group_hash_axioms;
-            // Missing `assume(vstd::std_specs::hash::obeys_hash_table_key_model::<MyStruct>());`
+            // Missing `assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());`
 
             let mut m = HashMap::<MyStruct, u32>::new();
             let s1 = MyStruct{ i: 3, j: 7 };
