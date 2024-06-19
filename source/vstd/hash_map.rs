@@ -56,6 +56,17 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.reserve(additional);
     }
 
+    pub open spec fn spec_len(&self) -> usize;
+
+    #[verifier::external_body]
+    #[verifier::when_used_as_spec(spec_len)]
+    pub fn len(&self) -> (result: usize)
+        ensures
+            result == self@.len(),
+    {
+        self.m.len()
+    }
+
     #[verifier::external_body]
     pub fn insert(&mut self, k: Key, v: Value)
         ensures
@@ -90,6 +101,15 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     {
         self.m.clear()
     }
+}
+
+pub broadcast proof fn axiom_hash_map_with_view_spec_len<Key, Value>(
+    m: &HashMapWithView<Key, Value>,
+) where Key: View + Eq + Hash
+    ensures
+        #[trigger] m.spec_len() == m@.len(),
+{
+    admit();
 }
 
 #[verifier::ext_equal]
@@ -129,7 +149,10 @@ impl<Value> StringHashMap<Value> {
         self.m.reserve(additional);
     }
 
+    pub open spec fn spec_len(&self) -> usize;
+
     #[verifier::external_body]
+    #[verifier::when_used_as_spec(spec_len)]
     pub fn len(&self) -> (result: usize)
         ensures
             result == self@.len(),
@@ -171,6 +194,19 @@ impl<Value> StringHashMap<Value> {
     {
         self.m.clear()
     }
+}
+
+pub broadcast proof fn axiom_string_hash_map_spec_len<Value>(m: &StringHashMap<Value>)
+    ensures
+        #[trigger] m.spec_len() == m@.len(),
+{
+    admit();
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast group group_hash_map_axioms {
+    axiom_hash_map_with_view_spec_len,
+    axiom_string_hash_map_spec_len,
 }
 
 } // verus!
