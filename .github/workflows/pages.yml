@@ -51,10 +51,13 @@ jobs:
       
       - name: add projects page
         uses: actions/jekyll-build-pages@v1
-        run: |
-          jekyll --version
-          make -C source/docs/projects build
-          cp -R source/docs/projects ./_site/projects
+        with:
+          source: source/docs/projects
+          destination: ./_site/projects
+#        run: |
+#          jekyll --version
+#          make -C source/docs/projects build
+#          cp -R source/docs/projects ./_site/projects
 
       - name: upload artifact
         uses: actions/upload-pages-artifact@v1
