@@ -3,7 +3,7 @@ name: pages
 on:
   workflow_run:
     workflows: [ci]
-    branches: [main]
+    branches: [main,auto-projects]
     types: [completed]
 
 permissions:
@@ -51,8 +51,9 @@ jobs:
           workflow_conclusion: success
           path: ./_site/verusdoc
       
-      - name: add papers page
+      - name: add projects page
         run: |
+          jekyll --version
           make -C source/docs/projects
           cp -R source/docs/projects ./_site/projects
 
