@@ -2,12 +2,6 @@ name: pages
 
 on: workflow_dispatch
 
-on:
-  workflow_run:
-    workflows: [ci]
-    branches: [main,auto-projects]
-    types: [completed]
-
 permissions:
   contents: read
   pages: write
