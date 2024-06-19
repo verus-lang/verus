@@ -1,5 +1,7 @@
 name: pages
 
+on: workflow_dispatch
+
 on:
   workflow_run:
     workflows: [ci]
@@ -54,7 +56,7 @@ jobs:
       - name: add projects page
         run: |
           jekyll --version
-          make -C source/docs/projects
+          make -C source/docs/projects build
           cp -R source/docs/projects ./_site/projects
 
       - name: upload artifact
