@@ -50,6 +50,7 @@ jobs:
           path: ./_site/verusdoc
       
       - name: add projects page
+        uses: actions/jekyll-build-pages@v1
         run: |
           jekyll --version
           make -C source/docs/projects build
