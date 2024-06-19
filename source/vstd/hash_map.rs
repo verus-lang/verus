@@ -5,6 +5,7 @@ use super::map::*;
 #[allow(unused_imports)]
 use super::pervasive::*;
 use super::prelude::*;
+#[cfg(verus_keep_ghost)]
 use super::std_specs::hash::obeys_key_model;
 #[allow(unused_imports)]
 use core::hash::Hash;
