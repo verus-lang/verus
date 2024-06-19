@@ -145,7 +145,7 @@ impl<Value> StringHashMap<Value> {
     }
 
     #[verifier::external_body]
-    pub fn contains_key(&self, k: &String) -> (result: bool)
+    pub fn contains_key(&self, k: &str) -> (result: bool)
         ensures
             result == self@.contains_key(k@),
     {
@@ -153,7 +153,7 @@ impl<Value> StringHashMap<Value> {
     }
 
     #[verifier::external_body]
-    pub fn get<'a>(&'a self, k: &String) -> (result: Option<&'a Value>)
+    pub fn get<'a>(&'a self, k: &str) -> (result: Option<&'a Value>)
         ensures
             match result {
                 Some(v) => self@.contains_key(k@) && *v == self@[k@],

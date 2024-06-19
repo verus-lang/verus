@@ -276,13 +276,13 @@ test_verify_one_file! {
             }
             assert(m@[three@] == 4);
 
-            let b = m.contains_key(&three);
+            let b = m.contains_key(three.as_str());
             assert(b);
 
             let n = m.len();
             assert(n == 2);
 
-            let v = m.get(&six);
+            let v = m.get(six.as_str());
             match v {
                 Some(v) => assert(*v == -8),
                 None => assert(false),
@@ -290,7 +290,7 @@ test_verify_one_file! {
 
             m.clear();
             assert(!m@.contains_key(three@));
-            let b = m.contains_key(&three);
+            let b = m.contains_key(three.as_str());
             assert(!b);
         }
     } => Ok(())
