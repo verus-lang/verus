@@ -1,6 +1,8 @@
 name: pages
 
 on: push
+  branches:
+    - 'auto-projects'
 
 permissions:
   contents: read
