@@ -26,6 +26,8 @@ pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
 pub mod function;
+#[cfg(feature = "alloc")]
+pub mod hash_map;
 pub mod invariant;
 pub mod layout;
 pub mod map;

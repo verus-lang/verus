@@ -188,3 +188,110 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_hash_map_with_view verus_code! {
+        use core::hash::{Hash, Hasher};
+        use vstd::hash_map::HashMapWithView;
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        struct MyStruct
+        {
+            pub i: u16,
+            pub j: i32,
+        }
+
+        impl Hash for MyStruct
+        {
+            #[verifier::external_body]
+            fn hash<H>(&self, state: &mut H)
+                where
+                    H: Hasher
+            {
+                self.i.hash(state);
+                self.j.hash(state);
+            }
+        }
+
+        impl View for MyStruct
+        {
+            type V = (MyStruct, int);
+            open spec fn view(&self) -> Self::V
+            {
+                (*self, self.i + self.j)
+            }
+        }
+
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
+
+            let mut m = HashMapWithView::<MyStruct, u32>::new();
+            assert(m@ == Map::<(MyStruct, int), u32>::empty());
+            let s1 = MyStruct{ i: 3, j: 7 };
+            m.insert(s1, 4);
+
+            let s2 = MyStruct{ i: 3, j: 7 };
+            let ghost w: (MyStruct, int) = (MyStruct{ i: 3, j: 7 }, 10);
+            assert(s1@ == w);
+            assert(s2@ == w);
+            assert(m@[w] == 4);
+            assert(m@.contains_key(w));
+
+            let b = m.contains_key(&s2);
+            assert(b);
+
+            let v = m.get(&s2);
+            match v {
+                Some(v) => assert(*v == 4),
+                None => assert(false),
+            }
+
+            m.clear();
+            assert(!m@.contains_key(w));
+            let b = m.contains_key(&s2);
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_map verus_code! {
+        use vstd::hash_map::StringHashMap;
+        use vstd::prelude::*;
+        fn test()
+        {
+            let mut m = StringHashMap::<i8>::new();
+            assert(m@ == Map::<Seq<char>, i8>::empty());
+
+            let three: String = "three".to_string();
+            let six: String = "six".to_string();
+            m.insert(three.clone(), 4);
+            m.insert(six.clone(), -8);
+            assert(!(three@ =~= six@)) by {
+                reveal_strlit("three");
+                reveal_strlit("six");
+            }
+            assert(m@[three@] == 4);
+
+            let b = m.contains_key(&three);
+            assert(b);
+
+            let n = m.len();
+            assert(n == 2);
+
+            let v = m.get(&six);
+            match v {
+                Some(v) => assert(*v == -8),
+                None => assert(false),
+            };
+
+            m.clear();
+            assert(!m@.contains_key(three@));
+            let b = m.contains_key(&three);
+            assert(!b);
+        }
+    } => Ok(())
+}
