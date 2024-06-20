@@ -275,8 +275,7 @@ pub fn ex_hash_map_insert<Key, Value, S>(
 // isn't very helpful by itself, since there's no body to that
 // specification function. So we have special-case axioms that say
 // what this means in two important circumstances: (1) `Key = Q` and
-// (2) `Key = Box<Q>`. (TODO: Include another axiom for the case `Key
-// = String, Q = str`.)
+// (2) `Key = Box<Q>`.
 pub spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q) -> bool;
 
 pub broadcast proof fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
@@ -322,8 +321,7 @@ pub fn ex_hash_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k: &Q)
 // helpful by itself, since there's no body to that specification
 // function. So we have special-case axioms that say what this means
 // in two important circumstances: (1) `Key = Q` and (2) `Key =
-// Box<Q>`. (TODO: Include another axiom for the case `Key = String, Q
-// = str`.)
+// Box<Q>`.
 pub spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
     m: Map<Key, Value>,
     k: &Q,
@@ -361,6 +359,67 @@ pub fn ex_hash_map_get<'a, Key, Value, S, Q>(m: &'a HashMap<Key, Value, S>, k: &
     m.get(k)
 }
 
+// The specification for `remove` has a parameter `key: &Q` where
+// you'd expect to find `key: &Key`. This allows for the case that
+// `Key` can be borrowed as something other than `&Key`. For instance,
+// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
+// as `&str`, so in those cases `Q` would be `u32` and `str`
+// respectively. To deal with this, we have a specification function
+// that opaquely specifies what it means for two maps to be related by
+// a remove of a certain `&Q`. And the postcondition of `remove` says
+// that `old(self)@` and `self@` satisfy that relationship. (It also
+// says that its result corresponds to the output of
+// `contains_borrowed_key` and `maps_borrowed_key_to_value`, discussed
+// above.) But this isn't very helpful by itself, since there's no
+// body to that specification function. So we have special-case axioms
+// that say what this means in two important circumstances: (1) `Key =
+// Q` and (2) `Key = Box<Q>`.
+pub spec fn borrowed_key_removed<Key, Value, Q: ?Sized>(
+    old_m: Map<Key, Value>,
+    new_m: Map<Key, Value>,
+    k: &Q,
+) -> bool;
+
+pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
+    old_m: Map<Q, Value>,
+    new_m: Map<Q, Value>,
+    k: &Q,
+)
+    ensures
+        #[trigger] borrowed_key_removed::<Q, Value, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
+            *k,
+        ),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_box_key_removed<Q, Value>(
+    old_m: Map<Box<Q>, Value>,
+    new_m: Map<Box<Q>, Value>,
+    q: &Q,
+)
+    ensures
+        #[trigger] borrowed_key_removed::<Box<Q>, Value, Q>(old_m, new_m, q) <==> new_m
+            == old_m.remove(Box::new(*q)),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_map_remove<Key, Value, S, Q>(m: &mut HashMap<Key, Value, S>, k: &Q) -> (result:
+    Option<Value>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            &&& borrowed_key_removed(old(m)@, m@, k)
+            &&& match result {
+                Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
+                None => !contains_borrowed_key(old(m)@, k),
+            }
+        },
+{
+    m.remove(k)
+}
+
 #[verifier::external_fn_specification]
 pub fn ex_hash_map_clear<Key, Value, S>(m: &mut HashMap<Key, Value, S>)
     ensures
@@ -371,8 +430,10 @@ pub fn ex_hash_map_clear<Key, Value, S>(m: &mut HashMap<Key, Value, S>)
 
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_hash_axioms {
+    axiom_box_key_removed,
     axiom_contains_deref_key,
     axiom_contains_box,
+    axiom_deref_key_removed,
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
     axiom_primitive_types_obey_hash_table_key_model,

@@ -76,6 +76,14 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     }
 
     #[verifier::external_body]
+    pub fn remove(&mut self, k: &Key)
+        ensures
+            self@ == old(self)@.remove(k@),
+    {
+        self.m.remove(k);
+    }
+
+    #[verifier::external_body]
     pub fn contains_key(&self, k: &Key) -> (result: bool)
         ensures
             result == self@.contains_key(k@),
@@ -166,6 +174,14 @@ impl<Value> StringHashMap<Value> {
             self@ == old(self)@.insert(k@, v),
     {
         self.m.insert(k, v);
+    }
+
+    #[verifier::external_body]
+    pub fn remove(&mut self, k: &str)
+        ensures
+            self@ == old(self)@.remove(k@),
+    {
+        self.m.remove(k);
     }
 
     #[verifier::external_body]

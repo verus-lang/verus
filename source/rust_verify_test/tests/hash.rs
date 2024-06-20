@@ -53,6 +53,10 @@ test_verify_one_file! {
                 None => assert(false),
             };
 
+            m.remove(&6);
+            assert(!m@.contains_key(6));
+            assert(m@.contains_key(3));
+
             m.clear();
             assert(!m@.contains_key(3));
             let b = m.contains_key(&3);
@@ -85,6 +89,10 @@ test_verify_one_file! {
                 Some(v) => assert(*v == -8),
                 None => assert(false),
             };
+
+            m.remove(&6);
+            assert(!m@.contains_key(six));
+            assert(m@.contains_key(three));
 
             m.clear();
             let b = m.contains_key(&3);
@@ -255,6 +263,11 @@ test_verify_one_file! {
                 None => assert(false),
             }
 
+            m.remove(&s2);
+            assert(!m@.contains_key(w));
+
+            let s3 = MyStruct{ i: 3, j: 7 };
+            m.insert(s3, 8);
             m.clear();
             assert(!m@.contains_key(w));
             let b = m.contains_key(&s2);
@@ -341,6 +354,10 @@ test_verify_one_file! {
                 Some(v) => assert(*v == -8),
                 None => assert(false),
             };
+
+            m.remove(six.as_str());
+            assert(!m@.contains_key(six@));
+            assert(m@.contains_key(three@));
 
             m.clear();
             assert(!m@.contains_key(three@));
