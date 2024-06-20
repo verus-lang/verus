@@ -117,11 +117,23 @@ macro_rules! atomic_types {
             pub open spec fn points_to(&self, v: $value_ty) -> bool {
                 self.view().value == v
             }
+
+            #[verifier::inline]
+            pub open spec fn value(&self) -> $value_ty {
+                self.view().value
+            }
+
+            #[verifier::inline]
+            pub open spec fn id(&self) -> AtomicCellId {
+                self.view().patomic
+            }
         }
 
         }
     };
 }
+
+pub type AtomicCellId = int;
 
 macro_rules! atomic_common_methods {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
