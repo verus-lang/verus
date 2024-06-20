@@ -72,10 +72,6 @@ pub open spec fn incl<K, V, P: Protocol<K, V>>(a: P, b: P) -> bool {
     exists|c| P::op(a, c) == b
 }
 
-pub open spec fn conjunct_shared<K, V, P: Protocol<K, V>>(a: P, b: P, c: P) -> bool {
-    forall|p: P| p.inv() && #[trigger] incl(a, p) && #[trigger] incl(b, p) ==> #[trigger] incl(c, p)
-}
-
 pub open spec fn guards<K, V, P: Protocol<K, V>>(p: P, b: Map<K, V>) -> bool {
     forall|q: P| #![all_triggers] P::op(p, q).inv() ==> b.submap_of(P::op(p, q).interp())
 }
@@ -285,17 +281,14 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 
     // Operations with shared references
     #[verifier::external_body]
-    pub proof fn join_shared<'a>(
-        tracked &'a self,
-        tracked other: &'a Self,
-        target: P,
-    ) -> (tracked out: &'a Self)
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+        &'a Self)
         requires
             self.loc() == other.loc(),
-            conjunct_shared(self.value(), other.value(), target),
         ensures
             out.loc() == self.loc(),
-            out.value() == target,
+            incl(self.value(), out.value()),
+            incl(other.value(), out.value()),
     {
         unimplemented!();
     }
