@@ -18,7 +18,7 @@ This is a tentative program.
 
 ### Tuesday, June 25th
 
-*Experience reports building systems in Verus (~2 hours)*
+*Experience reports building systems in Verus (2-3 hours)*
 - Each report should include:
    - What was built/verified
    - What Verus did well
@@ -32,7 +32,7 @@ This is a tentative program.
    * Concurrent page table implementation (Matthias Brun, Johanna Polzin)
    * VeriSplinter (Jon Howell)
 
-*Overview of new/upcoming features (~2 hours in the morning)*
+*Overview of new/upcoming features (~1.5 hours in the morning/early afternoon)*
 
 - Iterators (Chris)
 - Traits (Chris, Andrea)
@@ -70,9 +70,11 @@ This is a tentative program.
 - Brainstorming next big steps for Verus (1-2 hours in the morning)
     - Verifying the Rust standard library (Travis)
 
-- cvc5 + SMT encoding
+- cvc5 + SMT encoding (1-1.5 hours in the morning)
 
-- Feature design discussion
+- 11:15 AM: *Retreat Photograph* 
+
+- Feature design discussion (afternoon)
   - Attaching specifications to standard library with traits, e.g., `HashMap<Key: View>`
 
 - Evening: Board games!
