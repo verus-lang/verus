@@ -45,7 +45,15 @@ This is a tentative program.
 
 *Feature request triage (1-2 hours in the afternoon)*
 
-- E.g., termination checking for `exec`
+- Examples:
+   - Termination checking for `exec`
+   - [`From` and `Into` traits](https://github.com/verus-lang/verus/discussions/1129#discussioncomment-9492707)
+   - [Vector literals](https://github.com/verus-lang/verus/discussions/1129#discussioncomment-9492710)
+   - vstd functions for [(debug) printing](https://github.com/verus-lang/verus/discussions/1129#discussioncomment-9736972)
+   - Support for [dyn](https://github.com/verus-lang/verus/discussions/1047)
+   - [Type invariants](https://github.com/verus-lang/verus/discussions/962)
+   - Separating and identifying [trusted vs. untrusted code](https://github.com/verus-lang/verus/discussions/112)
+   - Ensures clauses for spec functions
 
 *6:00 PM -- Collaboration Dinner at [Butterjoint](https://maps.app.goo.gl/wVz6SbFGEf9T58pQ7)*
 
