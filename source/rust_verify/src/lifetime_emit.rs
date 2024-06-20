@@ -1007,17 +1007,18 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
 pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newdecl();
     state.newline();
+    state.begin_span(d.span);
     let d_keyword = match &*d.datatype {
         Datatype::Struct(..) => "struct ",
         Datatype::Enum(..) => "enum ",
         Datatype::Union(..) => "union ",
     };
     state.newline();
-    state.write_spanned(d_keyword, d.span);
+    state.write(d_keyword);
     state.write(&d.name.to_string());
     emit_generic_params(state, &d.generic_params);
     let suffix_where = match &*d.datatype {
-        Datatype::Struct(Fields::Pos(..)) => d.generic_bounds.len() > 0,
+        Datatype::Struct(Fields::Pos(..)) => true,
         _ => {
             emit_generic_bounds(state, &d.generic_params, &d.generic_bounds);
             false
@@ -1045,6 +1046,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
             state.write("}");
         }
     }
+    state.end_span(d.span);
     if let Some(copy_bounds) = &d.implements_copy {
         let clone_body = "{ fn clone(&self) -> Self { panic!() } }";
         emit_copy_clone(state, d, copy_bounds, &Bound::Clone, "Clone", clone_body);
