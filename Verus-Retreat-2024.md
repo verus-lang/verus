@@ -50,7 +50,10 @@ This is a tentative program.
 - Traits (Chris, Andrea)
 - Broadcast groups (Andrea)
 - Mutable reference encoding (Andrea)
-- Brief advertisements for `verusfmt`, `cargo verus`
+- Brief advertisements for new tooling:
+   - `verusfmt` (Jay Bosamiya)
+   - `cargo verus` 
+   - Verus find (Matthias Brun)
 
 *Feature request triage (1-2 hours in the afternoon)*
 
