@@ -104,7 +104,7 @@ pub(crate) struct State {
     remaining_typs_needed_for_each_impl: HashMap<DefId, (Id, Vec<DefId>)>,
     enclosing_fun_id: Option<DefId>,
     enclosing_trait_ids: Vec<DefId>,
-    inside_trait_assoc_type: u32,
+    inside_trait_decl: u32,
     // inner for<'a> can conflict with outer fn f<'a>, so rename the inner 'a
     rename_bound_for: Vec<Id>,
 }
@@ -134,7 +134,7 @@ impl State {
             remaining_typs_needed_for_each_impl: HashMap::new(),
             enclosing_fun_id: None,
             enclosing_trait_ids: Vec::new(),
-            inside_trait_assoc_type: 0,
+            inside_trait_decl: 0,
             rename_bound_for: Vec::new(),
         }
     }
@@ -435,7 +435,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         | TyKind::Str
         | TyKind::Float(_) => Box::new(TypX::Primitive(ty.to_string())),
         TyKind::Param(p) if p.name == kw::SelfUpper => {
-            if state.inside_trait_assoc_type > 0 {
+            if state.inside_trait_decl > 0 {
                 Box::new(TypX::TraitSelf)
             } else {
                 Box::new(TypX::TypParam(state.typ_param("Self", None)))
@@ -2205,7 +2205,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
 
     let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>)> = Vec::new();
     let assoc_items = ctxt.tcx.associated_items(trait_id);
-    state.inside_trait_assoc_type += 1;
+    state.inside_trait_decl += 1;
     for assoc_item in assoc_items.in_definition_order() {
         match assoc_item.kind {
             rustc_middle::ty::AssocKind::Const => {}
@@ -2308,7 +2308,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             state.reach_impl_assoc(impl_id);
         }
     }
-    state.inside_trait_assoc_type -= 1;
+    state.inside_trait_decl -= 1;
 
     assert!(state.enclosing_trait_ids.pop().is_some());
 }
