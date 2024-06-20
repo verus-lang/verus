@@ -85,7 +85,7 @@ This is a tentative program.
 - cvc5 + SMT encoding
 
 - Feature design discussion
-  - Hash map specifications
+  - Attaching specifications to standard library with traits, e.g., `HashMap<Key: View>`
 
 - Evening: Board games!
 
