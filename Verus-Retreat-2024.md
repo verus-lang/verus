@@ -7,21 +7,9 @@ We are planning 3 days of "official" semi-structured time (Tuesday the 25th thro
 
 Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innovation Center (CIC)](https://www.cylab.cmu.edu/about/visiting.html), room 2101.
 
-## Potential Topics
-- Overview of new/upcoming features 
-- Issue triage
-- Feature prioritization
-- Documentation write-a-thon
-- Experience reports building systems in Verus: What's working well and what isn't working
-- Language design, planned changes, and discussion
+## Additional Potential Topics
 - Proof stability
-- Specifying and Verifying Rust's standard library 
-- Verus and AI
 - Syntactic suggestions (1 hour max)
-- Benchmarking suite and CI
-- Paper planning
-- cvc5 integration
-- Termination checking for `exec`
 
 ## Program
 
