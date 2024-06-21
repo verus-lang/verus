@@ -3,9 +3,9 @@ layout: default
 ---
 
 <div class="hero">
-    <div class="main relative card header">
+    <!--<div class="main relative card header">
         <h1>Overview</h1>
-    </div>
+    </div>-->
     <div class="main relative card header">
       Please see below for <a href="#publications">research publications</a> about and using Verus, 
       as well as <a href="#projects">projects</a> built using Verus.

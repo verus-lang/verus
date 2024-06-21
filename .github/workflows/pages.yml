@@ -51,11 +51,11 @@ jobs:
           workflow_conclusion: success
           path: ./_site/verusdoc
       
-      - name: add projects page
+      - name: add publications and projects page
         uses: actions/jekyll-build-pages@v1
         with:
-          source: source/docs/projects
-          destination: ./_site/projects
+          source: source/docs/publications-and-projects
+          destination: ./_site/publications-and-projects
 
       - name: upload artifact
         uses: actions/upload-pages-artifact@v1
