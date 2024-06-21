@@ -376,13 +376,15 @@ impl Visitor {
         let ensures = self.take_ghost(&mut sig.ensures);
         let decreases = self.take_ghost(&mut sig.decreases);
         let opens_invariants = self.take_ghost(&mut sig.invariants);
+
+        let mut spec_stmts = Vec::new();
         // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, mut exprs }) = requires {
             if exprs.exprs.len() > 0 {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
-                stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Semi(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
                     ),
@@ -395,13 +397,13 @@ impl Visitor {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
-                stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Semi(
                     Expr::Verbatim(quote_spanned_builtin!(builtin, token.span => #builtin::recommends([#exprs]))),
                     Semi { spans: [token.span] },
                 ));
             }
             if let Some((via_token, via_expr)) = via {
-                stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Semi(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, via_expr.span() => #builtin::recommends_by(#via_expr)),
                     ),
@@ -425,7 +427,7 @@ impl Visitor {
                                 "when using #![trigger f(x)], at least one ensures is required";
                             let expr =
                                 Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                            stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                            spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
                             false
                         } else {
                             let e = take_expr(&mut exprs.exprs[0]);
@@ -458,14 +460,14 @@ impl Visitor {
                 };
                 if cont {
                     if let Some((p, ty)) = ret_pat {
-                        stmts.push(Stmt::Semi(
+                        spec_stmts.push(Stmt::Semi(
                             Expr::Verbatim(
                                 quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])),
                             ),
                             Semi { spans: [token.span] },
                         ));
                     } else {
-                        stmts.push(Stmt::Semi(
+                        spec_stmts.push(Stmt::Semi(
                             Expr::Verbatim(
                                 quote_spanned_builtin!(builtin, token.span => #builtin::ensures([#exprs])),
                             ),
@@ -483,7 +485,7 @@ impl Visitor {
                 if matches!(expr, Expr::Tuple(..)) {
                     let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
                     let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                    spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
                 }
             }
             stmts.push(Stmt::Semi(
@@ -494,7 +496,7 @@ impl Visitor {
             ));
             if let Some((when_token, mut when_expr)) = when {
                 self.visit_expr_mut(&mut when_expr);
-                stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Semi(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, when_expr.span() => #builtin::decreases_when(#when_expr)),
                     ),
@@ -502,7 +504,7 @@ impl Visitor {
                 ));
             }
             if let Some((via_token, via_expr)) = via {
-                stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Semi(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, via_expr.span() => #builtin::decreases_by(#via_expr)),
                     ),
@@ -513,7 +515,7 @@ impl Visitor {
         if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
             match set {
                 InvariantNameSet::Any(any) => {
-                    stmts.push(Stmt::Semi(
+                    spec_stmts.push(Stmt::Semi(
                         Expr::Verbatim(
                             quote_spanned_builtin!(builtin, any.span() => #builtin::opens_invariants_any()),
                         ),
@@ -521,7 +523,7 @@ impl Visitor {
                     ));
                 }
                 InvariantNameSet::None(none) => {
-                    stmts.push(Stmt::Semi(
+                    spec_stmts.push(Stmt::Semi(
                         Expr::Verbatim(
                             quote_spanned_builtin!(builtin, none.span() => #builtin::opens_invariants_none()),
                         ),
@@ -532,13 +534,20 @@ impl Visitor {
                     for expr in exprs.iter_mut() {
                         self.visit_expr_mut(expr);
                     }
-                    stmts.push(Stmt::Semi(
+                    spec_stmts.push(Stmt::Semi(
                         Expr::Verbatim(
                             quote_spanned_builtin!(builtin, bracket_token.span => #builtin::opens_invariants([#exprs])),
                         ),
                         Semi { spans: [bracket_token.span] },
                     ));
                 }
+            }
+        }
+        if !self.erase_ghost.erase() {
+            if sig.constness.is_some() {
+                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(sig.span() => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };))));
+            } else {
+                stmts.extend(spec_stmts);
             }
         }
 
@@ -561,41 +570,61 @@ impl Visitor {
 
     pub fn desugar_const_or_static(
         &mut self,
+        con_mode: &FnMode,
         con_ensures: &mut Option<Ensures>,
         con_block: &mut Option<Box<Block>>,
         con_expr: &mut Option<Box<Expr>>,
         con_eq_token: &mut Option<Token![=]>,
         con_semi_token: &mut Option<Token![;]>,
+        con_ty: &Type,
         con_span: Span,
     ) {
-        let ensures = self.take_ghost(con_ensures);
-        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
-            self.inside_ghost += 1;
-            let mut stmts: Vec<Stmt> = Vec::new();
-            if attrs.len() > 0 {
-                let err = "outer attributes only allowed on function's ensures";
-                let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
-            } else if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
-                // Use a closure in the ensures to avoid circular const definition.
-                // Note: we can't use con.ident as the closure pattern,
-                // because Rust would treat this as a const path pattern.
-                // So we use a 0-parameter closure.
-                stmts.push(stmt_with_semi!(builtin, token.span => #builtin::ensures(|| [#exprs])));
+        if matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_)) {
+            if let Some(mut expr) = con_expr.take() {
+                let mut stmts = Vec::new();
+                self.inside_ghost += 1;
+                self.visit_expr_mut(&mut expr);
+                self.inside_ghost -= 1;
+                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(con_span => #[verus::internal(verus_macro)] #[verus::internal(const_body)] fn __VERUS_CONST_BODY__() -> #con_ty { #expr } ))));
+                stmts.push(Stmt::Expr(Expr::Verbatim(
+                    quote_spanned!(con_span => unsafe { core::mem::zeroed() }),
+                )));
+                *con_expr = Some(Box::new(Expr::Block(syn_verus::ExprBlock {
+                    attrs: vec![],
+                    label: None,
+                    block: Block { brace_token: token::Brace(expr.span()), stmts },
+                })));
             }
-            let mut block = std::mem::take(con_block).expect("const-with-ensures block");
-            block.stmts.splice(0..0, stmts);
-            *con_block = Some(block);
-            self.inside_ghost -= 1;
-        }
-        if let Some(block) = std::mem::take(con_block) {
-            let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
-            *con_expr = Some(Box::new(Expr::Block(expr_block)));
-            *con_eq_token = Some(syn_verus::token::Eq { spans: [con_span] });
-            *con_semi_token = Some(Semi { spans: [con_span] });
+        } else {
+            let ensures = self.take_ghost(con_ensures);
+            if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+                self.inside_ghost += 1;
+                let mut stmts: Vec<Stmt> = Vec::new();
+                if attrs.len() > 0 {
+                    let err = "outer attributes only allowed on function's ensures";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                } else if exprs.exprs.len() > 0 {
+                    for expr in exprs.exprs.iter_mut() {
+                        self.visit_expr_mut(expr);
+                    }
+                    // Use a closure in the ensures to avoid circular const definition.
+                    // Note: we can't use con.ident as the closure pattern,
+                    // because Rust would treat this as a const path pattern.
+                    // So we use a 0-parameter closure.
+                    stmts.push(stmt_with_semi!(builtin, token.span => #[verus::internal(const_header_wrapper)] || { #builtin::ensures(|| [#exprs]); }));
+                }
+                let mut block = std::mem::take(con_block).expect("const-with-ensures block");
+                block.stmts.splice(0..0, stmts);
+                *con_block = Some(block);
+                self.inside_ghost -= 1;
+            }
+            if let Some(block) = std::mem::take(con_block) {
+                let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
+                *con_expr = Some(Box::new(Expr::Block(expr_block)));
+                *con_eq_token = Some(syn_verus::token::Eq { spans: [con_span] });
+                *con_semi_token = Some(Semi { spans: [con_span] });
+            }
         }
     }
 
@@ -606,7 +635,7 @@ impl Visitor {
         vis: Option<&Visibility>,
         publish: &mut Publish,
         mode: &mut FnMode,
-    ) {
+    ) -> FnMode {
         if self.erase_ghost.keep() {
             attrs.push(mk_verus_attr(span, quote! { verus_macro }));
         }
@@ -640,10 +669,12 @@ impl Visitor {
         self.inside_ghost = inside_ghost;
         self.inside_const = true;
         *publish = Publish::Default;
+        let orig_mode = mode.clone();
         *mode = FnMode::Default;
         attrs.extend(publish_attrs);
         attrs.extend(mode_attrs);
         self.filter_attrs(attrs);
+        orig_mode
     }
 }
 
@@ -989,16 +1020,24 @@ impl Visitor {
                         }
                     };
                     let span = item.span();
-                    let static_assert_size = quote! {
-                        if ::core::mem::size_of::<#type_>() != #size_lit {
-                            panic!("does not have the expected size");
+                    let static_assert_size = if self.erase_ghost.erase() {
+                        quote! {
+                            if ::core::mem::size_of::<#type_>() != #size_lit {
+                                panic!("does not have the expected size");
+                            }
                         }
+                    } else {
+                        quote! {}
                     };
                     let static_assert_align = if let Some(align_lit) = align_lit {
-                        quote! {
-                            if ::core::mem::align_of::<#type_>() != #align_lit {
-                                panic!("does not have the expected alignment");
+                        if self.erase_ghost.erase() {
+                            quote! {
+                                if ::core::mem::align_of::<#type_>() != #align_lit {
+                                    panic!("does not have the expected alignment");
+                                }
                             }
+                        } else {
+                            quote! {}
                         }
                     } else {
                         quote! {}
@@ -2921,7 +2960,7 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
-        self.visit_const_or_static(
+        let mode = self.visit_const_or_static(
             con.const_token.span,
             &mut con.attrs,
             Some(&con.vis),
@@ -2929,18 +2968,20 @@ impl VisitMut for Visitor {
             &mut con.mode,
         );
         self.desugar_const_or_static(
+            &mode,
             &mut con.ensures,
             &mut con.block,
             &mut con.expr,
             &mut con.eq_token,
             &mut con.semi_token,
+            &con.ty,
             con.const_token.span,
         );
         visit_item_const_mut(self, con);
     }
 
     fn visit_item_static_mut(&mut self, sta: &mut ItemStatic) {
-        self.visit_const_or_static(
+        let mode = self.visit_const_or_static(
             sta.static_token.span,
             &mut sta.attrs,
             Some(&sta.vis),
@@ -2948,11 +2989,13 @@ impl VisitMut for Visitor {
             &mut sta.mode,
         );
         self.desugar_const_or_static(
+            &mode,
             &mut sta.ensures,
             &mut sta.block,
             &mut sta.expr,
             &mut sta.eq_token,
             &mut sta.semi_token,
+            &sta.ty,
             sta.static_token.span,
         );
         visit_item_static_mut(self, sta);

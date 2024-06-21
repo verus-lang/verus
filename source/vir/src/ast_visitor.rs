@@ -13,6 +13,7 @@ use air::scope_map::ScopeMap;
 use std::sync::Arc;
 
 pub struct ScopeEntry {
+    #[allow(dead_code)]
     pub typ: Typ,
     pub is_mut: bool,
     pub init: bool,

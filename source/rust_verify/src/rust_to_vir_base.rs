@@ -4,11 +4,12 @@ use crate::rust_to_vir::ExternalInfo;
 use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
-use rustc_ast::{ByRef, Mutability};
+use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::fold::BoundVarReplacerDelegate;
+use rustc_middle::ty::TraitPredicate;
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
@@ -16,7 +17,6 @@ use rustc_middle::ty::{
     ConstKind, GenericArgKind, GenericArgsRef, ParamConst, TypeFoldable, TypeFolder,
     TypeSuperFoldable, TypeVisitableExt, ValTree,
 };
-use rustc_middle::ty::{ImplPolarity, TraitPredicate};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
 use rustc_span::Span;
@@ -89,7 +89,8 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
     if !is_impl_item_fn {
         return;
     }
-    let parent_node = tcx.hir().get_parent(hir_id);
+    let mut parent_node = tcx.hir().parent_iter(hir_id);
+    let (_, parent_node) = parent_node.next().expect("unexpected empty impl path");
     let friendly_self_ty = match parent_node {
         rustc_hir::Node::Item(rustc_hir::Item {
             kind: rustc_hir::ItemKind::Impl(impll),
@@ -193,10 +194,10 @@ pub(crate) fn qpath_to_ident<'tcx>(
     qpath: &QPath<'tcx>,
 ) -> Option<vir::ast::VarIdent> {
     use rustc_hir::def::Res;
-    use rustc_hir::{BindingAnnotation, Node, Pat, PatKind};
+    use rustc_hir::{Node, Pat, PatKind};
     if let QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. }) = qpath {
         if let Node::Pat(Pat {
-            kind: PatKind::Binding(BindingAnnotation(ByRef::No, Mutability::Not), hir_id, x, None),
+            kind: PatKind::Binding(BindingMode(ByRef::No, Mutability::Not), hir_id, x, None),
             ..
         }) = tcx.hir_node(*id)
         {
@@ -503,7 +504,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                     args: trait_args,
                                     ..
                                 },
-                            polarity: ImplPolarity::Positive,
+                            polarity: rustc_middle::ty::PredicatePolarity::Positive,
                         }) => {
                             if Some(trait_def_id) == tcx.lang_items().fn_trait()
                                 || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
@@ -667,7 +668,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
                 TyKind::Never => true,
                 TyKind::Tuple(_) => true,
                 TyKind::Slice(_) => true,
-                TyKind::RawPtr(_) => true,
+                TyKind::RawPtr(_, _) => true,
                 TyKind::Array(..) => true,
                 TyKind::Closure(..) => true,
                 TyKind::FnDef(..) => true,
@@ -701,6 +702,9 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
                         && trait_def.is_some()
                         && t_args.len() >= 1
                 }
+
+                TyKind::CoroutineClosure(_, _) => false,
+                TyKind::Pat(_, _) => false,
             };
             all_types_supported = all_types_supported && supported;
         }
@@ -738,7 +742,10 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
     for (predicate, _span) in predicates.predicates.iter() {
         match predicate.kind().skip_binder() {
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {}
-            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
+            ClauseKind::Trait(TraitPredicate {
+                trait_ref,
+                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+            }) => {
                 let trait_def_id = trait_ref.def_id;
                 if Some(trait_def_id) == tcx.lang_items().fn_trait()
                     || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
@@ -833,7 +840,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
         }
         TyKind::Str => (Arc::new(TypX::Primitive(Primitive::StrSlice, Arc::new(vec![]))), false),
-        TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty, mutbl }) => {
+        TyKind::RawPtr(ty, mutbl) => {
             let typ = t_rec(ty)?.0;
             let typs = Arc::new(vec![typ]);
 
@@ -1068,6 +1075,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference Placeholder types"),
         TyKind::Infer(..) => unsupported_err!(span, "type inference Infer types"),
         TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
+        TyKind::CoroutineClosure(_, _) => unsupported_err!(span, "coroutine closure types"),
+        TyKind::Pat(_, _) => unsupported_err!(span, "pattern types"),
     };
     Ok(t)
 }
@@ -1103,7 +1112,11 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
 ) -> Result<Typ, VirErr> {
     let cnst_kind = match cnst.kind() {
         ConstKind::Unevaluated(unevaluated) => {
-            let valtree = cnst.eval(tcx, tcx.param_env(unevaluated.def), span);
+            let valtree = cnst.eval(
+                tcx,
+                tcx.param_env(unevaluated.def),
+                span.expect("expected span since 1.79.0"),
+            );
             if valtree.is_err() {
                 unsupported_err!(span.expect("span"), format!("error evaluating const"));
             }
@@ -1327,7 +1340,10 @@ where
             ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {
                 // can ignore lifetime bounds
             }
-            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
+            ClauseKind::Trait(TraitPredicate {
+                trait_ref,
+                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+            }) => {
                 let substs = trait_ref.args;
 
                 // For a bound like `T: SomeTrait<X, Y, Z>`, then:

@@ -11,7 +11,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
-use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
+use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
@@ -99,7 +99,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
         }
 
         fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
-            mut diag: DiagnosticBuilder<'a, G>,
+            mut diag: Diag<'a, G>,
             multispan: MultiSpan,
             help: &Option<String>,
         ) {
@@ -2448,11 +2448,9 @@ impl Verifier {
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
         let time_hir0 = Instant::now();
 
-        match rustc_hir_analysis::check_crate(tcx) {
-            Ok(()) => {}
-            Err(_) => {
-                return Ok(false);
-            }
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return Ok(false);
         }
 
         let hir = tcx.hir();
@@ -2710,6 +2708,32 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
+
+            // providers.eval_static_initializer = |tcx, key| {
+            //     eprintln!("static init start {:?}", &key);
+            //     let r = (DEFAULT_QUERY_PROVIDERS.eval_static_initializer)(tcx, key);
+            //     eprintln!("static init end {:?}", &key);
+            //     r
+            // };
+            //
+            // providers.eval_to_const_value_raw = |tcx, key| {
+            //     eprintln!("eval start {:?}", &key);
+            //     let r = (DEFAULT_QUERY_PROVIDERS.eval_to_const_value_raw)(tcx, key);
+            //     eprintln!("eval end {:?}", &key);
+            //     r
+            // };
+
+            // Prevent the borrow checker from running, as we will run our own lifetime analysis.
+            // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
+            // by const evaluation through the mir interpreter.
+            providers.mir_borrowck = |tcx, _local_def_id| {
+                tcx.arena.alloc(rustc_middle::mir::BorrowCheckResult {
+                    concrete_opaque_types: rustc_data_structures::fx::FxIndexMap::default(),
+                    closure_requirements: None,
+                    used_mut_upvars: smallvec::SmallVec::new(),
+                    tainted_by_errors: None,
+                })
+            };
         });
     }
 
@@ -2720,7 +2744,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
-        if !compiler.sess.compile_status().is_ok() {
+        if let Some(_guar) = compiler.sess.dcx().has_errors() {
             return rustc_driver::Compilation::Stop;
         }
 
@@ -2785,7 +2809,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     }
                     return;
                 }
-                if !compiler.sess.compile_status().is_ok() {
+                if let Some(_guar) = compiler.sess.dcx().has_errors() {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -2854,7 +2878,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
 
-            if !compiler.sess.compile_status().is_ok() {
+            if let Some(_guar) = compiler.sess.dcx().has_errors() {
                 return;
             }
 

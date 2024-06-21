@@ -82,8 +82,8 @@ fn check_fn_decl<'tcx>(
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
-        rustc_hir::ImplicitSelfKind::ImmRef => {}
-        rustc_hir::ImplicitSelfKind::MutRef => {}
+        rustc_hir::ImplicitSelfKind::RefImm => {}
+        rustc_hir::ImplicitSelfKind::RefMut => {}
         rustc_hir::ImplicitSelfKind::Mut => unsupported_err!(span, "mut self"),
     }
     match output {
@@ -675,13 +675,7 @@ pub(crate) fn check_item_fn<'tcx>(
         match body_id {
             CheckItemFnEither::BodyId(body_id) => {
                 let body = find_body(ctxt, body_id);
-                let Body { params, value: _, coroutine_kind } = body;
-                match coroutine_kind {
-                    None => {}
-                    _ => {
-                        unsupported_err!(sig.span, "coroutine_kind", coroutine_kind);
-                    }
-                }
+                let Body { params, value: _ } = body;
                 let mut ps = Vec::new();
                 for Param { hir_id, pat, ty_span: _, span } in params.iter() {
                     let (is_mut_var, name) = pat_to_mut_var(pat)?;
@@ -1545,7 +1539,27 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 
     let fuel = get_fuel(&vattrs);
     let body = find_body(ctxt, body_id);
-    let mut vir_body = body_to_vir(ctxt, id, body_id, body, body_mode, vattrs.external_body)?;
+    let (actual_body_id, actual_body) = if let ExprKind::Block(block, _) = body.value.kind {
+        let first_stmt = block.stmts.iter().next();
+        if let Some(rustc_hir::StmtKind::Item(item)) = first_stmt.map(|stmt| &stmt.kind) {
+            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let vattrs = ctxt.get_verifier_attrs(attrs)?;
+            if vattrs.internal_const_body {
+                let body_id = ctxt.tcx.hir().body_owned_by(item.owner_id.def_id);
+                let body = find_body(ctxt, &body_id);
+                Some((body_id, body))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+    .unwrap_or((*body_id, body));
+    let mut vir_body =
+        body_to_vir(ctxt, id, &actual_body_id, actual_body, body_mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");

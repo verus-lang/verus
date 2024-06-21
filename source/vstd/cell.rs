@@ -19,6 +19,7 @@ verus! {
 
 broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
+
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
 /// Technically, it is a wrapper around
@@ -55,7 +56,6 @@ broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
 /// to extract data from the cell.
 ///
 /// ### Example (TODO)
-
 #[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PCell<V> {

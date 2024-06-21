@@ -5,6 +5,7 @@ pub(crate) trait Returner {
     type Vec<A>;
     type Opt<A>;
     fn get<A>(r: Self::Ret<A>) -> A;
+    #[allow(dead_code)]
     fn get_vec<A>(r: Self::Vec<A>) -> Vec<A>;
     fn get_vec_a<A>(r: Self::Vec<A>) -> Arc<Vec<A>>;
     fn get_vec_or<'a, A>(r: &'a Self::Vec<A>, or: &'a Vec<A>) -> &'a Vec<A>;

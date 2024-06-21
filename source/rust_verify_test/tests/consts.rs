@@ -8,7 +8,7 @@ test_verify_one_file! {
         spec fn f() -> int { 1 }
         const C: u64 = 3 + 5;
         spec const S: int = C as int + f();
-        fn e() -> (u: u64) ensures u == 1 { 1 }
+        const fn e() -> (u: u64) ensures u == 1 { 1 }
         exec const E: u64 ensures E == 2 { 1 + e() }
 
         fn test1() {
@@ -39,7 +39,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system")
 }
 
 test_verify_one_file! {
@@ -58,14 +58,14 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
-        fn f() -> u64 { 1 }
+        const fn f() -> u64 { 1 }
         const S: u64 = 1 + f();
     } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
 }
 
 test_verify_one_file! {
     #[test] test1_fails6 verus_code! {
-        fn e() -> (u: u64) ensures u >= 1 { 1 }
+        const fn e() -> (u: u64) ensures u >= 1 { 1 }
         exec const E: u64 = 1 + e(); // FAILS
     } => Err(e) => assert_vir_error_msg(e, "possible arithmetic underflow/overflow")
 }
@@ -186,7 +186,7 @@ test_verify_one_file! {
         exec static E: u64 = 0;
 
         const s: u64 = E;
-    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+    } => Err(e) => assert_rust_error_msg(e, "referencing statics in constants is unstable")
 }
 
 test_verify_one_file! {
@@ -226,7 +226,7 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+    } => Err(e) => assert_rust_error_msg(e, "cycle detected when evaluating initializer of static")
 }
 
 test_verify_one_file! {
@@ -239,7 +239,7 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode exec")
+    } => Err(e) => assert_rust_error_msg(e, "cycle detected when simplifying constant for the type system")
 }
 
 test_verify_one_file! {
