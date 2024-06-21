@@ -387,6 +387,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     if let Some(module_path) = &datatype.x.owning_module {
                         reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
                     }
+                    traverse_generic_bounds(ctxt, state, &datatype.x.typ_bounds, false);
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
                 }
                 ReachedType::SpecFn(arity) => {
