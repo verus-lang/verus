@@ -81,6 +81,7 @@ pub(crate) fn process_const_early<'tcx>(
         let rustc_ast::LitKind::Int(size, rustc_ast::LitIntType::Unsuffixed) = lit.node else {
             return err;
         };
+        let size = size.get();
 
         vir::layout::layout_of_typ_supported(&ty, &crate::spans::err_air_span(item.span))?;
 

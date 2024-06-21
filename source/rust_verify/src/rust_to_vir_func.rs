@@ -82,8 +82,8 @@ fn check_fn_decl<'tcx>(
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
-        rustc_hir::ImplicitSelfKind::ImmRef => {}
-        rustc_hir::ImplicitSelfKind::MutRef => {}
+        rustc_hir::ImplicitSelfKind::RefImm => {}
+        rustc_hir::ImplicitSelfKind::RefMut => {}
         rustc_hir::ImplicitSelfKind::Mut => unsupported_err!(span, "mut self"),
     }
     match output {
@@ -675,13 +675,13 @@ pub(crate) fn check_item_fn<'tcx>(
         match body_id {
             CheckItemFnEither::BodyId(body_id) => {
                 let body = find_body(ctxt, body_id);
-                let Body { params, value: _, coroutine_kind } = body;
-                match coroutine_kind {
-                    None => {}
-                    _ => {
-                        unsupported_err!(sig.span, "coroutine_kind", coroutine_kind);
-                    }
-                }
+                let Body { params, value: _ } = body;
+                // TODO(1.79.0) match coroutine_kind {
+                // TODO(1.79.0)     None => {}
+                // TODO(1.79.0)     _ => {
+                // TODO(1.79.0)         unsupported_err!(sig.span, "coroutine_kind", coroutine_kind);
+                // TODO(1.79.0)     }
+                // TODO(1.79.0) }
                 let mut ps = Vec::new();
                 for Param { hir_id, pat, ty_span: _, span } in params.iter() {
                     let (is_mut_var, name) = pat_to_mut_var(pat)?;

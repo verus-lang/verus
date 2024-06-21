@@ -37,7 +37,7 @@ pub(crate) fn external_trait_specification_of<'tcx>(
                         match bound.kind().skip_binder() {
                             ClauseKind::Trait(TraitPredicate {
                                 trait_ref,
-                                polarity: ImplPolarity::Positive,
+                                polarity: rustc_middle::ty::PredicatePolarity::Positive,
                             }) => {
                                 let trait_def_id = trait_ref.def_id;
                                 if Some(trait_def_id) == tcx.lang_items().sized_trait() {
