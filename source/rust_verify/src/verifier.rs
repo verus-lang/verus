@@ -1720,7 +1720,7 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
 
-        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, bound_traits, fndef_types) =
+        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, fndef_types) =
             vir::prune::prune_krate_for_module_or_krate(
                 &krate,
                 &Arc::new(self.crate_name.clone().expect("crate_name")),
@@ -1740,7 +1740,6 @@ impl Verifier {
             module,
             mono_abstract_datatypes,
             spec_fn_types,
-            bound_traits,
             fndef_types,
             self.args.debugger,
         )?;
@@ -2463,7 +2462,7 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+        let (vir_crate, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),
             Some(&current_vir_crate),

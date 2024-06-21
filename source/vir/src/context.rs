@@ -76,7 +76,6 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
-    pub(crate) bound_traits: HashSet<Path>,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
@@ -509,7 +508,6 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
-        bound_traits: HashSet<Path>,
         fndef_types: Vec<Fun>,
         debug: bool,
     ) -> Result<Self, VirErr> {
@@ -551,7 +549,6 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
-            bound_traits,
             fndef_types,
             fndef_type_set,
             functions,

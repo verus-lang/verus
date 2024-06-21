@@ -533,7 +533,7 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
     for bound in typ_bounds.iter() {
         let exprx = match &**bound {
             GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
@@ -567,7 +567,7 @@ pub(crate) fn trait_bounds_to_sst(
     for bound in typ_bounds.iter() {
         let expx = match &**bound {
             GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
@@ -597,7 +597,7 @@ pub(crate) fn trait_bound_to_air(
     path: &Path,
     typ_args: &Typs,
 ) -> Option<air::ast::Expr> {
-    if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+    if !ctx.trait_map.contains_key(path) {
         return None;
     }
     let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
@@ -667,19 +667,17 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
     // Declare predicates for bounds
     //   (declare-fun tr_bound%T (... Dcr Type ...) Bool)
     for tr in krate.traits.iter() {
-        if ctx.bound_traits.contains(&tr.x.name) {
-            let mut tparams: Vec<air::ast::Typ> = Vec::new();
-            tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
-            for _ in tr.x.typ_params.iter() {
-                tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
-            }
-            let decl_trait_bound = Arc::new(DeclX::Fun(
-                crate::def::trait_bound(&tr.x.name),
-                Arc::new(tparams),
-                air::ast_util::bool_typ(),
-            ));
-            commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
+        let mut tparams: Vec<air::ast::Typ> = Vec::new();
+        tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
+        for _ in tr.x.typ_params.iter() {
+            tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
         }
+        let decl_trait_bound = Arc::new(DeclX::Fun(
+            crate::def::trait_bound(&tr.x.name),
+            Arc::new(tparams),
+            air::ast_util::bool_typ(),
+        ));
+        commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
     }
     Arc::new(commands)
 }
@@ -726,7 +724,6 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
 
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
-    assert!(ctx.bound_traits.contains(&imp.x.trait_path));
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
     // Example:
     //   trait T1 {}
