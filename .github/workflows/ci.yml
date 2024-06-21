@@ -54,7 +54,7 @@ jobs:
       - name: download singular
         if: matrix.features == 'singular'
         run: |
-          curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-4-0_M1.dmg
+          curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
       - name: build and test
         working-directory: ./source
         run: |
@@ -63,11 +63,11 @@ jobs:
 
           case "${{ matrix.features }}" in
             "singular")
-              hdiutil attach ../Singular-4-4-0_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test integer_ring
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.4.0/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.4.0/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test examples -- example_integer_ring
+              hdiutil attach ../Singular-4-3-2_M1.dmg
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test examples -- example_integer_ring
               ;;
             "record-history")
               vargo build --features record-history
