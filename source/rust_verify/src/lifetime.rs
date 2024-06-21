@@ -221,6 +221,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::alloc::Allocator;
 use std::alloc::Global;
+use std::mem::ManuallyDrop;
 use std::ptr::Pointee;
 use std::ptr::Thin;
 fn op<A, B>(a: A) -> B { panic!() }

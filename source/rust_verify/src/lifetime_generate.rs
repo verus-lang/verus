@@ -384,6 +384,7 @@ fn adt_args<'a, 'tcx>(
         || rust_item == Some(RustItem::Rc)
         || rust_item == Some(RustItem::Arc)
         || rust_item == Some(RustItem::AllocGlobal)
+        || rust_item == Some(RustItem::ManuallyDrop)
     {
         (false, args)
     } else {
@@ -495,6 +496,10 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                     Some(RustItem::AllocGlobal) => {
                         assert!(typ_args.len() == 0);
                         Id::new(IdKind::Builtin, 0, "Global".to_owned())
+                    }
+                    Some(RustItem::ManuallyDrop) => {
+                        assert!(typ_args.len() == 1);
+                        Id::new(IdKind::Builtin, 0, "ManuallyDrop".to_owned())
                     }
                     _ => state.datatype_name(&path),
                 },
@@ -2542,7 +2547,9 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         return;
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    if let Some(RustItem::Rc | RustItem::Arc | RustItem::AllocGlobal) = rust_item {
+    if let Some(RustItem::Rc | RustItem::Arc | RustItem::AllocGlobal | RustItem::ManuallyDrop) =
+        rust_item
+    {
         return;
     }
 
