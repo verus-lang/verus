@@ -2740,6 +2740,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         &spans,
                         self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
                         self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
+                        self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
                         lifetime_log_file,
                     )
                 };
