@@ -768,6 +768,9 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
                 buf += "Sized";
             }
         }
+        Bound::Allocator => {
+            buf += "Allocator";
+        }
         Bound::Pointee => {
             buf += "Pointee";
         }

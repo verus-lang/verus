@@ -143,6 +143,7 @@ pub(crate) enum Bound {
     Copy,
     Clone,
     Sized,
+    Allocator,
     Thin,
     Pointee,
     Id(Id),

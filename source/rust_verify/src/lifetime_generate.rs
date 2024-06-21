@@ -383,11 +383,9 @@ fn adt_args<'a, 'tcx>(
     if rust_item == Some(RustItem::Box)
         || rust_item == Some(RustItem::Rc)
         || rust_item == Some(RustItem::Arc)
+        || rust_item == Some(RustItem::AllocGlobal)
     {
-        // For Box, Rc, Arc, skip the second argument (the Allocator)
-        // which is currently restricted to always be `Global`.
-        assert!(args.len() == 2);
-        (false, &args[0..1])
+        (false, args)
     } else {
         (true, args)
     }
@@ -483,16 +481,20 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 },
                 _ => match rust_item {
                     Some(RustItem::Box) => {
-                        assert!(typ_args.len() == 1);
+                        assert!(typ_args.len() == 2);
                         Id::new(IdKind::Builtin, 0, "Box".to_owned())
                     }
                     Some(RustItem::Rc) => {
-                        assert!(typ_args.len() == 1);
+                        assert!(typ_args.len() == 2);
                         Id::new(IdKind::Builtin, 0, "Rc".to_owned())
                     }
                     Some(RustItem::Arc) => {
-                        assert!(typ_args.len() == 1);
+                        assert!(typ_args.len() == 2);
                         Id::new(IdKind::Builtin, 0, "Arc".to_owned())
+                    }
+                    Some(RustItem::AllocGlobal) => {
+                        assert!(typ_args.len() == 0);
+                        Id::new(IdKind::Builtin, 0, "Global".to_owned())
                     }
                     _ => state.datatype_name(&path),
                 },
@@ -1725,10 +1727,13 @@ fn erase_mir_bound<'a, 'tcx>(
     let tcx = ctxt.tcx;
     erase_trait(ctxt, state, id);
     let trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, id);
+    let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
     if Some(id) == tcx.lang_items().copy_trait() {
         Some(Bound::Copy)
     } else if Some(id) == tcx.lang_items().sized_trait() {
         Some(Bound::Sized)
+    } else if Some(RustItem::Allocator) == rust_item {
+        Some(Bound::Allocator)
     } else if Some(id) == tcx.lang_items().pointee_trait() {
         // The Rust documentation says Pointee "is automatically implemented for every type",
         // so it's a special case here
@@ -2537,7 +2542,7 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         return;
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    if let Some(RustItem::Rc | RustItem::Arc) = rust_item {
+    if let Some(RustItem::Rc | RustItem::Arc | RustItem::AllocGlobal) = rust_item {
         return;
     }
 

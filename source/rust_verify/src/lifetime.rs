@@ -203,6 +203,7 @@ const PRELUDE: &str = "\
 #![feature(box_patterns)]
 #![feature(ptr_metadata)]
 #![feature(never_type)]
+#![feature(allocator_api)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -218,6 +219,8 @@ const PRELUDE: &str = "\
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::alloc::Allocator;
+use std::alloc::Global;
 use std::ptr::Pointee;
 use std::ptr::Thin;
 fn op<A, B>(a: A) -> B { panic!() }

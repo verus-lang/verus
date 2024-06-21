@@ -578,6 +578,7 @@ pub(crate) enum RustItem {
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
+    Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
@@ -660,6 +661,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
 
     if rust_path == Some("alloc::alloc::Global") {
         return Some(RustItem::AllocGlobal);
+    }
+    if rust_path == Some("core::alloc::Allocator") {
+        return Some(RustItem::Allocator);
     }
 
     if let Some(rust_path) = rust_path {
